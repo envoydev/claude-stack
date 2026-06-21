@@ -1,0 +1,62 @@
+---
+name: dotnet-openapi
+description: "Personal ASP.NET Core OpenAPI conventions - how the service emits a correct OpenAPI document and serves a browsable docs UI from it. Picks the generator by framework floor (Swashbuckle or NSwag on .NET 8, the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi and MapOpenApi on .NET 9 and up), shapes the spec with document, operation, and schema transformers, declares security schemes so the UI can authorize, splits versioned or grouped documents, drives precise schemas from TypedResults plus Produces and XML doc comments, and renders the result with Scalar (Swagger UI as the floor fallback). Floors at .NET 8 / C# 12. Load before adding API docs, editing the generated spec, declaring a security scheme in the document, or standing up the docs UI. Companions: dotnet-minimal-api (the endpoint metadata that feeds the document), dotnet-web-backend (where docs sit among the cross-cutting concerns), dotnet-authentication (the real auth pipeline the spec only describes). Skip it for non-HTTP code and for internal APIs with no published contract."
+---
+
+# ASP.NET Core OpenAPI - the document and the docs UI
+
+OpenAPI is two separate concerns that get conflated: producing a faithful machine-readable description of the API, and rendering that description as something a human can click through. This skill owns both. The endpoint declarations the document is generated *from* - route groups, filters, `.WithName()`, the typed results - belong to `dotnet-minimal-api`; here we assume those exist and concentrate on turning them into an accurate spec and a usable UI. Floor is .NET 8 / C# 12.
+
+The single discipline that runs through everything below: the document is generated, never hand-written. You shape the endpoints and the metadata, and the pipeline derives the spec. A spec edited by hand drifts from the running code the first time anyone forgets to update it.
+
+## Pick one generator, by framework floor
+
+- **On .NET 8**, use Swashbuckle - `AddSwaggerGen()` at startup, `UseSwagger()` to expose the JSON. Reach for NSwag instead only when the same toolchain must also generate strongly-typed clients (C# or TypeScript) from the spec; that client story is NSwag's reason to exist. For a service that just publishes a contract, Swashbuckle is the lighter default.
+- **On .NET 9 and up**, prefer the framework's own `Microsoft.AspNetCore.OpenApi`: `builder.Services.AddOpenApi()` and `app.MapOpenApi()`, which serves the document at `/openapi/v1.json`. It is maintained in lockstep with the framework, carries no third-party dependency, and generates at build or first request without Swashbuckle's reflection overhead. This is the choice for any new .NET 9+ service.
+- Do not run two generators side by side, and do not migrate an existing project's generator without a concrete reason - a project already on Swashbuckle stays on Swashbuckle until there's a payoff. Match what the repo already does.
+
+## Make the schemas accurate
+
+A document is only as good as the type information it can see, and most thin specs are thin because the endpoints hide their types.
+
+- Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the `dotnet-minimal-api` default, so it usually comes for free.
+- Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails` (owned by `dotnet-error-handling`); the metadata here just advertises which statuses appear.
+- Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in the project file and write XML doc comments (`<summary>`, `<param>`, `<returns>`) so operation summaries and parameter descriptions land in the spec. The XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
+
+## Shape the document with transformers
+
+When the generated spec needs adjusting - a server URL, a global response, consistent tags, a tweaked schema - reach for a transformer rather than mutating output.
+
+- **Built-in (.NET 9+):** three composable hooks. `IOpenApiDocumentTransformer` (or `.AddDocumentTransformer(...)`) for whole-document edits like info, servers, and security; operation transformers via `.AddOperationTransformer(...)` for per-endpoint tags and shared responses; schema transformers for type-level adjustments. They run in registration order and stack cleanly.
+- **Swashbuckle (.NET 8):** the same three levels are `IDocumentFilter`, `IOperationFilter`, and `ISchemaFilter`, registered inside `AddSwaggerGen(o => o.DocumentFilter<...>())`.
+- The per-endpoint `.WithOpenApi(...)` modifier is deprecated under the built-in generator - move that logic into an operation transformer so the customization lives in one place instead of scattered across route registrations.
+
+## Declare security schemes in the document
+
+The spec has to describe how to authenticate, or the docs UI has no Authorize button and generated clients can't attach credentials. Declaring the scheme is documentation only - it changes nothing about how requests are actually authorized.
+
+- **Built-in:** add an `OpenApiSecurityScheme` (typically HTTP `bearer` with `bearerFormat: JWT`) to the document's components via a document transformer, and a matching security requirement so protected operations reference it.
+- **Swashbuckle:** `AddSecurityDefinition("Bearer", ...)` plus `AddSecurityRequirement(...)`.
+- The real authentication and authorization pipeline - the handlers, the token validation, the policies - is `dotnet-authentication`. Keep the two in sync by hand: the scheme in the spec must name the scheme the app actually enforces, but the spec never enforces anything itself.
+
+## Split versioned or grouped documents
+
+When the API carries more than one version, or you want public and internal surfaces separated, emit more than one document.
+
+- **Built-in:** `AddOpenApi("v1")` and `AddOpenApi("v2")`, then tag each endpoint with `.WithGroupName("v1")` so it lands in the right document; each is served at `/openapi/{name}.json`.
+- **Swashbuckle:** one `SwaggerDoc("v1", ...)` per group, with an `ApiExplorer` group name on the endpoints.
+- The actual API-versioning strategy - URL segment versus header versus query, and how versions are deprecated - is `dotnet-web-backend`. This skill only routes endpoints into the documents that strategy implies.
+
+## Serve the docs UI with Scalar
+
+- Add the `Scalar.AspNetCore` package and call `app.MapScalarApiReference()` (UI at `/scalar/v1`) pointing at the document endpoint. Scalar runs on .NET 8 and up, so it's the recommended UI regardless of generator. The floor fallback, when a project is committed to the Swashbuckle stack and wants the familiar surface, is Swagger UI via `UseSwaggerUI()`.
+- Gate the UI: either wrap it in `if (app.Environment.IsDevelopment())` or attach `.RequireAuthorization()` in production. A docs page is a map of the internal surface - parameter names, status codes, schema shapes - and shipping it open invites scanning.
+- Theme with `.WithTheme(...)`. For convenience during local testing, prefill auth with `AddHttpAuthentication`, but only ever with a throwaway dev token - the UI renders credentials into the browser, so a real or production token there is leaked the moment the page loads. For a sensitive API, also turn off the Scalar request proxy with `.WithProxy(null)` so it can't be used to relay calls.
+
+## Anti-patterns
+
+- Returning untyped `Results.Ok()` and wondering why the schema is empty - the document can only describe the types it can see.
+- Dropping `.WithName()` and then finding generated clients have meaningless method names - the operation id comes from the route name.
+- Bolting Swashbuckle onto a new .NET 9+ service the built-in generator already covers, or running both generators at once.
+- A production docs UI with no gate, or a real bearer token baked into Scalar's prefill.
+- Editing the generated JSON by hand instead of fixing the endpoint metadata or adding a transformer - the next regeneration erases it.

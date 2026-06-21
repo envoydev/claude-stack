@@ -1,0 +1,17 @@
+---
+description: TypeScript / JavaScript house conventions - apply when editing .ts/.tsx/.js/.jsx/.mjs/.cjs.
+globs: "**/*.ts,**/*.tsx,**/*.js,**/*.jsx,**/*.mjs,**/*.cjs"
+alwaysApply: false
+---
+
+When creating or editing TypeScript/JavaScript (`.ts` / `.tsx` / `.js` / `.jsx` / `.mjs` /
+`.cjs`), follow the framework-agnostic baseline carried by the `typescript` skill
+under `.cursor/skills/`: strict typing, module boundaries, async patterns, and JS+JSDoc.
+Prefer these over ad-hoc style.
+
+If the `typescript` skill is not loaded, hold the line on the highest-value rules: no `any`
+and no `@ts-ignore` (use a typed model or `@ts-expect-error` with a reason), and `await`
+every promise rather than leaving it floating.
+
+This is guidance, auto-attached by glob (not a hard block). Angular files (`*.component.ts`
+&c.) also match `angular-conventions.mdc`, so both rules attach together on those.

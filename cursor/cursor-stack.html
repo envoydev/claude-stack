@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cursor stack inventory</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f1216;
+      --panel: #161b22;
+      --panel-2: #1c2230;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --border: #30363d;
+      --accent: #2f81f7;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff;
+        --panel: #f6f8fa;
+        --panel-2: #eaeef2;
+        --text: #1f2328;
+        --muted: #57606a;
+        --border: #d0d7de;
+        --accent: #0969da;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    h1 { margin: 0 0 4px 0; font-size: 22px; }
+    h2 {
+      margin: 28px 0 10px 0;
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+    .counts {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .counts strong { color: var(--accent); }
+    .banner {
+      margin-bottom: 18px;
+      padding: 12px 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    input[type=search] {
+      flex: 1;
+      min-width: 220px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      font-size: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    thead { background: var(--panel-2); }
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th { font-weight: 600; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--panel-2); }
+    code, .name { font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 13px; }
+    .name { color: var(--text); font-weight: 600; }
+    .src { color: var(--muted); font-size: 12.5px; }
+    .src a { color: var(--accent); text-decoration: none; }
+    .src a:hover { text-decoration: underline; }
+    .desc { color: var(--text); }
+    .tag { font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 11.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); }
+    .yes { color: #3fb950; }
+    .no { color: #f85149; }
+    footer { color: var(--muted); font-size: 12px; margin-top: 18px; }
+    .group-meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Cursor stack inventory</h1>
+  <div class="sub">The Cursor counterpart of <code>claude-stack.html</code>. Provisioned by <code>cursor-stack.{sh,ps1}</code> into a project's self-contained <code>.cursor/</code> tree.</div>
+
+  <div class="banner">
+    <strong>Cursor has no <code>/plugin install</code> system.</strong> Capabilities arrive three ways:
+    <strong>MCP servers</strong> (native, via <code>.cursor/mcp.json</code>), <strong>native features</strong>
+    (Skills, Bugbot, Rules), and <strong>Open VSX</strong> VS Code extensions. Claude marketplace plugins
+    themselves <em>cannot</em> run in Cursor &mdash; only the MCP servers bundled inside them are portable.
+    One exception worth adding manually: <code>superpowers</code> ships its own Cursor plugin &mdash; run
+    <code>/add-plugin superpowers</code> in Cursor chat (this script can't script that UI step).
+    The skills below run as <strong>Cursor Skills</strong> (<code>agentskills.io</code> standard, copied into
+    <code>.cursor/skills/</code>); MCP servers work identically to Claude. See the
+    <em>Claude plugins &rarr; Cursor equivalent</em> table for how each Claude plugin maps.
+  </div>
+
+  <div class="counts">
+    <div><strong id="c-total">0</strong> total</div>
+    <div><strong id="c-personal">15</strong> personal skills</div>
+    <div><strong id="c-repo">32</strong> repository skills</div>
+    <div><strong id="c-mcp">7</strong> MCP servers</div>
+    <div><strong id="c-hooks">6</strong> hooks / rules</div>
+    <div><strong id="c-agents">4</strong> subagents</div>
+    <div><strong id="c-equiv">9</strong> plugin mappings</div>
+  </div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Filter by name, source, or description...">
+  </div>
+
+  <div id="content"></div>
+
+  <footer>
+    Sources: <code>personal</code> &amp; <code>repository</code> skills installed via
+    <code>npx skills add &lt;owner/repo&gt; --agent cursor</code> (run as Cursor Skills) ·
+    <code>MCP</code> servers written to <code>.cursor/mcp.json</code> ·
+    <code>hooks</code> to <code>.cursor/hooks/</code> + <code>.cursor/hooks.json</code> ·
+    <code>rules</code> to <code>.cursor/rules/</code> ·
+    <code>agents</code> to <code>.cursor/agents/</code>. Cursor hooks/rules docs:
+    <a href="https://cursor.com/docs/hooks" target="_blank" rel="noopener">cursor.com/docs/hooks</a>,
+    <a href="https://cursor.com/docs/context/rules" target="_blank" rel="noopener">/docs/context/rules</a>.
+  </footer>
+
+<script>
+// ---- Personal skills (run as Cursor Skills; same set as Claude) ----
+const personal = {
+  title: "Personal skills",
+  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the skills CLI as Cursor Skills.",
+  source: "https://github.com/envoydev/agents-stack",
+  install: "npx skills add envoydev/agents-stack --agent cursor",
+  rows: [
+    ["create-ticket","Tickets / tracker","Generate a bug, user story, epic, or technical task ticket in English from a raw description (Ukrainian or English input). Detects the type and routes to a per-type template (references/{bug,story,epic,task}.md). Tracker-agnostic Markdown (Jira, Azure DevOps, GitHub, GitLab, YouTrack); offers to file via a connected tracker MCP."],
+    ["dev-log-convert","Logs / docs","Convert daily Ukrainian/English/mixed raw work logs into structured form. Trigger: literal 'dev-log'."],
+    ["explain-code-tutor","Learning / explain","Explain code, a bug, a concept, or an approach/architecture trade-off like a patient senior engineer: one everyday analogy fit to the mechanism, numbered steps with short snippets quoted from the real project files, a marked break-point (bug) / key insight (concept) / trade-off verdict (compare), the real fix or recommendation, and a one-line takeaway. Adjustable depth (ELI5/intermediate/expert); answers in the user's language."],
+    ["angular-conventions","Frontend / Angular","Angular 17+: signals, RxJS, OnPush, new control flow templates, a11y, performance, feature-boundary decoupling. TS/JS language baseline -> typescript."],
+    ["angular-material","Frontend / Angular","Angular Material (@angular/material) + CDK: selective component-module imports (tree-shaking), M3 mat.theme() theming + CSS custom properties, CDK primitives (Overlay, virtual scroll, FocusTrap/LiveAnnouncer), Material test harnesses. Distinct from material-3 (generic MD3). Framework baseline -> angular-conventions."],
+    ["angular-styling","Frontend / Angular","Angular CSS/SCSS architecture (Material or not): ViewEncapsulation choice, :host / :host-context, the discouraged ::ng-deep and its sanctioned ways out, design tokens as CSS custom properties, mobile-first + container queries + fluid type, global vs scoped styles, utility-first vs scoped SCSS, a11y-affecting styling. Material token work -> angular-material; framework -> angular-conventions."],
+    ["frontend","Frontend / router","Web frontend router/index: Angular (-> angular-conventions), TS/JS baseline (-> typescript), distinctive UI (frontend-design plugin), Material 3 (-> material-3), Ionic/Capacitor (-> mobile)."],
+    ["mobile","Mobile / router","Ionic/Capacitor router/index: ionic-angular, capacitor-angular, capacitor-plugins over the Angular (angular-conventions) + TypeScript (typescript) baselines."],
+    ["ionic","Mobile / Ionic","House Ionic/Capacitor conventions: standalone+signals Ionic UI, IonRouterOutlet + lazy routes, CSS-variable theming, Capacitor lifecycle + isNativePlatform guards, runtime permissions, Capacitor plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Mechanics -> capacitor-plugins."],
+    ["capacitor-release","Mobile / release","House Ionic/Capacitor release pipeline: cap sync + native build (.ipa/.aab), iOS signing (cert + profile, App Store Connect API key, Fastlane match) + Android signing (upload key vs Play app-signing key), store submission (TestFlight + Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, Fastlane / GitHub Actions CI with secrets, dSYM + sourcemap upload. App under release -> ionic; native plugin mechanics -> capacitor-plugins."],
+    ["csharp","C# / conventions","Style + runtime: file layout, naming, ordering, modern C# 11/12/13 syntax (primary constructors default for DI capture), design-pattern (GoF) awareness, forbidden patterns, XML doc; DateTime/IClock, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, DI lifetimes."],
+    ["csharp-design-patterns","C# / patterns","All 23 GoF patterns with modern .NET 8+ idioms: problem-to-pattern selection table, anti-pattern checks, framework-native forms (keyed DI, yield, events, pattern matching). Companion: csharp."],
+    ["database-conventions","Database","Postgres/SQL Server/SQLite/Mongo schema, migrations, indexes, transactions + per-engine pitfalls."],
+    ["dotnet",".NET / router","Router for .NET/C# specialist skills - picks the focused skill per area (concurrency, type/memory design, design patterns, serialization, DI registration, options binding, domain model, architecture/layer placement, NuGet/packaging, project structure, decompile). Companion: csharp."],
+    ["dotnet-architecture-tests","Architecture / .NET","Architecture fitness tests that fail the build when a boundary is crossed: NetArchTest.Rules (lightweight fluent default) vs ArchUnitNET (richer modelling - slices, cycles, custom predicates), the rules worth enforcing (domain depends on nothing, application on abstractions not infrastructure, no layer-skipping, slice isolation, naming/sealing/placement, no cycles), a dedicated test project resolved by type marker. Enforces what clean-architecture / vertical-slice / ddd prescribe. Original house skill (.NET 8 floor)."],
+    ["dotnet-aspire","Backend / Aspire","Local cloud-native orchestration: AppHost (AddProject/AddPostgres/AddRedis/AddRabbitMQ, WithReference), shared ServiceDefaults, service discovery, dashboard. Orchestration-only; OTel/health/resilience -> dotnet-web-backend. Original house skill (.NET 8 floor)."],
+    ["dotnet-authentication","Auth / ASP.NET Core","Authn/authz: JWT bearer / OIDC / ASP.NET Identity, policy-based authorization over role strings, custom requirements, API keys, secret storage. Original house skill (.NET 8 floor)."],
+    ["dotnet-code-quality","Quality / .NET","Mechanically enforce house C# style: CSharpier formatter ownership (vs dotnet format), first-party SDK analyzers (EnableNETAnalyzers / AnalysisLevel / AnalysisMode in Directory.Build.props), one root .editorconfig as the single severity source, TreatWarningsAsErrors discipline (never suppress to go green) + gradual batch-promotion for a legacy warning backlog, optional Roslynator, and the dotnet build CI gate. Original house skill (.NET 8 floor)."],
+    ["dotnet-cryptography","Security / .NET","System.Security.Cryptography: SHA-2 hashing, AES-GCM authenticated encryption, RSA-OAEP/ECDSA, PBKDF2 (600k)/Argon2id key derivation, FixedTimeEquals, deprecated-algorithm matrix; PQC noted .NET 10+. Original house skill (.NET 8 floor)."],
+    ["dotnet-error-handling","Errors / ASP.NET Core","Result pattern for expected failures + ProblemDetails (RFC 9457) + global IExceptionHandler (.NET 8+) + FluentValidation via endpoint filter. Original house skill (.NET 8 floor)."],
+    ["dotnet-grpc","Backend / gRPC","gRPC lifecycle: .proto + Grpc.Tools codegen, Grpc.AspNetCore host, typed clients via IHttpClientFactory, four streaming modes, JWT/mTLS, interceptors, health, gRPC-Web. Original house skill (.NET 8 floor)."],
+    ["dotnet-hosted-services","Backend / hosting","Hosted-service / worker conventions: the two host shapes, BackgroundService vs IHostedService vs IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services via IServiceScopeFactory, PeriodicTimer, graceful shutdown, and Channels-backed work. Original house skill (.NET 8 floor)."],
+    ["dotnet-messaging","Backend / messaging","Event-driven messaging: Wolverine (MIT default) / MassTransit, transactional outbox, choreography vs sagas, message contracts, RabbitMQ / Azure Service Bus. Original house skill (.NET 8 floor)."],
+    ["dotnet-migrate","Migrations / .NET","Safe-migration workflow: EF Core schema, .NET version upgrades, NuGet updates - rollback plan + build/test verification per step. Original house skill (.NET 8 floor)."],
+    ["dotnet-minimal-api","Backend / ASP.NET Core","Minimal API endpoint mechanics: feature-folder organization, MapGroup, TypedResults / Results<> unions, IEndpointFilter, parameter binding, metadata. Original house skill (.NET 8 floor)."],
+    ["dotnet-mvc-controllers","Backend / ASP.NET Core","Controller-based Web API mechanics: [ApiController], attribute routing, ActionResult<T> vs typed HttpResults, the automatic-400 model-validation filter and suppressing it, binding sources, IAsyncActionFilter, thin controllers, and controllers-vs-minimal-APIs. Original house skill (.NET 8 floor)."],
+    ["dotnet-openapi","API docs / ASP.NET Core","OpenAPI document generation (Swashbuckle on .NET 8, built-in Microsoft.AspNetCore.OpenApi on .NET 9+) + transformers, security schemes, multi-doc, and the Scalar docs UI. Original house skill (.NET 8 floor)."],
+    ["dotnet-realtime","Real-time / ASP.NET Core","ASP.NET Core SignalR: strongly-typed Hub<TClient>, IHubContext push from outside the hub, group/user/presence targeting, the reconnection model (groups not restored - rejoin explicitly), connection-time JWT-over-query-string auth + per-message validation, MessagePack, and multi-server scale-out via a Redis backplane or Azure SignalR Service. The durable last hop pairs with dotnet-messaging. Original house skill (.NET 8 floor)."],
+    ["dotnet-security","Security / ASP.NET Core","OWASP Top 10 (2021) mapped to .NET 8 mitigations: access control/IDOR, injection+XSS, deserialization, misconfig, vulnerable deps, SSRF, logging; deprecated-pattern warnings. Delegates auth -> dotnet-authentication, crypto -> dotnet-cryptography. Original house skill (.NET 8 floor)."],
+    ["dotnet-source-generators","C# / Roslyn","Authoring Roslyn IIncrementalGenerator (netstandard2.0, ForAttributeWithMetadataName, value-equatable models, diagnostics, snapshot testing) + consuming built-ins (GeneratedRegex/LoggerMessage/STJ JsonSerializable). Original house skill (.NET 8 floor)."],
+    ["dotnet-testing","Testing","Per-layer strategy, coverage, library tables (xUnit/NSubstitute/FluentAssertions), test isolation + builders/object mothers."],
+    ["dotnet-web-backend","Backend / HTTP","HTTP-service cross-cutting: IHttpClientFactory, FluentValidation, Polly, API versioning, OpenAPI, observability (Serilog, OpenTelemetry, correlation IDs, health checks), caching (IMemoryCache, HybridCache, Redis)."],
+    ["dotnet-wpf","WPF / Desktop","Strict MVVM, dep/attached props, explicit binding modes, async commands, INotifyDataErrorInfo validation, virtualization, VM testing. (WPF is Windows desktop - the skill installs regardless of editor.)"],
+    ["project-quality-loop","Review / automation","Autonomous review-and-fix loop over a loops/ folder of numbered prompts: runs each in numeric order, loops it on the target until its bar (default zero findings at every severity) is met, then advances - deciding and logging judgment calls, never pausing. Per-module on large codebases."],
+    ["typescript","TypeScript / JavaScript","Framework-agnostic TS/JS baseline: strict flags, discriminated unions, utility types, ESM modules, async (no floating promises), typed errors + Result, readonly, plain-JS via JSDoc + checkJs, ESLint/Prettier/tsconfig."],
+  ]
+};
+
+// ---- Repository skills (npx skills add; same as Claude MINUS the plugin-marketplace rows,
+//      which are not Cursor-installable skills - see the plugin-mapping table). ----
+const repository = [
+  ["api-design","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","Stable extend-only public APIs; NuGet versioning; wire compatibility."],
+  ["aspire-integration-testing","Testing / Aspire","https://github.com/aaronontheweb/dotnet-skills","Integration tests for .NET Aspire apps: DistributedApplicationTestingBuilder, AppHost orchestration, endpoint discovery, real-dependency xUnit tests. Net-new vs testcontainers-integration-tests."],
+  ["capacitor-angular","Capacitor / Angular","https://github.com/capawesome-team/skills","Angular-specific patterns and best practices for Capacitor app development."],
+  ["capacitor-plugins","Capacitor / native","https://github.com/capawesome-team/skills","Install, configure, and use 160+ Capacitor plugins (official, Capawesome, community, CapGo)."],
+  ["clean-architecture","Architecture / .NET","https://github.com/codewithmukesh/dotnet-claude-kit","Clean Architecture 4-project layout (Domain/Application/Infrastructure/Api), dependency inversion, use case handlers, domain entities with behavior, infrastructure as a plugin. Pair with `ddd`."],
+  ["crap-analysis","Quality / coverage","https://github.com/aaronontheweb/dotnet-skills","OpenCover + ReportGenerator Risk Hotspots; cyclomatic complexity + untested code paths."],
+  ["csharp-concurrency-patterns","C# / concurrency","https://github.com/aaronontheweb/dotnet-skills","async/await for I/O, Channels for producer/consumer, Akka.NET for stateful entities."],
+  ["database-performance","Database","https://github.com/aaronontheweb/dotnet-skills","Separate read/write models, avoid N+1, AsNoTracking, row limits, no app-side joins."],
+  ["ddd","Architecture / .NET","https://github.com/codewithmukesh/dotnet-claude-kit","Tactical DDD for .NET: aggregates, aggregate roots, value objects, domain events, domain services, strongly-typed IDs, repository-per-aggregate. Pair with `clean-architecture`."],
+  ["dependency-injection-patterns","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","IServiceCollection extension methods; composable Add* groups."],
+  ["docker-platform-guide","Docker / containers","https://github.com/josiahsiegel/claude-plugin-marketplace","Per-platform Docker setup (Windows/Mac/Linux), rootless, multi-arch builds."],
+  ["docker-security-guide","Docker / security","https://github.com/josiahsiegel/claude-plugin-marketplace","Container hardening, capability dropping, seccomp/AppArmor, CIS benchmark."],
+  ["dotnet-local-tools","Tooling / .NET","https://github.com/aaronontheweb/dotnet-skills","Pin CLI tools (dotnet-ef, csharpier, reportgenerator) in .config/dotnet-tools.json for local + CI parity."],
+  ["dotnet-project-structure","C# / .NET","https://github.com/aaronontheweb/dotnet-skills",".slnx, Directory.Build.props, central package mgmt, SourceLink, global.json."],
+  ["dotnet-slopwatch","Quality / lint","https://github.com/aaronontheweb/dotnet-skills","Detect LLM reward hacking (disabled tests, suppressed warnings, empty catches)."],
+  ["dump-collect","Diagnostics / .NET","https://github.com/dotnet/skills","Crash / on-demand process dump capture (Linux/macOS/Windows + containers): DOTNET_DbgEnableMiniDump, dotnet-dump collect, createdump. Official Microsoft .NET skill, cherry-picked."],
+  ["efcore-patterns","Database / EF Core","https://github.com/aaronontheweb/dotnet-skills","AsNoTracking, query splitting, migration mgmt, common EF Core pitfalls."],
+  ["git-master","Git","https://github.com/josiahsiegel/claude-plugin-marketplace","Full Git reference + safety guardrails for destructive ops."],
+  ["ilspy-decompile","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","Decompile .NET binaries to inspect internals; framework/NuGet source inspection."],
+  ["index-strategies","Database / SQL","https://github.com/josiahsiegel/claude-plugin-marketplace","SQL Server clustered/nonclustered/filtered/columnstore index design."],
+  ["ionic-angular","Ionic / Angular","https://github.com/capawesome-team/skills","Angular-specific Ionic Framework development patterns (components, theming, navigation)."],
+  ["markdown-style","Docs / Markdown","https://github.com/josiahsiegel/claude-plugin-marketplace","Two-pass syntax/style review of Markdown with line refs."],
+  ["material-3","UI / Material 3","https://github.com/hamen/material-3-skill","Material Design 3 (Material You): design tokens, 30+ components, layout, theming, M3 Expressive, accessibility. Primary: Jetpack Compose + Flutter; web is the maintenance-mode @material/web (NOT Angular Material)."],
+  ["microbenchmarking","Performance / .NET","https://github.com/dotnet/skills","BenchmarkDotNet design/run/compare workflow (jobs, presets, dead-code-elimination pitfalls). Official Microsoft .NET skill, cherry-picked; net-new runtime perf measurement."],
+  ["microsoft-extensions-configuration","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","IValidateOptions, strongly-typed settings, startup validation."],
+  ["OpenTelemetry-NET-Instrumentation","Observability / .NET","https://github.com/aaronontheweb/dotnet-skills","Deep manual OpenTelemetry instrumentation: custom Activity/spans, HasListeners gating, metric cardinality, zero-alloc TagList. Beyond dotnet-web-backend's wiring-level OTel."],
+  ["package-management","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","NuGet Central Package Management + dotnet CLI; never edit XML directly."],
+  ["query-optimization","Database / SQL","https://github.com/josiahsiegel/claude-plugin-marketplace","T-SQL optimization, SARGability, plan reading, rewrites."],
+  ["r3-reactive-extensions","C# / reactive","https://github.com/aaronontheweb/dotnet-skills","R3 (Cysharp's modern Reactive Extensions): Observable, operators, schedulers, frame-based time providers for event-driven C#."],
+  ["serialization","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","Schema-based (Protobuf/MessagePack) over reflection-based; System.Text.Json AOT."],
+  ["snapshot-testing","Testing / .NET","https://github.com/aaronontheweb/dotnet-skills","Verify-based snapshot/approval testing: HTTP responses (WebApplicationFactory), public API surface, serialized output. Complements dotnet-testing's explicit-assertion strategy."],
+  ["supabase-postgres-best-practices","Database / Postgres","https://github.com/supabase/agent-skills","Postgres performance + best practices from Supabase."],
+  ["testcontainers-integration-tests","Testing / .NET","https://github.com/aaronontheweb/dotnet-skills","Integration tests against real databases/services in Docker via Testcontainers for .NET. Also resolves efcore-patterns' cross-reference."],
+  ["tsql-functions","Database / SQL","https://github.com/josiahsiegel/claude-plugin-marketplace","T-SQL function catalog (string/date/window/JSON/XML)."],
+  ["type-design-performance","C# / .NET","https://github.com/aaronontheweb/dotnet-skills","Seal classes, readonly structs, static pure functions, collection choice."],
+  ["vertical-slice-architecture","Architecture / multi-lang","https://github.com/mryll/skills","Enforce VSA: feature-based folders, one entry point per feature, minimize cross-slice coupling, no premature shared layers. Multi-language (Go/.NET/Java/Kotlin/TS/Python)."],
+  ["wordpress-router","WordPress / routing","https://github.com/WordPress/agent-skills","Official WordPress router skill - maps a WP task to the focused skill (blocks, themes, plugins)."],
+  ["wp-plugin-development","WordPress / WooCommerce","https://github.com/WordPress/agent-skills","Official plugin-development guidance: hooks/filters idioms, security (nonces, escaping, sanitization), best practices."],
+  ["wp-project-triage","WordPress","https://github.com/WordPress/agent-skills","Detects WordPress project type (plugin/theme/block) and routes setup and conventions."],
+];
+
+// ---- MCP servers (native in Cursor via .cursor/mcp.json) ----
+const mcp = [
+  ["context7","Library docs",".cursor/mcp.json (npx -y @upstash/context7-mcp)","https://github.com/upstash/context7","Fetch current library/framework/SDK docs. Same product as on Claude - an MCP server, so identical in Cursor. Add `use context7` to a prompt."],
+  ["serena","Code navigation",".cursor/mcp.json (uvx --from serena-agent, --context ide-assistant)","https://github.com/oraios/serena","Code-aware symbol navigation, find-references, call-hierarchy via LSP. Cursor uses the generic `ide-assistant` context. Per-project .serena/ (SERENA_HOME=.serena/home)."],
+  ["playwright","Browser automation",".cursor/mcp.json (npx @playwright/mcp@<pinned>)","https://github.com/microsoft/playwright-mcp","Browser navigate/click/type/screenshot via Playwright. ${...} tokens are resolved to concrete paths when .cursor/mcp.json is written (Cursor does no shell interpolation)."],
+  ["memory","Memory / recall",".cursor/mcp.json (mcp-memory-service, shared ~/.memory-mcp)","https://github.com/doobidoo/mcp-memory-service","Cross-project semantic memory. Shares ~/.memory-mcp with Claude Code, so both see the same DB."],
+  ["angular-cli","Angular / workspace",".cursor/mcp.json (npx -y @angular/cli mcp)","https://angular.dev/ai/mcp","Official Angular CLI MCP (experimental): workspace-aware docs, migrations, generation. Angular workspaces only (comment out elsewhere)."],
+  ["chrome-devtools","Browser / extension debug","Active, heavy .cursor/mcp.json (npx chrome-devtools-mcp@latest)","https://github.com/ChromeDevTools/chrome-devtools-mcp","Official Chrome DevTools MCP. Active by default (heavy - comment out where not needed) - drives a full Chrome; needed mainly for browser/extension projects."],
+  ["appium-mcp","Mobile / native E2E","Active, heavy .cursor/mcp.json (npx -y appium-mcp@latest)","https://github.com/appium/appium-mcp","Official Appium MCP (Appium core team): drive iOS simulators + Android emulators/devices (40+ tools - sessions, element finding incl. vision, gestures, app lifecycle, permissions, screenshots, test gen). Embedded UiAutomator2/XCUITest drivers. Active by default (heavy - comment out where not needed) - needs Xcode and/or Android SDK + Java; needed mainly for Capacitor/Ionic mobile projects."],
+];
+
+// ---- Hooks & rules (Cursor contract) ----
+const hooksRules = [
+  ["guard-protected-force-push.js","hook (beforeShellExecution)",".cursor/hooks/ + .cursor/hooks.json","Blocks a force-push to a protected branch (main/master/develop). Reads {command} on stdin, returns {permission: deny}. Cursor analog of the Claude guard-protected-force-push hook. Fetched from envoydev/agents-stack/main/cursor/hooks."],
+  ["guard-catastrophic-rm.js","hook (beforeShellExecution)",".cursor/hooks/ + .cursor/hooks.json","Blocks a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, or a bare *). Reads {command} on stdin, returns {permission: deny}. Cursor analog of the Claude guard-catastrophic-rm hook. Fetched from envoydev/agents-stack/main/cursor/hooks."],
+  ["csharp-conventions.mdc","rule (globs **/*.cs)",".cursor/rules/","C# house conventions (csharp), auto-attached when a .cs file is in context. Cursor analog of Claude's require-convention-skill gate's 'cs' table - a rule (soft guidance), not a hard pre-edit block (Cursor has no session 'skill loaded' state and no stable pre-edit deny)."],
+  ["typescript-conventions.mdc","rule (globs .ts/.tsx/.js/.jsx/.mjs/.cjs)",".cursor/rules/","TypeScript/JS baseline (typescript). Mirrors the gate's 'ts' table. Auto-attaches by glob; composes with angular-conventions on Angular .ts files."],
+  ["sql-conventions.mdc","rule (globs **/*.sql)",".cursor/rules/","SQL house conventions (database-conventions). Mirrors the gate's 'sql' table - hand-written SQL only."],
+  ["angular-conventions.mdc","rule (globs *.component.ts / *.service.ts / *.directive.ts / etc.)",".cursor/rules/","Angular conventions (angular-conventions). Mirrors the gate's 'ng' table - keyed on Angular compound suffixes; bare .html stays ungated."],
+  ["ponytail.mdc","rule (alwaysApply; fetched from ponytail repo)",".cursor/rules/","Ponytail 'lazy senior dev' minimal-code rule (always applies). Fetched from DietrichGebert/ponytail - the Cursor form of the ponytail plugin the Claude stack installs; referenced, not vendored here."],
+];
+
+// ---- Subagents (Cursor-native; fetched into .cursor/agents/) ----
+// [name, area, lands in, source url, description]. The same four resolvers the Claude stack ships, in
+// Cursor's weaker contract: a `readonly` bool (no per-tool allowlist) and no hard convention gate, so the
+// bodies lean on the auto-attaching .cursor/rules instead of a Skill-load gate.
+const agents = [
+  ["dotnet-build-error-resolver", ".NET / build", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-build fix loop: categorize CS/NU/MSB errors, locate via serena, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to disable tests/warnings or stub code to pass. Implement phase, pairs after /brainstorm -> /plan. Cursor contract: readonly false, no tool allowlist - leans on the csharp-conventions rule."],
+  ["dotnet-test-failure-resolver", ".NET / test", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-test red->green loop: fix the real defect (production vs test side), never skip/weaken/game a test or coverage threshold (5-cycle cap). Pairs after the build-error resolver. Cursor contract: prompt-only guardrails, no tool scoping."],
+  ["ng-build-error-resolver", "Frontend / build", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous ng build fix loop: parse TS/template/bundler errors, locate via serena, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to weaken types (any / @ts-ignore), disable lint, or stub logic. Leans on the angular-conventions + typescript rules."],
+  ["angular-test-resolver", "Frontend / test", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous ng test / Jest red->green loop: fix the real defect (component vs spec), never xit/skip/weaken a spec or fake timing (5-cycle cap). Pairs after the ng build resolver. Cursor contract: prompt-only guardrails, no tool scoping."],
+];
+
+// ---- Claude plugins -> Cursor equivalent (what maps, and how it's delivered) ----
+// [claude plugin, cursor equivalent, mechanism tag, available?, notes]
+const equivalents = [
+  ["typescript-lsp","Built-in TypeScript service (tsserver)","native (built-in)",true,"Cursor ships VS Code's TypeScript service - TS/JS diagnostics work with no extension."],
+  ["gopls-lsp","golang.Go extension (backed by gopls)","Open VSX extension",true,"Identical to VS Code; install the Go extension from Open VSX. (Verify publisher id: golang/Go vs ms-vscode/Go.)"],
+  ["csharp-lsp","Roslyn-based C# extension (DotRush, or muhammad-sammy/csharp, or JetBrains ReSharper)","Open VSX extension",true,"Microsoft's official C# Dev Kit is BLOCKED in Cursor (license, since Apr 2025). Use a Roslyn-based open/community alternative. If our csharp-lsp wraps Microsoft's CodeAnalysis LanguageServer, the same license may apply - check."],
+  ["superpowers","/add-plugin superpowers","Cursor plugin (manual UI)",true,"superpowers ships a real .cursor-plugin manifest (14 SKILL.md workflow skills + a Cursor hooks file). Install in Cursor chat with /add-plugin superpowers - a manual UI step, NOT auto-fetched by cursor-stack (unlike ponytail's single .mdc rule)."],
+  ["security-guidance (/security-review)","Bugbot (/review, /review-bugbot)","native",true,"Cursor's native Bugbot reviews for bugs + security + quality, in-editor (Cursor 3.7+) or on PRs."],
+  ["claude-md-management","AGENTS.md + .cursor/rules","native",true,"Cursor's native project-instruction form. The Cursor CLI also reads CLAUDE.md, so it is partially portable."],
+  ["context7","Context7 (same MCP server)","MCP (native)",true,"Identical product - an MCP server, already in the MCP section above."],
+  ["ponytail",".cursor/rules/ponytail.mdc","rule (copied)",true,"'Lazy senior dev' minimal-code rule (alwaysApply: true). In Cursor it is NOT a plugin/MCP - copy ponytail's own .cursor/rules/ponytail.mdc into the project (the ponytail repo also ships Windsurf/Cline/Copilot variants)."],
+  ["claude-hud","none in GUI; closest: Cursor CLI /statusline","CLI-only / none",false,"No GUI HUD equivalent. The Cursor CLI /statusline (Apr 2026) is terminal-only and scriptable, surfacing session metadata (mode/branch/env) - not tokens/cost out of the box. Third-party billing extensions exist but are not a live session HUD."],
+];
+
+function matchRow(arr, q) { return q ? arr.filter(r => r.join(" ").toLowerCase().includes(q)) : arr; }
+
+function renderPersonal(filtered) {
+  let html = `<h2>${personal.title}</h2><div class="group-meta">${personal.meta} Install: <code>${personal.install}</code></div>`;
+  html += `<table><thead><tr><th style="width:20%">Skill</th><th style="width:16%">Area</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, area, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function renderRepository(filtered) {
+  // Group by repo url; multi-skill repos get a sub-group, single-skill repos go to "Other".
+  const fullCounts = {};
+  for (const [, , u] of repository) fullCounts[u] = (fullCounts[u] || 0) + 1;
+  const multi = {}, others = [];
+  for (const row of filtered) {
+    (fullCounts[row[2]] > 1 ? (multi[row[2]] ||= []) : others).push(row);
+  }
+  const orderedUrls = Object.keys(multi).sort((a, b) => (multi[b].length - multi[a].length) || a.localeCompare(b));
+  const repoInstall = u => { const m = u.match(/^https:\/\/github\.com\/([^\/]+\/[^\/]+)\/?$/); return m ? `npx skills add ${m[1]} --agent cursor` : "manual"; };
+
+  let html = `<h2>Repository skills</h2><div class="group-meta">Installed via <code>npx skills add &lt;owner/repo&gt; --agent cursor</code> (run as Cursor Skills). ${filtered.length} skills. Claude plugin-marketplace skills are excluded - see the plugin-mapping table.</div>`;
+  const tableFor = (rows) => {
+    let t = `<table><thead><tr><th style="width:20%">Skill</th><th style="width:14%">Area</th><th style="width:22%">Install</th><th style="width:20%">Source</th><th>Description</th></tr></thead><tbody>`;
+    for (const [name, area, u, desc] of rows.sort((a, b) => a[0].localeCompare(b[0]))) {
+      t += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${repoInstall(u)}</code></td><td><a href="${u}" target="_blank" rel="noopener">${u}</a></td><td class="desc">${desc}</td></tr>`;
+    }
+    return t + `</tbody></table>`;
+  };
+  for (const url of orderedUrls) {
+    html += `<h2 style="font-size:13px;margin-top:18px">${url} <span class="src" style="font-weight:400">(${multi[url].length} skills)</span></h2>` + tableFor(multi[url]);
+  }
+  if (others.length) {
+    html += `<h2 style="font-size:13px;margin-top:18px">Other (single-skill repos) <span class="src" style="font-weight:400">(${others.length} skills)</span></h2>` + tableFor(others);
+  }
+  return html;
+}
+
+function renderMcp(filtered) {
+  let html = `<h2>MCP servers</h2><div class="group-meta">Written to <code>.cursor/mcp.json</code> by the installer; Cursor supports MCP natively. ${filtered.length} servers.</div>`;
+  html += `<table><thead><tr><th style="width:14%">Name</th><th style="width:16%">Area</th><th style="width:26%">Install</th><th style="width:16%">Source</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, area, install, url, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${install}</code></td><td><a href="${url}" target="_blank" rel="noopener">${url}</a></td><td class="desc">${desc}</td></tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function renderHooks(filtered) {
+  let html = `<h2>Hooks &amp; rules</h2><div class="group-meta">Cursor-contract hook scripts + rules, fetched into the project's <code>.cursor/</code> tree. ${filtered.length} entries.</div>`;
+  html += `<table><thead><tr><th style="width:24%">Name</th><th style="width:22%">Type</th><th style="width:22%">Lands in</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, type, where, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${type}</code></td><td><code>${where}</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function renderAgents(filtered) {
+  let html = `<h2>Subagents</h2><div class="group-meta">Cursor-native specialist subagents, fetched into the project's <code>.cursor/agents/</code> tree. The same four resolvers the Claude stack ships, but in Cursor's weaker contract (a <code>readonly</code> bool, no per-tool allowlist, no hard convention gate). ${filtered.length} agents.</div>`;
+  html += `<table><thead><tr><th style="width:22%">Name</th><th style="width:14%">Area</th><th style="width:18%">Lands in</th><th style="width:14%">Source</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, area, where, url, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${where}</code></td><td><a href="${url}" target="_blank" rel="noopener">${url}</a></td><td class="desc">${desc}</td></tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function renderEquiv(filtered) {
+  let html = `<h2>Claude plugins &rarr; Cursor equivalent</h2><div class="group-meta">Cursor has no <code>/plugin install</code>. How each Claude marketplace plugin maps to Cursor (native feature / Open-VSX extension / MCP / none). ${filtered.length} mappings.</div>`;
+  html += `<table><thead><tr><th style="width:18%">Claude plugin</th><th style="width:24%">Cursor equivalent</th><th style="width:16%">Mechanism</th><th style="width:8%">In Cursor</th><th>Notes</th></tr></thead><tbody>`;
+  for (const [plugin, equiv, mech, avail, notes] of filtered) {
+    const flag = avail ? `<span class="yes">&#10003; yes</span>` : `<span class="no">&#10007; no</span>`;
+    html += `<tr><td><span class="name">${plugin}</span></td><td>${equiv}</td><td><span class="tag">${mech}</span></td><td>${flag}</td><td class="desc">${notes}</td></tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function render(query) {
+  const root = document.getElementById("content");
+  root.innerHTML = "";
+  const q = query;
+
+  const fPersonal = matchRow(personal.rows, q);
+  const fRepo     = matchRow(repository, q);
+  const fMcp      = matchRow(mcp, q);
+  const fHooks    = matchRow(hooksRules, q);
+  const fAgents   = matchRow(agents, q);
+  const fEquiv    = matchRow(equivalents, q);
+
+  if (fPersonal.length) root.insertAdjacentHTML("beforeend", renderPersonal(fPersonal));
+  if (fRepo.length)     root.insertAdjacentHTML("beforeend", renderRepository(fRepo));
+  if (fMcp.length)      root.insertAdjacentHTML("beforeend", renderMcp(fMcp));
+  if (fHooks.length)    root.insertAdjacentHTML("beforeend", renderHooks(fHooks));
+  if (fAgents.length)   root.insertAdjacentHTML("beforeend", renderAgents(fAgents));
+  if (fEquiv.length)    root.insertAdjacentHTML("beforeend", renderEquiv(fEquiv));
+
+  document.getElementById("c-personal").textContent = fPersonal.length;
+  document.getElementById("c-repo").textContent     = fRepo.length;
+  document.getElementById("c-mcp").textContent      = fMcp.length;
+  document.getElementById("c-hooks").textContent    = fHooks.length;
+  document.getElementById("c-agents").textContent   = fAgents.length;
+  document.getElementById("c-equiv").textContent    = fEquiv.length;
+  document.getElementById("c-total").textContent    = fPersonal.length + fRepo.length + fMcp.length + fHooks.length + fAgents.length;
+}
+
+document.getElementById("q").addEventListener("input", e => render(e.target.value.trim().toLowerCase()));
+render("");
+</script>
+</body>
+</html>

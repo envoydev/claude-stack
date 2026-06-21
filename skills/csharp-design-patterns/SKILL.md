@@ -1,0 +1,86 @@
+---
+name: csharp-design-patterns
+description: Apply GoF design patterns idiomatically in C#/.NET. Use this skill whenever the user asks to implement, choose, explain, or compare a design pattern in C#, refactor C# code toward a pattern, review code for pattern misuse, or asks 'which pattern fits this problem'. Also trigger when the user describes a recurring design problem in .NET code (object creation sprawl, switch-on-type logic, tight coupling, notification chains, undo/redo, plugin architecture) even without naming a pattern. Covers all 23 GoF patterns with modern .NET 8+ idioms. Do NOT use for architectural patterns (repository, unit of work, CQRS, event sourcing, layering) - those route via dotnet to ddd / clean-architecture.
+---
+
+# C# Design Patterns
+
+Guidance for selecting and implementing design patterns in modern C#/.NET. Content is structured after refactoring.guru (intent, applicability, pros and cons) and dofactory (.NET-optimized variants that use framework features instead of hand-rolled GoF structure).
+
+## Core principles
+
+1. **Pattern selection comes from the problem, not the other way around.** Never recommend a pattern because it is 'good practice'. Identify the design pain first, then check the selection table below. If no pain exists, no pattern is needed.
+2. **Prefer the .NET-native form.** Many GoF patterns are already built into the framework or the language. Hand-rolling the classic UML structure when the platform provides it is an anti-pattern. The reference files mark these as '.NET-native form'.
+3. **Modern C# changes the implementation.** Use DI containers, delegates, lambdas, generics, records, pattern matching, `IObservable<T>`, `IEnumerable<T>`/`yield`, and source generators where they replace boilerplate classes. Show the classic structure only when the user asks for it explicitly (e.g. for learning or interviews).
+4. **Always state the cost.** Every pattern adds indirection. When recommending one, name the tradeoff in one or two sentences (more types, harder navigation, runtime overhead, etc.).
+5. **Style comes from `csharp`, not from here.** All samples follow its conventions (primary constructors for dependency capture, properties before constructors, `sealed` by default). When generating real project code, load `csharp` alongside this skill; on any style conflict, `csharp` wins.
+
+## Workflow
+
+When the user asks for help with patterns:
+
+1. Identify the actual design problem (ask one clarifying question only if the problem is genuinely ambiguous).
+2. Use the selection table below to shortlist 1-2 candidate patterns.
+3. Read the matching reference file for the chosen pattern **before writing** any code - it carries the modern .NET form, the tradeoffs, and a worked example:
+    - `references/creational.md` - Factory Method, Abstract Factory, Builder, Prototype, Singleton
+    - `references/structural.md` - Adapter, Bridge, Composite, Decorator, Facade, Flyweight, Proxy
+    - `references/behavioral.md` - Chain of Responsibility, Command, Interpreter, Iterator, Mediator, Memento, Observer, State, Strategy, Template Method, Visitor
+4. Implement using the modern .NET form from the reference. Include the classic form only on request.
+5. State the tradeoff and, where relevant, the simpler alternative that was rejected.
+
+## Pattern selection table
+
+| Design problem | Pattern | First check |
+|---|---|---|
+| Object creation logic duplicated or `new` scattered with conditionals | Factory Method | Is DI registration enough? |
+| Families of related objects must stay consistent (e.g. per-provider, per-theme) | Abstract Factory | Can keyed DI services solve it? |
+| Constructor has too many parameters / complex optional configuration | Builder | Do `init` properties + `required` solve it? |
+| Object copying is expensive or type unknown at compile time | Prototype | Does a record `with` expression solve it? |
+| Exactly one instance needed app-wide | Singleton | Use DI singleton lifetime, not a static class |
+| Incompatible interface between your code and a library | Adapter | - |
+| Abstraction and implementation both vary independently | Bridge | - |
+| Tree structure where leaves and containers are treated uniformly | Composite | - |
+| Add behavior to objects without subclassing | Decorator | Pipelines/middleware may already do this |
+| Complex subsystem needs a simple entry point | Facade | A plain service class is often enough |
+| Thousands of similar objects, memory pressure | Flyweight | Measure first; strings are already interned |
+| Control access to an object (lazy, remote, caching, auth) | Proxy | `Lazy<T>`, DispatchProxy, or interceptors |
+| Request handled by one of several handlers in sequence | Chain of Responsibility | ASP.NET Core middleware is this pattern |
+| Operations as objects (undo, queueing, scheduling) | Command | MediatR-style handlers, `ICommand` in WPF |
+| Custom traversal over a collection | Iterator | `IEnumerable<T>` + `yield return` is this pattern |
+| Many-to-many object communication creates spaghetti | Mediator | - |
+| Save/restore object state (undo, snapshots) | Memento | - |
+| One-to-many change notification | Observer | `event`, `IObservable<T>`, `INotifyPropertyChanged` |
+| Behavior changes drastically with internal state | State | Pattern matching on a state enum may be enough |
+| Swap an algorithm at runtime | Strategy | A `Func<>` parameter may be enough |
+| Fixed algorithm skeleton with customizable steps | Template Method | Prefer Strategy/composition if variance grows |
+| New operations over a stable class hierarchy | Visitor | Pattern matching (`switch` on type) is the modern rival |
+
+## Anti-pattern checks
+
+Run these before finalizing any recommendation:
+
+- **Singleton via static class or static instance field**: in any app with a DI container, register a normal class with singleton lifetime instead. Static singletons block testing and hide dependencies.
+- **Factory for a single concrete type**: if there is only one implementation and no creation logic, inject the type directly.
+- **Strategy with one strategy**: same problem. Wait until a second algorithm actually exists.
+- **Hand-rolled Observer**: C# has `event`. WPF/MVVM has `INotifyPropertyChanged`. Rx has `IObservable<T>`. Do not write Subject/Observer classes manually.
+- **Service Locator disguised as Factory**: a factory that resolves arbitrary types from a container by name/type is a Service Locator. Flag it.
+- **Pattern stacking**: if a proposed design uses 3+ patterns for a feature of moderate size, simplify before presenting.
+
+## Output format for pattern recommendations
+
+When recommending a pattern, structure the answer as:
+
+1. **Problem restated in one line** (the design pain, not the user's words)
+2. **Pattern + why it fits** (2-3 sentences)
+3. **Modern C# implementation** (compilable code, .NET 8+, nullable enabled)
+4. **Tradeoff** (1-2 sentences)
+5. **Simpler alternative considered** (when one exists)
+
+For 'explain pattern X' requests, follow the refactoring.guru structure instead: Intent, Problem, Solution, C# example (modern form first, classic on request), Applicability, Pros and cons, Relations with other patterns.
+
+## Related skills
+
+- `csharp` - companion for any C# output; style and runtime conventions always apply (see core principle 5).
+- `dependency-injection-patterns` - registration mechanics (lifetimes, keyed services, `Add*` extensions) when a pattern collapses into DI, as Factory/Strategy/Singleton usually do.
+- `csharp-concurrency-patterns` - when Observer or Mediator turns into producer-consumer flows (`Channel<T>`, backpressure).
+- `dotnet-wpf` - `ICommand`/`[RelayCommand]` specifics when Command or Observer lands in WPF/MVVM.

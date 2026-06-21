@@ -1,0 +1,21 @@
+name: lint
+
+# The parity lint is the repo's source-of-truth gate (SKILLS + MCPS identical
+# across all four installers, PLUGINS claude-only, HTML in sync, references
+# resolve, README counts match). Run it on every push and PR so drift can never
+# land silently.
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint

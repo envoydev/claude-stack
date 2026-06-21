@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node
+node_modules/
+
+# Windows
+Thumbs.db
+
+# claude
+.claude/
+REPORT.md
+
+# Stack-generated, machine-local artifacts (never commit)
+.serena/
+.mcp.json

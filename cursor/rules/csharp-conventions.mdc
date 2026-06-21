@@ -1,0 +1,22 @@
+---
+description: C# / .NET house conventions - apply when creating or editing C# code.
+globs: "**/*.cs"
+alwaysApply: false
+---
+
+When creating or editing C# (`.cs`) files, follow the house C# conventions carried by the
+`csharp` skill installed under `.cursor/skills/`: file layout, naming, member/constructor
+ordering, modern C# syntax, async/await, exceptions + Result, structured logging, DI
+lifetimes, and System.Text.Json. Prefer these over ad-hoc style. Target the .NET 8 / C# 12
+floor, or the repo's pinned version if higher.
+
+This rule points at the `csharp` skill alone, matching the convention gate's `.cs` owner -
+deeper material (design patterns, the `dotnet` family) loads from those skills' own keywords,
+not from here.
+
+If the `csharp` skill is not loaded, hold the line on the highest-value rules: file-scoped
+namespaces, one top-level type per file, `async`/`await` all the way down with no
+`.Result` / `.Wait()`, and no swallowed exceptions.
+
+This is guidance, auto-attached whenever a `.cs` file is in context (not a hard block). Other
+file types have their own auto-attaching convention rules.

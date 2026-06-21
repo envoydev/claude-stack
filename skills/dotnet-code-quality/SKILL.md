@@ -1,0 +1,86 @@
+---
+name: dotnet-code-quality
+description: "Personal .NET conventions for mechanically enforcing code quality - making the house style a build gate, not a review opinion. Covers the formatter-vs-analyzer split (CSharpier owns layout, .editorconfig + analyzers own rules), SDK analyzers (EnableNETAnalyzers / AnalysisLevel / AnalysisMode in Directory.Build.props), one root .editorconfig as the single severity source, TreatWarningsAsErrors discipline (never suppress to go green), batch-promotion for a legacy warning backlog, optional Roslynator, and the dotnet build CI gate. Floors at .NET 8 / C# 12. Load when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate, or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. Companions: csharp (the conventions this enforces), dotnet-project-structure (Directory.Build.props), dotnet-security (CA3xxx/CA5xxx rules), dotnet-migrate (analyzer churn on upgrades). Do NOT load for authoring Roslyn analyzers/source generators (dotnet-source-generators) or test-suite quality (dotnet-testing)."
+---
+
+# .NET code quality - enforcement, not opinion
+
+The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Baseline is .NET 8 / C# 12. This is about configuring the tools - authoring your own Roslyn analyzers is `dotnet-source-generators`, and judging whether the *tests* are any good is `dotnet-testing`.
+
+## Two owners, one boundary: formatting vs rules
+
+Split the space cleanly so two tools never fight over the same bytes:
+
+- **A formatter owns layout** - whitespace, wrapping, brace placement. Pick **CSharpier**: it is opinionated and effectively zero-config, which ends the formatting debate instead of relocating it into `.editorconfig` knobs. The alternative, `dotnet format`, drives whitespace from `.editorconfig` style rules - fine if a repo has already standardized on it, but do not run both as formatters.
+- **`.editorconfig` + analyzers own rules** - naming, usings, severity, the CA/IDE diagnostics. Formatting style rules effectively defer to the formatter.
+
+Document which tool owns formatting once (in the repo's `CLAUDE.md` / `AGENTS.md`) so an agent never reformats under the wrong engine.
+
+Install CSharpier as a **local tool** for reproducible local-and-CI runs, not globally:
+
+```bash
+dotnet new tool-manifest          # if .config/dotnet-tools.json is missing
+dotnet tool install csharpier
+dotnet csharpier check .          # CI: fails on unformatted code (use 'format' to write)
+```
+
+Add a `.csharpierignore` for generated or vendored trees. Tool pinning in `.config/dotnet-tools.json` is `dotnet-local-tools`.
+
+## First-party SDK analyzers before any third-party pack
+
+Turn on the analyzers that ship with the SDK first - they cost nothing and catch real defects. Set them once in `Directory.Build.props` (not per-project; layout is `dotnet-project-structure`):
+
+```xml
+<PropertyGroup>
+  <EnableNETAnalyzers>true</EnableNETAnalyzers>
+  <AnalysisLevel>latest-recommended</AnalysisLevel>
+  <AnalysisMode>Recommended</AnalysisMode>          <!-- AllEnabledByDefault for the strictest bar -->
+</PropertyGroup>
+```
+
+Only reach for a third-party pack (Roslynator, StyleCop, Meziantou) once the SDK baseline is in place and you have a concrete rule the SDK lacks - and give it an explicit severity plan so packs do not enforce contradictory versions of the same rule. **Roslynator** is the first add: prefer the `Roslynator.Analyzers` NuGet package (build-enforced) over the CLI; the CLI (`roslynator.dotnet.cli`) earns its place only for one-off analyze / fix / find-unused sweeps, and treat any auto-`fix` as a controlled change - run it on a bounded target, rebuild, rerun the tests.
+
+## One root `.editorconfig` is the single source of severity
+
+- Exactly **one** repo-root `.editorconfig` with `root = true`. Per-rule severity lives here, in version control - never in IDE-only settings that silently override repo policy.
+- Add a **nested** `.editorconfig` only when a subtree genuinely needs different policy (looser rules for `*.Tests`, relaxed docs for generated code). Reserve `.globalconfig` for the exceptional case, not the normal setup.
+- Keep **bulk MSBuild switches** (`EnableNETAnalyzers`, `AnalysisLevel`) in `Directory.Build.props`; keep **per-rule severity** (`dotnet_diagnostic.CA2007.severity = warning`) in `.editorconfig`. Do not split one rule's config across both.
+- Write real EditorConfig - lowercase filename, forward-slash globs.
+
+## Warnings as errors - and the rule you must not break
+
+A clean build means zero warnings, enforced. For a **new** project, set the bar on day one:
+
+```xml
+<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+```
+
+The non-negotiable, because it is the exact reward-hack an agent reaches for: **when a warning-as-error breaks the build, fix the code - never silence the signal.** Specifically, do not
+
+- remove, set `false`, or condition away `TreatWarningsAsErrors` / `WarningsAsErrors`,
+- add `<NoWarn>` or `#pragma warning disable` for a promoted warning,
+- downgrade a rule's severity in `.editorconfig` (`error` -> `warning`/`none`) to go green.
+
+If the fix is genuinely too large, surface the warning ID and count and ask whether to defer that one - do not unilaterally drop the policy. (This is the discipline `dotnet-slopwatch` exists to catch after the fact; enforce it up front.)
+
+## Legacy backlog: promote in batches, never all at once
+
+Flipping `TreatWarningsAsErrors=true` on an existing codebase yields hundreds of errors and floods the context; fix quality collapses. Promote a curated set of IDs via `WarningsAsErrors`, in waves, building green between each:
+
+1. **Trivial hygiene first** - mechanical, near-zero-risk: `CS8019` (unnecessary using), `CS0219`/`CS0168` (unused variable), `CS1591` (missing XML doc on public API), `CS0612`/`CS0618` (obsolete member). Add `CS8019;CS0219;CS0168` to `WarningsAsErrors`, fix all, commit.
+2. **Code-quality CA rules next, by category, with the user choosing order** - `CA2000` (dispose before scope loss), `CA1062` (validate public args), `CA2007` (`ConfigureAwait`), `CA1822` (mark static), `CA1860`/`CA1861` (LINQ/array perf).
+3. **Promote security rules to error** - the `CA3xxx` (injection) and `CA5xxx` (crypto/TLS) families belong at `error` in `.editorconfig`; which rules and why is `dotnet-security`.
+
+## The gate is `dotnet build`
+
+Analyzer enforcement is not a separate CI step - `dotnet build` runs the analyzers and, with warnings-as-errors, fails on a violation. So the same gate developers run locally is the CI gate. Add the formatter check (`dotnet csharpier check .`) and the build (warnings-as-errors on) to CI; both must be reproducible from a clean checkout with no machine-global state.
+
+## Anti-patterns
+
+- Suppressing, downgrading, or `NoWarn`-ing a warning to make a red build green instead of fixing the code.
+- Running CSharpier and `dotnet format` as competing formatters, or leaving formatting ownership undocumented.
+- Blanket `TreatWarningsAsErrors=true` on a large legacy repo in one commit instead of batch promotion.
+- Per-project analyzer settings copied across csproj files instead of one `Directory.Build.props`.
+- Multiple `.editorconfig` files (or IDE settings) disagreeing on the same rule's severity; severity that lives anywhere but version control.
+- Adding StyleCop/Roslynator/Meziantou on top of the SDK analyzers with no consolidation plan, so packs enforce conflicting rules.
+- Installing CSharpier or Roslynator as a global tool, so CI and local machines drift.

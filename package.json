@@ -1,0 +1,13 @@
+{
+  "name": "agents-stack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal coding-agent skills and stacks for Claude Code and Cursor - repo tooling (skill/manifest/template/README parity + hygiene lint).",
+  "license": "MIT",
+  "scripts": {
+    "lint": "node scripts/lint-skills.js"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

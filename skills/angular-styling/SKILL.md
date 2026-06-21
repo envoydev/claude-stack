@@ -1,0 +1,81 @@
+---
+name: angular-styling
+description: "Personal Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice (Emulated default vs None vs ShadowDom and what each means for leakage), :host and :host-context, the reality that ::ng-deep is discouraged and the sanctioned ways out, design tokens as CSS custom properties, a mobile-first responsive strategy with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS as a house decision, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace. Companions: angular-conventions for the framework, angular-material for Material and CDK theming. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
+---
+
+# Angular styling
+
+This is the general CSS layer for an Angular app - the rules for how stylesheets are scoped, where they live, and which modern CSS to reach for. It holds whether or not the app uses Material. The framework itself (signals, change detection, templates, `NgOptimizedImage`, the `@angular/animations` stance) is `angular-conventions`; load it alongside. Anything Material-specific - the `mat.theme` API, the `--mat-sys-*` system tokens, density, and styling Material components - is owned by `angular-material` and is not restated here. This file is opinion, not reference: it states the choices the team has settled on. For any CSS feature's exact browser support, check MDN or web.dev rather than memory.
+
+Floor is Angular 17+. Reach forward to v20/v21 idioms but adopt only what the installed version ships, and flag a forward API with a version tag.
+
+## Component styles are scoped by default - keep them that way
+
+A component's `styles` or `styleUrls` are scoped to that component by `ViewEncapsulation.Emulated`, the default. Angular stamps a unique attribute (`_ngcontent-*`) onto the component's host and template elements and rewrites every selector in the stylesheet to match it, so the rules cannot leak out and repaint a sibling. This is the right default; do not change it to reach into something. The encapsulation only stops styles leaking *out* - global styles defined in `styles.css` still flow *in* and match elements inside an emulated component, which is exactly how a theme reaches the whole tree.
+
+The four modes (`ViewEncapsulation` enum):
+
+- **`Emulated`** (default) - attribute-scoped, no native shadow tree. Styles stay in the component; globals still penetrate inward. Use this everywhere unless you have a specific reason not to.
+- **`None`** - no encapsulation at all; every selector in the file becomes global and applies app-wide. The component's styles now leak into the entire app. Reserve it for a deliberate global leaf (see ::ng-deep below) and write defensively scoped selectors when you do.
+- **`ShadowDom`** - real browser Shadow DOM. True bidirectional-ish isolation, but it changes event retargeting and slotting, breaks `:host-context()`, and global app styles no longer reach inside - so a global theme stops at the boundary. Only choose it for a genuinely self-contained widget (a distributable web component), never as a default.
+- **`ExperimentalIsolatedShadowDom`** (experimental, v20+) - ShadowDom plus a hard block on external styles leaking in. Same trade-offs, stricter. Treat as experimental; flag the version and confirm on angular.dev before using.
+
+Angular itself notes that even in `Emulated` and `ShadowDom` it does not 100% guarantee a component's styles win over outside styles - so do not lean on encapsulation as a specificity weapon.
+
+## :host and :host-context
+
+- `:host` styles the component's own host element from inside its stylesheet - the one selector that legitimately targets the element the component is mounted on. Use `:host(.is-active)` to react to a class on the host, and set host-level layout (`display`, `padding`) here rather than wrapping the template in an extra div.
+- `:host-context(selector)` matches when any ancestor up the tree matches `selector` - the clean way to theme a component off a `.dark` or `.rtl` class set high in the document, without a global override. It works under `Emulated` (the compiler emulates it) but not under `ShadowDom`. Prefer a CSS custom property contract over `:host-context` when the variation is a value rather than a structural switch.
+
+## ::ng-deep is discouraged - the three sanctioned ways out
+
+Angular's docs state the team **strongly discourages new use of `::ng-deep`**; it survives only for backwards compatibility and is slated to go. It pierces encapsulation to style a child's internals, and that override shatters the moment the child's markup changes. Never reach for it in new code. When you genuinely must style something outside your component's scope, pick one of these instead, in order of preference:
+
+1. **A CSS custom property as a theming contract.** The child exposes a variable (`--card-padding`, `--badge-color`) and reads it internally; the parent sets it. Custom properties pierce encapsulation by design and cross shadow boundaries, so this is the only override that survives a child refactor. This is the default answer.
+2. **A global stylesheet rule** in `styles.css` (or a layered global file) targeting a stable, documented class on the child. Global styles legitimately flow into emulated components - no piercing needed. Keep the selector specific so it does not over-reach.
+3. **`ViewEncapsulation.None` on a small leaf** whose entire job is to emit global styles (a typography or print stylesheet host). Its selectors go global, so scope them under a single root class to avoid collisions. Use this last and only for a component that is meant to be global.
+
+If a third-party component gives you none of these, a global rule scoped under a wrapper class is the honest fallback - not `::ng-deep`.
+
+## Design tokens as CSS custom properties
+
+Beyond Material's `--mat-sys-*` tokens (owned by `angular-material`), define the app's own design tokens as CSS custom properties on `:root` - spacing scale, radii, semantic colors, z-index layers, font stacks. Reference them everywhere (`gap: var(--space-3)`) so a value changes in one place and tokens cross every encapsulation boundary for free. Light/dark and brand variants are a second token block under a `[data-theme="dark"]` or `.dark` selector, or driven by the prefers-color-scheme media feature, re-binding the same names - never a forked stylesheet. Use Sass variables only for build-time constants that never vary at runtime (a breakpoint map consumed by a mixin); anything a theme can change at runtime is a CSS custom property, not a Sass `$variable`.
+
+## Responsive strategy: mobile-first, container queries, fluid type
+
+- Write **mobile-first**: base rules target the small viewport, min-width media queries layer on larger-screen overrides. Never start desktop and claw back down with max-width.
+- Reach for **container queries** when a component must adapt to the space it is dropped into rather than the viewport - a card that goes two-column inside a wide sidebar but one-column in a narrow one. Declare `container-type: inline-size` on the wrapper and size children with `@container`. This is the modern default for component-level responsiveness; viewport media queries are for page-level layout. Container queries are broadly supported now, but confirm the floor against the project's browser targets.
+- Use **fluid type and spacing** with `clamp(min, preferred, max)` so a heading scales smoothly between breakpoints instead of snapping. Pair `clamp()` with relative units (`rem`) so it respects the user's root font size.
+- Reach for the **`:has()`** relational selector to style a parent from a descendant's state (a field group that flags when it contains an invalid input). It is widely supported; check the target floor before relying on it.
+
+## Global vs component styles - where each belongs
+
+- `styles.css` / `styles.scss` (the global entry) holds exactly: CSS resets and normalize, the `:root` token block, base element typography, font-face declarations, and broad utilities. It is the only place a global selector belongs.
+- Everything visual and local to a component lives in that component's own scoped stylesheet, beside the class. Do not push a component's look into the global sheet to dodge specificity - that is how a global stylesheet rots into an unmaintainable override pile.
+- Use **cascade layers** (`@layer reset, base, tokens, utilities, components`) in the global sheet to make precedence explicit and stop a specificity arms race - a later layer always wins regardless of selector specificity. Layers are widely supported; this is the recommended way to order global concerns.
+
+## Utility-first vs scoped SCSS - the house decision
+
+The house default is **scoped component SCSS plus the CSS-custom-property token system above** - it keeps the look beside the component, leans on Angular's encapsulation, and avoids markup cluttered with dozens of classes. Adopt utility-first (Tailwind) only when a team explicitly opts in for a design-system-driven app where consistency-by-constraint outweighs the template noise; do not mix both ad hoc.
+
+If the project does use Tailwind, install it the Angular way - `ng add tailwindcss` (Angular ships an official integration) - and wire it through PostCSS with a single `@import "tailwindcss";` in the global stylesheet. Note Tailwind v4 is CSS-first and is not meant to be processed through Sass; do not pipe Tailwind directives through SCSS. Utilities are global by nature, so they coexist with emulated component styles but bypass scoping - treat them as the global layer, and keep genuinely component-local one-offs in the scoped sheet.
+
+## Accessibility-affecting styling
+
+- **Focus must always be visible.** Never blanket `outline: none`. Style focus with `:focus-visible` so a visible ring shows for keyboard users without flashing on every mouse click, and make it meet contrast against its background. If you remove the default outline, replace it in the same rule.
+- **Respect the prefers-reduced-motion media feature.** Wrap non-essential transitions and animations so they are reduced or removed under `@media (prefers-reduced-motion: reduce)`. This includes route View Transitions (`withViewTransitions()`, from `angular-conventions`): disable or soften the `::view-transition-*` animations under the query rather than shipping motion to users who opted out.
+- **Meet contrast.** Text clears WCAG AA - 4.5:1 normal, 3:1 large; do not encode a foreground/background pair that fails it. Non-text UI (focus rings, control borders) needs 3:1.
+- **Do not convey state by color alone** in CSS - pair a color change with an icon, weight, underline, or text so it survives color-blindness and forced-colors mode.
+
+## Banned patterns
+
+- `::ng-deep`, `/deep/`, or `>>>` in new code - use a custom-property contract, a scoped global rule, or a `None` leaf.
+- `ViewEncapsulation.None` as a convenience to make a component's styles win - it leaks every selector app-wide.
+- `outline: none` on a focusable element without a `:focus-visible` replacement.
+- A component's styles living in the global stylesheet to dodge specificity.
+- A forked dark-mode stylesheet instead of re-binding the same custom properties under a theme selector or the prefers-color-scheme media feature.
+- `!important` to win a fight encapsulation or a cascade layer should have settled - fix the layer order or the token instead.
+- Sass `$variables` for values a runtime theme must change - those are CSS custom properties.
+- Desktop-first max-width chains where mobile-first min-width reads cleaner.
+
+(Material theming - `mat.theme`, the `--mat-sys-*` tokens, density, styling Material components - is `angular-material`. The framework and the `@angular/animations` stance are `angular-conventions`.)
