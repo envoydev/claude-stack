@@ -86,6 +86,9 @@ const NON_SKILL_TOKENS = new Set([
     'finishing-a-development-branch',
     'verification-before-completion',
     'using-superpowers',
+    // built-in Claude Code agent type named in the base template's navigation
+    // guidance (don't delegate single-symbol lookups to it) - not a house skill.
+    'general-purpose',
 ]);
 
 const findings = [];
@@ -265,7 +268,10 @@ function parseStackHtml()
         }
     }
 
-    return { personal, repoSkills, plugins, mcps };
+    const hooksBlock = (html.split('const hooks = [')[1] ?? '').split('\n];')[0];
+    const hooks = new Set([...hooksBlock.matchAll(/\["([a-z0-9-]+)"/g)].map(m => m[1]));
+
+    return { personal, repoSkills, plugins, mcps, hooks };
 }
 
 // Every manifest in `manifests` ({label -> Set}) must hold the same entries as
@@ -768,6 +774,37 @@ function main()
     const cursorHookCount = parseStringArray(CURSOR_SH, '"', 'CURSOR_HOOKS=(').length;
     const cursorRuleCount = parseStringArray(CURSOR_SH, '"', 'CURSOR_RULES=(').length;
     const cursorAgentCount = parseStringArray(CURSOR_SH, '"', 'CURSOR_AGENTS=(').length;
+
+    // 12b. Stack hooks in claude-stack.html: the 'Stack hooks' section rows and the
+    //      c-hooks count must match the installer HOOKS=() array (names stripped of
+    //      their .js, both directions; count tied to the array size - same rigor as
+    //      the README hook count above).
+    const installerHooks = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.replace(/\.js$/, '')));
+    for (const name of installerHooks)
+    {
+        if (!html.hooks.has(name))
+        {
+            flag(`active hook '${name}' is missing from the claude-stack.html Stack hooks section`);
+        }
+    }
+
+    for (const name of html.hooks)
+    {
+        if (!installerHooks.has(name))
+        {
+            flag(`claude-stack.html Stack hooks row '${name}' is not in the installer HOOKS block`);
+        }
+    }
+
+    const htmlHookCount = (fs.readFileSync(STACK_HTML, 'utf8').match(/id="c-hooks">(\d+)</) || [])[1];
+    if (htmlHookCount == null)
+    {
+        flag('claude-stack.html: no c-hooks count element found to verify against the HOOKS array');
+    }
+    else if (Number(htmlHookCount) !== claudeHookCount)
+    {
+        flag(`claude-stack.html: c-hooks count is ${htmlHookCount} but the installer holds ${claudeHookCount} hooks`);
+    }
 
     const readmeCount = (file, label, rowLabel) =>
     {

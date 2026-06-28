@@ -113,6 +113,7 @@
     <div><strong id="c-plugins">19</strong> plugins</div>
     <div><strong id="c-repo">39</strong> repository</div>
     <div><strong id="c-other">16</strong> tools / MCP</div>
+    <div><strong id="c-hooks">4</strong> hooks</div>
   </div>
 
   <div class="controls">
@@ -432,7 +433,28 @@ function renderOther(filtered) {
   return html;
 }
 
-// Override render to include the Other section.
+// PreToolUse hooks (Claude-only) - fetched into .claude/hooks/, wired into
+// .claude/settings.json by the installer. Not skills; tallied separately (c-hooks),
+// kept in sync with the installer HOOKS=() array by scripts/lint-skills.js.
+const hooks = [
+  // [name, PreToolUse matcher, description]
+  ["require-convention-skill", "Edit|Write + serena editors", "Blocks an edit to a convention-governed file type until every house-style skill governing it is loaded this session - the union, so a file owned by two skills needs both. Enforced, not advisory; bypass-proof for serena symbol edits too."],
+  ["guard-protected-force-push", "Bash", "Blocks a force-push to main / master / develop. Deterministic, fires ~never in normal work."],
+  ["guard-catastrophic-rm", "Bash", "Blocks a recursive rm of /, ~, $HOME, or a bare *. Deterministic, fires ~never in normal work."],
+  ["guard-read-whole-file", "Read", "Blocks a whole-file Read of a >100-line source / template file (.ts/.tsx/.js/.jsx/.mjs/.cjs/.cs/.go/.razor/.cshtml/.xaml/.html) with no offset/limit - locate via serena first, then read the range. Targeted reads, small files, and non-source files pass."],
+];
+
+function renderHooks(filtered) {
+  let html = `<h2>Stack hooks</h2><div class="group-meta">PreToolUse guards fetched into <code>.claude/hooks/</code> and wired into <code>.claude/settings.json</code> by the installer (Claude-only; not skills). ${filtered.length} entries.</div>`;
+  html += `<table><thead><tr><th style="width:20%">Hook</th><th style="width:22%">PreToolUse matcher</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, matcher, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${matcher}</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+// Override render to include the Other + Stack hooks sections.
 const _originalRender = render;
 render = function(query) {
   _originalRender(query);
@@ -449,6 +471,15 @@ render = function(query) {
     Number(document.getElementById("c-plugins").textContent) +
     Number(document.getElementById("c-repo").textContent) +
     otherFiltered.length;
+
+  // Hooks are infra, not skills - rendered + counted separately, never folded into c-total.
+  const hooksFiltered = query
+    ? hooks.filter(([n, m, d]) => (n + " " + m + " " + d).toLowerCase().includes(query))
+    : hooks;
+  if (hooksFiltered.length) {
+    document.getElementById("content").insertAdjacentHTML("beforeend", renderHooks(hooksFiltered));
+  }
+  document.getElementById("c-hooks").textContent = hooksFiltered.length;
 };
 
 document.getElementById("q").addEventListener("input", e => {

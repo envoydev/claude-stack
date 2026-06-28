@@ -390,6 +390,7 @@ $Hooks = @(
   "require-convention-skill.js::Edit|Write|$SerenaEditors::cs ng sql ts"
   'guard-protected-force-push.js::Bash::'         # block force-push to main/master/develop
   'guard-catastrophic-rm.js::Bash::'              # block recursive rm of /, ~, $HOME, or a bare *
+  'guard-read-whole-file.js::Read::'              # block whole-file Read of a >100-line source file - locate via serena first
 )
 
 # (5) Subagents (claude-code): Claude-only specialist agents fetched into .claude/agents/ on BOTH actions

@@ -74,6 +74,7 @@ Partial work: state complete vs not vs why, then ask continue / redirect / stop.
 ### Navigation and code reading
 
 - Read only what's needed; before editing, read the body end-to-end and any function it depends on. To *locate* a symbol, its callers, or its resolved type, use `serena` (`find_symbol` / `find_referencing_symbols`) or the per-project `LSP` plugin - serena is the default navigator and owns symbol-level *edits*; an installed `LSP` plugin adds compiler-exact lookups and inline diagnostics for its language. (The hard rule against a brute-force `Read`/grep just to locate a symbol is under `### MCP servers`.)
+- Navigate *inline* with serena - do not delegate a symbol / caller / type lookup to `Explore` / `general-purpose` (they fall back to grep). Reserve those agents for genuinely broad multi-file sweeps, not single-symbol lookups.
 - Ambiguous reference (e.g. 'the OrderService' with multiple matches): list the matches, ask. Do not guess.
 - Pasted code in chat is illustrative unless stated otherwise; confirm the target file before editing.
 
@@ -103,8 +104,9 @@ this is an inventory - not a manual trigger list. Replace the rows:
 - **Convention gate** - `require-convention-skill.js` (PreToolUse `Edit|Write`): blocks an edit to a convention-governed file type until *every* house-style skill governing it is loaded this session - one file can match several suffixes and requires the *union* of the skills governing them (a file type owned by two house-style skills needs both loaded). Enforced, not a request - so house-style triggers are *not* restated in routing prose.
 - **Protected-branch guard** - `guard-protected-force-push.js` (PreToolUse `Bash`): blocks a force-push to `main`/`master`/`develop`. Deterministic, fires ~never in normal work.
 - **Catastrophic-rm guard** - `guard-catastrophic-rm.js` (PreToolUse `Bash`): blocks a recursive `rm` of `/`, `~`, `$HOME`, or a bare `*`. Deterministic, fires ~never in normal work.
+- **Whole-file-read guard** - `guard-read-whole-file.js` (PreToolUse `Read`): blocks a whole-file `Read` of a source / template file (`.ts/.tsx/.js/.jsx/.mjs/.cjs/.cs/.go/.razor/.cshtml/.xaml/.html`) over 100 lines with no `offset`/`limit` - locate via serena first, then read the range. Targeted reads, small files, and non-source files pass.
 
-All three live in `.claude/hooks/` and are wired into `.claude/settings.json`. Add a new deterministic gate as a hook there, not as prose here.
+All four live in `.claude/hooks/` and are wired into `.claude/settings.json`. Add a new deterministic gate as a hook there, not as prose here.
 
 ### Stack agents
 
