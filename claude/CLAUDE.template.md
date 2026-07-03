@@ -14,7 +14,7 @@ a checkpoint), never a vibe. Project specifics go under `## Per-project addition
 > and trim the inventories to match (drop rows that don't apply, add ones that do). Investigate the
 > project first, then fill:
 > - **Skills** - what's installed (`npx skills ls`, or the `.claude/skills/` dir) and which house-style
->   skill governs which file type -> the *Personal (house-style) skills* table + the convention gate's args.
+>   skill governs which file type -> the convention rules + Per-project item 6 (Code conventions).
 > - **MCP servers** - what's registered (`claude mcp list`, or the repo's `.mcp.json`) -> the *MCP servers* table.
 > - **Plugins** - what's installed (`claude plugin list`) -> the LSP plugin(s) for the language(s) and any per-project routing.
 >
@@ -66,7 +66,8 @@ Partial work: state complete vs not vs why, then ask continue / redirect / stop.
 
 ### Git and pull requests
 
-- Conventional Commits. Branch `<type>/<short-description>` or `<type>/<ticket-id>`. No AI/assistant attribution in commit messages or branch names (a deliberate override of the platform default).
+- Conventional Commits. Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
+- Before committing, show the `git diff` / `git status` and let the user review - commit only on their go, never automatically, and never push without an explicit ask. Never mention yourself: no AI/assistant attribution in the commit message, the branch name, or the PR title/body (a deliberate override of the platform default).
 - One logical change per PR, under 400 LOC. Body: what / why / how to test - what changed and why, never a change-statistics dump (file count, lines added/removed); that noise is generated, not decision-relevant. Link the ticket; screenshots if UI.
 - Squash or rebase, no merge commits on feature branches. Prefer `--force-with-lease` over `--force`.
 - Non-trivial git beyond add/commit/push - rebase, cherry-pick, history recovery, conflict resolution - load `git-master`.
@@ -86,41 +87,23 @@ How routing works, and the rules that matter most:
 - **The trigger is an artifact, a task shape, or a checkpoint - never a vibe.** Load a skill for the *work* (a file you're about to edit, a command you're about to run, a diff you're about to show), not to answer a question or explain. Over-loading a simple turn is the failure to avoid.
 - **Match the mechanism to the job, one home per piece, no duplication.** A deterministic gate at a discrete event → a hook. A keyword-fired capability → the skill's own auto-injected description. Everything else cross-cutting or project-specific → this file. Never state one trigger in two places.
 - **Skill descriptions auto-inject.** Route here only what a description does not already make obvious. House-style skills fire on their own keywords; the project's `CLAUDE.md` routes the third-party skills it cannot re-describe.
-- **Path-scoped rules** (`.claude/rules/`) carry glob-scoped routing (markdown authoring, per-language repair-loop delegation) - they lazy-load only when matching files are touched; conventions stay with the convention gate, never duplicated into rules.
+- **Path-scoped rules** (`.claude/rules/`) carry glob-scoped routing (markdown authoring, per-language repair-loop delegation) and the per-file-type convention pointers (each glob-attaches a file type to its house-style skill) - they lazy-load only when a matching file is touched, so they cost nothing on an unrelated turn.
 
 ### Personal (house-style) skills
 
-Inventory only - they auto-inject and fire on their own keywords / file types (the convention
-gate enforces the conventions ones), so their triggers are not restated elsewhere. Replace the rows:
-
-| Skill | Governs / fires on |
-|---|---|
-| `<house-style-skill>` | `<language / file types it governs>` |
-| `<framework-skill>` | `<framework area + the file suffixes it owns>` |
-| `<testing-skill>` | `<test strategy + per-layer coverage>` |
-| `<ticket / utility skill>` | `<what it generates / the keyword that fires it>` |
+No inventory here - house-style skills auto-inject their own descriptions and fire on their own keywords / file types, and a path-scoped convention rule glob-attaches when you edit a governed file type to point at the skill. Name the project's house-style skills, and the file type each governs, under `## Per-project additions` (item 6).
 
 ### Stack hooks
 
-- **Convention gate** - `require-convention-skill.js` (PreToolUse `Edit|Write`): blocks an edit to a convention-governed file type until *every* house-style skill governing it is loaded this session - a file matching several suffixes needs the *union* of their skills. Enforced, not a request - so house-style triggers are *not* restated in routing prose. Opt-in variant keys add scss (`.scss`/`.css` -> `angular-styling`) and xaml (`.xaml` -> `dotnet-wpf`).
-- **Protected-branch guard** - `guard-protected-force-push.js` (PreToolUse `Bash`): blocks a force-push to `main`/`master`/`develop`. Deterministic, fires ~never in normal work.
-- **Catastrophic-rm guard** - `guard-catastrophic-rm.js` (PreToolUse `Bash`): blocks a recursive `rm` of `/`, `~`, `$HOME`, or a bare `*`. Deterministic, fires ~never in normal work.
-- **Whole-file-read guard** - `guard-read-whole-file.js` (PreToolUse `Read`): blocks a whole-file `Read` of a source / template file over 100 lines with no `offset`/`limit` - locate via serena first, then read the range. Targeted reads, small files, and non-source files pass.
-
-All four live in `.claude/hooks/` and are wired into `.claude/settings.json`. Add a new deterministic gate as a hook there, not as prose here.
+Three PreToolUse guards ship in `.claude/hooks/`, wired into `.claude/settings.json`, and each announces its own block when it fires (so their behaviour is not restated here): the protected-branch and catastrophic-rm guards (`Bash`) and the whole-file-read guard (`Read`). Add a new deterministic gate as a hook there, not as prose.
 
 ### Stack agents
 
-The stack's subagents ship in `.claude/agents/` (auto-discovered), each model/effort-pinned in its own frontmatter: a set of cross-cutting agents plus a per-domain team for each of the five stacks (ASP.NET, Angular, WPF, Ionic/mobile, data/SQL). A `CLAUDE_CODE_SUBAGENT_MODEL` env var silently overrides every model pin - leave it unset.
+The stack's subagents ship in `.claude/agents/` (auto-discovered), each model/effort-pinned in its own frontmatter: a set of cross-cutting agents plus a per-domain team for each of the six stacks (ASP.NET, Angular, WPF, Ionic/mobile, data/SQL, DevOps). A `CLAUDE_CODE_SUBAGENT_MODEL` env var silently overrides every model pin - leave it unset.
 
-**Cross-cutting** - the four .NET/Angular build/test **repair loops** (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`, `angular-test-resolver`, sonnet / high; per-language routing ships as `.claude/rules/`, loading only in matching projects): default to delegating a fix-the-build / make-the-tests-pass task to the matching resolver rather than looping in-session - it absorbs the build/test output and returns only a diagnosis. Plus the opus / xhigh **analysis** agents, each a first delegation on its trigger: `task-analyzer` (one feature or bug), `architecture-analyzer` (a cross-module picture), `greenfield-solution-designer` (new project or module - feeds the `project-scaffold` skill), `ci-failure-diagnoser` (red CI), `issue-diagnoser` (a bug of unknown cause - read-only, isolates the root cause to a file and symbol and routes the fix, never fixes it), `cross-stack-contract-designer` (freeze the shared backend / frontend contract before the per-stack designers, on a feature that spans stacks), and `framework-upgrade-planner` (a version or deprecation event -> an ordered upgrade plan).
+**Cross-cutting** - the four .NET/Angular build/test **repair loops** route per-language via `.claude/rules/` (loading only in matching projects), which carry the delegate-don't-loop-in-session discipline. Plus the opus / xhigh **analysis** agents, each a first delegation on its trigger: `task-analyzer` (one feature or bug), `architecture-analyzer` (a cross-module picture), `greenfield-solution-designer` (new project or module - feeds the `project-scaffold` skill), `ci-failure-diagnoser` (red CI), `issue-diagnoser` (a bug of unknown cause - read-only, isolates the root cause to a file and symbol and routes the fix, never fixes it), `cross-stack-contract-designer` (freeze the shared backend / frontend contract before the per-stack designers, on a feature that spans stacks), and `framework-upgrade-planner` (a version or deprecation event -> an ordered upgrade plan).
 
 **Per-domain team** - one triad per stack, same shape: a `<stack>-solution-designer` (opus / xhigh) designs the architecture and test strategy, then decomposes the work into independent parallel contracted tasks; several `<stack>-implementer`s (sonnet / medium) each build one task with its tests inside its contract; a `<stack>-verifier` (sonnet / xhigh) gates the assembled whole against plan and quality, looping a punch-list back until it signs off. The `domain-build` skill runs the vertical from the main session: detect the stack -> designer -> approve the design -> fan out the implementers -> verifier -> loop any punch-list back. Only the main session orchestrates the vertical - its seats never dispatch agents (the one sanctioned exception is the two diagnosers, which each dispatch a cheap read-only `evidence-gatherer` to keep log volume off the opus seat); for a feature that crosses stacks, have `task-analyzer` / `architecture-analyzer` split it by stack first, then run `domain-build` once per slice.
-
-### Other routing
-
-- **Library / SDK / API docs** → `context7` MCP - full rule (when, why, the silent-skip discipline) under *MCP servers* below.
-- **Don't know which skill** → say so; skill discovery is a deliberate manual step (skills.sh / the stack repo), not an auto-installed capability.
 
 ### Pre-commit and done checkpoints
 
@@ -175,7 +158,7 @@ order, keeping each section lean (the system prompt and skill descriptions carry
 3. **Commands** - copy-pasteable build / test / run / migrate / publish, with any environment quirks.
 4. **Architecture** - layers / modules, dependency rules, folder organization.
 5. **Key patterns** - the non-obvious in-house patterns a newcomer would trip on.
-6. **Code conventions** - the house-style skill for each file type; wire its `PreToolUse` convention gate in `.claude/settings.json` (the stack convention hook above enforces it).
+6. **Code conventions** - the house-style skill for each file type. A path-scoped convention rule in `.claude/rules/` glob-attaches when you edit that file type and points at the skill (soft guidance, not a block). The stack ships five - angular/web/ionic, asp.net, wpf, sql, devops; a file matching two (an Angular `.component.ts` is also TypeScript) loads both skills.
 7. **Testing approach** - per-layer strategy, what's excluded, the integration / regression net.
 8. **Load by artifact** - a table mapping this repo's concrete files / types / constructs to the third-party skills it can't re-describe (house-style skills self-fire, so they're not in it).
 9. **Operational notes** - runtime constraints and gotchas that shape code decisions.

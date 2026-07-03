@@ -142,8 +142,8 @@ and this README, that each `SKILL.md` frontmatter loads as valid YAML (using
 js-yaml, the same parser `skills.sh` uses, so a malformed block fails here
 instead of silently dropping from the registry), that cross-skill references
 resolve everywhere they appear (`SKILL.md` files, the Claude subagents, the base
-templates, and the Cursor rules - a renamed skill is caught in all of them), that
-the `require-convention-skill` hook only gates on skills that exist, that all four
+templates, and the Claude + Cursor rules - a renamed skill is caught in all of them),
+that all four
 installers agree (4-way: `SKILLS` + `MCPS` identical across both agents and both
 shells, in the SAME ORDER, `PLUGINS` claude-only), that the on-disk subagents match
 the set the installers fetch, that every per-agent README headline count (skills /

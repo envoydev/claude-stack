@@ -113,7 +113,7 @@
     <div><strong id="c-plugins">19</strong> plugins</div>
     <div><strong id="c-repo">35</strong> repository</div>
     <div><strong id="c-other">35</strong> tools / MCP</div>
-    <div><strong id="c-hooks">4</strong> hooks</div>
+    <div><strong id="c-hooks">3</strong> hooks</div>
   </div>
 
   <div class="controls">
@@ -465,7 +465,6 @@ function renderOther(filtered) {
 // kept in sync with the installer HOOKS=() array by scripts/lint-skills.js.
 const hooks = [
   // [name, PreToolUse matcher, description]
-  ["require-convention-skill", "Edit|Write + serena editors", "Blocks an edit to a convention-governed file type until every house-style skill governing it is loaded this session - the union, so a file owned by two skills needs both. Base cs/ng/sql/ts tables plus the scss and xaml opt-in tables (wired per repo shape, not by default). Enforced, not advisory; bypass-proof for serena symbol edits too."],
   ["guard-protected-force-push", "Bash", "Blocks a force-push to main / master / develop. Deterministic, fires ~never in normal work."],
   ["guard-catastrophic-rm", "Bash", "Blocks a recursive rm of /, ~, $HOME, or a bare *. Deterministic, fires ~never in normal work."],
   ["guard-read-whole-file", "Read", "Blocks a whole-file Read of a >100-line source / template file (.ts/.tsx/.js/.jsx/.mjs/.cjs/.cs/.go/.razor/.cshtml/.xaml/.html) with no offset/limit - locate via serena first, then read the range. Targeted reads, small files, and non-source files pass."],
@@ -489,6 +488,11 @@ const rules = [
   ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
   ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.spec.ts,**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
+  ["web-conventions", "**/*.ts,**/*.tsx,**/*.js,**/*.scss,**/*.css", "Angular/web/Ionic conventions: points TS/JS/style edits at typescript + angular-conventions + angular-styling (soft, replaced the convention-gate hook)."],
+  ["aspnet-conventions", "**/*.cs", "ASP.NET/C# conventions: points a .cs edit at the csharp skill (a WPF view-model is C# too)."],
+  ["wpf-conventions", "**/*.xaml", "WPF conventions: points a .xaml edit at the dotnet-wpf skill."],
+  ["sql-conventions", "**/*.sql", "SQL conventions: points a hand-written .sql edit at the database-conventions skill."],
+  ["devops-conventions", "**/Dockerfile*,**/docker-compose*.yml,**/.github/workflows/*.yml", "DevOps conventions (rest): points a Dockerfile/compose/workflow edit at the devops skill."],
 ];
 
 function renderRules(filtered) {

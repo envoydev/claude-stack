@@ -67,7 +67,8 @@ work: state complete vs not vs why, then ask continue / redirect / stop.
 
 ### Git and pull requests
 
-- Conventional Commits. Branch `<type>/<short-description>` or `<type>/<ticket-id>`. No AI/assistant attribution in commit messages or branch names (a deliberate override of the platform default).
+- Conventional Commits. Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
+- Before committing, show the `git diff` / `git status` and let the user review - commit only on their go, never automatically, and never push without an explicit ask. Never mention yourself: no AI/assistant attribution in the commit message, the branch name, or the PR title/body (a deliberate override of the platform default).
 - One logical change per PR, under 400 LOC. Body: what / why / how to test. Link the ticket; screenshots if UI.
 - Squash or rebase, no merge commits on feature branches. Prefer `--force-with-lease` over `--force`; force-pushing `main`/`master`/`develop` is *blocked* by a Cursor hook (below), not just discouraged.
 - Non-trivial git beyond add/commit/push - rebase, cherry-pick, history recovery, conflict resolution - load `git-master`.
@@ -88,16 +89,7 @@ How routing works, and the rules that matter most:
 
 ### House-style skills (Cursor Skills)
 
-List the personal / house-style skills installed for this stack, under `.cursor/skills/`. They
-auto-activate on their own keywords / file types, so this is an inventory - not a manual trigger
-list. Replace the rows:
-
-| Skill | Governs / fires on |
-|---|---|
-| `<house-style-skill>` | `<language / file types it governs>` |
-| `<framework-skill>` | `<framework area + the file suffixes it owns>` |
-| `<testing-skill>` | `<test strategy + per-layer coverage>` |
-| `<ticket / utility skill>` | `<what it generates / the keyword that fires it>` |
+No inventory here - house-style skills under `.cursor/skills/` auto-activate on their own keywords / file types and carry their own descriptions. Wire each convention-governed one to a `.cursor/rules/*.mdc` (Convention rules below), and name the set under `## Per-project additions`.
 
 ### Convention rules
 
@@ -112,17 +104,12 @@ skill, not a hard block. Replace the rows:
 
 ### Stack hooks
 
-- **Protected-branch guard** - `guard-protected-force-push.js` (Cursor `beforeShellExecution`): blocks a force-push to `main`/`master`/`develop`.
-- **Catastrophic-rm guard** - `guard-catastrophic-rm.js` (Cursor `beforeShellExecution`): blocks a recursive `rm` of `/`, `~`, `$HOME`, or a bare `*`.
-
-Both live in `.cursor/hooks/`, wired in `.cursor/hooks.json`. Add a new deterministic gate as a Cursor hook there, not as prose here.
+Two `beforeShellExecution` guards live in `.cursor/hooks/`, wired in `.cursor/hooks.json`, each blocking its own case: the protected-branch guard (`guard-protected-force-push.js`) and the catastrophic-rm guard (`guard-catastrophic-rm.js`). Add a new deterministic gate as a Cursor hook there, not as prose.
 
 ### Other routing
 
-- **Library / SDK / API docs** → `context7` MCP - full rule (when, why, the silent-skip discipline) under *MCP servers* below.
 - **Any `.md`** (README, ADR, runbook) - authoring or restructuring → `markdown-style`. Skip one-line tweaks.
 - **Security review** of a sensitive diff → **Bugbot** (`/review`), per the Security rules above.
-- **Don't know which skill** → say so; skill discovery is a deliberate manual step (skills.sh / the stack repo).
 
 ### MCP servers
 

@@ -1,11 +1,11 @@
 ---
 name: database-conventions
-description: "Personal database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design (keys, normalization, relationships), migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. This is the convention gate the hook loads before any persistence work; deeper engine tuning and all .NET data access route out to companion skills. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index - do not rely on recall. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
+description: "Personal database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design (keys, normalization, relationships), migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before any persistence work; deeper engine tuning and all .NET data access route out to companion skills. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index - do not rely on recall. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
 ---
 
 # Database conventions
 
-A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening. They are deliberately not deep tuning - this skill is the gate that loads before persistence work, and it routes the deep work out to the companions named below rather than restating it.
+A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening. They are deliberately not deep tuning - this skill is loaded before persistence work, and it routes the deep work out to the companions named below rather than restating it.
 
 ## Choosing a store
 

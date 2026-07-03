@@ -13,7 +13,7 @@
   SELF-CONTAINED .cursor/: skills copied into .cursor/skills (strict - no dependency on .claude or
   .agents); MCPs into .cursor/mcp.json (memory db under ~/.cursor); hooks into .cursor/hooks.json
   (+ .cursor/hooks/). NEVER calls the claude CLI. Marketplace plugins are UI-only (install them from
-  the Cursor UI); their skill / MCP / hook components are provisioned here. The .cs convention gate is
+  the Cursor UI); their skill / MCP / hook components are provisioned here. The .cs conventions ship as
   a Cursor rule (.cursor/rules/csharp.mdc), not a hook.
 
   Optional extras: MemoryProfile 'work' -> separate work memory DB (memory_work.db),
@@ -329,9 +329,8 @@ $Mcps = @(
 #     cursor/hooks (NOT the Claude-contract files). The portable Bash guards map over as hooks:
 #       - guard-protected-force-push -> beforeShellExecution (reads {command}, returns {permission}).
 #       - guard-catastrophic-rm      -> beforeShellExecution (blocks recursive rm of /, ~, $HOME, bare *).
-#     require-convention-skill is NOT a Cursor hook: Cursor has no session "skill loaded" state and no
-#     stable pre-edit block. Its analog is a .cursor/rules/*.mdc rule (soft, auto-attaches by glob) -
-#     see $CursorRules.
+#     Conventions are NOT a hook in either stack: they ship as soft, path-scoped rules (Cursor:
+#     .cursor/rules/*.mdc, auto-attaches by glob - guidance, never a block) - see $CursorRules.
 $CursorHookBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/hooks'
 $CursorRulesBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/rules'
 $CursorHooks = @(
@@ -341,7 +340,7 @@ $CursorHooks = @(
 # A rule entry is 'name' (fetched from $CursorRulesBaseUrl) or 'name|url' (fetched from that url -
 # e.g. a third-party rule like ponytail, which we reference rather than vendor here).
 $CursorRules = @(
-  # The require-convention-skill gate's variants, as soft auto-attaching rules (cs ng sql ts).
+  # The per-file-type convention rules - soft, auto-attaching by glob (cs ng sql ts).
   'csharp-conventions.mdc'                    # cs  -> csharp (**/*.cs)
   'typescript-conventions.mdc'                # ts  -> typescript (.ts/.tsx/.js/.jsx/.mjs/.cjs)
   'sql-conventions.mdc'                       # sql -> database-conventions (**/*.sql)
@@ -355,8 +354,8 @@ $CursorRules = @(
 # (per-agent fail-soft - an agent not yet upstream keeps any existing local copy). Cursor auto-discovers
 # .cursor/agents/*.md; no settings wiring needed. These mirror the four Claude resolver subagents (the
 # pipeline agents and all model/effort pins are Claude-only) in Cursor's weaker contract: prompt-only guardrails, no
-# per-tool allowlist (only a `readonly` bool), no hard convention gate - so the agent bodies lean on the
-# auto-attaching .cursor/rules instead of a Skill gate.
+# per-tool allowlist (only a `readonly` bool) - so the agent bodies lean on the
+# auto-attaching .cursor/rules (the same soft convention model both stacks now use).
 $CursorAgentBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/agents'
 $CursorAgents = @(
   'dotnet-build-error-resolver.md'   # implement phase: dotnet build -> categorize errors -> minimal fix loop (serena/LSP), capped

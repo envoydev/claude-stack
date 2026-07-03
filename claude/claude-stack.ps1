@@ -368,17 +368,7 @@ $Mcps = @(
 #     $CLAUDE_PROJECT_DIR is substituted by Claude Code; if your Windows build needs
 #     %CLAUDE_PROJECT_DIR% instead, change that one token in Set-HookSettings below.
 $HookBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/hooks'
-# Every serena file-mutating tool the convention gate covers (symbol + line edits, create/replace/rename) - matched alongside Edit|Write.
-$SerenaEditors = 'mcp__serena__replace_symbol_body|mcp__serena__insert_after_symbol|mcp__serena__insert_before_symbol|mcp__serena__create_text_file|mcp__serena__replace_content|mcp__serena__replace_regex|mcp__serena__rename_symbol|mcp__serena__replace_lines|mcp__serena__delete_lines|mcp__serena__insert_at_line'
 $Hooks = @(
-  # Variant keys are PER PROJECT TYPE (union semantics - a file gets every matching skill):
-  #   web/Angular        -> "cs ng sql ts"  (.ts/.js -> typescript; Angular suffixes also -> angular-conventions)
-  #   browser extension  -> "ts"            (plain TS/JS, no framework/cs/sql)
-  #   Node / TS tooling  -> "ts"            (+ "sql" if hand-written SQL)
-  # ts gates bare .ts/.tsx/.js/.jsx/.mjs/.cjs on typescript (must be installed where ts is on).
-  #   scss -> angular-styling  (.scss/.css - suffix-triggered, inert where the suffix never occurs)
-  #   xaml -> dotnet-wpf       (.xaml - suffix-triggered, inert where the suffix never occurs)
-  "require-convention-skill.js::Edit|Write|$SerenaEditors::cs ng sql ts scss xaml"
   'guard-protected-force-push.js::Bash::'         # block force-push to main/master/develop
   'guard-catastrophic-rm.js::Bash::'              # block recursive rm of /, ~, $HOME, or a bare *
   'guard-read-whole-file.js::Read::'              # block whole-file Read of a >100-line source file - locate via serena first
@@ -445,6 +435,12 @@ $ClaudeRules = @(
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
   'dotnet-repair-agents.md'   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
   'angular-repair-agents.md'  # Angular repair-loop routing, path-scoped
+  # Convention rules (soft, glob auto-attach) - each points a file type at its house-style skill; replaced the require-convention-skill hard gate.
+  'web-conventions.md'        # angular/web/ionic: ts/js/scss -> typescript + angular-conventions + angular-styling
+  'aspnet-conventions.md'     # asp.net: .cs -> csharp
+  'wpf-conventions.md'        # wpf: .xaml -> dotnet-wpf
+  'sql-conventions.md'        # sql: .sql -> database-conventions
+  'devops-conventions.md'     # rest (devops): Dockerfile/compose/workflow -> devops
 )
 
 function Get-RepoRoot {

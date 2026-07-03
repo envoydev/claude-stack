@@ -266,19 +266,19 @@ const mcp = [
 const hooksRules = [
   ["guard-protected-force-push.js","hook (beforeShellExecution)",".cursor/hooks/ + .cursor/hooks.json","Blocks a force-push to a protected branch (main/master/develop). Reads {command} on stdin, returns {permission: deny}. Cursor analog of the Claude guard-protected-force-push hook. Fetched from envoydev/agents-stack/main/cursor/hooks."],
   ["guard-catastrophic-rm.js","hook (beforeShellExecution)",".cursor/hooks/ + .cursor/hooks.json","Blocks a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, or a bare *). Reads {command} on stdin, returns {permission: deny}. Cursor analog of the Claude guard-catastrophic-rm hook. Fetched from envoydev/agents-stack/main/cursor/hooks."],
-  ["csharp-conventions.mdc","rule (globs **/*.cs)",".cursor/rules/","C# house conventions (csharp), auto-attached when a .cs file is in context. Cursor analog of Claude's require-convention-skill gate's 'cs' table - a rule (soft guidance), not a hard pre-edit block (Cursor has no session 'skill loaded' state and no stable pre-edit deny)."],
-  ["typescript-conventions.mdc","rule (globs .ts/.tsx/.js/.jsx/.mjs/.cjs)",".cursor/rules/","TypeScript/JS baseline (typescript). Mirrors the gate's 'ts' table. Auto-attaches by glob; composes with angular-conventions on Angular .ts files."],
-  ["sql-conventions.mdc","rule (globs **/*.sql)",".cursor/rules/","SQL house conventions (database-conventions). Mirrors the gate's 'sql' table - hand-written SQL only."],
-  ["angular-conventions.mdc","rule (globs *.component.ts / *.service.ts / *.directive.ts / etc.)",".cursor/rules/","Angular conventions (angular-conventions). Mirrors the gate's 'ng' table - keyed on Angular compound suffixes; bare .html stays ungated."],
-  ["wpf-conventions.mdc","rule (globs **/*.xaml)",".cursor/rules/","WPF/XAML house conventions (dotnet-wpf). Mirrors the Claude gate's opt-in 'xaml' table - wire in for WPF repos only, not every C# repo has XAML."],
-  ["scss-conventions.mdc","rule (globs **/*.scss, **/*.css)",".cursor/rules/","Stylesheet house conventions (angular-styling). Mirrors the Claude gate's opt-in 'scss' table - for Angular workspaces that own their stylesheets."],
+  ["csharp-conventions.mdc","rule (globs **/*.cs)",".cursor/rules/","C# house conventions (csharp), auto-attached when a .cs file is in context. The same soft convention-rule model Claude's .claude/rules now use - guidance injected on a matching file, never a block."],
+  ["typescript-conventions.mdc","rule (globs .ts/.tsx/.js/.jsx/.mjs/.cjs)",".cursor/rules/","TypeScript/JS baseline (typescript). The same soft model as Claude's .claude/rules. Auto-attaches by glob; composes with angular-conventions on Angular .ts files."],
+  ["sql-conventions.mdc","rule (globs **/*.sql)",".cursor/rules/","SQL house conventions (database-conventions). The same soft model as Claude's .claude/rules - hand-written SQL only."],
+  ["angular-conventions.mdc","rule (globs *.component.ts / *.service.ts / *.directive.ts / etc.)",".cursor/rules/","Angular conventions (angular-conventions). The same soft model as Claude's .claude/rules - keyed on Angular compound suffixes; bare .html isn't matched."],
+  ["wpf-conventions.mdc","rule (globs **/*.xaml)",".cursor/rules/","WPF/XAML house conventions (dotnet-wpf). The same soft model as Claude's .claude/rules - wire in for WPF repos only, not every C# repo has XAML."],
+  ["scss-conventions.mdc","rule (globs **/*.scss, **/*.css)",".cursor/rules/","Stylesheet house conventions (angular-styling). The same soft model as Claude's .claude/rules - for Angular workspaces that own their stylesheets."],
   ["ponytail.mdc","rule (alwaysApply; fetched from ponytail repo)",".cursor/rules/","Ponytail 'lazy senior dev' minimal-code rule (always applies). Fetched from DietrichGebert/ponytail - the Cursor form of the ponytail plugin the Claude stack installs; referenced, not vendored here."],
 ];
 
 // ---- Subagents (Cursor-native; fetched into .cursor/agents/) ----
 // [name, area, lands in, source url, description]. The same four resolvers the Claude stack ships, in
-// Cursor's weaker contract: a `readonly` bool (no per-tool allowlist) and no hard convention gate, so the
-// bodies lean on the auto-attaching .cursor/rules instead of a Skill-load gate.
+// Cursor's contract: a `readonly` bool rather than a per-tool allowlist. Both stacks now lean on the same
+// soft convention rules (.cursor/rules here, .claude/rules on Claude), auto-attached by glob.
 const agents = [
   ["dotnet-build-error-resolver", ".NET / build", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-build fix loop: categorize CS/NU/MSB errors, locate via serena, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to disable tests/warnings or stub code to pass. Implement phase, pairs after /brainstorm -> /plan. Cursor contract: readonly false, no tool allowlist - leans on the csharp-conventions rule."],
   ["dotnet-test-failure-resolver", ".NET / test", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-test red->green loop: fix the real defect (production vs test side), never skip/weaken/game a test or coverage threshold (5-cycle cap). Pairs after the build-error resolver. Cursor contract: prompt-only guardrails, no tool scoping."],
@@ -357,7 +357,7 @@ function renderHooks(filtered) {
 }
 
 function renderAgents(filtered) {
-  let html = `<h2>Subagents</h2><div class="group-meta">Cursor-native specialist subagents, fetched into the project's <code>.cursor/agents/</code> tree. The same four resolvers the Claude stack ships, but in Cursor's weaker contract (a <code>readonly</code> bool, no per-tool allowlist, no hard convention gate). ${filtered.length} agents.</div>`;
+  let html = `<h2>Subagents</h2><div class="group-meta">Cursor-native specialist subagents, fetched into the project's <code>.cursor/agents/</code> tree. The same four resolvers the Claude stack ships, in Cursor's contract (a <code>readonly</code> bool rather than a per-tool allowlist; both stacks lean on the same soft convention rules). ${filtered.length} agents.</div>`;
   html += `<table><thead><tr><th style="width:22%">Name</th><th style="width:14%">Area</th><th style="width:18%">Lands in</th><th style="width:14%">Source</th><th>Description</th></tr></thead><tbody>`;
   for (const [name, area, where, url, desc] of filtered) {
     html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${where}</code></td><td><a href="${url}" target="_blank" rel="noopener">${url}</a></td><td class="desc">${desc}</td></tr>`;

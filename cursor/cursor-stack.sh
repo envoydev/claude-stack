@@ -286,8 +286,8 @@ MCPS=(
 # the Claude-contract files). The portable Bash guards map over as hooks:
 #   - guard-protected-force-push -> beforeShellExecution (reads {command}, returns {permission}).
 #   - guard-catastrophic-rm      -> beforeShellExecution (blocks recursive rm of /, ~, $HOME, bare *).
-# require-convention-skill is NOT a Cursor hook: Cursor has no session "skill loaded" state and no stable
-# pre-edit block. Its analog is a .cursor/rules/*.mdc rule (soft, auto-attaches by glob) - see CURSOR_RULES.
+# Convention enforcement is NOT a hook on either stack - its home is a soft, glob-auto-attaching rule
+# (.cursor/rules/*.mdc here, see CURSOR_RULES; .claude/rules on Claude), never a pre-edit block.
 CURSOR_HOOK_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/hooks"
 CURSOR_RULES_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/rules"
 CURSOR_HOOKS=(
@@ -297,7 +297,7 @@ CURSOR_HOOKS=(
 # A rule entry is "name" (fetched from CURSOR_RULES_BASE_URL) or "name|url" (fetched from that url -
 # e.g. a third-party rule like ponytail, which we reference rather than vendor here).
 CURSOR_RULES=(
-  # The require-convention-skill gate's variants, as soft auto-attaching rules (cs ng sql ts).
+  # Per-file-type convention rules, soft and auto-attaching by glob (cs ng sql ts).
   "csharp-conventions.mdc"                    # cs  -> csharp (globs **/*.cs)
   "typescript-conventions.mdc"                # ts  -> typescript (.ts/.tsx/.js/.jsx/.mjs/.cjs)
   "sql-conventions.mdc"                       # sql -> database-conventions (**/*.sql)
@@ -311,8 +311,8 @@ CURSOR_RULES=(
 # (per-agent fail-soft - an agent not yet upstream keeps any existing local copy). Cursor auto-discovers
 # .cursor/agents/*.md; no settings wiring needed. These mirror the four Claude resolver subagents (the
 # pipeline agents and all model/effort pins are Claude-only) in Cursor's weaker contract: prompt-only guardrails, no
-# per-tool allowlist (only a `readonly` bool), no hard convention gate - so the agent bodies lean on the
-# auto-attaching .cursor/rules instead of a Skill gate.
+# per-tool allowlist (only a `readonly` bool) - so the agent bodies lean on the auto-attaching .cursor/rules
+# for conventions, the same soft model Claude's .claude/rules now use.
 CURSOR_AGENT_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/agents"
 CURSOR_AGENTS=(
   "dotnet-build-error-resolver.md"   # implement phase: dotnet build -> categorize errors -> minimal fix loop (serena/LSP), capped
