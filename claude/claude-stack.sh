@@ -344,6 +344,7 @@ AGENTS=(
   "greenfield-solution-designer.md"  # analysis phase (opus/xhigh): read-only greenfield design - architecture/stack/structure options from a spec
   "cross-stack-contract-designer.md" # analysis phase (opus/xhigh): read-only - freezes the shared backend/frontend contract before the per-stack designers
   "framework-upgrade-planner.md"     # analysis phase (opus/xhigh): read-only - turns a version/deprecation event into an ordered, contracted upgrade plan
+  "security-auditor.md"              # analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements /security-review
   # Per-domain specialist team (5 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
   "aspnet-solution-designer.md"      # design phase (opus/xhigh): ASP.NET Core architecture + plan + test strategy, decomposes into parallel tasks
   "aspnet-implementer.md"            # build phase (sonnet/medium): builds one ASP.NET task - code + tests

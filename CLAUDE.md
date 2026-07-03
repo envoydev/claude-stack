@@ -22,17 +22,19 @@ made only inside a consuming project is throwaway (see Invariants).
   - `hooks/` - `require-convention-skill.js` (PreToolUse `Edit|Write` convention gate) +
     `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
     `guard-read-whole-file.js` (PreToolUse `Read`). Fetched into a project's `.claude/hooks/`.
-  - `agents/` - the Claude-contract subagents, 27 total: the four build/test resolvers - .NET
+  - `agents/` - the Claude-contract subagents, 28 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
-    `angular-test-resolver`) - plus seven cross-cutting analysis agents (`architecture-analyzer`,
+    `angular-test-resolver`) - plus eight cross-cutting analysis agents (`architecture-analyzer`,
     `task-analyzer`, `ci-failure-diagnoser`, `issue-diagnoser`, `greenfield-solution-designer`,
-    `cross-stack-contract-designer`, `framework-upgrade-planner`) - plus
+    `cross-stack-contract-designer`, `framework-upgrade-planner`, `security-auditor` - the last a read-only
+    cross-stack security posture audit that routes an OWASP/CWE punch-list to the implementers, complementing
+    `/security-review`) - plus
     15 per-domain seats, the same 3-agent vertical repeated across 5 stacks (ASP.NET, Angular, WPF,
     mobile, data): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
     (builds one task, code + tests) → `<stack>-verifier` (gates the assembled build vs plan + quality,
     punch-list loop) - plus a read-only `evidence-gatherer` (sonnet/medium) the two diagnosers dispatch to
     reproduce and pull logs, keeping the log volume off the opus seat. The `domain-build` skill orchestrates
-    one stack's vertical per run. All 27 carry
+    one stack's vertical per run. All 28 carry
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
     `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker
     contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
@@ -66,9 +68,9 @@ because the platforms differ:
 | MCP | `claude mcp add` → `<repo>/.mcp.json` | written into `.cursor/mcp.json` (tokens pre-resolved) |
 | Plugins | 8 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, frontend-design, claude-hud, ponytail) | **none** - Cursor has no Claude-style `/plugin install` (its own format installs via `/add-plugin`); equivalents are MCP / native (Skills, Subagents, Bugbot `/review`, Rules) / Open-VSX extensions. ponytail additionally ships a Cursor rule that `cursor-stack` fetches (see `cursor-stack.html`'s mapping) |
 | Hooks | `.claude/hooks/` wired into `.claude/settings.json` (4 hooks) | `.cursor/hooks.json` (force-push + catastrophic-rm - Cursor's contract differs) |
-| Agents | `.claude/agents/` - 27 Claude subagents, all model/effort-pinned: the 4 build/test resolvers (`model: sonnet` + `effort: high`) + 7 cross-cutting analysis agents (`architecture-analyzer`, `task-analyzer`, `ci-failure-diagnoser`, `issue-diagnoser`, `greenfield-solution-designer`, `cross-stack-contract-designer`, `framework-upgrade-planner`, all `model: opus` + `effort: xhigh`) + 15 per-domain seats - a 3-agent vertical repeated across 5 stacks (ASP.NET, Angular, WPF, mobile, data): `<stack>-solution-designer` pinned `opus`/`xhigh`, `<stack>-verifier` pinned `sonnet`/`xhigh`, `<stack>-implementer` pinned `sonnet`/`medium`; the `domain-build` skill dispatches one stack's vertical per run; plus a read-only `evidence-gatherer` (`sonnet`/`medium`) the two diagnosers dispatch to reproduce and pull logs, keeping the log volume off the opus seat. Fetched like hooks; per-tool `tools:` allowlist + `Skill`-tool gate | `.cursor/agents/` - twins of the 4 RESOLVERS only, fetched like hooks; the cross-cutting and per-domain agents are Claude-only and no pin carries over (Cursor agents take a `model` field but have no `effort` pin - the twins inherit Cursor's session model). Cursor's contract is weaker: no per-tool allowlist (only a `readonly` bool), and no hard convention gate - so the bodies lean on the auto-attaching `.cursor/rules` instead of a Skill-load gate |
+| Agents | `.claude/agents/` - 28 Claude subagents, all model/effort-pinned: the 4 build/test resolvers (`model: sonnet` + `effort: high`) + 8 cross-cutting analysis agents (`architecture-analyzer`, `task-analyzer`, `ci-failure-diagnoser`, `issue-diagnoser`, `greenfield-solution-designer`, `cross-stack-contract-designer`, `framework-upgrade-planner`, `security-auditor` - read-only cross-stack security posture audit routing an OWASP/CWE punch-list to the implementers, all `model: opus` + `effort: xhigh`) + 15 per-domain seats - a 3-agent vertical repeated across 5 stacks (ASP.NET, Angular, WPF, mobile, data): `<stack>-solution-designer` pinned `opus`/`xhigh`, `<stack>-verifier` pinned `sonnet`/`xhigh`, `<stack>-implementer` pinned `sonnet`/`medium`; the `domain-build` skill dispatches one stack's vertical per run; plus a read-only `evidence-gatherer` (`sonnet`/`medium`) the two diagnosers dispatch to reproduce and pull logs, keeping the log volume off the opus seat. Fetched like hooks; per-tool `tools:` allowlist + `Skill`-tool gate | `.cursor/agents/` - twins of the 4 RESOLVERS only, fetched like hooks; the cross-cutting and per-domain agents are Claude-only and no pin carries over (Cursor agents take a `model` field but have no `effort` pin - the twins inherit Cursor's session model). Cursor's contract is weaker: no per-tool allowlist (only a `readonly` bool), and no hard convention gate - so the bodies lean on the auto-attaching `.cursor/rules` instead of a Skill-load gate |
 | Convention gate | `require-convention-skill` hook (hard block until the skill is loaded; base cs/ng/sql/ts tables plus scss/xaml opt-in tables wired per repo shape) | `.cursor/rules/*.mdc` (soft, auto-attach by glob - no session skill-load state) |
-| Security review | `/security-review` + `security-guidance` hooks | Cursor **Bugbot** (`/review`) |
+| Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) | Cursor **Bugbot** (`/review`); the `security-auditor` agent is Claude-only |
 | Project instructions | `CLAUDE.md` | `AGENTS.md` |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins | built-in TypeScript + Open-VSX extensions (a Roslyn C# extension - MS's C# Dev Kit is blocked in Cursor) |
 

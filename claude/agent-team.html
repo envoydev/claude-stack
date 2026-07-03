@@ -212,9 +212,9 @@
     asked to be good at both Angular and C# - each seat is a single deep role.
   </p>
   <div class="stat-row">
-    <div class="stat"><b>27</b><span>agents, built</span></div>
+    <div class="stat"><b>28</b><span>agents, built</span></div>
     <div class="stat"><b>15</b><span>per-domain seats</span></div>
-    <div class="stat"><b>7</b><span>cross-cutting</span></div>
+    <div class="stat"><b>8</b><span>cross-cutting</span></div>
     <div class="stat"><b>4</b><span>build/test resolvers</span></div>
     <div class="stat"><b>1</b><span>evidence-gatherer</span></div>
     <div class="stat"><b>5</b><span>domains</span></div>
@@ -369,6 +369,7 @@
           <div class="spanning">
             <span class="agent repair">ci-failure-diagnoser<span class="role">reads red pipelines via gh</span><span class="mdl opus">opus · xhigh</span></span>
             <span class="agent repair">issue-diagnoser<span class="role">reads logs / errors / screenshots, plans the fix</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent repair">security-auditor<span class="role">audits the security posture, routes an OWASP/CWE punch-list</span><span class="mdl opus">opus · xhigh</span></span>
             <span class="agent repair">evidence-gatherer<span class="role">the diagnosers' cheap hands · repro + log pulls</span><span class="mdl sonnet">sonnet · medium</span></span>
           </div>
         </div>
@@ -566,14 +567,15 @@
         <li><span class="open">Plus a cross-cutting <code>issue-diagnoser</code></span> - the debugger, and the bug-side counterpart of a solution designer. It reads logs, errors and screenshots, isolates the root cause, and lays out a decomposed fix plan that feeds the same implementers &rarr; verifier loop. It plans; it never writes the fix. Roster is now 24.</li>
         <li><b>Agents hardened, skills enriched.</b> The four resolvers and <code>ci-failure-diagnoser</code> now run the superpowers <code>systematic-debugging</code> method; implementers report a <code>DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED</code> status and <code>domain-build</code> gained a compaction-safe progress ledger + per-task diff review (from <code>subagent-driven-development</code>). Seven best-practice field guides were distilled into nine house skills (29 additions, private names scrubbed), and the WPF seats now reach <code>dotnet-hosted-services</code> for a companion Windows Service.</li>
         <li><b>Two cross-cutting seats added - roster 24 &rarr; 26.</b> <code>cross-stack-contract-designer</code> (opus/xhigh, read-only) freezes the shared backend&harr;frontend contract - DTOs, routes, error envelope, auth, pagination, versioning - before the per-stack designers, so a full-stack feature builds to one agreed seam instead of drifting into a runtime bug. <code>framework-upgrade-planner</code> (opus/xhigh, read-only) turns a version/deprecation event - a .NET or Angular major, an EOL - into an ordered, contracted upgrade plan the implementers and resolvers execute. Both fill gaps the adversarial roster audit confirmed no existing seat covered.</li>
-        <li><b>Verified</b> - <code>npm run lint</code> clean, all 27 frontmatters valid, 4-way parity held.</li>
+        <li><b>Cross-cutting <code>security-auditor</code> added - roster 27 &rarr; 28.</b> A read-only, opus/xhigh security seat that audits the posture of a feature or codebase across all five stacks - auth, authorization, input/injection, secrets, config, data exposure - and returns an OWASP/CWE punch-list that routes to the domain implementers to fix and the verifier to confirm. It complements <code>/security-review</code> (diff/PR-scoped) and the <code>security-guidance</code> commit hook by being the deep, posture-scoped, routed audit; it finds and reports, never writes the fix. Claude-only.</li>
+        <li><b>Verified</b> - <code>npm run lint</code> clean, all 28 frontmatters valid, 4-way parity held.</li>
       </ul>
     </div>
   </section>
 
   <footer>
     <span>envoydev/agents-stack · roster built</span>
-    <span>5 domains · 15 seats · 7 cross-cutting · 4 resolvers · 1 gatherer · 27 total</span>
+    <span>5 domains · 15 seats · 8 cross-cutting · 4 resolvers · 1 gatherer · 28 total</span>
   </footer>
 
 </div>
