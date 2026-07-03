@@ -1,4 +1,4 @@
-<title>Agent roster — a team of specialists</title>
+<title>Agent roster - a team of specialists</title>
 <style>
   :root {
     --ground: #131519;
@@ -41,7 +41,7 @@
     margin: 0 0 16px; text-wrap: balance;
   }
   h1 .q { color: var(--brass); }
-  .lede { max-width: 62ch; font-size: 17px; color: var(--muted); margin: 0 0 28px; }
+  .lede { font-size: 17px; color: var(--muted); margin: 0 0 28px; }
   .lede b { color: var(--ink); font-weight: 600; }
   .stat-row {
     display: flex; flex-wrap: wrap; gap: 10px 12px;
@@ -88,7 +88,7 @@
   .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
   .sec-num { font-family: var(--mono); font-size: 12px; color: var(--faint); letter-spacing: 0.1em; }
   h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
-  .sec-sub { color: var(--muted); font-size: 14.5px; margin: 6px 0 26px; max-width: 74ch; }
+  .sec-sub { color: var(--muted); font-size: 14.5px; margin: 6px 0 26px; }
   .sec-sub b { color: var(--ink); font-weight: 600; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 24px; }
@@ -134,6 +134,17 @@
   .agent.arch { border-color: rgba(216,168,91,0.45); }
   .agent.qa .role { color: var(--qa); }
   .agent.repair .role { color: var(--repair); }
+  .agent.arch .role { color: var(--brass); }
+  .agent.design .role { color: var(--design); }
+  .agent.build .role { color: var(--build); }
+  .mdl {
+    display: inline-block; margin-top: 5px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.03em; font-weight: 600;
+    padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  }
+  .mdl.opus { color: var(--brass); border-color: rgba(216,168,91,0.42); background: rgba(216,168,91,0.06); }
+  .mdl.sonnet { color: var(--muted); }
 
   .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
   .card {
@@ -194,11 +205,11 @@
   <h1>Every domain owns its vertical<span class="q">.</span><br>One hand designs it, one builds it, one verifies it.</h1>
   <p class="lede">
     The team is a matrix: a project <b>architect</b> that scopes and directs, then for each stack
-    three hands — a <b>solution designer</b> that owns the architecture, plan and test strategy
+    three hands - a <b>solution designer</b> that owns the architecture, plan and test strategy
     <b>and splits the work into parallel tasks</b>; several <b>implementers</b> that each build one
     part, code <b>and its tests</b>; and a <b>verifier</b> that, once every part lands, checks the
     whole against the plan and code quality and hands a punch-list back until it matches. No agent is
-    asked to be good at both Angular and C# — each seat is a single deep role.
+    asked to be good at both Angular and C# - each seat is a single deep role.
   </p>
   <div class="stat-row">
     <div class="stat"><b>27</b><span>agents, built</span></div>
@@ -211,7 +222,7 @@
   </div>
 
   <div class="flow">
-    <div class="cap">How one domain runs &mdash; a feature or a bug fix</div>
+    <div class="cap">How one domain runs - a feature or a bug fix</div>
     <div class="flow-row">
       <div class="fan">
         <span class="fan-label">the plan comes from one of two</span>
@@ -265,11 +276,11 @@
             <span class="d">scopes + directs the whole project</span>
           </div>
           <div class="spanning">
-            <span class="agent arch">architecture-analyzer<span class="role">maps an existing system</span></span>
-            <span class="agent arch">greenfield-solution-designer<span class="role">designs a new one</span></span>
-            <span class="agent arch">task-analyzer<span class="role">scopes the problem</span></span>
-            <span class="agent arch">cross-stack-contract-designer<span class="role">freezes the full-stack contract</span></span>
-            <span class="agent arch">framework-upgrade-planner<span class="role">plans a version upgrade</span></span>
+            <span class="agent arch">architecture-analyzer<span class="role">maps an existing system</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent arch">greenfield-solution-designer<span class="role">designs a new one</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent arch">task-analyzer<span class="role">scopes the problem</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent arch">cross-stack-contract-designer<span class="role">freezes the full-stack contract</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent arch">framework-upgrade-planner<span class="role">plans a version upgrade</span><span class="mdl opus">opus · xhigh</span></span>
           </div>
         </div>
 
@@ -292,11 +303,11 @@
             <span class="d">best practice · plan · test strategy · splits the work</span>
           </div>
           <div class="cols">
-            <div class="cell"><span class="agent">aspnet-solution-designer<span class="role">clean-arch · API shape · auth</span></span></div>
-            <div class="cell"><span class="agent">wpf-solution-designer<span class="role">strict MVVM · view composition</span></span></div>
-            <div class="cell"><span class="agent">angular-solution-designer<span class="role">components · state · routing</span></span></div>
-            <div class="cell"><span class="agent">mobile-solution-designer<span class="role">shell · native bridge · release</span></span></div>
-            <div class="cell"><span class="agent">data-solution-designer<span class="role">schema · model · perf</span></span></div>
+            <div class="cell"><span class="agent design">aspnet-solution-designer<span class="role">clean-arch · API shape · auth</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">wpf-solution-designer<span class="role">strict MVVM · view composition</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">angular-solution-designer<span class="role">components · state · routing</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">mobile-solution-designer<span class="role">shell · native bridge · release</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">data-solution-designer<span class="role">schema · model · perf</span><span class="mdl opus">opus · xhigh</span></span></div>
           </div>
         </div>
 
@@ -307,11 +318,11 @@
             <span class="d">several in parallel, one task each; code + tests</span>
           </div>
           <div class="cols">
-            <div class="cell"><span class="agent">aspnet-implementer<span class="role">C# + xUnit / integration</span></span></div>
-            <div class="cell"><span class="agent">wpf-implementer<span class="role">XAML + VM unit tests</span></span></div>
-            <div class="cell"><span class="agent">angular-implementer<span class="role">TS + Jest / TestBed</span></span></div>
-            <div class="cell"><span class="agent">mobile-implementer<span class="role">Ionic + Appium E2E</span></span></div>
-            <div class="cell"><span class="agent">data-implementer<span class="role">SQL + migration tests</span></span></div>
+            <div class="cell"><span class="agent build">aspnet-implementer<span class="role">C# + xUnit / integration</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">wpf-implementer<span class="role">XAML + VM unit tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">angular-implementer<span class="role">TS + Jest / TestBed</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">mobile-implementer<span class="role">Ionic + Appium E2E</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">data-implementer<span class="role">SQL + migration tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
           </div>
         </div>
 
@@ -322,11 +333,11 @@
             <span class="d">once all parts land: vs plan + quality, loops back</span>
           </div>
           <div class="cols">
-            <div class="cell"><span class="agent">aspnet-verifier<span class="role">vs clean-arch + async</span></span></div>
-            <div class="cell"><span class="agent">wpf-verifier<span class="role">vs MVVM + bindings</span></span></div>
-            <div class="cell"><span class="agent">angular-verifier<span class="role">vs signals / OnPush / a11y</span></span></div>
-            <div class="cell"><span class="agent">mobile-verifier<span class="role">vs native + platform parity</span></span></div>
-            <div class="cell"><span class="agent">data-verifier<span class="role">vs schema + query safety</span></span></div>
+            <div class="cell"><span class="agent qa">aspnet-verifier<span class="role">vs clean-arch + async</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">wpf-verifier<span class="role">vs MVVM + bindings</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">angular-verifier<span class="role">vs signals / OnPush / a11y</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">mobile-verifier<span class="role">vs native + platform parity</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">data-verifier<span class="role">vs schema + query safety</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
           </div>
         </div>
 
@@ -338,14 +349,14 @@
           </div>
           <div class="cols">
             <div class="cell" style="grid-column: span 2">
-              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · ASP.NET + WPF (XAML compiles through dotnet)</span></span>
-              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · ASP.NET + WPF</span></span>
+              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · ASP.NET + WPF (XAML compiles through dotnet)</span><span class="mdl sonnet">sonnet · high</span></span>
+              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · ASP.NET + WPF</span><span class="mdl sonnet">sonnet · high</span></span>
             </div>
             <div class="cell" style="grid-column: span 2">
-              <span class="agent repair">ng-build-error-resolver<span class="role">build · Angular + Ionic (ionic wraps ng build)</span></span>
-              <span class="agent repair">angular-test-resolver<span class="role">tests · Angular + Ionic</span></span>
+              <span class="agent repair">ng-build-error-resolver<span class="role">build · Angular + Ionic (ionic wraps ng build)</span><span class="mdl sonnet">sonnet · high</span></span>
+              <span class="agent repair">angular-test-resolver<span class="role">tests · Angular + Ionic</span><span class="mdl sonnet">sonnet · high</span></span>
             </div>
-            <div class="cell"><span class="agent repair" style="opacity:.48">—<span class="role">no compile loop</span></span></div>
+            <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no compile loop</span></span></div>
           </div>
         </div>
 
@@ -356,9 +367,9 @@
             <span class="d">find the cause, route the fix</span>
           </div>
           <div class="spanning">
-            <span class="agent repair">ci-failure-diagnoser<span class="role">reads red pipelines via gh</span></span>
-            <span class="agent repair">issue-diagnoser<span class="role">reads logs / errors / screenshots, plans the fix</span></span>
-            <span class="agent repair">evidence-gatherer<span class="role">the diagnosers' cheap hands · repro + log pulls · sonnet</span></span>
+            <span class="agent repair">ci-failure-diagnoser<span class="role">reads red pipelines via gh</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent repair">issue-diagnoser<span class="role">reads logs / errors / screenshots, plans the fix</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent repair">evidence-gatherer<span class="role">the diagnosers' cheap hands · repro + log pulls</span><span class="mdl sonnet">sonnet · medium</span></span>
           </div>
         </div>
 
@@ -545,17 +556,17 @@
       <h3>Settled</h3>
       <ul>
         <li><b>Per-domain vertical, fanned out.</b> The designer decomposes the work into parallel tasks with contracts; several implementer instances build them at once; the verifier gates the assembled whole and loops a punch-list back. Five stack-agnostic pipeline agents dissolve into it; the fan-out is main-session orchestrated (a domain-build skill); the vertical's seats never dispatch agents. The sole nested dispatch in the roster is the two diagnosers calling a cheap read-only <code>evidence-gatherer</code> to keep log volume off the opus seat.</li>
-        <li><b>No rank words.</b> Seats are named <span style="font-family:var(--mono)">&lt;domain&gt;-solution-designer</span>, <span style="font-family:var(--mono)">&lt;domain&gt;-implementer</span> and <span style="font-family:var(--mono)">&lt;domain&gt;-verifier</span> — stack + function, no senior / middle.</li>
-        <li><b>Pins hold.</b> Designers and verifiers are Opus 4.8 / xhigh (judgment work); implementers Sonnet 5 / high (build work).</li>
+        <li><b>No rank words.</b> Seats are named <span style="font-family:var(--mono)">&lt;domain&gt;-solution-designer</span>, <span style="font-family:var(--mono)">&lt;domain&gt;-implementer</span> and <span style="font-family:var(--mono)">&lt;domain&gt;-verifier</span> - stack + function, no senior / middle.</li>
+        <li><b>Pins.</b> Designers Opus 4.8 / xhigh (top-level design judgment); verifiers Sonnet 5 / xhigh (an independent gate at full effort); implementers Sonnet 5 / medium (build to the contract).</li>
         <li><b>Skills rewired.</b> <code>project-scaffold</code> and <code>project-quality-loop</code> were repointed off the retired agents onto the domain seats and <code>domain-build</code>.</li>
       </ul>
       <h3 style="margin-top:16px">Shipped this session</h3>
       <ul>
         <li><b>Fifteen seats + the <code>domain-build</code> skill created</b>; the five generic agents (<code>implementation-planner</code>, <code>test-planner</code>, <code>code-implementer</code>, <code>test-writer</code>, <code>change-verifier</code>) retired into them.</li>
-        <li><span class="open">Plus a cross-cutting <code>issue-diagnoser</code></span> — the debugger, and the bug-side counterpart of a solution designer. It reads logs, errors and screenshots, isolates the root cause, and lays out a decomposed fix plan that feeds the same implementers &rarr; verifier loop. It plans; it never writes the fix. Roster is now 24.</li>
+        <li><span class="open">Plus a cross-cutting <code>issue-diagnoser</code></span> - the debugger, and the bug-side counterpart of a solution designer. It reads logs, errors and screenshots, isolates the root cause, and lays out a decomposed fix plan that feeds the same implementers &rarr; verifier loop. It plans; it never writes the fix. Roster is now 24.</li>
         <li><b>Agents hardened, skills enriched.</b> The four resolvers and <code>ci-failure-diagnoser</code> now run the superpowers <code>systematic-debugging</code> method; implementers report a <code>DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED</code> status and <code>domain-build</code> gained a compaction-safe progress ledger + per-task diff review (from <code>subagent-driven-development</code>). Seven best-practice field guides were distilled into nine house skills (29 additions, private names scrubbed), and the WPF seats now reach <code>dotnet-hosted-services</code> for a companion Windows Service.</li>
-        <li><b>Two cross-cutting seats added — roster 24 &rarr; 26.</b> <code>cross-stack-contract-designer</code> (opus/xhigh, read-only) freezes the shared backend&harr;frontend contract - DTOs, routes, error envelope, auth, pagination, versioning - before the per-stack designers, so a full-stack feature builds to one agreed seam instead of drifting into a runtime bug. <code>framework-upgrade-planner</code> (opus/xhigh, read-only) turns a version/deprecation event - a .NET or Angular major, an EOL - into an ordered, contracted upgrade plan the implementers and resolvers execute. Both fill gaps the adversarial roster audit confirmed no existing seat covered.</li>
-        <li><b>Verified</b> — <code>npm run lint</code> clean, all 27 frontmatters valid, 4-way parity held.</li>
+        <li><b>Two cross-cutting seats added - roster 24 &rarr; 26.</b> <code>cross-stack-contract-designer</code> (opus/xhigh, read-only) freezes the shared backend&harr;frontend contract - DTOs, routes, error envelope, auth, pagination, versioning - before the per-stack designers, so a full-stack feature builds to one agreed seam instead of drifting into a runtime bug. <code>framework-upgrade-planner</code> (opus/xhigh, read-only) turns a version/deprecation event - a .NET or Angular major, an EOL - into an ordered, contracted upgrade plan the implementers and resolvers execute. Both fill gaps the adversarial roster audit confirmed no existing seat covered.</li>
+        <li><b>Verified</b> - <code>npm run lint</code> clean, all 27 frontmatters valid, 4-way parity held.</li>
       </ul>
     </div>
   </section>

@@ -346,20 +346,20 @@ AGENTS=(
   "framework-upgrade-planner.md"     # analysis phase (opus/xhigh): read-only - turns a version/deprecation event into an ordered, contracted upgrade plan
   # Per-domain specialist team (5 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
   "aspnet-solution-designer.md"      # design phase (opus/xhigh): ASP.NET Core architecture + plan + test strategy, decomposes into parallel tasks
-  "aspnet-implementer.md"            # build phase (sonnet/high): builds one ASP.NET task - code + tests
-  "aspnet-verifier.md"               # verify phase (opus/xhigh): gates the ASP.NET build vs plan + quality, punch-list back
+  "aspnet-implementer.md"            # build phase (sonnet/medium): builds one ASP.NET task - code + tests
+  "aspnet-verifier.md"               # verify phase (sonnet/xhigh): gates the ASP.NET build vs plan + quality, punch-list back
   "angular-solution-designer.md"     # design phase (opus/xhigh): Angular architecture + plan + test strategy, decomposes
-  "angular-implementer.md"           # build phase (sonnet/high): builds one Angular task - code + tests
-  "angular-verifier.md"              # verify phase (opus/xhigh): gates the Angular build vs plan + quality
+  "angular-implementer.md"           # build phase (sonnet/medium): builds one Angular task - code + tests
+  "angular-verifier.md"              # verify phase (sonnet/xhigh): gates the Angular build vs plan + quality
   "wpf-solution-designer.md"         # design phase (opus/xhigh): WPF strict-MVVM architecture + plan + test strategy, decomposes
-  "wpf-implementer.md"               # build phase (sonnet/high): builds one WPF task - code + tests
-  "wpf-verifier.md"                  # verify phase (opus/xhigh): gates the WPF build vs plan + quality
+  "wpf-implementer.md"               # build phase (sonnet/medium): builds one WPF task - code + tests
+  "wpf-verifier.md"                  # verify phase (sonnet/xhigh): gates the WPF build vs plan + quality
   "mobile-solution-designer.md"      # design phase (opus/xhigh): Ionic/Capacitor architecture + plan + test strategy, decomposes
-  "mobile-implementer.md"            # build phase (sonnet/high): builds one mobile task - code + tests
-  "mobile-verifier.md"               # verify phase (opus/xhigh): gates the mobile build vs plan + quality
+  "mobile-implementer.md"            # build phase (sonnet/medium): builds one mobile task - code + tests
+  "mobile-verifier.md"               # verify phase (sonnet/xhigh): gates the mobile build vs plan + quality
   "data-solution-designer.md"        # design phase (opus/xhigh): schema/data-model architecture + plan + test strategy, decomposes
-  "data-implementer.md"              # build phase (sonnet/high): builds one data task - SQL + migration tests
-  "data-verifier.md"                 # verify phase (opus/xhigh): gates the data build vs plan + quality
+  "data-implementer.md"              # build phase (sonnet/medium): builds one data task - SQL + migration tests
+  "data-verifier.md"                 # verify phase (sonnet/xhigh): gates the data build vs plan + quality
 )
 
 # (6) Path-scoped rules (claude-code): fetched into .claude/rules/ on BOTH actions - lazy-load on
