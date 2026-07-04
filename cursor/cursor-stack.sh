@@ -260,15 +260,15 @@ MEMORY_BACKEND="sqlite_vec"; MEMORY_DB_FILE="memory.db"
 if [ "$MEMORY_PROFILE" = "work" ]; then MEMORY_DB_FILE="memory_work.db"; fi  # separation is by DB path; backend stays sqlite_vec (the only valid local backend)
 MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY_SQLITE_PATH=@HOME_MEMORY_DIR@/$MEMORY_DB_FILE -- uvx --with numpy --from mcp-memory-service${MEMORY_PIN} memory server"
 
-# context7 API key is a SECRET. RECOMMENDED: put it in ~/.claude/settings.json under "env" as
-# CONTEXT7_API_KEY - context7 reads it from the environment at launch, so the key NEVER touches the
-# MCP registration (.mcp.json) and is set once, user-global. In that case leave CONTEXT7_API_KEY
-# UNSET in your install shell so the registration stays keyless (below).
-# ALTERNATIVE (legacy): export CONTEXT7_API_KEY before running and it is baked as --api-key into the
-# registration - but project scope writes <repo>/.mcp.json, so the key would land in that file; keep
-# it uncommitted if you go this route.
+# context7 API key is a SECRET. Keyless registration by DEFAULT: set CONTEXT7_API_KEY as an
+# OS/user environment variable - Cursor's spawned MCP server inherits the environment and context7
+# reads the key at launch, so it NEVER touches .cursor/mcp.json. OPT-IN (legacy): export
+# CONTEXT7_BAKE_KEY=1 (with CONTEXT7_API_KEY set) to bake --api-key into the registration instead -
+# keep the resulting .cursor/mcp.json uncommitted.
 CONTEXT7_SPEC="-- npx -y @upstash/context7-mcp${CTX7_PIN}"
-[ -n "${CONTEXT7_API_KEY:-}" ] && CONTEXT7_SPEC="$CONTEXT7_SPEC --api-key $CONTEXT7_API_KEY"
+if [ -n "${CONTEXT7_BAKE_KEY:-}" ] && [ -n "${CONTEXT7_API_KEY:-}" ]; then
+  CONTEXT7_SPEC="$CONTEXT7_SPEC --api-key $CONTEXT7_API_KEY"
+fi
 CONTEXT7_ENTRY="context7|$CONTEXT7_SPEC"
 
 MCPS=(

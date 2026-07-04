@@ -337,14 +337,15 @@ $MemoryEntry   = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
 $OnWindows = if ($null -ne $IsWindows) { $IsWindows } else { $true }
 $Npx       = if ($OnWindows) { 'cmd /c npx' } else { 'npx' }
 
-# context7 API key is a SECRET. RECOMMENDED: put it in ~/.claude/settings.json under "env" as
-# CONTEXT7_API_KEY - context7 reads it from the environment at launch, so the key NEVER touches the
-# MCP registration (.mcp.json) and is set once, user-global. Leave $env:CONTEXT7_API_KEY UNSET in
-# your install shell so the registration stays keyless. ALTERNATIVE (legacy): set $env:CONTEXT7_API_KEY
-# before running and it is baked as --api-key into the registration (project scope = <repo>/.mcp.json,
-# so keep that file uncommitted).
+# context7 API key is a SECRET. Keyless registration by DEFAULT: put the key in
+# ~/.claude/settings.json (or a project .claude/settings.local.json) under "env" as
+# CONTEXT7_API_KEY - Claude Code injects it into the spawned MCP process and context7 reads it
+# from the environment at launch, so the key NEVER touches .mcp.json. On Windows this is the
+# reliable path (no session-only shell export / setx+restart dance). OPT-IN (legacy): set
+# $env:CONTEXT7_BAKE_KEY (with $env:CONTEXT7_API_KEY) to bake --api-key into the registration
+# (project scope = <repo>/.mcp.json, so keep that file uncommitted).
 $Ctx7Cmd = "$Npx -y @upstash/context7-mcp$Ctx7Pin"
-if ($env:CONTEXT7_API_KEY) { $Ctx7Cmd += ' --api-key ' + $env:CONTEXT7_API_KEY }
+if ($env:CONTEXT7_BAKE_KEY -and $env:CONTEXT7_API_KEY) { $Ctx7Cmd += ' --api-key ' + $env:CONTEXT7_API_KEY }
 $Context7Entry   = 'context7|-- ' + $Ctx7Cmd
 $AngularCliEntry = 'angular-cli|-- ' + $Npx + ' -y @angular/cli mcp'
 $PlaywrightEntry = 'playwright|-- ' + $Npx + " -y @playwright/mcp$PwPin " + '--user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/screenshots'

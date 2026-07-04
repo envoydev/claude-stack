@@ -87,8 +87,11 @@ because the platforms differ:
 - **serena self-activates via `--project-from-cwd`**, not a hook: it finds `.serena/project.yml`
   in its cwd (the project root) and binds on process start, zero model involvement. Two approaches
   that look right but FAIL - do not retry: (1) an `mcp_tool` `SessionStart` hook calling
-  `activate_project` never fires before serena connects; (2) `--project ${CLAUDE_PROJECT_DIR}` is
-  passed *literally* - Claude Code does not expand `${...}` inside `.mcp.json` args. Cursor runs
+  `activate_project` never fires before serena connects; (2) `--project ${CLAUDE_PROJECT_DIR}` is the
+  wrong lever - use `--project-from-cwd` (above). Current Claude Code *does* expand `${VAR}` /
+  `${VAR:-default}` in `.mcp.json` (command/args/env/url/headers), so the blanket 'no `${...}`
+  expansion' was too broad; the catch is only that `CLAUDE_PROJECT_DIR` isn't reliably in scope at
+  `.mcp.json` parse time for a non-plugin config. Cursor runs
   serena with `--context ide-assistant`; Claude with `claude-code`.
 - **serena state is isolated per project** via `-e SERENA_HOME=.serena/home` (relative, resolved
   from cwd): registry, memories, logs, and language servers all live in-project, so nothing pools
