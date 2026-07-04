@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# claude-stack.sh [install|update] [space] [github-cli] [context7-local|context7-remote] - install/update the CLAUDE CODE
-# stack FOR A PROJECT: every skill / plugin / MCP from claude-stack.html (the complete
-# toolset, not a curated subset), installed INTO a project. Built-in/system CLI skills are
-# excluded (they ship with the CLI). Bash twin of claude-stack.ps1; Cursor lives in cursor-stack.sh.
+# claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
+# [--github-cli] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
+# claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
+# system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; Cursor lives
+# in cursor-stack.sh.
 #
 # Usage - run this file directly inside the target project:
 #   bash claude-stack.sh install   # install for Claude Code
@@ -12,20 +13,20 @@
 # Provisions Claude Code: skills --agent claude-code; plugins; MCPs via `claude mcp add`; hooks +
 # settings.json. Requires the `claude` CLI; claude-only steps fail soft if it is absent.
 #
-# Optional extras (args 2+, any order):
-#   space       -> any word; selects the Claude account ~/.claude-<space> (skills/plugins/MCPs
-#                  install there - CLAUDE_CONFIG_DIR is exported for the claude CLI) AND a separate
-#                  memory DB (memory_<space>.db). Omit for the default ~/.claude account + shared DB.
-#                  Both agents share ~/.memory-mcp so Claude Code and Cursor see the same per-space DB.
-#   github-cli  -> install the GitHub CLI (gh) via Homebrew (macOS) if missing; prompts for
-#                  `gh auth login` when unauthenticated. e.g.:
-#                    bash claude-stack.sh install github-cli
-#                    bash claude-stack.sh install work github-cli
+# The action (install|update) is the one positional argument; everything else is a named flag (any order):
+#   --space <name>          any word; selects the Claude account ~/.claude-<name> (skills/plugins/MCPs
+#                           install there - CLAUDE_CONFIG_DIR is exported for the claude CLI) AND a
+#                           separate memory DB (memory_<name>.db). Omit for the default ~/.claude
+#                           account + shared DB. Both agents share ~/.memory-mcp so Claude Code and
+#                           Cursor see the same per-space DB.
+#   --scope project|global  project (default) installs the full set INTO this repo (skills project-
+#                           scoped, plugins/mcps --scope project); global installs it into the active
+#                           account (skills -g, plugins/mcps --scope user). Overrides the SCOPE env var.
+#   --context7 local|remote context7 transport; remote (default) is the hosted HTTP server, local the
+#                           npx stdio server.
+#   --github-cli            install the GitHub CLI (gh) via Homebrew (macOS) if missing; prompts for
+#                           `gh auth login` when unauthenticated.
 #
-# Scope (default PROJECT - installs the full set INTO this repo; SCOPE=global installs it into the
-# active account instead):
-#   SCOPE=project  -> skills project-scoped, plugins/mcps --scope project  (default)
-#   SCOPE=global   -> skills -g, plugins/mcps --scope user
 # Full inventory - comment out manifest entries below to trim it to a curated subset.
 set -euo pipefail
 
@@ -33,38 +34,39 @@ usage() {
   cat <<USAGE
 claude-stack.sh - install or update the Claude Code stack into a project.
 
-Usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote]
+Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--github-cli]
 
-Actions (one is REQUIRED):
+Action (one is REQUIRED, positional):
   install   first-time provision; MCP/plugin versions freeze until the next update; wires .claude/settings.json
   update    re-resolve every runtime to latest + refresh hooks/agents/rules; leaves settings.json untouched
 
-Optional extras (any order):
-  <space>           any word -> install into the ~/.claude-<space> account + a separate memory_<space>.db
-  github-cli        install the GitHub CLI (gh) if missing
-  context7-local    run context7 as a local npx server (default: context7-remote, the hosted server)
-  context7-remote   run context7 as the hosted remote server (the default)
+Named flags (any order, each optional with a default):
+  --space <name>           install into the ~/.claude-<name> account + a separate memory_<name>.db
+  --scope project|global   project (default) installs INTO this repo; global installs into the account
+  --context7 local|remote  context7 transport; remote (default) is the hosted server, local the npx server
+  --github-cli             install the GitHub CLI (gh) if missing
 
 Environment variables:
-  SCOPE=project|global   project (default) installs INTO this repo; global installs into the account
-  CLAUDE_CONFIG_DIR      target a specific account when no <space> is given (default ~/.claude)
+  SCOPE=project|global   fallback for --scope when the flag is absent (default project)
+  CLAUDE_CONFIG_DIR      target a specific account when no --space is given (default ~/.claude)
   CONTEXT7_API_KEY       context7 API key, read from the environment at launch (higher rate limits)
-  CONTEXT7_BAKE_KEY      with context7-local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted)
+  CONTEXT7_BAKE_KEY      with --context7 local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted)
 
 Examples:
   bash $0 install
-  bash $0 install work github-cli
-  SCOPE=global bash $0 update
+  bash $0 install --space work --github-cli
+  bash $0 update --scope global
 USAGE
 }
 
 # -h/--help anywhere -> print full usage and exit 0, before the required-action check below.
 for _a in "$@"; do case "$_a" in -h|--help) usage; exit 0 ;; esac; done
 
-# 'install' or 'update' is REQUIRED (the main action); every arg after it is optional (has a default).
+# 'install' or 'update' is REQUIRED - the one positional argument (the action). Everything after it is
+# a named flag with a default (parsed below); shift the action off so $@ is just the flags.
 ACTION="${1:-}"
 case "$ACTION" in
-  install|update) ;;
+  install|update) shift ;;
   help) usage; exit 0 ;;
   *) usage >&2; echo "error: first argument must be 'install' or 'update' (got '${ACTION:-<none>}')" >&2; exit 1 ;;
 esac
@@ -72,32 +74,49 @@ esac
 # This script provisions the Claude Code agent. (Cursor lives in cursor-stack.sh.)
 AGENT="claude-code"
 
-# Optional extras (args 2+, any order, each with a default): a space name (any word -> account
-# ~/.claude-<space> + memory_<space>.db), 'github-cli' (install gh), 'context7-local' |
-# 'context7-remote' (context7 transport; default remote).
+# Named flags (any order, each with a default): --space <name> (account ~/.claude-<name> +
+# memory_<name>.db), --scope project|global, --context7 local|remote, --github-cli (install gh).
+# Named-only: there is no positional space - a value must be attached to its flag, so a space can be
+# literally any word (no reserved-word collisions with the flag names).
 SPACE=""
+SCOPE_FLAG=""
 INSTALL_GITHUB_CLI=false
 CONTEXT7_MODE="remote"
-for extra in "${@:2}"; do
-  case "$extra" in
-    github-cli) INSTALL_GITHUB_CLI=true ;;
-    context7-local) CONTEXT7_MODE="local" ;;
-    context7-remote) CONTEXT7_MODE="remote" ;;
-    *)
-      # Any other single word is the SPACE (account + memory-DB namespace). Reserved flags are
-      # matched above; a second bare word, or a disallowed charset, is an error.
-      if [ -n "$SPACE" ]; then
-        usage >&2; echo "error: only one space name allowed (got '$SPACE' and '$extra')" >&2; exit 1
-      fi
-      case "$extra" in
-        [!A-Za-z0-9]*|*[!A-Za-z0-9._-]*)
-          usage >&2; echo "error: space '$extra' must start alphanumeric; chars [A-Za-z0-9._-]" >&2; exit 1 ;;
-      esac
-      SPACE="$extra" ;;
+_flag_val() {  # $1 = flag name, $2 = the arg meant to be its value ('' when the flag was last)
+  [ -n "$2" ] || { usage >&2; echo "error: $1 needs a value" >&2; exit 1; }
+}
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --space)      _flag_val "$1" "${2:-}"; SPACE="$2";         shift 2 ;;
+    --space=*)    SPACE="${1#*=}";                             shift ;;
+    --scope)      _flag_val "$1" "${2:-}"; SCOPE_FLAG="$2";    shift 2 ;;
+    --scope=*)    SCOPE_FLAG="${1#*=}";                        shift ;;
+    --context7)   _flag_val "$1" "${2:-}"; CONTEXT7_MODE="$2"; shift 2 ;;
+    --context7=*) CONTEXT7_MODE="${1#*=}";                     shift ;;
+    --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli)" >&2; exit 1 ;;
   esac
 done
 
-SCOPE="${SCOPE:-project}"
+# Validate: --space is baked into a path (~/.claude-<space>, memory_<space>.db); --scope + --context7 are enums.
+if [ -n "$SPACE" ]; then
+  case "$SPACE" in
+    [!A-Za-z0-9]*|*[!A-Za-z0-9._-]*)
+      usage >&2; echo "error: --space '$SPACE' must start alphanumeric; chars [A-Za-z0-9._-]" >&2; exit 1 ;;
+  esac
+fi
+# --scope flag wins, else the SCOPE env var, else project. Lower-case the two enums (NOT the space,
+# whose casing is significant) so a non-canonical casing like 'Global'/'Remote' is accepted the same as
+# on the case-insensitive PowerShell twin - printf|tr always exits 0, so this is set -e safe.
+SCOPE="${SCOPE_FLAG:-${SCOPE:-project}}"
+SCOPE="$(printf '%s' "$SCOPE" | tr '[:upper:]' '[:lower:]')"
+CONTEXT7_MODE="$(printf '%s' "$CONTEXT7_MODE" | tr '[:upper:]' '[:lower:]')"
+case "$SCOPE" in project|global) ;;
+  *) usage >&2; echo "error: --scope must be 'project' or 'global' (got '$SCOPE')" >&2; exit 1 ;;
+esac
+case "$CONTEXT7_MODE" in local|remote) ;;
+  *) usage >&2; echo "error: --context7 must be 'local' or 'remote' (got '$CONTEXT7_MODE')" >&2; exit 1 ;;
+esac
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
 # Run-outcome tracking for the honest end-of-run summary.
@@ -381,7 +400,7 @@ MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY
 # context7 runs REMOTE (the hosted server) by DEFAULT - no local process, and the key stays out of
 # the registration: put CONTEXT7_API_KEY in ~/.claude/settings.json (or .claude/settings.local.json)
 # under "env" and Claude Code expands ${CONTEXT7_API_KEY} in the header at launch, so .mcp.json holds
-# no secret. Pass the 'context7-local' arg for the local stdio server instead - keyless by default too,
+# no secret. Pass --context7 local for the local stdio server instead - keyless by default too,
 # and CONTEXT7_BAKE_KEY=1 (with CONTEXT7_API_KEY) bakes --api-key into <repo>/.mcp.json (keep it uncommitted).
 CONTEXT7_REMOTE_URL='https://mcp.context7.com/mcp'
 CONTEXT7_REMOTE_HDR='CONTEXT7_API_KEY: ${CONTEXT7_API_KEY}'
@@ -389,12 +408,12 @@ if [ "$CONTEXT7_MODE" = "local" ]; then
   CONTEXT7_SPEC="-- npx -y @upstash/context7-mcp${CTX7_PIN}"
   if [ -n "${CONTEXT7_BAKE_KEY:-}" ] && [ -n "${CONTEXT7_API_KEY:-}" ]; then
     CONTEXT7_SPEC="$CONTEXT7_SPEC --api-key $CONTEXT7_API_KEY"
-    log "  !! baking CONTEXT7_API_KEY into the context7 registration; at project scope it lands in <repo>/.mcp.json - keep .mcp.json uncommitted (or use context7-remote to keep the key out of the file)."
+    log "  !! baking CONTEXT7_API_KEY into the context7 registration; at project scope it lands in <repo>/.mcp.json - keep .mcp.json uncommitted (or use --context7 remote to keep the key out of the file)."
   fi
 else
   CONTEXT7_SPEC="@HTTP@"
   if [ -n "${CONTEXT7_BAKE_KEY:-}" ]; then
-    log "  !! CONTEXT7_BAKE_KEY is set but context7 is remote - it is ignored; pass context7-local to bake, or add CONTEXT7_API_KEY to settings.json 'env'."
+    log "  !! CONTEXT7_BAKE_KEY is set but context7 is remote - it is ignored; pass --context7 local to bake, or add CONTEXT7_API_KEY to settings.json 'env'."
   fi
 fi
 CONTEXT7_ENTRY="context7|$CONTEXT7_SPEC"
@@ -749,7 +768,7 @@ log "next steps:"
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 if [ "$CONTEXT7_MODE" = "remote" ]; then
-  log "  - context7 is remote; add CONTEXT7_API_KEY to $CONFIG_DIR/settings.json 'env' for higher rate limits (or re-run with context7-local)"
+  log "  - context7 is remote; add CONTEXT7_API_KEY to $CONFIG_DIR/settings.json 'env' for higher rate limits (or re-run with --context7 local)"
 fi
 [ "$INSTALL_GITHUB_CLI" = true ] && log "  - run 'gh auth login' if gh is not yet authenticated (needed before PRs/issues)"
 

@@ -78,7 +78,7 @@ install what you need for the work you actually do, then re-run.
 
 Set these in your shell **before** invoking the script (all optional except where a default is noted).
 
-### `SCOPE` - where the stack lands (default `project`)
+### `--scope` / `-Scope` - where the stack lands (default `project`)
 
 | Value | Skills | Plugins / MCPs |
 | ----- | ------ | -------------- |
@@ -86,19 +86,22 @@ Set these in your shell **before** invoking the script (all optional except wher
 | `global` | `-g` (`~/.claude/skills`) | `--scope user` |
 
 ```bash
-SCOPE=global bash claude-stack.sh install            # macOS/Linux
-$env:SCOPE = 'global'; pwsh claude-stack.ps1 install # Windows
+bash claude-stack.sh install --scope global          # macOS/Linux
+pwsh claude-stack.ps1 install -Scope global          # Windows
 ```
 
-### The `space` argument / `CLAUDE_CONFIG_DIR` - which Claude account
+The `SCOPE` env var is still honored as a **fallback** when the flag is absent
+(`SCOPE=global bash claude-stack.sh install`); the flag wins when both are set.
 
-Pass a **space** (any word) as the optional positional arg and the installer targets the
-`~/.claude-<space>` account - it exports `CLAUDE_CONFIG_DIR` so the `claude` CLI installs
-skills/plugins/MCPs there - and uses a separate `memory_<space>.db`:
+### The `--space` flag / `CLAUDE_CONFIG_DIR` - which Claude account
+
+Pass `--space <name>` (`-Space <name>` on Windows; any word) and the installer targets the
+`~/.claude-<name>` account - it exports `CLAUDE_CONFIG_DIR` so the `claude` CLI installs
+skills/plugins/MCPs there - and uses a separate `memory_<name>.db`:
 
 ```bash
-bash claude-stack.sh install work        # -> ~/.claude-work account + memory_work.db
-bash claude-stack.sh install clientx     # -> ~/.claude-clientx + memory_clientx.db
+bash claude-stack.sh install --space work        # -> ~/.claude-work account + memory_work.db
+bash claude-stack.sh install --space clientx     # -> ~/.claude-clientx + memory_clientx.db
 ```
 
 Without a space, the default `~/.claude` account is used. To target a specific account **manually**
@@ -130,27 +133,28 @@ No other API keys are required by any component.
 
 ## How to run
 
-The **action** (`install` | `update`) is **required**; every other argument is optional with a default.
+The **action** (`install` | `update`) is the one **required** positional argument; everything else is
+a **named flag**, optional with a default.
 
 ```bash
 cd /path/to/your/project        # run inside the target project
 bash claude-stack.sh install
 bash claude-stack.sh update
 
-# Optional extras (args 2+, any order): a space (account + memory DB), install gh, context7 transport
-bash claude-stack.sh install work            # space 'work' -> ~/.claude-work account + memory_work.db
-bash claude-stack.sh install github-cli
-bash claude-stack.sh install work github-cli
-bash claude-stack.sh install context7-local  # local npx context7 (default: remote hosted server)
+# Named flags (any order): --space (account + memory DB), --scope, --context7, --github-cli
+bash claude-stack.sh install --space work                    # space 'work' -> ~/.claude-work account + memory_work.db
+bash claude-stack.sh install --github-cli
+bash claude-stack.sh install --space work --scope global --github-cli
+bash claude-stack.sh install --context7 local               # local npx context7 (default: remote hosted server)
 ```
 
 ```powershell
 Set-Location C:\path\to\your\project
 pwsh claude-stack.ps1 install
 pwsh claude-stack.ps1 update
-pwsh claude-stack.ps1 install work          # space 'work' -> ~/.claude-work + memory_work.db (positional)
-pwsh claude-stack.ps1 install -GitHubCli    # install gh (switch)
-pwsh claude-stack.ps1 install -Context7 local  # local npx context7 (default: remote)
+pwsh claude-stack.ps1 install -Space work                   # space 'work' -> ~/.claude-work + memory_work.db
+pwsh claude-stack.ps1 install -GitHubCli                    # install gh (switch)
+pwsh claude-stack.ps1 install -Scope global -Context7 local # global scope + local npx context7 (default: remote)
 ```
 
 > On Windows PowerShell 5.1 use `powershell` instead of `pwsh`. If scripts are blocked, run once:
@@ -158,12 +162,16 @@ pwsh claude-stack.ps1 install -Context7 local  # local npx context7 (default: re
 
 ### Arguments
 
-| Position / flag | Values | Meaning |
-| --------------- | ------ | ------- |
-| 1 - **action** | `install` \| `update` (required) | `install` adds everything (idempotent - existing items skipped, MCP versions frozen). `update` brings everything to latest (clean re-add of skills, plugin/MCP refresh, re-fetch hook files). |
-| extra - **space** | bash: any word positional · PS: any word as `Space` positional | Selects the Claude account `~/.claude-<space>` (skills/plugins/MCPs install there) and a separate `memory_<space>.db`. Omit for `~/.claude` + shared `memory.db`. |
-| extra - **github-cli** | bash: `github-cli` positional · PS: `-GitHubCli` switch | Install the GitHub CLI (`gh`) if missing. No auth during install; run `gh auth login` once before first GitHub platform use. |
-| env - **SCOPE** | `project` (default) \| `global` | See table above. |
+The **action** is the one positional argument; everything else is a **named flag** (any order). The
+old positional forms (`install work`, `install github-cli`) are gone - pass a value with its flag.
+
+| Argument | Values | Meaning |
+| -------- | ------ | ------- |
+| **action** (positional) | `install` \| `update` (required) | `install` adds everything (idempotent - existing items skipped, MCP versions frozen). `update` brings everything to latest (clean re-add of skills, plugin/MCP refresh, re-fetch hook files). |
+| **`--space`** \| **`-Space`** | any word | Selects the Claude account `~/.claude-<space>` (skills/plugins/MCPs install there) and a separate `memory_<space>.db`. Omit for `~/.claude` + shared `memory.db`. |
+| **`--scope`** \| **`-Scope`** | `project` (default) \| `global` | `project` installs INTO this repo; `global` installs into the active account. Falls back to the `SCOPE` env var when the flag is absent. |
+| **`--context7`** \| **`-Context7`** | `remote` (default) \| `local` | context7 transport: `remote` is the hosted HTTP server, `local` the npx stdio server. |
+| **`--github-cli`** \| **`-GitHubCli`** | flag / switch | Install the GitHub CLI (`gh`) if missing. No auth during install; run `gh auth login` once before first GitHub platform use. |
 
 ---
 
@@ -200,6 +208,6 @@ The path is resolved at install time, so the choice is baked into the registrati
 | `security-guidance` hook fails | Python 3 missing (on Windows the Store stub doesn't count - install a real Python). |
 | `csharp-lsp` won't start | `csharp-ls` not on PATH - install per the prereqs (only needed for C# work). |
 | `csharp-ls` install fails: `DotnetToolSettings.xml was not found` | Your .NET SDK is older than the tool's latest (`csharp-ls` 0.24.0 targets .NET 10); that error is dotnet's misleading wording for 'the tool targets a framework you don't have', not a broken package. `dotnet --list-sdks` to check. Cross-platform fix: pin a version matching your SDK - .NET 9 -> `--version 0.20.0`, .NET 8 -> `--version 0.15.0`. Or install the .NET 10 SDK and retry (Windows: `winget install Microsoft.DotNet.SDK.10`; macOS/Linux: package manager or the `dotnet-install` script `--channel 10.0`) - side-by-side, `global.json` keeps projects on their own SDK. |
-| "not in a git repo - skipping…" | Project scope needs a git repo. Run `git init`, or use `SCOPE=global`. |
+| "not in a git repo - skipping…" | Project scope needs a git repo. Run `git init`, or use `--scope global`. |
 | Plugins/MCPs skipped | `claude` CLI not installed - install it (or use the Cursor stack, which never needs it). |
 | context7 key ended up in `.mcp.json` | You exported `CONTEXT7_API_KEY` (legacy path) at project scope. Prefer the `settings.json` `env` approach; keep `.mcp.json` uncommitted. |

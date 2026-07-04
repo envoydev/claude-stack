@@ -22,6 +22,10 @@
   Any word -> install into the ~/.claude-<Space> account (CLAUDE_CONFIG_DIR is exported for the claude
   CLI) and use a separate memory_<Space>.db. Omit for the default ~/.claude account + shared memory.db.
 
+.PARAMETER Scope
+  'project' (default) installs INTO this repo; 'global' installs into the active account. Overrides the
+  SCOPE env var; when neither is set, defaults to 'project'.
+
 .PARAMETER Context7
   context7 transport: 'remote' (default) = the hosted HTTP server, no local process; 'local' = the
   local npx stdio server.
@@ -30,8 +34,8 @@
   Install the GitHub CLI (gh) via winget if missing. Reminds you to run `gh auth login` when unauthenticated.
 
 .NOTES
-  Environment variables (not parameters):
-    SCOPE=project|global  project (default) installs INTO this repo; global installs into the account.
+  Environment variables:
+    SCOPE=project|global  fallback for -Scope when the flag is absent (default project).
     CLAUDE_CONFIG_DIR     target a specific account when no -Space is given (default ~/.claude).
     CONTEXT7_API_KEY      context7 API key; add it to settings.json 'env' for higher rate limits.
     CONTEXT7_BAKE_KEY     with -Context7 local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted).
@@ -44,11 +48,11 @@
   Install the full stack into the current project (default account, project scope).
 
 .EXAMPLE
-  .\claude-stack.ps1 install work -GitHubCli
+  .\claude-stack.ps1 install -Space work -GitHubCli
   Install into the ~/.claude-work account (+ memory_work.db) and install the GitHub CLI.
 
 .EXAMPLE
-  $env:SCOPE = 'global'; .\claude-stack.ps1 update
+  .\claude-stack.ps1 update -Scope global
   Update everything to latest in the global (~/.claude) account.
 #>
 [CmdletBinding()]
@@ -58,9 +62,12 @@ param(
   [ValidateSet('install', 'update')]
   [string]$Action,
   # Optional space (any word): selects the Claude account ~/.claude-<Space> (skills/plugins/MCPs
-  # install there) AND a separate memory DB (memory_<Space>.db). Omit for the default account + shared DB.
-  [Parameter(Position = 1)]
+  # install there) AND a separate memory DB (memory_<Space>.db). Named-only. Omit for the default
+  # account + shared DB. e.g.: .\claude-stack.ps1 install -Space work
   [string]$Space = '',
+  # Optional install scope. 'project' (default) installs INTO this repo; 'global' installs into the
+  # active account. Overrides the SCOPE env var; empty here -> resolved from SCOPE, then 'project'.
+  [string]$Scope = '',
   # Optional: context7 transport. 'remote' (default) = hosted HTTP server, no local process;
   # 'local' = the local npx stdio server. e.g.: .\claude-stack.ps1 install -Context7 local
   [ValidateSet('remote', 'local')]
@@ -80,13 +87,6 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction Sile
 if ($Space -and $Space -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
   Write-Host "space name '$Space' must start alphanumeric and contain only [A-Za-z0-9._-]" -ForegroundColor Red
   exit 1
-}
-
-# These are bash positional flag-words; on Windows they are switches, so a positional here is a mistake.
-switch ($Space) {
-  'github-cli'      { Write-Host "'github-cli' is a Windows flag, not a space name - use -GitHubCli instead." -ForegroundColor Red; exit 1 }
-  'context7-local'  { Write-Host "'context7-local' is a Windows flag - use -Context7 local instead." -ForegroundColor Red; exit 1 }
-  'context7-remote' { Write-Host "'context7-remote' is a Windows flag - use -Context7 remote instead." -ForegroundColor Red; exit 1 }
 }
 
 function Log([string]$Message) { Write-Host "==> $Message" -ForegroundColor Blue }
@@ -213,7 +213,15 @@ function Test-Prerequisites {
   if (-not $ok) { $script:PrereqMissing = $true; Write-Host '  Install the missing tools above, then re-run.' -ForegroundColor Yellow }
 }
 
-$Scope = if ($env:SCOPE) { $env:SCOPE } else { 'project' }
+# -Scope flag wins, else the SCOPE env var, else 'project'. Lower-case both enums so the resolved value
+# is canonical and a non-canonical casing ('Global'/'Remote') behaves identically to the bash twin.
+if (-not $Scope) { $Scope = if ($env:SCOPE) { $env:SCOPE } else { 'project' } }
+$Scope = $Scope.ToLowerInvariant()
+$Context7 = $Context7.ToLowerInvariant()
+if ($Scope -notin @('project', 'global')) {
+  Write-Host "-Scope must be 'project' or 'global' (got '$Scope')" -ForegroundColor Red
+  exit 1
+}
 
 # This script provisions the Claude Code agent. (Cursor lives in cursor-stack.ps1.)
 $Agent = 'claude-code'
