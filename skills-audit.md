@@ -19,15 +19,15 @@ Branch: `skills-audit-2026-07`. Started 2026-07-07.
 | 7 | csharp | B | **A** | 1 | SATISFIED | none (flagged params-span C#13, routed hot-path serde, +floor/companion in desc) |
 | 8 | csharp-design-patterns | B | **A** | 1 | SATISFIED | none (Flyweight example was JVM not .NET; backticked routing targets) |
 | 9 | data-security | A | **A** | 1 | SATISFIED | none (re-routed N+1/change-tracking to dotnet-data-access) |
-| 10 | database-conventions | - | pending | - | - | - |
-| 11 | dev-log-convert | - | pending | - | - | - |
-| 12 | devops | - | pending | - | - | - |
-| 13 | domain-build | - | pending | - | - | - |
-| 14 | dotnet | - | pending | - | - | - |
-| 15 | dotnet-architecture | - | pending | - | - | - |
-| 16 | dotnet-architecture-tests | - | pending | - | - | - |
-| 17 | dotnet-aspire | - | pending | - | - | - |
-| 18 | dotnet-authentication | - | pending | - | - | - |
+| 10 | database-conventions | B | **A** | 2 | SATISFIED | none (verifier caught double-quote emphasis, remediated to single quotes) |
+| 11 | dev-log-convert | B | **A** | 1 | SATISFIED | none (weekday/date mismatch in examples, British 'labelled') |
+| 12 | devops | A | **A** | 1 | SATISFIED | none (already A, zero edits - honesty gate held) |
+| 13 | domain-build | B | **A** | 1 | SATISFIED | none (added negative scope + companion routing to description) |
+| 14 | dotnet | B | **A** | 2 | SATISFIED | none (verifier caught double-quote emphasis, remediated) |
+| 15 | dotnet-architecture | B | **A** | 1 | SATISFIED | none (Guid.CreateVersion7 unflagged on .NET 8 floor; dangling api-versioning ref -> dotnet-web-backend; British spellings) |
+| 16 | dotnet-architecture-tests | B | **A** | 1 | SATISFIED | none (British->US spellings) |
+| 17 | dotnet-aspire | A | **A** | 2 | SATISFIED | none (added dotnet-testing to Companions) |
+| 18 | dotnet-authentication | B | **A** | 1 | SATISFIED | none (cookie Secure-by-default over-claim corrected to HttpOnly+SameSite=Lax, pin CookieSecurePolicy.Always in prod) |
 | 19 | dotnet-code-quality | - | pending | - | - | - |
 | 20 | dotnet-cryptography | - | pending | - | - | - |
 | 21 | dotnet-data-access | - | pending | - | - | - |
@@ -65,3 +65,4 @@ Branch: `skills-audit-2026-07`. Started 2026-07-07.
 ## Notes
 
 - **Batch 1** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Adversarial verify caught real currency bugs (Capacitor 7->8, angular-material `mat.theme` v17->v19, angular-conventions aria floor, a Flyweight example that was JVM integer-cache behavior not .NET). No fabricated cons flagged. No renames needed. 10 files changed.
+- **Batch 2** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Real fixes: dotnet-authentication cookie Secure-by-default over-claim (security correctness), dotnet-architecture Guid.CreateVersion7 unflagged on the .NET 8 floor + a dangling api-versioning reference routed to dotnet-web-backend, plus house-voice cleanups (double-quote emphasis, British spellings, example date/weekday mismatches). devops was already A with zero edits. No fabrications, no renames. 11 files changed.

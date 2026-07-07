@@ -68,7 +68,7 @@ Symmetric `HmacSha256` is fine when one service issues and validates. The moment
 
 ## Cookies for server-rendered apps
 
-For an app the browser navigates, `AddAuthentication().AddCookie()` is the simpler and safer default - the token never leaves the server, and the cookie is `HttpOnly`, `Secure`, and `SameSite` by default. Set a sliding or absolute expiration, and point `LoginPath` / `AccessDeniedPath` at your own pages. Reserve bearer tokens for clients that cannot hold a cookie.
+For an app the browser navigates, `AddAuthentication().AddCookie()` is the simpler and safer default - the token never leaves the server, and the cookie is `HttpOnly` and `SameSite=Lax` by default. The `Secure` flag only follows the request scheme (the default is `SecurePolicy = SameAsRequest`, so a plain-HTTP request gets an unprotected cookie); pin `SecurePolicy = CookieSecurePolicy.Always` in production. Set a sliding or absolute expiration, and point `LoginPath` / `AccessDeniedPath` at your own pages. Reserve bearer tokens for clients that cannot hold a cookie.
 
 ## Authorization: policies, not role strings
 

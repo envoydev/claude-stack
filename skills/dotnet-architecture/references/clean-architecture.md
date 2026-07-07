@@ -6,7 +6,7 @@ Layered internal structure. Load when the chosen internal style is clean. The sh
 
 `Domain` (zero project refs) <- `Application` (refs Domain) <- `Infrastructure` (refs Application + Domain) <- `Api` (refs all). Project references make the compiler enforce direction.
 
-- **Domain** - entities with behaviour, domain services, enums, domain exceptions, base `Entity`/`Result`. No EF, no framework types.
+- **Domain** - entities with behavior, domain services, enums, domain exceptions, base `Entity`/`Result`. No EF, no framework types.
 - **Application** - one class per use case (command/query handler) + validators + the infrastructure abstractions it needs (interfaces only).
 - **Infrastructure** - EF `DbContext`, EF configs, migrations, and implementations of the Application interfaces.
 - **Api** - thin endpoints mapping HTTP <-> use case, nothing more.

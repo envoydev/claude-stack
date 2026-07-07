@@ -1,6 +1,6 @@
 ---
 name: dotnet
-description: "Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, testing & quality, diagnostics & performance, and WPF desktop. Routes per area, does not restate the skills. Companion: csharp (always, for any C#)."
+description: "Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, hosting & background work, testing & quality, diagnostics & performance, and WPF desktop. Routes per area, does not restate the skills. Load when starting or navigating any .NET / C# backend or desktop work. Companion: csharp (always, for any C#). For web front-end see frontend; for Ionic/Capacitor see mobile."
 ---
 
 # dotnet (skill router)
@@ -9,7 +9,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 
 **Companion, not optional:** load `csharp` whenever you write or refactor any C# - naming, layout, modern syntax, async, dispose, exceptions/Result, logging, DI lifetimes. Every row below is *in addition to* the C# baseline, never instead of it.
 
-**The trigger is the artifact**, not "am I doing .NET". In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
+**The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
 
 ## Language and types
 
@@ -108,4 +108,4 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 - **Router, not a copy.** This lists *where to look*, not the guidance. Always load the named skill; this file never restates it.
 - **Every target is house-owned.** This router points only to skills authored in this repo - hubs that carry a `references/` folder (`dotnet-architecture`, `dotnet-data-access`, `dotnet-project-setup`, `dotnet-performance`, `dotnet-diagnostics`) and the leaf specialists. Some rows route into a hub's reference file rather than a standalone skill: concurrency correctness lives in `dotnet-hosted-services` (`references/concurrency.md`), `Add*` / keyed / factory DI composition in `csharp` (`references/dependency-injection.md`), and manual OpenTelemetry plus API contract versioning in `dotnet-web-backend` (`references/observability.md`, `references/api-versioning.md`). Load the named skill and open that reference; nothing here installs from a third-party kit any more.
 - **Hubs vs leaves.** `csharp` is the C# baseline hub, `dotnet-web-backend` the web hub, `database-conventions` the data hub, `dotnet-testing` the test hub - a leaf specialist points UP to its hub, the hub points DOWN to its deep specialists, and this router indexes them all. Load the web hub before a web specialist; load the data hub before EF/SQL specialists.
-- **Out of this router's scope.** Web front-end work routes through `frontend` (and `mobile` for Ionic/Capacitor), not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `/code-review`, `context7` library docs, git - lives in the project's `CLAUDE.md`.
+- **Out of this router's scope.** Web front-end work routes through `frontend` (and `mobile` for Ionic/Capacitor), not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `/code-review`, context7 library docs, git - lives in the project's `CLAUDE.md`.

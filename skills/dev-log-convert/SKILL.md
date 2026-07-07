@@ -135,7 +135,7 @@ Input:
 
 Output:
 ```
-Log of work 14.04.2026.
+Log of work 13.04.2026.
 
 Monday:
 1 ABC-1319 (2h) - Investigated a crop rotation issue by field ID. Fixed missing record handling and tested the change. Testing. Merged changes.
@@ -149,7 +149,7 @@ Total time: 3h 30m.
 Input:
 > Сьогодні: XYZ-7169 - 3г, переніс legend control на чарт, зробив half-view / full-view конфіг. XYZ-7205 - 2.5г, виправив issue з статусом job у JobScheduler. Daily standup - 15хв. ABC-1456 - 30хв, написав результат investigation у Confluence та Jira. Дзвінок з командою - 30хв.
 
-Output (groups labelled by prefix because no project name was given):
+Output (groups labeled by prefix because no project name was given):
 ```
 Log of work 20.05.2026.
 
@@ -175,7 +175,7 @@ Input:
 
 Output:
 ```
-Log of work 13.05.2026.
+Log of work 12.05.2026.
 
 Tuesday:
 

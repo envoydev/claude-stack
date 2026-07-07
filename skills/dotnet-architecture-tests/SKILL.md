@@ -1,11 +1,11 @@
 ---
 name: dotnet-architecture-tests
-description: "Personal .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure dotnet-architecture prescribes cannot erode silently. Covers NetArchTest.Rules (the lightweight fluent default) versus ArchUnitNET (richer modelling: slices, cycles, custom predicates), the rules worth enforcing (dependency direction, no layer-skipping, slice isolation, naming/placement, no cycles), a dedicated test project resolved by type marker, and actionable failures. Floors at .NET 8 / C# 12. Load when adding or reviewing architecture / fitness tests or enforcing layer/dependency rules, or when the user names NetArchTest, ArchUnitNET, fitness function, architecture test, or dependency rule. Companions: dotnet-testing (the test-suite host), dotnet-architecture (the boundaries enforced), dotnet-code-quality (the analyzer/style counterpart). Do NOT load for runtime behaviour tests (dotnet-testing) or analyzer/formatter config (dotnet-code-quality)."
+description: "Personal .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure dotnet-architecture prescribes cannot erode silently. Covers NetArchTest.Rules (the lightweight fluent default) versus ArchUnitNET (richer modeling: slices, cycles, custom predicates), the rules worth enforcing (dependency direction, no layer-skipping, slice isolation, naming/placement, no cycles), a dedicated test project resolved by type marker, and actionable failures. Floors at .NET 8 / C# 12. Load when adding or reviewing architecture / fitness tests or enforcing layer/dependency rules, or when the user names NetArchTest, ArchUnitNET, fitness function, architecture test, or dependency rule. Companions: dotnet-testing (the test-suite host), dotnet-architecture (the boundaries enforced), dotnet-code-quality (the analyzer/style counterpart). Do NOT load for runtime behavior tests (dotnet-testing) or analyzer/formatter config (dotnet-code-quality)."
 ---
 
 # .NET architecture tests - fitness functions
 
-`dotnet-architecture` decides *what* the structure should be (clean, vertical-slice, DDD, modular, microservices); this skill makes a test *prove* it, and fail the build the moment a boundary is crossed. Without that, a layering rule lives only in a diagram and a reviewer's memory, so it erodes silently - one stray `using` at a time - until the next big refactor. This is the enforcement counterpart to those concept skills, exactly as `dotnet-code-quality` enforces the `csharp` style rules. Baseline is .NET 8 / C# 12. This is not behavioural testing (`dotnet-testing`) or analyzer/formatter config (`dotnet-code-quality`).
+`dotnet-architecture` decides *what* the structure should be (clean, vertical-slice, DDD, modular, microservices); this skill makes a test *prove* it, and fail the build the moment a boundary is crossed. Without that, a layering rule lives only in a diagram and a reviewer's memory, so it erodes silently - one stray `using` at a time - until the next big refactor. This is the enforcement counterpart to those concept skills, exactly as `dotnet-code-quality` enforces the `csharp` style rules. Baseline is .NET 8 / C# 12. This is not behavioral testing (`dotnet-testing`) or analyzer/formatter config (`dotnet-code-quality`).
 
 ## Pick the library: NetArchTest by default
 
@@ -25,11 +25,11 @@ public void Domain_depends_on_nothing_outside_itself()
 }
 ```
 
-Reach for **ArchUnitNET** only when NetArchTest's model is too thin - it offers richer modelling (slice analysis, namespace/assembly cycle detection, custom conditions and predicates) at the cost of a heavier API. Pick one per solution; do not run both.
+Reach for **ArchUnitNET** only when NetArchTest's model is too thin - it offers richer modeling (slice analysis, namespace/assembly cycle detection, custom conditions and predicates) at the cost of a heavier API. Pick one per solution; do not run both.
 
 ## The rules worth enforcing
 
-In priority order - start at the top, add lower rows as conventions actually stabilise:
+In priority order - start at the top, add lower rows as conventions actually stabilize:
 
 - **Dependency direction** (the highest-value rule). Domain depends on nothing; Application depends on abstractions, not Infrastructure / EF / ASP.NET; the web layer talks to Application, never reaching past it into `DbContext` directly (no layer-skipping). In a layered project these are the layers; in a vertical-slice project they are the parts of a feature - the rule is the same.
 - **Slice / module isolation**. A feature namespace must not reference another feature's internals - the property that keeps vertical slices independent.
@@ -46,7 +46,7 @@ In priority order - start at the top, add lower rows as conventions actually sta
 ## Keep them honest
 
 - One rule per test, like any test, so a failure pinpoints the exact violation.
-- These are *structural* rules - they complement, never replace, the behavioural tests in `dotnet-testing`.
+- These are *structural* rules - they complement, never replace, the behavioral tests in `dotnet-testing`.
 - Encode only rules the team has actually agreed to. A wall of brittle naming rules nobody signed up for becomes noise people disable - at which point the suite enforces nothing.
 
 ## Anti-patterns

@@ -1,6 +1,6 @@
 # DDD tactical patterns
 
-Layers onto a clean layout or across vsa slices when the domain has real invariants - it is not a competing style. Load when modelling a rich domain. Value-object/record mechanics, the `Result` pattern, `TimeProvider`, and naming are owned by `csharp` - this holds the DDD framing, not the C# syntax.
+Layers onto a clean layout or across vsa slices when the domain has real invariants - it is not a competing style. Load when modeling a rich domain. Value-object/record mechanics, the `Result` pattern, `TimeProvider`, and naming are owned by `csharp` - this holds the DDD framing, not the C# syntax.
 
 ## Aggregates
 
@@ -18,7 +18,7 @@ Layers onto a clean layout or across vsa slices when the domain has real invaria
 
 ```csharp
 public readonly record struct CustomerId(Guid Value)
-{ public static CustomerId New() => new(Guid.CreateVersion7()); }
+{ public static CustomerId New() => new(Guid.CreateVersion7()); }  // CreateVersion7 needs .NET 9; on the .NET 8 floor use Guid.NewGuid()
 
 public abstract class AggregateRoot : Entity
 {

@@ -40,7 +40,7 @@ Decide the shape, then load the one style you chose. **Per-style depth lives in 
 | Medium+ complexity, long-lived, business rules span groups of entities, team comfortable with layers | clean architecture |
 | CRUD-heavy, uniform operations, very small app (<5 features) | neither - plain entities + minimal API, don't force a pattern |
 
-**Additive - `ddd` tactical patterns** when the domain has real invariants and behaviour well beyond CRUD. DDD is not a competing style: it layers aggregates/value-objects/domain-events inside a clean layout or across vsa slices.
+**Additive - `ddd` tactical patterns** when the domain has real invariants and behavior well beyond CRUD. DDD is not a competing style: it layers aggregates/value-objects/domain-events inside a clean layout or across vsa slices.
 
 Evolve from vertical slice to clean architecture only when slices start sharing domain logic that no longer fits a feature-local helper. Extract a microservice from a modular-monolith module only when that module's data ownership + contract are already clean.
 
