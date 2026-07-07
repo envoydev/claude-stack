@@ -38,13 +38,13 @@ Standard added to each seat's `## Conventions` (plus `mcp__memory__*` in `tools`
 | 12 | data-solution-designer | F | **A** | 1 | SATISFIED | 4/4 | none (memory: frozen contract payload) |
 | 13 | data-verifier | F | **A** | 1 | SATISFIED | 4/4 | none (memory: punch-list+verdict payload) |
 | 14 | devops-implementer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: findings+deviations payload) |
-| 15 | devops-solution-designer | - | pending | - | - | - | - |
-| 16 | devops-verifier | - | pending | - | - | - | - |
-| 17 | dotnet-build-error-resolver | - | pending | - | - | - | - |
-| 18 | dotnet-test-failure-resolver | - | pending | - | - | - | - |
-| 19 | evidence-gatherer | - | pending | - | - | - | - |
-| 20 | framework-upgrade-planner | - | pending | - | - | - | - |
-| 21 | greenfield-solution-designer | - | pending | - | - | - | - |
+| 15 | devops-solution-designer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: frozen contract payload) |
+| 16 | devops-verifier | D | **A** | 1 | SATISFIED | 4/4 | none (memory: punch-list+verdict payload) |
+| 17 | dotnet-build-error-resolver | F | **A** | 1 | SATISFIED | 4/4 | none (memory: error-sig->fix payload; +status vocab in Report) |
+| 18 | dotnet-test-failure-resolver | D | **A** | 1 | SATISFIED | 4/4 | none (memory: failure-sig->fix payload; +status vocab; +upfront dotnet-testing) |
+| 19 | evidence-gatherer | C | **A** | 1 | SATISFIED | 4/4 | none (ISOLATED: memory omitted w/ justification; also removed unused context7 tool) |
+| 20 | framework-upgrade-planner | D | **A** | 1 | SATISFIED | 4/4 | none (memory: upgrade-plan payload) |
+| 21 | greenfield-solution-designer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: frozen contract payload) |
 | 22 | integration-reviewer | - | pending | - | - | - | - |
 | 23 | issue-diagnoser | - | pending | - | - | - | - |
 | 24 | mobile-implementer | - | pending | - | - | - | - |
@@ -61,3 +61,4 @@ Standard added to each seat's `## Conventions` (plus `mcp__memory__*` in `tools`
 
 - **Batch 1** (2026-07-07): 7/7 reached A, all 4/4 hard reqs, lint clean, house voice clean. Dominant change was the net-new memory handoff (none had it): all 7 gained `mcp__memory__*` + a seat-specific Conventions bullet - designer payload (frozen contract + decisions + seam owners), implementer payload (findings + deviations), resolver payload (failure-signature -> fix), analyzer payload (structural map). A couple also gained the structured status vocabulary in ## Report. First-pass grades F/D/B reflect how each auditor scored the missing-memory gate. No fabrications, no renames. 7 files changed.
 - **Batch 2** (2026-07-07): 7/7 reached A, all 4/4 hard reqs, lint clean, house voice clean, all confirmed on first verify (no remediation). Memory handoff added to all 7 with the right per-seat payload. Bonus consistency fixes the audit surfaced: ci-failure-diagnoser gained a diagnosis-status vocabulary matching issue-diagnoser; aspnet-verifier gained a NEEDS_CONTEXT stop-and-report path; cross-stack-contract-designer gained the missing never-whole-file-Read clause + PLAN_READY vocab. No fabrications, no renames. 7 files changed.
+- **Batch 3** (2026-07-07): 7/7 reached A, all 4/4 hard reqs, lint clean, house voice clean, all confirmed on first verify. The isolated exception `evidence-gatherer` was handled correctly: memory MCP omitted with an explicit one-line justification (single-run, diagnoser owns the handoff), hard req 2 satisfied by justification. The audit also right-sized it - removed a declared-but-unused `mcp__context7__*` tool (dim 2) and filled the house-form skill-preload slot with a 'no house skill' note. The two resolvers gained memory (error/failure-signature -> fix) + the structured status vocabulary. No fabrications, no renames. 7 files changed.
