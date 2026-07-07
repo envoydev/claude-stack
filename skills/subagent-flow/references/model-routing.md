@@ -11,7 +11,7 @@ domains: [data, backend]
 routing:
   contract_designer: opus-xhigh
   solution_designer: opus-high
-  implementer: sonnet-high
+  implementer: sonnet-medium
   verifier: sonnet-xhigh
   final_reviewer: opus-xhigh
 ```
@@ -32,6 +32,8 @@ routing:
 | Evidence Gatherer | haiku or sonnet low | sonnet medium when evidence collection needs repo understanding |
 
 The house pins land a shade above several of these floors where the seat's job justifies it: the domain designers are opus/xhigh (design mistakes are the most expensive to unwind), the domain verifiers sonnet/xhigh, the implementers sonnet/medium, the task-analyzer opus/high, the integration-reviewer opus/xhigh (the last gate before a cross-domain commit), and the evidence-gatherer sonnet/low.
+
+One caveat on the Escalate-when column: an entry that raises the MODEL is applied per dispatch (the Team Lead overrides the model when it dispatches the seat); an entry that raises the EFFORT is not - effort is fixed at the seat's frontmatter pin and is not re-tunable per call. The cascading seats are already pinned at their escalated effort (designers/verifiers/integration-reviewer at xhigh), so they always run there. Where a seat is pinned below its escalate effort - the implementer at medium, the evidence-gatherer at low - that risk is carried by escalating the MODE (fanout_domain_trio, a mandatory verifier pass) and by the loaded skill, not by a per-dispatch effort bump the seat cannot receive.
 
 ## Strict cost rules
 

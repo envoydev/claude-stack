@@ -47,6 +47,7 @@ Some weaknesses are not bugs in the code but gaps in the plan, and no amount of 
 - **Rate-limit the abusable surfaces.** Login, token issuance, password reset, and anything expensive need throttling so they cannot be brute-forced or used to exhaust resources; the built-in rate-limiting middleware (`AddRateLimiter`) covers this.
 - **Fail closed by design.** When a dependency the security decision depends on is unavailable - the authorization store, the token validator - deny rather than wave the request through.
 - **Enforce business limits server-side.** Quantity caps, ownership rules, and workflow state transitions are part of the threat model; a client that can post any quantity or skip a step is a design hole, not a UI bug.
+- **Bind the request to a DTO, never onto an entity.** Model-binding straight onto an EF entity lets a caller over-post a field the form never exposed - an `OwnerId`, an `IsAdmin`, a `Price` - and mass-assign it; returning that same entity across the boundary leaks columns and invites a serialization cycle. Bind to a dedicated command/query DTO in and out and map explicitly, so no entity crosses the HTTP boundary. The binding and mapping mechanics live in `dotnet-web-backend` and `dotnet-data-access`; this is where the control sits in the threat model.
 
 ## A05 - Security misconfiguration
 
