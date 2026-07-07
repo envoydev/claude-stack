@@ -279,12 +279,13 @@ const equivalents = [
 
 function matchRow(arr, q) { return q ? arr.filter(r => r.join(" ").toLowerCase().includes(q)) : arr; }
 
-// Compact source link: a GitHub URL shows as owner/repo, anything else as its hostname.
-// The full URL stays in the href, so a narrow column no longer costs the description its width.
+// Compact source link: a known code-forge URL (GitHub, Codeberg, GitLab, Bitbucket) shows as
+// owner/repo, anything else as its hostname. The full URL stays in the href, so a narrow column
+// no longer costs the description its width.
 function shortSource(url) {
-  const gh = url.match(/^https?:\/\/github\.com\/([^\/]+\/[^\/]+?)(?:\.git)?\/?$/);
+  const forge = url.match(/^https?:\/\/(?:www\.)?(?:github\.com|codeberg\.org|gitlab\.com|bitbucket\.org)\/([^\/]+\/[^\/]+?)(?:\.git)?\/?$/);
   let label;
-  if (gh) label = gh[1];
+  if (forge) label = forge[1];
   else { try { label = new URL(url).hostname.replace(/^www\./, ""); } catch (e) { label = url; } }
   return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
 }

@@ -177,20 +177,6 @@
   .chip.mcp { color: var(--design); border-color: rgba(103,170,187,0.3); }
   .chip.plugin { color: var(--build); border-color: rgba(143,177,140,0.3); }
 
-  .note {
-    margin-top: 12px;
-    background: linear-gradient(180deg, rgba(216,168,91,0.06), transparent);
-    border: 1px solid var(--line); border-left: 3px solid var(--brass);
-    border-radius: 12px; padding: 20px 22px;
-  }
-  .note h3 { margin: 0 0 10px; font-size: 15px; }
-  .note ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; list-style: none; }
-  .note ul li { margin-bottom: 9px; position: relative; padding-left: 18px; }
-  .note ul li::before { content: "→"; position: absolute; left: 0; color: var(--brass); }
-  .note ul li b { color: var(--ink); font-weight: 600; }
-  .note .open { color: var(--brass); font-weight: 600; }
-  .note code { font-family: var(--mono); font-size: 12.5px; color: #c7cdd8; }
-
   footer {
     margin-top: 54px; padding-top: 20px; border-top: 1px solid var(--line);
     color: var(--faint); font-size: 12px; font-family: var(--mono);
@@ -615,7 +601,7 @@
           <span class="seat" style="color:var(--muted)">every agent draws on these</span>
         </div>
         <div class="row"><span class="rl">Navigation</span><div class="chips">
-          <span class="chip mcp">serena</span><span class="chip mcp">context7</span><span class="chip mcp">memory</span>
+          <span class="chip mcp">serena</span><span class="chip mcp">context7</span><span class="chip mcp">memory · cross-run handoff</span>
         </div></div>
         <div class="row"><span class="rl">Quality &amp; security</span><div class="chips">
           <span class="chip">project-quality-loop</span><span class="chip">dotnet-code-quality</span>
@@ -636,37 +622,9 @@
     </div>
   </section>
 
-  <!-- ===================== SCOPE ===================== -->
-  <section>
-    <div class="sec-head"><span class="sec-num">03</span><h2>Built</h2></div>
-    <div class="note">
-      <h3>Settled</h3>
-      <ul>
-        <li><b>Per-domain vertical, fanned out.</b> The designer decomposes the work into parallel tasks with contracts; several implementer instances build them at once; the verifier gates the assembled whole and loops a punch-list back. Five stack-agnostic pipeline agents dissolve into it; the fan-out is main-session orchestrated (a domain-build skill); the vertical's seats never dispatch agents. The sole nested dispatch in the roster is the two diagnosers calling a cheap read-only <code>evidence-gatherer</code> to keep log volume off the opus seat.</li>
-        <li><b>No rank words.</b> Seats are named <span style="font-family:var(--mono)">&lt;domain&gt;-solution-designer</span>, <span style="font-family:var(--mono)">&lt;domain&gt;-implementer</span> and <span style="font-family:var(--mono)">&lt;domain&gt;-verifier</span> - stack + function, no senior / middle.</li>
-        <li><b>Pins.</b> Designers Opus 4.8 / xhigh (top-level design judgment); verifiers Sonnet 5 / xhigh (an independent gate at full effort); implementers Sonnet 5 / medium (build to the contract).</li>
-        <li><b>Skills rewired.</b> <code>project-scaffold</code> and <code>project-quality-loop</code> were repointed off the retired agents onto the domain seats and <code>domain-build</code>.</li>
-      </ul>
-      <h3 style="margin-top:16px">Shipped this session</h3>
-      <ul>
-        <li><b>Fifteen seats + the <code>domain-build</code> skill created</b>; the five generic agents (<code>implementation-planner</code>, <code>test-planner</code>, <code>code-implementer</code>, <code>test-writer</code>, <code>change-verifier</code>) retired into them.</li>
-        <li><span class="open">Plus a cross-cutting <code>issue-diagnoser</code></span> - the debugger, and the bug-side counterpart of a solution designer. It reads logs, errors and screenshots, isolates the root cause, and lays out a decomposed fix plan that feeds the same implementers &rarr; verifier loop. It plans; it never writes the fix. Roster is now 24.</li>
-        <li><b>Agents hardened, skills enriched.</b> The four resolvers and <code>ci-failure-diagnoser</code> now run the superpowers <code>systematic-debugging</code> method; implementers report a <code>DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED</code> status and <code>domain-build</code> gained a compaction-safe progress ledger + per-task diff review (from <code>subagent-driven-development</code>). Seven best-practice field guides were distilled into nine house skills (29 additions, private names scrubbed), and the WPF seats now reach <code>dotnet-hosted-services</code> for a companion Windows Service.</li>
-        <li><b>Two cross-cutting seats added - roster 24 &rarr; 26.</b> <code>cross-stack-contract-designer</code> (opus/xhigh, read-only) freezes the shared backend&harr;frontend contract - DTOs, routes, error envelope, auth, pagination, versioning - before the per-stack designers, so a full-stack feature builds to one agreed seam instead of drifting into a runtime bug. <code>framework-upgrade-planner</code> (opus/xhigh, read-only) turns a version/deprecation event - a .NET or Angular major, an EOL - into an ordered, contracted upgrade plan the implementers and resolvers execute. Both fill gaps the adversarial roster audit confirmed no existing seat covered.</li>
-        <li><b>Cross-cutting <code>security-auditor</code> added - roster 27 &rarr; 28.</b> A read-only, opus/xhigh security seat that audits the posture of a feature or codebase across all five stacks - auth, authorization, input/injection, secrets, config, data exposure - and returns an OWASP/CWE punch-list that routes to the domain implementers to fix and the verifier to confirm. It complements <code>/security-review</code> (diff/PR-scoped) and the <code>security-guidance</code> commit hook by being the deep, posture-scoped, routed audit; it finds and reports, never writes the fix. Claude-only.</li>
-        <li><b>DevOps vertical added - roster 28 &rarr; 31.</b> A sixth per-domain stack: <code>devops-solution-designer</code> (opus/xhigh, read-only) settles the container build, CI job graph, deploy/release strategy and secret seam, then decomposes into parallel tasks; <code>devops-implementer</code> (sonnet/medium) writes the Dockerfiles, GitHub Actions workflows, and deploy pipelines and validates them locally (docker build, actionlint, dotnet build); <code>devops-verifier</code> (sonnet/xhigh, read-only) gates reproducible digest-pinned builds, secret hygiene, safe migration-in-deploy, and non-root healthy containers. Backed by a new house <code>devops</code> skill; <code>domain-build</code> gained the sixth vertical. No new MCP - the seats never open PRs. Claude-only.</li>
-        <li><b>Skill forking completed - repository tier now empty.</b> The last nine remote skills folded into house skills: a new <code>dotnet-diagnostics</code> hub (BenchmarkDotNet + dump capture, from <code>dotnet/skills</code>) plus eight references distilled from <code>aaronontheweb/dotnet-skills</code> and <code>capawesome-team/skills</code> - manual OpenTelemetry and API versioning into <code>dotnet-web-backend</code>, Testcontainers into <code>dotnet-testing</code>, CRAP hotspots into <code>dotnet-code-quality</code>, concurrency into <code>dotnet-hosted-services</code>, DI composition into <code>csharp</code>, and Ionic navigation / lifecycle into <code>ionic</code>. Every stack skill is now house-owned - zero runtime dependency on a remote kit. Skills 49 &rarr; 50.</li>
-        <li><b>Subagent-flow orchestration layer added - roster 31 &rarr; 32, Skills 50 &rarr; 51.</b> A new house <code>subagent-flow</code> skill is the entry-point router: it classifies a feature or bug, picks the smallest safe execution mode, and for cross-domain work freezes the shared contract, runs each stack's <code>domain-build</code> in parallel, and gates the assembled whole through a new read-only <code>integration-reviewer</code> (opus/xhigh) - the mandatory final gate no single-stack verifier is. Its references carry the shared subagent policies - execution modes, contract change + <code>BLOCKED_CONTRACT_CHANGE</code>, structured output, progress ledger, model and token routing - that the domain seats now reference instead of restating.</li>
-        <li><b>Verified</b> - <code>npm run lint</code> clean, all 32 frontmatters valid, 4-way parity held.</li>
-      </ul>
-    </div>
-  </section>
-
-  
-
   <!-- ===================== FULL INVENTORY (folded in from claude-stack.html) ===================== -->
   <section>
-    <div class="sec-head"><span class="sec-num">04</span><h2>The full inventory</h2></div>
+    <div class="sec-head"><span class="sec-num">03</span><h2>The full inventory</h2></div>
     <p class="sec-sub">
       Everything the installer lays down, live-filterable: the <b>subagents</b>, the <b>skills</b> (built-in and personal - the repository tier is empty, every stack skill is house-owned), the <b>plugins</b> (one row each, expand to see the skills / commands / hooks a pack ships), the <b>MCP servers</b>, the <b>hooks</b>, and the path-scoped <b>rules</b>. Type to filter across name, source, and description.
     </p>
@@ -842,12 +800,13 @@ function installCmdFor(url) {
   return m ? `npx skills add ${m[1]}` : "manual";
 }
 
-// Compact source link: a GitHub URL shows as owner/repo, anything else as its hostname.
-// The full URL stays in the href, so a narrow column no longer costs the description its width.
+// Compact source link: a known code-forge URL (GitHub, Codeberg, GitLab, Bitbucket) shows as
+// owner/repo, anything else as its hostname. The full URL stays in the href, so a narrow column
+// no longer costs the description its width.
 function shortSource(url) {
-  const gh = url.match(/^https?:\/\/github\.com\/([^\/]+\/[^\/]+?)(?:\.git)?\/?$/);
+  const forge = url.match(/^https?:\/\/(?:www\.)?(?:github\.com|codeberg\.org|gitlab\.com|bitbucket\.org)\/([^\/]+\/[^\/]+?)(?:\.git)?\/?$/);
   let label;
-  if (gh) label = gh[1];
+  if (forge) label = forge[1];
   else { try { label = new URL(url).hostname.replace(/^www\./, ""); } catch (e) { label = url; } }
   return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
 }
@@ -1092,7 +1051,7 @@ const otherTools = [
   ["typescript-lsp", "plugin (LSP)", "TypeScript / diagnostics", "/plugin install typescript-lsp@claude-plugins-official", "https://github.com/anthropics/claude-plugins-official", "TypeScript language server: inline diagnostics on edit for Angular/TS work."],
   ["angular-cli", "MCP server", "Angular / workspace", "claude mcp add angular-cli -- npx -y @angular/cli mcp", "https://angular.dev/ai/mcp", "Official Angular CLI MCP (experimental): workspace-aware docs, best practices, migrations, generation. Complements context7's generic docs. Angular workspaces only."],
   ["context7", "MCP server", "Library docs", "claude mcp add --transport http --scope project -> <repo>/.mcp.json (remote; pass --context7 local for the local npx server)", "https://github.com/upstash/context7", "Fetch current library/framework/SDK docs (React, Next.js, Prisma, etc.). Remote hosted server by default - key via ${CONTEXT7_API_KEY} in settings env. Tools: mcp__context7__resolve-library-id, query-docs."],
-  ["memory", "MCP server", "Memory / recall", "claude mcp add --scope project -> <repo>/.mcp.json (mcp-memory-service, shared ~/.memory-mcp)", "https://codeberg.org/doobidoo/mcp-memory-service", "Cross-project semantic memory store. Tools: mcp__memory__memory_store, memory_search, memory_list, etc. SQLite + vec backend."],
+  ["memory", "MCP server", "Memory / recall", "claude mcp add --scope project -> <repo>/.mcp.json (mcp-memory-service, shared ~/.memory-mcp)", "https://codeberg.org/doobidoo/mcp-memory-service", "Cross-project semantic memory store, and the subagent cross-run hand-off bus - a seat recalls prior context (frozen contract, findings, fixes) at start and stores a compact tagged note at hand-off, so a later run or a sibling seat recalls it instead of re-deriving. Tools: mcp__memory__memory_store, memory_search, memory_list, etc. SQLite + vec backend."],
   ["serena", "MCP server", "Code navigation", "uvx --from serena-agent@<pinned> (PyPI, not git)", "https://github.com/oraios/serena", "Code-aware symbol navigation, find-references, call-hierarchy via LSP. Project-scoped memory under <project>/.serena/. Pinned PyPI version + web dashboard off for fast launch. Tools: mcp__serena__find_symbol, find_referencing_symbols, etc."],
   ["playwright", "MCP server", "Browser automation / web dev", "per-project .mcp.json (npx @playwright/mcp@<pinned>)", "https://github.com/microsoft/playwright-mcp", "Browser navigation, click, type, screenshot via Playwright. Pinned version (no @latest registry check at launch). Writes under <project>/.playwright/."],
   ["chrome-devtools", "MCP server (active, heavy)", "Browser / extension debug", "claude mcp add chrome-devtools --scope user npx chrome-devtools-mcp@latest", "https://github.com/ChromeDevTools/chrome-devtools-mcp", "Official Chrome DevTools MCP: reload extension, read service-worker console (source-mapped), inspect network, manage extensions. Active by default (heavy - comment out where not needed) - drives a full Chrome, so needed mainly for browser-extension/web projects. Does NOT expose WebSocket frame payloads (use DevTools Network->WS tab)."],
@@ -1162,9 +1121,9 @@ const rules = [
 
 function renderRules(filtered) {
   let html = `<h2>Rules</h2><div class="group-meta">Path-scoped rules fetched into <code>.claude/rules/</code> (Claude-only; not skills). ${filtered.length} entries.</div>`;
-  html += `<table><thead><tr><th style="width:20%">Rule</th><th style="width:32%">Paths</th><th>Description</th></tr></thead><tbody>`;
+  html += `<table><thead><tr><th style="width:18%">Rule</th><th style="width:27%">Paths</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
   for (const [name, paths, desc] of filtered) {
-    html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td class="desc">${desc}</td></tr>`;
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td><code>fetched into .claude/rules/</code></td><td class="desc">${desc}</td></tr>`;
   }
   html += `</tbody></table>`;
   return html;
