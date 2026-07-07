@@ -31,13 +31,13 @@ Standard added to each seat's `## Conventions` (plus `mcp__memory__*` in `tools`
 | 5 | architecture-analyzer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: structural-map payload) |
 | 6 | aspnet-implementer | F | **A** | 1 | SATISFIED | 4/4 | none (memory: findings+deviations payload) |
 | 7 | aspnet-solution-designer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: frozen contract payload) |
-| 8 | aspnet-verifier | - | pending | - | - | - | - |
-| 9 | ci-failure-diagnoser | - | pending | - | - | - | - |
-| 10 | cross-stack-contract-designer | - | pending | - | - | - | - |
-| 11 | data-implementer | - | pending | - | - | - | - |
-| 12 | data-solution-designer | - | pending | - | - | - | - |
-| 13 | data-verifier | - | pending | - | - | - | - |
-| 14 | devops-implementer | - | pending | - | - | - | - |
+| 8 | aspnet-verifier | D | **A** | 1 | SATISFIED | 4/4 | none (memory: punch-list+verdict payload; +NEEDS_CONTEXT stop-path) |
+| 9 | ci-failure-diagnoser | F | **A** | 1 | SATISFIED | 4/4 | none (memory: root-cause+fix-pattern; +diagnosis-status vocab matching issue-diagnoser) |
+| 10 | cross-stack-contract-designer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: frozen contract payload; +serena never-whole-Read clause; +PLAN_READY vocab) |
+| 11 | data-implementer | F | **A** | 1 | SATISFIED | 4/4 | none (memory: findings+deviations payload) |
+| 12 | data-solution-designer | F | **A** | 1 | SATISFIED | 4/4 | none (memory: frozen contract payload) |
+| 13 | data-verifier | F | **A** | 1 | SATISFIED | 4/4 | none (memory: punch-list+verdict payload) |
+| 14 | devops-implementer | D | **A** | 1 | SATISFIED | 4/4 | none (memory: findings+deviations payload) |
 | 15 | devops-solution-designer | - | pending | - | - | - | - |
 | 16 | devops-verifier | - | pending | - | - | - | - |
 | 17 | dotnet-build-error-resolver | - | pending | - | - | - | - |
@@ -60,3 +60,4 @@ Standard added to each seat's `## Conventions` (plus `mcp__memory__*` in `tools`
 ## Notes
 
 - **Batch 1** (2026-07-07): 7/7 reached A, all 4/4 hard reqs, lint clean, house voice clean. Dominant change was the net-new memory handoff (none had it): all 7 gained `mcp__memory__*` + a seat-specific Conventions bullet - designer payload (frozen contract + decisions + seam owners), implementer payload (findings + deviations), resolver payload (failure-signature -> fix), analyzer payload (structural map). A couple also gained the structured status vocabulary in ## Report. First-pass grades F/D/B reflect how each auditor scored the missing-memory gate. No fabrications, no renames. 7 files changed.
+- **Batch 2** (2026-07-07): 7/7 reached A, all 4/4 hard reqs, lint clean, house voice clean, all confirmed on first verify (no remediation). Memory handoff added to all 7 with the right per-seat payload. Bonus consistency fixes the audit surfaced: ci-failure-diagnoser gained a diagnosis-status vocabulary matching issue-diagnoser; aspnet-verifier gained a NEEDS_CONTEXT stop-and-report path; cross-stack-contract-designer gained the missing never-whole-file-Read clause + PLAN_READY vocab. No fabrications, no renames. 7 files changed.
