@@ -33,6 +33,10 @@ DB + Backend + Frontend, security, devops,
 
 `implementer_only` - main session dispatches one domain implementer, then runs build/test/review itself. For: a backend-only endpoint tweak, a frontend-only component fix, a DB-only migration correction, a WPF-only ViewModel bug, an Ionic-only permission-wrapper update, a devops-only CI config fix.
 
+The line between them is **discovery**: when the edit site is already known - a named file, a 1-2 line change the request or a diagnosis has already localized - `single_chat` does it in the main session at zero seat cost. Reserve `implementer_only` for when the seat must first *find* where to edit, or the change touches several files in the domain. Spinning a full seat for a known one-liner is the trivial-blast-radius overuse the modes exist to avoid. (The issue-flow sibling of this rung is `direct_fix` in `references/issue-investigation.md` - a diagnoser-localized trivial fix the main session applies without a separate implementer + verifier.)
+
+De-escalation runs the same way, a step DOWN the ladder. A pure presentational leaf - a component with no interaction, RxJS, routing, API, or shared-state surface (a property the designer's verdict already carries) - drops from `domain_trio` to `implementer_only` plus a main-session check, rather than paying an opus designer and an xhigh verifier for a labelled span. The lever is the lighter MODE, not a lighter verify effort: a seat's effort is a fixed frontmatter pin, so a trivial blast radius is made cheaper by choosing fewer / lighter seats, never by dialing a dispatched seat's effort down (see `references/model-routing.md`).
+
 ## Escalation guardrails
 
 A scaled-down mode must stop and escalate the moment it detects any of:

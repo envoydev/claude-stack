@@ -21,6 +21,18 @@ Decide the family from the ask first, because they start differently:
 - **Feature / change** - the task builds or changes expected behavior. Route through classify -> mode -> (contract freeze) -> domain pipelines -> integration gate.
 - **Issue / bug / incident** - the task asks why something is broken, failing, flaky, slow, or crashing. Route through `references/issue-investigation.md`: diagnose before coding, always. Do not start a bug on the feature path.
 
+## Clarify before you design (feature family)
+
+Before you classify a feature into a mode or dispatch any designer - single-domain or cross - settle one thing: are the requirements clear enough to design against? If the ask is ambiguous, underspecified, or carries more than one reasonable reading, clarify FIRST. It is the cheapest place to catch a misread requirement - a couple of questions now, against unwinding a whole design-build-verify run built on the wrong plan.
+
+Clarification is an orchestrator gate, never a seat. Only the main session can talk to the user; a dispatched sub-agent returns a report, it cannot interview. So the Team Lead runs it inline - the superpowers brainstorming discipline plus `AskUserQuestion` for the open decisions - and records the answers as the `requirements_source` the designer and any frozen contract build on.
+
+Gate it on ambiguity, not size or domain count. A crisply specified feature - big or small, one domain or many - goes straight to classification; only a vague one is clarified first. Running a clarification pass on a clear spec is the same overhead the mode ladder exists to avoid. This gate applies to every feature mode, single-domain included - it is not part of the cross-domain block below.
+
+Clarify the requirement, not the implementation. The how - library, structure, naming, pattern - is the designer's call, decided against the house conventions and reported, never put to the user; only a genuinely user-level product decision (expected behavior, a business rule, a tradeoff only the user can settle) is worth a question.
+
+The gate has a backstop at the seat: a designer cannot talk to the user, so if an ambiguous brief still reaches one it does NOT guess - it returns NEEDS_CONTEXT and you clarify before re-dispatch. So clarification always lands before the design is built, whether you caught the ambiguity up front or the designer bounced it back.
+
 ## Execution modes - pick the smallest that is safe
 
 Do not run the full team for every task. Classify size, risk, and how many domains the work touches, then pick the smallest mode from `references/execution-modes.md`:
@@ -41,7 +53,7 @@ For any single-stack mode, hand off to `domain-build` - it owns the design-build
 When the mode is cross_domain_light or full_cross_domain:
 
 ```text
-Requirements / BA
+Requirements clarified first (the feature-family gate above)
   -> task-analyzer or architecture-analyzer classify size, risk, affected domains
   -> cross-stack-contract-designer freezes Contract v1  (see references/contract-protocol.md)
   -> parallel per-stack domain-build runs, each against the frozen contract:

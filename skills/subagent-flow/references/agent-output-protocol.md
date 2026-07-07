@@ -9,7 +9,7 @@ Five run statuses, shared across the seats that do work:
 ```text
 DONE                     - complete, verifier will check it
 DONE_WITH_CONCERNS       - complete but carrying a flagged risk to forward
-NEEDS_CONTEXT            - a contract gap the designer must close before re-dispatch
+NEEDS_CONTEXT            - a contract gap, OR an ambiguous / underspecified requirement the designer must not guess: bounce it back for the orchestrator to clarify with the user before re-dispatch
 BLOCKED                  - a dependency task must land first; sequence after it
 BLOCKED_CONTRACT_CHANGE  - the frozen contract cannot be met; emit a Contract Change Request
 ```
@@ -51,6 +51,7 @@ tests_added_or_changed:
   - { path: tests/... }
 validation_performed:
   - dotnet test ...
+regression_proof: [none]        # a spec proven red against the pre-fix code / a captured repro - recorded so the verifier CONFIRMS the artifact, not re-derives the repro
 risks_or_concerns: [...]
 contract_deviations: [none]
 next_recommended_action: [run aspnet-verifier]

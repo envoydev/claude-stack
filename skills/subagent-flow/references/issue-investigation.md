@@ -45,6 +45,8 @@ confidence: high | medium | low
 root_cause:
   summary:
   files: [{ path:, symbol:, reason: }]
+severity: critical | high | medium | low     # blast radius: data-loss/corruption or outage = critical .. cosmetic / no data impact = low
+priority: P0 | P1 | P2 | P3                   # urgency on the P0-P3 ladder, NEVER a bare High/Med/Low (that is a severity): P0 outage/data-loss now, P1 blocks the release, P2 fix soon / has a workaround, P3 backlog
 evidence:
   - { type: log | stack_trace | failing_command | screenshot | code_reference | repro_step, detail: }
 affected_domains: [backend | data | angular | wpf | mobile | devops]
@@ -69,7 +71,7 @@ If risky/cross-domain:  contract/fix plan -> affected domain pipelines -> integr
 ```text
 Build failure:  ci-failure-diagnoser -> dotnet-build-error-resolver or ng-build-error-resolver -> re-run build -> domain verifier
 Test failure:   issue-diagnoser/ci-failure-diagnoser -> dotnet-test-failure-resolver or angular-test-resolver -> re-run focused tests -> domain verifier
-Runtime bug, single domain:  issue-diagnoser -> domain implementer -> domain verifier   (the diagnosis replaces the designer step for a small proven bug - do not over-plan)
+Runtime bug, single domain:  issue-diagnoser -> domain implementer -> domain verifier   (the diagnosis replaces the designer step for a small proven bug - do not over-plan; a provably-trivial one-liner takes direct_fix, main session applies it, no separate implementer/verifier)
 Runtime bug, multi domain:   issue-diagnoser (+ parallel evidence-gatherers) -> contract/fix plan -> per-domain implementer+verifier -> integration-reviewer
 Security issue:  security-auditor -> OWASP/CWE punch-list -> affected domain implementers -> affected domain verifiers -> security re-check -> integration-reviewer if cross-domain
 ```
@@ -81,10 +83,13 @@ If a fix changes a shared contract, the issue flow uses the same BLOCKED_CONTRAC
 | Mode | Use when | Flow |
 |---|---|---|
 | `investigation_only` | root cause / report only | issue-diagnoser -> evidence-gatherer(s) -> report |
+| `direct_fix` | root cause is a diagnoser-localized, provably-trivial one-liner (flipped operator, off-by-one, constant, guard), no contract/security/data/migration surface | diagnose -> main session applies the fix + one focused test (no separate implementer or verifier seat) |
 | `investigation_safe_fix` | root cause likely local, fix allowed if obvious | diagnose -> implementer/resolver -> verifier |
 | `ci_repair_loop` | a build/test failure is the whole issue | ci-failure-diagnoser -> resolver -> verifier |
 | `cross_domain_issue_fix` | bug spans DB/backend/frontend/mobile/devops or changes the contract | diagnose -> contract/fix plan -> affected domain flows -> integration-reviewer |
 | `security_issue_fix` | a security finding or suspicious auth/data-exposure issue | security-auditor -> punch-list -> domain fixes -> security re-check |
+
+`direct_fix` is the issue-side floor - the bug equivalent of `single_chat`. Use it ONLY when the diagnosis pins the fix to a single provably-trivial edit with no contract, security, data, or migration surface: the main session applies the one-line fix and runs one focused test to confirm, skipping the separate implementer and verifier seats. Anything with real blast radius escalates to `investigation_safe_fix`. Do not over-plan a one-character bug, and do not skip the trio for a fix whose blast radius you have not proven trivial.
 
 ## Parallelism
 
@@ -105,7 +110,7 @@ follow_up: [{ task: }]
 
 ```yaml
 task_id:
-mode: investigation_only | investigation_safe_fix | ci_repair_loop | cross_domain_issue_fix | security_issue_fix
+mode: investigation_only | direct_fix | investigation_safe_fix | ci_repair_loop | cross_domain_issue_fix | security_issue_fix
 issue_summary:
 source: { type: user_report | CI | log | screenshot | production_alert | test_failure }
 reproduction: { known_steps:, expected:, actual: }

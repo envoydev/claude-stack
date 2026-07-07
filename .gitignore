@@ -25,3 +25,6 @@ REPORT.md
 
 # local research input (contains private project names) - never commit
 best-practice/
+
+# local test playground (nested git repo + installed .claude tree + serena state) - never commit
+examples/
