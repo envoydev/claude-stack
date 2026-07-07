@@ -57,6 +57,21 @@ risk: [regression, migration/data-loss, security]
 open_questions: [{ question: }]
 ```
 
+**Level by rule, not by feel.** Severity is blast radius; priority is urgency. Decide each against the ladder below - do not default a wrong-but-recoverable bug to High/P1:
+
+```text
+severity: data-loss / corruption / security exposure / full outage      = critical
+          a core flow broken with no workaround                         = high
+          wrong-but-recoverable output, degraded or confusing behavior  = medium
+          cosmetic, no functional or data impact                        = low
+priority: data-loss or outage happening now                             = P0
+          blocks the release or a core flow, no workaround              = P1
+          wrong but display-only / recoverable / has a workaround       = P2   (fix soon)
+          cosmetic or backlog                                           = P3
+```
+
+A display-only value that renders wrong with no data loss and a reload or re-nav workaround is **severity Medium, priority P2** - not P1. Reserve P0/P1 for data-loss, corruption, security exposure, or a broken core flow with no workaround.
+
 ## Investigation + optional fix mode
 
 Use when the user asks to investigate and fix if obvious/safe. Diagnose, then pass an EXPLICIT fix decision gate - never slide silently from diagnosis into implementation.

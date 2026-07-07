@@ -48,6 +48,8 @@ Good uses: compact implementer final reports, verifier and integration punch-lis
 
 Avoid Caveman for: BA requirements clarification, cross-stack contract output, solution-design docs, security-audit reports, final architecture decisions, and Contract Change Requests - anything that must stay highly readable.
 
+**Mechanism note (measured):** the Caveman plugin is a main-session SessionStart hook - it does NOT fire inside a dispatched seat, whose report comes back in full prose. So the `reports` / `punch_lists` terseness above is a discipline each seat applies INLINE in its own final report - hand back byte-exact code and a compressed explanation - the same inline-discipline model Ponytail already uses ('full' / 'review' named in each body), not something the plugin does for the seat. Keep the ceiling honest: Caveman only shrinks the report's words, never the seat's input context, tool output, or reasoning - which dominate its token count - so the mode ladder (fewer seats) and capability-reuse (leaner context) are the levers that actually move seat tokens; this one trims the tail.
+
 ## Combined configuration
 
 ```yaml
