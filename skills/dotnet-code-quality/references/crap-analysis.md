@@ -4,7 +4,7 @@ Finding the methods most dangerous to change - high complexity, low coverage - a
 
 ## What CRAP is
 
-CRAP (Change Risk Anti-Patterns) multiplies a method's cyclomatic complexity by the square of its uncovered fraction: `complexity x (1 - coverage)^2`. A method that is both branch-heavy and untested is the top risk, because it is hard to reason about and nothing catches a regression when you touch it. The squared term is the point: coverage dominates. A complexity-32 method at 0% coverage scores 32; the same method at 85% coverage scores about 0.7. So the score ranks refactor/test targets by danger, not by raw size - a simple getter at 0% coverage is harmless (complexity 1) and never surfaces, while a thicket of branches with no tests floats to the top.
+CRAP (Change Risk Anti-Patterns) combines a method's cyclomatic complexity with its uncovered fraction: `complexity^2 x (1 - coverage)^3 + complexity`. A method that is both branch-heavy and untested is the top risk, because it is hard to reason about and nothing catches a regression when you touch it. The exponents are the point: complexity is squared and the uncovered fraction cubed, so an untested thicket scores enormously - but the trailing complexity term is a floor no coverage can beat. A complexity-5 method at 0% coverage scores 30 and drops to 5 fully covered; a complexity-32 method scores over 1000 untested and still 32 when fully covered, so coverage cannot rescue genuine complexity - only refactoring lowers that floor. The score therefore ranks refactor/test targets by danger, not raw size - a simple getter at 0% coverage is harmless (`1^2 x 1 + 1 = 2`) and never surfaces, while a thicket of branches with no tests floats to the top.
 
 ## Generate it
 
@@ -53,12 +53,12 @@ A hotspot table reads top-down as a work queue:
 
 ```
 Method                        Complexity  Coverage  CRAP
-AuthService.ValidateToken()   32          0%        32.0   <- test now
-DataImporter.ParseRecord()    54          52%       12.4   <- acceptable
-OrderProcessor.Calculate()    28          85%       0.6    <- safe to change
+AuthService.ValidateToken()   32          0%        1056   <- test now
+DataImporter.ParseRecord()    35          90%       36.2   <- refactor, not tests
+OrderProcessor.Calculate()    4           95%       4.0    <- safe to change
 ```
 
-Act on CRAP above 30, and treat it as a stop-ship on any method you are about to modify. The two ways down are the two factors: write tests to raise coverage (the cheaper move - it shrinks the squared term fastest), or refactor to cut complexity when the method is genuinely tangled. A high-complexity method that already has strong coverage (`ParseRecord` above) is not urgent - the tests make it safe to touch. Prioritize the top of the list; do not chase a uniform coverage percentage, chase the risky methods.
+Act on CRAP above 30, and treat it as a stop-ship on any method you are about to modify. The two ways down map to the two factors: write tests to raise coverage (usually the cheaper move - it collapses the cubed uncovered term fast), or refactor to cut complexity. Coverage alone only buys the score down toward the complexity floor, so a method whose complexity itself tops 30 (`ParseRecord` above, still 36 at 90% coverage) stays crappy no matter how well tested - it needs the knife, not more tests. Prioritize the top of the list; do not chase a uniform coverage percentage, chase the risky methods.
 
 | CRAP | Read |
 |---|---|

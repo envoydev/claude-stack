@@ -63,9 +63,8 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         return await problems.TryWriteAsync(new()
         {
             HttpContext = ctx,
-            // ProblemDetails is a get-only property: this nested initializer MUTATES the
-            // instance the context already provides, it does not construct a new one - do not
-            // rewrite it as `ProblemDetails = new() { ... }`, which will not compile.
+            // nested initializer: sets Title/Status on the ProblemDetails the context
+            // lazily creates via its getter, rather than replacing that instance
             ProblemDetails = { Title = "An unexpected error occurred", Status = ctx.Response.StatusCode },
             // AddProblemDetails' callback already stamps the traceId extension
         });

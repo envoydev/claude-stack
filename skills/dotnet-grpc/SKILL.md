@@ -63,7 +63,7 @@ Four shapes, one decision per method:
 
 Non-negotiable on every call, streaming or not:
 - Set a **deadline** (`CallOptions.Deadline` / the `deadline:` argument). A call without one can hang indefinitely; the deadline is absolute (a point in time), it propagates to the server, and exceeding it surfaces as `DeadlineExceeded`.
-- Honour the `CancellationToken` end to end - pass the incoming token down through your awaits on the server, and stop enumerating a stream when the caller cancels. Streaming reads must also drain or cancel; an abandoned stream leaks the call.
+- Honor the `CancellationToken` end to end - pass the incoming token down through your awaits on the server, and stop enumerating a stream when the caller cancels. Streaming reads must also drain or cancel; an abandoned stream leaks the call.
 
 ## Map domain outcomes to status codes
 gRPC has its own status space; do not invent your own error envelope inside a successful response.
@@ -86,7 +86,7 @@ Put logging, authentication checks, exception-to-status mapping, validation, and
 - gRPC integrates with the standard .NET observability stack; emit traces and metrics through it rather than bolting on a parallel logging path. Correlation and the broader telemetry setup are `dotnet-web-backend`.
 
 ## Browsers can't speak raw gRPC - use gRPC-Web
-A browser cannot make a raw gRPC/HTTP-2 call (no access to the required frames), so a browser client needs **gRPC-Web**: enable `UseGrpcWeb()` on the server (and `.EnableGrpcWeb()` per service or globally), give the JS/TS client the gRPC-Web transport, and configure CORS to expose the gRPC-specific headers. Note gRPC-Web does not support client or bidirectional streaming. Service-to-service traffic stays on plain gRPC where HTTP/2 is end to end.
+A browser cannot make a raw gRPC/HTTP-2 call (no access to the required frames), so a browser client needs **gRPC-Web**: enable `UseGrpcWeb()` on the server (and `.EnableGrpcWeb()` per service or globally), give the JS/TS client the gRPC-Web transport, and configure CORS to expose the gRPC-specific headers. Note gRPC-Web does not support client or bidirectional streaming - live bidirectional browser push is SignalR (`dotnet-realtime`). Service-to-service traffic stays on plain gRPC where HTTP/2 is end to end.
 
 ## Anti-patterns
 - Hand-editing or hand-writing the generated code instead of regenerating from the `.proto`.

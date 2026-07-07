@@ -50,9 +50,9 @@ A worker that runs under the Windows Service Control Manager (SCM) is the same w
 This is the single most important thing about `BackgroundService`. `ExecuteAsync` returns a `Task`. If your override lets an exception escape, the host does not crash at the throw site - the exception is captured into that returned task, and what happens next is governed by `HostOptions.BackgroundServiceExceptionBehavior`:
 
 - **`StopHost`** is the default (since .NET 6). The exception is logged, and then the *entire host stops* - every other service goes down with it. One unhandled fault in one worker takes the whole process with it.
-- **`Ignore`** logs the exception and lets the host keep running - but the faulted worker is now *gone*. It does not restart. The process stays up looking healthy while the background work it was doing has silently stopped forever. This is the classic trap: a worker that "mysteriously stopped" days ago because something threw once and the behavior was set to `Ignore`.
+- **`Ignore`** logs the exception and lets the host keep running - but the faulted worker is now *gone*. It does not restart. The process stays up looking healthy while the background work it was doing has silently stopped forever. This is the classic trap: a worker that 'mysteriously stopped' days ago because something threw once and the behavior was set to `Ignore`.
 
-Neither default is "keep working." So own the failure explicitly. Wrap the body in a `try`/`catch` and decide, per exception, whether to log-and-continue or let it propagate:
+Neither default is 'keep working'. So own the failure explicitly. Wrap the body in a `try`/`catch` and decide, per exception, whether to log-and-continue or let it propagate:
 
 ```csharp
 protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -118,11 +118,11 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 }
 ```
 
-`WaitForNextTickAsync` returns `false` (rather than throwing) when the token cancels, so the `while` exits cleanly on shutdown. Be aware it does not overlap ticks: if a cycle runs longer than the interval, the next tick fires immediately after, never concurrently. Get the interval from configuration via the options pattern, not a literal. Derive any timestamps from an injected `TimeProvider`, never `DateTime.Now` - see `csharp`.
+`WaitForNextTickAsync` returns `false` only when the timer is *disposed*; when the stopping token cancels it throws `OperationCanceledException` (the returned task enters the canceled state). That is the expected shutdown path - the host recognizes a stopping-token cancellation and treats it as a clean stop, not a fault, so the loop ends on shutdown with no extra handling. Be aware it does not overlap ticks: if a cycle runs longer than the interval, the next tick fires immediately after, never concurrently. Get the interval from configuration via the options pattern, not a literal. Derive any timestamps from an injected `TimeProvider`, never `DateTime.Now` - see `csharp`.
 
 ## Graceful shutdown
 
-Shutdown is cooperative - the host signals, your code must respond. Honour the signal in three places:
+Shutdown is cooperative - the host signals, your code must respond. Honor the signal in three places:
 
 - **The stopping token.** When the host stops, it cancels the `CancellationToken` passed to `ExecuteAsync` (and `StopAsync`). Check `IsCancellationRequested` in every loop and thread the token into every async call so an in-flight operation is asked to wind down. A worker that ignores the token blocks shutdown until the timeout below forces it.
 - **`StopAsync`.** Override it to release resources or finish a final flush. The host awaits it. The total time it allows across all services is `HostOptions.ShutdownTimeout`, which defaults to 30 seconds; raise it (`builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(60))`) only if a clean drain genuinely needs longer, and never let `StopAsync` run unbounded.
@@ -130,7 +130,7 @@ Shutdown is cooperative - the host signals, your code must respond. Honour the s
 
 The contract is simple: cancel propagates in, the work drains within the timeout, the host exits. Code that does not observe the token is the reason a shutdown hangs.
 
-- **`HostOptions` also bounds and parallelises the lifecycle.** On the .NET 8 floor it exposes `StartupTimeout` - the mirror of `ShutdownTimeout`, bounding total start time - and `ServicesStartConcurrently`/`ServicesStopConcurrently`, which start and stop hosted services in parallel instead of the default sequential registration order. Reach for the concurrent options only when several services each have a slow `StartAsync`/`StopAsync` and the serial sum stalls the host; parallel start drops the ordering guarantee, so leave them off otherwise.
+- **`HostOptions` also bounds and parallelizes the lifecycle.** On the .NET 8 floor it exposes `StartupTimeout` - the mirror of `ShutdownTimeout`, bounding total start time - and `ServicesStartConcurrently`/`ServicesStopConcurrently`, which start and stop hosted services in parallel instead of the default sequential registration order. Reach for the concurrent options only when several services each have a slow `StartAsync`/`StopAsync` and the serial sum stalls the host; parallel start drops the ordering guarantee, so leave them off otherwise.
 
 ## Queue-backed work with Channels
 

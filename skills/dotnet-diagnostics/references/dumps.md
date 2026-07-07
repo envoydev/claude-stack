@@ -35,7 +35,7 @@ For a crash you cannot reproduce on demand, have the runtime write a dump on the
 ```bash
 export DOTNET_DbgEnableMiniDump=1
 export DOTNET_DbgMiniDumpType=4        # 1=Mini 2=Heap 3=Triage 4=Full - use 4 for max value
-export DOTNET_DbgMiniDumpName=/tmp/dumps/%e_%p_%t.dmp   # %e name %p pid %t timestamp (.NET 7+)
+export DOTNET_DbgMiniDumpName=/tmp/dumps/%e_%p_%t.dmp   # %e name %p pid %t timestamp (.NET 5+)
 export DOTNET_EnableCrashReport=1      # JSON crash report alongside the dump
 ```
 

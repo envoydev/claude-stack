@@ -33,8 +33,8 @@ Turn on the analyzers that ship with the SDK first - they cost nothing and catch
 ```xml
 <PropertyGroup>
   <EnableNETAnalyzers>true</EnableNETAnalyzers>
-  <AnalysisLevel>latest-recommended</AnalysisLevel>
-  <AnalysisMode>Recommended</AnalysisMode>          <!-- AllEnabledByDefault for the strictest bar -->
+  <AnalysisLevel>latest</AnalysisLevel>              <!-- version knob: latest analyzer wave -->
+  <AnalysisMode>Recommended</AnalysisMode>           <!-- strictness knob: All for the strictest bar -->
 </PropertyGroup>
 ```
 

@@ -58,7 +58,7 @@ Reach for asymmetric crypto only when you actually need two parties or a public/
 
 ## Post-quantum (.NET 10+, optional)
 
-.NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SLHDsa` (signatures) - over platform crypto (Windows 11 build 2025+ or OpenSSL 3.5+). They are **not on the .NET 8 floor**, so treat them as opt-in: gate every call on the type's static `IsSupported` and keep a classical fallback. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
+.NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SlhDsa` (signatures) - over platform crypto (Windows 11 / Windows Server 2025 with the PQC update, or OpenSSL 3.5+). They are **not on the .NET 8 floor**, so treat them as opt-in: gate every call on the type's static `IsSupported` and keep a classical fallback. `MLKem` ships a stable surface; the signature types are still behind the SYSLIB5006 experimental diagnostic, so using them is a deliberate opt-in. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
 
 ## Dead algorithms - do not use
 

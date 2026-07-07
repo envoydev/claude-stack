@@ -59,7 +59,7 @@ Vary inputs with `[Params]` (a property, applies to every method in the class) o
 
 ## Running and reading results
 
-BDN console output is hundreds of verbose lines per case. Build once, then run filtered subsets with output redirected and `--noOverwrite` so each run lands in its own timestamped directory:
+BDN console output is hundreds of verbose lines per case. Build once, then run filtered subsets with output redirected and `--noOverwrite` so a re-run does not clobber the previous report - BDN appends a unique suffix to each result filename instead of overwriting it:
 
 ```bash
 dotnet build -c Release

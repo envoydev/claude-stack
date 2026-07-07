@@ -28,15 +28,15 @@ Branch: `skills-audit-2026-07`. Started 2026-07-07.
 | 16 | dotnet-architecture-tests | B | **A** | 1 | SATISFIED | none (British->US spellings) |
 | 17 | dotnet-aspire | A | **A** | 2 | SATISFIED | none (added dotnet-testing to Companions) |
 | 18 | dotnet-authentication | B | **A** | 1 | SATISFIED | none (cookie Secure-by-default over-claim corrected to HttpOnly+SameSite=Lax, pin CookieSecurePolicy.Always in prod) |
-| 19 | dotnet-code-quality | - | pending | - | - | - |
-| 20 | dotnet-cryptography | - | pending | - | - | - |
-| 21 | dotnet-data-access | - | pending | - | - | - |
-| 22 | dotnet-diagnostics | - | pending | - | - | - |
-| 23 | dotnet-error-handling | - | pending | - | - | - |
-| 24 | dotnet-grpc | - | pending | - | - | - |
-| 25 | dotnet-hosted-services | - | pending | - | - | - |
-| 26 | dotnet-messaging | - | pending | - | - | - |
-| 27 | dotnet-migrate | - | pending | - | - | - |
+| 19 | dotnet-code-quality | B | **A** | 2 | SATISFIED | none (verifier scored correctness 5: CRAP formula wrong; remediated to complexity^2 x (1-cov)^3 + complexity) |
+| 20 | dotnet-cryptography | B | **A** | 1 | SATISFIED | none (PQC type SLHDsa->SlhDsa, garbled platform string, SYSLIB5006 note) |
+| 21 | dotnet-data-access | C | **A** | 1 | SATISFIED | none (EF change-tracking identity-resolution wrong; +pooled factory; desc floor/scope) |
+| 22 | dotnet-diagnostics | B | **A** | 1 | SATISFIED | none (dump format-specifier .NET version, --noOverwrite semantics, desc backtick/scope) |
+| 23 | dotnet-error-handling | B | **A** | 1 | SATISFIED | none (false ProblemDetails won't-compile claim) |
+| 24 | dotnet-grpc | B | **A** | 1 | SATISFIED | none (Honour->Honor, +dotnet-realtime route) |
+| 25 | dotnet-hosted-services | B | **A** | 2 | SATISFIED | none (verifier caught double-quote emphasis, remediated) |
+| 26 | dotnet-messaging | B | **A** | 1 | SATISFIED | none (added Companions routing clause) |
+| 27 | dotnet-migrate | C | **A** | 1 | SATISFIED | none (EF bundle --idempotent + self-contained mischaracterization, Upgrade Assistant deprecation, desc/serena backtick) |
 | 28 | dotnet-minimal-api | - | pending | - | - | - |
 | 29 | dotnet-mvc-controllers | - | pending | - | - | - |
 | 30 | dotnet-openapi | - | pending | - | - | - |
@@ -66,3 +66,4 @@ Branch: `skills-audit-2026-07`. Started 2026-07-07.
 
 - **Batch 1** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Adversarial verify caught real currency bugs (Capacitor 7->8, angular-material `mat.theme` v17->v19, angular-conventions aria floor, a Flyweight example that was JVM integer-cache behavior not .NET). No fabricated cons flagged. No renames needed. 10 files changed.
 - **Batch 2** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Real fixes: dotnet-authentication cookie Secure-by-default over-claim (security correctness), dotnet-architecture Guid.CreateVersion7 unflagged on the .NET 8 floor + a dangling api-versioning reference routed to dotnet-web-backend, plus house-voice cleanups (double-quote emphasis, British spellings, example date/weekday mismatches). devops was already A with zero edits. No fabrications, no renames. 11 files changed.
+- **Batch 3** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Best verifier catch of the run: dotnet-code-quality's CRAP formula was wrong (verifier scored correctness 5/10), remediated to complexity^2 x (1-coverage)^3 + complexity with recomputed examples. Plus dotnet-cryptography PQC type/platform fixes, dotnet-data-access EF identity-resolution correctness, dotnet-error-handling false won't-compile claim, dotnet-migrate EF-bundle flag fixes. 'cancelled' in dotnet-grpc left as-is (within repo's mixed norm). No fabrications, no renames. 14 files changed.

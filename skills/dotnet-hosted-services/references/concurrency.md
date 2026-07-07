@@ -29,7 +29,7 @@ public async Task ProcessAsync(Order order, CancellationToken ct)
 }
 ```
 
-In a loop, honour the token at the top of each iteration - `ct.ThrowIfCancellationRequested()` or a `while (!ct.IsCancellationRequested)` guard - so a long-running loop unwinds promptly instead of running to completion after shutdown was requested. The stopping token a worker gets from `ExecuteAsync` is exactly this token; see `SKILL.md` for the graceful-shutdown contract it drives.
+In a loop, honor the token at the top of each iteration - `ct.ThrowIfCancellationRequested()` or a `while (!ct.IsCancellationRequested)` guard - so a long-running loop unwinds promptly instead of running to completion after shutdown was requested. The stopping token a worker gets from `ExecuteAsync` is exactly this token; see `SKILL.md` for the graceful-shutdown contract it drives.
 
 ## SemaphoreSlim for async mutual exclusion
 

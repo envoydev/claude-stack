@@ -6,7 +6,7 @@ Concrete EF Core forms of the ORM-agnostic principles in `SKILL.md`. Load when t
 
 - Web request: `AddDbContext<T>` registers Scoped - one context per request.
 - Background / hosted service: `CreateScope()` per unit of work, resolve the context inside, dispose with the scope.
-- Long-lived or parallel owners: `AddDbContextFactory<T>`, then `await using var db = await factory.CreateDbContextAsync()`.
+- Long-lived or parallel owners (Blazor, background loops): `AddDbContextFactory<T>`, then `await using var db = await factory.CreateDbContextAsync()`; `AddPooledDbContextFactory<T>` for the pooled variant on hot paths.
 - High-throughput paths: `AddDbContextPool<T>` reuses instances (state reset between leases). Only pool contexts with no injected per-request scoped state, and never combine with the factory for the same context.
 
 ## Change tracking
@@ -14,7 +14,7 @@ Concrete EF Core forms of the ORM-agnostic principles in `SKILL.md`. Load when t
 - Read-heavy app: default the context to no-tracking in the ctor - `ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking`. Otherwise `.AsNoTracking()` per read.
 - Trap: with a NoTracking default, mutating a fetched entity then `SaveChangesAsync()` silently persists nothing.
 - Write under a NoTracking default: `.AsTracking()` on the query you'll mutate, or mutate then `Set.Update(entity)`. `Add` works in any mode; `Update()` marks the whole entity modified.
-- Same entity tracked by two contexts throws on save - use one context, or `Entry(e).State = EntityState.Detached`.
+- One context tracks at most one instance per key; attaching or updating a second instance with the same key throws ('already being tracked') at track time, not on save. Fix: query then mutate that tracked instance, or detach the stale one via `Entry(e).State = EntityState.Detached`; use a fresh context per unit of work.
 
 ## Loading strategies
 
