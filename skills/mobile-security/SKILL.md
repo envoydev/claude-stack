@@ -1,6 +1,6 @@
 ---
 name: mobile-security
-description: "Personal Ionic / Capacitor mobile security-hardening reference, organized by the native mobile threat surface: secret storage in the Keychain / Keystore via a secure-storage plugin (never localStorage or Preferences, which are plaintext on-device), deep-link and custom-scheme input treated as untrusted and validated before it routes or acts, least-privilege native permissions requested at point of use with every denied / limited state handled, cleartext-traffic and WebView-debugging disabled in release, an allowNavigation allowlist and no live-reload server.url in production, sensitive data kept out of the WebView cache and the iOS backgrounding snapshot (FLAG_SECURE on Android), third-party plugin trust, and optional certificate pinning and biometric gating. Load when hardening or reviewing an Ionic/Capacitor feature for vulnerabilities, or when the security-auditor sweeps the mobile stack. Points at angular-security for the web-layer XSS/DOM, dotnet-security for the API, and capacitor-release for signing integrity. Do NOT load for non-security work."
+description: "Personal Ionic / Capacitor mobile security-hardening reference, organized by the native mobile threat surface: secret storage in the Keychain / Keystore via a secure-storage plugin (never localStorage or Preferences, which are plaintext on-device), deep-link and custom-scheme input treated as untrusted and validated before it routes or acts, least-privilege native permissions requested at point of use with every denied / limited state handled, cleartext-traffic and WebView-debugging disabled in release, an allowNavigation allowlist and no live-reload server.url in production, sensitive data kept out of the WebView cache and the iOS backgrounding snapshot (FLAG_SECURE on Android), third-party plugin trust, and optional certificate pinning and biometric gating. Targets Capacitor 6+. Load when hardening or reviewing an Ionic/Capacitor feature for vulnerabilities, or when the security-auditor sweeps the mobile stack. Points at angular-security for the web-layer XSS/DOM, dotnet-security for the API, and capacitor-release for signing integrity. Do NOT load for non-security work."
 ---
 
 # Ionic / Capacitor mobile security
@@ -40,7 +40,7 @@ An Ionic app is an Angular app running in a native WebView with a bridge to nati
 
 ## Plugin trust
 
-- A Capacitor plugin runs **native code** with the app's full privileges. Audit any third-party plugin before adding it - a malicious or vulnerable plugin is a native compromise, not a sandboxed one. Prefer official and actively-maintained plugins, pin the version, and wrap each behind a typed service so the surface is small and reviewable.
+- A Capacitor plugin runs **native code** with the app's full privileges - a malicious or vulnerable one is a native compromise, not a sandboxed one. Audit any third-party plugin before adding it: check the source and maintenance status, review the native permissions it requests, and pin the version so a later supply-chain push cannot swap the code under you. Sourcing preference and typed-service wrapping are `ionic`'s ground.
 
 ## Defense-in-depth, not controls
 

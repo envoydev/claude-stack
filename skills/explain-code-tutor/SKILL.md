@@ -120,14 +120,17 @@ The structure below shows the shape and density, not real project code - your sn
 >
 > **The fix:**
 > ```diff
-> - this.user = this.userService.load();
-> + this.user = await this.userService.load();
+> - ngOnInit() {
+> -   this.user = this.userService.load();
+> + async ngOnInit() {
+> +   this.user = await this.userService.load();
+>   }
 > ```
-> Awaiting trades the ticket for the actual coat before anyone reads it.
+> Awaiting trades the ticket for the actual coat before anyone reads it - and `await` needs the method marked `async`.
 >
 > Async state read before its promise resolves is always empty, however the read is written.
 
-**Concept mode (Ukrainian request):** same five-part shape, but step 3 carries two labelled lines - **Головна ідея:** (the mental model) and **Підводний камінь:** (the gotcha) - and step 4 shows a real call flowing through rather than a bug fix.
+**Concept mode (Ukrainian request):** same five-part shape, but step 3 carries two labeled lines - **Головна ідея:** (the mental model) and **Підводний камінь:** (the gotcha) - and step 4 shows a real call flowing through rather than a bug fix.
 
 **Compare mode:** step 2 walks one short path per approach (A then B) from real code, step 3 is **The verdict:** (when A wins, when B wins, the deciding axis, then a one-line recommendation), and step 4 puts the key differing lines of A and B side by side.
 

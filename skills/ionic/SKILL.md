@@ -1,11 +1,11 @@
 ---
 name: ionic
-description: "Personal Ionic / Capacitor mobile + hybrid app conventions - house rules for Ionic Angular UI (standalone + signals, IonRouterOutlet, lazy routes, page-caching view lifecycle, CSS-variable theming), Capacitor lifecycle + platform guards, runtime permissions, and Capacitor plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Targets Angular 17+ / Capacitor 6+ (7 current). Load before building or editing an Ionic/Capacitor app. Companions: angular-conventions (the Angular framework), typescript (the language); per-plugin install/config is fetched live (context7 / the plugin README), the sourcing + typed-wrapping guidance is here. Do NOT load for plain web Angular with no native shell."
+description: "Personal Ionic / Capacitor mobile + hybrid app conventions - house rules for Ionic Angular UI (standalone + signals, IonRouterOutlet, lazy routes, page-caching view lifecycle, CSS-variable theming), Capacitor lifecycle + platform guards, runtime permissions, and Capacitor plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Targets Angular 17+ / Capacitor 6+ (8 current). Load before building or editing an Ionic/Capacitor app. Companions: angular-conventions (the Angular framework), typescript (the language); per-plugin install/config is fetched live (context7 / the plugin README), the sourcing + typed-wrapping guidance is here. Do NOT load for plain web Angular with no native shell."
 ---
 
 # Ionic / Capacitor Conventions
 
-An Ionic app is an Angular app in a native (Capacitor) shell: the framework rules live in `angular-conventions` and the language baseline in `typescript` - load both. This skill is the Ionic/Capacitor-specific layer of house policy. In-app navigation and the page lifecycle are owned here in `references/navigation-and-lifecycle.md`; broader Ionic UI mechanics (component APIs, theming) are fetched live via context7 or the Ionic docs, not vendored. Per-plugin install/config is fetched live (context7 or the plugin's README); the durable plugin-sourcing and typed-service-wrapping guidance is here in this skill. Cutting a release - the build, signing, store submission, OTA, and release CI - is `capacitor-release`.
+An Ionic app is an Angular app in a native (Capacitor) shell: the framework rules live in `angular-conventions` and the language baseline in `typescript` - load both. This skill is the Ionic/Capacitor-specific layer of house policy. In-app navigation and the page lifecycle are owned here in `references/navigation-and-lifecycle.md`; broader Ionic UI mechanics (component APIs, theming) are fetched live via context7 or the Ionic docs, not vendored. Per-plugin install/config is fetched live (context7 or the plugin's README); the durable plugin-sourcing and typed-service-wrapping guidance is here in this skill. Cutting a release - the build, signing, store submission, OTA, and release CI - is `capacitor-release`. Security-hardening the native surface - Keychain/Keystore secret storage, permission least-privilege, cleartext and WebView lockdown, deep-link input trust - is `mobile-security`.
 
 ## Components and structure
 - Standalone components + signals, OnPush, new control flow - same as `angular-conventions`. Ionic components (`IonContent`, `IonList`, ...) are standalone imports, not a shared module.
@@ -31,7 +31,7 @@ An Ionic app is an Angular app in a native (Capacitor) shell: the framework rule
 ## Platform detection - pick the right check for the question
 Three different questions, three different calls - don't conflate them:
 - 'Is there a native bridge at all?' -> `Capacitor.isNativePlatform()` (true on iOS and Android, false in a browser / PWA). This is the gate for any code that calls a native plugin path.
-- 'Which OS?' -> `Capacitor.getPlatform()` returns `'ios' | 'android' | 'web'`. Branch on it only for genuinely platform-specific behaviour (a status-bar inset, an iOS-only API), never as a substitute for the native check above.
+- 'Which OS?' -> `Capacitor.getPlatform()` returns `'ios' | 'android' | 'web'`. Branch on it only for genuinely platform-specific behavior (a status-bar inset, an iOS-only API), never as a substitute for the native check above.
 - 'What can the app do right now?' -> Ionic's `Platform` service: `platform.is('ios' | 'mobile' | 'pwa' | 'desktop' | 'capacitor')` plus `platform.ready()`. Prefer `Platform` inside Angular components because it injects cleanly and is mockable in tests; reserve the static `Capacitor.*` calls for plain functions and services with no injection context.
 - Resolve platform once in a typed service and expose signals, rather than calling `getPlatform()` ad hoc across the tree.
 
@@ -106,13 +106,13 @@ The typed wrapping service is the unit for these too: each owns its permission c
 - Register the listener early (it can deliver the launch URL), capture the handle, and remove it on teardown like every other `App` listener.
 
 ### Offline-first sync
-- Local store is the source of truth, the network is an optimisation: the UI reads from and writes to the local store and never blocks on connectivity. Pick by data shape - Preferences for small key/value (flags, last-synced cursor, the queue head), SQLite for real relational/list data; do not abuse Preferences as a database.
+- Local store is the source of truth, the network is an optimization: the UI reads from and writes to the local store and never blocks on connectivity. Pick by data shape - Preferences for small key/value (flags, last-synced cursor, the queue head), SQLite for real relational/list data; do not abuse Preferences as a database.
 - Queue writes, drain on reconnect: a mutation writes locally and enqueues a pending operation; a `Network.addListener('networkStatusChange', ...)` (seeded by an initial `getStatus()`) drains the queue when `connected` flips true, reconciles server responses back into the local store, and surfaces conflicts as a typed `Result` rather than a throw. Keep the queue and the drain in the wrapping service so pages stay connectivity-agnostic.
 - Re-read connectivity on resume (it may have changed while backgrounded) and trigger a drain there too, tying into the existing resume handler.
 
 ## Testing the native seams
 - Unit-test the wrapping service, not the device: with the plugin mocked (the runner's spy - `jest.fn()` or `jasmine.createSpyObj`, per `angular-conventions`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
-- Do not try to drive real native plugin behaviour in a jsdom unit test - the bridge is not there, so a test that 'exercises' the native path is only exercising your mock. Keep those tests honest about that boundary.
+- Do not try to drive real native plugin behavior in a jsdom unit test - the bridge is not there, so a test that 'exercises' the native path is only exercising your mock. Keep those tests honest about that boundary.
 - Reserve appium-mcp (opt-in, heavy - needs Xcode/Android SDK + Java) for true device/E2E smoke of the few native-critical flows (push tap -> route, deep-link cold start, an offline-then-reconnect drain). Smoke the handful that would silently break in production, not the whole surface.
 
 ## Anti-patterns

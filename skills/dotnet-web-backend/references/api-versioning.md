@@ -72,4 +72,4 @@ SemVer is the signal a consumer reads to know whether an upgrade is safe:
 | minor (1.x.0) | new APIs, new `[Obsolete]` marks |
 | major (x.0.0) | the only place a break - a removal or signature change - is allowed |
 
-A major bump is permission to break, not a surprise: announce it, document the migration path, and never ship a silent behaviour change - a flipped default is a break even when the signature is identical.
+A major bump is permission to break, not a surprise: announce it, document the migration path, and never ship a silent behavior change - a flipped default is a break even when the signature is identical.

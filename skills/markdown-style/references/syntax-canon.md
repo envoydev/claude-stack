@@ -1,6 +1,6 @@
 # Markdown syntax canon
 
-The "what is valid" layer. Distilled from the Markdown Guide basic-syntax reference (https://www.markdownguide.org/basic-syntax/, CC BY-SA 4.0). For the "what is good" layer, see `style-overlay.md`.
+The 'what is valid' layer. Distilled from the Markdown Guide basic-syntax reference (https://www.markdownguide.org/basic-syntax/, CC BY-SA 4.0). For the 'what is good' layer, see `style-overlay.md`.
 
 A finding in this file is a **must-fix** - the construct is either invalid or so inconsistently rendered across processors that it counts as a bug. The skill cites the rule by its short name (e.g., `syntax/headings/atx-space-after`) so the architect can locate it here.
 
@@ -49,13 +49,13 @@ Paragraphs are separated by a blank line. Two consecutive non-blank lines are pa
 
 ### `syntax/paragraphs/no-indent`
 
-Do not indent paragraphs with tabs or spaces. Indentation has block-level meaning (code, list continuation) and triggers "unexpected formatting problems."
+Do not indent paragraphs with tabs or spaces. Indentation has block-level meaning (code, list continuation) and triggers 'unexpected formatting problems'.
 
 ## Line breaks
 
 ### `syntax/line-breaks/two-trailing-spaces`
 
-End a line with two or more trailing spaces, then return, to produce a `<br>`. This is the original Markdown syntax and is widely supported but is "controversial" because trailing whitespace is invisible.
+End a line with two or more trailing spaces, then return, to produce a `<br>`. This is the original Markdown syntax and is widely supported but is 'controversial' because trailing whitespace is invisible.
 
 ### `syntax/line-breaks/br-tag`
 
@@ -277,7 +277,7 @@ Markdown syntax does **not** work inside block-level HTML. The contents of a `<d
 
 ## Known compatibility footguns
 
-The Markdown Guide lists these as "processors don't agree":
+The Markdown Guide lists these as cases where processors disagree:
 
 - Underscores mid-word for emphasis - use asterisks.
 - Mixed list delimiters within one list - pick one and stick with it.

@@ -1,6 +1,6 @@
 ---
 name: frontend
-description: "Router and index for web frontend work - maps a frontend area (Angular framework code, TypeScript/JavaScript language, component/design-system UI, distinctive production UI, library docs) to the focused skill to load. Routes per area, does not restate. Companion: typescript (always, for any TS/JS). Load when starting or navigating web frontend work. For Ionic/Capacitor mobile see mobile; for .NET backend see dotnet."
+description: "Router and index for web frontend work - maps a frontend area (Angular framework code, TypeScript/JavaScript language, Material/CDK components, CSS/SCSS styling, client-side security, distinctive production UI, library docs) to the focused skill to load. Routes per area, does not restate. Companion: typescript (always, for any TS/JS). Load when starting or navigating web frontend work. For Ionic/Capacitor mobile see mobile; for .NET backend see dotnet."
 ---
 
 # frontend (web frontend router)
@@ -18,6 +18,7 @@ Index mapping a web-frontend work area to the skill to load. It routes, it does 
 | build distinctive, production-grade UI that avoids generic AI aesthetics | the Design quality notes below (in-skill) |
 | build UI with Angular Material (`@angular/material`) + CDK components | `angular-material` |
 | write or edit CSS / SCSS in an Angular app - scoping, ViewEncapsulation, design tokens, responsive, a11y styling | `angular-styling` |
+| harden or review an Angular feature - XSS, sanitization, CSP, CSRF, auth-token storage, SSR/TransferState leaks | `angular-security` |
 | build an Ionic / Capacitor mobile or hybrid app | `mobile` |
 | look up current framework / library API docs | the context7 MCP |
 

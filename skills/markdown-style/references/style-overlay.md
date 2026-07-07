@@ -1,6 +1,6 @@
 # Markdown style overlay
 
-The "what is good" layer. Distilled from Google's developer documentation Markdown style guide (https://google.github.io/styleguide/docguide/style.html, Apache 2.0). For the "what is valid" layer, see `syntax-canon.md`.
+The 'what is good' layer. Distilled from Google's developer documentation Markdown style guide (https://google.github.io/styleguide/docguide/style.html, Apache 2.0). For the 'what is valid' layer, see `syntax-canon.md`.
 
 Findings in this file are **should-fix**, not must-fix. The architect can decline any finding without justification - these rules are opinionated. Where the project has a local convention that conflicts with a rule here, defer to the project.
 
@@ -10,7 +10,7 @@ The skill cites style findings by short name (e.g., `style/headings/atx-only`) s
 
 ### `style/philosophy/minimum-viable`
 
-"Minimum viable documentation" - a small, fresh, accurate set of docs beats a sprawling stale one. Delete cruft frequently.
+'Minimum viable documentation' - a small, fresh, accurate set of docs beats a sprawling stale one. Delete cruft frequently.
 
 ### `style/philosophy/better-than-best`
 
@@ -20,7 +20,7 @@ Reviewers should LGTM quickly when the change is reasonable, suggest concrete al
 
 ### `style/headings/atx-only`
 
-Use ATX style (`#`, `##`, ...). Do not use setext (`===` / `---` underlines). Setext is "annoying to maintain" and cannot express H3 or below.
+Use ATX style (`#`, `##`, ...). Do not use setext (`===` / `---` underlines). Setext is 'annoying to maintain' and cannot express H3 or below.
 
 ### `style/headings/single-h1`
 
@@ -28,7 +28,7 @@ Exactly one H1 per document, used as the title. Subsequent headings start at H2.
 
 ### `style/headings/unique-names`
 
-Avoid bare repeated subheadings like "Summary" or "Example" under multiple parents. Prefix with the parent topic - "Foo summary", "Bar summary" - so the auto-generated anchor is intuitive.
+Avoid bare repeated subheadings like 'Summary' or 'Example' under multiple parents. Prefix with the parent topic - 'Foo summary', 'Bar summary' - so the auto-generated anchor is intuitive.
 
 ### `style/headings/sentence-case-and-product-names`
 
@@ -74,7 +74,7 @@ The H1 title should match (or nearly match) the filename. `request-routing.md` -
 
 ### `style/skeleton/intro-1-to-3-sentences`
 
-The intro is 1-3 sentences and answers "what is this doc, who is it for, what will I get from it." Longer intros become unread preamble.
+The intro is 1-3 sentences and answers 'what is this doc, who is it for, what will I get from it'. Longer intros become unread preamble.
 
 ### `style/skeleton/see-also-section`
 
@@ -188,7 +188,7 @@ For links within the same repo, prefer explicit absolute paths: `[…](/path/to/
 
 ### `style/links/informative-text`
 
-The link text must be informative. Never use "here", "link", "this", or the raw URL as the label. Write the sentence naturally, then wrap the most meaningful phrase.
+The link text must be informative. Never use 'here', 'link', 'this', or the raw URL as the label. Write the sentence naturally, then wrap the most meaningful phrase.
 
 - Bad: For more information, click [here](url).
 - Good: See the [request-routing reference](url) for the full middleware order.
@@ -259,6 +259,6 @@ The source guide is deliberately silent on:
 
 - **Emphasis convention** - `**bold**` vs `__bold__`, `*italic*` vs `_italic_`. The syntax canon already covers compatibility; the style overlay does not pick a winner. Follow project convention.
 - **File naming** - only that the H1 should match or nearly match the filename. No imposed kebab-case vs snake_case rule.
-- **Hard document length thresholds** - only the qualitative "above the fold on a laptop" criterion for whether `[TOC]` is justified.
+- **Hard document length thresholds** - only the qualitative 'above the fold on a laptop' criterion for whether `[TOC]` is justified.
 
-When the architect asks "what should I do about X" and X is on this list, the skill responds: "the style guide is silent - follow the project's existing convention, or pick one and apply it consistently."
+When the architect asks 'what should I do about X' and X is on this list, the skill responds: the style guide is silent - follow the project's existing convention, or pick one and apply it consistently.

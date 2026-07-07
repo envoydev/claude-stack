@@ -76,7 +76,7 @@ Value moves up and down?
   → update on every event?     yes → UpDownCounter  no → ObservableGauge
 ```
 
-| Instrument | Behaviour | Typical use |
+| Instrument | Behavior | Typical use |
 |---|---|---|
 | `Counter<T>` | monotonic, `Add(+n)` per event | request / error counts, bytes sent |
 | `UpDownCounter<T>` | up or down, `Add(+1)`/`Add(-1)` | queue depth, active connections |

@@ -186,13 +186,11 @@ These solve different problems; do not confuse them.
   substitutes them. Navigation runs through an `INavigationService`; a ViewModel never does
   `new Window().Show()`.
 
-## Resources and theming
+## Fluent theming (.NET 9+)
 
-- Centralize colors, brushes, and styles in resource dictionaries under a `Themes/` folder. No
-  literal colors or sizes scattered through XAML.
-- Implicit styles (`TargetType` with no key) for the baseline; keyed styles for named variants
-  (`<Style x:Key="PrimaryButton" .../>`).
-- Merge the dictionaries once in `App.xaml`; do not re-import them per `Window`.
+The resource-dictionary and style discipline this rests on lives in Styling and theming below; this
+section is only the built-in Fluent theme.
+
 - On .NET 9+, prefer the built-in Fluent theme over a hand-rolled dark palette: set `ThemeMode`
   (`System`, `Light`, `Dark`) on `Application` or a `Window` for Windows 11 styling with automatic
   system light/dark switching. Reference theme-sensitive brushes with `DynamicResource` so they
@@ -231,7 +229,7 @@ and centralized so a theme or a look can change without touching a single code-b
 - **Dark mode via swapped theme dictionaries.** Keep one dictionary per theme (`Themes/Light.xaml`,
   `Themes/Dark.xaml`) declaring the same keys with different values, and swap the merged dictionary
   at the application level to switch - replace the entry in `Application.Current.Resources.MergedDictionaries`,
-  or use the built-in `ThemeMode` on .NET 9+ (see Resources and theming above) where it covers the
+  or use the built-in `ThemeMode` on .NET 9+ (see Fluent theming above) where it covers the
   need. Every themed value must be reached through `DynamicResource` or the swap has nothing to repaint.
 - **Design tokens, not literals.** Centralize the palette and spacing scale once - named brushes
   (`Brush.Primary`, `Brush.Surface`) and named thicknesses (`Thickness.CardPadding`) - and reference

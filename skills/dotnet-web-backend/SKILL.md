@@ -100,7 +100,7 @@ If the service runs under Aspire, ServiceDefaults is the composition point that 
 Match the cache to the topology, and always set an expiry.
 
 - `IMemoryCache` for a single-process, short-TTL cache - fastest, but invisible to other instances.
-- `HybridCache` (`Microsoft.Extensions.Caching.Hybrid`, .NET 9+) when you want both an in-process L1 and a distributed L2 behind one API, with stampede protection and tag-based invalidation built in. It is the default for any multi-instance service on .NET 9 or later:
+- `HybridCache` (the `Microsoft.Extensions.Caching.Hybrid` package) when you want both an in-process L1 and a distributed L2 behind one API, with stampede protection and tag-based invalidation built in. It is now GA and the default for any multi-instance service; the package targets down to .NET Standard 2.0, so it runs on the .NET 8 floor, not just .NET 9:
 
 ```csharp
 builder.Services.AddHybridCache();
@@ -112,7 +112,7 @@ var order = await cache.GetOrCreateAsync(
     cancellationToken: ct);
 ```
 
-On .NET 8, `HybridCache` is not available - use `IDistributedCache` (the Redis implementation) for the distributed tier and `IMemoryCache` for the local tier directly, and reach for output caching (`AddOutputCache`, attach per group) for whole-response caching. Treat this as the floor behaviour you upgrade away from once on .NET 9.
+If you would rather not add the dependency, fall back to `IDistributedCache` (the Redis implementation) for the distributed tier and `IMemoryCache` for the local tier directly - but `HybridCache` is the better default now that it runs on the floor.
 
 - Redis (StackExchange.Redis) is the distributed store behind either path. Always set an expiry; never cache forever.
 - Put a version or schema marker in the cache key so a deploy invalidates stale entries automatically, and never cache user-specific data without partitioning the key by user identifier.
