@@ -37,15 +37,15 @@ Branch: `skills-audit-2026-07`. Started 2026-07-07.
 | 25 | dotnet-hosted-services | B | **A** | 2 | SATISFIED | none (verifier caught double-quote emphasis, remediated) |
 | 26 | dotnet-messaging | B | **A** | 1 | SATISFIED | none (added Companions routing clause) |
 | 27 | dotnet-migrate | C | **A** | 1 | SATISFIED | none (EF bundle --idempotent + self-contained mischaracterization, Upgrade Assistant deprecation, desc/serena backtick) |
-| 28 | dotnet-minimal-api | - | pending | - | - | - |
-| 29 | dotnet-mvc-controllers | - | pending | - | - | - |
-| 30 | dotnet-openapi | - | pending | - | - | - |
-| 31 | dotnet-performance | - | pending | - | - | - |
-| 32 | dotnet-project-setup | - | pending | - | - | - |
-| 33 | dotnet-realtime | - | pending | - | - | - |
-| 34 | dotnet-security | - | pending | - | - | - |
-| 35 | dotnet-source-generators | - | pending | - | - | - |
-| 36 | dotnet-testing | - | pending | - | - | - |
+| 28 | dotnet-minimal-api | B | **A** | 1 | SATISFIED | none (.NET 10 cross-field validation claim corrected) |
+| 29 | dotnet-mvc-controllers | B | **A** | 2 | SATISFIED | none ([AsParameters] falsely claimed on controllers, [FromServices] version, British spellings) |
+| 30 | dotnet-openapi | B | **A** | 1 | SATISFIED | none (Scalar default route /scalar/v1 -> /scalar) |
+| 31 | dotnet-performance | B | **A** | 1 | SATISFIED | none (routed dotnet-diagnostics, negative scope, dropped inaccurate tracing claim) |
+| 32 | dotnet-project-setup | B | **A** | 1 | SATISFIED | none (CPM floating-vs-range conflation, .slnx SDK floor) |
+| 33 | dotnet-realtime | B | **A** | 1 | SATISFIED | none (phantom r3-reactive-extensions route removed, double-quote emphasis) |
+| 34 | dotnet-security | B | **A** | 1 | SATISFIED | none (fabricated AddPackageSourceMapping API, BinaryFormatter timeline, OWASP 2021->2025, 'defence') |
+| 35 | dotnet-source-generators | A | **A** | 1 | SATISFIED | none (already A, zero edits) |
+| 36 | dotnet-testing | B | **A** | 2 | SATISFIED | none (verifier caught double-quote emphasis, remediated) |
 | 37 | dotnet-web-backend | - | pending | - | - | - |
 | 38 | dotnet-wpf | - | pending | - | - | - |
 | 39 | explain-code-tutor | - | pending | - | - | - |
@@ -67,3 +67,4 @@ Branch: `skills-audit-2026-07`. Started 2026-07-07.
 - **Batch 1** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Adversarial verify caught real currency bugs (Capacitor 7->8, angular-material `mat.theme` v17->v19, angular-conventions aria floor, a Flyweight example that was JVM integer-cache behavior not .NET). No fabricated cons flagged. No renames needed. 10 files changed.
 - **Batch 2** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Real fixes: dotnet-authentication cookie Secure-by-default over-claim (security correctness), dotnet-architecture Guid.CreateVersion7 unflagged on the .NET 8 floor + a dangling api-versioning reference routed to dotnet-web-backend, plus house-voice cleanups (double-quote emphasis, British spellings, example date/weekday mismatches). devops was already A with zero edits. No fabrications, no renames. 11 files changed.
 - **Batch 3** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Best verifier catch of the run: dotnet-code-quality's CRAP formula was wrong (verifier scored correctness 5/10), remediated to complexity^2 x (1-coverage)^3 + complexity with recomputed examples. Plus dotnet-cryptography PQC type/platform fixes, dotnet-data-access EF identity-resolution correctness, dotnet-error-handling false won't-compile claim, dotnet-migrate EF-bundle flag fixes. 'cancelled' in dotnet-grpc left as-is (within repo's mixed norm). No fabrications, no renames. 14 files changed.
+- **Batch 4** (2026-07-07): 9/9 reached A, lint clean, house voice clean. Caught a hallucinated API in the skill itself: dotnet-security cited a fabricated `AddPackageSourceMapping` method (removed), plus a wrong BinaryFormatter timeline and OWASP 2021->2025 staleness. dotnet-mvc-controllers claimed `[AsParameters]` works on controllers (minimal-API only). dotnet-realtime had a phantom r3-reactive-extensions route (prose, so lint couldn't catch it). dotnet-openapi Scalar route, dotnet-project-setup CPM flag conflation. dotnet-source-generators already A, zero edits. No fabricated cons, no renames. 10 files changed.

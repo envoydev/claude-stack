@@ -1,9 +1,9 @@
 ---
 name: dotnet-performance
-description: "Performance-aware .NET design decisions and where they matter - the layer that decides whether allocation/memory layout or serialization-format choice is worth spending on here, then routes to the depth. Type design: struct vs class, readonly struct, seal by default, reduce allocations, defer enumeration, `ValueTask`, `Span`, frozen/immutable return types. Serialization: pick a serialization format, `System.Text.Json` source generator for JSON, Protobuf for gRPC/wire, MessagePack for cache/messaging, migrate off Newtonsoft. Load when a type sits on a hot path or high-throughput loop, or when choosing how bytes cross a process boundary. Measure first - profile or benchmark before optimizing. Companions: `csharp` (language baseline), `dotnet` (router), and the benchmarking/diagnostics skills (BenchmarkDotNet, dumps, tracing) for the measure-first step."
+description: "Performance-aware .NET design decisions and where they matter - the layer that decides whether allocation/memory layout or serialization-format choice is worth spending on here, then routes to the depth. Type design: struct vs class, readonly struct, seal by default, reduce allocations, defer enumeration, `ValueTask`, `Span`, frozen/immutable return types. Serialization: pick a serialization format, `System.Text.Json` source generator for JSON, Protobuf for gRPC/wire, MessagePack for cache/messaging, migrate off Newtonsoft. Load when a type sits on a hot path or high-throughput loop, or when choosing how bytes cross a process boundary. Measure first - profile or benchmark before optimizing; not a license to micro-optimize off the hot path, where correctness and clarity win. Companions: `csharp` (language baseline), `dotnet` (router), `dotnet-diagnostics` (BenchmarkDotNet + dumps for the measure-first step)."
 metadata:
   type: reference
-  sources: "Distilled 2026-07 from aaronontheweb/dotnet-skills (csharp-type-design-performance, serialization). Decision layer here; type-design and serialization depth in references/. Language baseline lives in csharp; measuring lives in the benchmarking/diagnostics skills."
+  sources: "Distilled 2026-07 from aaronontheweb/dotnet-skills (csharp-type-design-performance, serialization). Decision layer here; type-design and serialization depth in references/. Language baseline lives in csharp; measuring lives in dotnet-diagnostics."
 ---
 
 # dotnet-performance (decision layer)
@@ -17,7 +17,7 @@ The language baseline (naming, async, records, disposal, DI) is `csharp`; the fu
 
 ## Measure first
 
-Do not optimize on a hunch. A performance change is only earned by a measurement: a BenchmarkDotNet microbenchmark for a hot path, a profiler or dump for a live regression, allocation counts under load. Reach for the benchmarking and diagnostics skills before you tune. Most 'slow' code is a bad query or an N+1, not a struct-vs-class problem - profile before you touch a type, because optimizing the wrong layer buys nothing and costs readability.
+Do not optimize on a hunch. A performance change is only earned by a measurement: a BenchmarkDotNet microbenchmark for a hot path, a profiler or dump for a live regression, allocation counts under load. Reach for `dotnet-diagnostics` before you tune. Most 'slow' code is a bad query or an N+1, not a struct-vs-class problem - profile before you touch a type, because optimizing the wrong layer buys nothing and costs readability.
 
 ## When allocation and memory layout matter (type design)
 

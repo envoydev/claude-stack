@@ -1,6 +1,6 @@
 ---
 name: dotnet-mvc-controllers
-description: "Personal ASP.NET Core controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs. Covers the ApiController attribute and its behaviours, attribute routing with templates and constraints, ActionResult of T versus IActionResult versus typed HttpResults, the automatic 400 model-validation filter and suppressing it so the house FluentValidation-in-a-filter convention stays the sole validation authority (ApiBehaviorOptions, SuppressModelStateInvalidFilter), binding-source inference with explicit From-attributes and AsParameters, IAsyncActionFilter and its ordering as the endpoint-filter analogue, and thin controllers delegating to services. Floors at .NET 8 / C# 12; later additions flagged optional. Load before writing or editing API controllers and action filters. Companions: dotnet-minimal-api for the sibling style, dotnet-web-backend for the pipeline baseline, dotnet-error-handling for ProblemDetails and the validation filter, dotnet-authentication for authorization. Do NOT load for minimal APIs, MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
+description: "Personal ASP.NET Core controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs. Covers the ApiController attribute and its behaviors, attribute routing with templates and constraints, ActionResult of T versus IActionResult versus typed HttpResults, the automatic 400 model-validation filter and suppressing it so the house FluentValidation-in-a-filter convention stays the sole validation authority (ApiBehaviorOptions, SuppressModelStateInvalidFilter), binding-source inference with explicit From-attributes, IAsyncActionFilter and its ordering as the endpoint-filter analogue, and thin controllers delegating to services. Floors at .NET 8 / C# 12; later additions flagged optional. Load before writing or editing API controllers and action filters. Companions: dotnet-minimal-api for the sibling style, dotnet-web-backend for the pipeline baseline, dotnet-error-handling for ProblemDetails and the validation filter, dotnet-authentication for authorization. Do NOT load for minimal APIs, MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
 ---
 
 # ASP.NET Core controllers - API controller mechanics
@@ -27,7 +27,7 @@ public sealed class TodosController(ITodoService todos) : ControllerBase
 }
 ```
 
-`[ApiController]` is the switch that turns a plain MVC controller into an API one. It is opt-in behaviour, not cosmetic - it makes attribute routing mandatory, infers binding sources, infers `multipart/form-data` for `IFormFile` parameters, maps every error status code to `ProblemDetails`, and - the one to understand deeply below - triggers an automatic HTTP 400 on a model-validation failure. Apply it per controller, or once on an assembly-level marker so every controller in the project inherits it; do not sprinkle it inconsistently.
+`[ApiController]` is the switch that turns a plain MVC controller into an API one. It is opt-in behavior, not cosmetic - it makes attribute routing mandatory, infers binding sources, infers `multipart/form-data` for `IFormFile` parameters, maps every error status code to `ProblemDetails`, and - the one to understand deeply below - triggers an automatic HTTP 400 on a model-validation failure. Apply it per controller, or once on an assembly-level marker so every controller in the project inherits it; do not sprinkle it inconsistently.
 
 Use primary-constructor injection (C# 12) for the controller's collaborators, and accept a `CancellationToken` as the last parameter of every async action - the framework binds the request-aborted token, and an action that ignores it keeps working after the client has hung up.
 
@@ -46,7 +46,7 @@ With `[ApiController]`, routing is attribute-based, not convention-based - there
 
 Three return shapes exist; pick by what the action actually does.
 
-- **`ActionResult<T>`** is the default for an action with a single success payload plus framework helpers. It beats `IActionResult` because the implicit cast operators let you `return dto;` (it wraps in an `ObjectResult`) or `return NotFound();` from the same method, and because `[ProducesResponseType(StatusCodes.Status200OK)]` can omit the `Type` - it is inferred from `T`. A naked `IEnumerable<T>` does not get the implicit cast (C# has no implicit operators on interfaces), so declare `ActionResult<IEnumerable<T>>` and materialise the sequence.
+- **`ActionResult<T>`** is the default for an action with a single success payload plus framework helpers. It beats `IActionResult` because the implicit cast operators let you `return dto;` (it wraps in an `ObjectResult`) or `return NotFound();` from the same method, and because `[ProducesResponseType(StatusCodes.Status200OK)]` can omit the `Type` - it is inferred from `T`. A naked `IEnumerable<T>` does not get the implicit cast (C# has no implicit operators on interfaces), so declare `ActionResult<IEnumerable<T>>` and materialize the sequence.
 - **`IActionResult`** only where there is genuinely no single payload type to name - a download stream, a redirect, a pure status. It carries no payload type for the document, so reach for it rarely.
 - **`Results<TResult1, TResultN>` / `TypedResults`** - the same `HttpResults` types minimal APIs use, and they work in a controller action. The generic union names every outcome in the signature, the compiler rejects a return path that produces an undeclared one, and the union retains OpenAPI metadata automatically. This is the pick when you want the controller's outcome contract to read like a minimal-API handler:
 
@@ -91,20 +91,19 @@ Do not assemble the error body, the envelope, or the `ProblemDetails` shape here
 
 - A simple type matching a route token binds from the route; other simple types bind from the query string.
 - A complex type **not** registered in DI binds from the body (`[FromBody]`), with at most one body parameter per action. Special framework types - `CancellationToken`, `IFormCollection` - are exempt from body inference.
-- A complex type **registered** in DI binds from services (`[FromServices]` is inferred in .NET 8 for `[ApiController]`).
+- A complex type **registered** in DI binds from services (`[FromServices]` is inferred for `[ApiController]` parameters).
 - `IFormFile` / `IFormFileCollection` infer `multipart/form-data`.
 
 Make the source explicit the moment it is ambiguous or load-bearing: `[FromBody]`, `[FromRoute]`, `[FromQuery]`, `[FromHeader]`, `[FromForm]`, `[FromServices]`, `[FromKeyedServices("name")]` (.NET 8). An explicit attribute documents intent and stops a refactor from silently moving where a value comes from. To turn off a particular inference globally there are escape hatches - `SuppressInferBindingSourcesForParameters` and `DisableImplicitFromServicesParameters` on `ApiBehaviorOptions` - but prefer an explicit attribute on the one parameter over flipping a global switch.
 
-When an action's parameter list grows long, collect the inputs into one type and bind it with `[AsParameters]` (supported on controllers in .NET 8). A `readonly record struct` is the allocation-light, immutable carrier:
+When an action's parameter list grows long, collect the inputs into one complex-type parameter and mark it with the source - `[FromQuery]` for a query model - so MVC binds every property from it. That is MVC's own recursive model binding, not the minimal-API `[AsParameters]` attribute: that one belongs to `dotnet-minimal-api` and MVC model binding ignores it. A `readonly record struct` is the allocation-light, immutable carrier:
 
 ```csharp
-public readonly record struct ListTodosQuery(
-    [FromQuery] int Page, [FromQuery] int Size, [FromQuery] string? Filter);
+public readonly record struct ListTodosQuery(int Page, int Size, string? Filter);
 
 [HttpGet]
 public async Task<ActionResult<IReadOnlyList<TodoDto>>> List(
-    [AsParameters] ListTodosQuery query, CancellationToken ct) => ...;
+    [FromQuery] ListTodosQuery query, CancellationToken ct) => ...;
 ```
 
 ## Action filters - the controller's per-action hook
@@ -145,7 +144,7 @@ public async Task<ActionResult<TodoDto>> Complete(Guid id, CancellationToken ct)
 }
 ```
 
-A thin action is testable through the service in isolation, keeps the controller readable, and means a second transport (a minimal-API endpoint, a message handler) can call the same service without duplicating logic. The architecture that organises those services - VSA, clean, layered - is chosen once per project in `dotnet-web-backend`, never inside the controller.
+A thin action is testable through the service in isolation, keeps the controller readable, and means a second transport (a minimal-API endpoint, a message handler) can call the same service without duplicating logic. The architecture that organizes those services - VSA, clean, layered - is chosen once per project in `dotnet-web-backend`, never inside the controller.
 
 ## ProblemDetails
 

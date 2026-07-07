@@ -79,7 +79,7 @@ Common rules regardless of library:
 | Library | When to pick |
 |---|---|
 | **FluentAssertions 7.x** | Default. Rich diff output, structural equality, async support. Stay on 7.x: v8+ moved to a paid commercial license - upgrading a client project is a licensing decision, not a routine bump. |
-| **AwesomeAssertions** | Apache-2.0 community fork taken from FluentAssertions' last Apache-licensed release (v7) and developed forward independently. Drop-in choice when you want a permissive licence and ongoing fixes without FA v8's commercial terms. |
+| **AwesomeAssertions** | Apache-2.0 community fork taken from FluentAssertions' last Apache-licensed release (v7) and developed forward independently. Drop-in choice when you want a permissive license and ongoing fixes without FA v8's commercial terms. |
 | **Shouldly** | Project preference. Simpler API; good when FA's surface area feels heavy. |
 | **xUnit/NUnit/MSTest built-in `Assert`** | When the project has no FA/Shouldly dependency and stays minimal. |
 
@@ -118,14 +118,14 @@ Common rules regardless of library:
 
 ## Auditing an existing suite
 
-The rules above are for *writing* tests; this is the *review* lens - when asked "are these tests any good?", a test that passes can still prove nothing. Scan for the false-confidence anti-patterns first, because they are the ones that read as coverage while verifying nothing:
+The rules above are for *writing* tests; this is the *review* lens - when asked 'are these tests any good?', a test that passes can still prove nothing. Scan for the false-confidence anti-patterns first, because they are the ones that read as coverage while verifying nothing:
 
 - **No assertions / always-true** - runs code but never asserts (no `Assert.*` / `Should` / `Received()`), or asserts a constant (`Assert.True(true)`, `Assert.Equal(x, x)`). A mock verification (`Received()` / `Verify()` / `MustHaveHappened()`) does count as an assertion.
 - **Coverage-touching** - a *systematic* sweep calling every public member with no real assertion (or only a null check), to inflate the coverage number. The tell is the surface-area sweep, not a single missing assert.
 - **Tautological / self-referential assertion** - asserts an identity round-trip (`Assert.Equal(input, Parse(input.ToString()))`) or a field against itself (`Assert.Equal(dto.Name, dto.Name)`). It can only fail if the round-trip breaks; it never proves a transformation happened.
 - **Missing `await` on an async assertion** - an `async Task` test calling `Assert.ThrowsAsync(...)` (or a `.resolves`-style assertion) without `await`; it passes silently even when the assertion would fail.
 - **Swallowed exception / assert-only-in-catch** - `try { Act(); } catch { }`, or `catch (Exception ex) { Assert.Fail(ex.Message); }`; both pass when no exception is thrown even if the result is wrong. Use `Assert.Throws` / `Assert.ThrowsAsync`.
-- **Commented-out or disabled assertions** - the test still runs and "passes", giving the illusion of coverage. (This is coverage-gaming; reject it in review - see the reward-hacking list in `dotnet-code-quality`.)
+- **Commented-out or disabled assertions** - the test still runs and 'passes', giving the illusion of coverage. (This is coverage-gaming; reject it in review - see the reward-hacking list in `dotnet-code-quality`.)
 
 Beyond the catalog, two deeper passes: judge **assertion depth** (do the tests verify different facets of correctness, or restate one shallow check), and run a **mock-usage audit** - trace each substitute setup through the production path for that test's inputs and classify it *used* (reached), *unreachable* (a guard/throw/branch skips it), *unused* (production never calls it on any input), or *redundant* (the same setup duplicated across tests instead of shared). Delete unreachable and unused setups; share redundant ones. Mocking stable framework types (`ILogger`, `IOptions<T>`) is usually over-mocking - prefer the real instance.
 
@@ -133,7 +133,7 @@ Beyond the catalog, two deeper passes: judge **assertion depth** (do the tests v
 
 Coverage proves a line *ran*; it does not prove a test would *fail* if that line were wrong. Mutation testing closes that gap: **Stryker.NET** mutates the production code (flips a `>` to `>=`, a `+` to `-`, removes a statement) and reruns the tests - a mutant the suite kills is a fault the tests would catch, a *surviving* mutant is a real blind spot a high coverage number hid.
 
-- **Scope it** - run on critical / high-risk projects, never blindly across the whole solution. It is expensive and amplifies flaky or slow suites, so keep it off the fast PR path and stabilise the suite first.
+- **Scope it** - run on critical / high-risk projects, never blindly across the whole solution. It is expensive and amplifies flaky or slow suites, so keep it off the fast PR path and stabilize the suite first.
 - Install as a local tool (`dotnet new tool-manifest`; `dotnet tool install dotnet-stryker`) for local-and-CI parity, then `dotnet stryker` on the target project.
 - Read the mutation score as a *test-quality* signal interpreted with judgement, not a vanity metric. It complements line/branch coverage (§Coverage) and the risk hotspots in `dotnet-code-quality` (`references/crap-analysis.md`) - all three answer different questions.
 

@@ -49,7 +49,7 @@ Projects reference the packages with no version:
 - **Never hand-edit the XML - use the CLI.** `dotnet add package <name>` writes both the central `PackageVersion` and the versionless `PackageReference`, and validates the package resolves; hand-editing invites typos and a malformed manifest.
 - Never inline a `Version` on a `PackageReference` while CPM is on - it silently overrides the central version and reintroduces the drift CPM exists to stop.
 - Group a related family under one version variable (the OpenTelemetry block above) so a single edit moves them together; mismatched versions inside a family are a common break.
-- CPM requires exact versions - version ranges are not supported.
+- CPM blocks floating versions (`1.0.*`) by default (NU1011) - restore stays deterministic; a fixed bracket range like `[8.5.2,9.0.0)` is still allowed, and `CentralPackageFloatingVersionsEnabled` lifts the block if you truly need one.
 
 ```bash
 dotnet add package Serilog                 # both files, in sync

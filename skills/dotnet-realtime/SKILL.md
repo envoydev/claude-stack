@@ -1,6 +1,6 @@
 ---
 name: dotnet-realtime
-description: "Personal .NET real-time conventions for ASP.NET Core SignalR - server-to-client push over a persistent connection (WebSockets, with fallbacks), connection-scoped, not durable. Covers strongly-typed Hub<TClient>, sending from outside a hub via IHubContext, group/user/presence targeting, the reconnection model (group membership is NOT restored - rejoin explicitly), connection-time JWT-over-query-string auth plus per-message validation, additive client contracts, MessagePack, and multi-server scale-out via a Redis backplane or Azure SignalR Service. Floors at .NET 8 / C# 12. Load when building chat, notifications, live dashboards, collaboration, or any real-time push, or when the user names SignalR, hub, WebSocket, real-time, or live updates. Companions: dotnet-messaging (broker delivers durably, SignalR is the last hop), dotnet-authentication, dotnet-hosted-services (worker pushing via IHubContext), dotnet-web-backend. Do NOT load for broker-backed durable messaging (dotnet-messaging), request/response HTTP (dotnet-minimal-api), or in-process reactive streams (r3-reactive-extensions)."
+description: "Personal .NET real-time conventions for ASP.NET Core SignalR - server-to-client push over a persistent connection (WebSockets, with fallbacks), connection-scoped, not durable. Covers strongly-typed Hub<TClient>, sending from outside a hub via IHubContext, group/user/presence targeting, the reconnection model (group membership is NOT restored - rejoin explicitly), connection-time JWT-over-query-string auth plus per-message validation, additive client contracts, MessagePack, and multi-server scale-out via a Redis backplane or Azure SignalR Service. Floors at .NET 8 / C# 12. Load when building chat, notifications, live dashboards, collaboration, or any real-time push, or when the user names SignalR, hub, WebSocket, real-time, or live updates. Companions: dotnet-messaging (broker delivers durably, SignalR is the last hop), dotnet-authentication, dotnet-hosted-services (worker pushing via IHubContext), dotnet-web-backend. Do NOT load for broker-backed durable messaging (dotnet-messaging), request/response HTTP (dotnet-minimal-api), or in-process reactive streams (Rx / System.Reactive)."
 ---
 
 # .NET real-time - ASP.NET Core SignalR
@@ -11,7 +11,7 @@ The defining trait, and the thing that sets every rule below: a SignalR message 
 
 ## The seam with messaging: broker delivers, SignalR pushes
 
-The common architecture is not "SignalR instead of a broker" - it is both. A durable integration event arrives on the bus, a consumer handles it inside its transaction, and *then* it pushes a notification to the relevant browsers. The consumer is `dotnet-messaging` / `dotnet-hosted-services`; the push is here. The bridge is `IHubContext` - the supported way to send from outside a hub, where no `Clients` property exists:
+The common architecture is not 'SignalR instead of a broker' - it is both. A durable integration event arrives on the bus, a consumer handles it inside its transaction, and *then* it pushes a notification to the relevant browsers. The consumer is `dotnet-messaging` / `dotnet-hosted-services`; the push is here. The bridge is `IHubContext` - the supported way to send from outside a hub, where no `Clients` property exists:
 
 ```csharp
 public sealed class OrderPlacedConsumer(IHubContext<OrdersHub, IOrdersClient> hub)
@@ -57,7 +57,7 @@ public sealed class OrdersHub : Hub<IOrdersClient>
 `Clients` selects who receives a call: `All`, `Caller`, `Others`, `Group(name)`, `User(userId)`, `Client(connectionId)`. Two house rules:
 
 - Use **groups** for any fan-out narrower than everyone (a chat room, a tenant, a customer's open tabs). Manage membership with `Groups.AddToGroupAsync` / `RemoveFromGroupAsync`.
-- Use **`Clients.User(id)`** rather than tracking connection ids yourself when you want "this person on all their devices" - SignalR maps a user to all their connections via the authenticated `NameIdentifier`.
+- Use **`Clients.User(id)`** rather than tracking connection ids yourself when you want 'this person on all their devices' - SignalR maps a user to all their connections via the authenticated `NameIdentifier`.
 
 ## Reconnection: group membership is not restored
 

@@ -98,7 +98,7 @@ For a database or cache, pull the connection string the same way rather than ass
 
 ```csharp
 var connectionString = await fixture.App
-    .GetResource("appdb").GetConnectionStringAsync();
+    .GetConnectionStringAsync("appdb");
 ```
 
 ## One AppHost, two modes
@@ -135,11 +135,11 @@ Volumes-off gives a clean start per run, but a shared fixture leaks state betwee
 using Respawn;
 
 // in InitializeAsync, after the app reports healthy:
-_connectionString = await _app.GetResource("appdb").GetConnectionStringAsync();
+_connectionString = await _app.GetConnectionStringAsync("appdb");
 _respawner = await Respawner.CreateAsync(_connectionString, new RespawnerOptions
 {
     DbAdapter = DbAdapter.Postgres,
-    TablesToIgnore = new[] { "__EFMigrationsHistory" }
+    TablesToIgnore = new Table[] { "__EFMigrationsHistory" }
 });
 
 public Task ResetAsync() => _respawner!.ResetAsync(_connectionString!);
