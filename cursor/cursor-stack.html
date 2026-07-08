@@ -139,7 +139,7 @@
     <div><strong id="c-total">92</strong> total</div>
     <div><strong id="c-personal">37</strong> personal skills</div>
     <div><strong id="c-repo">35</strong> repository skills</div>
-    <div><strong id="c-mcp">7</strong> MCP servers</div>
+    <div><strong id="c-mcp">6</strong> MCP servers</div>
     <div><strong id="c-hooks">9</strong> hooks / rules</div>
     <div><strong id="c-agents">4</strong> subagents</div>
     <div><strong id="c-equiv">8</strong> plugin mappings</div>
@@ -232,9 +232,9 @@ const repository = [
 // ---- MCP servers (native in Cursor via .cursor/mcp.json) ----
 const mcp = [
   ["context7","Library docs",".cursor/mcp.json (remote https://mcp.context7.com/mcp; 'context7-local' arg for local npx)","https://github.com/upstash/context7","Fetch current library/framework/SDK docs. Same product as on Claude - an MCP server, so identical in Cursor. Remote by default - key via ${env:CONTEXT7_API_KEY} from your OS env. Add `use context7` to a prompt."],
-  ["serena","Code navigation",".cursor/mcp.json (uvx --from serena-agent, --context ide-assistant)","https://github.com/oraios/serena","Code-aware symbol navigation, find-references, call-hierarchy via LSP. Cursor uses the generic `ide-assistant` context. Per-project .serena/ (SERENA_HOME=.serena/home)."],
+  ["serena","Code navigation + local memory",".cursor/mcp.json (uvx --from serena-agent, --context ide-assistant)","https://github.com/oraios/serena","Code-aware symbol navigation, find-references, call-hierarchy via LSP. Cursor uses the generic `ide-assistant` context. Per-project .serena/ (SERENA_HOME=.serena/home) - its .serena/memories/ is now the subagent hand-off bus (name-addressed write_memory / read_memory / list_memories notes)."],
   ["playwright","Browser automation",".cursor/mcp.json (npx @playwright/mcp@<pinned>)","https://github.com/microsoft/playwright-mcp","Browser navigate/click/type/screenshot via Playwright. ${...} tokens are resolved to concrete paths when .cursor/mcp.json is written (Cursor does no shell interpolation)."],
-  ["memory","Memory / recall",".cursor/mcp.json (mcp-memory-service, shared ~/.memory-mcp)","https://codeberg.org/doobidoo/mcp-memory-service","Cross-project semantic memory. Shares ~/.memory-mcp with Claude Code, so both see the same DB."],
+  ["memory","Memory / recall (opt-in)","commented in .cursor/mcp.json by default (mcp-memory-service, shared ~/.memory-mcp) - uncomment for cross-project work","https://codeberg.org/doobidoo/mcp-memory-service","Cross-project semantic memory (shares ~/.memory-mcp with Claude Code, same DB). DEMOTED from the baseline and commented by default - the per-project subagent hand-off now runs on serena's local memory; uncomment only when work genuinely spans projects."],
   ["angular-cli","Angular / workspace",".cursor/mcp.json (npx -y @angular/cli mcp)","https://angular.dev/ai/mcp","Official Angular CLI MCP (experimental): workspace-aware docs, migrations, generation. Angular workspaces only (comment out elsewhere)."],
   ["chrome-devtools","Browser / extension debug","Active, heavy .cursor/mcp.json (npx chrome-devtools-mcp@latest)","https://github.com/ChromeDevTools/chrome-devtools-mcp","Official Chrome DevTools MCP. Active by default (heavy - comment out where not needed) - drives a full Chrome; needed mainly for browser/extension projects."],
   ["appium-mcp","Mobile / native E2E","Active, heavy .cursor/mcp.json (npx -y appium-mcp@latest)","https://github.com/appium/appium-mcp","Official Appium MCP (Appium core team): drive iOS simulators + Android emulators/devices (40+ tools - sessions, element finding incl. vision, gestures, app lifecycle, permissions, screenshots, test gen). Embedded UiAutomator2/XCUITest drivers. Active by default (heavy - comment out where not needed) - needs Xcode and/or Android SDK + Java; needed mainly for Capacitor/Ionic mobile projects."],

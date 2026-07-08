@@ -115,9 +115,9 @@ Two `beforeShellExecution` guards live in `.cursor/hooks/`, wired in `.cursor/ho
 
 | Server | Use for |
 |---|---|
-| `serena` | primary symbol navigator + symbol-level *editor* - `find_symbol` / `find_referencing_symbols` / symbol edits *before* `Read`-ing a whole file to locate a symbol; default over grep and whole-file Read. Runs with `--context ide-assistant` and `--project-from-cwd`, so it self-activates on launch - no `activate_project` call needed; the relative `SERENA_HOME` assumes cwd is the project root. |
+| `serena` | primary symbol navigator + symbol-level *editor* - `find_symbol` / `find_referencing_symbols` / symbol edits *before* `Read`-ing a whole file to locate a symbol; default over grep and whole-file Read. Runs with `--context ide-assistant` and `--project-from-cwd`, so it self-activates on launch - no `activate_project` call needed; the relative `SERENA_HOME` assumes cwd is the project root. serena also holds this project's **local memory** (`.serena/memories/`, name-addressed and gitignored): the installed subagents use it as their hand-off bus - a seat `write_memory`s a compact note named `<feature>__<contract_version>__<seat>` at hand-off and the next `read_memory`s it by name, staying local to this project. |
 | `context7` | up-to-date library / framework / SDK docs. **Before writing or changing code against any code you don't own** - any third-party package, vendor SDK, or standard-library / framework API whose behavior or signatures are version-sensitive (not just the few you use most) - resolve + query `context7` first; don't answer library-API questions from recall, even when confident. Packages this file names elsewhere are examples, not the whole set - the rule is the *category* (third-party API surface), not a fixed list. Skipping it is *silent* (no error, unlike a wrong symbol), so it's a discipline, not a reflex. Hand-written API code only - generated code (scaffolds, migrations, codegen output) doesn't count. |
-| `memory` | *cross-project* recall; search when this project's context is thin, store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Its SQLite DB is shared across projects *and* accounts by design (one store under `$HOME`) - that's the lone deliberate exception to the per-project-MCP stance every other server here follows. |
+| `memory` (opt-in) | *cross-project* recall only, and **commented out of the baseline by default** - the per-project subagent hand-off runs on serena's local memory (above), not here. Uncomment it only when work genuinely spans projects; then search when this project's context is thin and store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Its SQLite DB is shared across projects *and* accounts by design (one store under `$HOME`) - the lone cross-project store, every other server here is per-project. |
 | `playwright` | drive a browser for visual checks / large HTML reports - don't text-read them |
 | `<framework>-cli` (framework-gated; `angular-cli` in the Angular baseline) | the framework CLI's own docs / commands - shipped active in the Angular stack, commented out where the project isn't that framework. A framework-specific complement to `context7`, which stays the generic-docs route. |
 
@@ -129,7 +129,7 @@ Adjacent but not an MCP: the editor's **`LSP`** - built-in TypeScript, plus an O
 language (`<language LSP extension>`; on C# use a Roslyn-based extension - Microsoft's C# Dev Kit is
 blocked in Cursor). An LSP gives compiler-accurate intelligence: inline diagnostics, go-to-definition,
 find-references, resolved types. It **complements** serena and does **not** edit; serena stays the
-default navigator and symbol editor.
+default navigator, symbol editor, and local memory.
 
 **Hard rule - never `Read` a whole file to find a symbol.** Locating a symbol, its definition, or its
 callers goes through serena (`find_symbol` / `find_referencing_symbols`) or the `LSP` - not a

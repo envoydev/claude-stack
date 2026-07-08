@@ -424,7 +424,7 @@ $Mcps = @(
   $PlaywrightEntry                            # drive a real browser for visual checks / web app verification
   'chrome-devtools|-- cmd /c npx chrome-devtools-mcp@latest' # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   'appium-mcp|-- cmd /c npx -y appium-mcp@latest' # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
-  $MemoryEntry                                # memory: cross-project recall + the subagent cross-run handoff bus (mcp-memory-service)
+  # $MemoryEntry  # memory: DEMOTED from the baseline - cross-project recall only; uncomment only when work genuinely spans projects (the per-project subagent handoff now runs on serena)
   $Context7Entry                              # up-to-date library/framework/SDK docs (beats recalled API knowledge)
 )
 

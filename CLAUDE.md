@@ -81,12 +81,15 @@ because the platforms differ:
 
 ## The model these templates encode
 
-- **MCP servers are per-project, never global.** Active baseline (7): `context7` (docs),
-  `serena` (symbol nav + edits + memory), `playwright` (browser), `memory` (cross-project
-  recall), plus `angular-cli` (framework-specific - comment out where not applicable),
-  `chrome-devtools` (browser/extension debug) and `appium-mcp` (native mobile E2E -
-  Capacitor/Ionic, needs Xcode/Android SDK + Java). The last two are heavy and fail at launch
-  without their native deps - comment them out where not applicable.
+- **MCP servers are per-project, never global.** Active baseline (6): `context7` (docs),
+  `serena` (symbol nav + edits + per-project memory), `playwright` (browser), plus `angular-cli`
+  (framework-specific - comment out where not applicable), `chrome-devtools` (browser/extension
+  debug) and `appium-mcp` (native mobile E2E - Capacitor/Ionic, needs Xcode/Android SDK + Java).
+  The last two are heavy and fail at launch without their native deps - comment them out where not
+  applicable. The `memory` MCP (cross-project recall, one shared SQLite DB under `$HOME`) is **no
+  longer in the baseline** - it is commented in the installer and uncommented only when work
+  genuinely spans projects, because the per-project handoff and orientation now run on serena's
+  local memory.
 - **serena self-activates via `--project-from-cwd`**, not a hook: it finds `.serena/project.yml`
   in its cwd (the project root) and binds on process start, zero model involvement. Two approaches
   that look right but FAIL - do not retry: (1) an `mcp_tool` `SessionStart` hook calling
@@ -97,17 +100,24 @@ because the platforms differ:
   `.mcp.json` parse time for a non-plugin config. Cursor runs
   serena with `--context ide-assistant`; Claude with `claude-code`.
 - **serena state is isolated per project** via `-e SERENA_HOME=.serena/home` (relative, resolved
-  from cwd): registry, memories, logs, and language servers all live in-project, so nothing pools
-  across projects or accounts (default `~/.serena` keys off `$HOME`, merging every repo across
-  both Claude config dirs). Cost: the LSP is re-downloaded per same-language project (~327MB for C#
-  Roslyn); `.serena/home/` must be gitignored.
-- **serena isolates, the `memory` MCP shares** - granularity follows each tool's scope. Three
-  stores, don't conflate: the file-based auto-memory (`MEMORY.md` + `memory/*.md`, harness-injected);
-  serena's per-project memories (under `.serena/home`); the `memory` MCP (one SQLite DB under
-  `$HOME`, shared across projects *and* accounts - that's the point; a space arg (any word, e.g.
-  `work`) → `memory_<space>.db` for a per-space (work/personal) split - and on Claude the same space
-  also selects the `~/.claude-<space>` account; narrow to a single product only by overriding
-  `MCP_MEMORY_SQLITE_PATH`).
+  from cwd): registry, logs, and language servers live in-project under `.serena/home`, and serena's
+  project memories live alongside in `.serena/memories/` - so nothing pools across projects or
+  accounts (default `~/.serena` keys off `$HOME`, merging every repo across both Claude config dirs).
+  Cost: the LSP is re-downloaded per same-language project (~327MB for C# Roslyn); the whole `.serena/`
+  must be gitignored (it holds the LSP cache and the memories).
+- **serena holds local memory; the `memory` MCP is optional, cross-project only.** Three stores,
+  don't conflate: the file-based auto-memory (`MEMORY.md` + `memory/*.md`, harness-injected);
+  **serena's per-project memory** (`.serena/memories/`, name-addressed, local to the repo and
+  gitignored - the default store for the subagent handoff and per-project orientation); and the
+  `memory` MCP (one SQLite DB under `$HOME`, shared across projects *and* accounts), now **demoted
+  out of the always-on baseline** - a space arg still names its DB (`memory_<space>.db`) and, on
+  Claude, selects the `~/.claude-<space>` account, but it is uncommented only when work genuinely
+  spans projects.
+- **Agents use serena for all local memory** - the second hard rule (peer of the read-whole-file
+  rule below): the subagent handoff and any per-project recall `write_memory` / `read_memory` /
+  `list_memories` in serena, named `<feature>__<contract_version>__<seat>`, never the shared
+  `memory` MCP. serena memory is local and disposable by design; a reference that must survive a
+  fresh clone belongs in a committed file, not memory.
 - **Never `Read` a whole file to find a symbol** - the hard rule shipped to both stacks: locate via
   serena (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
 
