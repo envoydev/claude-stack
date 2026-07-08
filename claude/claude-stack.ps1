@@ -646,6 +646,19 @@ function Get-Rules {
   }
 }
 
+$ClaudeMdUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/CLAUDE.template.md'
+function New-ClaudeMd {
+  # INSTALL: lay down a starter CLAUDE.md from the template when the project has none (never clobber a filled one).
+  $root = Get-RepoRoot
+  if (-not $root) { Log '  !! not in a git repo - skipping CLAUDE.md'; return }
+  $dest = Join-Path $root 'CLAUDE.md'
+  if (Test-Path -LiteralPath $dest) { Log '  CLAUDE.md: already present - left as-is (fill any remaining <placeholders>)'; return }
+  $tmp = [System.IO.Path]::GetTempFileName()
+  try { Invoke-WebRequest -Uri $ClaudeMdUrl -OutFile $tmp -UseBasicParsing -ErrorAction Stop }
+  catch { Log '  !! CLAUDE.md template fetch failed - create it by hand from claude/CLAUDE.template.md'; Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue; return }
+  Move-Item -LiteralPath $tmp -Destination $dest -Force; Log '  CLAUDE.md: seeded from the template - FILL its <placeholders> for this project before you start'
+}
+
 function Set-HookSettings {
   # INSTALL: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent).
   $root = Get-RepoRoot
@@ -837,7 +850,7 @@ Test-Prerequisites
 Install-GitHubCli
 
 # claude-only steps fail soft (Get-Command claude) if the CLI is not installed.
-if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Repair-SerenaTsLspWindows }
+if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; Repair-SerenaTsLspWindows }
 else { Update-Skills; Update-Plugins; Update-Mcps; Update-Hooks; Update-Agents; Update-Rules; Repair-SerenaTsLspWindows }
 
 Remove-AgentsCache
@@ -850,6 +863,8 @@ if ($script:ClaudeMissing) { Log "  !! claude CLI absent - plugins, MCPs, and se
 if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed above - re-run '$Action' to retry" }
 
 Log 'next steps:'
+Log "  - fill your project's CLAUDE.md <placeholders> (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
+Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), add docs/RELATED-PROJECTS.md naming the edges (consumes / provides-to / peer) + keep a one-line pointer in CLAUDE.md's '## Related projects' section"
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 if ($Context7 -eq 'remote') { Log "  - context7 is remote; add CONTEXT7_API_KEY to $ConfigDir\settings.json 'env' for higher rate limits (or re-run with -Context7 local)" }

@@ -580,6 +580,18 @@ download_rules() {  # fetch each rule .md into .claude/rules/; per-rule fail-sof
   done
 }
 
+CLAUDE_MD_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/CLAUDE.template.md"
+seed_claude_md() {  # INSTALL: lay down a starter CLAUDE.md from the template when the project has none (never clobber a filled one)
+  command -v curl >/dev/null || { log "  !! curl not found - create CLAUDE.md by hand from claude/CLAUDE.template.md"; return 0; }
+  local root dest tmp
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping CLAUDE.md"; return 0; }
+  dest="$root/CLAUDE.md"
+  if [ -f "$dest" ]; then log "  CLAUDE.md: already present - left as-is (fill any remaining <placeholders>)"; return 0; fi
+  tmp="$(mktemp)"
+  if ! curl -fsSL "$CLAUDE_MD_URL" -o "$tmp"; then log "  !! CLAUDE.md template fetch failed - create it by hand from claude/CLAUDE.template.md"; rm -f "$tmp"; return 0; fi
+  mv "$tmp" "$dest"; log "  CLAUDE.md: seeded from the template - FILL its <placeholders> for this project before you start"
+}
+
 wire_hooks_settings() {  # INSTALL: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent)
   local root settings; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
   settings="$root/.claude/settings.json"; mkdir -p "$(dirname "$settings")"
@@ -723,7 +735,7 @@ install_github_cli
 
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; install_mcps; download_hooks; wire_hooks_settings; download_agents; download_rules
+  install_skills; install_plugins; install_mcps; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md
 else
   update_skills; update_plugins; update_mcps; update_hooks; update_agents; update_rules
 fi
@@ -742,6 +754,8 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 log "next steps:"
+log "  - fill your project's CLAUDE.md <placeholders> (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
+log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), add docs/RELATED-PROJECTS.md naming the edges (consumes / provides-to / peer) + keep a one-line pointer in CLAUDE.md's '## Related projects' section"
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 if [ "$CONTEXT7_MODE" = "remote" ]; then
