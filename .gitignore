@@ -26,5 +26,21 @@ REPORT.md
 # local research input (contains private project names) - never commit
 best-practice/
 
-# local test playground (nested git repo + installed .claude tree + serena state) - never commit
-examples/
+# examples: worked reference projects - track clean source, exclude build caches,
+# stack state, and grader-only harness artifacts. (node_modules/.claude/.serena/.mcp.json/
+# .vscode/REPORT.md/.DS_Store are already ignored globally above.)
+examples/**/.angular/
+examples/**/.playwright/
+examples/**/dist/
+examples/**/bin/
+examples/**/obj/
+examples/**/*.db
+examples/**/*.db-wal
+examples/**/*.db-shm
+examples/**/skills-lock.json
+examples/ANSWER-KEY.md
+examples/*ANSWER-KEY*.md
+examples/*-test-prompt.md
+examples/RUN-*PHASES*.md
+examples/**/RETEST-REPORT.md
+examples/**/VERIFY-REPORT.md
