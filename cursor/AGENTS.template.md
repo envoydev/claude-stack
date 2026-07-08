@@ -117,7 +117,7 @@ Two `beforeShellExecution` guards live in `.cursor/hooks/`, wired in `.cursor/ho
 |---|---|
 | `serena` | primary symbol navigator + symbol-level *editor* - `find_symbol` / `find_referencing_symbols` / symbol edits *before* `Read`-ing a whole file to locate a symbol; default over grep and whole-file Read. Runs with `--context ide-assistant` and `--project-from-cwd`, so it self-activates on launch - no `activate_project` call needed; the relative `SERENA_HOME` assumes cwd is the project root. serena also holds this project's **local memory** (`.serena/memories/`, name-addressed and gitignored): the installed subagents use it as their hand-off bus - a seat `write_memory`s a compact note named `<feature>__<contract_version>__<seat>` at hand-off and the next `read_memory`s it by name, staying local to this project. |
 | `context7` | up-to-date library / framework / SDK docs. **Before writing or changing code against any code you don't own** - any third-party package, vendor SDK, or standard-library / framework API whose behavior or signatures are version-sensitive (not just the few you use most) - resolve + query `context7` first; don't answer library-API questions from recall, even when confident. Packages this file names elsewhere are examples, not the whole set - the rule is the *category* (third-party API surface), not a fixed list. Skipping it is *silent* (no error, unlike a wrong symbol), so it's a discipline, not a reflex. Hand-written API code only - generated code (scaffolds, migrations, codegen output) doesn't count. |
-| `memory` (opt-in) | *cross-project* recall only, and **commented out of the baseline by default** - the per-project subagent hand-off runs on serena's local memory (above), not here. Uncomment it only when work genuinely spans projects; then search when this project's context is thin and store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Its SQLite DB is shared across projects *and* accounts by design (one store under `$HOME`) - the lone cross-project store, every other server here is per-project. |
+| `memory` | *cross-project* recall and dynamic cross-repo findings - **active in the baseline**; the per-project subagent hand-off runs on serena's local memory (above), not here, so comment this out in a standalone project. Search when this project's context is thin and store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Its SQLite DB is shared across projects *and* accounts by design (one store under `$HOME`) - the lone cross-project store, every other server here is per-project. |
 | `playwright` | drive a browser for visual checks / large HTML reports - don't text-read them |
 | `<framework>-cli` (framework-gated; `angular-cli` in the Angular baseline) | the framework CLI's own docs / commands - shipped active in the Angular stack, commented out where the project isn't that framework. A framework-specific complement to `context7`, which stays the generic-docs route. |
 
@@ -135,6 +135,37 @@ default navigator, symbol editor, and local memory.
 callers goes through serena (`find_symbol` / `find_referencing_symbols`) or the `LSP` - not a
 brute-force `Read` or grep over whole files. `Read` is for code you have *already* located. Name the
 enabled LSP extension(s) under `## Per-project additions`.
+
+## Related projects
+
+When this repo is one of several that make up a product (a backend and its frontend, an app and a
+package it consumes, peer services), list the siblings here so an investigation can cross the seam.
+This static graph is the cross-project *structure* - it lives here in `AGENTS.md` (committed, loaded
+every session), never in the `memory` MCP; `memory` carries only the *dynamic* cross-repo findings
+on top. Describe *edges* (relationships), not roles, so any topology fits:
+
+```yaml
+related_projects:
+  - name:       <sibling name>
+    location:   <path or git URL>              # how to find it
+    relation:   consumes | provides-to | peer | depends-on | embeds   # this repo's edge to it
+    read_first: [AGENTS.md, README.md]          # its docs - read these to orient before its code
+    interface:  <optional - where the seam is: an API spec, a package's public surface, shared types>
+    visit_when: <optional - what sends you there, e.g. 'a bug traces into this package'>
+```
+
+- **Orient from `read_first` before code.** When an edge sends you into a sibling, `Read` its agent
+  brief (`AGENTS.md` / `CLAUDE.md`) then `README.md` (and any other `read_first` doc) first - they
+  are plain files, so no cross-project indexing is needed.
+- **Navigation stays per-repo.** serena binds to *this* repo; you can `Read` / `Grep` a sibling's
+  files directly, but real serena symbol-navigation of a sibling happens in a context rooted in that
+  sibling, never cross-navigated from here.
+- **Dynamic findings go to `memory`.** A cross-repo outcome ('the contract moved to v3, endpoint X
+  must change') is stored in the `memory` MCP (product-scoped via `MCP_MEMORY_SQLITE_PATH`), not here.
+- **Inline or a file.** A short list lives inline in this section; a richer or growing one moves to a
+  committed `docs/RELATED-PROJECTS.md`, with a one-line pointer kept here. The pointer must stay in
+  `AGENTS.md` - it is always loaded and is what makes the agent aware the siblings exist; the file
+  itself is read on demand and must be tracked (never gitignored), so it travels with the repo.
 
 ## Per-project additions
 

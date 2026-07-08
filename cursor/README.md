@@ -26,7 +26,7 @@ The `.sh`/`.ps1` twins take the **same arguments** and produce the **same result
 | Component | Lands in | Notes |
 | --------- | -------- | ----- |
 | **Skills** (51) | `.cursor/skills/` | real copies; run as Cursor Skills (`agentskills.io`); includes `domain-build` per-domain orchestration + `subagent-flow` cross-domain routing. `npx skills add … --agent cursor` |
-| **MCP servers** (6) | `.cursor/mcp.json` | `angular-cli`, `serena` (`--context ide-assistant`), `playwright`, `context7`, plus `chrome-devtools` + `appium-mcp` (heavy - active; comment out where not needed); `memory` is now opt-in (commented - cross-project recall only). Cursor supports MCP natively; shell `${…}` tokens are resolved to concrete paths (Cursor does no shell interpolation) |
+| **MCP servers** (7) | `.cursor/mcp.json` | `angular-cli`, `serena` (`--context ide-assistant`), `playwright`, `memory`, `context7`, plus `chrome-devtools` + `appium-mcp` (heavy - active; comment out where not needed). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project. Cursor supports MCP natively; shell `${…}` tokens are resolved to concrete paths (Cursor does no shell interpolation) |
 | **Hooks** (2) | `.cursor/hooks/` + `.cursor/hooks.json` | `guard-protected-force-push` + `guard-catastrophic-rm` (`beforeShellExecution`): block force-push to main/master/develop and a recursive rm of /, ~, $HOME, or a bare *. Fetched from the repo's `cursor/hooks/` |
 | **Rules** (7) | `.cursor/rules/` | `csharp` / `typescript` / `sql` / `angular`-conventions.mdc (house conventions, auto-attach by glob) + `wpf-conventions.mdc` (`.xaml`, opt-in for WPF repos) + `scss-conventions.mdc` (`.scss`/`.css`, opt-in for Angular workspaces owning their stylesheets) + `ponytail.mdc` (minimal-code, `alwaysApply`; fetched from the ponytail repo, not vendored here) |
 | **Agents** (4) | `.cursor/agents/` | .NET (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`, `angular-test-resolver`) - the same four resolvers the Claude stack ships, in Cursor's weaker contract: a `readonly` bool rather than a per-tool allowlist. Conventions are soft auto-attaching rules in both stacks now, so the bodies lean on the rules above. Fetched from the repo's `cursor/agents/` |
@@ -36,7 +36,7 @@ The `.sh`/`.ps1` twins take the **same arguments** and produce the **same result
 Cost differs by artifact, so the keep-or-skip call does too:
 
 - **Skills** - permanent by default: keyword-gated and ~free when idle, so install all and let them self-gate. Whole-domain sets (the Ionic/Capacitor `mobile` group, `dotnet-wpf`) are optional only if you never touch that domain.
-- **MCPs** - real launch cost, so split: baseline `context7` / `serena` / `playwright`; domain-gated `angular-cli` (Angular projects only); opt-in `chrome-devtools` and `appium-mcp` (heavy native deps) and `memory` (cross-project recall only - the per-project handoff runs on serena) - all left commented out unless needed.
+- **MCPs** - real launch cost, so split: baseline `context7` / `serena` / `memory` / `playwright`; domain-gated `angular-cli` (Angular projects only); opt-in `chrome-devtools` and `appium-mcp` (heavy native deps - left commented unless needed). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project.
 - **Rules and agents** - permanent: the convention rules auto-attach by glob (free when no file matches) and `ponytail.mdc` is `alwaysApply`; the four resolver agents run on demand. Cursor has no plugins - the Claude `*-lsp` pair maps to per-language Open-VSX extensions (install those matching the project's languages); design-taste guidance for distinctive UI now lives in the `frontend` skill (installed like any Cursor skill), not a plugin.
 
 To provision Claude Code too, run [`../claude/claude-stack.*`](../claude/README.md).
@@ -93,7 +93,7 @@ The script runs a **prerequisites check first and warns (never fails)** - instal
 | **node** ≥ 22.12 LTS | the Cursor hook (runs via `node`), `npx` MCPs, skills CLI | **Yes** | `brew install node` / nvm | `winget install OpenJS.NodeJS.LTS` |
 | **npx** | skills CLI (ships with node) | **Yes** | (with node) | (with node) |
 | **git** | project-scope path resolution (repo root) | **Yes** for project scope | `brew install git` | `winget install Git.Git` |
-| **uvx** (uv) | `serena` (+ `memory` if enabled) MCPs | for those MCPs | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `irm https://astral.sh/uv/install.ps1 \| iex` |
+| **uvx** (uv) | `serena` + `memory` MCPs | for those MCPs | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `irm https://astral.sh/uv/install.ps1 \| iex` |
 | **python3** | the `.cursor/mcp.json` + `.cursor/hooks.json` merges (**bash only** - PowerShell merges natively) | **Yes** (bash) | `brew install python` | `winget install Python.Python.3.12` (Store stub does **not** count) |
 | **curl** / `Invoke-WebRequest` | fetching the hook + rule files | for hooks/rules | preinstalled | preinstalled |
 | **brew** / **winget** | `github-cli` extra only | optional | Homebrew | winget |

@@ -121,7 +121,7 @@ typos / one-line / formatting-only diffs.
 |---|---|
 | `serena` | primary symbol navigator + symbol-level *editor* - `find_symbol` / `find_referencing_symbols` / symbol edits *before* `Read`-ing a whole file to locate a symbol; default over grep and whole-file Read. Runs with `--context claude-code` and `--project-from-cwd`, so it self-activates on launch (finds `.serena/project.yml` in its cwd) - no `activate_project` call needed; the relative `SERENA_HOME` assumes cwd is the project root. For an LSP-backed language, the `LSP` plugin (below) complements it. serena also holds this project's **local memory** (`.serena/memories/`, name-addressed and gitignored): the installed subagents use it as their hand-off bus - a seat `write_memory`s a compact note named `<feature>__<contract_version>__<seat>` at hand-off and the next `read_memory`s it by name, staying local to this project. |
 | `context7` | up-to-date library / framework / SDK docs. **Before writing or changing hand-written code against any API you don't own** - any third-party package, vendor SDK, or version-sensitive framework / standard-library surface - resolve + query `context7` first; don't answer library-API questions from recall, even when confident. The rule is the *category*, not a fixed list; skipping it is *silent* (no error), so it's a discipline. Generated code (scaffolds, migrations, codegen) doesn't count. |
-| `memory` (opt-in) | *cross-project* recall only, and **commented out of the baseline by default** - the per-project subagent hand-off runs on serena's local memory (above), not here. Uncomment it only when work genuinely spans projects; then it is distinct from the system-prompt per-project file memory - search when this project's context is thin, store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Its SQLite DB is shared across projects *and* accounts by design (one store under `$HOME`) - the lone cross-project store, every other server here is per-project. |
+| `memory` | *cross-project* recall and dynamic cross-repo findings - **active in the baseline**; the per-project subagent hand-off runs on serena's local memory (above), not here, so comment this out in a standalone project. Distinct from the system-prompt per-project file memory: search when this project's context is thin, store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Its SQLite DB is shared across projects *and* accounts by design (one store under `$HOME`) - the lone cross-project store, every other server here is per-project. |
 | `playwright` | drive a browser for visual checks / large HTML reports - don't text-read them |
 | `<framework>-cli` (framework-gated; `angular-cli` in the Angular baseline) | the framework CLI's own docs / commands - shipped active in the Angular stack, commented out where the project isn't that framework. A framework-specific complement to `context7`, which stays the generic-docs route. |
 | Issue-tracker connector (Claude built-in, not stack-wired) | the project's tracker read-write: search, create, update issues - your ticket-authoring skills generate the content, the connector files it (always confirm before filing) |
@@ -147,6 +147,38 @@ Name the enabled plugin(s) under `## Per-project additions`.
 ### Token efficiency and auto-inject
 
 - Skills that fire on their own keywords - the `superpowers` set and `using-superpowers`, beyond the few this file front-loads deliberately (`writing-plans`, `test-driven-development`, `verification-before-completion`, `finishing-a-development-branch`) - and operator-invoked commands (`/code-review`, `/security-review`, `loop`, `schedule`, `run`) are not re-routed here.
+
+## Related projects
+
+When this repo is one of several that make up a product (a backend and its frontend, an app and a
+package it consumes, peer services), list the siblings here so an investigation can cross the seam.
+This static graph is the cross-project *structure* - it lives here in `CLAUDE.md` (committed, loaded
+every session), never in the `memory` MCP; `memory` carries only the *dynamic* cross-repo findings
+on top. Describe *edges* (relationships), not roles, so any topology fits:
+
+```yaml
+related_projects:
+  - name:       <sibling name>
+    location:   <path or git URL>              # how to find it
+    relation:   consumes | provides-to | peer | depends-on | embeds   # this repo's edge to it
+    read_first: [CLAUDE.md, README.md]          # its docs - read these to orient before its code
+    interface:  <optional - where the seam is: an API spec, a package's public surface, shared types>
+    visit_when: <optional - what sends you there, e.g. 'a bug traces into this package'>
+```
+
+- **Orient from `read_first` before code.** When an edge sends you into a sibling, `Read` its agent
+  brief (`CLAUDE.md` / `AGENTS.md`) then `README.md` (and any other `read_first` doc) first - they
+  are plain files, so no cross-project indexing is needed.
+- **Navigation stays per-repo.** serena binds to *this* repo; you can `Read` / `Grep` a sibling's
+  files directly, but real serena symbol-navigation of a sibling happens in a context rooted in that
+  sibling (a dispatched sub-investigation or a session with its cwd there), never cross-navigated
+  from here.
+- **Dynamic findings go to `memory`.** A cross-repo outcome ('the contract moved to v3, endpoint X
+  must change') is stored in the `memory` MCP (product-scoped via `MCP_MEMORY_SQLITE_PATH`), not here.
+- **Inline or a file.** A short list lives inline in this section; a richer or growing one moves to a
+  committed `docs/RELATED-PROJECTS.md`, with a one-line pointer kept here. The pointer must stay in
+  `CLAUDE.md` - it is always loaded and is what makes the agent aware the siblings exist; the file
+  itself is read on demand and must be tracked (never gitignored), so it travels with the repo.
 
 ## Per-project additions
 
