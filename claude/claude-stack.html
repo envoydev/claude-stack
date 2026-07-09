@@ -245,7 +245,7 @@
     <div class="stat"><b>32</b><span>subagents</span></div>
     <div class="stat"><b>51</b><span>house skills</span></div>
     <div class="stat"><b>7</b><span>MCP servers</span></div>
-    <div class="stat"><b>8</b><span>plugins</span></div>
+    <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>3</b><span>hooks</span></div>
     <div class="stat"><b>8</b><span>rules</span></div>
     <div class="stat"><b>6</b><span>domains</span></div>
@@ -634,7 +634,7 @@
       <div><strong id="c-subagents">32</strong> subagents</div>
       <div><strong id="c-bi">14</strong> built-in</div>
       <div><strong id="c-personal">51</strong> personal</div>
-      <div><strong id="c-plugins">8</strong> plugins</div>
+      <div><strong id="c-plugins">7</strong> plugins</div>
       <div><strong id="c-mcp">7</strong> MCP</div>
       <div><strong id="c-hooks">3</strong> hooks</div>
     </div>
@@ -749,7 +749,6 @@ const repository = [
   ["claude-md-management:claude-md-improver","Project memory","https://github.com/anthropics/claude-plugins-official","Audit and improve CLAUDE.md files. Outputs quality report; makes targeted updates."],
   ["claude-md-management:revise-claude-md","Project memory","https://github.com/anthropics/claude-plugins-official","Update CLAUDE.md with learnings from the current session."],
   ["ponytail","Quality / tokens","https://github.com/DietrichGebert/ponytail","'Lazy senior dev' decision ladder - skip code, prefer stdlib/native, avoid over-engineering; cuts AI-generated code, latency, and cost while keeping validation, security, a11y."],
-  ["caveman","Tokens / output","https://github.com/JuliusBrussee/caveman","Terse-output token reducer: replies in compressed 'caveman' fragment language (levels lite/full/ultra/wenyan) for ~65% fewer output tokens while keeping code, commands, and errors byte-for-byte exact. Commands /caveman-stats and /caveman-compress; MIT, needs Node >=18."],
   ["superpowers:brainstorming","Workflow","https://github.com/anthropics/claude-plugins-official","Required before creative work; explores intent + design pre-implementation."],
   ["superpowers:dispatching-parallel-agents","Workflow","https://github.com/anthropics/claude-plugins-official","2+ independent tasks without shared state - parallel dispatch."],
   ["superpowers:executing-plans","Workflow","https://github.com/anthropics/claude-plugins-official","Execute a written plan in a fresh session with review checkpoints."],
@@ -791,8 +790,6 @@ const pluginInstallByUrl = {
     name => "/plugin install " + name.split(":")[0] + "@claude-hud",
   "https://github.com/DietrichGebert/ponytail":
     name => "/plugin install " + name.split(":")[0] + "@ponytail",
-  "https://github.com/JuliusBrussee/caveman":
-    name => "/plugin install " + name.split(":")[0] + "@caveman",
 };
 
 // All other repos come from the `skills` CLI: `npx skills add owner/repo`.
@@ -828,7 +825,6 @@ const pluginMeta = {
   "claude-md-management": { kind: "project memory",   provides: "commands", blurb: "Keeps CLAUDE.md honest - an audit-and-improve pass plus a session-learning revision command." },
   "claude-hud":           { kind: "statusline",       provides: "commands", blurb: "A live session heads-up display for the statusline - configure layout, presets, and manual overrides." },
   "ponytail":             { kind: "quality / tokens", blurb: "'Lazy senior dev' decision ladder - skip code, prefer stdlib/native, avoid over-engineering; cuts AI-generated code, latency, and cost while keeping validation, security, a11y." },
-  "caveman":              { kind: "tokens / output",  blurb: "Terse-output token reducer - replies in compressed 'caveman' fragments (levels lite/full/ultra/wenyan) for ~65% fewer output tokens, code/commands/errors kept byte-exact. Commands /caveman-stats, /caveman-compress." },
   "csharp-lsp":           { kind: "C# / diagnostics", blurb: "Roslyn language server - inline diagnostics after each edit without a full dotnet build round-trip. Complements serena (navigation)." },
   "typescript-lsp":       { kind: "TS / diagnostics", blurb: "TypeScript language server - inline diagnostics on edit for Angular/TS work." },
   "security-guidance":    { kind: "security / hooks", provides: "hooks", blurb: "Security review for Claude-generated code - warns on risky edits, reviews the diff on Stop, and reviews the commit. No skills or commands; it runs as hooks.", items: [
@@ -837,14 +833,13 @@ const pluginMeta = {
     { label: "commit reviewer",    area: "commit",      desc: "Agentic reviewer catching injection, XSS, SSRF, hardcoded secrets, and 25+ vulnerability classes." },
   ] },
 };
-const pluginOrder = ["superpowers", "claude-md-management", "claude-hud", "ponytail", "caveman", "csharp-lsp", "typescript-lsp", "security-guidance"];
+const pluginOrder = ["superpowers", "claude-md-management", "claude-hud", "ponytail", "csharp-lsp", "typescript-lsp", "security-guidance"];
 
 // Marketplace slug per URL, so a plugin's own install line reads `/plugin install <plugin>@<marketplace>`.
 const marketplaceByUrl = {
   "https://github.com/anthropics/claude-plugins-official": "claude-plugins-official",
   "https://github.com/jarrodwatts/claude-hud":             "claude-hud",
   "https://github.com/DietrichGebert/ponytail":            "ponytail",
-  "https://github.com/JuliusBrussee/caveman":              "caveman",
 };
 
 // Route an otherTools row to its section by type - shared by collectPlugins (which claims
@@ -868,7 +863,7 @@ function collectPlugins() {
     p.source = url;
     p.install = "/plugin install " + plugin + "@" + (marketplaceByUrl[url] || plugin);
     if (name.includes(":")) p.items.push({ label: name.split(":")[1], area, desc });
-    else p.soloDesc = desc;   // ponytail / caveman - the row IS the plugin
+    else p.soloDesc = desc;   // ponytail - the row IS the plugin
   }
 
   for (const [name, type, area, install, url, desc] of otherTools) {

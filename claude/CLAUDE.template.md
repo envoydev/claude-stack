@@ -91,7 +91,7 @@ How routing works, and the rules that matter most:
 
 ### Personal (house-style) skills
 
-No inventory here - house-style skills auto-inject their own descriptions and fire on their own keywords / file types, and a path-scoped convention rule glob-attaches when you edit a governed file type to point at the skill. Name the project's house-style skills, and the file type each governs, under `## Per-project additions` (item 6).
+No inventory here. Name the project's house-style skills, and the file type each governs, under `## Per-project additions` (item 6).
 
 ### Stack hooks
 
@@ -143,10 +143,6 @@ The other shipped plugins are language-agnostic (`superpowers`, `claude-md-manag
 `security-guidance`, `claude-hud`, `ponytail`) and apply regardless of language.
 
 Name the enabled plugin(s) under `## Per-project additions`.
-
-### Token efficiency and auto-inject
-
-- Skills that fire on their own keywords - the `superpowers` set and `using-superpowers`, beyond the few this file front-loads deliberately (`writing-plans`, `test-driven-development`, `verification-before-completion`, `finishing-a-development-branch`) - and operator-invoked commands (`/code-review`, `/security-review`, `loop`, `schedule`, `run`) are not re-routed here.
 
 ## Related projects
 

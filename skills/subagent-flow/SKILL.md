@@ -82,7 +82,7 @@ Route to these rather than restating them in each agent:
 - `references/model-routing.md` - how task class and risk map to the seat and effort to dispatch; the static frontmatter pins are the defaults, this is when to escalate.
 - `references/contract-protocol.md` - contract freeze, versioning, the change protocol and BLOCKED_CONTRACT_CHANGE, the contract and change-request templates.
 - `references/agent-output-protocol.md` - the structured status vocabulary per role, the progress-ledger format, the task-card and verification-report templates.
-- `references/token-reduction.md` - the Ponytail and Caveman policy: which discipline each role runs.
+- `references/token-reduction.md` - the Ponytail and report-terseness policy: which discipline each role runs.
 - `references/capability-reuse.md` - which installed capability (house skill, MCP, LSP plugin) each seat wires in and the guess, re-derivation, or pass it removes; the eager-context and redundant-read cost lever.
 - `references/issue-investigation.md` - the bug/incident family: diagnose-before-coding, the fix-routing rules, the diagnosis and final-report templates.
 - `references/repo-separation.md` - one flow per repo plus a shared contract when frontend and backend live in different repos.

@@ -306,7 +306,6 @@ SKILLS=(
 EXTRA_MARKETPLACES=(
   "jarrodwatts/claude-hud"
   "DietrichGebert/ponytail"
-  "JuliusBrussee/caveman"
 )
 PLUGINS=(
   "superpowers@claude-plugins-official"       # workflow skills: plan, TDD, debug, verify-before-done
@@ -316,7 +315,6 @@ PLUGINS=(
   "security-guidance@claude-plugins-official" # security hooks: pattern warnings + LLM diff review on Stop/commit
   "claude-hud@claude-hud"                       # statusline HUD (global/user scope)
   "ponytail@ponytail"                           # 'lazy senior dev' decision ladder: minimal-code default, cuts generated code/latency/cost
-  "caveman@caveman"                             # terse-output token reducer (~65% fewer output tokens); code/commands/errors kept byte-exact; MIT, needs Node >=18
 )
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.

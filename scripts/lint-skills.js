@@ -60,7 +60,6 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
     'https://github.com/anthropics/claude-plugins-official',
     'https://github.com/jarrodwatts/claude-hud',
     'https://github.com/DietrichGebert/ponytail',
-    'https://github.com/JuliusBrussee/caveman',
 ]);
 
 // Backticked kebab-case tokens that look like skill names but are not
@@ -83,7 +82,6 @@ const NON_SKILL_TOKENS = new Set([
     'writing-plans',
     'test-driven-development',
     'verification-before-completion',
-    'using-superpowers',
     'finishing-a-development-branch',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.

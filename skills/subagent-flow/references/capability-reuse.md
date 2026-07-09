@@ -20,7 +20,7 @@ The test for every capability on every seat: does it remove a guess, a re-deriva
 - **context7 before a library API, always.** A wrong package or framework version is a common rework trigger; the current signature from context7 is cheaper than the failed build it prevents. Never write against a recalled version. This extends past API signatures to framework runtime semantics - signal / computed reactivity, change-detection, lifecycle order: cite context7 or the house convention skill before resting correctness on a recalled semantic, never a guess.
 - **superpowers on ambiguity.** Route the brainstorm discipline in before freezing a contract on genuinely ambiguous design; route the verify-before-done discipline to the closing seat (the domain verifier or the integration reviewer).
 - **claude-md-management keeps the shared context sharp.** A flow that depends on a stale CLAUDE.md pays for it in every seat that loads it - audit and revise it with that tool rather than letting each seat work around drift.
-- **ponytail and caveman** are the token-reduction disciplines, per `token-reduction.md` - the discipline, not the wiring, is what each role runs.
+- **ponytail and report terseness** are the token-reduction disciplines, per `token-reduction.md` - the discipline, not the wiring, is what each role runs.
 
 ## Redundant reads
 

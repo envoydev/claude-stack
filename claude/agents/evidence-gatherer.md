@@ -38,4 +38,7 @@ These are extraction and faithfulness traps, not root-cause reasoning - knowing 
 Report what you observed, not what you think the cause is - an inference dressed as an observation misleads the diagnoser. Quote real lines; never paraphrase a log into something cleaner than it was, never invent a frame, never claim a repro reproduced when it did not. If you could not get the evidence, an honest 'could not' is worth more than a plausible fabrication.
 
 ## Report
+
+**Report lean.** Dense and factual - include every substantive item this section requires and nothing more: no prose recap, no narration of steps already taken, no restating the task or context. Keep statuses, tables, code, and identifiers verbatim; cut the filler around them.
+
 End with: the gather-task as handed, the command(s) run, and the extracted evidence quoted and windowed. Tag each quoted block with what produced it - the command, the run id and attempt number, and the config/env it ran under - so the diagnoser can trust the digest and route without re-pulling the raw volume. State the repro verdict alongside the config it ran under (reproduced under <config> / ran once under <config>, passed / no local equivalent), and name any part of the task you could not complete.
