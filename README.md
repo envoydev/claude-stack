@@ -118,6 +118,9 @@ npx skills remove      # uninstall skills
   STRICT, limited ALTER TABLE, connection-per-thread, FTS5.
 - **project-quality-loop** - Autonomous review-and-fix loop pipeline: run a `loops/` folder of
   numbered prompts in order, looping each on a target to zero findings, deciding autonomously.
+- **verify-plan** - Audit an implementation plan before writing code: a risk-coverage review that
+  checks the plan names the traps its stack will hit (routing to the stack skill), matches scope,
+  covers the edges, and stays minimal - the cheapest place to catch a design error, upstream of code review.
 - **project-scaffold** - Build a new application or major module from scratch: routes greenfield
   work to the right architecture skill and scaffolding command, then drives design -> scaffold ->
   slice-by-slice build over the agent pipeline.
