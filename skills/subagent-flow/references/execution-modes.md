@@ -7,8 +7,8 @@ The full team is not the default. Classify size, risk, domains, and contract imp
 | Mode | Flow | Use when | Token profile |
 |---|---|---|---|
 | `single_chat` | main session only | tiny, clear, safe, one-domain change | lowest |
-| `implementer_only` | main session -> one domain implementer -> main session verifies | small - or medium-but-mechanical - domain-local task, correctness obvious on the diff | low |
-| `domain_trio` | domain designer -> one implementer -> domain verifier | medium domain-local feature with a non-obvious failure mode (boundary, reactivity, concurrency, auth, migration) | medium |
+| `implementer_only` | main session -> one domain implementer -> main session verifies | the DEFAULT single-domain rung: small OR medium work with no risk trigger - the main session self-verifies (build / test / review) | low |
+| `domain_trio` | domain designer -> one implementer -> domain verifier | single-domain work that trips a risk trigger - auth, migration, data-loss, concurrency, security, or a large refactor (opt-in on risk, NOT the medium-work default) | medium |
 | `fanout_domain_trio` | domain designer -> 2-4 implementers -> domain verifier | large/risky work inside one domain | medium-high |
 | `cross_domain_light` | light contract -> per-domain implement + verify -> integration-reviewer | 2+ domains, obvious stable contract | high |
 | `full_cross_domain` | contract designer -> domain designers -> implementer fan-out -> domain verifiers -> integration gate | DB + API + UI, security, devops, migrations, auth, or production-critical | highest |
@@ -19,8 +19,9 @@ The full team is not the default. Classify size, risk, domains, and contract imp
 
 ```text
 tiny and one-domain                                 -> single_chat
-small, or medium-but-mechanical, one-domain         -> implementer_only
-medium one-domain with a non-obvious failure mode   -> domain_trio
+small OR medium, one-domain, no risk trigger        -> implementer_only   (the default rung)
+one-domain WITH a risk trigger (auth / migration /
+  data-loss / concurrency / security / big refactor) -> domain_trio
 large/risky, one-domain                             -> fanout_domain_trio
 2+ domains, contract obvious and stable     -> cross_domain_light
 DB + Backend + Frontend, security, devops,
@@ -39,9 +40,9 @@ De-escalation runs the same way, a step DOWN the ladder. A pure presentational l
 
 ## Route by risk, not size - what the verifier is worth
 
-The independent verifier (`domain_trio`+) is the flow's main cost premium and its main value: a fresh seat that re-runs the gates and catches the non-obvious defect the implementer missed. Measured, it earns that premium on work with a **non-obvious failure mode** - a boundary or overflow (an unbounded page offset overflowing int32), a reactivity or shared-state trap (a plain field where a signal was needed), a concurrency or ordering hazard, an auth edge, a migration-correctness question, a contract seam. It does NOT earn it on **mechanical** work whose correctness is obvious on the diff - straightforward CRUD, a form, wiring an endpoint to a service, a presentational component, a config edit - even at medium size.
+The independent verifier (`domain_trio`+) is the flow's main cost premium: a fresh seat that re-runs the gates and catches a defect the implementer missed - but at roughly double the tokens of one self-verifying context. So it is **opt-in on risk, not the default**. Convene it only when the work trips an explicit **risk trigger**: auth, a migration or other data-loss exposure, concurrency, security-sensitive behavior, a shared contract seam, or a large refactor. Ordinary single-domain features - even medium ones that carry a boundary, overflow, or reactivity edge - do NOT convene it; they run in `implementer_only`, where the main session builds and self-verifies.
 
-So size is the floor; risk is the decider. Within one domain: mechanical and obvious -> `implementer_only` (the main session runs build/test/review, no separate designer or verifier); a non-obvious failure mode present -> `domain_trio`, where the verifier is insurance against exactly that class of miss whether or not it fires this run. Bias DOWN more readily than a size-only ladder would, for two reasons: the escalation guardrails below still force the mode UP the instant a real risk (auth, migration, data-loss, cross-domain, large refactor, unclear legacy) appears, so routing mechanical work light never routes risky work light; and a convened trio now runs a guarded Haiku implementer (`references/model-routing.md`), so the trio's premium over `implementer_only` is mostly the designer + verifier, not a full-price build - cheap enough to keep the gate wherever real correctness risk exists. The measured failure to avoid: defaulting every medium single-stack feature to a full trio when the work is mechanical - fewer seats is the token lever that dominates all per-seat tuning.
+So the trio's trigger is an explicit risk (the escalation-guardrail set below), not task size and not a merely non-obvious edge. **The deliberate trade:** below that bar a medium feature is self-verified by the one context that wrote it, so a subtle edge-case defect - an int32 overflow on an unbounded page, a reactivity slip - CAN ship, because no independent seat re-derives it. That is accepted on purpose: it roughly halves the token cost of ordinary single-domain work, and the risk triggers still force the mode UP the instant real, costly risk (auth, migration, data-loss, cross-domain, security, large refactor, unclear legacy) appears - so the independent gate is spent where a bug is expensive, not on every medium feature. A convened trio still runs a guarded Haiku implementer (`references/model-routing.md`). Fewer seats is the token lever that dominates all per-seat tuning; this rung is how you pull it.
 
 ## Escalation guardrails
 
