@@ -198,7 +198,7 @@ inert unless enabled. To turn it on for a run:
 
 1. Fetch it into the project: `.claude/hooks/instrument-tool-usage.js` (from
    `…/main/claude/hooks/instrument-tool-usage.js`), `chmod +x` it.
-2. Wire a PreToolUse hook to it in `.claude/settings.json` with matcher `"Skill|mcp__.*"`.
+2. Wire a PreToolUse hook to it in `.claude/settings.json` with matcher `".*"` (logs every tool - built-ins + Skill + MCP; use `"Skill|mcp__.*"` to scope to skills/MCP only).
 3. Run with `STACK_INSTRUMENT=1` (optionally `STACK_INSTRUMENT_LOG=<path>`); rows land in
    `<project>/.claude/tool-usage.<session>.jsonl`. Unset the env (or remove the wiring) to stop.
 

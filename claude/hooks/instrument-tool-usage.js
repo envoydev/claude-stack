@@ -5,15 +5,16 @@
 //
 // Why: the orchestrator cannot see which Skill / MCP a dispatched subagent loaded or
 // called - only that subagent's aggregate token/tool_use totals. That makes a real run's
-// skill / MCP / hook usage un-auditable (an audit or benchmark can only ASSESS it, not
-// MEASURE it). This hook logs every `Skill` and `mcp__*` tool call as one JSONL line so a
-// run can be tallied exactly. It NEVER blocks a call - it observes and exits 0.
+// tool / skill / MCP usage un-auditable (an audit or benchmark can only ASSESS it, not
+// MEASURE it). This hook logs every tool call - built-ins (Read / Edit / Grep / Bash / Task / ...)
+// plus `Skill` and `mcp__*` - as one JSONL line so a run can be tallied exactly. It NEVER blocks
+// a call - it observes and exits 0.
 //
 // It is deliberately NOT in the installer's HOOKS=() array (so it costs nothing by
 // default) and is inert unless STACK_INSTRUMENT is set. To enable it for a benchmark /
 // audit run, see claude/README.md ('Optional: tool-usage instrumentation'):
 //   1. place this file at .claude/hooks/instrument-tool-usage.js
-//   2. add a PreToolUse hook wired to it with matcher "Skill|mcp__.*"
+//   2. add a PreToolUse hook wired to it with matcher ".*" (all tools; use "Skill|mcp__.*" to scope to skills/MCP only)
 //   3. run with STACK_INSTRUMENT=1 (optionally STACK_INSTRUMENT_LOG=<path>)
 //
 // Output: one JSONL row per matched call at
@@ -30,29 +31,34 @@ process.stdin.on('end', () => {
   try {
     const ev = JSON.parse(raw || '{}');
     const tool = ev.tool_name || '';
-    if (tool === 'Skill' || tool.startsWith('mcp__')) {
-      const input = ev.tool_input || {};
-      const rec = {
-        ts: new Date().toISOString(),
-        session: ev.session_id || null,
-        tool,
-        // the skill slug for Skill, the server for an mcp__<server>__<method> call - never the payload
-        detail:
-          tool === 'Skill'
-            ? input.skill || input.name || null
-            : (tool.split('__')[1] || null),
-        cwd: ev.cwd || null,
-      };
-      const path = require('path');
-      const fs = require('fs');
-      const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
-      const sid = String(ev.session_id || 'session').slice(0, 12);
-      const out =
-        process.env.STACK_INSTRUMENT_LOG ||
-        path.join(dir, '.claude', `tool-usage.${sid}.jsonl`);
-      fs.mkdirSync(path.dirname(out), { recursive: true });
-      fs.appendFileSync(out, JSON.stringify(rec) + '\n');
-    }
+    if (!tool) { process.exit(0); }
+    const input = ev.tool_input || {};
+    const path = require('path');
+    const fs = require('fs');
+    // Every tool call is logged (built-ins like Read/Edit/Grep/Bash/Task + Skill + mcp__*).
+    // `detail` is a lightweight, non-sensitive hint per tool family - NEVER a command body,
+    // file contents, or a full payload: the skill slug, the mcp server, a file's basename,
+    // a search pattern, or a Bash step's description.
+    let detail = null;
+    if (tool === 'Skill') detail = input.skill || input.name || null;
+    else if (tool.startsWith('mcp__')) detail = tool.split('__')[1] || null;
+    else if (input.file_path) detail = path.basename(String(input.file_path));
+    else if (input.pattern) detail = String(input.pattern).slice(0, 60);
+    else if (tool === 'Bash') detail = input.description ? String(input.description).slice(0, 60) : null;
+    const rec = {
+      ts: new Date().toISOString(),
+      session: ev.session_id || null,
+      tool,
+      detail,
+      cwd: ev.cwd || null,
+    };
+    const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
+    const sid = String(ev.session_id || 'session').slice(0, 12);
+    const out =
+      process.env.STACK_INSTRUMENT_LOG ||
+      path.join(dir, '.claude', `tool-usage.${sid}.jsonl`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.appendFileSync(out, JSON.stringify(rec) + '\n');
   } catch {
     // never break a tool call because instrumentation hiccuped
   }
