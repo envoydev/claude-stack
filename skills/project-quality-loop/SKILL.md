@@ -1,6 +1,7 @@
 ---
 name: project-quality-loop
 description: "Autonomous review-and-fix loop pipeline driven from a folder of numbered prompt files. Runs each prompt in numeric order, looping it on a target until its bar (default: zero findings at every severity) is met, then advances - making and logging judgment calls itself, never pausing for input. Use when running a multi-stage review/polish pipeline (e.g. a loops/ folder of architecture/naming/quality/comments/tests prompts) over a codebase or module; triggers on 'run the project quality loop' or 'run the loops pipeline'. This is a folder-driven, multi-pass, fix-and-re-run pipeline, distinct from the single-shot built-in /code-review and /security-review - reach for those for one diff sweep, this for an iterated stage-by-stage polish to a bar (one forward pass; re-run for a true fixpoint). Do NOT fire for a single ad-hoc review pass, without a folder of prompt files, or when the user wants findings reported without auto-fixing - in a stack-installed project it drives the domain verifiers, implementers and resolvers from the main session."
+disable-model-invocation: true
 ---
 
 # Project Quality Loop - Review-and-Fix Folder Pipeline (Autonomous)
