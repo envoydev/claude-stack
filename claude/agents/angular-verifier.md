@@ -1,7 +1,7 @@
 ---
 name: angular-verifier
 description: Use once every angular-implementer task has landed - a read-only gate over the assembled Angular web work against the designer plan and TypeScript quality (signals and OnPush correctness, effect() write-loops, RxJS subscription and takeUntilDestroyed leaks, @for track and control-flow, a11y, no any or ts-ignore), reruns ng build/test, drives playwright for the a11y and interaction paths a unit spec misses, and returns a per-task punch-list. Do NOT use it to fix what it finds (returns to angular-implementer) or verify the other TypeScript stack, Ionic/Capacitor mobile - mobile-verifier's. Best as the closing gate of an angular build, looping to sign-off.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__playwright__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
+tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__playwright__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
 model: sonnet
 effort: xhigh
 color: purple

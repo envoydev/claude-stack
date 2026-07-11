@@ -1,7 +1,7 @@
 ---
 name: task-analyzer
 description: Use when a single known feature or bug sits in one module and needs pinning down before a plan - a read-only pass that names the affected symbols, the hidden coupling that widens the blast radius, the edge cases, and the open questions that would derail a plan. Best as the first delegation on one-module work, and its output feeds the domain solution-designer. Escalate to architecture-analyzer the moment the change crosses 2+ modules, adds a component, or proves to edit a contract shared across modules. Do NOT use to design the solution or edit code, to scope an empty greenfield project (that is greenfield-solution-designer), or to diagnose a bug whose cause is unknown and must be reproduced (that is issue-diagnoser).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
+tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
 model: opus
 effort: high
 color: yellow

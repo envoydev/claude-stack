@@ -1,7 +1,7 @@
 ---
 name: code-analyzer
 description: Use ONLY as a read-only code data-gatherer - architecture-analyzer dispatches it per module/topic, and it is independently callable to characterize one area. Given one module or topic, it reads that code and returns a compact STRUCTURED VERDICT - purpose, public surface, inbound/outbound dependencies, patterns in use, and smells/violations - every claim tied to a located symbol, windowed to the area, nothing rounded up. It does NOT synthesize the whole-project picture, judge how a change fits, name a root cause, or edit - the architecture-analyzer that called it reasons over the digests, and the solution-designers own change-fit. Do NOT use to map the whole project (that is architecture-analyzer), to scope a single task (task-analyzer), to diagnose a bug (issue-diagnoser), or to write any doc (style-analyzer owns docs/CODE-STYLE.md, architecture-analyzer owns the architecture docs).
-tools: Read, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*
+tools: Read, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview
 model: sonnet
 effort: low
 color: orange

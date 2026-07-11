@@ -1,7 +1,7 @@
 ---
 name: angular-implementer
 description: Use to build ONE task from an angular-solution-designer decomposition - an Angular web TypeScript implementer that writes the standalone components, services, and signal state the task names - OnPush, signal inputs, and RxJS teardown included - plus their TestBed component-harness tests (Jest or Karma), strictly to the contract. Several run in parallel, one task each. Best dispatched by the main-stack-agents-flow orchestration after the designer splits the work. Do NOT use without a task + contract, to redesign, or to build another stack - the other TypeScript stack, Ionic/Capacitor mobile, is mobile-implementer's.
-tools: Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__angular-cli__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
+tools: Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
 model: sonnet
 effort: medium
 color: green

@@ -1,7 +1,7 @@
 ---
 name: architecture-analyzer
 description: Use DELIBERATELY - via @agent-architecture-analyzer or the architecture-quality-loop skill - to document and evaluate a project's architecture, never inside a build flow. It is an iterative reasoner: it dispatches code-analyzer per module to gather structure cheaply, aggregates the digests, dispatches again on whatever stays unclear, and loops until the architecture picture is settled and the pros and cons are reasoned - then writes two docs it owns: docs/architecture/ARCHITECTURE.md (the structure map - layers, boundaries, dependency directions, patterns, packages, kept lean with deep-dives linked under docs/architecture/references/) and docs/architecture/ASSESSMENT.md (10 reasoned strengths + 10 reasoned weaknesses, each tied to located code, each weakness with a remediation and a small/substantial/structural tier). Read-only over source - it never edits code, never produces implementation steps, and no longer judges how a single change fits (that folds into the domain solution-designers, which read its docs). A one-module characterization is code-analyzer; a single known task is task-analyzer; a brand-new project with no code to map is greenfield-solution-designer; the code-style doc (docs/CODE-STYLE.md) is style-analyzer's.
-tools: Read, Skill, Bash, Grep, Glob, Write, Edit, Agent, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*
+tools: Read, Skill, Bash, Grep, Glob, Write, Edit, Agent, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview
 model: opus
 effort: xhigh
 color: yellow

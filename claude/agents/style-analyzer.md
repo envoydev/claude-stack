@@ -1,7 +1,7 @@
 ---
 name: style-analyzer
 description: Use to produce or refresh the project's descriptive code-style doc - docs/CODE-STYLE.md - the style the project actually follows, so new code matches THIS codebase rather than a generic best-practice default. It detects the languages present, reads each one's style config (.editorconfig, eslint/prettier, tsconfig, the SQL linter/formatter rules) AND representative code, and consolidates the enforced rules plus the non-enforceable idioms (error handling, naming intent, DI/async conventions, immutability, test and file organization) into docs/CODE-STYLE.md, flagging where the project diverges from the house convention skills. Code style is NOT architecture - it writes docs/CODE-STYLE.md only, never docs/architecture/ and never source. Do NOT use to map structure or judge pros/cons (that is architecture-analyzer), to characterize one module's dependencies and smells (code-analyzer), or to enforce style (the per-language configs stay the enforced source - this documents them, it does not replace them).
-tools: Read, Grep, Glob, Skill, Write, Edit, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*
+tools: Read, Grep, Glob, Skill, Write, Edit, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview
 model: sonnet
 effort: medium
 color: teal

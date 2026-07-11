@@ -1,7 +1,7 @@
 ---
 name: mobile-verifier
 description: Use once every mobile-implementer task has landed - a read-only gate over assembled Ionic/Capacitor mobile work against the designer plan and TypeScript quality (Capacitor native-bridge integrity and leaked App listeners, iOS/Android parity, page-cache lifecycle where ngOnInit goes stale against ionViewWillEnter, permission and web-fallback branches, native-only defects a jsdom test hides), reruns ionic build/test and returns a per-task punch-list of fixes. Best as the closing gate of a mobile build, looping to sign-off. Do NOT use it to fix what it finds (returns to mobile-implementer) or verify the other TypeScript stack, Angular web - angular-verifier's.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__context7__*, mcp__playwright__*, mcp__appium-mcp__*
+tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__appium-mcp__*
 model: sonnet
 effort: xhigh
 color: purple

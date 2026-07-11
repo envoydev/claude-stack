@@ -1,7 +1,7 @@
 ---
 name: mobile-solution-designer
 description: Use when an Ionic/Capacitor mobile feature or change needs designing before code - a read-only pass fixing the native-bridge and Capacitor-plugin surface, the offline-storage shape, the change-detection shell/leaf boundary, iOS/Android platform parity, and the OTA-vs-store-binary release boundary, then decomposing it into independent parallel-safe tasks with explicit contracts. Best as a mobile build's first step, feeding the mobile-implementer fan-out and mobile-verifier. Do NOT use to write code; the other TypeScript stack, plain web Angular with no native shell, is angular-solution-designer's, and a brand-new project from a spec is greenfield-solution-designer's.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__context7__*, mcp__angular-cli__*
+tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
 model: opus
 effort: xhigh
 color: cyan
