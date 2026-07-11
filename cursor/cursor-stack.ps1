@@ -180,13 +180,14 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (57).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (58).
 $Skills = @(
   # Personal (envoydev/agents-stack)
   'envoydev/agents-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
   'envoydev/agents-stack|dev-log-convert'           # UA/EN work notes -> structured English work log; trigger 'dev-log'
   'envoydev/agents-stack|explain-code-tutor'        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   'envoydev/agents-stack|project-quality-loop'             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
+  'envoydev/agents-stack|architecture-quality-loop'        # deliberate analyze-assess-improve loop - architecture-analyzer writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
   'envoydev/agents-stack|project-scaffold' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   'envoydev/agents-stack|main-stack-agents-flow'     # main-stack-agents-flow orchestration - designer decomposes, implementers fan out, verifier gates
   'envoydev/agents-stack|cross-stack-agents-flow'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies

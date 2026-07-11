@@ -268,13 +268,14 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (57).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (58).
 $Skills = @(
   # Personal (envoydev/agents-stack)
   'envoydev/agents-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
   'envoydev/agents-stack|dev-log-convert'           # UA/EN work notes -> structured English work log; trigger 'dev-log'
   'envoydev/agents-stack|explain-code-tutor'        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   'envoydev/agents-stack|project-quality-loop'             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
+  'envoydev/agents-stack|architecture-quality-loop'        # deliberate analyze-assess-improve loop - architecture-analyzer writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
   'envoydev/agents-stack|project-scaffold' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   'envoydev/agents-stack|main-stack-agents-flow'     # main-stack-agents-flow orchestration - designer decomposes, implementers fan out, verifier gates
   'envoydev/agents-stack|cross-stack-agents-flow'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
@@ -470,7 +471,9 @@ $Agents = @(
   'dotnet-test-failure-resolver.md'  # implement phase (sonnet/high): dotnet test -> red->green repair loop, anti-reward-hacking, capped
   'ng-build-error-resolver.md'       # implement phase (sonnet/high): ng build -> minimal fix loop (serena/LSP), capped
   'angular-test-resolver.md'         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
-  'architecture-analyzer.md'         # analysis phase (opus/xhigh): owns docs/architecture/ARCHITECTURE.md + docs/architecture/references/ (durable project map) + change-fit verdict; read-only over code
+  'architecture-analyzer.md'         # analysis phase (opus/xhigh): deliberate iterative reasoner - loops code-analyzer, writes docs/architecture/ARCHITECTURE.md + docs/architecture/ASSESSMENT.md; read-only over code, @agent-/loop-only
+  'code-analyzer.md'                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - architecture-analyzer loops it, also independently callable
+  'style-analyzer.md'                # analysis phase (sonnet/medium): reads per-language style config + code -> writes docs/CODE-STYLE.md (project's actual style, config + idioms); read-only over source
   'task-analyzer.md'                 # analysis phase (opus/high): read-only deep task analysis - impact, coupling, open questions
   'ci-failure-diagnoser.md'          # analysis phase (opus/high): read-only CI red-run diagnosis via gh - categorize, local repro, route
   'issue-diagnoser.md'               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix

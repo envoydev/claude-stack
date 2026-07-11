@@ -1,0 +1,58 @@
+---
+name: architecture-quality-loop
+description: "The deliberate architecture analyze-assess-improve loop. It dispatches architecture-analyzer to map the project and write docs/architecture/ARCHITECTURE.md plus a docs/architecture/ASSESSMENT.md of reasoned strengths and weaknesses, then works the weaknesses by their tier - a small con to a domain implementer, a substantial con through a domain designer -> implementers -> verifier (plan approved first), a structural or risky con flagged for a user decision and never auto-applied - re-runs architecture-analyzer to reconcile the docs with what shipped, and loops until the fixable cons are resolved or it plateaus. Manual, /-only. Triggers on 'run the architecture quality loop' or 'analyze and improve the architecture'. NOT for a code-quality polish (that is project-quality-loop), a single feature build (main-stack-agents-flow / cross-stack-agents-flow), or a read-only assessment with no fixes (@agent-architecture-analyzer alone)."
+disable-model-invocation: true
+---
+
+# Architecture Quality Loop - Analyze, Assess, Improve (Deliberate)
+
+You drive a deliberate loop that improves a project's architecture: analyze it, produce a reasoned assessment, work the fixable weaknesses by tier, reconcile the docs, and loop until the fixable ones are resolved or the loop plateaus. This is the heavy, on-purpose counterpart to the code-focused `project-quality-loop` - it runs only when a user invokes it (`/architecture-quality-loop`), never automatically, because architecture analysis is expensive and architecture changes are consequential.
+
+Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point it at one bounded context or module subtree per run.
+
+## Execution modes
+Pick the mode once, before ANALYZE, and hold it for the whole run.
+
+- **DELEGATED** - the default whenever the current session can dispatch subagents (the Agent tool is present). The main session orchestrates and dispatches every seat - architecture-analyzer, then the domain designer / implementers / verifier for a substantial fix, or an implementer for a small one - and never does their work itself. This skill and `main-stack-agents-flow` are manual (`disable-model-invocation`), so a substantial fix runs the stack vertical by dispatching that stack's seats directly, not by model-invoking the `main-stack-agents-flow` skill.
+- **INLINE** - the fallback when dispatch is unavailable (Cursor, a non-stack project, or a scope small enough that dispatch overhead outweighs the work). Do the same steps in-session: map and assess the architecture yourself against the house architecture skills, then apply the fixable cons directly, smallest blast radius first.
+
+Detection keys on dispatch capability, not file presence.
+
+## The loop
+
+### 1. ANALYZE + ASSESS
+Dispatch architecture-analyzer over the target. It loops its cheap code-analyzer to map the project, then writes/reconciles `docs/architecture/ARCHITECTURE.md` (the structure map) and `docs/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural). Read `docs/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not "fix" a conscious choice.
+
+### 2. TRIAGE + FIX by tier
+Take the open weaknesses in leverage order (the assessment's top-few first). Route each by its tier - and confirm the green baseline (build + tests) before you start, so a regression is visible:
+
+- **small** (a localized edit) - dispatch the matching domain implementer with the remediation as a scoped brief (the file/symbol, the smallest correct change, the check that proves it). Re-run build + tests.
+- **substantial** (a designer-led multi-task change) - dispatch the domain solution-designer to turn the remediation into a decomposition, **get the user's approval on that plan before building** (an architecture refactor is consequential - never fan out against an unapproved structural plan), then fan the tasks out to the domain implementers and gate the assembled result with the domain verifier, looping its punch-list back. This is the `main-stack-agents-flow` vertical, dispatched directly.
+- **structural** (a risky, cross-cutting rework) - do NOT auto-apply. Present the weakness, its reasoning, and the remediation to the user and get an explicit decision; only then, if approved, route it as a substantial change. A structural rework the user has not approved is flagged in the final report, not attempted.
+
+Keep the build and tests green across the round: after each fix batch, re-run them, and a red routes to the matching resolver (dotnet-build-error-resolver / dotnet-test-failure-resolver / ng-build-error-resolver / angular-test-resolver) before the next weakness.
+
+### 3. UPDATE DOCS
+Re-dispatch architecture-analyzer to reconcile `docs/architecture/ARCHITECTURE.md` and `docs/architecture/ASSESSMENT.md` with what shipped - the resolved weaknesses drop off, the new boundaries and patterns land in the map, and any weakness the fix exposed is added. The assessment is regenerated, not hand-edited: architecture-analyzer owns those docs.
+
+### 4. LOOP or STOP
+Re-read the reconciled `docs/architecture/ASSESSMENT.md` and decide, off the weakness set, not by eye:
+
+- **SATISFIED** - no fixable (small/substantial) weakness remains; only accepted tradeoffs and user-declined structural items are left.
+- **PLATEAU** - the fixable-weakness set equals the previous round's and none is now resolvable - stop rather than re-run identically.
+- **CAPPED** - you reached the round cap. **Hard cap: 3 improve rounds.**
+- **BLOCKED** - only structural weaknesses remain and the user has not approved a rework - report and stop.
+
+Then emit the final report.
+
+## Bounded and honest
+- **A round cap of 3.** Architecture work is expensive and each round re-runs the opus analyzer; do not loop indefinitely chasing the last debatable con.
+- Never weaken a test or delete an assertion to make a con look resolved - that is a new weakness, not a fix.
+- Make the smallest change that resolves each weakness; a rewrite that introduces new coupling makes the loop diverge.
+- The assessment's tier is the routing authority - do not silently upgrade a small con into a rewrite, or downgrade a structural one to sneak it past the approval gate.
+
+## Rules
+- Manual only (`disable-model-invocation`): this skill runs when the user invokes `/architecture-quality-loop`, never on its own.
+- The main session is the only orchestrator. The seats it dispatches (architecture-analyzer, the domain designer / implementers / verifier / resolvers) carry no Agent tool, so the fan-out stays flat - a con needing analysis and a fix is separate dispatches from here, not one nested one. architecture-analyzer's own code-analyzer loop is its internal business, not a nested dispatch you arrange.
+- Substantial and structural changes are gated on user approval before building; small localized fixes proceed. Architecture changes are consequential - confirm before reshaping the structure.
+- Keep this skill orchestration only. The architecture judgement lives in architecture-analyzer and the house architecture skills it loads; the build knowledge lives in the domain seats. For a pure code-quality polish reach for `project-quality-loop`; for a single feature build reach for `main-stack-agents-flow` or `cross-stack-agents-flow`.

@@ -118,6 +118,10 @@ npx skills remove      # uninstall skills
   STRICT, limited ALTER TABLE, connection-per-thread, FTS5.
 - **project-quality-loop** - Autonomous review-and-fix loop pipeline: run a `loops/` folder of
   numbered prompts in order, looping each on a target to zero findings, deciding autonomously.
+- **architecture-quality-loop** - Deliberate architecture analyze-assess-improve loop: architecture-analyzer
+  writes `docs/architecture/ARCHITECTURE.md` + a reasoned strengths/weaknesses `docs/architecture/ASSESSMENT.md`,
+  then fixes the weaknesses by tier (small -> implementer, substantial -> designer-led build, structural ->
+  flagged for approval) and reconciles the docs. Manual, `/`-only - the heavy counterpart to project-quality-loop.
 - **verify-plan** - Audit an implementation plan before writing code: a risk-coverage review that
   checks the plan names the traps its stack will hit (routing to the stack skill), matches scope,
   covers the edges, and stays minimal - the cheapest place to catch a design error, upstream of code review.

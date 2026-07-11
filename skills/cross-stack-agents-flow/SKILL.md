@@ -55,14 +55,13 @@ When the mode is cross_domain_light or full_cross_domain:
 
 ```text
 Requirements clarified first (the feature-family gate above)
-  -> task-analyzer or architecture-analyzer classify size, risk, affected domains
+  -> task-analyzer scopes size, risk, affected domains, reading the committed docs/architecture/ARCHITECTURE.md map
   -> cross-stack-contract-designer freezes Contract v1  (see references/contract-protocol.md)
   -> parallel per-stack main-stack-agents-flow runs, each against the frozen contract:
        data / aspnet / angular / wpf / mobile / devops
   -> integration-reviewer gates the assembled whole  (final gate, mandatory)
   -> optional security-auditor if the risk requires
-  -> architecture-analyzer refreshes docs/architecture/ARCHITECTURE.md (+ docs/architecture/references/) if the feature changed the architecture
-  -> commit only after the integration gate signs off and the docs match what shipped
+  -> commit only after the integration gate signs off
 ```
 
 Freeze the contract before any parallel domain work starts. Each domain pipeline runs `main-stack-agents-flow` for its stack against the frozen contract; the pipelines run in parallel, each internally sequential (designer -> implementers -> verifier). When every affected domain verifier has signed off, dispatch integration-reviewer over the assembled feature - it is independent of you and checks the seams the single-stack verifiers cannot see. Loop its punch-list back to the owning domains until it signs off, then commit.
@@ -93,5 +92,5 @@ Route to these rather than restating them in each agent:
 - The main session is the only orchestrator. Domain seats carry no Agent tool, so the fan-out stays flat; the only sanctioned nested dispatch is the two diagnosers calling a read-only evidence-gatherer (see `references/issue-investigation.md`).
 - Do not duplicate agents to vary task size or model effort. One durable seat per role; `references/execution-modes.md` picks the mode and `references/model-routing.md` picks the effort.
 - Never verify against a stale contract version, and never commit on a domain verifier's sign-off alone - the integration gate is the only thing that authorizes a cross-domain commit.
-- Durable architecture lives in the committed docs (`docs/architecture/ARCHITECTURE.md` + `docs/architecture/references/`); every seat reads them to orient instead of re-deriving the project, and serena memory is the transient inter-agent comms bus, not the architecture store. After a feature lands, refresh the docs (architecture-analyzer) before commit if it changed the architecture.
+- Durable orientation lives in the committed docs - the architecture map (`docs/architecture/ARCHITECTURE.md` + `docs/architecture/references/`) and the code-style doc (`docs/CODE-STYLE.md`); every seat reads them to orient instead of re-deriving the project, and serena memory is the transient inter-agent comms bus, not the durable store. The docs refresh deliberately, never inside this flow: the domain designers judge where a change fits by reading the map, and reconciling the docs after a structural change is a purposeful architecture-analyzer run (via `@agent-architecture-analyzer` or the architecture-quality-loop skill).
 - Keep this skill routing and orchestration only. Stack knowledge lives in the domain agents and the skills they load; single-stack execution lives in `main-stack-agents-flow`.
