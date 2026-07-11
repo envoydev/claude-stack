@@ -23,7 +23,5 @@ Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, 
 
 ## Notes
 - Ionic/Capacitor apps are Angular apps in a native shell: the framework rules (`angular-conventions`) and language baseline (`typescript`) still apply - this router adds the mobile-specific layer on top.
-- Ionic in-app navigation and the page lifecycle are house-owned in `ionic` (its `references/navigation-and-lifecycle.md`); broader Ionic component APIs and theming are fetched live (context7 / the Ionic docs). Per-plugin install/config is fetched live; the house plugin-sourcing and wrapping guidance lives in `ionic`.
-- Security hardening (secret storage, deep-link input, native permissions, cleartext + WebView) is house-owned in `mobile-security` and not restated here; the security-auditor loads it when sweeping the mobile stack.
 - Native Swift / Kotlin platform code and custom-plugin authoring are deliberately out of scope here - Capacitor generates the native shell, so reach for the platform native docs for that, not this router.
 - Backend / .NET work routes through `dotnet`.
