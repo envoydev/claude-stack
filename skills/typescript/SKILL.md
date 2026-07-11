@@ -9,6 +9,8 @@ These are the language rules for every piece of TS/JS in a codebase, independent
 
 The single organizing idea: the compiler is the cheapest test you have. Configure it to be strict, describe your data so it can check the data, and never quietly disable it.
 
+**The concrete tooling and the rule-by-rule style live in `references/typescript-style.md`** - the tsconfig (`@tsconfig/strictest`), the ESLint flat config (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`), Prettier, `.editorconfig`, and the naming / interface-vs-type / import / class-member rules those tools enforce. This SKILL.md owns the conceptual model below; where the two overlap, the reference is authoritative on the concrete rule. **Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `docs/CODE-STYLE.md` are higher priority - follow the project where it diverges.**
+
 ## Make the compiler strict, then stricter
 
 `strict: true` is non-negotiable - it is the floor, not the goal. On top of it, turn on the flags that catch the bugs `strict` alone misses:
@@ -90,12 +92,11 @@ You don't lose the type checker by writing `.js`. The same language server check
 - Booleans read as predicates: `isReady`, `hasItems`, `canRetry`.
 - No abbreviations past the universally understood ones (`id`, `url`, `http`).
 - A function does one thing. Prefer pure functions and early returns to deep nesting; a flat function with guard clauses is easier to read and to test than a pyramid.
-- Write `public` explicitly on every class member - properties, methods, accessors, and parameter properties - even though it is the default. The modifier is then always present, so `public` / `private` / `protected` line up as one column and visibility is read, never inferred from an absent keyword; a bare member reads as 'forgot the modifier', not 'deliberately public'. Order a constructor's parameter properties the same way: `constructor(public readonly id: UserId, private readonly repo: Repo)`.
-- Order members within a class by descending visibility - `public` first, then `protected`, then `private` - so a reader meets the type's surface before its internals. The same order holds within each group's methods; fields stay grouped at the top of their visibility band.
+- Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - follows `references/typescript-style.md`: order is static fields, instance fields, constructor, then methods, public before protected before private within each group, so a reader meets the type's surface before its internals. Per that reference `public` is implicit and NOT written out (the typescript-eslint convention), and constructor parameter properties lead with the non-public ones: `constructor(private readonly repo: Repo, ...)`.
 
 ## Tooling
 
-- ESLint with typescript-eslint and its type-aware rules, plus Prettier. Both run pre-commit and in CI. Prettier owns formatting - don't hand-format and don't add stylistic ESLint rules that fight it; let the lint surface real problems, not whitespace.
+- ESLint with typescript-eslint and its type-aware rules, plus Prettier. Both run pre-commit and in CI. Prettier owns formatting - don't hand-format and don't add stylistic ESLint rules that fight it; let the lint surface real problems, not whitespace. The concrete config to copy - the flat `eslint.config.mjs`, the `@tsconfig/strictest` base, the `.prettierrc` and `.editorconfig` - is in `references/typescript-style.md`.
 - Type-check in CI as its own step (`tsc --noEmit`), separate from bundling. A bundler can transpile past a type error; an explicit `tsc` pass cannot, so a green build genuinely means a type-clean build.
 - Audit dependencies (`npm audit` / `pnpm audit`) before a release-bound change; fix the high-severity advisories or document the deliberate exception.
 - Public API surfaces carry JSDoc - `@param`, `@returns`, `@throws`. It documents intent and feeds editor tooling for both TS and JS consumers.

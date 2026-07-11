@@ -97,6 +97,9 @@ const NON_SKILL_TOKENS = new Set([
     // PostgreSQL extension module named in database-conventions' SQL style reference
     // (pre-v13 UUID generation) - a Postgres module, not a house skill.
     'uuid-ossp',
+    // file-naming style term backticked in the typescript style reference - a
+    // convention name, not a house skill.
+    'kebab-case',
 ]);
 
 const findings = [];
