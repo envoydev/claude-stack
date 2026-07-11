@@ -33,7 +33,7 @@ issue-diagnoser is the bug-side equivalent of a solution designer - it plans and
 | domain verifiers | verify the fix against diagnosis, reproduction, tests, and contract | no / read-only preferred |
 | integration-reviewer | check cross-domain issue fixes; block merging a partial fix | no / read-only preferred |
 
-The two diagnosers dispatching a read-only evidence-gatherer is the stack's one sanctioned nested dispatch. Gathering is observation, not a fix, so parallel gather-tasks do not break the one-change-at-a-time debugging discipline.
+The two diagnosers dispatching a read-only evidence-gatherer is one of the stack's two sanctioned nested dispatches (the other is the deliberate architecture-analyzer looping code-analyzer). Gathering is observation, not a fix, so parallel gather-tasks do not break the one-change-at-a-time debugging discipline.
 
 ## Investigation-only mode
 

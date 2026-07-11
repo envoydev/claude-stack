@@ -21,7 +21,7 @@ Detection keys on dispatch capability, not file presence.
 ## The loop
 
 ### 1. ANALYZE + ASSESS
-Dispatch architecture-analyzer over the target. It loops its cheap code-analyzer to map the project, then writes/reconciles `docs/architecture/ARCHITECTURE.md` (the structure map) and `docs/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural). Read `docs/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not "fix" a conscious choice.
+Dispatch architecture-analyzer over the target. It loops its cheap code-analyzer to map the project, then writes/reconciles `docs/architecture/ARCHITECTURE.md` (the structure map) and `docs/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural). Read `docs/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not 'fix' a conscious choice.
 
 ### 2. TRIAGE + FIX by tier
 Take the open weaknesses in leverage order (the assessment's top-few first). Route each by its tier - and confirm the green baseline (build + tests) before you start, so a regression is visible:
@@ -53,6 +53,6 @@ Then emit the final report.
 
 ## Rules
 - Manual only (`disable-model-invocation`): this skill runs when the user invokes `/architecture-quality-loop`, never on its own.
-- The main session is the only orchestrator. The seats it dispatches (architecture-analyzer, the domain designer / implementers / verifier / resolvers) carry no Agent tool, so the fan-out stays flat - a con needing analysis and a fix is separate dispatches from here, not one nested one. architecture-analyzer's own code-analyzer loop is its internal business, not a nested dispatch you arrange.
+- The main session is the only orchestrator. The build seats it dispatches - the domain designer / implementers / verifier / resolvers - carry no Agent tool, so the fan-out stays flat; a con needing analysis and a fix is separate dispatches from here, not one nested one. architecture-analyzer is the one exception: it carries Agent to loop its cheap code-analyzer, but that loop is its own internal business, not a nested dispatch you arrange.
 - Substantial and structural changes are gated on user approval before building; small localized fixes proceed. Architecture changes are consequential - confirm before reshaping the structure.
 - Keep this skill orchestration only. The architecture judgement lives in architecture-analyzer and the house architecture skills it loads; the build knowledge lives in the domain seats. For a pure code-quality polish reach for `project-quality-loop`; for a single feature build reach for `main-stack-agents-flow` or `cross-stack-agents-flow`.

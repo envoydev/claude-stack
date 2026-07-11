@@ -37,7 +37,7 @@ The companion to the neutral map: a candid judgement of the architecture as it s
 - **Weaknesses (10)** - ten titled weaknesses, each with the reasoning (what it costs - coupling, fragility, blast radius, a captive dependency, a perf or consistency hazard) tied to located code, then two required fields:
   - **Remediation** - concretely how to resolve it: the boundary to introduce, the dependency to invert, the pattern to adopt, the seam to guard with a fitness test.
   - **Tier** - **small** (a localized edit an implementer can land), **substantial** (a designer-led multi-task change - decompose, build, verify), or **structural** (a risky cross-cutting rework - flag it, do not let a loop auto-apply it).
-- **Summary** - the tier tally, the top few highest-leverage fixes, and any weakness that is a deliberate, accepted tradeoff rather than a defect (mark it so, so a loop does not "fix" a conscious choice).
+- **Summary** - the tier tally, the top few highest-leverage fixes, and any weakness that is a deliberate, accepted tradeoff rather than a defect (mark it so, so a loop does not 'fix' a conscious choice).
 
 ## Method (bounded, iterative)
 1. **Orient.** Read `docs/architecture/ARCHITECTURE.md` and `docs/architecture/ASSESSMENT.md` if they exist (a claim to verify, not ground truth), and read the config/manifest files for framework and package facts. Build a module inventory (`get_symbols_overview` / directory listing) - the list of areas to characterize.

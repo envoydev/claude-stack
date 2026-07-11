@@ -1,6 +1,6 @@
 # Architecture & quality-loop redesign - implementation plan
 
-Status: approved, not yet built. Planned 2026-07-11. This is the build reference for the analysis/loops redesign discussed and approved in planning; implement it phase by phase, each phase green on `npm run lint` before the next.
+Status: IMPLEMENTED (phases 1-7) 2026-07-11 on branch `feat/analyzer-split-quality-redesign`, each phase green on `npm run lint`. Phase 8 validation done in-repo (adversarial prompt review + lint; the live agent smoke-test needs a consuming project, so it is a follow-up). The **opus-find** experiment (Phase 6/8) was NOT shipped on: per the repo's prove-don't-assert rule it stays opt-in/off by default until a benchmark on a real target shows it pays. Planned 2026-07-11; kept as the build reference and the record of what landed.
 
 ## What this delivers
 
@@ -163,8 +163,8 @@ Three independent analyzer agents, three generated docs, one new loop skill, and
 
 ## Open flags
 
-- `code-analyzer` / `style-analyzer` model: **sonnet** (working assumption); revisit only with a reason.
-- `project-quality-loop` **opus-find**: a per-dispatch override to validate in Phase 8, not a committed pin.
+- `code-analyzer` / `style-analyzer` model: **sonnet** (shipped - `code-analyzer` sonnet/low, `style-analyzer` sonnet/medium); revisit only with a reason.
+- `project-quality-loop` **opus-find**: DECIDED - left OPT-IN and OFF by default. It is an unproven pin change, and the repo invariant forbids shipping a behavioral pin change without evidence; adopt it as the default first-find only after a benchmark on a real target shows it catches materially more real issues. The skill documents it as the opt-in experiment; the default first-find is the sonnet/xhigh pin.
 
 ## Out of scope (postponed)
 

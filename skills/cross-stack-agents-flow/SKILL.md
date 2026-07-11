@@ -89,7 +89,7 @@ Route to these rather than restating them in each agent:
 
 ## Rules
 
-- The main session is the only orchestrator. Domain seats carry no Agent tool, so the fan-out stays flat; the only sanctioned nested dispatch is the two diagnosers calling a read-only evidence-gatherer (see `references/issue-investigation.md`).
+- The main session is the only orchestrator. Domain seats carry no Agent tool, so the fan-out stays flat; the sanctioned nested dispatches are the two diagnosers calling a read-only evidence-gatherer (see `references/issue-investigation.md`) and the deliberate architecture-analyzer looping code-analyzer - neither runs inside this flow.
 - Do not duplicate agents to vary task size or model effort. One durable seat per role; `references/execution-modes.md` picks the mode and `references/model-routing.md` picks the effort.
 - Never verify against a stale contract version, and never commit on a domain verifier's sign-off alone - the integration gate is the only thing that authorizes a cross-domain commit.
 - Durable orientation lives in the committed docs - the architecture map (`docs/architecture/ARCHITECTURE.md` + `docs/architecture/references/`) and the code-style doc (`docs/CODE-STYLE.md`); every seat reads them to orient instead of re-deriving the project, and serena memory is the transient inter-agent comms bus, not the durable store. The docs refresh deliberately, never inside this flow: the domain designers judge where a change fits by reading the map, and reconciling the docs after a structural change is a purposeful architecture-analyzer run (via `@agent-architecture-analyzer` or the `architecture-quality-loop` skill).

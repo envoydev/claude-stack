@@ -275,8 +275,9 @@ themselves, in a bounded red-to-green loop, then hand back to the domain verifie
 These are the invariants the whole flow rests on - the guide is wrong if it ever contradicts one:
 
 - **Flat fan-out, one orchestrator.** Only the main session dispatches. Domain seats carry no Agent
-  tool, so they cannot dispatch each other. The *only* sanctioned nested dispatch is the two
-  diagnosers calling `evidence-gatherer`.
+  tool, so they cannot dispatch each other. The sanctioned nested dispatches are the two diagnosers
+  calling `evidence-gatherer` and the deliberate `architecture-analyzer` looping `code-analyzer` -
+  neither is a build-flow step, and no domain seat nests.
 - **Parallel across domains, sequential inside one domain.** Stacks run at once; each stack's
   designer -> implementer -> verifier runs in order.
 - **Never commit on a domain verifier's sign-off alone.** For cross-domain work,
