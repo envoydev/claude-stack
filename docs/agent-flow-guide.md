@@ -2,7 +2,7 @@
 
 This is the companion to [docs/single-chat-guide.md](single-chat-guide.md). That guide runs
 the design -> build -> verify flow inline, in one chat, at your model. This one runs the same
-flow as a **dispatched team of subagents** - 32 model-pinned seats an orchestrator fans out and
+flow as a **dispatched team of subagents** - 34 model-pinned seats an orchestrator fans out and
 gates. Reach for it when the work is large, parallel, cross-domain, or log-heavy enough that the
 isolation is worth its cost. For small-to-medium single-stack work, prefer the single-chat path.
 
@@ -37,7 +37,7 @@ The base rule: **dispatch buys isolation, parallelism, and model routing at a fi
 staying in chat is cheaper and transparent but serial and single-model.** Scale the choice to the
 work, and read the two guides as a pair.
 
-## The roster - 32 seats
+## The roster - 34 seats
 
 You rarely name a seat yourself - the orchestration skills pick them. But knowing the roster tells
 you what the team can do and what each dispatch costs. Every seat carries a load-bearing model +
@@ -46,12 +46,13 @@ effort pin.
 | Group | Seats | Pin |
 |---|---|---|
 | Build/test resolvers (4) | `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`, `angular-test-resolver` | sonnet / high |
-| Cross-cutting - designers + gates (7) | `architecture-analyzer`, `issue-diagnoser`, `greenfield-solution-designer`, `cross-stack-contract-designer`, `framework-upgrade-planner`, `security-auditor`, `integration-reviewer` | opus / xhigh |
+| Cross-cutting - design / analysis / gates (7) | `architecture-analyzer` (deliberate - loops `code-analyzer`, writes the map + `ASSESSMENT.md`), `issue-diagnoser`, `greenfield-solution-designer`, `cross-stack-contract-designer`, `framework-upgrade-planner`, `security-auditor`, `integration-reviewer` | opus / xhigh |
 | Cross-cutting - triage (2) | `task-analyzer`, `ci-failure-diagnoser` | opus / high |
 | Per-domain designers (6) | `<stack>-solution-designer` x aspnet / angular / wpf / mobile / data / devops | opus / xhigh |
 | Per-domain verifiers (6) | `<stack>-verifier` x 6 stacks | sonnet / xhigh |
 | Per-domain implementers (6) | `<stack>-implementer` x 6 stacks | sonnet / medium |
 | Log isolator (1) | `evidence-gatherer` (read-only; only the 2 diagnosers dispatch it) | sonnet / low |
+| Analysis support (2) | `code-analyzer` (read-only per-module characterizer; `architecture-analyzer` loops it, also callable), `style-analyzer` (writes `docs/CODE-STYLE.md`) | sonnet / low-med |
 
 The pattern to remember: **opus designs and judges, sonnet builds and verifies, haiku only ever
 appears as a per-task down-dispatch of a guarded implementer.** The two triage seats
@@ -186,12 +187,13 @@ scoped brief (the failing check + the file/symbol), then re-verifies.
 :stop: The punch-list loop is bounded - **cap two fix rounds, then escalate to you** rather than
 loop forever. Only accept the change on `SIGNED_OFF`.
 
-### Step 4 - Refresh docs
+### Step 4 - Docs stay current, deliberately
 
-On a standalone single-stack run, the orchestrator dispatches `architecture-analyzer` if the
-structure changed, to reconcile `docs/architecture/ARCHITECTURE.md`. (Under a cross-domain flow this
-step is skipped per-stack - `cross-stack-agents-flow` owns one refresh at the very end, so parallel stacks
-never race on the file.)
+This flow does **not** refresh the architecture docs. The designer already judged where the change
+fits (extend / refactor first / isolate) by reading `docs/architecture/ARCHITECTURE.md` in Step 1.
+When a change reshapes the structure enough that the map or the assessment should be redrawn, do it
+on purpose afterward - `@agent-architecture-analyzer` or the `/architecture-quality-loop` skill - not
+as an automatic tail step here.
 
 ## Worked example - the 'archived' flag, end to end (cross-domain)
 
@@ -219,8 +221,9 @@ Feature: add an `archived` flag across the stack - an EF migration, an API filte
    CONTRACT_MISMATCH | BLOCKED_BY_TESTS | BLOCKED_BY_SECURITY`.
    :stop: **Commit is allowed only on `SIGNED_OFF` / `commit_allowed: true`.** Never commit on the
    domain verifiers alone - a lane that signed off against a superseded contract version fails here.
-5. **Refresh docs, then commit.** `architecture-analyzer` reconciles the architecture docs once, at
-   the end.
+5. **Commit.** Commit on the integration gate's `SIGNED_OFF`. The architecture docs refresh
+   deliberately, not as a tail of this flow - if the feature reshaped the structure, run
+   `@agent-architecture-analyzer` or `/architecture-quality-loop` on purpose afterward.
 
 ## The diagnosis loops - dispatched
 
@@ -252,7 +255,9 @@ when its one job is exactly what you need. Map your intent to the seat:
 | Understand a bug's root cause before any fix | `issue-diagnoser` |
 | Find why CI is red | `ci-failure-diagnoser` |
 | Scope one known task in one module before planning | `task-analyzer` |
-| Judge how a multi-module change fits, or refresh the architecture docs | `architecture-analyzer` |
+| Document and assess the architecture (structure map + reasoned pros/cons), or run the improve loop | `architecture-analyzer` (deliberate) / `/architecture-quality-loop` |
+| Characterize one module (purpose, deps, patterns, smells) | `code-analyzer` |
+| Document the project's actual code style | `style-analyzer` (writes `docs/CODE-STYLE.md`) |
 | Design a brand-new project from a spec (empty repo) | `greenfield-solution-designer` |
 | Freeze the API seam between a backend and a front end | `cross-stack-contract-designer` |
 | Turn a framework/version bump into an ordered plan | `framework-upgrade-planner` |
@@ -260,9 +265,9 @@ when its one job is exactly what you need. Map your intent to the seat:
 | Gate assembled cross-domain work before commit | `integration-reviewer` |
 | Fix a red build / failing suite | the matching resolver (`dotnet-*` / `ng-*` / `angular-test-resolver`) |
 
-The cross-cutting seats in this table are read-only over code (only `architecture-analyzer` writes,
-and only to the architecture docs) - they diagnose, plan, or gate, and route the actual edits to the
-domain implementers. The four resolvers are the exception: they carry `Edit` and patch the code
+The cross-cutting seats in this table are read-only over code (only `architecture-analyzer` writes -
+and only to the architecture docs - and `style-analyzer`, only to `docs/CODE-STYLE.md`) - they
+diagnose, plan, document, or gate, and route the actual edits to the domain implementers. The four resolvers are the exception: they carry `Edit` and patch the code
 themselves, in a bounded red-to-green loop, then hand back to the domain verifier to re-gate.
 
 ## The rules that never bend
@@ -297,7 +302,8 @@ These are the invariants the whole flow rests on - the guide is wrong if it ever
 | A brand-new project from a spec | `greenfield-solution-designer` -> `project-scaffold` |
 | A framework or major-version upgrade | `framework-upgrade-planner` |
 | A dedicated security posture audit | `security-auditor` (or `/security-review` inline) |
-| A multi-module structural / boundary question | `architecture-analyzer` |
+| Document / assess / improve the architecture | `architecture-analyzer` (deliberate) or `/architecture-quality-loop` |
+| A code-quality polish pass over a module | `/project-quality-loop` |
 
 The through-line with the single-chat guide: **stay in chat for small, visible, single-stack work;
 dispatch the team when isolation, parallelism, or model routing earns its floor.**

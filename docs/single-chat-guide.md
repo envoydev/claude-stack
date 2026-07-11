@@ -5,7 +5,7 @@ dispatch (isolated contexts, model-pinned seats, parallel fan-out), and a set of
 that reproduce each seat's behaviour **inside your current chat**. This guide is the tutorial
 for the second form - how to run design -> build -> verify, and the diagnosis loops, in one
 chat where you see and check every step - plus when to reach back for a real agent instead. The
-companion guide for the first form - dispatching the 32-seat subagent team via `main-stack-agents-flow` /
+companion guide for the first form - dispatching the 34-seat subagent team via `main-stack-agents-flow` /
 `cross-stack-agents-flow` - is [agent-flow-guide.md](agent-flow-guide.md).
 
 ## Why a single-chat path exists
@@ -41,7 +41,7 @@ fresh isolated worker.** A skill is cheaper and transparent; an agent is isolate
 | `issue-diagnoser` | superpowers `systematic-debugging` + `failure-signatures` |
 | `ci-failure-diagnoser` | `ci-triage` |
 | `evidence-gatherer` | not applicable - it exists only to isolate log volume; in one chat you read the log yourself |
-| `architecture-analyzer`, `security-auditor` | keep as agents (`/security-review` covers the quick security pass inline) |
+| `architecture-analyzer` (deliberate; or `/architecture-quality-loop`), `code-analyzer`, `style-analyzer`, `security-auditor` | keep as agents - no single-chat twin (`/security-review` covers the quick security pass inline) |
 
 There is no `implementer` or `verifier` twin skill by design: the implementer's conventions
 already auto-load when you touch a file, and the verifier's job is `verify-plan` (before) plus
@@ -58,9 +58,9 @@ point. You drive the sequence; the skills do not auto-chain.
 using solution-design, plan how to add <feature>
 ```
 
-It reads `docs/architecture/ARCHITECTURE.md`, loads your stack's house skill for its real
-traps, judges where the change belongs (extend an existing seam, refactor first, or isolate a
-new boundary), and returns an ordered task plan with `file:symbol` anchors.
+It reads `docs/architecture/ARCHITECTURE.md` and `docs/CODE-STYLE.md`, loads your stack's house
+skill for its real traps, judges where the change belongs (extend an existing seam, refactor
+first, or isolate a new boundary), and returns an ordered task plan with `file:symbol` anchors.
 
 :stop: Read the fit verdict and the task breakdown. Wrong shape, missing a boundary, over-built?
 Correct it now - it is far cheaper here than after code exists.
@@ -161,7 +161,9 @@ floor - the twin skills do not replace them:
 - A red pipeline with a big CI dump -> dispatch `ci-failure-diagnoser` (same log-isolation win).
 - A dedicated cross-stack security posture audit -> dispatch `security-auditor` (or run
   `/security-review` inline for a quick diff pass).
-- A multi-module or cross-boundary structural question -> dispatch `architecture-analyzer`.
+- Document, assess, or improve the architecture (the structure map + a reasoned pros/cons
+  assessment) -> `@agent-architecture-analyzer`, or the `/architecture-quality-loop` skill to also
+  apply the fixes by tier.
 - A whole feature you want built with parallel fan-out -> let `cross-stack-agents-flow` / `main-stack-agents-flow`
   drive the full vertical.
 
@@ -181,3 +183,5 @@ volume off your thread.
 | Cross-domain feature (backend + frontend contract) | `cross-stack-agents-flow` (contract freeze + integration gate) |
 | A bug or pipeline with heavy log volume | Dispatch the diagnoser agent (log isolation) |
 | A dedicated security posture audit | `security-auditor` agent, or `/security-review` inline |
+| Document / assess / improve the architecture | `@agent-architecture-analyzer` or `/architecture-quality-loop` |
+| A code-quality polish pass to a bar | `/project-quality-loop` |

@@ -242,7 +242,7 @@
     there.
   </p>
   <div class="stat-row">
-    <div class="stat"><b>32</b><span>subagents</span></div>
+    <div class="stat"><b>34</b><span>subagents</span></div>
     <div class="stat"><b>51</b><span>house skills</span></div>
     <div class="stat"><b>7</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
@@ -310,7 +310,7 @@
             <span class="d">scopes + directs the whole project</span>
           </div>
           <div class="spanning">
-            <span class="agent arch">architecture-analyzer<span class="role">owns docs/architecture/ARCHITECTURE.md</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent arch">architecture-analyzer<span class="role">deliberate: loops code-analyzer, writes ARCHITECTURE.md + ASSESSMENT.md</span><span class="mdl opus">opus · xhigh</span></span>
             <span class="agent arch">greenfield-solution-designer<span class="role">designs a new one</span><span class="mdl opus">opus · xhigh</span></span>
             <span class="agent arch">task-analyzer<span class="role">scopes the problem</span><span class="mdl opus">opus · high</span></span>
             <span class="agent arch">cross-stack-contract-designer<span class="role">freezes the full-stack contract</span><span class="mdl opus">opus · xhigh</span></span>
@@ -631,7 +631,7 @@
 
     <div class="counts">
       <div><strong id="c-total">112</strong> total</div>
-      <div><strong id="c-subagents">32</strong> subagents</div>
+      <div><strong id="c-subagents">34</strong> subagents</div>
       <div><strong id="c-bi">14</strong> built-in</div>
       <div><strong id="c-personal">51</strong> personal</div>
       <div><strong id="c-plugins">7</strong> plugins</div>
@@ -652,7 +652,7 @@
 
   <footer>
     <span>envoydev/agents-stack &middot; agent roster + full stack inventory</span>
-    <span>6 domains &middot; 18 seats &middot; 9 cross-cutting &middot; 4 resolvers &middot; 1 gatherer &middot; 32 total</span>
+    <span>6 domains &middot; 18 seats &middot; 9 cross-cutting &middot; 4 resolvers &middot; 3 analysis/support &middot; 34 total</span>
   </footer>
 </div>
 <script>
@@ -1019,7 +1019,9 @@ const otherTools = [
   ["dotnet-test-failure-resolver", "subagent", ".NET / test", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-test red->green loop: fix the real defect (production vs test side), never skip/weaken/game a test or coverage threshold (5-cycle cap). Pairs after the build-error resolver. Pinned sonnet/high."],
   ["ng-build-error-resolver", "subagent", "Frontend / build", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Autonomous ng build fix loop: parse TS/template/bundler errors, locate via serena, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to weaken types (any / @ts-ignore), disable lint, or stub logic. Obeys angular-conventions + typescript. Pinned sonnet/high."],
   ["angular-test-resolver", "subagent", "Frontend / test", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Autonomous ng test / Jest red->green loop: fix the real defect (component vs spec), never xit/skip/weaken a spec or fake timing (5-cycle cap). Pairs after the ng build resolver. Pinned sonnet/high."],
-  ["architecture-analyzer", "subagent", "Analysis / architecture", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Maps the layers, boundaries, dependency directions, and patterns of the area a change touches and records the durable whole-project picture as a lean docs/architecture/ARCHITECTURE.md core map plus deep-dive files in the docs/architecture/references/ folder it links to - the committed map it owns and keeps current for the solution-designers - then verdicts the change fit (extend / refactor first / isolate). Read-only over code; the docs it writes are docs/architecture/ARCHITECTURE.md and docs/architecture/references/*.md. Best before the domain solution-designer on work that crosses modules. Pinned opus/xhigh."],
+  ["architecture-analyzer", "subagent", "Analysis / architecture", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Deliberate, iterative architecture analyzer (via @agent- or the architecture-quality-loop skill, never inside a build flow): loops the cheap code-analyzer to map the project from digests instead of slurping the codebase, then writes two docs it owns - docs/architecture/ARCHITECTURE.md (the lean structure map + docs/architecture/references/ deep-dives) and docs/architecture/ASSESSMENT.md (10 reasoned strengths + 10 weaknesses, each tiered small/substantial/structural). Read-only over code; the per-change fit verdict now lives in the domain solution-designers. Pinned opus/xhigh."],
+  ["code-analyzer", "subagent", "Analysis / support", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only per-module characterizer that architecture-analyzer loops over (also independently callable): reads one module/topic and returns a compact structured verdict - purpose, public surface, inbound/outbound dependencies, patterns, and structural smells - every claim tied to a located symbol, no whole-project synthesis. Keeps the code reading off the opus seat. Pinned sonnet/low."],
+  ["style-analyzer", "subagent", "Analysis / code style", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Writes docs/CODE-STYLE.md - the project's ACTUAL code style, so new code matches this codebase: detects the languages, reads each one's style config (.editorconfig, eslint/prettier, tsconfig, SQL linter) plus representative code, and records the enforced rules + the idioms a linter cannot encode (error handling, naming intent, DI/async, test/file conventions), with divergence from the house skills flagged. Read-only over source; writes that one doc. Pinned sonnet/medium."],
   ["task-analyzer", "subagent", "Analysis / task", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only deep task analysis: the affected code located by symbol, hidden coupling, edge cases, and the open questions ranked by plan impact. Feeds the domain solution-designer. Pinned opus/high. First delegation on a nontrivial feature/bug."],
   ["ci-failure-diagnoser", "subagent", "CI / diagnosis", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only CI red-run diagnosis: pulls the failing run logs via the gh CLI (gh pr checks, gh run view --log-failed), categorizes each failure (build/test/lint/workflow/signing/environment/flake), attempts one local repro where an equivalent exists, and routes to the matching resolver or domain verifier. Pinned opus/high."],
   ["issue-diagnoser", "subagent", "Diagnosis / bug", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only bug diagnosis: reads the evidence (a stack trace, a log excerpt, an error message, or a screenshot of a crash / broken UI), reproduces the failure where possible, isolates the root cause to a file and symbol, and routes it to the matching domain implementer or a resolver - never fixes what it finds. Pinned opus/xhigh."],

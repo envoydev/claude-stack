@@ -1,6 +1,6 @@
 # Naming stage
 
-A findings-based audit. Review TARGET for names only - identifiers, files, symbols, the public surface. Run after architecture (code may have moved homes) and before code quality.
+A findings-based audit. Review TARGET for names only - identifiers, files, symbols, the public surface. Run after code quality (code may have moved homes) and before comments.
 
 Look for:
 - Names that lie about what the thing does, or that no longer match its behavior after an earlier stage moved or reshaped it.

@@ -195,7 +195,7 @@ The trio loop is `solution-design` -> `verify-plan` -> build under the auto-load
 -> `/code-review`, with a checkpoint after each step. **See the full tutorial and worked example
 in [docs/single-chat-guide.md](docs/single-chat-guide.md).**
 
-The inverse path - running the same flow as a dispatched team of 32 model-pinned subagents, the
+The inverse path - running the same flow as a dispatched team of 34 model-pinned subagents, the
 `main-stack-agents-flow` and `cross-stack-agents-flow` orchestration skills, the execution-mode ladder, and when the
 isolation floor is worth paying - is **[docs/agent-flow-guide.md](docs/agent-flow-guide.md)**. Read
 the two as a pair: stay in chat for small single-stack work, dispatch the team for large, parallel,
