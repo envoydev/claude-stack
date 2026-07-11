@@ -242,13 +242,13 @@
     there.
   </p>
   <div class="stat-row">
-    <div class="stat"><b>34</b><span>subagents</span></div>
-    <div class="stat"><b>51</b><span>house skills</span></div>
+    <div class="stat"><b>37</b><span>subagents</span></div>
+    <div class="stat"><b>52</b><span>house skills</span></div>
     <div class="stat"><b>7</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>3</b><span>hooks</span></div>
     <div class="stat"><b>8</b><span>rules</span></div>
-    <div class="stat"><b>6</b><span>domains</span></div>
+    <div class="stat"><b>7</b><span>domains</span></div>
   </div>
 
   <div class="flow">
@@ -340,6 +340,7 @@
           <div class="cols">
             <div class="cell"><span class="agent design">aspnet-solution-designer<span class="role">clean-arch · API shape · auth</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">wpf-solution-designer<span class="role">strict MVVM · view composition</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">console-solution-designer<span class="role">Generic Host · lifecycle · resilience</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">angular-solution-designer<span class="role">components · state · routing</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">mobile-solution-designer<span class="role">shell · native bridge · release</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">data-solution-designer<span class="role">schema · model · perf</span><span class="mdl opus">opus · xhigh</span></span></div>
@@ -356,6 +357,7 @@
           <div class="cols">
             <div class="cell"><span class="agent build">aspnet-implementer<span class="role">C# + xUnit / integration</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">wpf-implementer<span class="role">XAML + VM unit tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">console-implementer<span class="role">host/worker + fake-gateway tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">angular-implementer<span class="role">TS + Jest / TestBed</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">mobile-implementer<span class="role">Ionic + Appium E2E</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">data-implementer<span class="role">SQL + migration tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
@@ -372,6 +374,7 @@
           <div class="cols">
             <div class="cell"><span class="agent qa">aspnet-verifier<span class="role">vs clean-arch + async</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">wpf-verifier<span class="role">vs MVVM + bindings</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">console-verifier<span class="role">vs lifecycle + captive deps</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">angular-verifier<span class="role">vs signals / OnPush / a11y</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">mobile-verifier<span class="role">vs native + platform parity</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">data-verifier<span class="role">vs schema + query safety</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
@@ -631,9 +634,9 @@
 
     <div class="counts">
       <div><strong id="c-total">112</strong> total</div>
-      <div><strong id="c-subagents">34</strong> subagents</div>
+      <div><strong id="c-subagents">37</strong> subagents</div>
       <div><strong id="c-bi">14</strong> built-in</div>
-      <div><strong id="c-personal">51</strong> personal</div>
+      <div><strong id="c-personal">52</strong> personal</div>
       <div><strong id="c-plugins">7</strong> plugins</div>
       <div><strong id="c-mcp">7</strong> MCP</div>
       <div><strong id="c-hooks">3</strong> hooks</div>
@@ -652,7 +655,7 @@
 
   <footer>
     <span>envoydev/agents-stack &middot; agent roster + full stack inventory</span>
-    <span>6 domains &middot; 18 seats &middot; 9 cross-cutting &middot; 4 resolvers &middot; 3 analysis/support &middot; 34 total</span>
+    <span>7 domains &middot; 21 seats &middot; 9 cross-cutting &middot; 4 resolvers &middot; 3 analysis/support &middot; 37 total</span>
   </footer>
 </div>
 <script>
@@ -708,11 +711,12 @@ const personal = {
     ["dotnet-aspire","Backend / Aspire","Local cloud-native orchestration: AppHost (AddProject/AddPostgres/AddRedis/AddRabbitMQ, WithReference), shared ServiceDefaults, service discovery, dashboard. Orchestration-only; OTel/health/resilience -> dotnet-web-backend. Original house skill (.NET 8 floor)."],
     ["dotnet-authentication","Auth / ASP.NET Core","Authn/authz: JWT bearer / OIDC / ASP.NET Identity, policy-based authorization over role strings, custom requirements, API keys, secret storage. Original house skill (.NET 8 floor)."],
     ["dotnet-code-quality","Quality / .NET","Mechanically enforce house C# style: CSharpier formatter ownership (vs dotnet format), first-party SDK analyzers (EnableNETAnalyzers / AnalysisLevel / AnalysisMode in Directory.Build.props), one root .editorconfig as the single severity source, TreatWarningsAsErrors discipline (never suppress to go green) + gradual batch-promotion for a legacy warning backlog, optional Roslynator, and the dotnet build CI gate. Original house skill (.NET 8 floor)."],
+    ["dotnet-console-apps","Backend / console","The console app's interface surface on top of the generic host: CLI argument parsing (System.CommandLine 2.0 GA / Spectre.Console.Cli / Cocona, subcommands, exit codes) and long-running bots / gateway consumers (Telegram / Discord / Slack / trading via CryptoExchange.Net / queue-workers) run inside a BackgroundService. Host lifecycle + 24/7 hardening -> dotnet-hosted-services. Original house skill (.NET 8 floor)."],
     ["dotnet-cryptography","Security / .NET","System.Security.Cryptography: SHA-2 hashing, AES-GCM authenticated encryption, RSA-OAEP/ECDSA, PBKDF2 (600k)/Argon2id key derivation, FixedTimeEquals, deprecated-algorithm matrix; PQC noted .NET 10+. Original house skill (.NET 8 floor)."],
     ["dotnet-data-access","Data access / EF Core","EF Core + NHibernate ORM hub: session/context lifetime + pooling, change tracking, Include/AsSplitQuery and N+1, projection to read models, bounded results, set-based bulk ops, ORM-vs-Dapper split; per-ORM depth in references/efcore.md + references/nhibernate.md. Engine SQL routes to postgres / sqlite. Original house skill."],
     ["dotnet-error-handling","Errors / ASP.NET Core","Result pattern for expected failures + ProblemDetails (RFC 9457) + global IExceptionHandler (.NET 8+) + FluentValidation via endpoint filter. Original house skill (.NET 8 floor)."],
     ["dotnet-grpc","Backend / gRPC","gRPC lifecycle: .proto + Grpc.Tools codegen, Grpc.AspNetCore host, typed clients via IHttpClientFactory, four streaming modes, JWT/mTLS, interceptors, health, gRPC-Web. Original house skill (.NET 8 floor)."],
-    ["dotnet-hosted-services","Backend / hosting","Hosted-service / worker conventions: the two host shapes, BackgroundService vs IHostedService vs IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services via IServiceScopeFactory, PeriodicTimer, graceful shutdown, and Channels-backed work. Original house skill (.NET 8 floor)."],
+    ["dotnet-hosted-services","Backend / hosting","Hosted-service / worker conventions: the two host shapes, BackgroundService vs IHostedService vs IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services via IServiceScopeFactory, PeriodicTimer, graceful shutdown, and Channels-backed work - plus references/ for 24/7 hardening (HttpClient/socket exhaustion, Polly v8, rate limiting, ClientWebSocket reconnect), scheduling (Hangfire/Quartz/Coravel) + leader election, and deployment/signals (systemd/container/Kubernetes, worker observability). Original house skill (.NET 8 floor)."],
     ["dotnet-messaging","Backend / messaging","Event-driven messaging: Wolverine (MIT default) / MassTransit, transactional outbox, choreography vs sagas, message contracts, RabbitMQ / Azure Service Bus. Original house skill (.NET 8 floor)."],
     ["dotnet-migrate","Migrations / .NET","Safe-migration workflow: EF Core schema, .NET version upgrades, NuGet updates - rollback plan + build/test verification per step. Original house skill (.NET 8 floor)."],
     ["dotnet-minimal-api","Backend / ASP.NET Core","Minimal API endpoint mechanics: feature-folder organization, MapGroup, TypedResults / Results<> unions, IEndpointFilter, parameter binding, metadata. Original house skill (.NET 8 floor)."],
@@ -728,7 +732,7 @@ const personal = {
     ["project-quality-loop","Review / automation","Autonomous review-and-fix loop over a loops/ folder of numbered prompts: runs each in numeric order, loops it on the target until its bar (default zero findings at every severity) is met, then advances - deciding and logging judgment calls, never pausing. Per-module on large codebases."],
     ["architecture-quality-loop","Review / automation","Deliberate architecture analyze-assess-improve loop: architecture-analyzer maps the project and writes ARCHITECTURE.md + a reasoned strengths/weaknesses ASSESSMENT.md, then works the weaknesses by tier (small -> implementer, substantial -> designer-led build with plan approval, structural -> flagged for a decision), reconciles the docs, and loops. Manual, /-only - the heavy counterpart to project-quality-loop."],
     ["project-scaffold","Greenfield / scaffolding","Build a new application or major module from scratch: routes to the right architecture skill (dotnet-architecture, dotnet-project-structure) and scaffolding command (dotnet new, ng new via the angular-cli MCP), then in a stack-installed project drives the build from the main session - greenfield-solution-designer designs, and each vertical slice runs the main-stack-agents-flow skill for its stack."],
-    ["main-stack-agents-flow","Build / orchestration","Build a feature through a stack specialist team: the domain solution-designer decomposes it into independent parallel tasks, several implementers build them at once, and the domain verifier gates the assembled result against the plan and quality, looping punch-lists back until it signs off. Dispatches the per-domain agent trio (ASP.NET / Angular / WPF / mobile / data / DevOps) - pick the skill by the stack under change."],
+    ["main-stack-agents-flow","Build / orchestration","Build a feature through a stack specialist team: the domain solution-designer decomposes it into independent parallel tasks, several implementers build them at once, and the domain verifier gates the assembled result against the plan and quality, looping punch-lists back until it signs off. Dispatches the per-domain agent trio (ASP.NET / Angular / WPF / console-worker / mobile / data / DevOps) - pick the skill by the stack under change."],
     ["cross-stack-agents-flow","Build / orchestration","Entry-point router for multi-agent engineering work: classify a feature or bug, then run the smallest safe execution mode - single chat, one implementer, a single-stack main-stack-agents-flow trio, or a cross-domain contract-frozen fan-out. For cross-domain work it freezes the shared contract first (via cross-stack-contract-designer), runs each stack's main-stack-agents-flow in parallel, then gates the assembled whole through the integration-reviewer before commit. Home of the shared subagent policies: execution modes, contract change, structured output, progress ledger, model and token routing."],
     ["verify-plan","Build / orchestration","Audit an implementation plan or design BEFORE writing code: a risk-coverage review that checks the plan names the non-obvious traps its stack will hit (routing to the stack skill - dotnet-web-backend, angular-conventions, dotnet-wpf - for the trap list), matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (creates the plan) and precedes /code-review (reviews the built code)."],
     ["solution-design","Build / orchestration","Work out how a feature fits the existing code before building, in a single chat - the in-context form of the solution-designer seat. Reads docs/architecture/ARCHITECTURE.md, judges where the change belongs (extend an existing seam, refactor first, or isolate a new boundary) tied to the forcing edge, loads the stack skill (dotnet-web-backend, angular-conventions, dotnet-wpf) for the real traps, and decomposes the work into an ordered, minimal plan. Feeds verify-plan (which audits the plan) and precedes the build under the stack skill. The single-chat twin of the dispatched designer agent, kept in your context so you check each step."],
@@ -1041,6 +1045,9 @@ const otherTools = [
   ["wpf-solution-designer", "subagent", "WPF / design", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only WPF desktop design pass: fixes architecture, plan, and test strategy for the C# stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the wpf-implementer fan-out and the wpf-verifier. Pinned opus/xhigh."],
   ["wpf-implementer", "subagent", "WPF / build", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Builds ONE task from a wpf-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["wpf-verifier", "subagent", "WPF / verify", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate once every wpf-implementer task has landed: verifies the assembled work against the designer plan and C# code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["console-solution-designer", "subagent", "Console / design", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only headless-.NET design pass (Generic Host worker, background service, bot, daemon, or one-shot CLI): settles the host and DI composition, the hosted-service lifecycle (stopping-token, graceful shutdown), and the external-gateway resilience seam, then decomposes the work into independent parallel tasks with clear contracts. Feeds the console-implementer fan-out and the console-verifier. Pinned opus/xhigh."],
+  ["console-implementer", "subagent", "Console / build", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Builds ONE task from a console-solution-designer decomposition: writes the host/worker/handler code AND its tests (fake gateway, FakeTimeProvider) for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["console-verifier", "subagent", "Console / verify", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate once every console-implementer task has landed: verifies the assembled headless-.NET work against the designer plan and C# quality (captive-dependency, stopping-token, host lifecycle, gateway resilience), reruns the build and tests, hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
   ["mobile-solution-designer", "subagent", "Mobile / design", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only Ionic/Capacitor mobile design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the mobile-implementer fan-out and the mobile-verifier. Pinned opus/xhigh."],
   ["mobile-implementer", "subagent", "Mobile / build", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Builds ONE task from a mobile-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["mobile-verifier", "subagent", "Mobile / verify", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate once every mobile-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],

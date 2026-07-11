@@ -1,6 +1,6 @@
 ---
 name: wpf-verifier
-description: Use once every wpf-implementer task has landed - a read-only gate over the assembled WPF desktop work against the designer plan and C# quality (MVVM correctness, Dispatcher and STA-thread affinity, binding and event-handler leaks, no code-behind logic), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of a wpf build, looping to sign-off. Do NOT use it to fix what it finds (returns to wpf-implementer) or verify the other C# stack, ASP.NET Core backend/API - aspnet-verifier's.
+description: Use once every wpf-implementer task has landed - a read-only gate over the assembled WPF desktop work against the designer plan and C# quality (MVVM correctness, Dispatcher and STA-thread affinity, binding and event-handler leaks, no code-behind logic), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of a wpf build, looping to sign-off. Do NOT use it to fix what it finds (returns to wpf-implementer) or verify the other C# stacks - ASP.NET Core backend/API is aspnet-verifier's, headless console/worker is console-verifier's.
 tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
 model: sonnet
 effort: xhigh

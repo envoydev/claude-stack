@@ -268,7 +268,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (58).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (59).
 $Skills = @(
   # Personal (envoydev/agents-stack)
   'envoydev/agents-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -303,6 +303,7 @@ $Skills = @(
   'envoydev/agents-stack|dotnet-aspire'    # .NET Aspire local orchestration: AppHost, ServiceDefaults, service discovery, dashboard
   'envoydev/agents-stack|dotnet-authentication' # ASP.NET Core authn/authz: JWT/OIDC/Identity, policy-based authz, secrets
   'envoydev/agents-stack|dotnet-code-quality' # C# quality enforcement: CSharpier formatter ownership, SDK analyzers + AnalysisLevel, .editorconfig severity, TreatWarningsAsErrors (+ legacy batch promotion), Roslynator, CI gate
+  'envoydev/agents-stack|dotnet-console-apps' # console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli/Cocona) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService
   'envoydev/agents-stack|dotnet-cryptography' # System.Security.Cryptography: SHA-2, AES-GCM, RSA/ECDSA, PBKDF2/Argon2id, constant-time compare
   'envoydev/agents-stack|dotnet-error-handling' # Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation
   'envoydev/agents-stack|dotnet-grpc'      # gRPC: .proto/codegen, ASP.NET Core host, 4 streaming modes, JWT/mTLS, interceptors, health
@@ -483,7 +484,7 @@ $Agents = @(
   'framework-upgrade-planner.md'     # analysis phase (opus/xhigh): read-only - turns a version/deprecation event into an ordered, contracted upgrade plan
   'security-auditor.md'              # analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements /security-review
   'integration-reviewer.md'          # final gate (opus/xhigh): read-only cross-domain integration review - contract consistency, assembled build/test/migration, the commit gate no single-stack verifier is
-  # Per-domain specialist team (6 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
+  # Per-domain specialist team (7 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
   'aspnet-solution-designer.md'      # design phase (opus/xhigh): ASP.NET Core architecture + plan + test strategy, decomposes into parallel tasks
   'aspnet-implementer.md'            # build phase (sonnet/medium): builds one ASP.NET task - code + tests
   'aspnet-verifier.md'               # verify phase (sonnet/xhigh): gates the ASP.NET build vs plan + quality, punch-list back
@@ -493,6 +494,9 @@ $Agents = @(
   'wpf-solution-designer.md'         # design phase (opus/xhigh): WPF strict-MVVM architecture + plan + test strategy, decomposes
   'wpf-implementer.md'               # build phase (sonnet/medium): builds one WPF task - code + tests
   'wpf-verifier.md'                  # verify phase (sonnet/xhigh): gates the WPF build vs plan + quality
+  'console-solution-designer.md'     # design phase (opus/xhigh): headless .NET (Generic Host worker/bot/daemon/CLI) architecture + plan + test strategy, decomposes
+  'console-implementer.md'           # build phase (sonnet/medium): builds one console/worker task - code + tests
+  'console-verifier.md'              # verify phase (sonnet/xhigh): gates the console/worker build vs plan + quality
   'mobile-solution-designer.md'      # design phase (opus/xhigh): Ionic/Capacitor architecture + plan + test strategy, decomposes
   'mobile-implementer.md'            # build phase (sonnet/medium): builds one mobile task - code + tests
   'mobile-verifier.md'               # verify phase (sonnet/xhigh): gates the mobile build vs plan + quality

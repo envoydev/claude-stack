@@ -77,6 +77,8 @@ npx skills remove      # uninstall skills
   JWT/OIDC/Identity, policy-based authorization, secret storage. .NET 8 floor.
 - **dotnet-code-quality** - Mechanically enforce the C# house style: CSharpier
   formatter ownership, SDK analyzers (AnalysisLevel / .editorconfig severity), TreatWarningsAsErrors + legacy batch promotion, Roslynator, the dotnet build CI gate. .NET 8 floor.
+- **dotnet-console-apps** - The console app's interface surface on the generic host:
+  CLI argument parsing (System.CommandLine 2.0 / Spectre.Console.Cli / Cocona) and bots / gateway consumers (Telegram / Discord / Slack / exchange) run in a BackgroundService. .NET 8 floor.
 - **dotnet-cryptography** - System.Security.Cryptography: SHA-2, AES-GCM,
   RSA/ECDSA, PBKDF2/Argon2id, constant-time comparison, deprecated-algorithm matrix. .NET 8 floor.
 - **dotnet-data-access** - EF Core + NHibernate data access: DbContext/session lifetime, change
@@ -86,7 +88,7 @@ npx skills remove      # uninstall skills
 - **dotnet-grpc** - gRPC: .proto/codegen, ASP.NET Core host, four streaming
   modes, JWT/mTLS, interceptors, health checks, gRPC-Web. .NET 8 floor.
 - **dotnet-hosted-services** - Hosted-service / worker conventions:
-  BackgroundService vs IHostedService, the ExecuteAsync exception trap, scoped scopes, PeriodicTimer, graceful shutdown, Channels. .NET 8 floor.
+  BackgroundService vs IHostedService, the ExecuteAsync exception trap, scoped scopes, PeriodicTimer, graceful shutdown, Channels; references/ add 24/7 hardening (I/O resilience, rate limiting, ClientWebSocket reconnect), scheduling + leader election, and deployment/signals. .NET 8 floor.
 - **dotnet-messaging** - Event-driven messaging: Wolverine (MIT) /
   MassTransit, transactional outbox, choreography vs sagas, RabbitMQ / Azure Service Bus. .NET 8 floor.
 - **dotnet-migrate** - Safe migration workflow for EF Core schema, .NET
@@ -195,7 +197,7 @@ The trio loop is `solution-design` -> `verify-plan` -> build under the auto-load
 -> `/code-review`, with a checkpoint after each step. **See the full tutorial and worked example
 in [docs/single-chat-guide.md](docs/single-chat-guide.md).**
 
-The inverse path - running the same flow as a dispatched team of 34 model-pinned subagents, the
+The inverse path - running the same flow as a dispatched team of 37 model-pinned subagents, the
 `main-stack-agents-flow` and `cross-stack-agents-flow` orchestration skills, the execution-mode ladder, and when the
 isolation floor is worth paying - is **[docs/agent-flow-guide.md](docs/agent-flow-guide.md)**. Read
 the two as a pair: stay in chat for small single-stack work, dispatch the team for large, parallel,

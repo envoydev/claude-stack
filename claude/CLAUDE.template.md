@@ -99,7 +99,7 @@ Three PreToolUse guards ship in `.claude/hooks/`, wired into `.claude/settings.j
 
 ### Stack agents
 
-The stack's subagents ship in `.claude/agents/` (auto-discovered), each model/effort-pinned in its own frontmatter: a set of cross-cutting agents plus a per-domain team for each of the six stacks (ASP.NET, Angular, WPF, Ionic/mobile, data/SQL, DevOps). A `CLAUDE_CODE_SUBAGENT_MODEL` env var silently overrides every model pin - leave it unset.
+The stack's subagents ship in `.claude/agents/` (auto-discovered), each model/effort-pinned in its own frontmatter: a set of cross-cutting agents plus a per-domain team for each of the seven stacks (ASP.NET, Angular, WPF, console/worker, Ionic/mobile, data/SQL, DevOps). A `CLAUDE_CODE_SUBAGENT_MODEL` env var silently overrides every model pin - leave it unset.
 
 **Invocation is explicit, never automatic.** Dispatch a subagent only on an explicit trigger - a user `@agent-<name>` mention, or an orchestration skill (`main-stack-agents-flow` / `cross-stack-agents-flow`) routing to it. Do not self-delegate to a subagent from a plain task description just because it matches the agent's `description`; when it looks like a match but no explicit trigger was given, handle it in the main session or invoke the orchestration skill. The descriptions state *when each agent applies* - the lever a skill or an `@agent-` mention uses to pick the right one, not a cue to fire on its own. (Claude Code has no per-agent flag to disable auto-delegation; this rule is the lever, and it holds because these descriptions carry no 'use proactively' phrasing. 'A first delegation on its trigger' below means the situation in which you would dispatch it, not that it auto-fires.)
 

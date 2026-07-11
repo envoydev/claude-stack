@@ -58,7 +58,7 @@ Requirements clarified first (the feature-family gate above)
   -> task-analyzer scopes size, risk, affected domains, reading the committed docs/architecture/ARCHITECTURE.md map
   -> cross-stack-contract-designer freezes Contract v1  (see references/contract-protocol.md)
   -> parallel per-stack main-stack-agents-flow runs, each against the frozen contract:
-       data / aspnet / angular / wpf / mobile / devops
+       data / aspnet / angular / wpf / console / mobile / devops
   -> integration-reviewer gates the assembled whole  (final gate, mandatory)
   -> optional security-auditor if the risk requires
   -> commit only after the integration gate signs off

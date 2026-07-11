@@ -1,6 +1,6 @@
 ---
 name: aspnet-verifier
-description: Use once every aspnet-implementer task has landed - a read-only gate over the assembled ASP.NET Core backend/API work against the designer plan and C# quality (async/await correctness, EF Core change-tracking and N+1, DI and clean-architecture layering), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of an aspnet build, looping to sign-off. Do NOT use it to fix what it finds (returns to aspnet-implementer) or verify the other C# stack, WPF desktop - wpf-verifier's.
+description: Use once every aspnet-implementer task has landed - a read-only gate over the assembled ASP.NET Core backend/API work against the designer plan and C# quality (async/await correctness, EF Core change-tracking and N+1, DI and clean-architecture layering), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of an aspnet build, looping to sign-off. Do NOT use it to fix what it finds (returns to aspnet-implementer) or verify the other C# stacks - WPF desktop is wpf-verifier's, headless console/worker is console-verifier's.
 tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories
 model: sonnet
 effort: xhigh

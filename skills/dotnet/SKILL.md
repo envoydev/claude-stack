@@ -76,6 +76,11 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | You are about to... | Load |
 |---|---|
 | write a worker service or in-process background task - `BackgroundService`/`IHostedService`, the `ExecuteAsync` exception trap, scoped services from the host, `PeriodicTimer`, graceful shutdown, `Channel<>`-backed work | `dotnet-hosted-services` |
+| harden a long-running worker's outbound I/O - `HttpClient`/socket exhaustion, Polly v8 resilience, rate limiting, `ClientWebSocket` reconnect | `dotnet-hosted-services` (its `references/resilience-and-io.md`) |
+| pick a scheduler (Hangfire / Quartz.NET / Coravel) or run a job on exactly one instance (leader election) | `dotnet-hosted-services` (its `references/scheduling-and-coordination.md`) |
+| deploy or observe a headless worker - signals, systemd / container / Kubernetes shutdown, health checks without Kestrel, `[LoggerMessage]` | `dotnet-hosted-services` (its `references/deployment-and-observability.md`) |
+| build a CLI tool - argument parsing (`System.CommandLine` 2.0 / `Spectre.Console.Cli` / `Cocona`), subcommands, exit codes | `dotnet-console-apps` |
+| build a chat or trading bot - a Telegram / Discord / Slack / exchange SDK plugged into a `BackgroundService`, command handlers in DI | `dotnet-console-apps` (its `references/bot-sdks.md`) |
 
 ## Testing and quality
 

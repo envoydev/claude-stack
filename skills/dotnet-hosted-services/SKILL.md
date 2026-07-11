@@ -1,6 +1,6 @@
 ---
 name: dotnet-hosted-services
-description: "Personal .NET hosted-service and worker conventions - the long-running background work the generic host runs. Covers the host shapes (a worker binary, a hosted task in a web app, a Windows Service), IHostedService versus BackgroundService versus IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services from the singleton host, PeriodicTimer over a Task.Delay loop, graceful shutdown via the stopping token, and queue-backed work via System.Threading.Channels. Floors at .NET 8 / C# 12. Load when writing a worker service, a BackgroundService or IHostedService, a periodic job, or any in-process background task hung off the host. Companions: dotnet-messaging owns the broker and consumer contract, dotnet-web-backend the surrounding HTTP service, csharp the async and Channels mechanics. Do NOT load for broker-driven consumers, HTTP endpoints, or reactive in-memory streams."
+description: "Personal .NET hosted-service and worker conventions - the long-running background work the generic host runs. Covers the host shapes (a worker binary, a hosted task in a web app, a Windows Service), IHostedService versus BackgroundService versus IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services from the singleton host, PeriodicTimer over a Task.Delay loop, graceful shutdown via the stopping token, and queue-backed work via System.Threading.Channels - plus references/ for 24/7 hardening (socket exhaustion, resilience, rate limiting, reconnect), scheduling + leader election, and deployment/signals. Floors at .NET 8 / C# 12. Load when writing a worker service, a BackgroundService or IHostedService, a periodic job, a long-running bot/daemon host, or any in-process background task hung off the host. Companions: dotnet-messaging owns the broker and consumer contract, dotnet-web-backend the surrounding HTTP service, csharp the async and Channels mechanics. Do NOT load for broker-driven consumers, HTTP endpoints, or reactive in-memory streams."
 ---
 
 # .NET hosted services - background work on the generic host
@@ -127,6 +127,7 @@ Shutdown is cooperative - the host signals, your code must respond. Honor the si
 - **The stopping token.** When the host stops, it cancels the `CancellationToken` passed to `ExecuteAsync` (and `StopAsync`). Check `IsCancellationRequested` in every loop and thread the token into every async call so an in-flight operation is asked to wind down. A worker that ignores the token blocks shutdown until the timeout below forces it.
 - **`StopAsync`.** Override it to release resources or finish a final flush. The host awaits it. The total time it allows across all services is `HostOptions.ShutdownTimeout`, which defaults to 30 seconds; raise it (`builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(60))`) only if a clean drain genuinely needs longer, and never let `StopAsync` run unbounded.
 - **`IHostApplicationLifetime`** when a worker must *itself* request shutdown - a fatal config error, a completed one-shot job. Inject it and call `StopApplication()`; register on `ApplicationStopping` to run last-gasp cleanup. This is how a worker ends the process deliberately rather than by throwing.
+- **Explicit signal handling is rarely needed** - the host already maps `SIGTERM`/`SIGINT` to this graceful shutdown. For a shutdown *side-effect*, use `PosixSignalRegistration.Create(PosixSignal.SIGTERM, ...)` (cross-platform, .NET 6+) over `Console.CancelKeyPress`, which catches only Ctrl+C and races the host stop. The full systemd / container / Kubernetes signal-and-drain contract is `references/deployment-and-observability.md`.
 
 The contract is simple: cancel propagates in, the work drains within the timeout, the host exits. Code that does not observe the token is the reason a shutdown hangs.
 
@@ -152,6 +153,15 @@ protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 
 Prefer a **bounded** channel so a runaway producer applies backpressure instead of growing the queue until the process runs out of memory. `ReadAllAsync` with the stopping token drains until shutdown. The channel mechanics - readers, writers, completion, backpressure modes - are `csharp`; this skill only fixes that an in-process producer/consumer split belongs on a channel drained by a hosted service. The hard boundary: this is for work that stays inside one process. The moment the work must survive a restart, cross a process boundary, or be delivered at-least-once, it is not a channel - it is a broker, and that is `dotnet-messaging`. Do not build a durability story on top of an in-memory channel.
 
+## Running it 24/7 - the references
+
+The host is the engine; a worker or bot that stays up for weeks also has to survive its own I/O, schedule, and deployment. Each concern has a reference:
+
+- **`references/resilience-and-io.md`** - outbound I/O hardening the web hub would give a service but does not reach a console host: `HttpClient`/socket-exhaustion (singleton + `SocketsHttpHandler`, or `IHttpClientFactory`), Polly v8 resilience pipelines, `System.Threading.RateLimiting`, and raw `ClientWebSocket` reconnect/backoff/re-subscribe.
+- **`references/scheduling-and-coordination.md`** - when a plain loop is not enough: the Hangfire / Quartz.NET / Coravel decision, and single-instance leader election (RedLock.net / SQL lock, with the idempotency caveat).
+- **`references/deployment-and-observability.md`** - signals and the Kubernetes drain contract, systemd / container (chiseled non-root) integration, GC/AOT for a long-running process, and observability without an HTTP surface (health checks, `[LoggerMessage]`, OpenTelemetry).
+- **`references/concurrency.md`** - the worker-loop concurrency correctness this all rests on.
+
 ## Anti-patterns
 
 - Letting an exception escape `ExecuteAsync` with no strategy - the host silently stops the worker (`Ignore`) or the whole process (`StopHost`, the default) and nobody notices until the work has been dead for days.
@@ -164,6 +174,7 @@ Prefer a **bounded** channel so a runaway producer applies backpressure instead 
 
 ## Newer versions (optional)
 
+- **.NET 10:** all of `ExecuteAsync` now runs on a background thread - the runtime wraps it in `Task.Run` inside `StartAsync`, so its synchronous prefix (the code before the first real `await`) no longer blocks other services from starting. The classic `await Task.Yield()` at the top of `ExecuteAsync` is no longer needed. If you *want* code to run synchronously during startup, that is now the wrong place - put it in the constructor, override `StartAsync` before calling `base.StartAsync`, or implement `IHostedLifecycleService`.
 - **.NET 11+:** `IHost.RunAsync`/`StopAsync` (and their synchronous forms) will *throw* the captured `BackgroundService` exception instead of completing quietly when a worker fails under `StopHost` - making the trap above far louder. Until then, on the .NET 8 floor, you only get the log entry, so the explicit handling stands.
 
 ## Companions
