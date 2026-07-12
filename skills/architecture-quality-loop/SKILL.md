@@ -1,6 +1,6 @@
 ---
 name: architecture-quality-loop
-description: "The deliberate architecture analyze-assess-improve loop. It dispatches architecture-analyzer to map the project and write docs/architecture/ARCHITECTURE.md plus a docs/architecture/ASSESSMENT.md of reasoned strengths and weaknesses, then works the weaknesses by their tier - a small con to a domain implementer, a substantial con through a domain designer -> implementers -> verifier (plan approved first), a structural or risky con flagged for a user decision and never auto-applied - re-runs architecture-analyzer to reconcile the docs with what shipped, and loops until the fixable cons are resolved or it plateaus. Manual, /-only. Triggers on 'run the architecture quality loop' or 'analyze and improve the architecture'. NOT for a code-quality polish (that is project-quality-loop), a single feature build (main-stack-agents-flow / cross-stack-agents-flow), or a read-only assessment with no fixes (@agent-architecture-analyzer alone)."
+description: "The deliberate architecture analyze-assess-improve loop. Dispatches architecture-analyzer to write docs/architecture/ARCHITECTURE.md plus a docs/architecture/ASSESSMENT.md of reasoned strengths and weaknesses, works the weaknesses by tier - small to a domain implementer, substantial through a designer -> implementers -> verifier (plan approved first), structural flagged for a user decision and never auto-applied - re-runs the analyzer to reconcile the docs, and loops until the fixable cons resolve or plateau. Manual, /-only. Triggers on 'run the architecture quality loop' or 'analyze and improve the architecture'. NOT for a code-quality polish (project-quality-loop), a single feature build (main-stack-agents-flow / cross-stack-agents-flow), or a read-only assessment with no fixes (@agent-architecture-analyzer alone)."
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,7 @@ You drive a deliberate loop that improves a project's architecture: analyze it, 
 Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point it at one bounded context or module subtree per run.
 
 ## Execution modes
-DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `cross-stack-agents-flow` owns (`references/execution-modes.md`). Pick the mode once, before ANALYZE, hold it for the run, and apply it to the loop:
+DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `cross-stack-agents-flow` owns. Pick the mode once, before ANALYZE, hold it for the run, and apply it to the loop:
 
 - **DELEGATED** (dispatch available) - the main session dispatches every seat - architecture-analyzer, then the domain designer / implementers / verifier for a substantial fix, or an implementer for a small one - never doing their work itself. This skill and `main-stack-agents-flow` are manual (`disable-model-invocation`), so a substantial fix runs the stack vertical by dispatching that stack's seats directly, not by model-invoking the `main-stack-agents-flow` skill.
 - **INLINE** (no dispatch: Cursor, a non-stack project, or a scope too small to fan out) - do the same steps in-session: map and assess the architecture yourself against the house architecture skills, then apply the fixable cons directly, smallest blast radius first.
@@ -38,7 +38,7 @@ Re-read the reconciled `docs/architecture/ASSESSMENT.md` and decide, off the wea
 
 - **SATISFIED** - no fixable (small/substantial) weakness remains; only accepted tradeoffs and user-declined structural items are left.
 - **PLATEAU** - the fixable-weakness set equals the previous round's and none is now resolvable - stop rather than re-run identically.
-- **CAPPED** - you reached the round cap. **Hard cap: 3 improve rounds.**
+- **CAPPED** - you reached the improve-round cap (see Bounded and honest).
 - **BLOCKED** - only structural weaknesses remain and the user has not approved a rework - report and stop.
 
 Then emit the final report:
@@ -57,7 +57,7 @@ DELEGATED, one run over the Orders module:
 4. **LOOP or STOP** - re-read ASSESSMENT.md: only the user-declined structural item and accepted tradeoffs remain -> **SATISFIED**. Emit the final report.
 
 ## Bounded and honest
-- **A round cap of 3.** Architecture work is expensive and each round re-runs the opus analyzer; do not loop indefinitely chasing the last debatable con.
+- **Hard cap: 3 improve rounds.** Architecture work is expensive and each round re-runs the opus analyzer; do not loop indefinitely chasing the last debatable con.
 - Never weaken a test or delete an assertion to make a con look resolved - that is a new weakness, not a fix.
 - Make the smallest change that resolves each weakness; a rewrite that introduces new coupling makes the loop diverge.
 - The assessment's tier is the routing authority - do not silently upgrade a small con into a rewrite, or downgrade a structural one to sneak it past the approval gate.

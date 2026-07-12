@@ -49,7 +49,7 @@ unconditionally, and that library ports to .NET 8/9 unchanged.
 ## Theming and clipboard
 
 - The built-in Fluent `ThemeMode` is a .NET 9+ feature and does not exist on net48 - build dark / light
-  with swapped resource dictionaries (the 'Styling and theming' discipline in SKILL.md), not the Fluent
+  with swapped resource dictionaries (the discipline in `references/styling-theming.md`), not the Fluent
   theme.
 - `BinaryFormatter` still ships on net48 (unlike .NET 9, where clipboard / drag-drop of a custom type
   throws), so old payload code keeps working - but it is an RCE vector, so keep SKILL.md's
@@ -62,5 +62,5 @@ C# 7.3 ceiling / `Nullable` / `PolySharp` / records -> `csharp`; SDK-style + Pac
 DPAPI `ProtectedData` for local secrets -> `dotnet-cryptography`; the migration path (portable .NET
 Standard 2.0 libraries, `WebBrowser` -> WebView2, the dead-ends to avoid) -> `dotnet-migrate`; test
 framework and structure -> `dotnet-testing`. For WPF UI automation use FlaUI (UIA3 for WPF); WinAppDriver
-is abandoned. WPF virtualization, weak events, `INotifyDataErrorInfo` validation, and theming are
-SKILL.md's, unchanged on net48.
+is abandoned. WPF virtualization, weak events, and `INotifyDataErrorInfo` validation are SKILL.md's,
+and theming `references/styling-theming.md`'s - all unchanged on net48.

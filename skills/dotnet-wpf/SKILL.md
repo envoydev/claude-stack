@@ -1,6 +1,6 @@
 ---
 name: dotnet-wpf
-description: "Personal WPF conventions - strict MVVM with a one-way View-knows-ViewModel dependency, paired naming, explicit binding modes and update triggers, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, INotifyDataErrorInfo validation, async commands carrying a CancellationToken, dependency vs attached properties, commands over routed events, behaviors over code-behind wiring, generic-host app composition, off-UI-thread work via IProgress, list virtualization, plain-CLR tests, resource dictionaries with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Load before editing any XAML, code-behind, or ViewModel. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks; orchestration routes to csharp-design-patterns, tests to dotnet-testing, a paired Windows-Service worker to dotnet-hosted-services."
+description: "Personal WPF conventions - strict MVVM with a one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Load before editing any XAML, code-behind, or ViewModel. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks; orchestration routes to csharp-design-patterns, tests to dotnet-testing, a paired Windows-Service worker to dotnet-hosted-services."
 ---
 
 # WPF conventions
@@ -9,7 +9,7 @@ WPF is a retained-mode XAML UI on the data-binding engine. The whole discipline 
 view concerns (visuals, the visual tree, the dispatcher) on one side of a line and application state
 on the other, so the state side stays a plain testable C# object. Floor is .NET 8 / C# 12.
 
-**XAML formatting and naming style - attribute ordering (XAML Styler), `x:Name` vs `Name`, property-element syntax, namespace prefixes, value-converter naming, and binding style - live in `references/xaml-style.md`.** This SKILL.md owns the WPF architecture (strict MVVM, dependency/attached properties, resource-dictionary organization); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `Settings.XamlStyler` / `.editorconfig` and its `docs/CODE-STYLE.md` win where they diverge.
+**XAML formatting and naming style - attribute ordering (XAML Styler), `x:Name` vs `Name`, property-element syntax, namespace prefixes, value-converter naming, and binding style - live in `references/xaml-style.md`.** This SKILL.md owns the WPF architecture (strict MVVM, dependency/attached properties, threading); styles, resource dictionaries, and theming are `references/styling-theming.md`; the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `Settings.XamlStyler` / `.editorconfig` and its `docs/CODE-STYLE.md` win where they diverge.
 
 On .NET Framework 4.8 these conventions hold, but the CommunityToolkit.Mvvm source generators, Generic
 Host composition, and app-level exception wiring carry net48-specific constraints - see
@@ -63,6 +63,23 @@ raise, and partial change hooks. Hand-writing `INotifyPropertyChanged` with `Set
 - `[NotifyCanExecuteChangedFor(nameof(SaveCommand))]` re-queries a command's `CanExecute` when its
   input changes - cleaner than calling `NotifyCanExecuteChanged()` from a setter.
 
+```csharp
+public sealed partial class OrderListViewModel : ObservableObject
+{
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private string? customerName;                 // generates CustomerName + change raise
+
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private void Save()
+    {
+        // persist through an injected service
+    }
+
+    private bool CanSave() => !string.IsNullOrWhiteSpace(CustomerName);
+}
+```
+
 ## Commands, not Click handlers
 
 - Buttons, menu items, and key gestures bind `Command` (an `ICommand`); they do not wire `Click` in
@@ -82,6 +99,25 @@ raise, and partial change hooks. Hand-writing `INotifyPropertyChanged` with `Set
   parallel hand-rolled `bool` busy flag.
 - Take a `CancellationToken` as the last command parameter (the toolkit supplies one) so long work
   can be cancelled; cancel it on view teardown.
+
+```csharp
+[RelayCommand(IncludeCancelCommand = true)]   // also generates LoadOrdersCancelCommand
+private async Task LoadOrdersAsync(CancellationToken token)
+{
+    try
+    {
+        Orders = await orderService.GetOrdersAsync(token);
+    }
+    catch (OperationCanceledException)
+    {
+        // cancelled - nothing to surface
+    }
+    catch (Exception ex)
+    {
+        await dialogService.ShowErrorAsync(ex.Message);
+    }
+}
+```
 - A faulting `Task` inside a command is silent by default. Catch inside the command and surface the
   failure through an injected `IDialogService` or an error property - never let the `Task` fault
   unobserved. The throw-vs-return baseline and the async rules (`ConfigureAwait`, no blocking) are
@@ -97,7 +133,7 @@ branching, no domain logic, no state in the handler.
 
 ## Clipboard and drag-drop payloads
 
-- Custom types no longer ride onto the clipboard or a drag payload through `BinaryFormatter` - it was removed in .NET 9, so `Clipboard.SetData`, `SetDataObject`, `DoDragDrop`, and navigation-journal state throw `PlatformNotSupportedException` for any non-intrinsic type.
+- Custom types no longer ride onto the clipboard or a drag payload through `BinaryFormatter` - on modern .NET, `Clipboard.SetData`, `SetDataObject`, `DoDragDrop`, and navigation-journal state throw `PlatformNotSupportedException` for any non-intrinsic type (the runtime status and replacement are `dotnet-security`'s A08).
 - Put a serializable shape across the boundary instead: a string, an intrinsic type, or your object serialized to JSON or a `byte[]` you re-hydrate yourself. The `System.Runtime.Serialization.Formatters` compatibility shim is a migration bridge, not a destination.
 
 ## Bindings: explicit and direct
@@ -204,67 +240,16 @@ These solve different problems; do not confuse them.
   substitutes them. Navigation runs through an `INavigationService`; a ViewModel never does
   `new Window().Show()`.
 
-## Fluent theming (.NET 9+)
-
-The resource-dictionary and style discipline this rests on lives in Styling and theming below; this
-section is only the built-in Fluent theme.
-
-- On .NET 9+, prefer the built-in Fluent theme over a hand-rolled dark palette: set `ThemeMode`
-  (`System`, `Light`, `Dark`) on `Application` or a `Window` for Windows 11 styling with automatic
-  system light/dark switching. Reference theme-sensitive brushes with `DynamicResource` so they
-  track the active mode.
-- `ThemeMode` is still experimental through .NET 10: setting it from code needs the `WPF0001` diagnostic suppressed, while opting in via the `Fluent.xaml` merged dictionary avoids that. Either way Fluent ships as merged resource dictionaries, not a true theme assembly, so custom implicit styles and triggers can resolve against it in surprising ways - when customizing a Fluent-themed control, override the specific Fluent resource keys or start from a copied Fluent template rather than assuming a clean, overridable theme layer.
-
 ## Styling and theming
 
-WPF styling is the same view-only discipline as the MVVM line above, just applied to resources: a
-ViewModel exposes state, and the View decides how that state paints. Keep the visual layer declarative
-and centralized so a theme or a look can change without touching a single code-behind file.
-
-- **`BasedOn` for style inheritance.** Build a variant from a shared base rather than repeating
-  setters: `<Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">`
-  overrides only what differs. A conflicting setter on the derived style wins over the base.
-- **Implicit vs keyed styles.** An implicit style (`TargetType` only, no `x:Key`) applies to every
-  control of that type in scope - reserve it for the one true baseline. A keyed style
-  (`x:Key="PrimaryButton"`, applied with `Style="{StaticResource PrimaryButton}"`) is an opt-in
-  named variant that coexists with the baseline. Do not key the baseline itself - that silently
-  un-styles any control that forgot to opt in.
-- **`ControlTemplate` vs `DataTemplate` - different ownership.** A `ControlTemplate` replaces a
-  control's own visual tree (a `Button`'s chrome and parts) and lives in a `Style`'s `Template`
-  setter - a View-only concern with zero ViewModel awareness. A `DataTemplate` maps a data object
-  (a ViewModel or POCO) to the visuals that render it, and is how `ItemsControl`, `ContentControl`,
-  and `DataTemplateSelector` bridge data to visuals without the data knowing about the View. Reach
-  for a `DataTemplate` to render a shape of data, a `ControlTemplate` to restyle a control's chrome.
-- **ResourceDictionary organization.** One dictionary per control or concern -
-  `Buttons.xaml`, `TextBoxes.xaml`, `Colors.xaml`, `Typography.xaml` - merged once into `App.xaml`
-  via `MergedDictionaries`. Never grow a single monolithic dictionary mixing every control's styles;
-  it turns a one-control change into a full-file diff.
-- **`DynamicResource` vs `StaticResource`.** `StaticResource` resolves once at load time - use it
-  for values that never change at runtime (a fixed corner radius, a font family). `DynamicResource`
-  re-resolves whenever the resource entry changes - use it for anything theme-dependent (brushes,
-  theme-sensitive thicknesses) so a runtime theme swap actually repaints. Defaulting everything to
-  `StaticResource` is the most common reason a theme switch only updates half the UI.
-- **Dark mode via swapped theme dictionaries.** Keep one dictionary per theme (`Themes/Light.xaml`,
-  `Themes/Dark.xaml`) declaring the same keys with different values, and swap the merged dictionary
-  at the application level to switch - replace the entry in `Application.Current.Resources.MergedDictionaries`,
-  or use the built-in `ThemeMode` on .NET 9+ (see Fluent theming above) where it covers the
-  need. Every themed value must be reached through `DynamicResource` or the swap has nothing to repaint.
-- **Design tokens, not literals.** Centralize the palette and spacing scale once - named brushes
-  (`Brush.Primary`, `Brush.Surface`) and named thicknesses (`Thickness.CardPadding`) - and reference
-  the token everywhere instead of a literal `Color` or `Thickness` inline in a template. A hardcoded
-  `#FF3366` three templates deep is a color theming can never reach.
-- **Visual states over triggers where cleaner.** `VisualStateManager` groups mutually exclusive
-  states (`Normal`, `MouseOver`, `Pressed`, `Disabled`) into named `VisualState`s with their own
-  storyboards, which reads more clearly than several independent `Trigger`/`MultiTrigger` setters
-  fighting over the same properties. Reach for a trigger for one independent condition; reach for
-  `VisualStateManager` once two or more states are mutually exclusive or animate.
-
-Don't:
-- Repeat the same inline `Style` block across multiple views - promote it to a resource dictionary
-  the moment a second view needs it.
-- Hardcode a color literal outside the palette dictionary - every color is a token reference.
-- Reference a theme brush with `x:Static` - it resolves at compile/load time and cannot see a
-  runtime theme swap; use `DynamicResource` for anything theme-dependent instead.
+Styling is a View-only concern, the same line as MVVM: the ViewModel exposes state, resources and
+styles decide how it paints. Working defaults: keyed styles composed with `BasedOn`, one resource
+dictionary per concern merged into `App.xaml`, design tokens (named brushes / thicknesses) instead of
+inline literals, and `DynamicResource` for anything theme-dependent so a runtime theme swap actually
+repaints; on .NET 9+ prefer the built-in Fluent theme (`ThemeMode`) over a hand-rolled dark palette.
+The full discipline - implicit vs keyed styles, `ControlTemplate` vs `DataTemplate` ownership,
+theme-dictionary swapping, visual states, Fluent's experimental caveats - lives in
+`references/styling-theming.md`.
 
 ## Localization
 
@@ -277,9 +262,7 @@ Don't:
 
 ## Forbidden in a ViewModel
 
-- `MessageBox.Show` - go through `IDialogService`.
-- Business logic inside a code-behind event handler.
-- `Application.Current.Dispatcher` - inject a dispatcher abstraction instead.
-- `FindResource` / `TryFindResource` - resource lookup is a View concern.
-- Any reference to `Window`, `UserControl`, `Dispatcher`, or a visual-tree type - the moment one
-  appears, the MVVM line has been crossed.
+The types test from the MVVM section catches all of these; the recurring offenders, each owned by a
+section above: `MessageBox.Show` (go through `IDialogService`), `Application.Current.Dispatcher`
+(inject a dispatcher abstraction - Threading), `FindResource` / `TryFindResource` (resource lookup is
+a View concern), business logic in a code-behind event handler (Routed events).

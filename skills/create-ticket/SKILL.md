@@ -1,6 +1,6 @@
 ---
 name: create-ticket
-description: "Generates a well-structured ticket in English from a raw description, for any issue tracker (Jira, Azure DevOps, GitHub Issues, GitLab, YouTrack): a bug report, a user story, an epic/initiative, or a technical task (refactor, performance, spike, migration, upgrade, cleanup). Detects the type from the request and routes to a per-type template. Use whenever the user wants to create any kind of ticket - even if described casually or in Ukrainian. Triggers on 'create a bug/story/epic/task ticket', 'create user story', 'create epic', 'create jira ticket' and the like. Do NOT fire when the user wants to write code or fix the bug rather than file it, to query / update / comment on / close an existing ticket, or just wants a commit / PR message - this only authors new ticket text."
+description: "Generates a well-structured ticket in English from a raw description, for any issue tracker (Jira, Azure DevOps, GitHub Issues, GitLab, YouTrack): a bug report, a user story, an epic/initiative, or a technical task. Detects the type and routes to its template. Use whenever the user wants any kind of ticket created, even described casually or in Ukrainian - 'create a bug/story/epic/task ticket', 'create user story', 'create jira ticket'. Do NOT fire to write code or fix the bug rather than file it, to touch an existing ticket (query / update / comment / close), or for a commit / PR message."
 ---
 
 # Create Ticket

@@ -20,7 +20,7 @@ Specialized concerns route through the `dotnet` router - one table mapping each 
 # Style and Structure
 
 ## File structure
-- Max 300 lines per file. Split by extracting cohesive groups of methods into new classes.
+- Max 300 lines per file - a file past that is accreting more than one responsibility. Split by extracting cohesive groups of methods into new classes.
 - Max 120 chars per line in `.cs` files. Count visible characters before committing. Markdown, JSON, config files exempt.
 - Partial classes only for generated code (EF migrations, designer files) or extending a generated class.
 - One top-level type per file. File name must match the type name exactly.
@@ -55,10 +55,10 @@ Within each group, order by scope, broadest first. Required before optional - al
 Enforced by `.editorconfig` / formatter. The non-mechanical rule: one blank line before control-transfer statements (`return`, `throw`, `break`, etc.) when preceded by another statement - so the exit visually separates from preceding logic.
 
 ## Methods
-- Max 20 lines per method body. Refactor if exceeded.
+- Max 20 lines per method body - a longer body is doing more than one thing and resists review. Refactor if exceeded.
 - Max 3 parameters. Use a parameter object (record or class) for more.
 - Methods do one thing. If 'and' appears in a method name, split it.
-- No `out` or `ref` parameters - return a tuple or result object instead.
+- No `out` or `ref` parameters - they hide data flow at the call site and do not compose with async or LINQ; return a tuple or result object instead.
 - Every `switch` case body wrapped in its own `{ }` block - even when one statement, even when no variable is declared. Brace any half-braced switch you edit. Example:
 
 ```csharp
@@ -103,8 +103,7 @@ Per-case braces give each case its own scope (no accidental variable leak); blan
 - Static fields only for true constants or thread-safe caches. Mutable static state is forbidden.
 
 ## Design patterns (GoF awareness)
-- Reach for the framework-native construct before hand-rolling a pattern: the DI container is your Factory / Abstract Factory / Singleton; `Func<T>` and `Lazy<T>` cover deferred creation; events, `IObservable<T>`, or an in-process event bus are your Observer; `IEnumerable<T>` + `yield` is your Iterator; a switch expression usually beats a State / Strategy class hierarchy.
-- This section is the awareness baseline only. To choose, implement, compare, or refactor toward a specific pattern, load `csharp-design-patterns` - full 23-pattern catalog with modern .NET forms, selection table, and anti-pattern checks.
+Reach for the framework-native construct before hand-rolling a pattern - most GoF patterns are already in the platform. Which construct replaces which pattern, the selection table, and the anti-pattern checks are `csharp-design-patterns`'s; load it to choose, implement, compare, or refactor toward any pattern.
 
 ## Modern C# syntax preferences
 
@@ -113,7 +112,7 @@ The modern-feature style - primary constructors, collection expressions, raw str
 Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `ArrayPool<T>`, collection choice) belong with the `dotnet-performance` skill.
 
 ## Forbidden patterns
-- No `#region` blocks.
+- No `#region` blocks - a file that needs regions to navigate is too big; split it instead.
 - No `using static` for non-utility classes.
 - No commented-out code - delete it.
 - No `TODO` without an associated ticket reference.
@@ -154,13 +153,10 @@ Behavior, I/O, and composition rules.
 - Never call `DateTime.Now` for measurements - use `Stopwatch`.
 
 ## Async
-- Async all the way. No `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()` in async code paths.
-- Return `Task`, not `void`, for async methods (except event handlers).
+The async baseline - async all the way with no `.Result` / `.Wait()` / `.GetAwaiter().GetResult()`, no `async void` outside event handlers, `ValueTask` only where benchmarks justify it and never awaited twice, `await foreach` for async streams - is authoritative in `references/csharp-style.md`. House additions:
 - Always pass and forward `CancellationToken` for I/O-bound or long-running operations.
-- No `async void` except event handlers; mark those clearly.
 - Use `ConfigureAwait(false)` in library code; ignore it in ASP.NET Core application code (no sync context).
-- Use `ValueTask` / `ValueTask<T>` only on hot paths where synchronous completion is common and benchmarks show allocation pressure. Default to `Task`.
-- Return `IAsyncEnumerable<T>` for streaming results (paged DB reads, long-running enumerations). Annotate the `CancellationToken` parameter with `[EnumeratorCancellation]`.
+- Return `IAsyncEnumerable<T>` for streaming results (paged DB reads, long-running enumerations); annotate the `CancellationToken` parameter with `[EnumeratorCancellation]`.
 
 ## Dispose pattern
 - Use `using` declarations (`using var x = ...;`) over `using` blocks where scope allows.
@@ -192,7 +188,7 @@ Behavior, I/O, and composition rules.
 Typed options binding (`IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`) and startup validation (`ValidateOnStart`, `IValidateOptions<T>`, data-annotation validation) live in `dotnet-web-backend` (its typed-options section) - consult it for those, do not restate here.
 
 ## LINQ
-- Method syntax (`Where`, `Select`, `GroupBy`), not query syntax, unless query syntax is materially clearer (e.g. multi-join queries).
+Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:
 - No more than 4-5 chained operators without an intermediate variable with a descriptive name.
 - Materialize queries (`ToList`, `ToArray`) before returning from a method that owns the DbContext or connection lifetime.
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-messaging
-description: "Personal .NET asynchronous messaging conventions - broker-backed, event-driven communication between modules and services using Wolverine (recommended, MIT open-core - only the separate CritterWatch console is commercial) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas for multi-step flows, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Load when wiring a message bus, publish and consume, an outbox, a saga or process manager, integration events, or background message processing, or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Companions: dotnet-hosted-services (the host the consumer runs in), dotnet-realtime (SignalR is the last hop), dotnet-aspire (broker as a local resource), csharp (records, TimeProvider). Do NOT load for in-process reactive streams (r3-reactive-extensions) or synchronous request/response over HTTP (dotnet-web-backend)."
+description: "Personal .NET asynchronous messaging conventions - broker-backed, event-driven communication between modules and services using Wolverine (recommended) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Load when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing, or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Companions: dotnet-hosted-services (the consumer's host), dotnet-realtime, dotnet-aspire, csharp. Do NOT load for in-process reactive streams (r3-reactive-extensions) or synchronous request/response over HTTP (dotnet-web-backend)."
 ---
 
 # .NET messaging - event-driven communication
@@ -98,9 +98,7 @@ public static class OrderPlacedHandler
 
 ## Anti-patterns
 
-- Dual-write: save to the database, then publish with no outbox. The single most common source of lost or phantom messages.
 - Non-idempotent consumers that assume exactly-once and break on the inevitable redelivery.
 - Unbounded or infinite retries with no dead-letter queue - a poison message that spins forever.
 - Fat contracts carrying domain entities or mutable message classes; both couple services that should be independent.
 - Brokers wired with hardcoded connection strings instead of configuration.
-- A hand-rolled status column standing in for a saga when there is genuine workflow state or compensation to manage.

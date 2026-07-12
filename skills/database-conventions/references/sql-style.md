@@ -1,21 +1,6 @@
 # SQL code style and conventions: PostgreSQL, SQL Server (T-SQL), and SQLite
 
-The authoritative cross-engine SQL *writing* style: casing, formatting and layout, naming style, query construction, data-type choice, NULL handling, dialect portability, and the per-engine cheat-sheet. `SKILL.md` owns schema design and operational safety (keys, normalization, migrations, indexes, transactions, connections); where the two overlap on naming or query safety, this document wins. Above both, a project's own SQL style - a co-located `SQL_STYLE.md` or its `docs/CODE-STYLE.md` - is HIGHER priority: where a project diverges from these general conventions, follow the project. Targets hand-written SQL; ORM/EF-generated SQL follows its tool's conventions.
-
-## Contents
-TL;DR · Key findings · Details 1-12 (casing, naming, formatting and layout, query construction, data types, NULL handling, comments, CTEs and subqueries, transactions, dialect portability, performance-adjacent, security) · Cheat-sheet · Recommendations · Caveats
-
-## TL;DR
-- **There is no single official SQL style standard, but the widely respected guides converge on a common core**: explicit column lists (never `SELECT *` in production), ANSI `JOIN` syntax, the `AS` keyword for all aliases, one column per line, and a documented-and-enforced house style. The biggest genuine disagreements are keyword casing (uppercase vs lowercase) and leading vs trailing commas - both are legitimate, and consistency matters more than which you pick.
-- **The three engines diverge most in identifier casing, data types, and dialect syntax** (`LIMIT`/`TOP`/`FETCH`, string concatenation, quoting, UPSERT, auto-increment, boolean handling, `NULLS FIRST/LAST`). Writing portable SQL means preferring ANSI constructs and knowing exactly where each engine breaks compatibility.
-- **Recommended defaults for a new hand-written codebase**: `snake_case` identifiers, singular-or-collective vs plural table names (pick one), uppercase keywords, trailing commas, explicit constraint names (`pk_`/`fk_`/`uq_`/`ck_`/`ix_`), `timestamptz`/`datetime2`/ISO-8601 TEXT for time, and always parameterize user values.
-
-## Key findings
-1. **Keyword casing is the single most-debated point.** Simon Holywell's sqlstyle.guide, the Mozilla SQL Style Guide, and GitLab all mandate UPPERCASE keywords; dbt Labs and the mattm guide mandate lowercase. Pick one, document it, lint it.
-2. **Identifier folding differs fundamentally across engines**, which is the deepest portability trap: PostgreSQL folds unquoted identifiers to lowercase; SQL Server preserves case but compares case-insensitively by default (collation-dependent); SQLite is case-insensitive for ASCII. `snake_case` avoids the entire problem.
-3. **Every guide agrees: never `SELECT *` in production, always ANSI `JOIN`, always `AS` for aliases, always qualify columns** when more than one table is in scope.
-4. **UPSERT, pagination, string concatenation, and auto-increment are the four biggest syntax divergences** and require per-engine code.
-5. **NULL semantics (three-valued logic) are identical across engines, but `NULLS FIRST/LAST` support is not**: PostgreSQL and SQLite (3.30+) support it; SQL Server does not.
+The authoritative cross-engine SQL *writing* style: casing, formatting and layout, naming style, query construction, data-type choice, NULL handling, dialect portability, and the per-engine cheat-sheet. Precedence is stated once in `SKILL.md`: the project's own SQL style wins over both documents, and this reference wins over `SKILL.md` where the two overlap. Targets hand-written SQL; ORM/EF-generated SQL follows its tool's conventions. These are conventions, not correctness rules - the cited guides genuinely disagree in places and any internally consistent choice is legitimate; version-gated features are noted inline, so confirm them against the deployed engine version.
 
 ## Details
 
@@ -342,10 +327,3 @@ Current timestamp: PostgreSQL `now()` / `CURRENT_TIMESTAMP`; SQL Server `GETDATE
 | Default schema | `public` | `dbo` | `main` |
 | Current timestamp | `now()` | `SYSDATETIME()`/`GETDATE()` | `CURRENT_TIMESTAMP` |
 
-## Caveats
-- **These are conventions, not correctness rules.** Formatting and casing have zero runtime effect; their value is human readability, review speed, and diff quality. As Mozilla's guide says, know when to be inconsistent when a rule does not fit.
-- **The style guides genuinely disagree** on keyword casing, table pluralization, leading/trailing commas, and river vs left-alignment. A recommended default is given for each, but any internally consistent choice is legitimate - the cited guides themselves diverge, and even dbt Labs notes it has an internal leading-comma contingent.
-- **The `MERGE`/HOLDLOCK concurrency question is itself contested** (Bertrand vs. Kornelis, cited above); treat the HOLDLOCK recommendation as a defensive default rather than settled fact.
-- **Engine behavior evolves.** Version-specific notes above (PostgreSQL CTE inlining in v12, `ON CONFLICT` in v9.5, identity columns in v10, `gen_random_uuid()` in v13, `MERGE` in v15; SQLite `ON CONFLICT` in 3.24, `NULLS FIRST/LAST` in 3.30, `TRUE`/`FALSE` in 3.23, STRICT tables in 3.37, recursive CTEs in 3.8.3; SQL Server `OFFSET/FETCH` and `THROW` in 2012, `CONCAT()` in 2012) mean you must confirm against your deployed version.
-- **SQLite's dynamic typing is a class of its own.** Declared column types are *affinity hints*, not constraints (unless you use `STRICT` tables, 3.37+). A column declared `INTEGER` can store a string. Use `typeof()` when unsure what is actually stored; design schemas defensively and consider `STRICT` tables for production.
-- **This reference targets hand-written SQL only** - ORM-generated SQL, EF Core migrations, and other autogenerated code follow their tool's conventions and are out of scope.

@@ -1,13 +1,13 @@
 ---
 name: angular-material
-description: "Personal Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its generated CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives (Overlay, drag-drop, virtual scroll, FocusTrap, LiveAnnouncer) before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. Load when building UI with @angular/material or @angular/cdk. Companions: angular-conventions for the framework, typescript for the language, angular-styling for general CSS outside Material tokens. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
+description: "Personal Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. Load when building UI with @angular/material or @angular/cdk. Companions: angular-conventions, typescript, angular-styling. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
 ---
 
 # Angular Material and CDK
 
 This is the component-library layer: `@angular/material` (the Material 3 components) sitting on top of `@angular/cdk` (the unstyled behavior primitives). The framework itself - signals, change detection, standalone components, the testing setup - belongs to `angular-conventions`, and the language to `typescript`; load both alongside this. The general CSS/styling layer that holds Material or not - `ViewEncapsulation`, `:host`, the `::ng-deep` ways out, the app's own design tokens, responsive strategy - is `angular-styling`; this skill owns only the Material-specific `mat.theme` and `--mat-sys-*` token work.
 
-Floor is `@angular/material` 17+ - standalone components are the default there. The single-mixin M3 theming API this skill teaches (`mat.theme`, the `--mat-sys-*` system tokens, the `mat.<component>-overrides` mixins) landed in v19; v17-v18 used the experimental `mat.define-theme` predecessor, so upgrade to v19+ to apply the theming section as written. Later additions are flagged optional below.
+Floor is `@angular/material` 17+ - standalone components are the default there. The single-mixin M3 theming API this skill teaches (`mat.theme`, the `--mat-sys-*` system tokens, the `mat.<component>-overrides` mixins) landed in v19; v17-v18 used the experimental `mat.define-theme` predecessor, so upgrade to v19+ to apply the theming section as written. The post-v19 deltas that bite - the v20 `matButton` and raw-token renames, the v21 FocusTrap break, Angular Aria, Popover-based overlays - live in `references/versions.md`; check it when the workspace is past v19.
 
 ## Import what you use, nothing more
 
@@ -67,7 +67,7 @@ When the system tokens are not enough and one component needs a specific change,
 }
 ```
 
-Bind the overrides mixin or a `--mat-sys-*` system token - never a raw per-component custom property by hand. (v20 renamed those raw properties from the old `--mdc-*` prefix to `--mat-*`, e.g. `--mdc-outlined-card-container-shape` became `--mat-card-outlined-container-shape`; run `ng generate @angular/material:token-rename` when upgrading.)
+Bind the overrides mixin or a `--mat-sys-*` system token - never a raw per-component custom property by hand. (v20 renamed those raw properties; the rename and its migration schematic are in `references/versions.md`.)
 
 ## Reach for CDK primitives before hand-rolling
 
@@ -77,7 +77,7 @@ The CDK packages the behaviors that are deceptively hard to get right - the edge
 - Floating UI: the `Overlay` service positions menus, tooltips, popovers, and custom dropdowns against a connected element, handling viewport flipping and scroll repositioning. This is also what Material's own menu and select build on.
 - Drag and drop: `cdkDrag` and `cdkDropList` give reorderable lists and cross-container transfers with the pointer and keyboard handling already done.
 - Clipboard: `cdkCopyToClipboard` copies a string on click without touching the Clipboard API directly.
-- Accessibility: `FocusTrap` (`cdkTrapFocus`) keeps keyboard focus inside a dialog or panel, and `LiveAnnouncer` pushes polite messages to screen readers for state changes the user cannot see. Use `FocusKeyManager` / `ListKeyManager` for arrow-key navigation inside a custom listbox or menu. Prefer the `cdkTrapFocus` directive; if you construct a trap programmatically, note v21 made the injector parameter required on the `FocusTrap` / `ConfigurableFocusTrap` constructors and replaced `ConfigurableFocusTrapFactory.create`'s boolean argument with a config object.
+- Accessibility: `FocusTrap` (`cdkTrapFocus`) keeps keyboard focus inside a dialog or panel, and `LiveAnnouncer` pushes polite messages to screen readers for state changes the user cannot see. Use `FocusKeyManager` / `ListKeyManager` for arrow-key navigation inside a custom listbox or menu. Prefer the `cdkTrapFocus` directive over programmatic construction - v21 broke the programmatic constructors (see `references/versions.md`).
 
 A hand-written overlay, virtual scroller, or focus trap is almost always missing a case the CDK already handles - that is the reason to default to the primitive.
 
@@ -94,23 +94,6 @@ expect(await select.getValueText()).toBe('Berlin');
 ```
 
 Harnesses (`MatSelectHarness`, `MatInputHarness`, `MatButtonHarness`, ...) are maintained by the Angular team and expose a stable, intent-level API - open the select, click the option, read the value - independent of the internal markup. Query the harness; never assert against `.mat-mdc-*` classes or the component's private DOM, because those tests shatter on the next Material release. The broader testing discipline (TestBed setup, fixtures, async handling) lives in `angular-conventions`; this is only the Material-specific harness rule.
-
-## Newer versions (v20 / v21 / v22, optional)
-
-Floor is v17; reach for these where the installed version ships them.
-- **Button directive (v20):** the `mat-button` family is now the `matButton` attribute - bare `matButton` for text, and `matButton="elevated" | "filled" | "outlined" | "tonal"`. The M3 `tonal` variant sits between filled and outlined; `matIconButton` gains `filled` / `tonal` too, and cards take `appearance="filled"`. Update the old `mat-raised-button` / `mat-flat-button` / `mat-stroked-button` selectors when you touch them.
-- **Reduced motion (v20):** Material honors the prefers-reduced-motion media query on its own animations - do not hand-gate motion you got from a component.
-- **FocusTrap (v21, breaking):** the programmatic constructor / factory changed (see the CDK accessibility note); the `cdkTrapFocus` directive is unaffected, so prefer it.
-- **Angular Aria (v21 preview, stable in v22):** `@angular/aria` is a headless, unstyled a11y primitive set (Accordion, Combobox, Listbox, Menu, Tabs, Tree) that overlaps parts of the CDK; it shipped as developer preview in v21 and lost the preview tag in v22. Reach for it when you need unstyled a11y primitives to build your own component; keep the styled Material / CDK components as the default for standard UI.
-- **CDK overlays (v21):** the `Overlay` service now builds on the browser-native Popover API with per-side viewport margins; the service API you call is unchanged.
-
-## Anti-patterns
-
-- A shared 'material module' barrel re-exporting every component - import per component instead.
-- Hand-edited `.mat-*` color or layout overrides - theme through `mat.theme` and the system CSS custom properties.
-- A second, forked stylesheet for dark mode instead of one theme that responds to the color scheme.
-- Raw DOM queries on Material internals in tests - use the harness.
-- A hand-rolled overlay, virtual scroll, drag-drop, or focus trap where the CDK already ships one.
 
 <!-- Some conventions here were mined from alfredoperez/angular-best-practices (MIT) - see Credits in README.md. -->
 

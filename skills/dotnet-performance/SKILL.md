@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: "Performance-aware .NET design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here, then routes to the depth. Type design: struct vs class, readonly struct, seal by default, fewer allocations, `Span`, `ValueTask`, frozen/immutable returns. Serialization: pick the format - `System.Text.Json` source-gen for JSON, Protobuf for wire, MessagePack for cache/messaging. Load when a type sits on a hot path or high-throughput loop, or when choosing how bytes cross a process boundary. Measure first - benchmark or profile before optimizing, never off the hot path. Companions: `csharp`, `dotnet`, `dotnet-diagnostics` (the measure-first step)."
+description: "Performance-aware .NET design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here. Type design: struct vs class, readonly struct, seal by default, fewer allocations, `Span`, `ValueTask`, frozen/immutable returns. Serialization: pick the format - `System.Text.Json` source-gen for JSON, Protobuf for wire, MessagePack for cache/messaging. Load when a type sits on a hot path or high-throughput loop, or when choosing how bytes cross a process boundary. Do NOT start here for 'my app is slow' - that is usually a bad query or an N+1: route to `dotnet-diagnostics` and measure first. Companions: `csharp`, `dotnet`, `dotnet-diagnostics`."
 ---
 
 # dotnet-performance (decision layer)
@@ -25,13 +25,6 @@ Off the hot path, do not contort a domain model for allocations you never measur
 
 ## When serialization-format choice matters
 
-The format decision is a wire-compatibility decision, and it is hard to reverse once data is persisted or a contract is published. Decide by where the bytes go:
-
-| Bytes cross... | Format |
-|---|---|
-| a REST/HTTP boundary, config, logs | `System.Text.Json` with a source-generated `JsonSerializerContext` |
-| a gRPC call or any long-lived wire contract | Protobuf (`dotnet-grpc`) |
-| a cache, or broker messages between services | MessagePack (`dotnet-messaging`) |
-| an event store (read forever) | Protobuf or MessagePack |
+The format decision is a wire-compatibility decision, and it is hard to reverse once data is persisted or a contract is published. Decide by where the bytes go - the pick-by-destination table is in `references/serialization.md`.
 
 Inside a single process (in-memory only), format is irrelevant - do not serialize at all. The rules that override taste: never `BinaryFormatter`, and never embed .NET type names in a payload (it breaks on the first rename). Load `references/serialization.md` for setup, the Newtonsoft migration, and the versioning rules; `dotnet-source-generators` owns the source-gen mechanics and `dotnet-web-backend` the ASP.NET JSON wiring.

@@ -1,6 +1,6 @@
 ---
 name: dotnet-migrate
-description: "Personal safe-migration playbook for .NET - the disciplined way to evolve a schema with EF Core, lift a solution onto a newer target framework, and refresh NuGet dependencies without breaking production. Every change is previewed before it lands, carries a known rollback, and is re-verified by build plus tests, with one logical change per step so a regression can be bisected. A process skill, version-neutral with a .NET 8 floor. Load when you run a database migration, raise the target framework or SDK, or bump packages - trigger words migrate, upgrade, update packages. Companions: `dotnet-data-access` for query and migration mechanics, `dotnet-project-setup` for central package management, `dotnet-web-backend` for the surrounding service. Skip it for ordinary feature work that touches no schema, no version, and no package."
+description: "Personal safe-migration playbook for .NET - the disciplined way to evolve a schema with EF Core, lift a solution onto a newer target framework, and refresh NuGet dependencies without breaking production. A process skill, version-neutral with a .NET 8 floor. Load when you run a database migration, raise the target framework or SDK, or bump packages - trigger words migrate, upgrade, update packages. Companions: `dotnet-data-access` for query and migration mechanics, `dotnet-project-setup` for central package management, `dotnet-web-backend` for the surrounding service. Skip it for ordinary feature work that touches no schema, no version, and no package."
 ---
 
 # Safe migration workflow (.NET)
@@ -40,13 +40,3 @@ A .NET Framework 4.8 -> modern .NET move is more than a TFM bump - different pro
 3. **One package at a time.** Update a package, build, test, then the next. A single-package step is the only step you can bisect; a mass bump turns one regression into a hunt across a dozen libraries.
 4. **Centralize versions.** With central package management the version lives once in `Directory.Packages.props`, not scattered across `.csproj` files - that mechanism is `dotnet-project-setup`.
 5. **Undo cleanly.** Back out a bad update with `git revert` of that step's commit. Never silently downgrade an unrelated dependency to paper over the break.
-
-## Anti-patterns
-
-- Applying a migration without reading its SQL, or folding several unrelated schema changes into one migration (the one-change-per-migration and reversibility rules `database-conventions` owns).
-- A destructive column change in a single migration against a live database instead of expand-then-contract.
-- A wide backfill folded into the schema migration, taking a table lock for the duration instead of batching it separately.
-- Applying schema from a developer machine, or calling `Database.Migrate()` on app start under load, instead of a gated idempotent bundle.
-- Upgrading the framework on top of red tests or outstanding pending migrations.
-- Bumping every package in one commit so the regression cannot be bisected.
-- Hand-editing an applied migration, deleting its files by hand, or downgrading a sibling package to compensate for a bad bump.

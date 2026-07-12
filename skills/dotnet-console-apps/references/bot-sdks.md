@@ -9,7 +9,7 @@ Two receive modes, one per bot token at a time:
 - **Long polling** (`StartReceiving`) - no public URL needed, fits a `BackgroundService` directly. The simplest choice and the right default for most bots.
 - **Webhooks** - an ASP.NET Core endpoint the Telegram servers call; scales better and cuts latency, but needs a public HTTPS URL (so it is a web app, not a pure console host - `dotnet-web-backend`).
 
-Handle throttling: a `429` carries a `Retry-After`; respect it, and cap outbound sends with `System.Threading.RateLimiting`.
+Throttling (honor `429` + Retry-After, cap outbound sends) is the standard treatment in `dotnet-hosted-services`' `references/resilience-and-io.md`; the Telegram-specific part is that limits apply per chat, so partition any rate limiter by chat id.
 
 ## Discord - `Discord.Net` or `DSharpPlus`
 
@@ -25,8 +25,8 @@ Use `CryptoExchange.Net` (by JKorf) and its venue clients (`Binance.Net`, `Bybit
 
 - **Model the order lifecycle as a state machine** - New -> PartiallyFilled -> Filled / Cancelled / Rejected - with the `Stateless` library (GitHub: dotnet-state-machine/stateless): `PermitDynamic` for fill-quantity-dependent transitions, and `Activate` / `Deactivate` with external state persistence to rehydrate an order from the database after a restart.
 - **Decouple the websocket receive loop from order logic** - the bounded-channel rule from the skill body - so a stalled order handler never blocks market-data receive.
-- **Prefer Server GC** (`<ServerGarbageCollection>true`) for a single dominant latency-sensitive process (`dotnet-hosted-services`' `references/deployment-and-observability.md` for the GC-mode choice).
-- **Idempotent retries:** generate and persist a `clientOrderId` before submitting; reuse it on every retry, and on a timeout query by it before resubmitting so the venue dedupes. Duplicate-rejection windows are venue-specific.
+- **GC mode:** the Server-GC-for-a-single-dominant-latency-sensitive-process choice is `dotnet-hosted-services`' `references/deployment-and-observability.md`.
+- **Idempotent retries:** the persist-the-key-first discipline (here the key is the `clientOrderId`) is `dotnet-hosted-services`' `references/resilience-and-io.md`; the venue-specific part is the duplicate-rejection window - check it per venue.
 
 ## Broker queue workers
 

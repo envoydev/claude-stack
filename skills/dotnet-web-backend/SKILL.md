@@ -59,7 +59,7 @@ One caution: do not stack a per-attempt resilience timeout on top of a client re
 
 - Version every public route explicitly - `/api/v1/...` in the path, or an `Api-Version` header - and treat a shipped contract as frozen. Never break a versioned contract; add a v2 alongside it instead.
 - Generate OpenAPI for every public HTTP API and keep request, response, and error shapes documented. The generator choice (Swashbuckle vs the .NET 9+ built-in) and the Scalar / Swagger UI are owned by `dotnet-openapi`.
-- When you are designing or evolving a contract that other people consume - a REST surface or a published NuGet / shared library API - its `references/api-versioning.md` owns extend-only design, binary compatibility, API-approval testing, and safe versioning. The 'add v2, never break v1' discipline lives there; this section just states the rule.
+- When you are designing or evolving a contract that other people consume - a REST surface or a published NuGet / shared library API - its `references/api-versioning.md` owns extend-only design, binary compatibility, API-approval testing, and safe versioning.
 
 ## Observability
 
@@ -149,20 +149,18 @@ Anti-patterns:
 
 This skill is the cross-cutting baseline; load the focused companion for the *how*:
 
-Default a new HTTP surface to minimal APIs - a lighter per-request pipeline than the MVC model-binding and filter stack, and the only AOT-friendly option. Stay on controllers when you need a custom `IModelBinder`, heavy `IFormFile` uploads, OData, or JSON Patch, or when converting a large existing MVC surface would not pay for itself. The two coexist in one app, so this is a per-surface choice, not a per-repo one.
+Default a new HTTP surface to minimal APIs; the full minimal-vs-controllers decision - when controllers earn their place, chosen per surface, not per repo - is owned by `dotnet-mvc-controllers` (its decision section).
 
 - Endpoint mechanics (MapGroup, TypedResults, filters, binding, uploads) -> `dotnet-minimal-api`
 - Controller-based Web API ([ApiController], attribute routing, action filters) -> `dotnet-mvc-controllers`
-- OpenAPI document + Scalar UI -> `dotnet-openapi`
-- Result / `ProblemDetails` errors + the FluentValidation filter -> `dotnet-error-handling`
 - AuthN / authZ (JWT/OIDC/Identity/policies) -> `dotnet-authentication`
 - OWASP hardening / SSRF / dependency audit -> `dotnet-security`
-- Deep manual OpenTelemetry (custom spans, metric cardinality, propagators) -> `references/observability.md`
 - gRPC services -> `dotnet-grpc`
 - Background workers / hosted tasks (a daemon, an in-process `BackgroundService`, a message-only consumer's host) -> `dotnet-hosted-services`
 - Broker messaging / outbox / sagas -> `dotnet-messaging`
-- Local cloud-native orchestration (Aspire) -> `dotnet-aspire`
 - Per-layer tests -> `dotnet-testing`
+
+Errors (`dotnet-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above.
 
 ## See also
 

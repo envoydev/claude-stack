@@ -1,11 +1,11 @@
 ---
 name: database-conventions
-description: "Personal database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design (keys, normalization, relationships), migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before any persistence work; deeper engine tuning routes to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, and the data-layer security posture to `data-security`. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index - do not rely on recall. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
+description: "Personal database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Deeper work routes out: engine tuning to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, security posture to `data-security`. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
 ---
 
 # Database conventions
 
-A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening. They are deliberately not deep tuning - this skill is loaded before persistence work, and it routes the deep work out to the companions named below rather than restating it.
+A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening; the deep, engine-specific work routes to the companions cited per section.
 
 **SQL writing style is authoritative in `references/sql-style.md`** - casing, formatting and layout, naming style, query construction, data-type choice, NULL handling, dialect portability, and the per-engine cheat-sheet (PostgreSQL / SQL Server / SQLite). This SKILL.md owns schema design and operational safety (schema, migrations, indexes, transactions, connections); where the two overlap on naming, query safety, or engine data types, the style reference wins. **Above both, a project's own SQL style - a co-located `SQL_STYLE.md` or its `docs/CODE-STYLE.md` - is higher priority: where a project diverges from these general conventions, follow the project.**
 
@@ -24,7 +24,7 @@ The schema is the one place integrity is cheap to enforce and expensive to retro
 
 ## Engine-specific routing
 
-The rules in this skill hold across engines; the deep, engine-specific mechanics live elsewhere and this skill defers to them rather than duplicating them.
+The rules here hold across engines; the deep mechanics live with the engine skills.
 
 - **PostgreSQL** - `postgres` for index-type selection, JSONB/full-text, SARGable rewrites, the planner (EXPLAIN / pg_stat_statements / autovacuum), and connection pooling.
 - **SQLite** - `sqlite` for the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, and connection-per-thread.
@@ -35,19 +35,28 @@ The rules in this skill hold across engines; the deep, engine-specific mechanics
 
 The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` syntax, `AS` aliases, column qualification, SARGable predicates, and clause order - is in `references/sql-style.md`. The operational safety rules here:
 
-Every query is either parameterized or it is a vulnerability. Never build SQL by string concatenation, not even for inputs you believe are safe - use parameterized queries or the ORM's query API, because the one 'trusted' value that turns out to be user-controlled is the whole exploit. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
+- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation, not even for inputs you believe are safe - use parameterized queries or the ORM's query API, because the one 'trusted' value that turns out to be user-controlled is the whole exploit. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
+- **Read with the least authority the work needs.** Default reads to read-only intent and `READ COMMITTED` isolation; reach for `SNAPSHOT` or `REPEATABLE READ` only when a specific consistency requirement justifies the extra cost, and say why.
+- **Bound every result set that could grow** - a `LIMIT` or `TOP` on any open-ended query - and never `SELECT *`, which drags unused columns over the wire and breaks the moment the schema changes.
+- **Deep pagination is keyset (seek), never `OFFSET`.** `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower; a keyset seek with a unique tiebreaker column holds every page equally fast:
 
-Read with the least authority the work needs. Default reads to read-only intent and `READ COMMITTED` isolation; reach for `SNAPSHOT` or `REPEATABLE READ` only when a specific consistency requirement justifies the extra cost, and say why. Bound every result set that could grow - a `LIMIT` or `TOP` on any open-ended query - and never `SELECT *`, which drags unused columns over the wire and breaks the moment the schema changes.
+```sql
+select id, created_at, total
+from orders
+where (created_at, id) < (:last_created_at, :last_id)
+order by created_at desc, id desc
+limit 20;
+```
 
-Injection avoidance and connection-string handling are also OWASP concerns; the data-layer hardening posture around them - parameterization at every sink, least-privilege accounts, secrets out of the connection string - is owned by `data-security`, and this skill stops at the query.
+(SQL Server has no row-value comparison - expand to `created_at < :ts OR (created_at = :ts AND id < :id)`.)
 
-For deep pagination, prefer keyset (seek) pagination over `OFFSET`: a `WHERE (created_at, id) < (:last_ts, :last_id) ORDER BY ... LIMIT n` clause with a unique tiebreaker column. `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower, while a keyset seek jumps straight to the point and holds every page equally fast.
+- The data-layer hardening posture around injection and connection strings - parameterization at every sink, least-privilege accounts, secrets out of the connection string - is owned by `data-security`; this skill stops at the query.
 
 ## N+1 prevention
 
-The N+1 query is the most common performance regression in data access, and it hides in code that reads perfectly: a loop over rows that lazily fetches a relation per iteration. Eager-load the relations you know you need explicitly rather than letting per-row lazy loads fire; for a document store that is a `Populate` (Mongoose) or a single shaped read. And do the join in the database - never pull two tables into the application and join them in memory, which fetches more rows than the result needs and throws away the engine's join optimizer.
-
-This skill is engine and SQL only. All .NET data access routes out: the ORM mechanics (`Include` / `ThenInclude`, `AsSplitQuery`, `AsNoTracking`, and their NHibernate equivalents) and read-path shape - N+1, projection, change-tracking cost, bounded results - belong to `dotnet-data-access`. Do not restate them here.
+- The N+1 query is the most common performance regression in data access, and it hides in code that reads perfectly: a loop over rows that lazily fetches a relation per iteration. Eager-load the relations you know you need explicitly rather than letting per-row lazy loads fire; for a document store that is a `Populate` (Mongoose) or a single shaped read.
+- Do the join in the database - never pull two tables into the application and join them in memory, which fetches more rows than the result needs and throws away the engine's join optimizer.
+- This skill is engine and SQL only. All .NET data access routes out: the ORM mechanics (`Include` / `ThenInclude`, `AsSplitQuery`, `AsNoTracking`, and their NHibernate equivalents) and read-path shape belong to `dotnet-data-access`. Do not restate them here.
 
 ## Migrations
 
@@ -63,29 +72,44 @@ The migration *workflow* - previewing the generated SQL, carrying a rollback, re
 
 The naming *style* - keyword casing, table singular/plural, column suffixes, and constraint/index name prefixes - lives in `references/sql-style.md`. The schema-side essentials here:
 
-Naming is a convention, which means its only job is to be consistent - the specific choice matters far less than not mixing two. Keep all identifiers in English. Pick one case per project and hold it: `snake_case` for PostgreSQL by default, `PascalCase` for SQL Server unless the project overrides it. Pick singular or plural table names once and never mix the two. Foreign-key columns follow the related table - `<related_table>_id` or `<RelatedTable>Id` to match the project's case. Indexes self-describe (`ix_orders_customer_id_status`), so a name tells you what it serves; leave anonymous index names to the tool only when the migration generator produces them.
+- Naming is a convention, which means its only job is to be consistent - the specific choice matters far less than not mixing two. Keep all identifiers in English.
+- Pick one case per project and hold it: `snake_case` for PostgreSQL by default, `PascalCase` for SQL Server unless the project overrides it. Pick singular or plural table names once and never mix the two.
+- Foreign-key columns follow the related table - `<related_table>_id` or `<RelatedTable>Id` to match the project's case. Indexes self-describe (`ix_orders_customer_id_status`) so a name tells you what it serves; leave anonymous index names to the tool only when the migration generator produces them.
 
 ## Indexes
 
-An index is a write-time cost paid for a read-time gain, so add each one deliberately and be able to name the query it serves - an index with no query behind it is pure overhead on every insert and update. Order a composite index by predicate type: equality columns first, the range column last, so the engine can seek rather than scan. Before widening a composite index to satisfy a hot query, cover it instead - add the extra columns as `INCLUDE` columns (SQL Server and Postgres) so the index answers the query without a key lookup and without bloating the seek key. Use a filtered or partial index for a sparse predicate (`WHERE IsActive = 1`) so the index stays small. And drop indexes that no query uses - verify against `sys.dm_db_index_usage_stats` or `pg_stat_user_indexes` over a representative window first, because an index that looks idle in a five-minute sample may serve a nightly job. And build or rebuild an index on a live, populated table without a table-length lock - Postgres `CREATE INDEX CONCURRENTLY` / `REINDEX CONCURRENTLY`, SQL Server `WITH (ONLINE = ON)` - so the build is not a downtime event, the read-time pair to the migrations lock-impact review.
+- An index is a write-time cost paid for a read-time gain: add each one deliberately and be able to name the query it serves - an index with no query behind it is pure overhead on every insert and update.
+- Order a composite index by predicate type: equality columns first, the range column last, so the engine can seek rather than scan.
+- Before widening a composite index to satisfy a hot query, cover it instead - add the extra columns as `INCLUDE` columns (SQL Server and Postgres) so the index answers the query without a key lookup and without bloating the seek key. Use a filtered or partial index for a sparse predicate (`WHERE IsActive = 1`) so the index stays small.
+- Drop indexes that no query uses - but verify against `sys.dm_db_index_usage_stats` or `pg_stat_user_indexes` over a representative window first, because an index that looks idle in a five-minute sample may serve a nightly job.
+- Build or rebuild an index on a live, populated table without a table-length lock - Postgres `CREATE INDEX CONCURRENTLY` / `REINDEX CONCURRENTLY`, SQL Server `WITH (ONLINE = ON)` - so the build is not a downtime event; the read-side pair of the migrations lock-impact review.
 
 ## Constraints
 
-Integrity belongs in the schema, where it cannot be bypassed, not in application logic that one code path will forget. Enforce foreign keys at the database level - a 'soft' relation maintained only in application code is a relation that will drift. Default columns to `NOT NULL` and opt into nullability only where the model genuinely has an absent value. Express invariants the schema can state as `CHECK` constraints - a numeric range, an enum-as-string set. And enforce uniqueness with a `UNIQUE` constraint or a unique index, never an application-side 'check then insert', which races two concurrent requests straight into a duplicate.
+Integrity belongs in the schema, where it cannot be bypassed, not in application logic that one code path will forget.
 
-Declare `ON DELETE` and `ON UPDATE` behavior explicitly on every foreign key - `RESTRICT`, `CASCADE`, or `SET NULL` per the business rule - because the engine default varies and leaning on it is a silent bug, and index every foreign-key column, since an unindexed FK turns every join and every 'find the children of X' into a full scan at production volume. Never store a derived value that can drift from its inputs (an order `total` kept beside its `subtotal` and `tax`): compute it in the query or a view, or materialize it as a generated column the engine keeps consistent, so the stored copy can never disagree with its source.
+- Enforce foreign keys at the database level - a 'soft' relation maintained only in application code is a relation that will drift.
+- Default columns to `NOT NULL`; opt into nullability only where the model genuinely has an absent value. Express invariants the schema can state as `CHECK` constraints - a numeric range, an enum-as-string set.
+- Enforce uniqueness with a `UNIQUE` constraint or a unique index, never an application-side 'check then insert', which races two concurrent requests straight into a duplicate.
+- Declare `ON DELETE` and `ON UPDATE` behavior explicitly on every foreign key - `RESTRICT`, `CASCADE`, or `SET NULL` per the business rule - because the engine default varies and leaning on it is a silent bug. Index every foreign-key column: an unindexed FK turns every join and every 'find the children of X' into a full scan at production volume.
+- Never store a derived value that can drift from its inputs (an order `total` kept beside its `subtotal` and `tax`): compute it in the query or a view, or materialize it as a generated column the engine keeps consistent, so the stored copy can never disagree with its source.
 
 ## Transactions
 
-Scope a transaction to exactly one unit of work - one request or use-case - opened at the boundary, committed on success, rolled back on exception. The cardinal mistake is holding a transaction open across external I/O: a transaction that waits on an HTTP call or a message bus holds its locks for the duration of a network round trip. Read what you need first, then open the transaction, do the writes, and close it. Design writes to be idempotent - an `UPSERT` or `MERGE` keyed on a natural or supplied id - so a retry after a timeout re-applies the same write instead of duplicating it.
-
-When two transactions can race to modify the same row - a balance transfer, an inventory decrement, an oversell guard - take a pessimistic row lock (`SELECT ... FOR UPDATE`) on the rows you are about to change rather than reading them optimistically and hoping; the unlocked read-then-write window is exactly where the lost update lives. When a single transaction locks several rows, take them in a consistent order (`WHERE id IN (...) ORDER BY id FOR UPDATE`) or in one set-based statement - an inconsistent lock order between two transactions is precisely what produces a deadlock.
-
-Two lock-based coordination patterns are worth naming. For a database-backed work queue, claim a row atomically with `FOR UPDATE SKIP LOCKED LIMIT 1` (SQL Server: `WITH (UPDLOCK, READPAST, ROWLOCK)`) so competing workers take different rows instead of blocking on the same one. And coordinate a job that must run on a single instance with an application-level lock - Postgres `pg_advisory_xact_lock` / `pg_try_advisory_lock`, SQL Server `sp_getapplock` - rather than a dummy row `SELECT ... FOR UPDATE`.
+- Scope a transaction to exactly one unit of work - one request or use-case - opened at the boundary, committed on success, rolled back on exception.
+- The cardinal mistake is holding a transaction open across external I/O: a transaction that waits on an HTTP call or a message bus holds its locks for the duration of a network round trip. Read what you need first, then open the transaction, do the writes, and close it.
+- Design writes to be idempotent - an `UPSERT` or `MERGE` keyed on a natural or supplied id - so a retry after a timeout re-applies the same write instead of duplicating it.
+- When two transactions can race to modify the same row - a balance transfer, an inventory decrement, an oversell guard - take a pessimistic row lock (`SELECT ... FOR UPDATE`) on the rows you are about to change rather than reading them optimistically and hoping; the unlocked read-then-write window is exactly where the lost update lives.
+- When a single transaction locks several rows, take them in a consistent order (`WHERE id IN (...) ORDER BY id FOR UPDATE`) or in one set-based statement - an inconsistent lock order between two transactions is precisely what produces a deadlock.
+- Database-backed work queue: claim a row atomically with `FOR UPDATE SKIP LOCKED LIMIT 1` (SQL Server: `WITH (UPDLOCK, READPAST, ROWLOCK)`) so competing workers take different rows instead of blocking on the same one.
+- A job that must run on a single instance coordinates through an application-level lock - Postgres `pg_advisory_xact_lock` / `pg_try_advisory_lock`, SQL Server `sp_getapplock` - rather than a dummy row `SELECT ... FOR UPDATE`.
 
 ## Connection management
 
-Let the driver pool connections, which it does by default, and tune the pool to expected concurrency rather than the largest number the server will accept - an oversized pool just moves contention from the application to the database. Connections are scarce and must always be released: rely on `using` / `Dispose` (ORMs handle this for you) and, for raw access, scope the connection explicitly so it cannot leak on an exception path. Keep connections short-lived - one per unit of work - and never hold a long-lived shared connection, which serializes work behind it and survives the failures that a fresh connection would surface. Set a server-side `idle_in_transaction_session_timeout` alongside `statement_timeout` (SQL Server `LOCK_TIMEOUT`) so an abandoned client cannot pin a connection and keep holding its locks - a separate guard from the driver's pool idle timeout. And server-side prepared statements break behind a transaction-mode pooler (PgBouncer, RDS Proxy) because the next call lands on a different backend, so disable them (Npgsql `Max Auto Prepare=0`) or run session-mode pooling.
+- Let the driver pool connections, which it does by default, and tune the pool to expected concurrency rather than the largest number the server will accept - an oversized pool just moves contention from the application to the database.
+- Connections are scarce and must always be released: rely on `using` / `Dispose` (ORMs handle this for you) and, for raw access, scope the connection explicitly so it cannot leak on an exception path. Keep connections short-lived - one per unit of work - and never hold a long-lived shared connection, which serializes work behind it and survives the failures that a fresh connection would surface.
+- Set a server-side `idle_in_transaction_session_timeout` alongside `statement_timeout` (SQL Server `LOCK_TIMEOUT`) so an abandoned client cannot pin a connection and keep holding its locks - a separate guard from the driver's pool idle timeout.
+- Server-side prepared statements break behind a transaction-mode pooler (PgBouncer, RDS Proxy) because the next call lands on a different backend - disable them driver-side or run session-mode pooling; the per-driver switches live in `postgres`.
 
 ## Secrets
 
@@ -102,5 +126,5 @@ The full per-engine data-type tables (text, numbers, boolean, date/time, UUID) a
 - **Money and exact quantities** - store as `decimal` / `NUMERIC(p,s)` on every engine, never `float` or `double`, since binary floats cannot represent decimal fractions and drift silently on sums.
 - **PostgreSQL** - `SERIAL` is legacy; use `GENERATED ALWAYS AS IDENTITY` for new tables (it is SQL-standard and avoids the sequence-ownership surprises `SERIAL` carries). Prefer `TEXT` over `VARCHAR(n)` unless you need a hard length cap, since the two perform identically and `TEXT` never forces a migration to widen a limit.
 - **SQL Server** - use `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode is preserved. Avoid `DATETIME`; use `DATETIME2` for higher precision and a sane range, or `DATETIMEOFFSET` when the value is timezone-aware.
-- **SQLite** - there is no native `BOOLEAN`; store `INTEGER` 0/1 with a `CHECK` constraint. There is no native date type; store ISO-8601 in `TEXT` or a Unix epoch in `INTEGER`. Foreign keys are *off by default* - issue `PRAGMA foreign_keys = ON` on every connection or the constraints you declared do nothing.
+- **SQLite** - foreign keys are *off by default*: issue `PRAGMA foreign_keys = ON` on every connection or the constraints you declared do nothing. Type affinity and the boolean / date storage idioms are owned by `sqlite` (data-type tables in `references/sql-style.md`).
 - **MongoDB** - the 16 MB document limit is a hard ceiling, so design to sit well under it rather than near it. The `ObjectId` already embeds a creation timestamp - read it from there instead of duplicating a separate created-at field.

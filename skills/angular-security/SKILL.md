@@ -1,6 +1,6 @@
 ---
 name: angular-security
-description: "Personal Angular / web frontend security-hardening reference, organized by the client-side threat surface and mapped to concrete Angular 17+ mitigations: XSS and the DomSanitizer bypassSecurityTrust* escape hatches, template and innerHTML injection, Content-Security-Policy (nonce-based, no unsafe-inline), CSRF via HttpClient's XSRF token support, secrets that must never ship in the bundle (environment.ts, source maps), auth-token storage (httpOnly cookie over localStorage, which an XSS drains), SSR/hydration and TransferState leaks, open-redirect and target=_blank window.opener, unsafe javascript: and URL bindings, and vulnerable npm dependencies. Load when hardening or reviewing an Angular web feature for vulnerabilities, or when the security-auditor sweeps the web stack. Points at dotnet-security for the API side and mobile-security for the Capacitor native shell rather than repeating them. Do NOT load for non-security work or for the mobile native surface."
+description: "Personal Angular / web frontend security-hardening reference mapped to concrete Angular 17+ mitigations: XSS and the DomSanitizer bypassSecurityTrust* escape hatches, innerHTML injection, nonce-based CSP, CSRF via HttpClient's XSRF support, secrets that must never ship in the bundle (environment.ts, source maps), auth-token storage (httpOnly cookie over localStorage), SSR/TransferState leaks, open redirects, target=_blank window.opener, unsafe URL bindings, and vulnerable npm dependencies. Load when hardening or reviewing an Angular web feature, or when the security-auditor sweeps the web stack. Points at dotnet-security for the API side, mobile-security for the Capacitor native shell. Do NOT load for non-security work or the mobile native surface."
 ---
 
 # Angular / web frontend security
@@ -10,6 +10,16 @@ Angular escapes interpolated values by output context by default, so the classic
 ## XSS and the sanitizer bypass
 
 - Interpolation `{{ }}` and property bindings auto-escape by context. The holes are the escape hatches: `DomSanitizer.bypassSecurityTrustHtml / Script / Style / Url / ResourceUrl` each **disable** Angular's protection for that value. Never call a `bypassSecurityTrust*` on anything that contains user input - a `bypassSecurityTrustResourceUrl` on a user-controlled iframe or `<object>` src is a full XSS, and `bypassSecurityTrustHtml` on user markup ships a script.
+
+```ts
+// VULNERABLE - user-controlled query param, sanitizer disabled for it: full XSS
+readonly embedUrl = this.sanitizer.bypassSecurityTrustResourceUrl(
+  this.route.snapshot.queryParams['src']);
+
+// SAFE - bypass only a value YOU constructed; user data enters it encoded
+readonly embedUrl = this.sanitizer.bypassSecurityTrustResourceUrl(
+  `https://player.example.com/embed/${encodeURIComponent(this.videoId)}`);
+```
 - `[innerHTML]="value"` is sanitized for the HTML context, but it is still a smell on user data - prefer structural rendering. Never assign `ElementRef.nativeElement.innerHTML`, call `document.write`, or use `Renderer2` / raw DOM APIs to inject unsanitized markup; those skip Angular's sanitizer entirely.
 - URL bindings (`[href]`, `[src]`) are sanitized against `javascript:` and other dangerous schemes - a `bypassSecurityTrustUrl` re-opens that hole.
 - Reflected-from-the-API is still XSS: a value the API stored from another user and you render is untrusted; the escaping must hold end-to-end.
@@ -44,6 +54,16 @@ Angular escapes interpolated values by output context by default, so the classic
 ## Navigation and redirects
 
 - **Open redirect**: never `router.navigateByUrl` / `window.location =` a URL taken from a query param without validating it against an allowlist of internal paths.
+
+```ts
+// VULNERABLE - ?returnUrl=https://evil.example walks the user off-site after login
+this.router.navigateByUrl(this.route.snapshot.queryParams['returnUrl']);
+
+// SAFE - internal paths only ('//' is protocol-relative, still an exit)
+const returnUrl: string = this.route.snapshot.queryParams['returnUrl'] ?? '/';
+this.router.navigateByUrl(
+  returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '/');
+```
 - `target="_blank"` needs `rel="noopener"` (modern browsers mostly default it, but be explicit) or the opened page can drive `window.opener`.
 - Validate route and query params before they reach a request or a DOM sink.
 

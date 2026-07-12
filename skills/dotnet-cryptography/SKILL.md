@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Personal .NET cryptography conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list (MD5, SHA-1, DES, 3DES, ECB, PKCS1 v1.5) and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Load when encrypting, decrypting, hashing, signing, verifying, or deriving a key. Key and secret STORAGE belongs to your secrets/config layer (never source); sign-in belongs to dotnet-authentication; OWASP risk categories belong to dotnet-security. Do NOT load for TLS/HTTPS pipeline config."
+description: "Personal .NET cryptography conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Load when encrypting, decrypting, hashing, signing, verifying, or deriving a key. Secret STORAGE belongs to your secrets/config layer (never source); sign-in to dotnet-authentication; OWASP categories to dotnet-security. Do NOT load for TLS/HTTPS pipeline config."
 ---
 
 # .NET cryptography
@@ -44,6 +44,15 @@ For encrypting data at rest or in a message, use **`AesGcm`** - authenticated en
 - A **16-byte tag** produced on encrypt and *required* on decrypt - a tag mismatch throws, which is the integrity check doing its job. Store nonce, ciphertext, and tag together (nonce and tag are not secret).
 - Pass any surrounding context that must be bound but not encrypted - a record id, a version - as **associated data** so it is covered by the tag.
 - Construct `AesGcm` with the explicit tag-size overload (`new AesGcm(key, 16)`) to pin the tag length.
+
+```csharp
+var nonce = RandomNumberGenerator.GetBytes(12);        // fresh per encryption
+var tag = new byte[16];
+var ciphertext = new byte[plaintext.Length];
+using var aes = new AesGcm(key, tagSizeInBytes: 16);
+aes.Encrypt(nonce, plaintext, ciphertext, tag, associatedData);
+// persist nonce + ciphertext + tag together; Decrypt throws on any tamper
+```
 
 Do not reach for raw `Aes` in CBC/ECB mode. **ECB is never acceptable** - it reveals structure in the plaintext. Plain CBC is unauthenticated and invites padding-oracle attacks; only if a fixed external format forces CBC, apply encrypt-then-MAC with an independent HMAC key and verify the MAC (constant-time) before decrypting. GCM exists precisely so you never have to hand-roll that.
 

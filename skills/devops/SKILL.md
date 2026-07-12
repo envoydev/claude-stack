@@ -1,11 +1,11 @@
 ---
 name: devops
-description: "Personal DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, chiseled/distroless .NET images, base images pinned by digest not :latest), Compose local topology (healthchecks, no inline secrets), GitHub Actions CI/CD (a lint/test/build graph fail-fast, lockfile-hash cache keys, real service containers not mocks, masked secrets, actions pinned to a commit SHA, least-privilege permissions, OIDC over stored creds), and safe deploy (environments + approvals, expand-contract migrations gated before the roll, health-gated blue-green/rolling cutover with rollback). Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost - or when the devops vertical or security-auditor sweeps the delivery stack. Points at dotnet-aspire, dotnet-migrate, and dotnet-security / data-security. Do NOT load for application or schema code."
+description: "Personal DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, digest-pinned base images), Compose local topology, GitHub Actions CI/CD (SHA-pinned actions, masked secrets, least-privilege permissions, OIDC, real service containers), and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost - or when the devops vertical or security-auditor sweeps the delivery stack. Points at dotnet-aspire, dotnet-migrate, and dotnet-security / data-security. Do NOT load for application or schema code."
 ---
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
-The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with `dotnet-aspire` (orchestration), `dotnet-migrate` (migration mechanics), and `dotnet-security` / `data-security` (secret handling). The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
+The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with `dotnet-aspire` (orchestration), `dotnet-migrate` (migration mechanics), and `dotnet-security` / `data-security` (secret handling; the crypto primitives are `dotnet-cryptography`). The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 
 ## Docker - reproducible, minimal, non-root
 
@@ -17,8 +17,26 @@ The pipeline is production code - a broken workflow blocks every merge and a lea
 - Pin the BuildKit frontend on the Dockerfile's first line - `# syntax=docker/dockerfile:1` (to a digest for a fully locked build) - so an untrusted or moving frontend cannot run build-time code you never vetted; and treat `buildx` `--sbom` / `--provenance` attestations as metadata, not signatures - sign the image with cosign if you need provenance you can verify.
 - Build multi-arch images with `buildx --platform linux/amd64,linux/arm64` when developers are on Apple Silicon but production runs x64 - a locally-built image is otherwise the wrong architecture for the server.
 - Run as a non-root USER, mount the root filesystem read-only where the app allows, and keep a .dockerignore that excludes bin, obj, node_modules, .git, and every secret-bearing file.
-- Harden past non-root at runtime - drop all Linux capabilities (`cap_drop: [ALL]`), set no-new-privileges, cap memory / CPU and the PID count (`--pids-limit`, compose `pids_limit`) against a fork bomb, and keep the default seccomp profile plus an AppArmor or SELinux profile (`--security-opt`) instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host.
+- Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. The full checklist with the compose keys: `references/docker-hardening.md`.
 - Give the container a HEALTHCHECK and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills.
+
+The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root:
+
+```dockerfile
+# syntax=docker/dockerfile:1
+FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:<digest> AS build
+WORKDIR /src
+COPY ["App/App.csproj", "App/"]
+RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore App/App.csproj
+COPY . .
+RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish App/App.csproj -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:<digest>
+WORKDIR /app
+COPY --from=build /app .
+USER app
+ENTRYPOINT ["dotnet", "App.dll"]
+```
 
 ## Compose - local topology, not a secret store
 
@@ -48,7 +66,3 @@ The pipeline is production code - a broken workflow blocks every merge and a lea
 ## .NET Aspire - orchestration
 
 - The Aspire AppHost is the composition root for the local run and the deployment manifest; service discovery and connection strings flow through it, not hardcoded per service. Depth in `dotnet-aspire`.
-
-## Where the rest lives
-
-Migration reversibility and the expand-contract mechanics are `dotnet-migrate`. Secret and crypto primitives are `dotnet-cryptography`; the app- and data-layer secret-handling surface is `dotnet-security` / `data-security`. The Aspire app-model is `dotnet-aspire`.

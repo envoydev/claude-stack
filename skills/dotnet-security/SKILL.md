@@ -1,6 +1,6 @@
 ---
 name: dotnet-security
-description: "Personal .NET application-security hardening reference, organized by the OWASP Top 10 (2021) and mapped to concrete ASP.NET Core / .NET 8 mitigations: broken access control (fallback authz policy, resource-based ownership checks against IDOR, CORS lockdown), injection and XSS (parameterized data access, Razor output encoding), cryptographic and integrity failures, insecure deserialization, security misconfiguration, vulnerable dependencies, SSRF, and security logging. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Load when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities. It points at dotnet-authentication for auth implementation, dotnet-cryptography for algorithm choice, and data-security for the SQL / data-layer surface rather than repeating them, and sits alongside the runtime security-guidance plugin without overlapping it. Do NOT load for non-security work."
+description: "Personal .NET application-security hardening reference, organized by the OWASP Top 10 (2021) mapped to concrete ASP.NET Core / .NET 8 mitigations: broken access control (fallback authz policy, resource-based ownership checks against IDOR, CORS lockdown), injection and XSS, cryptographic and integrity failures, insecure deserialization, misconfiguration, vulnerable dependencies, SSRF, and security logging. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Load when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities. Companions: dotnet-authentication, dotnet-cryptography, data-security. Do NOT load for non-security work."
 ---
 
 # .NET application security - the OWASP Top 10, applied
@@ -15,8 +15,25 @@ The principle under all of it: treat every byte that crossed a trust boundary as
 
 The most common real-world failure: the user is authenticated, but the app never checks whether *this* user may touch *this* thing.
 
-- **Default-deny.** Set a fallback authorization policy so that an endpoint with no explicit policy is still protected, not open. With `AddAuthorizationBuilder().SetFallbackPolicy(...)` requiring an authenticated user, forgetting an `[Authorize]` fails closed instead of leaking the route. Anonymous endpoints then opt out loudly with `AllowAnonymous`.
-- **Kill IDOR.** An id from the route, query string, or body is an *input*, never proof of ownership. `GET /orders/{id}` must confirm the caller owns that order before returning it - otherwise incrementing the id walks the whole table. Enforce this with resource-based authorization: a `AuthorizationHandler<TRequirement, TResource>` that loads the resource and checks the relationship, invoked via `IAuthorizationService.AuthorizeAsync`. Role checks alone do not catch this; two users with the same role still must not read each other's rows.
+- **Default-deny.** Set a fallback authorization policy so that an endpoint with no explicit policy is still protected, not open. Forgetting an `[Authorize]` then fails closed instead of leaking the route. Anonymous endpoints opt out loudly with `AllowAnonymous`.
+
+```csharp
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build());
+```
+
+- **Kill IDOR.** An id from the route, query string, or body is an *input*, never proof of ownership. `GET /orders/{id}` must confirm the caller owns that order before returning it - otherwise incrementing the id walks the whole table. Enforce this with resource-based authorization: a `AuthorizationHandler<TRequirement, TResource>` that loads the resource and checks the relationship, invoked via an injected `IAuthorizationService`. Role checks alone do not catch this; two users with the same role still must not read each other's rows.
+
+```csharp
+var order = await db.Orders.FindAsync(id);          // id is input, not proof of ownership
+var allowed = await authz.AuthorizeAsync(user, order, "OwnsOrder");
+if (!allowed.Succeeded)
+{
+    return Results.Forbid();                        // same role != same rows
+}
+```
 - **Check on the server, every time.** A hidden field, a disabled button, or a missing menu item is UX, not a control. The authorization decision lives on the server and runs on every request, including the ones a browser would never send.
 - **Lock down CORS.** Name the exact allowed origins; never pair `AllowAnyOrigin` with `AllowCredentials` - the framework will reject the combination at runtime precisely because it defeats the same-origin protection.
 - **Scope what a token can do.** Least privilege applies to tokens too: an API key or JWT scoped to read should not be accepted on a write. The policy plumbing for this is `dotnet-authentication`; the obligation to actually scope it is here.
@@ -66,7 +83,14 @@ Most of the code in a service is other people's, and that code has its own publi
 
 - **Audit dependencies in CI, not by hand.** `dotnet list package --vulnerable --include-transitive` fails the build when a known-bad package (direct or pulled in beneath one) is present; transitive coverage matters because the flaw is usually two levels down.
 - **Patch on a schedule, not on incident.** Keep packages current and the runtime supported - a framework past end-of-life stops getting security fixes entirely.
-- **Pin and verify.** Lock files plus package source mapping (a nuget.config `packageSourceMapping` section) stop a dependency-confusion swap, where a malicious public package shadows an internal one.
+- **Pin and verify.** Lock files plus package source mapping (a nuget.config `packageSourceMapping` section) stop a dependency-confusion swap, where a malicious public package shadows an internal one:
+
+```xml
+<packageSourceMapping>
+  <packageSource key="nuget.org"><package pattern="*" /></packageSource>
+  <packageSource key="internal"><package pattern="Contoso.*" /></packageSource>
+</packageSourceMapping>
+```
 
 ## A07 - Identification and authentication failures
 
@@ -102,7 +126,7 @@ When the server fetches a URL the user influenced, the attacker can aim that fet
 
 ## Do not use - dead but still tempting
 
-- **`BinaryFormatter`** - the unsafe deserializer; full floor-aware statement and replacement are under A08 above. Listed here only as a dead-but-tempting API.
+- **`BinaryFormatter`** - the unsafe deserializer; see A08 above.
 - **Code Access Security and APTCA** - not a security boundary on .NET (Core) and unsupported; never rely on them to sandbox anything.
 - **.NET Remoting and DCOM** - legacy, unsafe transports; use a modern, authenticated transport instead.
 - **Suppressing a security analyzer to ship** - a `#pragma warning disable` or suppression over a security rule is a decision to ship the vulnerability; fix the finding rather than silence it.

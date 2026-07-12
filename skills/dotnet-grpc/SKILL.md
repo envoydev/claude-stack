@@ -1,6 +1,6 @@
 ---
 name: dotnet-grpc
-description: "Personal .NET gRPC conventions - the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients registered via AddGrpcClient over IHttpClientFactory with a reused multiplexing channel, the four call shapes (unary, server-stream, client-stream, bidirectional) with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, server/client interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Load when defining, implementing, or calling a gRPC service, or weighing gRPC against REST. Companions: dotnet-web-backend (HttpClient and resilience), dotnet-authentication (JWT and mTLS), csharp (Result vs throw). Do NOT load for plain REST or minimal APIs - that is dotnet-minimal-api."
+description: "Personal .NET gRPC conventions - the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Load when defining, implementing, or calling a gRPC service, or weighing gRPC against REST. Companions: dotnet-web-backend, dotnet-authentication, csharp. Do NOT load for plain REST or minimal APIs - that is dotnet-minimal-api."
 ---
 
 # .NET gRPC
@@ -90,10 +90,8 @@ A browser cannot make a raw gRPC/HTTP-2 call (no access to the required frames),
 
 ## Anti-patterns
 - Hand-editing or hand-writing the generated code instead of regenerating from the `.proto`.
-- Creating a new channel per request rather than reusing one long-lived, multiplexing channel.
 - Calling without a deadline, or ignoring the `CancellationToken` so cancelled work runs on.
 - Returning a successful response that smuggles an error flag instead of throwing the right `RpcException` status.
 - Leaking an exception's message or stack to the caller, or collapsing every failure into `Internal`.
-- Renumbering, reusing, or retyping a Protobuf field - any of which silently corrupts the wire format.
 - Repeating logging / auth / error-mapping in each method instead of an interceptor.
 - Treating gRPC as a file-transfer pipe or skipping HTTP/2 end to end.

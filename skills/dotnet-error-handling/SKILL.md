@@ -1,6 +1,6 @@
 ---
 name: dotnet-error-handling
-description: "Personal ASP.NET Core error-handling conventions - keep the two failure channels apart (return Result/typed errors for expected outcomes, reserve exceptions for the genuinely unexpected and catch them once), surface everything as RFC 9457 ProblemDetails, centralize one error-to-status map, install a global IExceptionHandler (.NET 8+; a UseExceptionHandler lambda below that), and validate input in an endpoint filter with FluentValidation. Floors at .NET 8 / C# 12. Load before deciding how an API reports failures, adding a global handler, shaping error bodies, or wiring request validation. Companions: csharp (the throw-vs-return baseline), dotnet-minimal-api (the endpoint-filter plumbing), dotnet-web-backend (logging, correlation/trace IDs). Do NOT load for non-HTTP code - model expected failures with the Result half in csharp instead."
+description: "Personal ASP.NET Core error-handling conventions - keep the two failure channels apart (Result/typed errors for expected outcomes, exceptions caught once for the genuinely unexpected), surface everything as RFC 9457 ProblemDetails, centralize one error-to-status map, install a global IExceptionHandler (.NET 8+), and validate input in an endpoint filter with FluentValidation. Floors at .NET 8 / C# 12. Load before deciding how an API reports failures, adding a global handler, shaping error bodies, or wiring request validation, or when the user says ProblemDetails, IExceptionHandler, UseExceptionHandler, Result type, or error envelope. Companions: csharp (the throw-vs-return baseline), dotnet-minimal-api, dotnet-web-backend. Do NOT load for non-HTTP code - model expected failures with the Result half in csharp instead."
 ---
 
 # ASP.NET Core error handling
@@ -84,5 +84,3 @@ app.UseExceptionHandler();
 ## Don't
 - Wrap each endpoint body in its own `try`/`catch` rather than relying on the one global handler.
 - Swallow an exception - an empty `catch`, or a `catch` that logs and limps on as if nothing happened. Handle it specifically or let it reach the handler.
-- Send internal exception messages or stack traces to clients in production.
-- Grow a different error-JSON shape per endpoint, or throw exceptions for routine not-found / validation results.

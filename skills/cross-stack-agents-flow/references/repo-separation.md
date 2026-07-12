@@ -42,7 +42,7 @@ The contract must include: routes; request DTOs; response DTOs; the error envelo
 
 ## Drift across repos
 
-If the backend finds the contract impossible, it must not silently change DTOs, routes, or errors - it emits BLOCKED_CONTRACT_CHANGE. Then:
+If the backend finds the contract impossible, it must not silently change anything on the shared-contract change list in `references/contract-protocol.md` - it emits BLOCKED_CONTRACT_CHANGE. Then:
 
 ```text
 Contract v1 -> Contract Change Request -> Contract v2

@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: "Personal TypeScript and JavaScript conventions, framework-agnostic - lean on the compiler (full strict plus the extra safety flags), model data with types instead of comments, narrow unknown rather than reach for any, keep the two failure channels apart (typed result for expected, thrown Error for unexpected), default to immutability, and treat plain JS as checked JS via JSDoc and checkJs. Covers tsconfig, ESLint/Prettier, modules, and async. Baseline is TypeScript 5+. Load before writing or editing any .ts, .tsx, .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. In an Angular project also load `angular-conventions`; this skill owns the language, that one the framework. Not for C#/.NET or other languages."
+description: "Personal TypeScript and JavaScript conventions, framework-agnostic - lean on the compiler (full strict plus the extra safety flags), model data with types, narrow unknown instead of any, keep the two failure channels apart (typed result for expected, thrown Error for unexpected), default to immutability, and treat plain JS as checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load before writing or editing any .ts, .tsx, .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. In an Angular project also load `angular-conventions`, the framework layer. Not for C#/.NET or other languages."
 ---
 
 # TypeScript and JavaScript conventions
@@ -59,9 +59,8 @@ Library-grade type work - conditional types with `infer`, mapped types, template
 
 ## Async
 
-- `async` / `await`, not hand-built `.then()` chains. The flat code reads in execution order and the stack traces survive.
-- Never leave a promise floating. Either `await` it, hand it to `Promise.all` / `Promise.allSettled`, or `void` it with a comment when fire-and-forget is genuinely intended. A dropped rejection is an unhandled error you'll only find in production.
-- Run independent awaits in parallel with `Promise.all`; don't `await` inside a loop when the iterations don't depend on each other - that serializes work that could overlap.
+The rule-by-rule enforcement - `async`/`await` over `.then()` chains, no floating promise (every promise awaited, returned, or `void`ed with a comment), `Promise.all` for independent work instead of serialized awaits in a loop - is `references/typescript-style.md`'s; a dropped rejection is an unhandled error you'll only find in production. The house additions:
+
 - Thread an `AbortSignal` through cancellable I/O - fetch, timers, sockets - and wire it to teardown (component destroy, request abort, service-worker lifecycle). Cancellation is part of the contract, not an afterthought.
 - No `async` function as a `new Promise(...)` executor - a rejection inside it vanishes. Wrap a legacy callback API exactly once in a typed `promisify`-style helper and use that everywhere.
 
@@ -88,8 +87,7 @@ You don't lose the type checker by writing `.js`. The same language server check
 
 ## Naming and shape of code
 
-- `camelCase` for variables and functions, `PascalCase` for types, classes, and components, `UPPER_SNAKE` for true module-level constants only.
-- Booleans read as predicates: `isReady`, `hasItems`, `canRetry`.
+- Identifier casing (camelCase / PascalCase / UPPER_CASE), boolean predicate prefixes (`isReady`, `hasItems`), and file naming are `references/typescript-style.md`'s rules - it owns the detail and the enforcing lint config.
 - No abbreviations past the universally understood ones (`id`, `url`, `http`).
 - A function does one thing. Prefer pure functions and early returns to deep nesting; a flat function with guard clauses is easier to read and to test than a pyramid.
 - Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - follows `references/typescript-style.md`: order is static fields, instance fields, constructor, then methods, public before protected before private within each group, so a reader meets the type's surface before its internals. Per that reference `public` is implicit and NOT written out (the typescript-eslint convention), and constructor parameter properties lead with the non-public ones: `constructor(private readonly repo: Repo, ...)`.
@@ -103,7 +101,4 @@ You don't lose the type checker by writing `.js`. The same language server check
 
 ## Forbidden
 
-- `any` escape hatches, `@ts-ignore`, a non-null `!` without a justifying comment.
-- `var`, `==` / `!=`, implicit globals.
-- A floating promise, an empty `catch`, a thrown non-`Error`.
-- Re-typing a shape by hand where a utility type or a derived type already expresses it.
+- `var`, `==` / `!=`, implicit globals - in TypeScript as much as in JS.

@@ -1,6 +1,6 @@
 ---
 name: capacitor-release
-description: "Personal release-pipeline conventions for an Ionic / Capacitor app - the gap from a feature-complete build to a signed store submission: cap sync and native build artifacts (.ipa, .aab), iOS and Android code signing, store submission (TestFlight, Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, and the Fastlane / GitHub Actions CI shape with secrets handling and dSYM / sourcemap upload. Targets Capacitor 6+ (8 current). Load when cutting a release, wiring signing, or building the release CI. Companions: ionic (the app being released), mobile (the router); per-plugin mechanics live in ionic and are fetched live. Do NOT load for in-app feature work with no release or signing concern."
+description: "Personal release-pipeline conventions for an Ionic / Capacitor app - the gap from a feature-complete build to a signed store submission: cap sync and native build artifacts (.ipa, .aab), iOS and Android code signing, store submission (TestFlight, Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, and the Fastlane / GitHub Actions CI shape with secrets handling and dSYM / sourcemap upload. Targets Capacitor 6+ (8 current). Load when cutting a release, wiring signing, or building the release CI. Companions: ionic, mobile. Do NOT load for in-app feature work with no release or signing concern."
 ---
 
 # Capacitor release pipeline
@@ -13,21 +13,11 @@ This skill owns the last mile: turning a feature-complete Ionic/Capacitor app in
 - In CI, or when you need archive control, drive the platform tools directly: `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release archive` then `-exportArchive` for the `.ipa`; `./gradlew bundleRelease` for the `.aab` (`assembleRelease` only when a raw `.apk` is genuinely needed). Ship the `.aab` to Play, not the `.apk` - Play requires the bundle and serves device-optimized splits from it.
 - Match the iOS archive target to the dependency manager: Capacitor 8 defaults new iOS projects to Swift Package Manager, which has no CocoaPods `.xcworkspace` - archive it with `-project ios/App/App.xcodeproj`, not the `-workspace ...App.xcworkspace` above. A CocoaPods project (older, or `cap add ios --packagemanager CocoaPods`) keeps the workspace; `npx cap build ios` resolves the right target either way, and `npx cap migrate` applies the mechanical changes on a version bump.
 
-## iOS code signing
-- Two artifacts sign an iOS build: a distribution **certificate** (identifies you) and a **provisioning profile** (ties the cert + app id + entitlements). For App Store delivery the profile is an App Store distribution profile.
-- Local: let Xcode manage it - automatic signing with your team selected. `cap build ios` defaults to automatic signing and the app-store-connect export method, which is what you want for a store build.
-- CI: do not ship your personal certificate around. Authenticate with an **App Store Connect API key** (a `.p8` file plus its key id and issuer id) - it removes the 2FA prompt that breaks an unattended pipeline. Pair it with Fastlane match, which keeps the distribution cert + profile in an encrypted store and installs them into the CI keychain on demand, so every runner signs with the same managed identity instead of a hand-copied `.p12`.
-- Switch to manual signing (`--xcode-signing-style manual` with an explicit certificate + profile) only when automatic cannot express the setup - a shared enterprise cert, a pinned profile. Reach for it as the exception, not the default.
-
-## Android signing - upload key vs app-signing key
-- Use Play App Signing - it is the modern default and the only sane key-loss story. Two distinct keys, do not conflate them: the **upload key** you hold and sign the `.aab` with locally / in CI, and the **app-signing key** Google holds and re-signs the served APKs with. They must differ.
-- The upload key lives in a keystore (`.jks`/`.keystore`) you supply via `--keystorepath` / `--keystorepass` / `--keystorealias` / `--keystorealiaspass` (or the Gradle signing config). Sign with `apksigner` (set `--signing-type apksigner`); `jarsigner` is the legacy default and worth overriding.
-- Why this split is the point: if the upload key leaks, Google resets it without touching the app-signing key, so your app identity survives. Never check a keystore or its passwords into the repo - they are CI secrets (see below).
-
-## Store submission
-- iOS goes through App Store Connect. Upload the `.ipa` (`xcrun altool` / `notarytool`, Fastlane `pilot`/`deliver`, or Transporter), then distribute the build to **TestFlight** for internal or external testers before promoting to App Store review. Internal testers get builds immediately; external testers wait on a Beta App Review.
-- Android goes through the Play Console, which has staged testing tracks - promote a build up the ladder rather than straight to users: **internal** (instant, small allowlist) -> **closed** (a named tester group) -> **open** (public opt-in beta) -> **production**. Upload the same `.aab` to a track; promote between tracks in the console without rebuilding.
-- The asymmetry is deliberate: TestFlight and the Play internal track are where a release proves itself. Do not promote to production until the build has sat in a testing track.
+## Signing and store submission - the invariants
+The mechanics - certificate + provisioning-profile setup, App Store Connect API keys and Fastlane match, keystore flags and apksigner, the TestFlight / Play track ladder - live in `references/signing.md`; load it when actually wiring signing or a submission. What holds regardless:
+- iOS signs with a distribution **certificate** + App Store provisioning profile; in CI authenticate with an **App Store Connect API key** (a `.p8`), never a hand-copied personal cert - the API key removes the 2FA prompt that breaks an unattended pipeline.
+- Android uses Play App Signing, and the two keys must differ: the **upload key** you hold and sign the `.aab` with, and the **app-signing key** Google holds and re-signs the served APKs with. That split is the key-loss story - a leaked upload key gets reset by Google without touching your app identity. Never check a keystore or its passwords into the repo - they are CI secrets (see below).
+- A release proves itself in a testing track - TestFlight / a Play testing track - before any production promotion; both stores promote the same build without rebuilding.
 
 ## OTA / live updates - the native-binary boundary
 This is the load-bearing rule of the whole pipeline: **a live update ships the web layer only**. HTML, CSS, JavaScript, and bundled web assets can go over-the-air with no store review. Anything that touches the native binary - adding or upgrading a Capacitor plugin, changing a native dependency, editing native config or native code - requires a fresh store submission. Push web-layer fixes over-the-air for speed; cut a native release when, and only when, the binary actually changed.
@@ -42,7 +32,27 @@ Two numbers, and they mean different things on every platform - keep them straig
 - The failure this section prevents is drift: a marketing version that disagrees across iOS, Android, and web, or a build number a store rejects as already-used. Bump from one source of truth in the release script - hand-editing the pbxproj and `build.gradle` separately is how they desync. A small CLI (capver, capacitor-set-version) or a Fastlane lane that writes all sinks from the `package.json` version keeps them in lockstep; the build number is the thing CI auto-increments per upload.
 
 ## CI/CD shape
-- Recommend **Fastlane** as the release engine even when GitHub Actions is the trigger: its `match` (signing), `gym`/`build_app` (archive), `pilot`/`deliver` (App Store), and `supply` (Play) lanes encode the steps once and run identically on a laptop and a runner. A bare Actions workflow ends up re-implementing the same steps in YAML - let Fastlane own the release logic and let Actions own the trigger and the secrets.
+- Recommend **Fastlane** as the release engine even when GitHub Actions is the trigger: its `match` (signing), `gym`/`build_app` (archive), `pilot`/`deliver` (App Store), and `supply` (Play) lanes encode the steps once and run identically on a laptop and a runner. A bare Actions workflow ends up re-implementing the same steps in YAML - let Fastlane own the release logic and let Actions own the trigger and the secrets. The lane shape:
+
+```ruby
+# fastlane/Fastfile - secrets arrive via ENV from the CI runner, never from the repo
+platform :ios do
+  lane :release do
+    app_store_connect_api_key(key_id: ENV['ASC_KEY_ID'],
+      issuer_id: ENV['ASC_ISSUER_ID'], key_content: ENV['ASC_KEY_P8'])
+    match(type: 'appstore', readonly: true)
+    build_app(workspace: 'ios/App/App.xcworkspace', scheme: 'App')
+    pilot   # -> TestFlight, not production
+  end
+end
+
+platform :android do
+  lane :release do
+    gradle(task: 'bundle', build_type: 'Release')
+    supply(track: 'internal')   # -> Play internal track first
+  end
+end
+```
 - Secrets are injected, never committed: the App Store Connect API `.p8` (base64 in a secret), the Android upload keystore (base64) plus its passwords, the match passphrase / repo token. Decode into the runner at job start, use, and let the ephemeral runner discard them. A keystore, a `.p8`, or a signing password in the repo is a release-blocking leak.
 - Build the matrix off the boundary above: a web-only change runs a lint/test/OTA-publish lane; a native change runs the full archive-sign-upload lane. Don't cut a store binary for a CSS fix.
 
@@ -51,12 +61,4 @@ Two numbers, and they mean different things on every platform - keep them straig
 - Web layer: upload the **sourcemaps** for the same build to your error tracker so an OTA-shipped JS error maps back to real source - then keep the maps out of the shipped bundle.
 - Treat both as part of the release, gated on the same build number, not an afterthought - a symbol file that does not match the uploaded build is useless.
 
-## Anti-patterns
-- Building native off a stale web build (skipping `cap sync`); shipping a `.apk` to Play where an `.aab` is required.
-- A signing certificate, keystore, `.p8`, or password committed to the repo or pasted into a workflow file instead of an injected secret; reusing the upload key as the app-signing key.
-- Trying to ship a native change (new plugin, native dependency) over-the-air - it cannot work and white-screens; an OTA bundle pushed to an incompatible native version with no version gate.
-- A marketing version or build number edited in one platform's project but not the others; a non-incrementing build number the store rejects.
-- Promoting straight to production with no TestFlight / Play testing-track soak; uploading a build with no dSYM / sourcemap and discovering it when the first crash is unreadable.
-- Starting new live-update work on the sunsetting Appflow path; writing native Swift / Kotlin source to force a release through (out of scope - fix it in the web layer or the project config).
-
-<!-- House release-pipeline conventions for Ionic/Capacitor; the app under release is `ionic`, per-plugin mechanics fetched live via context7 / the plugin README. -->
+<!-- House release-pipeline conventions for Ionic/Capacitor; the app under release is `ionic`, signing + store mechanics in references/signing.md, per-plugin mechanics fetched live via context7 / the plugin README. -->

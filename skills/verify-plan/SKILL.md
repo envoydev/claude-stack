@@ -5,7 +5,7 @@ description: Use when you have an implementation plan or design in hand and want
 
 # Verify Plan - a risk-coverage audit of a plan before you build
 
-A plan built perfectly is still wrong if the plan was wrong - and a design error is far cheaper to fix on the page than after the code exists. This reviews an EXISTING plan or design (yours, or one `writing-plans` produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
+A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, /code-review). This reviews an EXISTING plan or design (yours, or one `writing-plans` produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
 
 ## When to use / not
 
@@ -31,6 +31,15 @@ Load the plan's target stack skill FIRST, so you check against the right trap li
 
 A short punch-list, not a rewrite. One line per finding: `severity | the gap | the fix to the PLAN`. If the plan is sound, say so plainly and name what you checked. Then it is safe to build against; if not, fix the plan first - that is the whole point of doing this before code.
 
-## Why this is the highest-leverage review
+## Example
 
-The design carries the quality: when a plan names a trap, the build handles it; when the plan misses it, the build ships it. Catching the miss here, on the page, is cheaper than any downstream gate - upstream of the code, upstream of the tests, upstream of `/code-review`.
+Auditing the `solution-design` CSV-export plan ('add CSV export to the orders list' - three tasks: an IOrderQueries projection, a streamed /orders/export endpoint, a WebApplicationFactory test), one finding per pass:
+
+```text
+1 risk      | MAJOR | no task names request cancellation on the streamed export - a client abort leaks the open reader | thread a CancellationToken through Tasks 1-2 (dotnet-web-backend trap list)
+2 scope     | MINOR | Task 2 adds an Excel-BOM option the requirement never asked for | drop it (the ponytail 'ultra' test)
+3 edges     | MAJOR | empty result set unspecified - header-only CSV or 404?           | name the expected shape in Task 2; assert it in Task 3
+4 soundness | pass  | extends the existing IOrderQueries seam, tasks in dependency order, smallest plan
+```
+
+Verdict: fix the plan (2 MAJOR), re-check the two lines, then build.

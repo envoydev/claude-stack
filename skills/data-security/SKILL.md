@@ -1,15 +1,20 @@
 ---
 name: data-security
-description: "Personal SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink (parameterized queries, never interpolated FromSqlRaw / ExecuteSqlRaw), least-privilege database accounts, row-level security and tenant isolation (data-layer IDOR), secrets kept out of connection strings (managed identity / Key Vault, never a plaintext password), encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. Load when hardening or reviewing a SQL / data-persistence feature, or when the security-auditor sweeps the data stack. Points at dotnet-security for the app-layer EF and injection surface, dotnet-cryptography for crypto primitives, and dotnet-migrate for safe migration mechanics. Do NOT load for non-security work."
+description: "Personal SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. Load when hardening or reviewing a SQL / data-persistence feature, or when the security-auditor sweeps the data stack. Points at dotnet-security for the app-layer EF and injection surface, dotnet-cryptography for crypto primitives, and dotnet-migrate for safe migration mechanics. Do NOT load for non-security work."
 ---
 
 # SQL / data-layer security
 
-The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with `dotnet-security` (the app-layer EF and access-control surface) and `dotnet-cryptography` (the primitives). The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
+The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with `dotnet-security` (the app-layer EF and access-control surface; the ORM mechanics behind it are `dotnet-data-access`), `dotnet-cryptography` (the primitives - KDF, AES-GCM, constant-time compare), and `dotnet-migrate` (the reversible, data-loss-safe migration workflow). The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
 
 ## Injection - close every sink
 
 - **Parameterize, always.** Never build SQL by string concatenation or interpolation. In EF Core, `FromSqlInterpolated` / `FromSql` parameterize the interpolated values; raw `FromSqlRaw` / `ExecuteSqlRaw` with a concatenated string does not - a `FromSqlRaw($"... {userInput}")` is injection. ADO.NET uses `SqlParameter` / `NpgsqlParameter`, never a formatted command text.
+
+```csharp
+var bad  = db.Users.FromSqlRaw("select * from users where name = '" + name + "'"); // injection - the string is built before the API sees it
+var safe = db.Users.FromSql($"select * from users where name = {name}");           // safe - each interpolated value becomes a DbParameter
+```
 - **Dynamic SQL in a stored procedure** is still injectable: build it with `sp_executesql` (SQL Server) or `EXECUTE ... USING` (Postgres) passing parameters, never `EXEC(@sql)` on a concatenated string. A proc is not a safe boundary by virtue of being a proc.
 - **Identifiers can't be parameterized** - a table or column name chosen from user input must be validated against an allowlist, never interpolated.
 - **ORDER BY / dynamic filters** from the client map to a fixed allowlist of columns and directions, never passed through as text.
@@ -39,7 +44,3 @@ The database is the crown jewels and the last line of defense - by the time a re
 
 - Audit who-changed-what on sensitive tables - temporal (system-versioned) tables, an audit trigger, or `created/modified by+at` columns - but the audit record must **never** store the secret it is tracking (log the fact of a password change, not the password).
 - A migration or seed that inserts a default admin credential, grants a broad role, or disables a constraint is a finding - flag it (safe migration mechanics are `dotnet-migrate`).
-
-## Where the rest lives
-
-The app-layer EF security surface - over-posting, entity-across-the-boundary - and the HTTP access-control checks are `dotnet-security`; the ORM mechanics behind them (change-tracking, N+1) are `dotnet-data-access`. Crypto primitive choice (KDF, AES-GCM, constant-time compare) is `dotnet-cryptography`. Reversible, data-loss-safe migration workflow is `dotnet-migrate`.

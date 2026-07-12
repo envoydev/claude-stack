@@ -1,6 +1,6 @@
 ---
 name: dotnet-console-apps
-description: "Personal conventions for the console app's interface surface - what a .NET console binary IS to the outside world, on top of the generic host that runs it. Two shapes: a one-shot CLI tool (argument parsing with System.CommandLine 2.0 / Spectre.Console.Cli / Cocona, subcommands, exit codes) and a long-running gateway bot or consumer (Telegram.Bot, Discord.Net / DSharpPlus, Slack / SlackNet, trading via CryptoExchange.Net, broker queue-workers) run inside a BackgroundService. Floors at .NET 8 / C# 12. Load when building a CLI tool, a chat or trading bot, or a bot's command surface, or when the user names System.CommandLine, Spectre.Console, Telegram.Bot, Discord.Net, or a bot. Companions: dotnet-hosted-services owns the host lifecycle and the 24/7 resilience/reconnect hardening, dotnet-messaging the broker delivery contract, csharp the async and TimeProvider baseline, dotnet-testing FakeTimeProvider. Do NOT load for the host lifecycle itself (dotnet-hosted-services), a web API or webhook endpoint (dotnet-web-backend), or a desktop GUI (dotnet-wpf)."
+description: "Personal conventions for the console app's interface surface - what a .NET console binary IS to the outside world, on top of the generic host that runs it. Two shapes: a one-shot CLI tool (System.CommandLine 2.0 / Spectre.Console.Cli / Cocona, subcommands, exit codes) and a long-running gateway bot or consumer (Telegram.Bot, Discord.Net, SlackNet, CryptoExchange.Net, broker queue-workers) run inside a BackgroundService. Floors at .NET 8 / C# 12. Load when building a CLI tool, a chat or trading bot, or a bot's command surface, or when the user names System.CommandLine, Spectre.Console, Telegram.Bot, Discord.Net, or a bot. Companions: dotnet-hosted-services (host lifecycle + 24/7 hardening), dotnet-messaging, csharp, dotnet-testing. Do NOT load for the host lifecycle itself (dotnet-hosted-services), a web API or webhook endpoint (dotnet-web-backend), or a desktop GUI (dotnet-wpf)."
 ---
 
 # .NET console apps - the CLI and bot interface surface
@@ -15,7 +15,24 @@ Three libraries; pick by how much command surface you have.
 - **Spectre.Console.Cli** - opinionated, type-safe command/settings model (`[CommandArgument]` / `[CommandOption]`), DI support, and rich rendering (tables, prompts, progress bars). The best default for a polished, interactive CLI.
 - **Cocona** - minimal, attribute/convention-based, ASP.NET-Core-like ergonomics; fastest to stand up a small command surface.
 
-A CLI tool that also needs config, DI, and logging builds the generic host and drives the parser from it - `Host.CreateApplicationBuilder`, resolve the command handler from DI, return its exit code. Do not reach for a parser's abandoned hosting shim to do it. Signal handling and graceful shutdown for a tool that does real work are `dotnet-hosted-services`.
+A CLI tool that also needs config, DI, and logging builds the generic host and drives the parser from it - `Host.CreateApplicationBuilder`, resolve the command handler from DI, return its exit code. Do not reach for a parser's abandoned hosting shim to do it. The GA shape - `SetAction` on the command, values read from the `ParseResult` (the beta-era `SetHandler` surface is gone):
+
+```csharp
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddSingleton<IngestCommand>();
+using var host = builder.Build();
+
+var fileOption = new Option<FileInfo>("--file") { Description = "Input file" };
+var root = new RootCommand("Ingests a data file");
+root.Options.Add(fileOption);
+root.SetAction((parseResult, ct) =>
+    host.Services.GetRequiredService<IngestCommand>()
+        .RunAsync(parseResult.GetValue(fileOption)!, ct));   // Task<int> -> exit code
+
+return await root.Parse(args).InvokeAsync();
+```
+
+Signal handling and graceful shutdown for a tool that does real work are `dotnet-hosted-services`.
 
 ## Bots and gateway consumers
 
@@ -34,12 +51,3 @@ The one rule that spans all of them: **decouple the receive loop from the work.*
 ## Testing and time
 
 A bot's timed logic (poll intervals, backoff windows, rate limits) is tested by injecting `TimeProvider` and advancing a `FakeTimeProvider` - never real waits. Integration tests run the host against a fake gateway (a fake client, an in-memory channel), never the live Telegram / Discord / exchange endpoint. The full approach is `dotnet-testing`.
-
-## Companions
-
-- `dotnet-hosted-services` - the generic host a bot runs in, and the 24/7 hardening (resilience, rate limiting, reconnect, scheduling, deployment).
-- `dotnet-messaging` - the delivery contract for a broker-backed queue worker (outbox, idempotency, at-least-once).
-- `csharp` - the async, records, and `TimeProvider` mechanics.
-- `dotnet-testing` - `FakeTimeProvider` and fake-gateway integration tests.
-
-Do NOT load for the host lifecycle itself (that is `dotnet-hosted-services`), a web API or webhook endpoint (`dotnet-web-backend`), or a desktop GUI (`dotnet-wpf`).

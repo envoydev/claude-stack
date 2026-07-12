@@ -1,6 +1,6 @@
 ---
 name: dotnet-winforms
-description: "Personal WinForms conventions for maintenance and modernization - logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, disciplined control/component/GDI disposal under the handle wall, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Version mechanics live in references/: net-framework-48.md is the frozen 4.8 world, modern-net.md is .NET 8/9/10 (SDK-style, Control.InvokeAsync, async forms, dark mode, BinaryFormatter removal, WinForms-specific migration). Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Do NOT load for WPF (-> dotnet-wpf), WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> dotnet-hosted-services."
+description: "Personal WinForms conventions for maintenance and modernization - logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Do NOT load for WPF (-> dotnet-wpf), WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> dotnet-hosted-services."
 ---
 
 # WinForms conventions
@@ -92,6 +92,14 @@ and applies unchanged. The WinForms-specific points:
 
 - Bind controls through a **`BindingSource`**, not directly - it centralizes currency, position, and
   change notification and lets you swap the underlying list without rebinding every control.
+
+```csharp
+ordersSource.DataSource = new BindingList<Order>(orders);   // IBindingList: grid sees adds/removes
+ordersGrid.DataSource = ordersSource;
+nameTextBox.DataBindings.Add(
+    "Text", ordersSource, nameof(Order.CustomerName),
+    formattingEnabled: true, DataSourceUpdateMode.OnPropertyChanged);
+```
 - Two-way binding requires the bound type to implement **`INotifyPropertyChanged`** (raise it in
   setters); collections must be **`BindingList<T>`** (or another `IBindingList`) so the grid sees
   inserts and deletes. Convert display-to-storage with a `Binding`'s `Format` / `Parse` events.
@@ -215,6 +223,3 @@ build property on modern .NET) - see the references.
 - Any reference to a `Form`, `UserControl`, `Control`, or other view type - the moment one appears,
   the line has been crossed and the logic is no longer testable without a UI host.
 - `MessageBox.Show` - go through an injected dialog abstraction.
-- Blocking on a `Task` (`.Result` / `.Wait()`) - it deadlocks the UI thread.
-- Reaching into the view to read a control value - the view pushes state out through its `IView`
-  interface or a binding, never the reverse.

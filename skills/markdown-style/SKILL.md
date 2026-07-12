@@ -18,7 +18,7 @@ Two passes, syntax before style. The reviewer reads a syntax violation different
 
 ### Pass 1 - syntax (must-fix)
 
-Walk the file top to bottom. Syntax violations are bugs (invalid or non-portable Markdown: setext where ATX is expected, unfenced code block, missing blank line around a block element, `)` instead of `.` in an ordered list, missing space after `#`), not judgment calls - **fix them directly in one Edit pass**. No approval gate; the diff is self-explaining and each fix cites its rule by short name (e.g. `syntax/headings/atx-space-after`).
+Run `markdownlint` first when it is available - the mechanical checks (heading style, list markers, blank lines around blocks, fence style) are its job, and each hit maps onto a canon rule; then walk the file top to bottom for what a linter cannot see. Syntax violations are bugs (invalid or non-portable Markdown: setext where ATX is expected, unfenced code block, missing blank line around a block element, `)` instead of `.` in an ordered list, missing space after `#`), not judgment calls - **fix them directly in one Edit pass**. No approval gate; the diff is self-explaining and each fix cites its rule by short name (e.g. `syntax/headings/atx-space-after`).
 
 ### Pass 2 - style (should-fix)
 
@@ -84,9 +84,7 @@ Markdown **form** only - heading style, list indentation, code-fence language ta
 
 ## Hard limits
 
-- Syntax findings (must-fix) take precedence over style findings (should-fix). Never re-order.
 - Never invent rules. Every finding cites a rule from `references/syntax-canon.md` or `references/style-overlay.md`.
-- The style overlay is opinionated. On any dispute, defer to the user / project - note the conflict and move on.
 
 ## Examples
 

@@ -1,13 +1,13 @@
 ---
 name: dotnet-testing
-description: "Personal .NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility that maps onto whatever architecture the project picked (layered, vertical-slice, modular), coverage thresholds computed after exclusions, and library routing (xUnit/NUnit/MSTest, NSubstitute/Moq/FakeItEasy, FluentAssertions/AwesomeAssertions/Shouldly, coverlet). Floors at .NET 8 / C# 12 - TimeProvider plus FakeTimeProvider are the time seam. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp (testability, clock, async-returns-Task baseline), dotnet-error-handling (Result/exception shapes under assertion); Testcontainers (Postgres), Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest."
+description: "Personal .NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage thresholds computed after exclusions, and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest."
 ---
 
 # .NET Testing Approach
 
 This skill captures the **approach**, not a single library. The principles below apply regardless of which test runner, substitute library, or assertion library a project picks. Library routing is in §Library choices.
 
-**Floor: .NET 8 / C# 12.** The time seam is `TimeProvider` advanced via `FakeTimeProvider`; only fall back to a hand-rolled `IClock` on a pre-.NET-8 target. Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
+**Floor: .NET 8 / C# 12.** Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
 
 ## Test strategy by responsibility (architecture-neutral)
 
@@ -15,8 +15,8 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 
 - **Domain / business rules** - pure unit tests, no substitutes. Cover entities, value objects, domain services, domain events, invariants, guard clauses, factory methods, and every branch of a business rule including exception paths. Target ~100%.
 - **Use cases / handlers / orchestration** (the application logic of a slice or layer) - unit tests with all ports and abstractions substituted. Cover success paths, validation failures, exception handling, and orchestration branches. Target 95%+.
-- **Infrastructure / adapters** - test logic-bearing code only (mappers, parsers, serializers, policy classes, retry/backoff, non-trivial query logic). Use in-memory DB or Testcontainers when query logic is non-trivial. Do not write tests that only assert a substitute was configured.
-- **Integration / E2E** - defined per project in project CLAUDE.md.
+- **Infrastructure / adapters** - test logic-bearing code only (mappers, parsers, serializers, policy classes, retry/backoff, non-trivial query logic). Use in-memory DB or Testcontainers when query logic is non-trivial (`references/testcontainers.md`). Do not write tests that only assert a substitute was configured.
+- **Integration / E2E** - defined per project in project CLAUDE.md. For an Aspire-orchestrated app the harness is `references/aspire-integration-testing.md`.
 - **Negative-security paths** - assert the deny paths, not just the happy path: an expired or tampered token returns 401, N failed logins trip 429, and one user reading another's resource id returns 404. Explicit negative-security tests belong in the integration suite, not just the auth unit tests.
 
 ## Coverage
@@ -37,7 +37,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 - **AAA structure** (Arrange / Act / Assert). One logical behavior per test.
 - Every test asserts on **observable behavior or state** - no assertion-free or coverage-padding tests.
 - Cover edge cases: nulls, empty / boundary values, cancellation tokens, concurrency where relevant, and every thrown-exception path.
-- **Deterministic**: no real time (abstract `DateTime.UtcNow` via a clock; do not call it directly), no real I/O, no network, no `Thread.Sleep`. Seed any randomness. Inject `TimeProvider` - the .NET 8 abstraction (advance it in tests via `FakeTimeProvider`); only fall back to a hand-rolled `IClock` on a pre-.NET-8 floor.
+- **Deterministic**: no real time - never call `DateTime.UtcNow` directly; inject `TimeProvider` (the .NET 8 abstraction, advanced in tests via `FakeTimeProvider`; a hand-rolled `IClock` only on a pre-.NET-8 floor) and advance the clock explicitly. No real I/O, no network, no `Thread.Sleep`. Seed any randomness.
 - **Parameterized tests** for branch and boundary matrices instead of duplicated single-case tests.
 - **Test naming**: `Do_Something_When_Condition` (PascalCase with underscores) regardless of runner.
 - If production code is **untestable** (hidden statics, sealed deps, no seams, hidden side effects), refactor for testability (extract interface, constructor injection) rather than writing a bad test. Flag these explicitly.
@@ -81,6 +81,8 @@ Common rules regardless of library:
 | **Shouldly** | Project preference. Simpler API; good when FA's surface area feels heavy. |
 | **xUnit/NUnit/MSTest built-in `Assert`** | When the project has no FA/Shouldly dependency and stays minimal. |
 
+Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
+
 ### Coverage
 
 - **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
@@ -94,11 +96,10 @@ Common rules regardless of library:
 - Shared fixtures live in `*.TestSupport` / `*.Testing` projects when reused across multiple test projects; otherwise inline.
 - Run the suite at minimal verbosity so the captured output stays lean: `dotnet test -v minimal` (or `--logger "console;verbosity=minimal"`), and read a failure by windowing to the first error / failed assertion, not the whole log - test output is context every seat that runs the gate pays for.
 
-## Cancellation, async, time
+## Cancellation and async
 
 - Every async path under test that accepts `CancellationToken` gets a cancellation test (token already cancelled, token cancelled mid-flight where realistic).
 - Async tests return `Task` / `ValueTask` - never `async void`.
-- Time-dependent code uses an injected clock. In tests, advance the clock explicitly; do not `Thread.Sleep` or rely on wall-clock.
 
 ## Isolation and shared state
 
@@ -117,27 +118,10 @@ Common rules regardless of library:
 
 ## Auditing an existing suite
 
-The rules above are for *writing* tests; this is the *review* lens - when asked 'are these tests any good?', a test that passes can still prove nothing. Scan for the false-confidence anti-patterns first, because they are the ones that read as coverage while verifying nothing:
+The rules above are for *writing* tests; reviewing an existing suite is its own lens - a test that passes can still prove nothing. When asked 'are these tests any good?' (or to run mutation testing), load `references/suite-audit.md`: the false-confidence catalog to scan first (assertion-free / always-true, coverage-touching, tautological, missing-await, swallowed-exception, disabled assertions), the assertion-depth and mock-usage passes, and Stryker.NET mutation testing.
 
-- **No assertions / always-true** - runs code but never asserts (no `Assert.*` / `Should` / `Received()`), or asserts a constant (`Assert.True(true)`, `Assert.Equal(x, x)`). A mock verification (`Received()` / `Verify()` / `MustHaveHappened()`) does count as an assertion.
-- **Coverage-touching** - a *systematic* sweep calling every public member with no real assertion (or only a null check), to inflate the coverage number. The tell is the surface-area sweep, not a single missing assert.
-- **Tautological / self-referential assertion** - asserts an identity round-trip (`Assert.Equal(input, Parse(input.ToString()))`) or a field against itself (`Assert.Equal(dto.Name, dto.Name)`). It can only fail if the round-trip breaks; it never proves a transformation happened.
-- **Missing `await` on an async assertion** - an `async Task` test calling `Assert.ThrowsAsync(...)` (or a `.resolves`-style assertion) without `await`; it passes silently even when the assertion would fail.
-- **Swallowed exception / assert-only-in-catch** - `try { Act(); } catch { }`, or `catch (Exception ex) { Assert.Fail(ex.Message); }`; both pass when no exception is thrown even if the result is wrong. Use `Assert.Throws` / `Assert.ThrowsAsync`.
-- **Commented-out or disabled assertions** - the test still runs and 'passes', giving the illusion of coverage. (This is coverage-gaming; reject it in review - see the reward-hacking list in `dotnet-code-quality`.)
+## Routing (cross-skill)
 
-Beyond the catalog, two deeper passes: judge **assertion depth** (do the tests verify different facets of correctness, or restate one shallow check), and run a **mock-usage audit** - trace each substitute setup through the production path for that test's inputs and classify it *used* (reached), *unreachable* (a guard/throw/branch skips it), *unused* (production never calls it on any input), or *redundant* (the same setup duplicated across tests instead of shared). Delete unreachable and unused setups; share redundant ones. Mocking stable framework types (`ILogger`, `IOptions<T>`) is usually over-mocking - prefer the real instance.
-
-## Mutation testing - do the tests catch faults
-
-Coverage proves a line *ran*; it does not prove a test would *fail* if that line were wrong. Mutation testing closes that gap: **Stryker.NET** mutates the production code (flips a `>` to `>=`, a `+` to `-`, removes a statement) and reruns the tests - a mutant the suite kills is a fault the tests would catch, a *surviving* mutant is a real blind spot a high coverage number hid.
-
-- **Scope it** - run on critical / high-risk projects, never blindly across the whole solution. It is expensive and amplifies flaky or slow suites, so keep it off the fast PR path and stabilize the suite first.
-- Install as a local tool (`dotnet new tool-manifest`; `dotnet tool install dotnet-stryker`) for local-and-CI parity, then `dotnet stryker` on the target project.
-- Read the mutation score as a *test-quality* signal interpreted with judgment, not a vanity metric. It complements line/branch coverage (§Coverage) and the risk hotspots in `dotnet-code-quality` (`references/crap-analysis.md`) - all three answer different questions.
-
-## Routing
-
-- Snapshot / Verify assertions -> `references/snapshot-testing.md`; container-backed integration -> `references/testcontainers.md`; Aspire-orchestrated integration / E2E -> `references/aspire-integration-testing.md`.
-- Performance microbenchmarks -> `dotnet-diagnostics` (its `references/microbenchmarking.md`); crash / hang dump capture -> `dotnet-diagnostics` (its `references/dumps.md`); CRAP-score risk hotspots -> `dotnet-code-quality` (its `references/crap-analysis.md`); reward-hacking / coverage-gaming check before 'done' -> `dotnet-code-quality`.
-- Testability refactors, the clock (`TimeProvider` / `IClock`), and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`; exception / Result shapes under test -> `dotnet-error-handling`. Full .NET index: `dotnet`.
+- Performance microbenchmarks -> `dotnet-diagnostics` (its `references/microbenchmarking.md`); crash / hang dump capture -> `dotnet-diagnostics` (its `references/dumps.md`).
+- Reward-hacking / coverage-gaming check before 'done' -> `dotnet-code-quality`; CRAP-score risk hotspots -> its `references/crap-analysis.md` (paired at §Coverage above).
+- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`; exception / Result shapes under assertion -> `dotnet-error-handling`. Full .NET index: `dotnet`.

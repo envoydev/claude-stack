@@ -91,9 +91,9 @@ children), `ButtonBase.Command` / `CommandParameter` over `System.Windows.Input.
 
 ## BinaryFormatter is gone - move payloads to JSON
 
-- Obsolete from .NET 5, throws at runtime in .NET 8 (WinForms allowed via a compat switch), and the
-  implementation is **removed in .NET 9** (`PlatformNotSupportedException`; a compat NuGet package plus
-  a config switch re-enables it narrowly for clipboard / drag-drop).
+- The runtime status and replacement are `dotnet-security`'s (A08). The WinForms delta: .NET 8 still
+  allowed it behind a compat switch; .NET 9 removed the implementation (`PlatformNotSupportedException`;
+  a compat NuGet package plus a config switch re-enables it narrowly for clipboard / drag-drop).
 - .NET 10 redesigned the clipboard and `DataObject` (shared with WPF) with JSON APIs - `SetDataAsJson`,
   `TryGetData<T>` - so a custom clipboard or drag payload should serialize to JSON rather than lean on
   the compat shim, which is a bridge, not a destination.

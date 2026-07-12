@@ -1,6 +1,6 @@
 ---
 name: dotnet-realtime
-description: "Personal .NET real-time conventions for ASP.NET Core SignalR - server-to-client push over a persistent connection (WebSockets, with fallbacks), connection-scoped, not durable. Covers strongly-typed Hub<TClient>, sending from outside a hub via IHubContext, group/user/presence targeting, the reconnection model (group membership is NOT restored - rejoin explicitly), connection-time JWT-over-query-string auth plus per-message validation, additive client contracts, MessagePack, and multi-server scale-out via a Redis backplane or Azure SignalR Service. Floors at .NET 8 / C# 12. Load when building chat, notifications, live dashboards, collaboration, or any real-time push, or when the user names SignalR, hub, WebSocket, real-time, or live updates. Companions: dotnet-messaging (broker delivers durably, SignalR is the last hop), dotnet-authentication, dotnet-hosted-services (worker pushing via IHubContext), dotnet-web-backend. Do NOT load for broker-backed durable messaging (dotnet-messaging), request/response HTTP (dotnet-minimal-api), or in-process reactive streams (Rx / System.Reactive)."
+description: "Personal .NET real-time conventions for ASP.NET Core SignalR - server-to-client push over a persistent connection, connection-scoped, not durable. Covers strongly-typed Hub<TClient>, sending from outside a hub via IHubContext, group/user targeting, the reconnection model (group membership is NOT restored - rejoin explicitly), JWT-over-query-string auth plus per-message validation, additive client contracts, MessagePack, and scale-out via a Redis backplane or Azure SignalR Service. Floors at .NET 8 / C# 12. Load when building chat, notifications, live dashboards, or any real-time server push, or when the user names SignalR, hub, server-side WebSocket push, or live updates. Companions: dotnet-messaging (the durable leg), dotnet-authentication, dotnet-hosted-services, dotnet-web-backend. Do NOT load for broker-backed durable messaging (dotnet-messaging), request/response HTTP (dotnet-minimal-api), in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket to an external gateway (dotnet-hosted-services)."
 ---
 
 # .NET real-time - ASP.NET Core SignalR
@@ -118,11 +118,10 @@ builder.Services.AddSignalR()
     .AddStackExchangeRedis(builder.Configuration.GetConnectionString("redis")!);
 ```
 
-Crucially, a backplane is a **fan-out layer, not a store** - it does not persist messages or deliver to absent clients. Durable, guaranteed, replayable delivery is the broker's job (`dotnet-messaging`), not the backplane's. Connection strings come from configuration via the options pattern, never a literal - same rule as every other transport.
+Crucially, a backplane is a **fan-out layer, not a store** - it does not persist messages or deliver to absent clients; the durability rule from the top stands here too. Connection strings come from configuration via the options pattern, never a literal - same rule as every other transport.
 
 ## Anti-patterns
 
-- Treating SignalR as a durable queue - assuming a message reaches a client that is offline or mid-reconnect. At-most-once; put the guarantee in a broker (`dotnet-messaging`) and use SignalR as the last hop.
 - Storing per-connection state in hub fields - the hub instance is gone after the call.
 - Constructing or injecting a `Hub` subclass to send from elsewhere instead of `IHubContext<THub, TClient>`.
 - Not rejoining groups after a reconnect - the new connection is in no groups.

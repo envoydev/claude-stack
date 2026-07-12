@@ -1,6 +1,6 @@
 ---
 name: cross-stack-agents-flow
-description: "The entry-point router for multi-agent engineering work - classify a feature or bug, then run the smallest safe execution mode instead of always paying for the full team. Picks single-chat, one-implementer, a single-stack design-build-verify trio, or a cross-domain contract-frozen fan-out, and for cross-domain work owns the whole lifecycle: freeze the shared contract first, run each stack's vertical in parallel, then gate the assembled feature through the integration-reviewer before commit. Also the home of the shared subagent policies - contract change, structured output, progress ledger, model routing, token reduction, repo separation - that every seat references instead of restating. Triggers on how should I build or route this work, plan the agents for this, this spans backend and frontend and data, or investigate-and-fix a bug across the stack. A task that lives inside one stack hands off to main-stack-agents-flow; this skill routes and owns the cross-domain seams, it does not itself design or write code."
+description: "The entry-point router for multi-agent engineering work - classify a feature or bug, then run the smallest safe execution mode: single-chat, one implementer, a single-stack design-build-verify trio, or a cross-domain contract-frozen fan-out. For cross-domain work it freezes the shared contract, runs each stack's vertical in parallel, and gates the assembled feature through the integration-reviewer before commit. Triggers on how should I build or route this work, plan the agents for this, this spans backend and frontend, or investigate-and-fix a bug across the stack. A task inside one stack hands off to `main-stack-agents-flow`; this skill routes - it never designs or writes code."
 disable-model-invocation: true
 ---
 
@@ -66,9 +66,21 @@ Requirements clarified first (the feature-family gate above)
 
 Freeze the contract before any parallel domain work starts. Each domain pipeline runs `main-stack-agents-flow` for its stack against the frozen contract; the pipelines run in parallel, each internally sequential (designer -> implementers -> verifier). When every affected domain verifier has signed off, dispatch integration-reviewer over the assembled feature - it is independent of you and checks the seams the single-stack verifiers cannot see. Loop its punch-list back to the owning domains until it signs off, then commit.
 
+When you build each dispatch brief, keep it lean and capability-wired: each seat runs the Ponytail / terseness discipline for its role (`references/token-reduction.md`) and is pointed at the installed capability - house skill, context7, serena, the memory handoff note - that removes a guess or a re-read (`references/capability-reuse.md`). When frontend and backend live in different repositories, run one flow per repo joined by the shared contract and this same final gate - `references/repo-separation.md`.
+
+### Example - one routed run
+
+'Add CSV export to the orders page' - the ask is crisp (columns and filter named), so no clarification pass:
+
+1. task-analyzer scopes it: backend + angular, low risk, obvious stable contract -> **cross_domain_light**.
+2. Freeze Contract v1: the export route, its csv response shape, the error envelope, the existing orders auth policy.
+3. Run the aspnet and angular verticals in parallel against v1 - each the design-build-verify vertical `main-stack-agents-flow` documents, dispatched directly.
+4. Both domain verifiers sign off -> dispatch integration-reviewer; it probes the seam (content type, empty-result shape, auth on the new route) and signs off.
+5. Commit - authorized by the integration gate, not the domain sign-offs - and close out the ledger.
+
 ## The contract is law
 
-No seat may silently change a shared contract. A local implementation detail can change and continue; a shared-contract change (a route, a DTO, an error code, an auth policy, a schema/index semantic, a migration order, an env var, or frontend/WPF/mobile-visible behavior) must stop and emit BLOCKED_CONTRACT_CHANGE with a Contract Change Request. On a contract change: pause only the affected lanes, re-freeze to v2, broadcast v2, rebase the affected seats, and verify against v2 only. Full protocol and templates in `references/contract-protocol.md`.
+No seat may silently change a shared contract. A local implementation detail can change and continue; a shared-contract change - a route or DTO, an auth policy, a schema semantic, or anything else on the change list `references/contract-protocol.md` owns - must stop and emit BLOCKED_CONTRACT_CHANGE with a Contract Change Request. On a contract change: pause only the affected lanes, re-freeze to v2, broadcast v2, rebase the affected seats, and verify against v2 only. Full protocol, change list, and templates in `references/contract-protocol.md`.
 
 ## Progress ledger
 

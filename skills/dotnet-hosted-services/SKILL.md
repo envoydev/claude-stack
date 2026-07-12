@@ -1,6 +1,6 @@
 ---
 name: dotnet-hosted-services
-description: "Personal .NET hosted-service and worker conventions - the long-running background work the generic host runs. Covers the host shapes (a worker binary, a hosted task in a web app, a Windows Service), IHostedService versus BackgroundService versus IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services from the singleton host, PeriodicTimer over a Task.Delay loop, graceful shutdown via the stopping token, and queue-backed work via System.Threading.Channels - plus references/ for 24/7 hardening (socket exhaustion, resilience, rate limiting, reconnect), scheduling + leader election, and deployment/signals. Floors at .NET 8 / C# 12. Load when writing a worker service, a BackgroundService or IHostedService, a periodic job, a long-running bot/daemon host, or any in-process background task hung off the host. Companions: dotnet-messaging owns the broker and consumer contract, dotnet-web-backend the surrounding HTTP service, csharp the async and Channels mechanics. Do NOT load for broker-driven consumers, HTTP endpoints, or reactive in-memory streams."
+description: "Personal .NET hosted-service and worker conventions - the long-running background work the generic host runs. Covers the host shapes (a worker binary, a hosted task in a web app, a Windows Service), IHostedService versus BackgroundService versus IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services from the singleton host, PeriodicTimer over a Task.Delay loop, graceful shutdown via the stopping token, and queue-backed work via System.Threading.Channels - plus references/ for 24/7 I/O hardening, scheduling and leader election, and deployment/signals. Floors at .NET 8 / C# 12. Load when writing a worker service, a BackgroundService or IHostedService, a periodic job, a long-running bot/daemon host, or any in-process background task hung off the host. Companions: dotnet-messaging (broker and consumer contract), dotnet-web-backend, csharp. Do NOT load for broker-driven consumers, HTTP endpoints, or reactive in-memory streams."
 ---
 
 # .NET hosted services - background work on the generic host
@@ -35,9 +35,7 @@ Both register an `IHostedService` in the DI container; the host starts every reg
 
 A worker that runs under the Windows Service Control Manager (SCM) is the same worker binary plus the `Microsoft.Extensions.Hosting.WindowsServices` package and one call - `builder.Services.AddWindowsService(o => o.ServiceName = "...")`. It is a third way into the one hosting model, not a different model: everything above - base type, the exception trap, scoping, shutdown - applies unchanged. The call is context-aware, installing the `WindowsServiceLifetime` only when the process is actually running under the SCM (`WindowsServiceHelpers.IsWindowsService()`), so the identical binary still runs as a plain console app for local debugging - no separate build. It also points the host content root at `AppContext.BaseDirectory` and wires the Event Log provider. The legacy `ServiceBase`/`OnStart`/`installutil` pattern is obsolete for new work.
 
-- **Resolve every path against `AppContext.BaseDirectory`, never the current directory.** Under the SCM the process working directory is `C:\Windows\System32`, so `Directory.GetCurrentDirectory()` and every relative path silently resolve there - config not found, logs written to System32, `UnauthorizedAccessException`. `AddWindowsService` fixes the *host* content root, but your own file I/O does not inherit it; anchor it on `AppContext.BaseDirectory` (or `IHostEnvironment.ContentRootPath`).
-- **A clean host stop hides a fault from the SCM.** On the .NET 8 floor a fatal worker under `StopHost` shuts the host down cleanly - exit code 0 - so the SCM sees no failure and applies none of its recovery actions; the faulted process just stays stopped, looking healthy. For SCM-driven restart, end the process with a non-zero code (`Environment.Exit(nonZero)`) and configure matching recovery (`sc.exe failure`, typically restart/restart/take-no-action to avoid an infinite loop). The .NET 11+ change under Newer versions makes the host task itself throw - revisit any `Environment.Exit` workaround on upgrade.
-- **Run under a least-privilege account.** Prefer `LocalService` (no network credentials) or `NetworkService` (network under the machine identity) over `LocalSystem`, whose near-full machine privilege should be reserved for work that genuinely needs it. Tightest is a dedicated local account granted only the 'Log on as a service' right.
+The SCM-specific hardening - resolving every path against `AppContext.BaseDirectory` (the SCM working directory is System32), exiting non-zero so a fault actually triggers SCM recovery, and least-privilege service accounts - is in `references/deployment-and-observability.md` (Service-manager integration).
 
 ## Which base type: IHostedService, BackgroundService, IHostedLifecycleService
 
@@ -127,7 +125,7 @@ Shutdown is cooperative - the host signals, your code must respond. Honor the si
 - **The stopping token.** When the host stops, it cancels the `CancellationToken` passed to `ExecuteAsync` (and `StopAsync`). Check `IsCancellationRequested` in every loop and thread the token into every async call so an in-flight operation is asked to wind down. A worker that ignores the token blocks shutdown until the timeout below forces it.
 - **`StopAsync`.** Override it to release resources or finish a final flush. The host awaits it. The total time it allows across all services is `HostOptions.ShutdownTimeout`, which defaults to 30 seconds; raise it (`builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(60))`) only if a clean drain genuinely needs longer, and never let `StopAsync` run unbounded.
 - **`IHostApplicationLifetime`** when a worker must *itself* request shutdown - a fatal config error, a completed one-shot job. Inject it and call `StopApplication()`; register on `ApplicationStopping` to run last-gasp cleanup. This is how a worker ends the process deliberately rather than by throwing.
-- **Explicit signal handling is rarely needed** - the host already maps `SIGTERM`/`SIGINT` to this graceful shutdown. For a shutdown *side-effect*, use `PosixSignalRegistration.Create(PosixSignal.SIGTERM, ...)` (cross-platform, .NET 6+) over `Console.CancelKeyPress`, which catches only Ctrl+C and races the host stop. The full systemd / container / Kubernetes signal-and-drain contract is `references/deployment-and-observability.md`.
+- **Explicit signal handling is rarely needed** - the host already maps `SIGTERM`/`SIGINT` to this graceful shutdown; shutdown side-effects (`PosixSignalRegistration`) and the full systemd / container / Kubernetes signal-and-drain contract are `references/deployment-and-observability.md`.
 
 The contract is simple: cancel propagates in, the work drains within the timeout, the host exits. Code that does not observe the token is the reason a shutdown hangs.
 
@@ -161,16 +159,6 @@ The host is the engine; a worker or bot that stays up for weeks also has to surv
 - **`references/scheduling-and-coordination.md`** - when a plain loop is not enough: the Hangfire / Quartz.NET / Coravel decision, and single-instance leader election (RedLock.net / SQL lock, with the idempotency caveat).
 - **`references/deployment-and-observability.md`** - signals and the Kubernetes drain contract, systemd / container (chiseled non-root) integration, GC/AOT for a long-running process, and observability without an HTTP surface (health checks, `[LoggerMessage]`, OpenTelemetry).
 - **`references/concurrency.md`** - the worker-loop concurrency correctness this all rests on.
-
-## Anti-patterns
-
-- Letting an exception escape `ExecuteAsync` with no strategy - the host silently stops the worker (`Ignore`) or the whole process (`StopHost`, the default) and nobody notices until the work has been dead for days.
-- Injecting a scoped service (a `DbContext`, a repository) into a `BackgroundService` constructor - a captive dependency. Open an `IServiceScopeFactory` scope per unit of work instead.
-- Real work inside `StartAsync` instead of `ExecuteAsync` - it blocks host startup until that work finishes.
-- A `while (true) { ...; await Task.Delay(interval); }` loop for periodic work, where `PeriodicTimer` would hold the cadence and cancel instantly.
-- A worker loop that never checks the stopping token or thread it into its awaits - shutdown hangs until `ShutdownTimeout` forces a kill.
-- An unbounded in-memory channel or `ConcurrentQueue` standing in for a durable queue - it loses everything on restart. Cross-process or at-least-once work is a broker, per `dotnet-messaging`.
-- Spinning up a separate worker binary for background work that shares a web app's configuration and DI, when `AddHostedService<T>()` inside the web app would do.
 
 ## Newer versions (optional)
 

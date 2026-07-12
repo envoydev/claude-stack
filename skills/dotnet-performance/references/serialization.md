@@ -15,7 +15,7 @@ Anything crossing a process boundary should use a schema-based format - Protobuf
 | a cache or broker messages | MessagePack | compact, fast |
 | an event store (read forever) | Protobuf or MessagePack | must decode old events indefinitely |
 
-Avoid: `BinaryFormatter` (removed, remotely exploitable - never), Newtonsoft with `TypeNameHandling` (embeds .NET type names), `DataContractSerializer` and XML (verbose, weak versioning). For a hot path, MessagePack or Protobuf beat any JSON on both speed and size.
+Avoid: `BinaryFormatter` (never - status and replacement are `dotnet-security`'s A08), Newtonsoft with `TypeNameHandling` (embeds .NET type names), `DataContractSerializer` and XML (verbose, weak versioning). For a hot path, MessagePack or Protobuf beat any JSON on both speed and size.
 
 ## System.Text.Json with source generation
 

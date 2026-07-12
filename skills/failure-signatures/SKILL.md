@@ -1,6 +1,6 @@
 ---
 name: failure-signatures
-description: Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know what the signature means and where the real cause lives. A lookup of the common local-runtime failure signatures (null-reference, DI / composition-root resolution, async deadlock / sync-over-async hang, race / shared mutable state, disposed-lifecycle, config / environment drift, boundary / off-by-one, database contention / exhaustion, HTTP error with a clean response) each mapped to where to isolate it - which is usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method (this names the signature, that runs the hypothesis-and-test loop). Keywords NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, IndexOutOfRangeException, 401, 403, config drift.
+description: Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method. NOT for a CI or build/test-gate failure (the resolvers and ci-failure-diagnoser own those) or a production incident - local-runtime evidence only. Keywords NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, IndexOutOfRangeException, 401, 403, config drift.
 ---
 
 # Failure Signatures - what the crash means and where the cause actually lives
@@ -21,4 +21,12 @@ Every runtime failure has a signature, and the signature names where to look - w
 
 ## How to use it
 
-Match the evidence to one signature, form the fewest hypotheses it warrants, and confirm each against located code before you touch anything - root cause before symptom, never a plausible guess. Once the cause is proven, load the stack's house skill for the fix convention - your project's convention rules auto-attach it on a matching file touch. If the signature stays ambiguous after two passes, report the surviving hypotheses and what would decide between them rather than guessing.
+Match the evidence to one signature, form the fewest hypotheses it warrants, and confirm each against located code before you touch anything - root cause before symptom, never a plausible guess. State the match in three lines - the quoted evidence, the signature, the isolation point (and the hypothesis it warrants) - then run the loop:
+
+```text
+Evidence:  'ObjectDisposedException: Cannot access a disposed context instance' in OrderSyncJob.ExecuteAsync
+Signature: disposed / lifecycle - a DbContext captured past its scope.
+Isolate:   the lifetime boundary - the scoped DbContext resolved once and stored on the singleton job - not the query line that threw.
+```
+
+Once the cause is proven, load the stack's house skill for the fix convention - your project's convention rules auto-attach it on a matching file touch. If the signature stays ambiguous after two passes, report the surviving hypotheses and what would decide between them rather than guessing.

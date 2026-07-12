@@ -1,6 +1,6 @@
 ---
 name: mobile-security
-description: "Personal Ionic / Capacitor mobile security-hardening reference for the native attack surface a WebView app adds on top of its web risks: secret storage in the Keychain / Keystore (never localStorage or Preferences, which are plaintext on-device), deep links and custom schemes treated as untrusted input, least-privilege native permissions, cleartext-traffic and WebView-debugging disabled in release, an allowNavigation allowlist and no live-reload server.url in production, the iOS backgrounding snapshot and Android FLAG_SECURE, third-party plugin trust, and optional certificate pinning and biometric gating. Targets Capacitor 6+ (8 current). Load when hardening or reviewing an Ionic/Capacitor feature for vulnerabilities, or when the security-auditor sweeps the mobile stack. Points at angular-security for the web-layer XSS/DOM, dotnet-security for the API, and capacitor-release for signing. Do NOT load for non-security work."
+description: "Personal Ionic / Capacitor mobile security-hardening reference for the native attack surface a WebView app adds beyond its web risks: secret storage in the Keychain / Keystore (never localStorage or Preferences - plaintext on-device), deep links as untrusted input, least-privilege native permissions, cleartext traffic and WebView debugging off in release, an allowNavigation allowlist and no live-reload server.url in production, FLAG_SECURE and backgrounding snapshots, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Load when hardening or reviewing an Ionic/Capacitor feature, or when the security-auditor sweeps the mobile stack. Points at angular-security, dotnet-security, capacitor-release. Do NOT load for non-security work."
 ---
 
 # Ionic / Capacitor mobile security
@@ -16,6 +16,14 @@ An Ionic app is an Angular app running in a native WebView with a bridge to nati
 ## Deep links, custom schemes, universal links
 
 - A deep link - a custom scheme (`myapp://`) or an App / Universal Link - is **attacker-reachable input**. Validate every parameter before it routes, authenticates, or performs an action; never auto-run a state-changing operation from a deep link without a confirmation step.
+
+```typescript
+App.addListener('appUrlOpen', ({ url }) => {
+  const path = new URL(url).pathname;   // parse - never route the raw string
+  const allowed = /^\/(orders|profile)(\/[\w-]+)?$/.test(path);
+  this.zone.run(() => this.router.navigateByUrl(allowed ? path : '/home'));
+});
+```
 - Custom schemes can be registered by other apps on the device (scheme hijacking) - prefer verified **App Links (Android) / Universal Links (iOS)** for anything sensitive, since they are domain-bound.
 
 ## Native permissions

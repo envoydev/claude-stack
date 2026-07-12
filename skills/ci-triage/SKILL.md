@@ -1,6 +1,6 @@
 ---
 name: ci-triage
-description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat. Covers compile/restore, green-locally-red-on-the-runner, quality-gate, signing/release, workflow-config drift, and infra-flake signatures, plus the gh mechanics to pull the failing log. Trigger on red CI, PR check failing, GitHub Actions failed, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is failure-signatures), not authoring CI/CD (that is devops).
+description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat. Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is failure-signatures), not authoring CI/CD (that is devops).
 ---
 
 # CI Triage - turn a red pipeline into a verdict and a route
@@ -24,4 +24,18 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 
 ## Route it
 
-State the verdict per failing job: the signature, the code-vs-environment call, and where it goes - a code defect to the fix (the matching build/test resolver in the flow, or fix it inline), an environment / pin / workflow delta back to you with the named delta, a proven flake to a re-run. Never route a config or runner failure to a code fix - it will thrash on code that was never wrong. If the evidence does not fit a signature, say so and pull the fuller log rather than force-fit one.
+State the verdict per failing job: the signature, the code-vs-environment call, and where it goes - a code defect to the fix (the matching build/test resolver in the flow, or fix it inline), an environment / pin / workflow delta back to you with the named delta, a proven flake to a re-run. Never route a config or runner failure to a code fix. If the evidence does not fit a signature, say so and pull the fuller log rather than force-fit one.
+
+Worked example - the failed step's first error line reads:
+
+```text
+error NU1301: Unable to load the service index for source https://pkgs.example.com/nuget/v3/index.json. Response status code does not indicate success: 401 (Unauthorized).
+```
+
+The three-line verdict it produces:
+
+```text
+signature: restore - NU1301 against the private feed, 401
+call: environment - the runner's feed credential expired; the code and lockfile never changed
+route: fix the feed secret in the workflow, then re-run; no code fix
+```

@@ -5,7 +5,7 @@ description: "PostgreSQL engine specialist - the Postgres-specific delta on top 
 
 # postgres (engine specialist)
 
-The Postgres-specific layer. **Cross-engine conventions live in `database-conventions`** (surrogate keys, 3NF, keyset pagination, no `SELECT *`, bound result sets, short transactions, `FOR UPDATE SKIP LOCKED`, advisory locks, deadlock ordering, migration reversibility, `... CONCURRENTLY` builds, drop-unused indexes) - load that hub first and do not restate it here. RLS basics and least-privilege logins live in `data-security`. The .NET/EF Core side lives in `dotnet-data-access`. This file is only what changes *because the engine is Postgres*.
+The Postgres-specific layer. **Cross-engine conventions live in `database-conventions` - load that hub first and do not restate it here.** RLS basics and least-privilege logins live in `data-security`. The .NET/EF Core side lives in `dotnet-data-access`. This file is only what changes *because the engine is Postgres*.
 
 ## Schema and types
 
@@ -99,17 +99,8 @@ analyze orders;
 
 ## Full-text search
 
-`like '%term%'` cannot use an index. Use a stored `tsvector` + GIN + `@@`:
-
-```sql
-alter table articles add column search_vector tsvector generated always as
-  (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,''))) stored;
-create index articles_search_idx on articles using gin (search_vector);
-select * from articles where search_vector @@ to_tsquery('english', 'postgres & performance') order by ts_rank(...);
-```
-
-`to_tsquery` operators: `&` AND, `|` OR, `:*` prefix.
+`like '%term%'` cannot use an index. Use a stored `tsvector` column + GIN + `@@` - the working recipe (generated column, index, query operators) is in `references/full-text-search.md`.
 
 ## RLS policy performance
 
-Only when RLS is the tenancy mechanism (policy *basics* are owned by `data-security`): wrap a function call in a scalar sub-select so it evaluates once, not per row - `using ((select current_setting('app.user_id')::bigint) = user_id)`; always index the column a policy filters on; for complex checks use a `security definer` helper in a non-exposed schema with an explicit caller-identity check inside and `execute` revoked from public.
+Only when RLS is the tenancy mechanism (policy *basics* are owned by `data-security`): make policy functions evaluate once per query instead of per row, and index the column every policy filters on - the patterns are in `references/rls-performance.md`.

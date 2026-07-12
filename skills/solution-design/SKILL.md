@@ -1,17 +1,15 @@
 ---
 name: solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat. Reads the committed architecture, judges where the change belongs (extend an existing seam, refactor first, or isolate a new boundary) tied to the forcing edge, names the stack's real traps by loading that stack's house skill, then decomposes the work into an ordered, minimal build plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is cross-stack-agents-flow / main-stack-agents-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
+description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is cross-stack-agents-flow / main-stack-agents-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
 
 The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan, all in the current context so you can inspect and correct each step instead of reading a dispatched agent's final report. It plans; it does not write the code (that is the build step under the stack skill) and it does not audit its own plan (that is `verify-plan`).
 
-## When to use / not
+## When not
 
-- Use it the moment you have a feature or non-trivial change and want the integration shape before building - especially across 2+ modules, a new component, or a new dependency.
-- Not for a one-line edit or a change with an obvious single home - just make it.
-- Not the multi-agent path: when you want isolated parallel seats, that is `cross-stack-agents-flow` / `main-stack-agents-flow` dispatching the designer agent. This is the in-context twin for single-chat work.
+- Not for a change with an obvious single home - just make it.
 - Not plan *audit* (`verify-plan`) or built-code review (`/code-review`) - those come after.
 
 ## The method - orient, judge, decompose

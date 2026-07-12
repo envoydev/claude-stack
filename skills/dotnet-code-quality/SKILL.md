@@ -1,6 +1,6 @@
 ---
 name: dotnet-code-quality
-description: "Personal .NET conventions for mechanically enforcing code quality - making the house style a build gate, not a review opinion. Covers the formatter-vs-analyzer split (CSharpier owns layout, .editorconfig + analyzers own rules), SDK analyzers (EnableNETAnalyzers / AnalysisLevel / AnalysisMode in Directory.Build.props), one root .editorconfig as the single severity source, TreatWarningsAsErrors discipline (never suppress to go green), batch-promotion for a legacy warning backlog, optional Roslynator, and the dotnet build CI gate. Floors at .NET 8 / C# 12. Load when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate, or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. Companions: csharp (the conventions this enforces), dotnet-project-setup (Directory.Build.props), dotnet-security (CA3xxx/CA5xxx rules), dotnet-migrate (analyzer churn on upgrades). Do NOT load for authoring Roslyn analyzers/source generators (dotnet-source-generators) or test-suite quality (dotnet-testing)."
+description: "Personal .NET conventions for mechanically enforcing code quality - making the house style a build gate, not a review opinion. Floors at .NET 8 / C# 12. Load when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate, or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. Companions: csharp (the conventions this enforces), dotnet-project-setup (Directory.Build.props), dotnet-security (CA3xxx/CA5xxx rules), dotnet-migrate (analyzer churn on upgrades). Do NOT load for authoring Roslyn analyzers/source generators (dotnet-source-generators) or test-suite quality (dotnet-testing)."
 ---
 
 # .NET code quality - enforcement, not opinion
@@ -91,13 +91,3 @@ The recurring ways a change fakes a green build instead of earning it - reject e
 | Inline `Version=` / `VersionOverride` bypassing central package management, or downgrading a package to dodge a conflict | keep versions central, fix the conflict (`dotnet-project-setup`) |
 
 The build gate above catches the warning-suppression rows automatically; the rest are a review discipline. A check that only notices them after merge has already paid for the slop.
-
-## Anti-patterns
-
-- Suppressing, downgrading, or `NoWarn`-ing a warning to make a red build green instead of fixing the code.
-- Running CSharpier and `dotnet format` as competing formatters, or leaving formatting ownership undocumented.
-- Blanket `TreatWarningsAsErrors=true` on a large legacy repo in one commit instead of batch promotion.
-- Per-project analyzer settings copied across csproj files instead of one `Directory.Build.props`.
-- Multiple `.editorconfig` files (or IDE settings) disagreeing on the same rule's severity; severity that lives anywhere but version control.
-- Adding StyleCop/Roslynator/Meziantou on top of the SDK analyzers with no consolidation plan, so packs enforce conflicting rules.
-- Installing CSharpier or Roslynator as a global tool, so CI and local machines drift.

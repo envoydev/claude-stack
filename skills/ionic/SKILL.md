@@ -79,7 +79,7 @@ App.addListener('backButton', ({ canGoBack }) =>
 ```
 
 ## Native-vs-web fallbacks - degrade, never crash
-- Every native call needs a defined web path so the PWA and `ionic serve` dev build still run. The branch lives in the wrapping service, not the component.
+- Every native call needs a defined web path so the PWA and `ionic serve` dev build still run.
 - Three fallback shapes, in order of preference: (1) a real web implementation when the plugin ships web support (Capacitor's official plugins mostly do - Camera falls back to file input, Preferences to localStorage); (2) a degraded-but-functional stand-in (share via the Web Share API, or copy-link when even that is absent); (3) an explicit, typed 'unavailable' result the UI can render as a disabled affordance. Prefer the highest one the plugin and target support - a silent no-op is the one outcome to avoid, because it looks like a bug.
 - Feature-detect, don't assume: gate on `Capacitor.isPluginAvailable('Camera')` and the platform, not on a try/catch that swallows everything.
 
@@ -99,34 +99,13 @@ Preference order when you need a plugin:
 
 Before adopting any third-party plugin: confirm its latest major matches your Capacitor version, check recent releases / commits (maintenance), and verify iOS / Android / web platform support. Per-plugin install and config is fetched live - context7 or the plugin's own README, since it drifts per release; the durable sourcing and typed-wrapping policy is here.
 
-## Wrapping
-- Call a plugin only through a typed Angular service - never the plugin API scattered across components. The service owns the permission check, the web fallback, and error mapping (a denied permission or missing capability is a `Result`, not an unhandled throw).
-
-## Native-feature architecture
-The typed wrapping service is the unit for these too: each owns its permission check, its web fallback, its listener lifecycle, and its error-to-`Result` mapping. The three cases below are the cross-cutting ones nearly every production app hits. Per-plugin install and API mechanics are fetched live (context7 or the plugin README); what follows is the house shape that sits on top.
-
-### Push notifications
-- Permission then register, never the reverse: run the `checkPermissions()` -> `requestPermissions()` cycle (same order as any permission-gated API), and only call `PushNotifications.register()` once the status is `'granted'`. `register()` itself does not prompt - it triggers the `'registration'` event with the token, or `'registrationError'`. On Android 12 and below the permission is always granted; on iOS the first check prompts, so still gate it behind a UI affordance that explains why.
-- Token-to-server lifecycle is the service's job, not the page's: on `'registration'`, POST the token to your backend keyed to the current user/device; treat the token as rotating - re-register on app start and on resume, and re-send when it changes, because a stale token silently drops delivery. On logout, unregister (which deletes the FCM token / unregisters APNS) and tell the server to forget it.
-- Two delivery seams, handled distinctly: `'pushNotificationReceived'` fires while the app is foregrounded (decide in-app banner vs silent state update; on iOS use `presentationOptions` to control whether the OS also shows it), while `'pushNotificationActionPerformed'` fires when the user taps a notification from the background/tray - route that one onto the Angular Router from the payload, reusing the deep-link mapping below. Register both listeners once in the app-level service and tear them down via `removeAllListeners()`, per the lifecycle rule above.
-- Web fallback: push is native-only - the service exposes a typed `'unavailable'` on web rather than throwing, so the PWA build still runs.
-
-### Deep links / universal links
-- One `App.addListener('appUrlOpen', ...)` in the app-level service maps the incoming URL onto the Angular Router - parse the path off the URL and hand it to `Router.navigateByUrl`. Strip the scheme/host to a router-relative path (split on your domain and take the tail) rather than passing the raw URL; guard unmatched paths to a fallback route instead of navigating blindly. This is the same listener push-tap routing feeds into, so keep one mapping function both call.
-- The native side this depends on is config, not code, and ships only when set up: iOS needs an associated-domains entry (`applinks:yourdomain.com`) in Signing and Capabilities plus the matching apple-app-site-association file served from the site's well-known path; Android needs an intent-filter with `android:autoVerify="true"` on the activity and the assetlinks.json (carrying the signing-cert SHA256) likewise served. Flag both as prerequisites - the listener is a no-op until the two-way site association verifies.
-- Register the listener early (it can deliver the launch URL), capture the handle, and remove it on teardown like every other `App` listener.
-
-### Offline-first sync
-- Local store is the source of truth, the network is an optimization: the UI reads from and writes to the local store and never blocks on connectivity. Pick by data shape - Preferences for small key/value (flags, last-synced cursor, the queue head), SQLite for real relational/list data; do not abuse Preferences as a database.
-- Queue writes, drain on reconnect: a mutation writes locally and enqueues a pending operation; a `Network.addListener('networkStatusChange', ...)` (seeded by an initial `getStatus()`) drains the queue when `connected` flips true, reconciles server responses back into the local store, and surfaces conflicts as a typed `Result` rather than a throw. Keep the queue and the drain in the wrapping service so pages stay connectivity-agnostic.
-- Re-read connectivity on resume (it may have changed while backgrounded) and trigger a drain there too, tying into the existing resume handler.
+## Wrapping - the typed-service contract
+- Call a plugin only through a typed Angular service - never the plugin API scattered across components. The service is the single owner of the whole native seam: the permission check, the web-fallback branch, the listener lifecycle, and error mapping (a denied permission or missing capability is a `Result` the UI renders, not an unhandled throw).
+- The cross-cutting native features nearly every production app hits - push notifications, deep links / universal links, offline-first sync - are each built as one of these services; their house shapes (token lifecycle, URL-to-route mapping, queue-and-drain) live in `references/native-features.md`.
 
 ## Testing the native seams
 - Unit-test the wrapping service, not the device: with the plugin mocked (the runner's spy - `jest.fn()` or `jasmine.createSpyObj`, per `angular-conventions`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
 - Do not try to drive real native plugin behavior in a jsdom unit test - the bridge is not there, so a test that 'exercises' the native path is only exercising your mock. Keep those tests honest about that boundary.
 - Reserve appium-mcp (opt-in, heavy - needs Xcode/Android SDK + Java) for true device/E2E smoke of the few native-critical flows (push tap -> route, deep-link cold start, an offline-then-reconnect drain). Smoke the handful that would silently break in production, not the whole surface.
 
-## Anti-patterns
-- A native plugin call with no web fallback (breaks the dev / PWA build); permissions requested up front; raw plugin APIs in components; an unmaintained one-off plugin where an official / Capawesome / community one exists; hardcoded theme colors instead of Ionic CSS variables.
-
-<!-- House Ionic/Capacitor conventions; in-app navigation + page lifecycle owned in references/navigation-and-lifecycle.md; component APIs / theming fetched live via context7 / the Ionic docs. -->
+<!-- House Ionic/Capacitor conventions; in-app navigation + page lifecycle owned in references/navigation-and-lifecycle.md, the push/deep-link/offline shapes in references/native-features.md; component APIs / theming fetched live via context7 / the Ionic docs. -->

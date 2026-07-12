@@ -1,6 +1,6 @@
 ---
 name: csharp-design-patterns
-description: Apply GoF design patterns idiomatically in C#/.NET. Use this skill whenever the user asks to implement, choose, explain, or compare a design pattern in C#, refactor C# code toward a pattern, review code for pattern misuse, or asks 'which pattern fits this problem'. Also trigger when the user describes a recurring design problem in .NET code (object creation sprawl, switch-on-type logic, tight coupling, notification chains, undo/redo, plugin architecture) even without naming a pattern. Covers all 23 GoF patterns with modern .NET 8+ idioms; pair with `csharp` for output style. Do NOT use for architectural patterns (repository, unit of work, CQRS, event sourcing, layering) - those route via `dotnet` to `dotnet-architecture`.
+description: Apply GoF design patterns idiomatically in C#/.NET. Use whenever the user asks to implement, choose, explain, or compare a design pattern in C#, refactor toward a pattern, review for pattern misuse, asks 'which pattern fits this problem' - or describes a recurring design problem (object creation sprawl, switch-on-type logic, tight coupling, notification chains, undo/redo, plugin architecture) without naming a pattern. Covers all 23 GoF patterns with modern .NET 8+ idioms; pair with `csharp` for output style. Do NOT use for architectural patterns (repository, unit of work, CQRS, event sourcing, layering) - those route via `dotnet` to `dotnet-architecture`.
 ---
 
 # C# Design Patterns

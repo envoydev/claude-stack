@@ -1,0 +1,9 @@
+# Minimal APIs past the .NET 8 floor
+
+Version-gated additions to the endpoint surface. The floor rules in the skill body stand unchanged; open this when the project targets past .NET 8 (or is weighing Native AOT).
+
+- **.NET 9+:** the built-in OpenAPI generator (`AddOpenApi()` / `MapOpenApi()`) supersedes Swashbuckle - see `dotnet-openapi`.
+- **.NET 10+:** first-party validation (`AddValidation()`) runs `[Required]` and friends from `DataAnnotations` without a third-party library, and honors type-level `ValidationAttribute`s and `IValidatableObject.Validate` for cross-field rules. The real gap is async: no async or DI-resolved rule (a uniqueness check against the database) is supported on that path. For those the validator-in-a-filter approach in the skill body still carries the case and is what `dotnet-web-backend` assumes.
+- Rate limiting (`AddRateLimiter`, .NET 7+) and output caching (`AddOutputCache`, .NET 7+) both attach to a group with a single fluent call - configure them per `dotnet-web-backend`.
+- **.NET 8+ Native AOT:** minimal APIs are the only AOT-friendly HTTP stack (MVC is not). To stay AOT-clean, publish with `PublishAot`, let the request-delegate generator source-generate the endpoint plumbing instead of reflection-emitting it, and register a `System.Text.Json` `JsonSerializerContext` source generator to cover both bind-in and serialize-out. Reflection-based (de)serialization and reflection-heavy libraries in the request path break AOT - build with the AOT-analysis warnings on to catch them. Payoff is faster startup, lower memory, and a small self-contained binary.
+- **.NET 10+:** `TypedResults.ServerSentEvents(...)` is a first-class return type for one-way server-to-client push - progress, live feeds, token streaming - over a plain HTTP connection, lighter than SignalR or raw WebSockets when you need push, not a duplex channel. This skill owns only the return type; the streaming design is `dotnet-realtime`.

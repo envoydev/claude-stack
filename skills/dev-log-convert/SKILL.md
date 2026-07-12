@@ -81,6 +81,7 @@ Total time: <sum across all groups>.
 - Accept Ukrainian variants in input: `г`, `год`, `гг`, `хв`, `хвил` - treat as hours/minutes accordingly.
 - Accept decimal hours in input and convert: `0.25h` → `15m`, `0.5h` → `30m`, `0.75h` → `45m`, `1.25h` → `1h 15m`, `2.5h` → `2h 30m`.
 - If time is not provided for a task, write `(time not specified)`.
+- Self-check before output: re-add each day's task times and confirm the sum equals the printed `Total time` (a `(time not specified)` line counts as zero); on a mismatch, recompute the total from the task lines - never print an unverified sum.
 
 **Task grouping within a day**
 - Keep only the main points - no extra explanations, no step-by-step process.
@@ -94,7 +95,7 @@ Total time: <sum across all groups>.
 - Do not append a signal that duplicates information already present in the summary.
 
 **Implicit investigation**
-- If a task was fully completed within the day (a fix applied or a feature fully implemented in that single day) and the input contains no mention of investigation, analysis, or research, open the summary with `Investigated <brief topic>.` followed by the fix/implementation sentence.
+- If a task was fully completed within the day (a fix applied or a feature fully implemented in that single day) and the input contains no mention of investigation, analysis, or research, open the summary with `Investigated <brief topic>.` followed by the fix/implementation sentence - a task diagnosed and fixed inside one day always began with finding the cause, and the log should credit that work even when the notes skip it.
 - Do not add this when: the task is ongoing across multiple days, the summary already starts with an investigation verb, or the input explicitly mentions investigation/analysis.
 
 **Multiple days**
@@ -111,20 +112,7 @@ Total time: <sum across all groups>.
 
 ## Style guidance
 
-**Verb openers to prefer at the start of summaries**
-- Investigation: `Investigated`, `Reviewed`, `Analyzed`
-- Implementation: `Implemented`, `Added`, `Created`, `Refactored`
-- Fixes: `Fixed`, `Removed`, `Updated`, `Adjusted`
-- Process: `Tested`, `Merged`, `Posted`, `Documented`
-
-**Recurring non-ticket items (always `Other`)**
-
-Match input phrasing to a consistent canonical form. Common patterns:
-- Daily syncs: `Daily standup.`, `Daily call.`
-- Weekly syncs: `Weekly standup. Code review.`, `Weekly call. Code review.`, `Weekly call. Show developing progress within week.`
-- Ad-hoc calls: `Call with <Name>, discussed <topic>.`
-- Recurring team-specific calls: keep the original short name (e.g. `<X> Weekly Meeting call.`)
-- Merge request review: `Review merge requests of <project> project.` or `Review merge requests of <projectA> and <projectB> projects.`
+Open each summary with a past-tense verb, and render recurring non-ticket items (standups, weekly calls, merge request review - always `Other`) in a consistent canonical form matched to the input phrasing. The preferred verb openers and the canonical-form patterns: `references/style-guidance.md`.
 
 ## Examples
 
@@ -144,52 +132,8 @@ Monday:
 Total time: 3h 30m.
 ```
 
-### Example 2 - multi-prefix day, mixed-language input, no explicit project labels
+More worked examples - a multi-prefix day grouped by ticket prefix, and a multi-project day with explicit labels: `references/examples.md`.
 
-Input:
-> Сьогодні: XYZ-7169 - 3г, переніс legend control на чарт, зробив half-view / full-view конфіг. XYZ-7205 - 2.5г, виправив issue з статусом job у JobScheduler. Daily standup - 15хв. ABC-1456 - 30хв, написав результат investigation у Confluence та Jira. Дзвінок з командою - 30хв.
-
-Output (groups labeled by prefix because no project name was given):
-```
-Log of work 20.05.2026.
-
-Wednesday:
-
-XYZ:
-1 XYZ-7169 (3h) - Moved the legend control onto the chart and added half-view / full-view configuration.
-2 XYZ-7205 (2h 30m) - Investigated a job status issue in JobScheduler and fixed it. Testing. Merged changes.
-3 Other (15m) - Daily standup.
-
-ABC:
-1 ABC-1456 (30m) - Posted the full investigation result to Confluence and Jira.
-2 Other (30m) - Call with team, discussed ongoing topics.
-
-Total time: 6h 45m.
-```
-
-### Example 3 - multi-prefix day, explicit project labels, several prefixes per project
-
-Input:
-> Today on ProjectA: ABC-100 - 1h fixed null reference in service layer, merged. DEF-15 - 30m, reviewed PR comments and updated the migration. Daily standup ProjectA - 15m.
-> ProjectB: XYZ-7218 - 45m, implemented last recommendation column, created MR. Weekly standup ProjectB with code review - 1h.
-
-Output:
-```
-Log of work 12.05.2026.
-
-Tuesday:
-
-ProjectA:
-1 ABC-100 (1h) - Fixed a null reference in the service layer. Testing. Merged changes.
-2 DEF-15 (30m) - Reviewed PR comments and updated the migration.
-3 Other (15m) - Daily standup.
-
-ProjectB:
-1 XYZ-7218 (45m) - Implemented the last recommendation column. Created merge request.
-2 Other (1h) - Weekly standup. Code review.
-
-Total time: 3h 30m.
-```
 ## Output presentation
 
 Always wrap the final log in a fenced code block (triple backticks, no language tag). This ensures formatting markup is visible and a copy button appears in the UI.

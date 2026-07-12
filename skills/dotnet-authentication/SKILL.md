@@ -1,6 +1,6 @@
 ---
 name: dotnet-authentication
-description: "Personal ASP.NET Core auth conventions covering both halves - authentication (who the caller is) and authorization (what they may do). Pick the scheme by surface: JWT bearer for stateless APIs, cookies for server-rendered apps, OpenID Connect for delegated SSO. Validate every token field, lean on ASP.NET Identity as the user store, and gate access with named policies and authorization handlers rather than scattered role strings. Covers claims, API keys, scheme selection, and where secrets live. Floors at .NET 8 / C# 12. Load before standing up a sign-in flow, wiring JWT or OIDC, writing an authorization policy, or protecting an endpoint. Companions: csharp (TimeProvider over DateTime.Now), dotnet-minimal-api (RequireAuthorization on route groups), dotnet-web-backend (HTTP cross-cutting), dotnet-cryptography (key and constant-time-compare primitives), dotnet-security (the OWASP access-control threat model). Skip when the code has no auth surface."
+description: "Personal ASP.NET Core auth conventions covering both halves - authentication (who the caller is) and authorization (what they may do). Pick the scheme by surface: JWT bearer for stateless APIs, cookies for server-rendered apps, OpenID Connect for delegated SSO. Validate every token field, lean on ASP.NET Identity as the user store, and gate access with named policies and authorization handlers rather than scattered role strings. Floors at .NET 8 / C# 12. Load before standing up a sign-in flow, wiring JWT or OIDC, writing an authorization policy, or protecting an endpoint. Companions: csharp, dotnet-minimal-api, dotnet-web-backend, dotnet-cryptography, dotnet-security."
 ---
 
 # ASP.NET Core authentication and authorization
@@ -165,9 +165,6 @@ The broader access-control and SSRF threat model - what an attacker does once pa
 
 ## Anti-patterns
 
-- Disabling any `TokenValidationParameters` check (issuer, audience, lifetime, signing key) to silence a failure.
 - Magic role strings (`[Authorize(Roles = "Admin")]`) scattered in place of named, testable policies.
 - Rolling your own password hashing or user store instead of ASP.NET Identity.
 - Long-lived or non-expiring access tokens with no refresh-and-revoke story.
-- Secrets in `appsettings.json`; API keys stored or compared in plaintext.
-- `DateTime.Now` for token timestamps instead of an injected `TimeProvider` (see `csharp`).

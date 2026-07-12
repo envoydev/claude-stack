@@ -1,6 +1,6 @@
 # XAML style: formatting, attribute ordering, naming, and binding conventions
 
-The concrete XAML *writing* style the WPF architecture in `SKILL.md` does not cover: how XAML is formatted and ordered, `x:Name` vs `Name`, attribute vs property-element syntax, namespace prefixes, value-converter naming, and data-binding style. The C# naming baseline (PascalCase/`_camelCase`/`I`-prefix, the canonical `.editorconfig`) is the `csharp` skill's `references/csharp-style.md`; the WPF architecture (strict MVVM, dependency/attached properties, resource-dictionary organization, CommunityToolkit.Mvvm) is this skill's `SKILL.md`. A project's own config - its `Settings.XamlStyler`, `.editorconfig`, `stylecop.json` - and its `docs/CODE-STYLE.md` are HIGHER priority: where a project diverges, follow the project.
+The concrete XAML *writing* style the WPF architecture in `SKILL.md` does not cover: how XAML is formatted and ordered, `x:Name` vs `Name`, attribute vs property-element syntax, namespace prefixes, value-converter naming, and data-binding style. The C# naming baseline (PascalCase/`_camelCase`/`I`-prefix, the canonical `.editorconfig`) is the `csharp` skill's `references/csharp-style.md`; the WPF architecture (strict MVVM, dependency/attached properties, CommunityToolkit.Mvvm) is this skill's `SKILL.md`. A project's own config - its `Settings.XamlStyler`, `.editorconfig`, `stylecop.json` - and its `docs/CODE-STYLE.md` are HIGHER priority: where a project diverges, follow the project.
 
 ## There is no official XAML formatter - use XAML Styler
 Microsoft ships no XAML *formatting* spec, so the de-facto standard is **XAML Styler** (Xavalon/XamlStyler: a Visual Studio / VS Code extension plus the `xstyler.exe` CLI). Commit one config named `Settings.XamlStyler` (JSON) at the solution root - it is discovered up the folder hierarchy, so a subdirectory can override it. Enable format-on-save, and run `xstyler.exe` in check-only mode in CI to fail the build on non-conforming XAML. Rider/ReSharper couples XAML formatting to its XML formatter (less granular), so prefer XAML Styler for XAML and `.editorconfig` for C#.
@@ -39,7 +39,7 @@ Use attribute syntax for simple values the parser type-converts (`Background="Re
 ## Data-binding style
 - Set `DataContext` at the view root; bind to ViewModel properties rather than wiring in code-behind.
 - Put `x:DataType` / `DataType` on a `DataTemplate` to get compiled-binding validation and rename-safety (subject to this skill's stance on where `x:DataType` earns its keep).
-- Prefer `StaticResource` over `DynamicResource` where the value does not change at runtime - `DynamicResource` carries real lookup overhead. (Resource-dictionary organization and the theme-switch cases are in `SKILL.md`.)
+- Prefer `StaticResource` over `DynamicResource` where the value does not change at runtime - `DynamicResource` carries real lookup overhead. (Resource-dictionary organization and the theme-switch cases are in `references/styling-theming.md`.)
 
 ## Value converters
 - Implement `IValueConverter` (`Convert`/`ConvertBack`) or `IMultiValueConverter`.
@@ -48,4 +48,4 @@ Use attribute syntax for simple values the parser type-converts (`Background="Re
 - On failure return `DependencyProperty.UnsetValue` or `Binding.DoNothing`, never throw - the binding engine does not catch converter exceptions. Making the converter a `MarkupExtension` (its `ProvideValue` returns `this`) lets it be used inline without a resource declaration.
 
 ## Resource keys
-Adopt a consistent resource-key naming scheme and hold to it (for example a role-then-variant shape: `PrimaryButton`, `DangerButton`). The dictionary organization itself - one dictionary per concern, a flat `MergedDictionaries` hierarchy, `Themes/Generic.xaml` for custom-control defaults - is `SKILL.md`'s.
+Adopt a consistent resource-key naming scheme and hold to it (for example a role-then-variant shape: `PrimaryButton`, `DangerButton`). The dictionary organization itself - one dictionary per concern, a flat `MergedDictionaries` hierarchy - is `references/styling-theming.md`'s.

@@ -1,6 +1,6 @@
 ---
 name: dotnet-openapi
-description: "Personal ASP.NET Core OpenAPI conventions - how a service emits a correct, generated OpenAPI document and serves a browsable docs UI from it. Picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with document, operation, and schema transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Load before adding API docs, editing the generated spec, declaring a security scheme, or standing up the docs UI. Companions: dotnet-minimal-api (the endpoint metadata that feeds the document), dotnet-web-backend, and dotnet-authentication (the real auth the spec only describes). Skip it for non-HTTP code and internal APIs with no published contract."
+description: "Personal ASP.NET Core OpenAPI conventions - how a service emits a correct, generated OpenAPI document and serves a browsable docs UI from it. Picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Load before adding API docs, editing the generated spec, declaring a security scheme, or standing up the docs UI. Companions: dotnet-minimal-api (the endpoint metadata feeding the document), dotnet-web-backend, dotnet-authentication. Skip it for non-HTTP code and internal APIs with no published contract."
 ---
 
 # ASP.NET Core OpenAPI - the document and the docs UI
@@ -80,6 +80,4 @@ When the API carries more than one version, or you want public and internal surf
 
 - Returning untyped `Results.Ok()` and wondering why the schema is empty - the document can only describe the types it can see.
 - Dropping `.WithName()` and then finding generated clients have meaningless method names - the operation id comes from the route name.
-- Bolting Swashbuckle onto a new .NET 9+ service the built-in generator already covers, or running both generators at once.
 - A production docs UI with no gate, or a real bearer token baked into Scalar's prefill.
-- Editing the generated JSON by hand instead of fixing the endpoint metadata or adding a transformer - the next regeneration erases it.

@@ -1,6 +1,6 @@
 ---
 name: dotnet-mvc-controllers
-description: "Personal ASP.NET Core controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs. Covers the ApiController attribute and its behaviors, attribute routing with templates and constraints, ActionResult of T versus IActionResult versus typed HttpResults, the automatic 400 model-validation filter and suppressing it so the house FluentValidation-in-a-filter convention stays the sole validation authority (ApiBehaviorOptions, SuppressModelStateInvalidFilter), binding-source inference with explicit From-attributes, IAsyncActionFilter and its ordering as the endpoint-filter analogue, and thin controllers delegating to services. Floors at .NET 8 / C# 12; later additions flagged optional. Load before writing or editing API controllers and action filters. Companions: dotnet-minimal-api for the sibling style, dotnet-web-backend for the pipeline baseline, dotnet-error-handling for ProblemDetails and the validation filter, dotnet-authentication for authorization. Do NOT load for minimal APIs, MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
+description: "Personal ASP.NET Core controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs. Covers the ApiController attribute and its behaviors, attribute routing with templates and constraints, ActionResult of T versus IActionResult versus typed HttpResults, suppressing the automatic 400 filter (ApiBehaviorOptions, SuppressModelStateInvalidFilter) so the house FluentValidation-in-a-filter convention stays the sole validation authority, binding-source inference with explicit From-attributes, IAsyncActionFilter and its ordering, and thin controllers delegating to services. Floors at .NET 8 / C# 12; later additions flagged optional. Load before writing or editing API controllers and action filters. Companions: dotnet-minimal-api (the sibling style), dotnet-web-backend, dotnet-error-handling, dotnet-authentication. Do NOT load for minimal APIs, MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
 ---
 
 # ASP.NET Core controllers - API controller mechanics
@@ -165,11 +165,8 @@ Do not run a third pattern in one repo to get one feature. If the bulk is minima
 
 ## Anti-patterns
 
-- `if (!ModelState.IsValid) return BadRequest(ModelState);` under `[ApiController]` - the automatic filter already does it; with the FluentValidation convention you suppress that filter entirely.
-- Deriving an API controller from `Controller` instead of `ControllerBase`, dragging in unused view infrastructure.
 - Business logic, EF Core queries, or a `try`/`catch` in the action body. Delegate to a service and let the global exception handler own the failure path - per `dotnet-error-handling`.
 - A domain entity or EF model serialized straight to the client, or a mutable request `class` where a `record` belongs.
-- Mixing `ControllerBase` helpers (`Ok`, `NotFound`) and `TypedResults` in one controller, or returning `IActionResult` where `ActionResult<T>` would give the document and the tests a real type.
 - Re-implementing validation, the error envelope, the OpenAPI document, or auth here - each is owned by a companion skill.
 - Two HTTP styles (controllers and minimal APIs) interleaved in one repo with no boundary; pick one as the default and confine the other to its justified slice.
 

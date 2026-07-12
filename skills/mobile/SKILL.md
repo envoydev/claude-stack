@@ -1,11 +1,11 @@
 ---
 name: mobile
-description: "Router and index for Ionic / Capacitor mobile + hybrid app work - maps a mobile area (Ionic Angular UI, Capacitor app structure, native plugins, release + signing, security hardening) to the focused skill to load. Routes per area, does not restate. Companions: angular-conventions (the Angular framework), typescript (the language). Primary routes: ionic (conventions + plugins), capacitor-release (release + signing), mobile-security (hardening). Load when building an Ionic/Capacitor app. For plain web frontend see frontend; for .NET backend see dotnet."
+description: "Router and index for Ionic / Capacitor mobile + hybrid app work - maps a mobile area (Ionic Angular UI, Capacitor app structure, native plugins, release + signing, security hardening) to the focused skill: ionic (conventions + plugins - the default for day-to-day feature work), capacitor-release (release + signing), mobile-security (hardening). Load when starting mobile work and unsure which of those applies, or orienting in a mobile codebase; go straight to the leaf skill when the area is known. Companions: angular-conventions, typescript. For plain web frontend see frontend; for .NET backend see dotnet."
 ---
 
 # mobile (Ionic / Capacitor router)
 
-Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, does not restate. An Ionic/Capacitor app is an Angular + TypeScript app in a native shell - load those baselines too.
+Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, does not restate. An Ionic/Capacitor app is an Angular + TypeScript app in a native shell - `angular-conventions` and `typescript` still apply underneath; this router adds the mobile-specific layer. Most day-to-day feature work lands on `ionic` - this router earns its load only when the area is genuinely unclear (conventions vs release vs hardening).
 
 ## Area -> skill
 
@@ -22,6 +22,5 @@ Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, 
 | build plain (non-mobile) web frontend | `frontend` |
 
 ## Notes
-- Ionic/Capacitor apps are Angular apps in a native shell: the framework rules (`angular-conventions`) and language baseline (`typescript`) still apply - this router adds the mobile-specific layer on top.
 - Native Swift / Kotlin platform code and custom-plugin authoring are deliberately out of scope here - Capacitor generates the native shell, so reach for the platform native docs for that, not this router.
 - Backend / .NET work routes through `dotnet`.
