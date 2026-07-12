@@ -563,6 +563,22 @@ conventions, testing, load-by-artifact). Rules 19 -> 20. Combined always-on 3,47
 `baseline-mcp-tools`) and resolved the done-claim gate to `baseline-definition-of-done` via the
 template's map.
 
+**Refined (rules-audit pass, ab9cc90):** a rubric audit of the full layer (20 rules + template -
+mechanism/placement, quality/conflicts, token efficiency, reuse; all 21 files grade A, zero
+mechanism moves - the always-on payload confirmed already-optimal) landed four correctness fixes:
+`baseline-agents-skills` now names the path-scoped repair-loop rules as the third sanctioned
+dispatch path (a literal reading of the two-path enumeration contradicted the routers' own
+'default to delegating'); `dotnet-repair-agents` gained `**/*.slnx` and `angular-repair-agents`
+gained `**/*.component.html` (coverage the rules intended - the dotnet twin already carried its
+view layer `.xaml`); both repair rules trimmed to the routing delta over the auto-injected
+resolver descriptions (~14 lines - the descriptions already carry the loop, triage, and
+anti-gaming language, per the route-only-the-delta principle); `devops-conventions` now states
+that AppHost / deploy scripts don't match its globs instead of implying they auto-attach. Also
+cut: typescript-conventions' prose restatement of its own glob list, and the template's 'read the
+file for exact wording' parenthetical (rules are already in context every session, incl.
+subagents - section 2's probe). Deliberately kept and scored, not 'fixed': the detailed baseline
+map (the 8ce0284 operator decision) and `baseline-mcp-tools`' conditionally-registered rows.
+
 ## 13. Open questions
 
 1. **Stack agents**: the slim version keeps only the dispatch policy and the five orchestration-skill
