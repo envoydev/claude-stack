@@ -45,4 +45,4 @@ Report the structure that exists, not the one the names imply - every dependency
 ## Report
 **Report lean.** Dense and factual - every substantive item this section requires and nothing more: no prose recap, no narration of steps taken, no restating the task. Keep the located symbols, edges, and quoted lines verbatim; cut the filler around them.
 
-End with: the area as handed, then the five-part verdict - purpose, public surface, dependencies (inbound / outbound, each edge's direction and any boundary it crosses), patterns in use, and smells/violations - every item tied to its located symbol, the uncertain flagged as uncertain. Name any part of the area you could not characterize and what would settle it.
+End with: the area as handed, then the five-part verdict specified above - every item tied to its located symbol, the uncertain flagged as uncertain. Name any part of the area you could not characterize and what would settle it.
