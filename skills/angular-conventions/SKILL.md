@@ -1,6 +1,6 @@
 ---
 name: angular-conventions
-description: "Personal Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, and banned patterns. Load before writing or editing any Angular file so the agent commits to current idioms, not recalled ones. Companions: typescript, angular-material, angular-styling, angular-security, frontend, mobile. Do NOT load for React, Vue, Svelte, Solid, plain DOM, or any non-Angular TypeScript."
+description: "Personal Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, and the reward-hacking shortcuts to reject. Load before writing or editing any Angular file so the agent commits to current idioms, not recalled ones. Companions: typescript, angular-material, angular-styling, angular-security, frontend, mobile. Do NOT load for React, Vue, Svelte, Solid, plain DOM, or any non-Angular TypeScript."
 ---
 
 # Angular conventions
@@ -118,6 +118,19 @@ Validation is a layer, not a pile of one-off checks: declare it on the model, ke
 - No `setTimeout` poked in to coax change detection into noticing a change. Fix the signal or input flow instead.
 - No direct DOM mutation outside a directive; go through `Renderer2`.
 - No method calls or `null` field defaults in template-bound forms; no decorator queries or host bindings in new code.
+
+## Reward-hacking shortcuts to reject
+The recurring ways a change fakes a green build or suite instead of earning it - reject each in review, whoever wrote it. This is the one consolidated list to check a diff against before claiming done; the language-level bans (`any`, `@ts-ignore`, non-null `!`) live in `typescript`.
+
+| Shortcut | Instead |
+|---|---|
+| `xit`/`xdescribe`, an `fdescribe` that narrows the run, or deleting a failing spec | fix the defect the spec caught; delete only a genuinely obsolete spec, with the reason stated |
+| Weakened assertion, or a spec rewritten to assert less than the behavior | fix the code, keep the bar (Testing above) |
+| Disabling an ESLint rule, loosening `strictTemplates`/`fullTemplateTypeCheck`, or `"aot": false` to clear an error | fix the type or template the compiler is pointing at |
+| `$any()` or `CUSTOM_ELEMENTS_SCHEMA`/`NO_ERRORS_SCHEMA` to mute a template error | import the declarable, fix the binding type |
+| Raising an `angular.json` budget or padding `allowedCommonJsDependencies` to clear a threshold | shrink the bundle honestly - defer, lazy-load, drop the dependency (Performance budgets above) |
+| Package downgrade to dodge a peer conflict | resolve the conflict at the current version |
+| Real time, real HTTP, or `tick(99999)` to mask flaky async | fix the async handling - `fakeAsync` with an honest `tick`, the HTTP testing controller |
 
 (The language baseline - strict typing and no `any`, modules and barrels, async, error handling, JSDoc, ESLint, Prettier, `tsc`, and `npm audit` - lives in `typescript`.)
 
