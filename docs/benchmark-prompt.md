@@ -129,7 +129,7 @@ Fill every field from observation; mark any estimate `ASSESSED`.
   "skills_invoked": ["csharp", "dotnet-web-backend", "dotnet-testing"],
   "mcps_used": { "serena": 14, "context7": 2 },
   "hooks_fired": ["guard-read-whole-file"],
-  "rules_attached": ["aspnet-conventions"],
+  "rules_attached": ["csharp-conventions"],
   "tokens": { "subagents_total": 41000, "by_agent": { "aspnet-implementer": 21000 }, "main_delta": 6000, "source": "subagent_tokens + /cost delta" },
   "tool_uses": 47,
   "duration_ms": 144000,

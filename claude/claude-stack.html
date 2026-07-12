@@ -1124,7 +1124,7 @@ const rules = [
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
   ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.spec.ts,**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
   ["web-conventions", "**/*.ts,**/*.tsx,**/*.js,**/*.scss,**/*.css", "Angular/web/Ionic conventions: points TS/JS/style edits at typescript + angular-conventions + angular-styling (soft, replaced the convention-gate hook)."],
-  ["aspnet-conventions", "**/*.cs", "ASP.NET/C# conventions: points a .cs edit at the csharp skill (a WPF view-model is C# too)."],
+  ["csharp-conventions", "**/*.cs", "C# baseline conventions: points any .cs edit at the csharp skill - backend, desktop, or console (a WPF view-model is C# too)."],
   ["wpf-conventions", "**/*.xaml", "WPF conventions: points a .xaml edit at the dotnet-wpf skill."],
   ["sql-conventions", "**/*.sql", "SQL conventions: points a hand-written .sql edit at the database-conventions skill."],
   ["devops-conventions", "**/Dockerfile*,**/docker-compose*.yml,**/.github/workflows/*.yml", "DevOps conventions (rest): points a Dockerfile/compose/workflow edit at the devops skill."],

@@ -484,7 +484,7 @@ CLAUDE_RULES=(
   "angular-repair-agents.md"  # Angular repair-loop routing, path-scoped
   # Convention rules (soft, glob auto-attach) - each points a file type at its house-style skill; replaced the require-convention-skill hard gate.
   "web-conventions.md"        # angular/web/ionic: ts/js/scss -> typescript + angular-conventions + angular-styling
-  "aspnet-conventions.md"     # asp.net: .cs -> csharp
+  "csharp-conventions.md"     # c#: .cs -> csharp (backend, desktop, console)
   "wpf-conventions.md"        # wpf: .xaml -> dotnet-wpf
   "sql-conventions.md"        # sql: .sql -> database-conventions
   "devops-conventions.md"     # rest (devops): Dockerfile/compose/workflow -> devops

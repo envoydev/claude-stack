@@ -49,7 +49,7 @@ made only inside a consuming project is throwaway (see Invariants).
     contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
   - `rules/` - eight path-scoped rules, lazy-loaded on a matching file touch: `markdown-docs.md`, the
     two repair-loop routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the five
-    convention rules (`web-conventions.md` / `aspnet-conventions.md` / `wpf-conventions.md` /
+    convention rules (`web-conventions.md` / `csharp-conventions.md` / `wpf-conventions.md` /
     `sql-conventions.md` / `devops-conventions.md`) that glob-attach a file type to its house-style skill -
     the soft replacement for the retired require-convention-skill hard gate. Fetched into a project's
     `.claude/rules/`.
