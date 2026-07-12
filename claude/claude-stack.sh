@@ -479,6 +479,7 @@ AGENTS=(
 # matching file reads; conventions stay with the convention-gate hook, rules carry only glob-scoped routing.
 RULES_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/rules"
 CLAUDE_RULES=(
+  "house-baseline.md"         # house working baseline - always-on (no paths), loads every session like CLAUDE.md
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "dotnet-repair-agents.md"   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
   "angular-repair-agents.md"  # Angular repair-loop routing, path-scoped

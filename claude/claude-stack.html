@@ -1120,6 +1120,7 @@ function renderHooks(filtered) {
 // CLAUDE_RULES=() array by scripts/lint-skills.js.
 const rules = [
   // [name, paths glob, description]
+  ["house-baseline", "(none - always on)", "The house working baseline (communication, proposal review, planning, quality, done-gate, security, git, navigation, skill/agent routing, pre-commit) - no paths, loads every session and subagent like CLAUDE.md, but installer-managed and refreshed on update."],
   ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
   ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.spec.ts,**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
@@ -1131,7 +1132,7 @@ const rules = [
 ];
 
 function renderRules(filtered) {
-  let html = `<h2>Rules</h2><div class="group-meta">Path-scoped rules fetched into <code>.claude/rules/</code> (Claude-only; not skills). ${filtered.length} entries.</div>`;
+  let html = `<h2>Rules</h2><div class="group-meta">Rules fetched into <code>.claude/rules/</code> (Claude-only; not skills): one always-on baseline, the rest path-scoped. ${filtered.length} entries.</div>`;
   html += `<table><thead><tr><th style="width:18%">Rule</th><th style="width:27%">Paths</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
   for (const [name, paths, desc] of filtered) {
     html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td><code>fetched into .claude/rules/</code></td><td class="desc">${desc}</td></tr>`;
