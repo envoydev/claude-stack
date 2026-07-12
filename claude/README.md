@@ -36,6 +36,13 @@ everything below applies to both unless a row is marked otherwise.
 | **Rules** | 8 | markdown authoring + per-language repair-loop routing + the 5 convention rules (angular/web/ionic, asp.net, wpf, sql, devops - each glob-attaches a file type to its house-style skill, the soft replacement for the retired convention-gate hook), all path-scoped → `.claude/rules/` |
 | **Project instructions** | 1 | `install` seeds `CLAUDE.md` from `CLAUDE.template.md` when the project has none (never clobbers a filled one). Fill its `<placeholders>` (framework, stack, conventions, secret/config globs); for a related repo add `docs/RELATED-PROJECTS.md` + the one-line pointer in the `## Related projects` section. Committed, not gitignored → `<repo>/CLAUDE.md` |
 
+> **Two runtime notes.** `CLAUDE_CODE_SUBAGENT_MODEL` silently overrides every agent's frontmatter
+> model pin - leave it unset. The generated `.claude/settings.json` pre-approves the project
+> `.mcp.json` via an `enabledMcpjsonServers` allow-list naming exactly the registered servers (never
+> a blanket `enableAllProjectMcpServers`); `chrome-devtools` and `appium-mcp` are in that list but
+> fail at launch without their native deps (a browser; Xcode / Android SDK + Java) - which is why
+> they are the comment-out pair.
+
 ### Install cadence - keep always vs install on occasion
 
 Cost differs by artifact, so the keep-or-skip call does too:
