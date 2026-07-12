@@ -1120,11 +1120,21 @@ function renderHooks(filtered) {
 // CLAUDE_RULES=() array by scripts/lint-skills.js.
 const rules = [
   // [name, paths glob, description]
-  ["house-baseline", "(none - always on)", "The house working baseline (communication, proposal review, planning, quality, done-gate, security, git, navigation, skill/agent routing, pre-commit) - no paths, loads every session and subagent like CLAUDE.md, but installer-managed and refreshed on update."],
+  ["baseline-communication", "(none - always on)", "House baseline: response style - direct, concise, recommendation-first, single dashes/quotes, name privacy."],
+  ["baseline-evaluating-proposals", "(none - always on)", "House baseline: adversarial review of user proposals - strongest objection first, BLOCKER/MATERIAL/MINOR ranks."],
+  ["baseline-planning", "(none - always on)", "House baseline: plan-and-test-first thresholds vs apply-then-summarize."],
+  ["baseline-code-quality", "(none - always on)", "House baseline: no dead code, tests for new code, keep it simple, why-comments."],
+  ["baseline-definition-of-done", "(none - always on)", "House baseline: the done-claim gate - verify and quote output before claiming done, never game the gate."],
+  ["baseline-security", "(none - always on)", "House baseline: security-review routing, never log secrets/PII, hardcoded-secret protocol, deny-list caveat."],
+  ["baseline-git", "(none - always on)", "House baseline: Conventional Commits, review-before-commit, no AI attribution, PR shape, pre-commit checkpoint."],
+  ["baseline-navigation", "(none - always on)", "House baseline: serena-first symbol navigation, read-before-edit, never guess an ambiguous reference."],
+  ["baseline-agents-skills", "(none - always on)", "House baseline: skill-loading discipline, explicit-only subagent dispatch, the slash-only orchestration skills."],
   ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
   ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.spec.ts,**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
-  ["web-conventions", "**/*.ts,**/*.tsx,**/*.js,**/*.scss,**/*.css", "Angular/web/Ionic conventions: points TS/JS/style edits at typescript + angular-conventions + angular-styling (soft, replaced the convention-gate hook)."],
+  ["typescript-conventions", "**/*.ts,**/*.tsx,**/*.js,**/*.jsx,**/*.mjs,**/*.cjs", "TS/JS conventions: points any TS/JS-family edit at the typescript skill - the framework-agnostic baseline."],
+  ["angular-conventions", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.service.ts,**/*.directive.ts,**/*.pipe.ts,**/*.guard.ts,**/*.resolver.ts,**/*.module.ts,**/*.routes.ts", "Angular/Ionic conventions: points Angular file shapes at the angular-conventions skill, on top of the typescript baseline."],
+  ["angular-styling-conventions", "**/*.scss,**/*.css", "Angular styling conventions: points stylesheet edits at the angular-styling skill."],
   ["csharp-conventions", "**/*.cs", "C# baseline conventions: points any .cs edit at the csharp skill - backend, desktop, or console (a WPF view-model is C# too)."],
   ["wpf-conventions", "**/*.xaml", "WPF conventions: points a .xaml edit at the dotnet-wpf skill."],
   ["sql-conventions", "**/*.sql", "SQL conventions: points a hand-written .sql edit at the database-conventions skill."],

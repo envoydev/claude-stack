@@ -6,8 +6,29 @@
 > any section that does not apply; add the project top per `## Per-project additions`. This file
 > auto-injects every session and into subagents - keep it lean and route work by an observable
 > trigger (an artifact, a command, a checkpoint). The cross-project working conventions are NOT
-> here: they load from the always-on `.claude/rules/house-baseline.md` (installer-managed,
-> refreshed on `update`) - never restate them in this file.
+> here: they load from the always-on baseline-*.md rules in `.claude/rules/` (installer-managed,
+> refreshed on `update`) - never restate them in this file. Trim the `## Rules` table below to what
+> the installer actually laid down.
+
+## Rules
+
+What sits in `.claude/rules/` and when each loads. The baseline set is always-on; path-scoped
+rules attach themselves when a matching file is touched - if a rule's topic comes up with no
+matching file in play (or you need its exact wording), read the rule file directly.
+
+| Rule | Loads | Job |
+|---|---|---|
+| baseline-* (9: communication, evaluating-proposals, planning, code-quality, definition-of-done, security, git, navigation, agents-skills) | always | the house working baseline - one concern per file |
+| markdown-docs | `**/*.md` | routes .md authoring to `markdown-style` |
+| typescript-conventions | ts/js family | routes to `typescript` |
+| angular-conventions | Angular file shapes | routes to `angular-conventions` |
+| angular-styling-conventions | scss/css | routes to `angular-styling` |
+| csharp-conventions | `**/*.cs` | routes to `csharp` |
+| wpf-conventions | `**/*.xaml` | routes to `dotnet-wpf` |
+| sql-conventions | `**/*.sql` | routes to `database-conventions` |
+| devops-conventions | Dockerfile / compose / workflows | routes to `devops` |
+| dotnet-repair-agents | .NET file shapes | routes build/test repair to the .NET resolvers |
+| angular-repair-agents | Angular file shapes | routes build/test repair to the ng resolvers |
 
 ## MCP servers
 

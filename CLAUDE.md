@@ -19,7 +19,7 @@ made only inside a consuming project is throwaway (see Invariants).
   - `claude-stack.{sh,ps1}` installer (Unix / Windows) + `claude-stack.html` browser inventory.
   - `CLAUDE.template.md` - the stack-neutral per-project skeleton (with `<placeholders>`) that each
     consuming project's `CLAUDE.md` is filled in from; the working conventions ship separately in
-    `rules/house-baseline.md`. Content shipped to projects, not this repo's own file.
+    the `rules/baseline-*.md` set. Content shipped to projects, not this repo's own file.
   - `hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
     `guard-read-whole-file.js` (PreToolUse `Read`). Fetched into a project's `.claude/hooks/`.
   - `agents/` - the Claude-contract subagents, 37 total: the four build/test resolvers - .NET
@@ -48,14 +48,18 @@ made only inside a consuming project is throwaway (see Invariants).
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
     `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker
     contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
-  - `rules/` - nine rules, fetched into a project's `.claude/rules/`. One is always-on:
-    `house-baseline.md` (no `paths:` - the cross-project working conventions, loaded every session
-    and subagent like `CLAUDE.md` but refreshed on `update`, so the baseline stays fleet-updatable).
-    The other eight are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the
-    two repair-loop routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the five
-    convention rules (`web-conventions.md` / `csharp-conventions.md` / `wpf-conventions.md` /
-    `sql-conventions.md` / `devops-conventions.md`) that glob-attach a file type to its house-style skill -
-    the soft replacement for the retired require-convention-skill hard gate.
+  - `rules/` - nineteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Nine
+    are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions split
+    per concern: communication, evaluating-proposals, planning, code-quality, definition-of-done,
+    security, git + pre-commit, navigation, agents-skills - loaded every session and subagent like
+    `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest). The other ten
+    are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the two repair-loop
+    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the seven convention rules
+    (`typescript-conventions.md` / `angular-conventions.md` / `angular-styling-conventions.md` /
+    `csharp-conventions.md` / `wpf-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
+    each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
+    lacks is simply not installed; the soft replacement for the retired require-convention-skill
+    hard gate.
   - `README.md`.
 - `cursor/` - the **Cursor** stack (peer of `claude/`):
   - `cursor-stack.{sh,ps1}` installer + `cursor-stack.html` inventory.
@@ -153,7 +157,7 @@ because the platforms differ:
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`claude/hooks/` or `cursor/hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/` on Claude, `.cursor/rules/*.mdc` on Cursor). A keyword capability → the skill's own description. Cross-cutting guidance →
-  the always-on `claude/rules/house-baseline.md` on Claude (fleet-updatable; the base template
+  the always-on `claude/rules/baseline-*.md` set on Claude (fleet-updatable; the base template
   `claude/CLAUDE.template.md` carries only per-project structure) and the base template
   `cursor/AGENTS.template.md` on Cursor, filled into the project's `CLAUDE.md` / `AGENTS.md`.
   Never state one trigger twice.

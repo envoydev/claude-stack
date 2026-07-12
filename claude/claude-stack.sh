@@ -479,12 +479,24 @@ AGENTS=(
 # matching file reads; conventions stay with the convention-gate hook, rules carry only glob-scoped routing.
 RULES_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/rules"
 CLAUDE_RULES=(
-  "house-baseline.md"         # house working baseline - always-on (no paths), loads every session like CLAUDE.md
+  # Always-on baseline (no paths) - loads every session like CLAUDE.md; one job per file, comment out what a project doesn't want.
+  "baseline-communication.md"
+  "baseline-evaluating-proposals.md"
+  "baseline-planning.md"
+  "baseline-code-quality.md"
+  "baseline-definition-of-done.md"
+  "baseline-security.md"
+  "baseline-git.md"
+  "baseline-navigation.md"
+  "baseline-agents-skills.md"
+  # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "dotnet-repair-agents.md"   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
   "angular-repair-agents.md"  # Angular repair-loop routing, path-scoped
-  # Convention rules (soft, glob auto-attach) - each points a file type at its house-style skill; replaced the require-convention-skill hard gate.
-  "web-conventions.md"        # angular/web/ionic: ts/js/scss -> typescript + angular-conventions + angular-styling
+  # Convention rules (soft, glob auto-attach) - each points ONE file family at its house-style skill; replaced the require-convention-skill hard gate.
+  "typescript-conventions.md" # ts/js family -> typescript (framework-agnostic baseline)
+  "angular-conventions.md"    # Angular file shapes -> angular-conventions (Angular/Ionic projects only)
+  "angular-styling-conventions.md" # scss/css -> angular-styling (Angular/Ionic projects only)
   "csharp-conventions.md"     # c#: .cs -> csharp (backend, desktop, console)
   "wpf-conventions.md"        # wpf: .xaml -> dotnet-wpf
   "sql-conventions.md"        # sql: .sql -> database-conventions
