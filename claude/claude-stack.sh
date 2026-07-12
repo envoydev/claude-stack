@@ -489,7 +489,7 @@ CLAUDE_RULES=(
   "baseline-git.md"
   "baseline-navigation.md"
   "baseline-agents-skills.md"
-  "baseline-mcp-tools.md"
+  "baseline-related-projects.md" # cross-repo sibling awareness - comment out in a standalone project
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "dotnet-repair-agents.md"   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
@@ -778,7 +778,7 @@ fi
 
 log "next steps:"
 log "  - fill your project's CLAUDE.md <placeholders> (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), add docs/RELATED-PROJECTS.md naming the edges (consumes / provides-to / peer) + keep a one-line pointer in CLAUDE.md's '## Related projects' section"
+log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), fill CLAUDE.md's '## Related projects' awareness entries (name/location/relation/seam) + put the orientation detail in a committed docs/RELATED-PROJECTS.md"
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 if [ "$CONTEXT7_MODE" = "remote" ]; then

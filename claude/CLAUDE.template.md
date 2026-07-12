@@ -27,25 +27,14 @@ file is touched and are not listed here - their own `paths:` frontmatter says wh
 | baseline-git | Conventional Commits + branch naming, review-before-commit, never auto-push, no AI attribution, PR shape, force-with-lease, the pre-commit checkpoint |
 | baseline-navigation | serena-first symbol lookup, read-before-edit, ambiguous-reference handling, pasted-code-is-illustrative |
 | baseline-agents-skills | skill-loading discipline, explicit-only subagent dispatch, the five slash-only orchestration skills |
-| baseline-mcp-tools | which MCP or tool for which job: serena, context7, memory, playwright, framework CLIs, the LSP plugins |
+| baseline-related-projects | cross-repo sibling awareness: the entry schema for this file's `## Related projects` section, orientation detail routed to `docs/RELATED-PROJECTS.md` (comment out in a standalone project) |
 
 ## Related projects
 
-When this repo is one of several that make up a product, list the siblings here - this committed,
-always-loaded list is what makes the agent aware they exist. Describe edges, not roles:
-
-```yaml
-related_projects:
-  - name:       <sibling name>
-    location:   <path or git URL>
-    relation:   consumes | provides-to | peer | depends-on | embeds
-    read_first: [CLAUDE.md, README.md]   # orient from these before its code
-    interface:  <optional - where the seam is>
-    visit_when: <optional - what sends you there>
-```
-
-- serena binds to *this* repo: `Read` / `Grep` a sibling directly, but symbol-navigate it only from a context rooted there.
-- Dynamic cross-repo findings go to the `memory` MCP, never this file. A growing list moves to a committed `docs/RELATED-PROJECTS.md`, one-line pointer kept here.
+Multi-repo product only: the sibling awareness entries live here - committed and always-loaded,
+shaped per `.claude/rules/baseline-related-projects.md` (name / location / relation / seam; the
+orientation detail goes in a committed `docs/RELATED-PROJECTS.md`). Standalone project: delete
+this section and comment the rule out of the installer manifest.
 
 ## Per-project additions
 
@@ -62,7 +51,18 @@ lean; interleave as reads best - the project intro usually comes first):
 
 **Stack - what it is built with:**
 
-6. **Stack** - languages, frameworks, key libraries, test stack + coverage gate, the LSP plugin for the primary language(s), any project-added MCPs / plugins.
+6. **Stack** - languages, frameworks, key libraries, test stack + coverage gate, the LSP plugin for the primary language(s), plus this MCP routing table trimmed to the servers the project actually registers:
+
+   | Server | Use for |
+   |---|---|
+   | `serena` | default symbol navigator + symbol-level editor - `find_symbol` / `find_referencing_symbols` before any whole-file Read; self-activates on launch (never call `activate_project`). Also holds the per-project memory (`.serena/memories/`) the agent flows use for hand-off notes. |
+   | `context7` | up-to-date docs for any API you don't own - resolve + query before writing or changing hand-written code against a third-party package, vendor SDK, or version-sensitive framework surface; never answer library-API questions from recall. Generated code doesn't count. |
+   | `memory` | *cross-project* recall only - search when this project's context is thin; store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Per-project hand-off lives in serena, not here. Drop the row (and the server) in a standalone project. |
+   | `playwright` | drive a browser for visual checks / large HTML reports - don't text-read them |
+   | framework CLI (`angular-cli` in Angular projects) | the framework CLI's own docs / commands |
+   | issue-tracker connector | the project's tracker read-write; ticket skills write the content, the connector files it - always confirm before filing |
+   | `chrome-devtools` / `appium-mcp` | browser / native-mobile debug - only for browser / mobile targets |
+   | `<project-added MCP>` | `<what it routes>` |
 7. **Commands** - copy-pasteable build / test / run / migrate / publish, with any environment quirks.
 8. **Code conventions** - the house-style skill for each file type (a path-scoped rule in `.claude/rules/` glob-attaches it; a file matching two globs loads both skills).
 9. **Testing approach** - per-layer strategy, what's excluded, the integration / regression net.

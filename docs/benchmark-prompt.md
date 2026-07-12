@@ -69,11 +69,11 @@ the source repo:
    - `aspnet-api-project` = .NET 10, Minimal API + vertical slice, EF Core + SQLite (the `aspnet` + `data`
      domains); point the convention and secret/config-glob placeholders at the real stack.
    - `angular-project` = Angular 18 standalone task playground (the `angular` domain), consuming the API.
-   Also give each project a committed `docs/RELATED-PROJECTS.md` naming the sibling edge (the API
-   `provides-to` the SPA; the SPA `consumes` the API) with its location, `read_first` docs, and the
-   `/api` seam as the interface - and keep the one-line pointer to it in the CLAUDE.md `## Related
-   projects` section (the pointer stays in `CLAUDE.md`, always loaded, so the agent knows the sibling
-   exists; the file is tracked, never gitignored). This static cross-project map is what replaces the
+   Also fill each project's CLAUDE.md `## Related projects` awareness entries (the API
+   `provides-to` the SPA; the SPA `consumes` the API - name, location, relation, the `/api` seam
+   line) and put the orientation detail (what to read first, what sends you there) in a committed
+   `docs/RELATED-PROJECTS.md` (tracked, never gitignored; the entries stay in `CLAUDE.md`, always
+   loaded, so the agent knows the sibling exists). This static cross-project map is what replaces the
    `memory` MCP here. Without a filled `CLAUDE.md` the agents run with no project instructions and the
    run is not representative of the stack.
 5. **Record the installed inventory per project** (MEASURED): count of agents in `.claude/agents/`,

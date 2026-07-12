@@ -142,30 +142,27 @@ When this repo is one of several that make up a product (a backend and its front
 package it consumes, peer services), list the siblings here so an investigation can cross the seam.
 This static graph is the cross-project *structure* - it lives here in `AGENTS.md` (committed, loaded
 every session), never in the `memory` MCP; `memory` carries only the *dynamic* cross-repo findings
-on top. Describe *edges* (relationships), not roles, so any topology fits:
+on top. Keep each entry to the awareness minimum - name, location, relation, one seam line;
+describe *edges* (relationships), not roles, so any topology fits:
 
 ```yaml
 related_projects:
-  - name:       <sibling name>
-    location:   <path or git URL>              # how to find it
-    relation:   consumes | provides-to | peer | depends-on | embeds   # this repo's edge to it
-    read_first: [AGENTS.md, README.md]          # its docs - read these to orient before its code
-    interface:  <optional - where the seam is: an API spec, a package's public surface, shared types>
-    visit_when: <optional - what sends you there, e.g. 'a bug traces into this package'>
+  - name:     <sibling name>
+    location: <path or git URL>              # how to find it
+    relation: consumes | provides-to | peer | depends-on | embeds   # this repo's edge to it
+    seam:     <the shared surface a change here can break there - an API spec, a package's public surface, shared types>
 ```
 
-- **Orient from `read_first` before code.** When an edge sends you into a sibling, `Read` its agent
-  brief (`AGENTS.md` / `CLAUDE.md`) then `README.md` (and any other `read_first` doc) first - they
-  are plain files, so no cross-project indexing is needed.
+- **Detail lives in `docs/RELATED-PROJECTS.md`, from the start.** What to read first to orient in a
+  sibling (its `AGENTS.md` / `CLAUDE.md`, then `README.md`), what sends you there, interface
+  elaboration - all of it goes in that committed file (tracked, never gitignored, so it travels with
+  the repo), read on demand when a task touches a seam. The entries above must stay in `AGENTS.md` -
+  always loaded, they are what makes the agent aware the siblings exist.
 - **Navigation stays per-repo.** serena binds to *this* repo; you can `Read` / `Grep` a sibling's
   files directly, but real serena symbol-navigation of a sibling happens in a context rooted in that
   sibling, never cross-navigated from here.
 - **Dynamic findings go to `memory`.** A cross-repo outcome ('the contract moved to v3, endpoint X
   must change') is stored in the `memory` MCP (product-scoped via `MCP_MEMORY_SQLITE_PATH`), not here.
-- **Inline or a file.** A short list lives inline in this section; a richer or growing one moves to a
-  committed `docs/RELATED-PROJECTS.md`, with a one-line pointer kept here. The pointer must stay in
-  `AGENTS.md` - it is always loaded and is what makes the agent aware the siblings exist; the file
-  itself is read on demand and must be tracked (never gitignored), so it travels with the repo.
 
 ## Per-project additions
 

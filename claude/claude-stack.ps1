@@ -522,7 +522,7 @@ $ClaudeRules = @(
   'baseline-git.md'
   'baseline-navigation.md'
   'baseline-agents-skills.md'
-  'baseline-mcp-tools.md'
+  'baseline-related-projects.md' # cross-repo sibling awareness - comment out in a standalone project
   # Path-scoped routing
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
   'dotnet-repair-agents.md'   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
@@ -887,7 +887,7 @@ if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed abo
 
 Log 'next steps:'
 Log "  - fill your project's CLAUDE.md <placeholders> (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), add docs/RELATED-PROJECTS.md naming the edges (consumes / provides-to / peer) + keep a one-line pointer in CLAUDE.md's '## Related projects' section"
+Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), fill CLAUDE.md's '## Related projects' awareness entries (name/location/relation/seam) + put the orientation detail in a committed docs/RELATED-PROJECTS.md"
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 if ($Context7 -eq 'remote') { Log "  - context7 is remote; add CONTEXT7_API_KEY to $ConfigDir\settings.json 'env' for higher rate limits (or re-run with -Context7 local)" }
