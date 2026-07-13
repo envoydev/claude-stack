@@ -18,11 +18,8 @@ file is touched and are not listed here - their own `paths:` frontmatter says wh
 
 | Baseline rule | What it governs |
 |---|---|
-| baseline-communication | response style: direct, no filler openers, concise with structure, recommendation-first, label uncertainty, verify anything current, silently correct the user's language, name privacy, single dashes + single quotes |
-| baseline-evaluating-proposals | adversarial review of any user proposal (design, plan, decision): strongest objection first, BLOCKER / MATERIAL / MINOR ranks, concrete failure modes, what-would-have-to-be-true + cheapest test, no sycophancy or manufactured criticism |
-| baseline-planning | when to plan and write tests first (3+ files) vs apply-then-summarize, the skip-planning list, read-the-full-error discipline, inherited-code precedence |
-| baseline-code-quality | no dead code or ticketless TODOs, unit + integration test expectations, keep-it-simple, comments explain why |
-| baseline-definition-of-done | the done-claim gate: build + tests run and output quoted before saying done / fixed / works, never game the gate, partial-work protocol |
+| baseline-interaction | communication style (direct, concise, recommendation-first, label uncertainty), adversarial review of any user proposal (strongest objection first, BLOCKER / MATERIAL / MINOR), and when to plan and write tests first (3+ files) vs apply-then-summarize |
+| baseline-quality-gates | no dead code or ticketless TODOs, unit + integration test expectations, keep-it-simple, comments explain why - and the done-claim gate: build + tests run and output quoted before saying done / fixed / works, never game the gate |
 | baseline-security | /security-review routing for sensitive diffs, never log PII / secrets, hardcoded-secret protocol, the permissions.deny subprocess caveat |
 | baseline-git | Conventional Commits + branch naming, review-before-commit, never auto-push, no AI attribution, PR shape, force-with-lease, the pre-commit checkpoint |
 | baseline-navigation | serena-first symbol lookup, read-before-edit, ambiguous-reference handling, pasted-code-is-illustrative |
@@ -57,7 +54,11 @@ lean; interleave as reads best - the project intro usually comes first):
 **Project - what it is:**
 
 1. **What this project is** - one paragraph: domain, shape (binary / service / library), persistence, surfaces.
-2. **Architecture** - layers / modules, dependency rules, folder organization.
+2. **Architecture** - layers / modules, dependency rules, folder organization. When
+   `docs/architecture/ARCHITECTURE.md` exists (the `/project-architecture-analyzer` capture maintains
+   it, deep-dives under `docs/architecture/references/`), keep this section to a few summary lines
+   and point there - and read that map before planning or designing any structural change, instead
+   of re-deriving the project.
 3. **Key patterns** - the non-obvious in-house patterns a newcomer would trip on.
 4. **Operational notes** - runtime constraints and gotchas that shape code decisions.
 5. **Cross-cutting checklists** - for each change that must move several files in lockstep, the full touch-point list.

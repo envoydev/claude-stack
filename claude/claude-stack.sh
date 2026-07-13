@@ -483,11 +483,8 @@ AGENTS=(
 RULES_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/rules"
 CLAUDE_RULES=(
   # Always-on baseline (no paths) - loads every session like CLAUDE.md; one job per file, comment out what a project doesn't want.
-  "baseline-communication.md"
-  "baseline-evaluating-proposals.md"
-  "baseline-planning.md"
-  "baseline-code-quality.md"
-  "baseline-definition-of-done.md"
+  "baseline-interaction.md"    # communication + evaluating-proposals + planning (merged by exclusion affinity)
+  "baseline-quality-gates.md"  # code-quality + definition-of-done (merged by exclusion affinity)
   "baseline-security.md"
   "baseline-git.md"
   "baseline-navigation.md"
@@ -752,6 +749,28 @@ prune_agents_cache() {
   fi
 }
 
+# Stale artifacts renamed/merged/retired upstream: the fetchers lay down only the manifest's
+# named files and never delete, so a rename or removal here leaves the OLD copy behind in every
+# installed project (a stale agent even keeps loading as a dispatchable subagent). Exact paths
+# only - a project's own files are never touched. Safe to keep entries indefinitely (no-op once gone).
+STALE_FILES=(
+  ".claude/rules/baseline-communication.md"         # merged into baseline-interaction.md
+  ".claude/rules/baseline-evaluating-proposals.md"  # merged into baseline-interaction.md
+  ".claude/rules/baseline-planning.md"              # merged into baseline-interaction.md
+  ".claude/rules/baseline-code-quality.md"          # merged into baseline-quality-gates.md
+  ".claude/rules/baseline-definition-of-done.md"    # merged into baseline-quality-gates.md
+  ".claude/rules/baseline-related-projects.md"      # retired - schema/trigger inlined into CLAUDE.template.md's Related projects section
+  ".claude/agents/architecture-analyzer.md"         # folded into the project-architecture-analyzer skill
+  ".claude/agents/style-analyzer.md"                # renamed code-style-analyzer.md
+)
+prune_stale_files() {  # BOTH actions: delete exactly the named leftovers, fail-soft
+  local root f; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  for f in "${STALE_FILES[@]}"; do
+    [ -f "$root/$f" ] && rm -f "$root/$f" && log "  pruned stale $f"
+  done
+  return 0
+}
+
 # ===========================================================================
 # DISPATCH
 # ===========================================================================
@@ -766,6 +785,7 @@ else
 fi
 
 prune_agents_cache
+prune_stale_files
 echo
 log "done: $ACTION [scope=$SCOPE, account=$CONFIG_DIR, agent=$AGENT]"
 _summary="  skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=${#HOOKS[@]}, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"

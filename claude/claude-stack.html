@@ -247,7 +247,7 @@
     <div class="stat"><b>7</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>3</b><span>hooks</span></div>
-    <div class="stat"><b>19</b><span>rules</span></div>
+    <div class="stat"><b>16</b><span>rules</span></div>
     <div class="stat"><b>7</b><span>domains</span></div>
   </div>
 
@@ -1122,11 +1122,8 @@ function renderHooks(filtered) {
 // CLAUDE_RULES=() array by scripts/lint-skills.js.
 const rules = [
   // [name, paths glob, description]
-  ["baseline-communication", "(none - always on)", "House baseline: response style - direct, concise, recommendation-first, single dashes/quotes, name privacy."],
-  ["baseline-evaluating-proposals", "(none - always on)", "House baseline: adversarial review of user proposals - strongest objection first, BLOCKER/MATERIAL/MINOR ranks."],
-  ["baseline-planning", "(none - always on)", "House baseline: plan-and-test-first thresholds vs apply-then-summarize."],
-  ["baseline-code-quality", "(none - always on)", "House baseline: no dead code, tests for new code, keep it simple, why-comments."],
-  ["baseline-definition-of-done", "(none - always on)", "House baseline: the done-claim gate - verify and quote output before claiming done, never game the gate."],
+  ["baseline-interaction", "(none - always on)", "House baseline: interaction - communication style (direct, concise, recommendation-first, label uncertainty), adversarial review of user proposals (strongest objection first, BLOCKER/MATERIAL/MINOR), and planning thresholds (plan-and-test-first at 3+ files vs apply-then-summarize)."],
+  ["baseline-quality-gates", "(none - always on)", "House baseline: quality gates - code quality (no dead code, tests for new code, keep it simple, comments explain why) and the done-claim gate (verify and quote output before saying done/fixed/works, never game the gate)."],
   ["baseline-security", "(none - always on)", "House baseline: security-review routing, never log secrets/PII, hardcoded-secret protocol, deny-list caveat."],
   ["baseline-git", "(none - always on)", "House baseline: Conventional Commits, review-before-commit, no AI attribution, PR shape, pre-commit checkpoint."],
   ["baseline-navigation", "(none - always on)", "House baseline: serena-first symbol navigation, read-before-edit, never guess an ambiguous reference."],

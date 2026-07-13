@@ -50,10 +50,10 @@ made only inside a consuming project is throwaway (see Invariants).
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
     `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker
     contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
-  - `rules/` - nineteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Nine
-    are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions split
-    per concern: communication, evaluating-proposals, planning, code-quality, definition-of-done,
-    security, git + pre-commit, navigation, agents-skills - loaded every session and
+  - `rules/` - sixteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
+    are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
+    by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
+    (code quality + definition of done), security, git + pre-commit, navigation, agents-skills - loaded every session and
     subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
     MCP routing is per-project data, carried in each project's `CLAUDE.md` Stack table).
     The other ten

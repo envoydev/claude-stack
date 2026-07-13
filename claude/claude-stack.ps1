@@ -516,11 +516,8 @@ $Agents = @(
 $RulesBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/rules'
 $ClaudeRules = @(
   # Always-on baseline (no paths) - loads every session like CLAUDE.md; one job per file, comment out what a project doesn't want.
-  'baseline-communication.md'
-  'baseline-evaluating-proposals.md'
-  'baseline-planning.md'
-  'baseline-code-quality.md'
-  'baseline-definition-of-done.md'
+  'baseline-interaction.md'    # communication + evaluating-proposals + planning (merged by exclusion affinity)
+  'baseline-quality-gates.md'  # code-quality + definition-of-done (merged by exclusion affinity)
   'baseline-security.md'
   'baseline-git.md'
   'baseline-navigation.md'
@@ -834,6 +831,31 @@ function Remove-AgentsCache {
   else { Remove-Item -LiteralPath $agents -Recurse -Force -ErrorAction SilentlyContinue; Log '  pruned .agents/ (skills are real per-agent copies)' }
 }
 
+# Stale artifacts renamed/merged/retired upstream: the fetchers lay down only the manifest's
+# named files and never delete, so a rename or removal here leaves the OLD copy behind in every
+# installed project (a stale agent even keeps loading as a dispatchable subagent). Exact paths
+# only - a project's own files are never touched. Safe to keep entries indefinitely (no-op once gone).
+$StaleFiles = @(
+  '.claude/rules/baseline-communication.md'         # merged into baseline-interaction.md
+  '.claude/rules/baseline-evaluating-proposals.md'  # merged into baseline-interaction.md
+  '.claude/rules/baseline-planning.md'              # merged into baseline-interaction.md
+  '.claude/rules/baseline-code-quality.md'          # merged into baseline-quality-gates.md
+  '.claude/rules/baseline-definition-of-done.md'    # merged into baseline-quality-gates.md
+  '.claude/rules/baseline-related-projects.md'      # retired - schema/trigger inlined into CLAUDE.template.md's Related projects section
+  '.claude/agents/architecture-analyzer.md'         # folded into the project-architecture-analyzer skill
+  '.claude/agents/style-analyzer.md'                # renamed code-style-analyzer.md
+)
+function Remove-StaleFiles {  # BOTH actions: delete exactly the named leftovers, fail-soft
+  $root = git rev-parse --show-toplevel 2>$null; if (-not $root) { return }
+  foreach ($f in $StaleFiles) {
+    $p = Join-Path $root $f
+    if (Test-Path -LiteralPath $p -PathType Leaf) {
+      Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+      Log "  pruned stale $f"
+    }
+  }
+}
+
 # ===========================================================================
 # WINDOWS SERENA FIX (interim) - remove once oraios/serena#311 ships upstream
 # ===========================================================================
@@ -879,6 +901,7 @@ if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-
 else { Update-Skills; Update-Plugins; Update-Mcps; Update-Hooks; Update-Agents; Update-Rules; Repair-SerenaTsLspWindows }
 
 Remove-AgentsCache
+Remove-StaleFiles
 Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
 $summary = "  skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$($Hooks.Count), agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
