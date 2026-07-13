@@ -79,7 +79,7 @@ The tool's own output is context you pay for, so run every gate at minimal verbo
 
 ## The fifth lever - a Sonnet orchestrator
 
-The main-session orchestrator that drives `project-task-flow` / `main-stack-agents-flow` does not need Opus. Its job - classify the request, dispatch the pinned seats, review each returned diff, run the final gate - is well within Sonnet, because the Opus intelligence is delivered by the `solution_designer` seat, which stays Opus by its own frontmatter pin regardless of the session model. So drive the flow session on Sonnet (`claude --model sonnet`); the pins keep Opus where it earns its cost (design), not where it does not (routing). This is a launch-time choice, not an agent pin - there is no lever to fix the orchestrator model from inside the stack, so it lives here as the recommended way to run the flow.
+The main-session orchestrator that drives `project-task-flow` does not need Opus. Its job - classify the request, dispatch the pinned seats, review each returned diff, run the final gate - is well within Sonnet, because the Opus intelligence is delivered by the `solution_designer` seat, which stays Opus by its own frontmatter pin regardless of the session model. So drive the flow session on Sonnet (`claude --model sonnet`); the pins keep Opus where it earns its cost (design), not where it does not (routing). This is a launch-time choice, not an agent pin - there is no lever to fix the orchestrator model from inside the stack, so it lives here as the recommended way to run the flow.
 
 MEASURED (B3, aspnet, single run): a Sonnet orchestrator cost **$9.23 vs $12.77** on an Opus orchestrator - **28% cheaper** - with the designer still Opus (pins held), the verifier still catching a real defect, and the suite green.
 

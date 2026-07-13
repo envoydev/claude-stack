@@ -180,7 +180,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (65).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (64).
 $Skills = @(
   # Personal (envoydev/agents-stack)
   'envoydev/agents-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -194,7 +194,6 @@ $Skills = @(
   'envoydev/agents-stack|project-capabilities'           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-capabilities.md; manual /-only
   'envoydev/agents-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/PROJECT-RELATED-CONTEXT.md; manual /-only
   'envoydev/agents-stack|project-build-from-scratch' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
-  'envoydev/agents-stack|main-stack-agents-flow'     # main-stack-agents-flow orchestration - designer decomposes, implementers fan out, verifier gates
   'envoydev/agents-stack|project-task-flow'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
   'envoydev/agents-stack|project-verify-plan'      # audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review
   'envoydev/agents-stack|project-implement'              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + resolver routing), finish via /code-review + the done-gate

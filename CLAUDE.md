@@ -45,9 +45,10 @@ made only inside a consuming project is throwaway (see Invariants).
     `code-analyzer` per module, reasons in the main session, writes `docs/architecture/ARCHITECTURE.md` +
     the pros/cons `docs/architecture/ASSESSMENT.md` + the generated always-on awareness rule
     `baseline-project-architecture.md`; never in a build flow); the per-change fit
-    verdict moved to the domain solution-designers. The `main-stack-agents-flow` skill orchestrates
-    one stack's vertical per run, and the `project-task-flow` skill is the entry-point router above it - it picks
-    the execution mode and, for cross-domain work, freezes the shared contract and drives the parallel
+    verdict moved to the domain solution-designers. The `project-task-flow` skill is the single
+    entry-point orchestrator - it picks the execution mode, runs a single stack's vertical per its
+    `references/domain-trio-protocol.md` (main-stack-agents-flow was folded into that reference
+    2026-07-14), and for cross-domain work freezes the shared contract and drives the parallel
     per-stack runs through the `integration-reviewer` final gate. All 33 carry
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
     `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker

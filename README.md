@@ -170,14 +170,13 @@ npx skills remove      # uninstall skills
 - **project-build-from-scratch** - Build a new application or major module from scratch: routes greenfield
   work to the right architecture skill and scaffolding command, then drives design -> scaffold ->
   slice-by-slice build over the agent pipeline.
-- **main-stack-agents-flow** - Build a feature through a stack specialist team: the domain designer
-  decomposes into parallel tasks, implementers build them at once, the verifier gates and loops
-  back.
-- **project-task-flow** - Entry-point router for multi-agent engineering work: classify a feature or
-  bug, pick the smallest safe execution mode, and for cross-domain work freeze the shared contract,
-  run each stack's main-stack-agents-flow in parallel, then gate the assembled whole through the
-  integration-reviewer before commit. Home of the shared subagent policies (contract change,
-  structured output, model and token routing).
+- **project-task-flow** - Entry-point orchestrator for multi-agent engineering work: classify a
+  feature or bug, pick the smallest safe execution mode, run a single stack's design-build-verify
+  trio per its domain-trio protocol (the designer decomposes, implementers build in parallel, the
+  verifier gates and loops back), and for cross-domain work freeze the shared contract, run the
+  stack pipelines in parallel, then gate the assembled whole through the integration-reviewer
+  before commit. Home of the shared subagent policies (contract change, structured output, model
+  and token routing).
 - **devops** - Containers, CI/CD, and safe deploys for the .NET/Angular house: multi-stage
   digest-pinned non-root Docker, GitHub Actions CI/CD (lockfile-hash caching, service-container
   tests, masked secrets, SHA-pinned actions, OIDC), and health-gated expand-contract deploys.
@@ -225,9 +224,9 @@ The trio loop is `project-solution-design` -> `project-verify-plan` -> build und
 -> `/code-review`, with a checkpoint after each step.
 
 The inverse path runs the same flow as a dispatched team of 33 model-pinned subagents - the
-`main-stack-agents-flow` and `project-task-flow` orchestration skills own that ladder (the roster is laid
-out at the top of [claude/claude-stack.html](claude/claude-stack.html)). Pick by size: stay in chat
-for small single-stack work, dispatch the team for large, parallel, cross-domain, or log-heavy work.
+`project-task-flow` orchestration skill owns that ladder (the roster is laid out at the top of
+[claude/claude-stack.html](claude/claude-stack.html)). Pick by size: stay in chat for small
+single-stack work, dispatch the team for large, parallel, cross-domain, or log-heavy work.
 
 ## Repository layout
 

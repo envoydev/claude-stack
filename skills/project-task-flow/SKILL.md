@@ -1,6 +1,6 @@
 ---
 name: project-task-flow
-description: "The entry-point router for multi-agent engineering work - scope the task IN-SESSION (the generated awareness rules + a bounded serena pass; deep reads go to a code-analyzer digest), then run the smallest safe execution mode: single-chat, one implementer, a single-stack design-build-verify trio, or a producer-first cross-domain run ordered by the dependency direction. For cross-domain work the producer designer's interface IS the contract; consumer seats build against it and the integration-reviewer gates the assembled feature before commit. Triggers on how should I build or route this work, plan the agents for this, this spans backend and frontend, or investigate-and-fix a bug across the stack. A task inside one stack hands off to `main-stack-agents-flow`; this skill scopes and routes - it never designs or writes code."
+description: "The entry-point router for multi-agent engineering work - scope the task IN-SESSION (the generated awareness rules + a bounded serena pass; deep reads go to a code-analyzer digest), then run the smallest safe execution mode: single-chat, one implementer, a single-stack design-build-verify trio, or a producer-first cross-domain run ordered by the dependency direction. For cross-domain work the producer designer's interface IS the contract; consumer seats build against it and the integration-reviewer gates the assembled feature before commit. Triggers on how should I build or route this work, plan the agents for this, this spans backend and frontend, or investigate-and-fix a bug across the stack. Single-stack work runs the domain-trio protocol (`references/domain-trio-protocol.md`) - name the stack in the ask ('frontend only', 'just the API') to pin routing straight to it; this skill scopes and routes - it never designs or writes code."
 disable-model-invocation: true
 ---
 
@@ -47,12 +47,12 @@ Do not run the full team for every task. From the scoping verdict, pick the smal
 |---|---|
 | single_chat | main session only - tiny, clear, one-domain, no seam impact |
 | implementer_only | main session -> one domain implementer -> main session verifies |
-| domain_trio | one stack's designer -> implementer -> verifier (this is `main-stack-agents-flow`) |
-| fanout_domain_trio | one stack's designer -> 2-4 implementers -> verifier (also `main-stack-agents-flow`) |
+| domain_trio | one stack's designer -> implementer -> verifier (run per `references/domain-trio-protocol.md`) |
+| fanout_domain_trio | one stack's designer -> 2-4 implementers -> verifier (same protocol) |
 | cross_domain_light | producer designer -> producer + consumer implement/verify -> integration-reviewer - 2+ domains, routine seam |
 | full_cross_domain | producer designer -> consumer designer validates the seam -> domain pipelines -> integration-reviewer - novel or risky seam: new public/versioned API, streaming or eventing, auth, migrations, deployment order |
 
-For any single-stack mode, hand off to `main-stack-agents-flow` - it owns the design-build-verify vertical for one stack. Both skills are manual (`disable-model-invocation`), so a single-stack hand-off dispatches that stack's seats directly from the main session rather than model-invoking the skill. This skill owns everything above one stack: scoping, mode selection, the seam lifecycle, and the final gate. Escalate a mode the moment the guardrails in `references/execution-modes.md` trip.
+For any single-stack mode, Read `references/domain-trio-protocol.md` and drive that stack's seats from the main session per it - the plan gate, the parallel fan-out with per-task model overrides, the bounded verify loop (scoped re-briefs, two fix rounds maximum), and the status routing are that file, never re-improvised. A user hint that names the surface ('frontend only', 'just the API') pins the stack up front: scoping shrinks to the change-scope read that feeds the designer brief, and routing goes straight down the trio ladder. This skill owns everything above one stack: scoping, mode selection, the seam lifecycle, and the final gate. Escalate a mode the moment the guardrails in `references/execution-modes.md` trip.
 
 ## Cross-domain orchestration - producer first
 
@@ -100,6 +100,7 @@ Keep a durable ledger - a short file, not just in-context notes - so a mid-run c
 Route to these rather than restating them in each agent:
 
 - `references/execution-modes.md` - the mode ladder and escalation guardrails for both families.
+- `references/domain-trio-protocol.md` - the single-stack vertical: design -> parallel build -> bounded verify loop, status routing, memory hygiene. Read it whenever a single-stack mode is picked.
 - `references/model-routing.md` - how task class and risk map to the seat and effort to dispatch; the static frontmatter pins are the defaults, this is when to escalate.
 - `references/seam-catalog.md` - the stack-keyed traps the scoping pass walks: what turns a 'local' task cross-domain.
 - `references/contract-protocol.md` - the recorded interface, versioning, the change protocol and BLOCKED_CONTRACT_CHANGE.
@@ -116,4 +117,4 @@ Route to these rather than restating them in each agent:
 - Do not duplicate agents to vary task size or model effort. One durable seat per role; `references/execution-modes.md` picks the mode and `references/model-routing.md` picks the effort.
 - Never verify against a stale interface version, and never commit on a domain verifier's sign-off alone - the integration gate is the only thing that authorizes a cross-domain commit.
 - Durable orientation lives in the committed docs - the architecture map (`docs/architecture/ARCHITECTURE.md` + `docs/architecture/references/`) and the code-style doc (`docs/PROJECT-CODE-STYLE.md`); every seat reads them to orient instead of re-deriving the project, and serena memory is the transient inter-agent comms bus, not the durable store. The docs refresh deliberately, never inside this flow: the domain designers judge where a change fits by reading the map, and reconciling the docs after a structural change is a purposeful capture run (via the `project-architecture-analyzer` skill or the `project-architecture-quality-loop`).
-- Keep this skill scoping, routing, and orchestration only. Stack knowledge lives in the domain agents and the skills they load; single-stack execution lives in `main-stack-agents-flow`.
+- Keep this skill scoping, routing, and orchestration only. Stack knowledge lives in the domain agents and the skills they load; the single-stack execution protocol is `references/domain-trio-protocol.md`.

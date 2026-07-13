@@ -1,6 +1,6 @@
 ---
 name: project-solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is project-task-flow / main-stack-agents-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
+description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is project-task-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
 disable-model-invocation: true
 ---
 
