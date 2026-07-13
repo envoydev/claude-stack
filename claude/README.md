@@ -181,6 +181,36 @@ old positional forms (`install work`, `install github-cli`) are gone - pass a va
 | **`--context7`** \| **`-Context7`** | `remote` (default) \| `local` | context7 transport: `remote` is the hosted HTTP server, `local` the npx stdio server. |
 | **`--github-cli`** \| **`-GitHubCli`** | flag / switch | Install the GitHub CLI (`gh`) if missing. No auth during install; run `gh auth login` once before first GitHub platform use. |
 
+### Claude-driven install - analyze, trim, confirm, run
+
+For a new project, let Claude Code do the manifest trim instead of hand-editing. Give a session at
+the project root this three-step brief:
+
+1. **Download the installer into `.claude/`:**
+
+   ```bash
+   mkdir -p .claude && curl -fsSL https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/claude-stack.sh -o .claude/claude-stack.sh
+   ```
+
+2. **Analyze the project, then trim the script.** Detect the stacks actually present (languages,
+   frameworks, desktop/mobile surfaces, CI files), open `.claude/claude-stack.sh`, and **comment
+   out - never delete -** the manifest entries this project does not need: the per-stack `SKILLS`
+   entries, the conditional `MCPS` (`angular-cli` outside Angular, `appium-mcp` / `chrome-devtools`
+   without their native deps, `memory` in a standalone project), and the per-stack `AGENTS` +
+   `CLAUDE_RULES` entries. Leave everything cross-stack alone.
+
+3. **Stop for confirmation.** Show what was commented out and why, and wait for the go-ahead - run
+   nothing before it. On confirmation, install from the project root:
+
+   ```bash
+   bash .claude/claude-stack.sh install
+   ```
+
+   (named flags as needed - see Arguments above), then follow the script's printed next steps.
+
+The trimmed copy IS the per-project manifest: keep it (committed or local), and re-run it for
+`update` so the trim survives - a fresh download restores the full manifest.
+
 ---
 
 ## `install` vs `update`
