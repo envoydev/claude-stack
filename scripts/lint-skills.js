@@ -30,7 +30,10 @@
 //      against the CURSOR_AGENTS manifest in BOTH cursor-stack.{sh,ps1}.
 // Also verifies the require-convention-skill hook only demands skills that exist,
 // that every NON_SKILL_TOKENS allowlist entry is still actually used (no dead
-// config), and warns (soft) on over-long SKILL.md descriptions.
+// config), that claude/rules/*.md + claude/agents/*.md frontmatter parses as
+// strict YAML with the required keys (an unquoted ': ' scalar breaks GitHub
+// rendering and strict parsers - the skills already get this via check 1),
+// and warns (soft) on over-long SKILL.md descriptions.
 // Needs js-yaml (run `npm install` once). Run: node scripts/lint-skills.js
 //   -> exit 0 clean (warnings allowed), 1 with findings.
 'use strict';
@@ -1070,6 +1073,75 @@ function main()
         }
     }
 
+    // 18. claude/rules/*.md and claude/agents/*.md frontmatter must be strict
+    //     YAML - the same failure mode check 1 guards for skills: an unquoted
+    //     scalar containing ': ' breaks GitHub rendering AND any strict
+    //     frontmatter parser. Rules need a non-empty description (pathless
+    //     baseline) or a paths string array (path-scoped). Agents need
+    //     name (= filename) plus the house keys: description, model, effort, tools.
+    let rulesChecked = 0;
+    let agentsChecked = 0;
+    for (const target of [
+        { dir: path.join(ROOT, 'claude', 'rules'), kind: 'rule' },
+        { dir: path.join(ROOT, 'claude', 'agents'), kind: 'agent' },
+    ])
+    {
+        for (const file of fs.readdirSync(target.dir).filter(f => f.endsWith('.md')).sort())
+        {
+            const rel = `claude/${target.kind === 'rule' ? 'rules' : 'agents'}/${file}`;
+            if (target.kind === 'rule') rulesChecked++; else agentsChecked++;
+            const fm = fs.readFileSync(path.join(target.dir, file), 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+            if (!fm)
+            {
+                flag(`${rel} has no YAML frontmatter block`);
+                continue;
+            }
+
+            let meta;
+            try
+            {
+                meta = yaml.load(fm[1]);
+            }
+            catch (err)
+            {
+                flag(`${rel} frontmatter is not valid YAML: ${err.reason || err.message}`);
+                continue;
+            }
+
+            if (meta === null || typeof meta !== 'object' || Array.isArray(meta))
+            {
+                flag(`${rel} frontmatter did not parse to a mapping`);
+                continue;
+            }
+
+            if (target.kind === 'rule')
+            {
+                const hasDesc = typeof meta.description === 'string' && meta.description.trim() !== '';
+                const hasPaths = Array.isArray(meta.paths) && meta.paths.length > 0 && meta.paths.every(p => typeof p === 'string');
+                if (!hasDesc && !hasPaths)
+                {
+                    flag(`${rel} frontmatter needs a non-empty 'description' (pathless) or a 'paths' string array (path-scoped)`);
+                }
+            }
+            else
+            {
+                const expected = file.replace(/\.md$/, '');
+                if (meta.name !== expected)
+                {
+                    flag(`${rel} frontmatter name is '${meta.name}', expected '${expected}'`);
+                }
+
+                for (const key of ['description', 'model', 'effort', 'tools'])
+                {
+                    if (typeof meta[key] !== 'string' || meta[key].trim() === '')
+                    {
+                        flag(`${rel} frontmatter has no non-empty '${key}'`);
+                    }
+                }
+            }
+        }
+    }
+
     if (warnings.length > 0)
     {
         for (const warning of warnings)
@@ -1092,7 +1164,8 @@ function main()
     }
 
     console.log(`lint-skills: clean (${dirs.length} skills, ${primary.active.size} active manifest entries, `
-        + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; 4 manifests + HTML in sync).`);
+        + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; 4 manifests + HTML in sync; `
+        + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean).`);
 }
 
 main();
