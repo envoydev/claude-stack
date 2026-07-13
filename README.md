@@ -222,14 +222,12 @@ dispatched agent's report.
 | `ci-failure-diagnoser` | `project-ci-failure-signatures` |
 
 The trio loop is `project-solution-design` -> `project-verify-plan` -> build under the auto-loaded conventions
--> `/code-review`, with a checkpoint after each step. **See the full tutorial and worked example
-in [docs/single-chat-guide.md](docs/single-chat-guide.md).**
+-> `/code-review`, with a checkpoint after each step.
 
-The inverse path - running the same flow as a dispatched team of 37 model-pinned subagents, the
-`main-stack-agents-flow` and `project-task-flow` orchestration skills, the execution-mode ladder, and when the
-isolation floor is worth paying - is **[docs/agent-flow-guide.md](docs/agent-flow-guide.md)**. Read
-the two as a pair: stay in chat for small single-stack work, dispatch the team for large, parallel,
-cross-domain, or log-heavy work.
+The inverse path runs the same flow as a dispatched team of 33 model-pinned subagents - the
+`main-stack-agents-flow` and `project-task-flow` orchestration skills own that ladder (the roster is laid
+out at the top of [claude/claude-stack.html](claude/claude-stack.html)). Pick by size: stay in chat
+for small single-stack work, dispatch the team for large, parallel, cross-domain, or log-heavy work.
 
 ## Repository layout
 
