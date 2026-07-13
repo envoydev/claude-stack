@@ -73,6 +73,8 @@ Requirements clarified, scope + dependency direction established (above)
 
 The producer designer's interface is recorded in the ledger before any consumer seat is briefed - routes, DTOs, error envelope, auth policy, whatever the seam carries. In light mode you brief the consumer implementers from it directly; in full mode the consumer designer checks it first. Either way the seam is written down once and every brief cites it.
 
+**Gate every plan before it fans out.** For fan-out and cross-domain modes, run `project-verify-plan`'s four audit passes in-session on each returned designer plan - traps named for its stack, scope matches the requirement, edges and safety covered, minimal - before dispatching a single implementer. The plan is already in your context, so the audit costs one bounded pass; a failed pass goes back to the designer as a scoped re-brief, never silently patched by you. Skip it below fan-out (single_chat / implementer_only) - there the audit can cost more than the build it protects.
+
 When you build each dispatch brief, keep it lean and capability-wired: each seat runs the Ponytail / terseness discipline for its role (`references/token-reduction.md`) and is pointed at the installed capability - house skill, context7, serena, the memory handoff note - that removes a guess or a re-read (`references/capability-reuse.md`). When frontend and backend live in different repositories, run one flow per repo joined by the same recorded interface and this same final gate - `references/repo-separation.md`.
 
 ### Example - one routed run

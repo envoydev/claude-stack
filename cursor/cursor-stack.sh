@@ -165,9 +165,10 @@ SKILLS=(
   "envoydev/agents-stack|main-stack-agents-flow"     # main-stack-agents-flow orchestration - designer decomposes, implementers fan out, verifier gates
   "envoydev/agents-stack|project-task-flow"    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
   "envoydev/agents-stack|project-verify-plan"      # audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review
+  "envoydev/agents-stack|project-implement"              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + resolver routing), finish via /code-review + the done-gate
   "envoydev/agents-stack|project-solution-design"  # single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds project-verify-plan
-  "envoydev/agents-stack|failure-signatures" # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
-  "envoydev/agents-stack|ci-triage"        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with failure-signatures
+  "envoydev/agents-stack|project-failure-signatures" # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
+  "envoydev/agents-stack|project-ci-failure-signatures"        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-failure-signatures
   "envoydev/agents-stack|devops"           # DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost
   "envoydev/agents-stack|database-conventions" # cross-engine DB conventions + per-engine skill routing
   "envoydev/agents-stack|data-security"    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit

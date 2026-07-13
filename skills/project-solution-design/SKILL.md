@@ -25,12 +25,12 @@ An ordered task plan: the fit verdict and its forcing edge first, then one entry
 
 ## Example
 
-Brief: 'Add CSV export to the orders list.'
+Brief: 'Add data export to the records list.'
 
 Plan (single-chat output):
-- **Fit - extend an existing seam.** `OrdersController` already owns the orders read paths and an export is another read projection, so no new boundary. Forcing edge: the export must not pull the full entity graph, so it reads through the existing `IOrderQueries` projection, not the `DbSet`.
-- **Task 1** - add `ExportOrdersCsv(filter)` to `IOrderQueries` and its implementation. Trap: stream the reader, do not materialize every row (unbounded result - `database-conventions`). Anchor: `OrderQueries.cs:GetOrders`.
-- **Task 2** - add `GET /orders/export` to `OrdersController`, returning a streamed `text/csv`. Trap: project to a DTO at the edge, never the EF entity (`dotnet-mvc-controllers`). Anchor: `OrdersController.cs:List`.
-- **Task 3** - a `WebApplicationFactory` test asserting the CSV header row, one data row, and a 200. Anchor: `OrdersControllerTests.cs`.
+- **Fit - extend an existing seam.** The records module already owns the read paths and an export is another read projection, so no new boundary. Forcing edge: the export must not pull the full object graph, so it reads through the existing query-projection seam, never the raw persistence surface.
+- **Task 1** - add the export projection to the query seam and its implementation. Trap: stream the rows, never materialize the full set (the stack skill's unbounded-result trap). Anchor: the located query seam (`file:symbol`).
+- **Task 2** - add the export entry point returning a streamed response. Trap: map to a transfer shape at the edge, never the persistence entity (the stack skill's boundary trap). Anchor: the located edge (`file:symbol`).
+- **Task 3** - an integration test asserting the header row, one data row, and the success status. Anchor: the located test suite.
 
-Then gate with `project-verify-plan`, build each task under `dotnet-web-backend` / `dotnet-mvc-controllers`, and review with `/code-review`.
+Then gate with `project-verify-plan`, build each task under the stack's house skills, and review with `/code-review`.

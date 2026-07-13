@@ -25,7 +25,7 @@ The `.sh`/`.ps1` twins take the **same arguments** and produce the **same result
 
 | Component | Lands in | Notes |
 | --------- | -------- | ----- |
-| **Skills** (63) | `.cursor/skills/` | real copies; run as Cursor Skills (`agentskills.io`); includes `main-stack-agents-flow` per-domain orchestration + `project-task-flow` cross-domain routing. `npx skills add … --agent cursor` |
+| **Skills** (64) | `.cursor/skills/` | real copies; run as Cursor Skills (`agentskills.io`); includes `main-stack-agents-flow` per-domain orchestration + `project-task-flow` cross-domain routing. `npx skills add … --agent cursor` |
 | **MCP servers** (7) | `.cursor/mcp.json` | `angular-cli`, `serena` (`--context ide-assistant`), `playwright`, `memory`, `context7`, plus `chrome-devtools` + `appium-mcp` (heavy - active; comment out where not needed). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project. Cursor supports MCP natively; shell `${…}` tokens are resolved to concrete paths (Cursor does no shell interpolation) |
 | **Hooks** (2) | `.cursor/hooks/` + `.cursor/hooks.json` | `guard-protected-force-push` + `guard-catastrophic-rm` (`beforeShellExecution`): block force-push to main/master/develop and a recursive rm of /, ~, $HOME, or a bare *. Fetched from the repo's `cursor/hooks/` |
 | **Rules** (7) | `.cursor/rules/` | `csharp` / `typescript` / `sql` / `angular`-conventions.mdc (house conventions, auto-attach by glob) + `wpf-conventions.mdc` (`.xaml`, opt-in for WPF repos) + `scss-conventions.mdc` (`.scss`/`.css`, opt-in for Angular workspaces owning their stylesheets) + `ponytail.mdc` (minimal-code, `alwaysApply`; fetched from the ponytail repo, not vendored here) |

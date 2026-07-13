@@ -81,7 +81,7 @@ const NON_SKILL_TOKENS = new Set([
     // referenced by name in the base templates and the single-chat twin skills.
     'writing-plans',
     'verification-before-completion',
-    'systematic-debugging',   // paired with by the failure-signatures skill
+    'systematic-debugging',   // paired with by the project-failure-signatures skill
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
     // prose in project-task-flow + the base template - a field name, not a skill.
     'disable-model-invocation',

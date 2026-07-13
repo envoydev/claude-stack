@@ -1,23 +1,31 @@
 ---
 name: project-build-from-scratch
-description: "Build a new application or major module from scratch - greenfield scaffolding and orchestration, before code exists. Routes a new project to its stack's architecture and setup skills plus its scaffolding command - one per-stack row each for Angular, ASP.NET, WPF, Ionic mobile, and SQL/data - then in a stack-installed Claude Code project drives the build from the main session - greenfield-solution-designer designs, and each vertical slice runs the `main-stack-agents-flow` skill for its stack. Not for changing an existing codebase - a feature inside a live app is `main-stack-agents-flow`, cross-stack routing is `project-task-flow`. Triggers on build from scratch, new project, greenfield, scaffold, start a new app."
+description: "Build a new application or major module from scratch - greenfield design, scaffolding, and build orchestration, before code exists. DESIGN runs IN-SESSION on this skill's opus/xhigh pinned turn: the spec becomes 2-3 reasoned architecture options (stack, style, structure, state/persistence - each with tradeoffs) and the user picks - nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice through the domain seats (designer -> implementers -> verifier). Not for changing an existing codebase - a feature inside a live app is `main-stack-agents-flow`, cross-stack routing is `project-task-flow`, a new module in an existing repo is the project-architecture-analyzer capture plus that stack's solution-designer. Triggers on build from scratch, new project, greenfield, scaffold, start a new app."
 disable-model-invocation: true
+model: opus
+effort: xhigh
 ---
 
-# Project Scaffold - Greenfield Build Orchestration
+# Project Build From Scratch - Greenfield Design, Scaffold, Build
 
-Use this skill to build a new application or a major new module from scratch, before code exists. It routes the work to the right architecture skill and scaffolding command, then - in a stack-installed Claude Code project - drives the build itself, slice by slice, from the main session.
-
-## Execution modes
-DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-task-flow` owns. Pick the mode once, before DESIGN, hold it for the run, and apply it to the scaffold:
-
-- **DELEGATED** (dispatch available) - the main session dispatches greenfield-solution-designer, then runs each slice's `main-stack-agents-flow` vertical by dispatching that stack's seats directly, never doing their work itself. (This skill and `main-stack-agents-flow` are manual `/`-only skills (`disable-model-invocation`), so a slice runs its vertical by dispatching the seats, not by model-invoking the `main-stack-agents-flow` skill.)
-- **INLINE** (no dispatch: Cursor, a non-stack project, or a scaffold too small to fan out) - do it all in-session, using brainstorming and writing-plans plus the architecture skills directly, instead of dispatching a designer.
+Use this skill to build a new application or a major new module from scratch, before code exists. The design happens here, in-session - there is no dispatched greenfield seat: with no code to read, a design pass reasons from the spec that is already in this conversation, and its options come back to the user anyway. The frontmatter pins the invoking turn to `opus`/`xhigh`, so DESIGN runs on the architect's budget regardless of the session model (the pin lasts the turn - after the user's pick, orchestration resumes on the session model, which is fine: scaffold and build are dispatch mechanics).
 
 ## Steps
-1. **DESIGN** - DELEGATED: dispatch greenfield-solution-designer to turn the spec into architecture options. INLINE: brainstorming and writing-plans in-session, to the same end. Either way, get the user's approval on the architecture and the stack before scaffolding anything - greenfield tech choices are the user's, never silently picked.
-2. **SCAFFOLD** - once approved, run the named new-project command (dotnet new <template>; ng new; ionic start for Ionic), establish the structure from the chosen architecture skill, and wire the baseline - DI, config, a test project, formatter/analyzer config - via the stack's setup skills (`dotnet-project-setup` + `dotnet-code-quality` on .NET).
-3. **BUILD** - slice by slice: for each vertical slice, dispatch that slice's stack seats directly from the main session - its designer, then implementer(s), then verifier (the `main-stack-agents-flow` vertical). Loop until the spec's first milestone is met.
+
+### 1. DESIGN - in-session, on the pinned turn
+Turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, using the brainstorming discipline plus the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. A spec gap that blocks the design is a question to the user (the superpowers brainstorming + `AskUserQuestion` path), never a guess. Multi-stack designs name the seam and its producer/consumer direction up front - the build step will run it producer-first per `project-task-flow`.
+
+### 2. THE PICK - hard gate
+Present the options; the user chooses the architecture and the stack. Greenfield tech choices are the user's, never silently picked - nothing is scaffolded before this gate.
+
+### 3. SCAFFOLD
+Run the named new-project command (`dotnet new <template>`; `ng new`; `ionic start` for Ionic), establish the structure from the chosen architecture skill, and wire the baseline - DI, config, a test project, formatter/analyzer config - via the stack's setup skills (`dotnet-project-setup` + `dotnet-code-quality` on .NET).
+
+### 4. BUILD - slice by slice
+For each vertical slice, dispatch that slice's stack seats directly from the main session - its designer, then implementer(s), then verifier (the `main-stack-agents-flow` vertical); reds route to the matching resolver. A multi-stack slice runs producer-first with the recorded interface, per `project-task-flow`. Loop until the spec's first milestone is met. (INLINE fallback - Cursor, or a scaffold too small to fan out: do the slices in-session with writing-plans + the architecture skills instead of dispatching.)
+
+### 5. HANDOFF
+First milestone green: suggest the captures - `/project-architecture-analyzer` and `/project-code-style-analyzer` - so the new repo gets its map, style doc, and generated awareness rules; from here on the standing flow machinery owns the project.
 
 ## Per-stack scaffolding
 
@@ -31,12 +39,15 @@ DELEGATED vs INLINE - and why detection keys on dispatch capability, not file pr
 
 ## Example
 
-Brief: 'Start a new Angular admin dashboard.' DELEGATED, stack-installed project:
-1. **DESIGN** - dispatch greenfield-solution-designer; it returns 2-3 architecture options (routing, state tier, folder shape). Present them, get the user's pick before scaffolding.
-2. **SCAFFOLD** - on approval: `ng new admin`, establish the structure from `angular-conventions`, and wire the baseline - lint/format config, a test setup, the core routing shell.
-3. **BUILD** - first slice (the auth shell): dispatch angular-solution-designer, then the angular implementer(s), then angular-verifier - the `main-stack-agents-flow` vertical - and loop its punch-list. Repeat per slice to the first milestone.
+Brief: 'Start a new Angular admin dashboard.'
+1. **DESIGN** in-session: three options - standalone + signals with feature folders; NgRx-backed modular; minimal-shell MVP - each with routing, state tier, folder shape, and the tradeoff that decides it.
+2. **THE PICK**: the user chooses option one.
+3. **SCAFFOLD**: `ng new admin`, structure per `angular-conventions`, wire lint/format config, a test setup, the core routing shell.
+4. **BUILD**: first slice (the auth shell) - dispatch angular-solution-designer, then the angular implementer(s), then angular-verifier; loop the punch-list. Repeat per slice to the first milestone.
+5. **HANDOFF**: suggest the captures so the repo gets its map and style artifacts.
 
 ## Rules
-- Greenfield architecture and tech choices are the user's - present options, get approval, never scaffold before the design is approved.
-- The main session is the only orchestrator - never instruct a subagent to dispatch another; the agents this skill dispatches (greenfield-solution-designer, then the domain seats of the `main-stack-agents-flow` vertical) carry no Agent tool.
-- Reuse the architecture skills rather than restating structure here - this skill routes, it does not re-derive.
+- Greenfield architecture and tech choices are the user's - present options, get the pick, never scaffold before it.
+- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check context7, never memory.
+- The main session is the only orchestrator - never instruct a subagent to dispatch another; the domain seats this skill fans out carry no Agent tool.
+- An honest NEEDS_CONTEXT beats a guessed design: a blocking spec question goes to the user before options are locked.

@@ -147,18 +147,22 @@ npx skills remove      # uninstall skills
 - **project-verify-plan** - Audit an implementation plan before writing code: a risk-coverage review that
   checks the plan names the traps its stack will hit (routing to the stack skill), matches scope,
   covers the edges, and stays minimal - the cheapest place to catch a design error, upstream of code review.
+- **project-implement** - Single-chat build step: execute a verified plan task by task - honor each
+  card's contract, gate every task green (resolver agents absorb stubborn reds), flag scope beyond
+  the plan, finish via `/code-review` + the done-gate. Completes the in-session
+  design -> audit -> build -> review vertical.
 - **project-solution-design** - Work out how a feature fits the existing code before building, in a single
   chat: read the committed architecture, judge where the change belongs (extend a seam, refactor
   first, or isolate a new boundary), load the stack skill for its traps, and decompose into an
   ordered, minimal plan. The in-context twin of the designer agent; feeds `project-verify-plan`.
-- **failure-signatures** - Match a runtime crash to its signature and isolate the real cause: a
+- **project-failure-signatures** - Match a runtime crash to its signature and isolate the real cause: a
   lookup of the common local-runtime signatures (null-reference, DI resolution, async deadlock,
   disposed-lifecycle, config drift, boundary, database contention, HTTP-status) each mapped to where the cause lives -
   usually not the line that threw. Pairs with the systematic-debugging method.
-- **ci-triage** - Triage a red CI pipeline or PR check in the current chat: match the failure to a
+- **project-ci-failure-signatures** - Triage a red CI pipeline or PR check in the current chat: match the failure to a
   signature (compile/restore, green-locally-red-on-runner, quality gate, signing, workflow drift,
   infra flake), make the code-vs-environment call, and route it. The single-chat twin of the
-  `ci-failure-diagnoser` agent; the CI sibling of `failure-signatures`.
+  `ci-failure-diagnoser` agent; the CI sibling of `project-failure-signatures`.
 - **project-build-from-scratch** - Build a new application or major module from scratch: routes greenfield
   work to the right architecture skill and scaffolding command, then drives design -> scaffold ->
   slice-by-slice build over the agent pipeline.
@@ -210,8 +214,8 @@ dispatched agent's report.
 | verifier (before build) | `project-verify-plan` |
 | `<stack>-implementer` | just code - conventions auto-load on file touch |
 | verifier (after build) | `/code-review` + `verification-before-completion` |
-| `issue-diagnoser` | `systematic-debugging` + `failure-signatures` |
-| `ci-failure-diagnoser` | `ci-triage` |
+| `issue-diagnoser` | `systematic-debugging` + `project-failure-signatures` |
+| `ci-failure-diagnoser` | `project-ci-failure-signatures` |
 
 The trio loop is `project-solution-design` -> `project-verify-plan` -> build under the auto-loaded conventions
 -> `/code-review`, with a checkpoint after each step. **See the full tutorial and worked example

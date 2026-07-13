@@ -17,12 +17,7 @@ A plan built perfectly is still wrong if the plan was wrong - the design carries
 
 Load the plan's target stack skill FIRST, so you check against the right trap list, not a generic one.
 
-1. **Risk coverage - the highest-leverage pass.** Does the plan NAME the non-obvious failure modes this feature will hit? Do not carry a generic checklist - load the stack's house skill and check the plan against ITS traps:
-   - ASP.NET / EF -> `dotnet-web-backend` + `dotnet-data-access` (N+1, tracking on read paths, entity-across-the-boundary, one-SaveChanges owner, overflow / boundary math, concurrency token).
-   - Angular -> `angular-conventions` (signal reactivity, OnPush, RxJS teardown).
-   - WPF -> `dotnet-wpf` (cross-thread UI, silent binding failure, INotifyPropertyChanged correctness).
-   - SQL / data -> `database-conventions` + the engine skill; DevOps -> `devops`; Ionic/mobile -> `ionic`.
-   A trap the plan does not name is a trap the build inherits - flag each missing one and where in the plan it belongs.
+1. **Risk coverage - the highest-leverage pass.** Does the plan NAME the non-obvious failure modes this feature will hit? Do not carry a generic checklist - load the stack's house skill (the same one your project's convention rules auto-attach for its file types; its router names the specialist siblings) and check the plan against ITS trap list: the data-access, lifecycle, concurrency, and boundary traps that stack actually has. A trap the plan does not name is a trap the build inherits - flag each missing one and where in the plan it belongs.
 2. **Scope match.** The plan covers exactly what was asked - nothing missing, nothing speculative added (the ponytail 'ultra' test). A step for a requirement that is not there, or a missing step for one that is, is a finding.
 3. **Edges + safety.** Boundary, empty, and error cases are named, not assumed. Any auth / migration-order / data-loss / concurrency surface is called out WITH its safeguard. Silence on a safety-critical edge is a finding.
 4. **Soundness.** The approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement.
@@ -33,13 +28,13 @@ A short punch-list, not a rewrite. One line per finding: `severity | the gap | t
 
 ## Example
 
-Auditing the `project-solution-design` CSV-export plan ('add CSV export to the orders list' - three tasks: an IOrderQueries projection, a streamed /orders/export endpoint, a WebApplicationFactory test), one finding per pass:
+Auditing the `project-solution-design` export plan ('add data export to the records list' - three tasks: a query projection, a streamed export endpoint, an integration test), one finding per pass:
 
 ```text
-1 risk      | MAJOR | no task names request cancellation on the streamed export - a client abort leaks the open reader | thread a CancellationToken through Tasks 1-2 (dotnet-web-backend trap list)
-2 scope     | MINOR | Task 2 adds an Excel-BOM option the requirement never asked for | drop it (the ponytail 'ultra' test)
-3 edges     | MAJOR | empty result set unspecified - header-only CSV or 404?           | name the expected shape in Task 2; assert it in Task 3
-4 soundness | pass  | extends the existing IOrderQueries seam, tasks in dependency order, smallest plan
+1 risk      | MAJOR | no task names cancellation on the streamed export - a client abort leaks the open reader | thread the stack's cancellation mechanism through Tasks 1-2 (its skill's trap list)
+2 scope     | MINOR | Task 2 adds an export-format option the requirement never asked for | drop it (the ponytail 'ultra' test)
+3 edges     | MAJOR | empty result set unspecified - header-only output or an error?    | name the expected shape in Task 2; assert it in Task 3
+4 soundness | pass  | extends the existing query seam, tasks in dependency order, smallest plan
 ```
 
 Verdict: fix the plan (2 MAJOR), re-check the two lines, then build.
