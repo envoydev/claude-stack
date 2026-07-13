@@ -26,15 +26,28 @@ file is touched and are not listed here - their own `paths:` frontmatter says wh
 | baseline-security | /security-review routing for sensitive diffs, never log PII / secrets, hardcoded-secret protocol, the permissions.deny subprocess caveat |
 | baseline-git | Conventional Commits + branch naming, review-before-commit, never auto-push, no AI attribution, PR shape, force-with-lease, the pre-commit checkpoint |
 | baseline-navigation | serena-first symbol lookup, read-before-edit, ambiguous-reference handling, pasted-code-is-illustrative |
-| baseline-agents-skills | skill-loading discipline, explicit-only subagent dispatch, the five slash-only orchestration skills |
-| baseline-related-projects | cross-repo sibling awareness: the entry schema for this file's `## Related projects` section, orientation detail routed to `docs/RELATED-PROJECTS.md` (comment out in a standalone project) |
+| baseline-agents-skills | skill-loading discipline, explicit-only subagent dispatch, the seven slash-only orchestration skills |
 
 ## Related projects
 
-Multi-repo product only: the sibling awareness entries live here - committed and always-loaded,
-shaped per `.claude/rules/baseline-related-projects.md` (name / location / relation / seam; the
-orientation detail goes in a committed `docs/RELATED-PROJECTS.md`). Standalone project: delete
-this section and comment the rule out of the installer manifest.
+Multi-repo product only (standalone project: delete this section). The sibling awareness entries
+live here - committed and always-loaded, the minimum that makes the siblings exist for the agent.
+Describe edges, not roles:
+
+```yaml
+related_projects:
+  - name:     <sibling name>
+    location: <path or git URL>
+    relation: consumes | provides-to | peer | depends-on | embeds
+    seam:     <the shared surface a change here can break there - API, package, schema>
+```
+
+- Everything past awareness - `first_read`, the evidence behind each seam - lives in the committed
+  `docs/PROJECT-RELATED-CONTEXT.md`, generated and refreshed by the `/project-related-context`
+  skill; read it when a task touches a seam.
+- serena binds to *this* repo: `Read` / `Grep` a sibling directly, but symbol-navigate it only
+  from a context rooted there.
+- Dynamic cross-repo findings go to the `memory` MCP, never a committed file.
 
 ## Per-project additions
 

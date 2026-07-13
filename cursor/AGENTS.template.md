@@ -153,7 +153,7 @@ related_projects:
     seam:     <the shared surface a change here can break there - an API spec, a package's public surface, shared types>
 ```
 
-- **Detail lives in `docs/RELATED-PROJECTS.md`, from the start.** What to read first to orient in a
+- **Detail lives in `docs/PROJECT-RELATED-CONTEXT.md`, from the start.** What to read first to orient in a
   sibling (its `AGENTS.md` / `CLAUDE.md`, then `README.md`), what sends you there, interface
   elaboration - all of it goes in that committed file (tracked, never gitignored, so it travels with
   the repo), read on demand when a task touches a seam. The entries above must stay in `AGENTS.md` -

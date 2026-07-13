@@ -11,7 +11,7 @@ C# 12 while treating **.NET Framework 4.8 as a supported-but-frozen maintenance 
 serviced, but no new WinForms features land there. The conventions below are the same whichever
 runtime you are on; the version-specific mechanics live in the references.
 
-**Control naming, event-handler naming, and designer-file conventions live in `references/winforms-style.md`.** This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `docs/CODE-STYLE.md` win where they diverge.
+**Control naming, event-handler naming, and designer-file conventions live in `references/winforms-style.md`.** This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `docs/PROJECT-CODE-STYLE.md` win where they diverge.
 
 **Load the version reference for the concrete mechanics:**
 

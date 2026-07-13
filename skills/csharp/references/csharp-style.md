@@ -1,6 +1,6 @@
 # Modern C# code style (.NET 8 / 9 / 10, C# 12 / 13 / 14)
 
-The authoritative house style for modern C#: formatting, naming, and language-feature usage only. No architecture, no design patterns, no project structure - those stay in `SKILL.md` and route through the `dotnet` router. This is the general baseline; a project's own `.editorconfig` and its `docs/CODE-STYLE.md` are HIGHER priority - where a project diverges, the project wins and this document yields.
+The authoritative house style for modern C#: formatting, naming, and language-feature usage only. No architecture, no design patterns, no project structure - those stay in `SKILL.md` and route through the `dotnet` router. This is the general baseline; a project's own `.editorconfig` and its `docs/PROJECT-CODE-STYLE.md` are HIGHER priority - where a project diverges, the project wins and this document yields.
 
 Baseline: Microsoft/.NET runtime conventions with pragmatic senior-level overrides, aligned to the Roslyn analyzers and JetBrains Rider default inspections. Enforce via the canonical `.editorconfig` at the end of this document.
 

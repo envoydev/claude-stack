@@ -124,6 +124,16 @@ npx skills remove      # uninstall skills
   writes `docs/architecture/ARCHITECTURE.md` + a reasoned strengths/weaknesses `docs/architecture/ASSESSMENT.md`,
   then fixes the weaknesses by tier (small -> implementer, substantial -> designer-led build, structural ->
   flagged for approval) and reconciles the docs. Manual, `/`-only - the heavy counterpart to project-quality-loop.
+- **project-code-style-analyzer** - Deliberate project code-style capture: fans out code-style-analyzer
+  agents (one per detected language, parallel), merges their reports into `docs/PROJECT-CODE-STYLE.md`
+  (the project's actual style - config-enforced rules + idioms a linter cannot encode), then generates
+  the inject-code-style hook - extension filter from the observed extensions - and wires it into
+  `settings.json`. The hook injects the doc once per session on the first code-file edit. Manual, `/`-only.
+- **project-related-context** - Deliberate related-projects capture, args-driven (paths or git URLs,
+  never a scan): fans out related-project-analyzer agents (one per sibling, parallel), merges their
+  YAML entries (name/location/relation/first_read/seam, evidence-grounded or UNVERIFIED) into
+  `docs/PROJECT-RELATED-CONTEXT.md` - the on-demand orientation tier of the related-projects model.
+  Re-run upserts entries per passed sibling. Manual, `/`-only.
 - **verify-plan** - Audit an implementation plan before writing code: a risk-coverage review that
   checks the plan names the traps its stack will hit (routing to the stack skill), matches scope,
   covers the edges, and stays minimal - the cheapest place to catch a design error, upstream of code review.

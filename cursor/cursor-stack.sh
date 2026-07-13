@@ -157,6 +157,8 @@ SKILLS=(
   "envoydev/agents-stack|explain-code-tutor"        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   "envoydev/agents-stack|project-quality-loop"             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
   "envoydev/agents-stack|architecture-quality-loop"        # deliberate analyze-assess-improve loop - architecture-analyzer writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
+  "envoydev/agents-stack|project-code-style-analyzer"    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
+  "envoydev/agents-stack|project-related-context"        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, merges docs/PROJECT-RELATED-CONTEXT.md; manual /-only
   "envoydev/agents-stack|project-scaffold" # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   "envoydev/agents-stack|main-stack-agents-flow"     # main-stack-agents-flow orchestration - designer decomposes, implementers fan out, verifier gates
   "envoydev/agents-stack|cross-stack-agents-flow"    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies

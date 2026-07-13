@@ -1,6 +1,6 @@
 # Angular style: file naming, enforceable config, and modern-vs-legacy examples
 
-The concrete, enforceable slice of the Angular conventions: the v20+ file-naming rules, the angular-eslint + Prettier flat config that enforces them, and modern-vs-legacy examples. The broad conventions - signals, control flow, DI, state tiers, SSR, forms, a11y, testing - live in `SKILL.md`; the per-version stable/experimental deltas live in `references/v19.md`-`v22.md`. This document is the enforcement layer. A project's own config (its `eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `docs/CODE-STYLE.md` are HIGHER priority - where a project diverges, follow the project.
+The concrete, enforceable slice of the Angular conventions: the v20+ file-naming rules, the angular-eslint + Prettier flat config that enforces them, and modern-vs-legacy examples. The broad conventions - signals, control flow, DI, state tiers, SSR, forms, a11y, testing - live in `SKILL.md`; the per-version stable/experimental deltas live in `references/v19.md`-`v22.md`. This document is the enforcement layer. A project's own config (its `eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `docs/PROJECT-CODE-STYLE.md` are HIGHER priority - where a project diverges, follow the project.
 
 ## File and folder naming (v20+ style guide - the house convention)
 

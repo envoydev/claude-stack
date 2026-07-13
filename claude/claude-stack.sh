@@ -252,6 +252,8 @@ SKILLS=(
   "envoydev/agents-stack|explain-code-tutor"        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   "envoydev/agents-stack|project-quality-loop"             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
   "envoydev/agents-stack|architecture-quality-loop"        # deliberate analyze-assess-improve loop - architecture-analyzer writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
+  "envoydev/agents-stack|project-code-style-analyzer"    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
+  "envoydev/agents-stack|project-related-context"        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, merges docs/PROJECT-RELATED-CONTEXT.md; manual /-only
   "envoydev/agents-stack|project-scaffold" # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   "envoydev/agents-stack|main-stack-agents-flow"     # main-stack-agents-flow orchestration - designer decomposes, implementers fan out, verifier gates
   "envoydev/agents-stack|cross-stack-agents-flow"    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
@@ -441,7 +443,8 @@ AGENTS=(
   "angular-test-resolver.md"         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
   "architecture-analyzer.md"         # analysis phase (opus/xhigh): deliberate iterative reasoner - loops code-analyzer, writes docs/architecture/ARCHITECTURE.md + docs/architecture/ASSESSMENT.md; read-only over code, @agent-/loop-only
   "code-analyzer.md"                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - architecture-analyzer loops it, also independently callable
-  "style-analyzer.md"                # analysis phase (sonnet/medium): reads per-language style config + code -> writes docs/CODE-STYLE.md (project's actual style, config + idioms); read-only over source
+  "code-style-analyzer.md"                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
+  "related-project-analyzer.md"           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/PROJECT-RELATED-CONTEXT.md
   "task-analyzer.md"                 # analysis phase (opus/high): read-only deep task analysis - impact, coupling, open questions
   "ci-failure-diagnoser.md"          # analysis phase (opus/high): read-only CI red-run diagnosis via gh - categorize, local repro, route
   "issue-diagnoser.md"               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
@@ -489,7 +492,6 @@ CLAUDE_RULES=(
   "baseline-git.md"
   "baseline-navigation.md"
   "baseline-agents-skills.md"
-  "baseline-related-projects.md" # cross-repo sibling awareness - comment out in a standalone project
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "dotnet-repair-agents.md"   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
@@ -778,7 +780,7 @@ fi
 
 log "next steps:"
 log "  - fill your project's CLAUDE.md <placeholders> (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), fill CLAUDE.md's '## Related projects' awareness entries (name/location/relation/seam) + put the orientation detail in a committed docs/RELATED-PROJECTS.md"
+log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), fill CLAUDE.md's '## Related projects' awareness entries (name/location/relation/seam) + put the orientation detail in a committed docs/PROJECT-RELATED-CONTEXT.md (the /project-related-context skill generates it)"
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 if [ "$CONTEXT7_MODE" = "remote" ]; then
