@@ -136,10 +136,10 @@ implementer_model: haiku | sonnet   # designer-assigned by task difficulty; sonn
 What a verifier (or the integration gate) hands back, so the orchestrator can loop the punch-list to the right owner:
 
 ```yaml
-verdict: pass | fail | pass_with_findings
+status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH   # the integration gate adds BLOCKED_BY_SECURITY
 contract_version: v2
 commands_run: []               # build / test output, quoted, not pasted from the implementer
-punch_list:
+findings:
   - { severity: high | med | low, task_owner: backend-02, file_symbol: ..., problem: ..., required_fix: ... }
 signoff: true | false
 ```
