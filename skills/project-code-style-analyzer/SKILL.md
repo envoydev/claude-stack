@@ -1,6 +1,6 @@
 ---
 name: project-code-style-analyzer
-description: "The deliberate project code-style capture: fan out code-style-analyzer agents (one per detected language), merge their reports into docs/PROJECT-CODE-STYLE.md, and generate + wire the inject-code-style hook that surfaces that doc at edit time, filtered to the exact file extensions the agents observed. Re-run to refresh: the same analysis, but the doc reconciles in place and the hook is rewritten only if invalid or outdated. Manual, /-only. Triggers on 'capture the project code style' or 'set up the code-style doc and hook'. NOT for architecture (architecture-quality-loop), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "The deliberate project code-style capture: fan out code-style-analyzer agents (one per detected language), merge their reports into docs/PROJECT-CODE-STYLE.md, and generate + wire the inject-code-style hook that surfaces that doc at edit time, filtered to the exact file extensions the agents observed. Re-run to refresh: the same analysis, but the doc reconciles in place and the hook is rewritten only if invalid or outdated. Manual, /-only. Triggers on 'capture the project code style' or 'set up the code-style doc and hook'. NOT for architecture (project-architecture-quality-loop), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
 disable-model-invocation: true
 ---
 
@@ -15,7 +15,7 @@ You drive the deliberate capture of a project's ACTUAL code style and make it se
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `docs/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
 
 ## Execution modes
-DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `cross-stack-agents-flow` owns. Pick once, hold for the run:
+DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-task-flow` owns. Pick once, hold for the run:
 
 - **DELEGATED** (dispatch available) - fan out code-style-analyzer per language as below; you merge and write.
 - **INLINE** (no dispatch: Cursor, or a single-language repo too small to fan out) - do the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.

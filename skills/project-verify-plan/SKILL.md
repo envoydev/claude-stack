@@ -1,5 +1,5 @@
 ---
-name: verify-plan
+name: project-verify-plan
 description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (which creates the plan) and precedes /code-review (which reviews the built code). Trigger on review this plan, is this design sound, does the plan miss anything, before I build.
 ---
 
@@ -33,7 +33,7 @@ A short punch-list, not a rewrite. One line per finding: `severity | the gap | t
 
 ## Example
 
-Auditing the `solution-design` CSV-export plan ('add CSV export to the orders list' - three tasks: an IOrderQueries projection, a streamed /orders/export endpoint, a WebApplicationFactory test), one finding per pass:
+Auditing the `project-solution-design` CSV-export plan ('add CSV export to the orders list' - three tasks: an IOrderQueries projection, a streamed /orders/export endpoint, a WebApplicationFactory test), one finding per pass:
 
 ```text
 1 risk      | MAJOR | no task names request cancellation on the streamed export - a client abort leaks the open reader | thread a CancellationToken through Tasks 1-2 (dotnet-web-backend trap list)

@@ -83,8 +83,13 @@ const NON_SKILL_TOKENS = new Set([
     'verification-before-completion',
     'systematic-debugging',   // paired with by the failure-signatures skill
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
-    // prose in cross-stack-agents-flow + the base template - a field name, not a skill.
+    // prose in project-task-flow + the base template - a field name, not a skill.
     'disable-model-invocation',
+    // the two GENERATED per-project awareness rules (written by the capture skills,
+    // never in the installer manifest) - rule file names, not skills; referenced by
+    // project-task-flow's in-session scoping step.
+    'baseline-project-architecture',
+    'baseline-project-related-context',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',

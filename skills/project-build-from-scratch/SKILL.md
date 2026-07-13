@@ -1,6 +1,6 @@
 ---
-name: project-scaffold
-description: "Build a new application or major module from scratch - greenfield scaffolding and orchestration, before code exists. Routes a new project to its stack's architecture and setup skills plus its scaffolding command - one per-stack row each for Angular, ASP.NET, WPF, Ionic mobile, and SQL/data - then in a stack-installed Claude Code project drives the build from the main session - greenfield-solution-designer designs, and each vertical slice runs the `main-stack-agents-flow` skill for its stack. Not for changing an existing codebase - a feature inside a live app is `main-stack-agents-flow`, cross-stack routing is `cross-stack-agents-flow`. Triggers on build from scratch, new project, greenfield, scaffold, start a new app."
+name: project-build-from-scratch
+description: "Build a new application or major module from scratch - greenfield scaffolding and orchestration, before code exists. Routes a new project to its stack's architecture and setup skills plus its scaffolding command - one per-stack row each for Angular, ASP.NET, WPF, Ionic mobile, and SQL/data - then in a stack-installed Claude Code project drives the build from the main session - greenfield-solution-designer designs, and each vertical slice runs the `main-stack-agents-flow` skill for its stack. Not for changing an existing codebase - a feature inside a live app is `main-stack-agents-flow`, cross-stack routing is `project-task-flow`. Triggers on build from scratch, new project, greenfield, scaffold, start a new app."
 disable-model-invocation: true
 ---
 
@@ -9,7 +9,7 @@ disable-model-invocation: true
 Use this skill to build a new application or a major new module from scratch, before code exists. It routes the work to the right architecture skill and scaffolding command, then - in a stack-installed Claude Code project - drives the build itself, slice by slice, from the main session.
 
 ## Execution modes
-DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `cross-stack-agents-flow` owns. Pick the mode once, before DESIGN, hold it for the run, and apply it to the scaffold:
+DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-task-flow` owns. Pick the mode once, before DESIGN, hold it for the run, and apply it to the scaffold:
 
 - **DELEGATED** (dispatch available) - the main session dispatches greenfield-solution-designer, then runs each slice's `main-stack-agents-flow` vertical by dispatching that stack's seats directly, never doing their work itself. (This skill and `main-stack-agents-flow` are manual `/`-only skills (`disable-model-invocation`), so a slice runs its vertical by dispatching the seats, not by model-invoking the `main-stack-agents-flow` skill.)
 - **INLINE** (no dispatch: Cursor, a non-stack project, or a scaffold too small to fan out) - do it all in-session, using brainstorming and writing-plans plus the architecture skills directly, instead of dispatching a designer.

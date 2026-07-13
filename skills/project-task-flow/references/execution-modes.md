@@ -3,7 +3,7 @@
 The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create an angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
 
 ## DELEGATED vs INLINE - dispatch capability
-Before the size/risk modes below, each orchestration skill (`main-stack-agents-flow`, `project-scaffold`, `architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
+Before the size/risk modes below, each orchestration skill (`main-stack-agents-flow`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
 
 - **DELEGATED** - the default whenever the session can dispatch subagents (the Agent tool is present). The main session orchestrates and dispatches every seat, never doing their work itself.
 - **INLINE** - the fallback when dispatch is unavailable (a Cursor session, a non-stack project with no domain agents, or a change too small to fan out). Do the same steps in-session.
@@ -21,7 +21,7 @@ Detection keys on dispatch capability, not file presence - a project can carry t
 | `cross_domain_light` | light contract -> per-domain implement + verify -> integration-reviewer | 2+ domains, obvious stable contract | high |
 | `full_cross_domain` | contract designer -> domain designers -> implementer fan-out -> domain verifiers -> integration gate | DB + API + UI, security, devops, migrations, auth, or production-critical | highest |
 
-`domain_trio` and `fanout_domain_trio` ARE the `main-stack-agents-flow` skill - route single-stack work to it. cross_domain_light and full_cross_domain are owned here in `cross-stack-agents-flow`.
+`domain_trio` and `fanout_domain_trio` ARE the `main-stack-agents-flow` skill - route single-stack work to it. cross_domain_light and full_cross_domain are owned here in `project-task-flow`.
 
 ## Decision ladder
 
@@ -87,7 +87,7 @@ angular_large:   # multiple areas, auth-sensitive UI, complex state, or a cross-
   model: { designer: opus-xhigh, implementers: sonnet-medium, verifier: sonnet-xhigh }
 ```
 
-These values illustrate the per-mode floor and rationale; they are not a per-dispatch dial. What the orchestrator can and cannot vary per dispatch - model yes (including the guarded-Haiku implementer down-dispatch), effort no - is the asymmetry `references/model-routing.md` owns. So the primary cost lever is the MODE / seat-count, not a re-dialed seat: `single_chat` and `implementer_only` skip the designer and the verifier entirely, which saves far more than running any dispatched seat a shade cheaper. A heavier need escalates to a higher mode or a heavier seat (task-analyzer -> the deliberate project-architecture-analyzer capture, a domain verifier -> integration-reviewer), per the same policy. Capability wiring - context7 before a library API, a memory note read instead of a re-derivation - is the other lever the mode carries; see `references/capability-reuse.md`.
+These values illustrate the per-mode floor and rationale; they are not a per-dispatch dial. What the orchestrator can and cannot vary per dispatch - model yes (including the guarded-Haiku implementer down-dispatch), effort no - is the asymmetry `references/model-routing.md` owns. So the primary cost lever is the MODE / seat-count, not a re-dialed seat: `single_chat` and `implementer_only` skip the designer and the verifier entirely, which saves far more than running any dispatched seat a shade cheaper. A heavier need escalates to a higher mode or a heavier seat (the in-session scoping pass -> the deliberate project-architecture-analyzer capture, a domain verifier -> integration-reviewer), per the same policy. Capability wiring - context7 before a library API, a memory note read instead of a re-derivation - is the other lever the mode carries; see `references/capability-reuse.md`.
 
 ## Team Lead routing output
 

@@ -21,11 +21,13 @@ made only inside a consuming project is throwaway (see Invariants).
     consuming project's `CLAUDE.md` is filled in from; the working conventions ship separately in
     the `rules/baseline-*.md` set. Content shipped to projects, not this repo's own file.
   - `hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
-    `guard-read-whole-file.js` (PreToolUse `Read`). Fetched into a project's `.claude/hooks/`.
-  - `agents/` - the Claude-contract subagents, 37 total: the four build/test resolvers - .NET
+    `guard-read-whole-file.js` (PreToolUse `Read`), all wired; plus `instrument-tool-usage.js`,
+    fetched UNWIRED (opt-in per-run tool/skill/MCP stats via STACK_INSTRUMENT=1 + manual wiring).
+    Fetched into a project's `.claude/hooks/`.
+  - `agents/` - the Claude-contract subagents, 34 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
-    `angular-test-resolver`) - plus eight cross-cutting agents (`task-analyzer`, `ci-failure-diagnoser`, `issue-diagnoser`, `greenfield-solution-designer`,
-    `cross-stack-contract-designer`, `framework-upgrade-planner`, `security-auditor` - a read-only
+    `angular-test-resolver`) - plus five cross-cutting agents (`ci-failure-diagnoser`, `issue-diagnoser`, `greenfield-solution-designer`,
+    `security-auditor` - a read-only
     cross-stack security posture audit that routes an OWASP/CWE punch-list to the implementers, complementing
     `/security-review` - and `integration-reviewer`, the mandatory read-only cross-domain final gate that
     checks the assembled feature against the frozen contract before commit) - plus
@@ -42,11 +44,12 @@ made only inside a consuming project is throwaway (see Invariants).
     `docs/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
     the architecture capture is deliberate-only (the `project-architecture-analyzer` skill - dispatches
     `code-analyzer` per module, reasons in the main session, writes `docs/architecture/ARCHITECTURE.md` +
-    the pros/cons `docs/architecture/ASSESSMENT.md`; never in a build flow); the per-change fit
+    the pros/cons `docs/architecture/ASSESSMENT.md` + the generated always-on awareness rule
+    `baseline-project-architecture.md`; never in a build flow); the per-change fit
     verdict moved to the domain solution-designers. The `main-stack-agents-flow` skill orchestrates
-    one stack's vertical per run, and the `cross-stack-agents-flow` skill is the entry-point router above it - it picks
+    one stack's vertical per run, and the `project-task-flow` skill is the entry-point router above it - it picks
     the execution mode and, for cross-domain work, freezes the shared contract and drives the parallel
-    per-stack runs through the `integration-reviewer` final gate. All 37 carry
+    per-stack runs through the `integration-reviewer` final gate. All 34 carry
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
     `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker
     contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
@@ -90,8 +93,8 @@ because the platforms differ:
 | Skills | `npx skills add … --agent claude-code` → `.claude/skills` | `… --agent cursor` → `.cursor/skills` (Cursor Skills) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` | written into `.cursor/mcp.json` (tokens pre-resolved) |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) | **none** - Cursor has no Claude-style `/plugin install` (its own format installs via `/add-plugin`); equivalents are MCP / native (Skills, Subagents, Bugbot `/review`, Rules) / Open-VSX extensions. ponytail additionally ships a Cursor rule that `cursor-stack` fetches (see `cursor-stack.html`'s mapping) |
-| Hooks | `.claude/hooks/` wired into `.claude/settings.json` (3 hooks) | `.cursor/hooks.json` (force-push + catastrophic-rm - Cursor's contract differs) |
-| Agents | `.claude/agents/` - the 37 model/effort-pinned subagents described under Layout (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Fetched like hooks; per-tool `tools:` allowlist | `.cursor/agents/` - twins of the 4 RESOLVERS only, fetched like hooks; the cross-cutting and per-domain agents are Claude-only and no pin carries over (Cursor agents take a `model` field but have no `effort` pin - the twins inherit Cursor's session model). Cursor's contract is weaker: no per-tool allowlist (only a `readonly` bool) - its bodies lean on the auto-attaching `.cursor/rules`, as Claude's now do too |
+| Hooks | `.claude/hooks/` wired into `.claude/settings.json` (3 wired + 1 fetched-unwired instrumentation) | `.cursor/hooks.json` (force-push + catastrophic-rm - Cursor's contract differs) |
+| Agents | `.claude/agents/` - the 34 model/effort-pinned subagents described under Layout (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Fetched like hooks; per-tool `tools:` allowlist | `.cursor/agents/` - twins of the 4 RESOLVERS only, fetched like hooks; the cross-cutting and per-domain agents are Claude-only and no pin carries over (Cursor agents take a `model` field but have no `effort` pin - the twins inherit Cursor's session model). Cursor's contract is weaker: no per-tool allowlist (only a `readonly` bool) - its bodies lean on the auto-attaching `.cursor/rules`, as Claude's now do too |
 | Convention gate | five path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) | `.cursor/rules/*.mdc` (soft, auto-attach by glob - no session skill-load state) |
 | Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) | Cursor **Bugbot** (`/review`); the `security-auditor` agent is Claude-only |
 | Project instructions | `CLAUDE.md` | `AGENTS.md` |
@@ -130,15 +133,16 @@ because the platforms differ:
   MCP (one SQLite DB under `$HOME`, shared across projects *and* accounts - active in the baseline
   for cross-project recall; a space arg names its DB `memory_<space>.db` and, on Claude, selects
   the `~/.claude-<space>` account). Comment `memory` out in a standalone project. Cross-project
-  *structure* - which repos are related and where they live - lives in each repo's `## Related
-  projects` CLAUDE.md section, not in memory.
+  *structure* - which repos are related and where they live - lives in each repo's generated
+  awareness rule (`.claude/rules/baseline-project-related-context.md`, written by the
+  `/project-related-context` skill), not in memory.
 - **Two stores, split by durability** - the second hard rule (peer of the read-whole-file rule
   below). The committed architecture docs - a lean `docs/architecture/ARCHITECTURE.md` core map plus the deep-dive
   files under `docs/architecture/references/` it links to - are the DURABLE truth: every seat READS them at start
   to orient (the structure, patterns, boundaries and packages already in place) instead of re-deriving
   the project, and the `project-architecture-analyzer` skill owns them (plus a `docs/architecture/ASSESSMENT.md` pros/cons
   doc), reasoning in the main session over `code-analyzer` module digests - refreshed deliberately via that
-  skill or the `architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `docs/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
+  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `docs/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
   per-project memory (`write_memory` / `read_memory` / `list_memories`, named
   `<feature>__<contract_version>__<seat>`, never the shared `memory` MCP) is the EPHEMERAL inter-agent
   comms bus - the transient per-feature handoff between seats: a diagnoser's task cards to the

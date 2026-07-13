@@ -1,0 +1,45 @@
+---
+name: project-version-upgrade
+description: "The deliberate version-upgrade flow for any BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major, a forced security major: plan in-session (breaking-change surface from context7, crossed against located usage via code-analyzer digests - applicable changes only), present the staged plan at an approval gate, then on approval drive the execution stage by stage (implementers edit, resolvers clear reds, a gate after every stage). Auto mode - skipping the approval gate - runs ONLY when the user explicitly asked for it in the invocation. Routine non-breaking bumps need no skill: just bump. Triggers on 'upgrade to .NET 10', 'ng update to v20', 'this package's new major breaks us', 'plan the framework upgrade'. NOT for a feature that merely needs a newer package (the feature's own flow), or a red CI pipeline (ci-failure-diagnoser)."
+disable-model-invocation: true
+model: opus
+effort: xhigh
+---
+
+# Project Version Upgrade - Plan, Approve, Execute (Deliberate)
+
+You drive a breaking version event - framework, runtime, or load-bearing package - from detection to a verified upgrade: enumerate what actually breaks, sequence it foundation-first, get the user's approval on the plan, then execute it stage by stage with a gate after every stage. Judgment runs in-session (the frontmatter pins this turn to `opus`/`xhigh`); the reads and the edits are delegated to the cheap seats.
+
+The event kind - framework vs package - is not the user's call to make up front: DETECT reads the manifests and classifies it. The workflow is identical either way; only the breaking-change surface differs. A routine minor/patch bump with no breaking changes needs none of this - say so and exit.
+
+Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing rules and the runtime-break catalog are this skill's contract, not suggestions.
+
+## Approval gate - and the explicit auto mode
+
+The staged plan is presented and NOTHING is edited until the user approves - an upgrade is consequential. Two answers end the run early: 'just the plan' (exit after PLAN, hand over the plan) and 'stop'.
+
+**Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/project-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. (Side effect worth knowing: an auto run never pauses, so the opus/xhigh pin covers execution too; a gated run resumes on the session model after approval.)
+
+## The run
+
+### 1. DETECT
+Green baseline first - build + tests green, zero pending EF migrations, before a single version moves; a red or drifted baseline is a blocking precondition, report it and stop, never plan around it. Then read the manifests (`global.json`, `*.csproj` / `Directory.Packages.props`, `package.json` / `angular.json`), pin current -> target versions and the trigger (major, EOL, security advisory), and classify the event and the stacks it touches. No breaking surface -> routine bump, exit.
+
+### 2. GATHER - delegated
+- **context7** (load-bearing): the target's published breaking-change surface - the migration guide, deprecations-and-removals, the version delta - never from recall. Branch by stack per the playbooks: what the migration engine auto-applies (.NET Upgrade Assistant / `ng update` schematics) versus hand edits.
+- **code-analyzer (sonnet/low)** per affected area: where the codebase actually uses the changed/deprecated APIs - located usage digests, reads kept off this context. Mine the build's own signals first (the `[Obsolete]`/analyzer warnings, `ng update`/`ng lint` deprecation notices) - they are the framework's pre-computed removal map.
+
+### 3. PLAN - in-session
+Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**
+
+### 4. APPROVAL GATE
+Present the staged plan + any user-level questions. Approve -> execute; 'just the plan' -> exit here; auto mode (explicitly requested) -> proceed without the pause.
+
+### 5. EXECUTE - stage by stage
+Per stage, in the plan's order: dispatch the domain **implementer (sonnet/medium)** with the stage as a scoped brief (trivial manifest bumps: edit inline); run the stage's verification (build + tests); a red routes to the matching **resolver (sonnet/high)** - dotnet-build-error-resolver / dotnet-test-failure-resolver / ng-build-error-resolver / angular-test-resolver; gate green before the next stage. Hard stops, auto mode included: a resolver returning BLOCKED_CONTRACT_CHANGE, a stage that stays red after its resolver pass, or reality contradicting the plan - stop and re-plan, never push through or skip a stage gate.
+
+### 6. VERIFY + REPORT
+Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points. If the run stopped early: which stage, why, and the state it left.
+
+## Don't game it
+Enumerate the real breaking changes from the framework's own docs, not recall - recall catches the compile break and ships the runtime break. Keep the plan to located usage. Never wave a deprecation off as 'probably fine' - unclear impact is marked to verify. Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green - that is a new break, not progress. Auto mode is the user's word only - proceeding past the gate without it is a protocol violation, not initiative.

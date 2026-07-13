@@ -120,31 +120,37 @@ npx skills remove      # uninstall skills
   STRICT, limited ALTER TABLE, connection-per-thread, FTS5.
 - **project-quality-loop** - Autonomous review-and-fix loop pipeline: run a `loops/` folder of
   numbered prompts in order, looping each on a target to zero findings, deciding autonomously.
-- **architecture-quality-loop** - Deliberate architecture analyze-assess-improve loop: the
+- **project-architecture-quality-loop** - Deliberate architecture analyze-assess-improve loop: the
   project-architecture-analyzer capture writes `docs/architecture/ARCHITECTURE.md` + a reasoned strengths/weaknesses `docs/architecture/ASSESSMENT.md`,
   then fixes the weaknesses by tier (small -> implementer, substantial -> designer-led build, structural ->
   flagged for approval) and reconciles the docs. Manual, `/`-only - the heavy counterpart to project-quality-loop.
 - **project-architecture-analyzer** - Deliberate architecture capture: dispatches code-analyzer per
   module, reasons over the digests in the main session, and writes `docs/architecture/ARCHITECTURE.md` +
-  `docs/architecture/ASSESSMENT.md`. Capture only - fixing the weaknesses is architecture-quality-loop.
+  `docs/architecture/ASSESSMENT.md` + the generated always-on awareness rule
+  `baseline-project-architecture.md` (micro-summary + read-the-map trigger). Capture only - fixing the weaknesses is project-architecture-quality-loop.
   Manual, `/`-only.
+- **project-version-upgrade** - Deliberate flow for any breaking version event (framework, runtime,
+  or package major): plan in-session from the real breaking surface (context7 + usage digests),
+  approval gate (auto mode only on an explicit ask), then staged execution - implementers edit,
+  resolvers clear reds, a gate after every stage. Manual, `/`-only.
 - **project-code-style-analyzer** - Deliberate project code-style capture: fans out code-style-analyzer
   agents (one per detected language, parallel), merges their reports into `docs/PROJECT-CODE-STYLE.md`
   (the project's actual style - config-enforced rules + idioms a linter cannot encode), then generates
   the inject-code-style hook - extension filter from the observed extensions - and wires it into
   `settings.json`. The hook injects the doc once per session on the first code-file edit. Manual, `/`-only.
 - **project-related-context** - Deliberate related-projects capture, args-driven (paths or git URLs,
-  never a scan): fans out related-project-analyzer agents (one per sibling, parallel), merges their
-  YAML entries (name/location/relation/first_read/seam, evidence-grounded or UNVERIFIED) into
-  `docs/PROJECT-RELATED-CONTEXT.md` - the on-demand orientation tier of the related-projects model.
-  Re-run upserts entries per passed sibling. Manual, `/`-only.
-- **verify-plan** - Audit an implementation plan before writing code: a risk-coverage review that
+  never a scan): fans out related-project-analyzer agents (one per sibling, parallel) and writes both
+  tiers from their YAML entries (evidence-grounded or UNVERIFIED) - the always-on awareness rule
+  `.claude/rules/baseline-project-related-context.md` (name/location/relation/seam) and
+  `docs/PROJECT-RELATED-CONTEXT.md` (first_read + evidence, read on a seam touch).
+  Re-run upserts entries per passed sibling in both files. Manual, `/`-only.
+- **project-verify-plan** - Audit an implementation plan before writing code: a risk-coverage review that
   checks the plan names the traps its stack will hit (routing to the stack skill), matches scope,
   covers the edges, and stays minimal - the cheapest place to catch a design error, upstream of code review.
-- **solution-design** - Work out how a feature fits the existing code before building, in a single
+- **project-solution-design** - Work out how a feature fits the existing code before building, in a single
   chat: read the committed architecture, judge where the change belongs (extend a seam, refactor
   first, or isolate a new boundary), load the stack skill for its traps, and decompose into an
-  ordered, minimal plan. The in-context twin of the designer agent; feeds `verify-plan`.
+  ordered, minimal plan. The in-context twin of the designer agent; feeds `project-verify-plan`.
 - **failure-signatures** - Match a runtime crash to its signature and isolate the real cause: a
   lookup of the common local-runtime signatures (null-reference, DI resolution, async deadlock,
   disposed-lifecycle, config drift, boundary, database contention, HTTP-status) each mapped to where the cause lives -
@@ -153,13 +159,13 @@ npx skills remove      # uninstall skills
   signature (compile/restore, green-locally-red-on-runner, quality gate, signing, workflow drift,
   infra flake), make the code-vs-environment call, and route it. The single-chat twin of the
   `ci-failure-diagnoser` agent; the CI sibling of `failure-signatures`.
-- **project-scaffold** - Build a new application or major module from scratch: routes greenfield
+- **project-build-from-scratch** - Build a new application or major module from scratch: routes greenfield
   work to the right architecture skill and scaffolding command, then drives design -> scaffold ->
   slice-by-slice build over the agent pipeline.
 - **main-stack-agents-flow** - Build a feature through a stack specialist team: the domain designer
   decomposes into parallel tasks, implementers build them at once, the verifier gates and loops
   back.
-- **cross-stack-agents-flow** - Entry-point router for multi-agent engineering work: classify a feature or
+- **project-task-flow** - Entry-point router for multi-agent engineering work: classify a feature or
   bug, pick the smallest safe execution mode, and for cross-domain work freeze the shared contract,
   run each stack's main-stack-agents-flow in parallel, then gate the assembled whole through the
   integration-reviewer before commit. Home of the shared subagent policies (contract change,
@@ -200,19 +206,19 @@ dispatched agent's report.
 
 | Agent seat | Load this in a single chat |
 |---|---|
-| `<stack>-solution-designer` | `solution-design` |
-| verifier (before build) | `verify-plan` |
+| `<stack>-solution-designer` | `project-solution-design` |
+| verifier (before build) | `project-verify-plan` |
 | `<stack>-implementer` | just code - conventions auto-load on file touch |
 | verifier (after build) | `/code-review` + `verification-before-completion` |
 | `issue-diagnoser` | `systematic-debugging` + `failure-signatures` |
 | `ci-failure-diagnoser` | `ci-triage` |
 
-The trio loop is `solution-design` -> `verify-plan` -> build under the auto-loaded conventions
+The trio loop is `project-solution-design` -> `project-verify-plan` -> build under the auto-loaded conventions
 -> `/code-review`, with a checkpoint after each step. **See the full tutorial and worked example
 in [docs/single-chat-guide.md](docs/single-chat-guide.md).**
 
 The inverse path - running the same flow as a dispatched team of 37 model-pinned subagents, the
-`main-stack-agents-flow` and `cross-stack-agents-flow` orchestration skills, the execution-mode ladder, and when the
+`main-stack-agents-flow` and `project-task-flow` orchestration skills, the execution-mode ladder, and when the
 isolation floor is worth paying - is **[docs/agent-flow-guide.md](docs/agent-flow-guide.md)**. Read
 the two as a pair: stay in chat for small single-stack work, dispatch the team for large, parallel,
 cross-domain, or log-heavy work.

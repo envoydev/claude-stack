@@ -1,6 +1,6 @@
 # Code quality stage
 
-A findings-based audit. Review TARGET for correctness, clarity, and conformance to the project's recorded architecture. Run this stage FIRST: it carries the widest blast radius now that it covers structural conformance, so fixing it after the others would invalidate downstream work. Architecture-level restructuring (introducing a new boundary, inverting a layer wholesale, adopting a new pattern) is out of scope here - that is the `architecture-quality-loop` skill; in this stage you flag where the code violates the structure already recorded and fix it with the smallest correct change.
+A findings-based audit. Review TARGET for correctness, clarity, and conformance to the project's recorded architecture. Run this stage FIRST: it carries the widest blast radius now that it covers structural conformance, so fixing it after the others would invalidate downstream work. Architecture-level restructuring (introducing a new boundary, inverting a layer wholesale, adopting a new pattern) is out of scope here - that is the `project-architecture-quality-loop` skill; in this stage you flag where the code violates the structure already recorded and fix it with the smallest correct change.
 
 First, read `docs/architecture/ARCHITECTURE.md` if it exists - the recorded layers, boundaries, dependency directions, and patterns - then audit TARGET against it and against general quality.
 

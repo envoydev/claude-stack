@@ -12,7 +12,7 @@ The committed, whole-project architecture record - the orientation a solution-de
 
 ## docs/architecture/ASSESSMENT.md - the reasoned evaluation
 
-The companion to the neutral map: a candid judgement of the architecture as it stands, so its weaknesses are visible and improvable rather than silently inherited. The `architecture-quality-loop` skill reads this to drive fixes, keyed by the tier assigned. The shape:
+The companion to the neutral map: a candid judgement of the architecture as it stands, so its weaknesses are visible and improvable rather than silently inherited. The `project-architecture-quality-loop` skill reads this to drive fixes, keyed by the tier assigned. The shape:
 
 - **Strengths (10)** - ten titled strengths of the current architecture, each with the reasoning (what it buys - testability, isolation, evolvability, clear ownership) tied to located code (the module / boundary / pattern it comes from). Fewer than ten only if the codebase is small enough that padding would fabricate - say so rather than invent.
 - **Weaknesses (10)** - ten titled weaknesses, each with the reasoning (what it costs - coupling, fragility, blast radius, a captive dependency, a perf or consistency hazard) tied to located code, then two required fields:

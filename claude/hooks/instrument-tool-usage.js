@@ -10,12 +10,12 @@
 // plus `Skill` and `mcp__*` - as one JSONL line so a run can be tallied exactly. It NEVER blocks
 // a call - it observes and exits 0.
 //
-// It is deliberately NOT in the installer's HOOKS=() array (so it costs nothing by
-// default) and is inert unless STACK_INSTRUMENT is set. To enable it for a benchmark /
-// audit run, see claude/README.md ('Optional: tool-usage instrumentation'):
-//   1. place this file at .claude/hooks/instrument-tool-usage.js
-//   2. add a PreToolUse hook wired to it with matcher ".*" (all tools; use "Skill|mcp__.*" to scope to skills/MCP only)
-//   3. run with STACK_INSTRUMENT=1 (optionally STACK_INSTRUMENT_LOG=<path>)
+// The installer FETCHES this file but deliberately does NOT wire it (its HOOKS entry has an
+// empty matcher) - a wired '.*' hook costs a node spawn on every tool call, so the wiring is
+// opt-in per run. Inert unless STACK_INSTRUMENT is set. To enable for a benchmark / audit run,
+// see claude/README.md ('Optional: tool-usage instrumentation'):
+//   1. add a PreToolUse hook wired to it in .claude/settings.json with matcher ".*" (all tools; use "Skill|mcp__.*" to scope to skills/MCP only)
+//   2. run with STACK_INSTRUMENT=1 (optionally STACK_INSTRUMENT_LOG=<path>)
 //
 // Output: one JSONL row per matched call at
 //   $STACK_INSTRUMENT_LOG  (default: <project>/.claude/tool-usage.<session>.jsonl)

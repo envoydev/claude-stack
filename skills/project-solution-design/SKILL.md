@@ -1,16 +1,16 @@
 ---
-name: solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is cross-stack-agents-flow / main-stack-agents-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
+name: project-solution-design
+description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is project-task-flow / main-stack-agents-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
 
-The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan, all in the current context so you can inspect and correct each step instead of reading a dispatched agent's final report. It plans; it does not write the code (that is the build step under the stack skill) and it does not audit its own plan (that is `verify-plan`).
+The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan, all in the current context so you can inspect and correct each step instead of reading a dispatched agent's final report. It plans; it does not write the code (that is the build step under the stack skill) and it does not audit its own plan (that is `project-verify-plan`).
 
 ## When not
 
 - Not for a change with an obvious single home - just make it.
-- Not plan *audit* (`verify-plan`) or built-code review (`/code-review`) - those come after.
+- Not plan *audit* (`project-verify-plan`) or built-code review (`/code-review`) - those come after.
 
 ## The method - orient, judge, decompose
 
@@ -21,7 +21,7 @@ The design carries the quality: a build handles the traps its plan named and shi
 
 ## Output
 
-An ordered task plan: the fit verdict and its forcing edge first, then one entry per task - what it does, the files, the traps to handle, the located anchors - in build order. Then hand off: gate the plan with `verify-plan` before building, build each task under the stack skill, and review the built code with `/code-review`. Pairs with `writing-plans` for the plan format; this adds the house architecture-fit and stack-trap layer that a generic plan is silent on.
+An ordered task plan: the fit verdict and its forcing edge first, then one entry per task - what it does, the files, the traps to handle, the located anchors - in build order. Then hand off: gate the plan with `project-verify-plan` before building, build each task under the stack skill, and review the built code with `/code-review`. Pairs with `writing-plans` for the plan format; this adds the house architecture-fit and stack-trap layer that a generic plan is silent on.
 
 ## Example
 
@@ -33,4 +33,4 @@ Plan (single-chat output):
 - **Task 2** - add `GET /orders/export` to `OrdersController`, returning a streamed `text/csv`. Trap: project to a DTO at the edge, never the EF entity (`dotnet-mvc-controllers`). Anchor: `OrdersController.cs:List`.
 - **Task 3** - a `WebApplicationFactory` test asserting the CSV header row, one data row, and a 200. Anchor: `OrdersControllerTests.cs`.
 
-Then gate with `verify-plan`, build each task under `dotnet-web-backend` / `dotnet-mvc-controllers`, and review with `/code-review`.
+Then gate with `project-verify-plan`, build each task under `dotnet-web-backend` / `dotnet-mvc-controllers`, and review with `/code-review`.

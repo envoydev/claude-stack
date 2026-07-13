@@ -8,4 +8,4 @@ build) - default to delegating rather than looping in-session: fix-the-build goe
 the build is green. The subagent absorbs the repeated build/test output and returns only a
 diagnosis. A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a
 shared-contract change - outside its bounded scope by design; route it through
-`cross-stack-agents-flow`, never edit the contract to go green.
+`project-task-flow`, never edit the contract to go green.

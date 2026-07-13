@@ -8,4 +8,4 @@ compile are its scope too), make-the-tests-pass goes to **`dotnet-test-failure-r
 once the build is green. The subagent absorbs the repeated build/test output and returns
 only a diagnosis. A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a
 shared-contract change - outside its bounded scope by design; route it through
-`cross-stack-agents-flow`, never edit the contract to go green.
+`project-task-flow`, never edit the contract to go green.

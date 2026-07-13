@@ -11,8 +11,7 @@ Many repos = shared contract + separate repo flows + integration gate.
 
 ```text
 Shared planning / ticket / contract doc
-  -> cross-stack-contract-designer
-  -> Contract v1 frozen
+  -> producer repo's designer runs first - its interface section recorded as Contract v1
   -> Backend repo flow:
        data-solution-designer   -> data-implementer(s)   -> data-verifier
        aspnet-solution-designer  -> aspnet-implementer(s)  -> aspnet-verifier

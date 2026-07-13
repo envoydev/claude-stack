@@ -1,6 +1,6 @@
 ---
 name: project-quality-loop
-description: "Autonomous review-and-fix pipeline driven from a folder of numbered prompt files (a loops/ folder of code-quality / naming / comments / tests). Runs each prompt in numeric order, looping it on a target until its bar is met, then advances - making and logging judgment calls itself, never pausing for input. Triggers on 'run the project quality loop' or 'run the loops pipeline'. Code-quality only - architecture restructuring is architecture-quality-loop; a single diff sweep is /code-review or /security-review, not this. Do NOT fire for a one-off review pass, without a folder of prompt files, or when findings should be reported without auto-fixing."
+description: "Autonomous review-and-fix pipeline driven from a folder of numbered prompt files (a loops/ folder of code-quality / naming / comments / tests). Runs each prompt in numeric order, looping it on a target until its bar is met, then advances - making and logging judgment calls itself, never pausing for input. Triggers on 'run the project quality loop' or 'run the loops pipeline'. Code-quality only - architecture restructuring is project-architecture-quality-loop; a single diff sweep is /code-review or /security-review, not this. Do NOT fire for a one-off review pass, without a folder of prompt files, or when findings should be reported without auto-fixing."
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,7 @@ You drive a pipeline of review-fix loops from a folder. You run each prompt file
 Best run in Claude Code, where you can edit files and re-read them across passes. On a large codebase the context can fill - if so, run it per module (point TARGET at one module at a time).
 
 ## INPUTS (fill these in)
-- LOOP_DIR - the folder of prompt files. Default: `loops/`. Each file is named `{number}.{name}.md` (e.g. `1.code-quality.md`, `2.naming.md`, `3.comments.md`, `4.tests.md`) - four stages. There is no architecture stage: code-quality reads the architecture map and audits conformance to it, and architecture-level restructuring is the separate `architecture-quality-loop` skill.
+- LOOP_DIR - the folder of prompt files. Default: `loops/`. Each file is named `{number}.{name}.md` (e.g. `1.code-quality.md`, `2.naming.md`, `3.comments.md`, `4.tests.md`) - four stages. There is no architecture stage: code-quality reads the architecture map and audits conformance to it, and architecture-level restructuring is the separate `project-architecture-quality-loop` skill.
 - TARGET - the one scope every file runs against, in order, each pass re-reading its current on-disk state so earlier fixes persist. Name a path or glob - preferred, since the loop re-reads between passes. Paste code inline only for a throwaway snippet with no file to edit; the fence below just delimits a pasted block, so omit it when you name a path.
   <<<TARGET
   {{PASTE CODE, OR NAME A PATH/GLOB}}
@@ -20,7 +20,7 @@ Best run in Claude Code, where you can edit files and re-read them across passes
 - MAX_PASSES - per file, default 5.
 
 ## EXECUTION MODES
-DELEGATED vs INLINE - and the rule that detection keys on dispatch capability, not file presence - is the shared policy `cross-stack-agents-flow` owns. Pick the mode once, before DISCOVERY, hold it for the run, and apply it to this pipeline:
+DELEGATED vs INLINE - and the rule that detection keys on dispatch capability, not file presence - is the shared policy `project-task-flow` owns. Pick the mode once, before DISCOVERY, hold it for the run, and apply it to this pipeline:
 
 - **DELEGATED** (dispatch available) - prefer it whenever the Task/Agent tool is present: it keeps the main session's context clean across passes and hands the audit and fix work to a specialist built for it. The main session keeps ALL bookkeeping; INNER LOOP step RUN dispatches the domain verifier as a read-only auditor, and step FIX dispatches the domain implementer with a findings-plan (a red gate routes to the matching resolver instead). The full who-does-what - dispatch-prompt construction, the finding contract, gate stages, economy guidance, the opus first-find experiment - is `references/delegated-mode.md`; read it before the first dispatch. (A Cursor session editing a stack-installed project has the agent files on disk in `.cursor/agents/` but no dispatch tool, so it runs INLINE regardless.)
 - **INLINE** (no dispatch, TARGET is pasted code with no file to hand off, or a single small file) - the mode this skill originally shipped as; its behavior is unchanged: the whole INNER LOOP (RUN, SCORE, CHECK, STOP?, FIX) runs in the current session exactly as written in that section. For a .NET or Angular TARGET, load the domain's convention skills before the loop starts editing - conventions are the source of truth, not recall; the per-stack load list and the `angular-material` caveat are the DOMAIN CONVENTIONS section of `references/delegated-mode.md`.
@@ -85,7 +85,7 @@ open: [(MAJOR, OrderSvc.cs:14, abbreviation in public type), (MINOR, OrderQuerie
 - Never weaken, skip, or delete a check, test, or assertion to make a bar appear met. If a fix would break a test, that is a finding, not a fix.
 - Make the smallest change that resolves each item. Avoid rewrites that introduce new findings - they make the loop diverge instead of converge.
 - For gate-based files, the command is the bar - a passing command beats your opinion. Self-judgment is only the fallback for things no command can check, like naming or design quality.
-- The main session is the only orchestrator - never instruct a subagent to dispatch another (the shared flat-fan-out policy `cross-stack-agents-flow` owns); the auditors and implementers this loop dispatches (domain verifiers, implementers, resolvers) carry no Agent tool. A stage needing a verdict and a fix is two dispatches from here, not one nested one.
+- The main session is the only orchestrator - never instruct a subagent to dispatch another (the shared flat-fan-out policy `project-task-flow` owns); the auditors and implementers this loop dispatches (domain verifiers, implementers, resolvers) carry no Agent tool. A stage needing a verdict and a fix is two dispatches from here, not one nested one.
 
 ## OUTPUT
 Per pass: the one-line score and open set, plus a short note of what you fixed and decided.
