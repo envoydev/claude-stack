@@ -892,6 +892,7 @@ Log 'next steps:'
 Log "  - fill your project's CLAUDE.md <placeholders> (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
 Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + docs/PROJECT-RELATED-CONTEXT.md"
 Log "  - run /project-capabilities once - it inventories the installed skills/agents/MCPs and generates baseline-project-capabilities.md (re-run after update or a manifest trim)"
+Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (docs/PROJECT-CODE-STYLE.md + the inject-code-style hook)"
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 if ($Context7 -eq 'remote') { Log "  - context7 is remote; add CONTEXT7_API_KEY to $ConfigDir\settings.json 'env' for higher rate limits (or re-run with -Context7 local)" }

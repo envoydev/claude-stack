@@ -257,6 +257,8 @@ function parseStackHtml()
     const html = fs.readFileSync(STACK_HTML, 'utf8');
     const personal = new Set([...html.split('const personal = {')[1].split('};')[0]
         .matchAll(/\["([a-z0-9-]+)","/g)].map(m => m[1]));
+    const personalManual = new Set([...html.split('const personal = {')[1].split('};')[0]
+        .matchAll(/\["([a-z0-9-]+)",[^\n]*"manual"\]/g)].map(m => m[1]));
 
     const repoBlock = html.split('const repository = [')[1].split('\n];')[0];
     const repoSkills = new Set();
@@ -292,7 +294,7 @@ function parseStackHtml()
     const hooksBlock = (html.split('const hooks = [')[1] ?? '').split('\n];')[0];
     const hooks = new Set([...hooksBlock.matchAll(/\["([a-z0-9-]+)"/g)].map(m => m[1]));
 
-    return { personal, repoSkills, plugins, mcps, hooks };
+    return { personal, personalManual, repoSkills, plugins, mcps, hooks };
 }
 
 // Every manifest in `manifests` ({label -> Set}) must hold the same entries as
@@ -344,6 +346,8 @@ function main()
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
     //    names the skill after its directory, and carries a non-empty description.
+    //    Also collects the manual-only set (disable-model-invocation) for check 19.
+    const manualSkills = new Set();
     for (const dir of dirs)
     {
         const skillFile = path.join(SKILLS_DIR, dir, 'SKILL.md');
@@ -385,6 +389,11 @@ function main()
         if (typeof meta.description !== 'string' || meta.description.trim() === '')
         {
             flag(`skills/${dir}/SKILL.md frontmatter has no non-empty 'description'`);
+        }
+
+        if (meta['disable-model-invocation'] === true)
+        {
+            manualSkills.add(dir);
         }
     }
 
@@ -1139,6 +1148,25 @@ function main()
                     }
                 }
             }
+        }
+    }
+
+    // 19. The HTML personal-skills invocation column must match frontmatter:
+    //     every disable-model-invocation skill carries the "manual" row flag,
+    //     and no auto-invoked skill claims it.
+    for (const name of manualSkills)
+    {
+        if (!html.personalManual.has(name))
+        {
+            flag(`claude-stack.html personal row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
+        }
+    }
+
+    for (const name of html.personalManual)
+    {
+        if (!manualSkills.has(name))
+        {
+            flag(`claude-stack.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
         }
     }
 

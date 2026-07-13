@@ -14,7 +14,7 @@
     --ink: #E9EBF0;
     --muted: #99A1B0;
     --faint: #69707E;
-    --brass: #D8A85B;      /* accent + architect tier */
+    --brass: #D8A85B;      /* accent */
     --design: #67AABB;     /* domain design tier */
     --build: #8FB18C;      /* domain build tier */
     --qa: #A896CC;         /* verify */
@@ -117,9 +117,9 @@
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-content: center;
   }
-  .cols { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .cols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
   .col-heads { display: grid; grid-template-columns: 138px 1fr; gap: 14px; margin-bottom: 2px; }
-  .col-heads .heads { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .col-heads .heads { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
   .dom {
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; color: var(--muted);
     text-align: center; padding: 2px 4px 8px; border-bottom: 1px solid var(--line-soft);
@@ -287,13 +287,13 @@
   <section>
     <div class="sec-head"><span class="sec-num">01</span><h2>The team</h2></div>
     <p class="sec-sub">
-      Role down the side, domain across the top. The <b>architect</b> and <b>ops</b>
-      rows span every stack; the <b>design</b>, <b>build</b> and <b>verify</b> rows get one seat per
-      domain.
+      Role down the side, domain across the top. The <b>integration</b>, <b>diagnose</b> and
+      <b>analysis</b> rows span every stack; the <b>design</b>, <b>build</b> and <b>verify</b> rows
+      get one seat per domain. The architecture capture is a skill now (/project-architecture-analyzer),
+      run in the main session - there is no dispatched architect seat.
     </p>
 
     <div class="legend">
-      <span class="key"><span class="swatch" style="background:var(--brass)"></span> architect</span>
       <span class="key"><span class="swatch" style="background:var(--design)"></span> solution design</span>
       <span class="key"><span class="swatch" style="background:var(--build)"></span> implementation</span>
       <span class="key"><span class="swatch" style="background:var(--qa)"></span> verify</span>
@@ -303,22 +303,13 @@
     <div class="matrix-scroll">
       <div class="matrix">
 
-        <!-- Architect band -->
-        <div class="band">
-          <div class="tier-label" style="--tier:var(--brass)">
-            <span class="t">Architect</span>
-            <span class="d">scopes + directs the whole project</span>
-          </div>
-          <div class="spanning">
-          </div>
-        </div>
-
         <!-- column headings -->
         <div class="col-heads">
           <div></div>
           <div class="heads">
             <div class="dom">ASP.NET Core<b>Backend · API</b></div>
             <div class="dom">WPF<b>Desktop</b></div>
+            <div class="dom">Console<b>Worker · Bot · CLI</b></div>
             <div class="dom">Angular<b>Web</b></div>
             <div class="dom">Ionic<b>Mobile</b></div>
             <div class="dom">SQL<b>Data</b></div>
@@ -395,9 +386,9 @@
             <span class="d">bounded fix loops, already per-domain</span>
           </div>
           <div class="cols">
-            <div class="cell" style="grid-column: span 2">
-              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · ASP.NET + WPF (XAML compiles through dotnet)</span><span class="mdl sonnet">sonnet · high</span></span>
-              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · ASP.NET + WPF</span><span class="mdl sonnet">sonnet · high</span></span>
+            <div class="cell" style="grid-column: span 3">
+              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · ASP.NET + WPF + console (XAML compiles through dotnet)</span><span class="mdl sonnet">sonnet · high</span></span>
+              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · ASP.NET + WPF + console</span><span class="mdl sonnet">sonnet · high</span></span>
             </div>
             <div class="cell" style="grid-column: span 2">
               <span class="agent repair">ng-build-error-resolver<span class="role">build · Angular + Ionic (ionic wraps ng build)</span><span class="mdl sonnet">sonnet · high</span></span>
@@ -422,6 +413,19 @@
           </div>
         </div>
 
+        <!-- Analysis band -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--design)">
+            <span class="t">Analysis</span>
+            <span class="d">read-only characterizers the capture skills fan out</span>
+          </div>
+          <div class="spanning">
+            <span class="agent design">code-analyzer<span class="role">one module per dispatch - digest for the architecture capture + task-flow scoping</span><span class="mdl sonnet">sonnet · low</span></span>
+            <span class="agent design">code-style-analyzer<span class="role">one language family per dispatch - the code-style capture merges the reports</span><span class="mdl sonnet">sonnet · medium</span></span>
+            <span class="agent design">related-project-analyzer<span class="role">one sibling repo per dispatch - the related-context capture upserts the entries</span><span class="mdl sonnet">sonnet · medium</span></span>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -430,7 +434,7 @@
   <section>
     <div class="sec-head"><span class="sec-num">02</span><h2>The areas each seat owns</h2></div>
     <p class="sec-sub">
-      The installed inventory, regrouped by the <b>six domains</b> each vertical owns. Each domain
+      The installed inventory, regrouped by the <b>seven domains</b> each vertical owns. Each domain
       inherits a <b>language</b> tier, a <b>framework</b> tier, its own <b>tests</b> (owned by the
       implementer), and the plugins, MCPs and rules that serve it. Shared services at the end belong
       to no single seat.
@@ -591,6 +595,29 @@
         </div>
       </div>
 
+      <!-- Console worker -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 07 · C#</span>
+          <h3>Console · Worker · CLI</h3>
+          <span class="seat">designed by <b>console-solution-designer</b><br>built by <b>console-implementer</b><br>verified by <b>console-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">dotnet-console-apps · surface + bots</span>
+          <span class="chip">dotnet-hosted-services · Generic Host</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · FakeTimeProvider, never real waits</span><span class="chip test">fake gateways</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">csharp-conventions rule</span>
+          <span class="chip">dotnet-diagnostics</span>
+        </div>
+      </div>
+
       <!-- Shared services -->
       <div class="card" style="--card:var(--faint)">
         <div class="card-head">
@@ -680,7 +707,8 @@ const builtin = {
 
 const personal = {
   title: "Skills (Personal)",
-  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the skills CLI.",
+  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the skills CLI. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
+  invokeColumn: true,
   source: "https://github.com/envoydev/agents-stack",
   install: "npx skills add envoydev/agents-stack",
   rows: [
@@ -724,21 +752,21 @@ const personal = {
     ["dotnet-web-backend","Backend / HTTP","HTTP-service cross-cutting: IHttpClientFactory, FluentValidation, Polly, API versioning, OpenAPI, observability (Serilog, OpenTelemetry, correlation IDs, health checks), caching (IMemoryCache, HybridCache, Redis)."],
     ["dotnet-winforms","WinForms / Desktop","Logic out of code-behind (MVP passive view / the .NET 8 MVVM binding engine), DI-resolvable forms, no UI-thread blocking, BindingSource binding, disciplined control / component / GDI disposal under the handle wall, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests; version mechanics in references (4.8 vs .NET 8/9/10 + migration)."],
     ["dotnet-wpf","WPF / Desktop","Strict MVVM, dep/attached props, explicit binding modes, async commands, INotifyDataErrorInfo validation, virtualization, VM testing."],
-    ["project-quality-loop","Review / automation","Autonomous review-and-fix loop over a loops/ folder of numbered prompts: runs each in numeric order, loops it on the target until its bar (default zero findings at every severity) is met, then advances - deciding and logging judgment calls, never pausing. Per-module on large codebases."],
-    ["project-architecture-quality-loop","Review / automation","Deliberate architecture analyze-assess-improve loop: the project-architecture-analyzer capture maps the project and writes ARCHITECTURE.md + a reasoned strengths/weaknesses ASSESSMENT.md, then works the weaknesses by tier (small -> implementer, substantial -> designer-led build with plan approval, structural -> flagged for a decision), reconciles the docs, and loops. Manual, /-only - the heavy counterpart to project-quality-loop."],
-    ["project-architecture-analyzer","Review / automation","Deliberate architecture capture: dispatches code-analyzer per module (parallel, cap 3 gather rounds), reasons over the digests IN the main session (declared-vs-enforced reconciliation, the stack-keyed hazard catalog), and writes docs/architecture/ARCHITECTURE.md (lean core map + references/ deep-dives, user-authored reference files never touched), docs/architecture/ASSESSMENT.md (10 strengths + 10 tiered weaknesses), and the generated always-on awareness rule baseline-project-architecture.md (micro-summary + the read-the-map trigger, loaded every session and subagent). No dispatched architecture seat - run on an Opus session. Capture only - fixing the weaknesses is project-architecture-quality-loop, which runs this as its ANALYZE step. Manual, /-only."],
-    ["project-version-upgrade","Review / automation","Deliberate flow for any BREAKING version event - framework/runtime major, EOL, load-bearing package major: DETECT classifies the event from the manifests (green baseline is a precondition), GATHER pulls the breaking-change surface via context7 and located usage via code-analyzer digests, PLAN sequences foundation-first (applicable changes only, engine-vs-hand split, rollback point per stage), an APPROVAL GATE presents the plan (auto mode skips it ONLY on the user's explicit ask), then staged execution: implementers edit, resolvers clear reds, a gate after every stage, verify at the end. Pinned opus/xhigh. Manual, /-only."],
-    ["project-capabilities","Review / automation","Deliberate capabilities capture: inventories what THIS project actually has - the slash-only orchestration skills (detected from .claude/skills frontmatter), the subagent seats (.claude/agents), the MCP servers (.mcp.json), plugins best-effort - and generates the always-on awareness rule baseline-project-capabilities.md wholesale from the real inventory (no assumed stack, no row for anything the project dropped). Re-run after install / update / a manifest trim. Manual, /-only."],
-    ["project-code-style-analyzer","Review / automation","Deliberate project code-style capture: fans out code-style-analyzer agents (one per detected language, parallel), merges their structured reports into docs/PROJECT-CODE-STYLE.md (the project's ACTUAL style - config-enforced rules + idioms a linter cannot encode, house-skill divergence flagged), then generates .claude/hooks/inject-code-style.js from its template - extension filter derived from the agents' observed extensions - and wires it into settings.json idempotently. The hook injects the doc once per session on the first code-file edit. Re-run reconciles the doc in place and rewrites the hook only if invalid or outdated. Manual, /-only."],
-    ["project-related-context","Review / automation","Deliberate related-projects capture, args-driven (paths or git URLs, never a scan): fans out related-project-analyzer agents (one per sibling, parallel; URL siblings shallow-cloned to scratch), writes both tiers from their YAML entries (evidence-grounded or UNVERIFIED) - the generated always-on awareness rule .claude/rules/baseline-project-related-context.md (name/location/relation/seam, loaded every session and subagent) and docs/PROJECT-RELATED-CONTEXT.md (first_read + the evidence behind each seam, read on a seam touch). Re-run upserts entries per passed sibling in both files, keeps the rest. Manual, /-only."],
-    ["project-build-from-scratch","Greenfield / scaffolding","Build a new application or major module from scratch: DESIGN runs in-session on the skill's opus/xhigh pinned turn (the spec becomes 2-3 reasoned architecture options, grounded in the house architecture skills - no dispatched greenfield seat), the user picks (hard gate - nothing scaffolds before it), then the stack's real new-project command + baseline wiring, then the build slice by slice through the domain seats (designer -> implementers -> verifier; multi-stack slices producer-first per project-task-flow). Ends by suggesting the capture skills so the new repo gets its map + style artifacts. Manual, /-only."],
-    ["main-stack-agents-flow","Build / orchestration","Build a feature through a stack specialist team: the domain solution-designer decomposes it into independent parallel tasks, several implementers build them at once, and the domain verifier gates the assembled result against the plan and quality, looping punch-lists back until it signs off. Dispatches the per-domain agent trio (ASP.NET / Angular / WPF / console-worker / mobile / data / DevOps) - pick the skill by the stack under change."],
-    ["project-task-flow","Build / orchestration","Entry-point router for multi-agent engineering work: scopes the task IN-SESSION (the generated awareness rules + a bounded serena pass; deep reads via a code-analyzer digest), then runs the smallest safe execution mode - single chat, one implementer, a single-stack main-stack-agents-flow trio, or a producer-first cross-domain run ordered by the dependency direction. The producer designer's interface IS the contract; consumer seats build against it and the integration-reviewer gates the assembled whole before commit. Home of the shared subagent policies: execution modes, contract change, structured output, progress ledger, model and token routing."],
-    ["project-verify-plan","Build / orchestration","Audit an implementation plan or design BEFORE writing code: a risk-coverage review that checks the plan names the non-obvious traps its stack will hit (routing to the stack skill - dotnet-web-backend, angular-conventions, dotnet-wpf - for the trap list), matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (creates the plan) and precedes /code-review (reviews the built code)."],
-    ["project-implement","Build / orchestration","Single-chat build step - the implementer seat's execution protocol in your context: take a verified plan (project-solution-design -> project-verify-plan), execute it task by task honoring each card's contract (files owned, traps, anchors, acceptance criterion), gate every task green (stubborn reds route to the matching resolver agent), flag scope beyond the plan instead of riding it along, then finish via /code-review + the done-gate - completing the in-session designer -> implementer -> verifier vertical."],
-    ["project-solution-design","Build / orchestration","Work out how a feature fits the existing code before building, in a single chat - the in-context form of the solution-designer seat. Reads docs/architecture/ARCHITECTURE.md, judges where the change belongs (extend an existing seam, refactor first, or isolate a new boundary) tied to the forcing edge, loads the stack skill (dotnet-web-backend, angular-conventions, dotnet-wpf) for the real traps, and decomposes the work into an ordered, minimal plan. Feeds project-verify-plan (which audits the plan) and precedes the build under the stack skill. The single-chat twin of the dispatched designer agent, kept in your context so you check each step."],
-    ["project-failure-signatures","Diagnostics","A lookup of the common local-runtime failure signatures - null-reference, DI / composition-root resolution, async deadlock / sync-over-async hang, race / shared mutable state, disposed-lifecycle, config / environment drift, boundary / off-by-one, database contention / exhaustion, HTTP error with a clean response - each mapped to where the cause actually lives, which is almost never the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method (this names the signature, that runs the hypothesis-and-test loop)."],
-    ["project-ci-failure-signatures","Diagnostics","Triage a red CI pipeline or PR check in the current chat - match the failure to a signature (compile/restore, green-locally-red-on-the-runner, quality gate, signing/release, workflow-config drift, infra flake), make the red-in-CI/green-locally call between a real code defect and an environment/pin/config/workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat and the CI sibling of project-failure-signatures; pull the failing log yourself via gh rather than dispatching evidence-gatherers."],
+    ["project-quality-loop","Review / automation","Autonomous review-and-fix loop over a loops/ folder of numbered prompts: runs each in numeric order, loops it on the target until its bar (default zero findings at every severity) is met, then advances - deciding and logging judgment calls, never pausing. Per-module on large codebases.","manual"],
+    ["project-architecture-quality-loop","Review / automation","Deliberate architecture analyze-assess-improve loop: the project-architecture-analyzer capture maps the project and writes ARCHITECTURE.md + a reasoned strengths/weaknesses ASSESSMENT.md, then works the weaknesses by tier (small -> implementer, substantial -> designer-led build with plan approval, structural -> flagged for a decision), reconciles the docs, and loops. Manual, /-only - the heavy counterpart to project-quality-loop.","manual"],
+    ["project-architecture-analyzer","Review / automation","Deliberate architecture capture: dispatches code-analyzer per module (parallel, cap 3 gather rounds), reasons over the digests IN the main session (declared-vs-enforced reconciliation, the stack-keyed hazard catalog), and writes docs/architecture/ARCHITECTURE.md (lean core map + references/ deep-dives, user-authored reference files never touched), docs/architecture/ASSESSMENT.md (10 strengths + 10 tiered weaknesses), and the generated always-on awareness rule baseline-project-architecture.md (micro-summary + the read-the-map trigger, loaded every session and subagent). No dispatched architecture seat - run on an Opus session. Capture only - fixing the weaknesses is project-architecture-quality-loop, which runs this as its ANALYZE step. Manual, /-only.","manual"],
+    ["project-version-upgrade","Review / automation","Deliberate flow for any BREAKING version event - framework/runtime major, EOL, load-bearing package major: DETECT classifies the event from the manifests (green baseline is a precondition), GATHER pulls the breaking-change surface via context7 and located usage via code-analyzer digests, PLAN sequences foundation-first (applicable changes only, engine-vs-hand split, rollback point per stage), an APPROVAL GATE presents the plan (auto mode skips it ONLY on the user's explicit ask), then staged execution: implementers edit, resolvers clear reds, a gate after every stage, verify at the end. Pinned opus/xhigh. Manual, /-only.","manual"],
+    ["project-capabilities","Review / automation","Deliberate capabilities capture: inventories what THIS project actually has - the slash-only orchestration skills (detected from .claude/skills frontmatter), the subagent seats (.claude/agents), the MCP servers (.mcp.json), plugins best-effort - and generates the always-on awareness rule baseline-project-capabilities.md wholesale from the real inventory (no assumed stack, no row for anything the project dropped). Re-run after install / update / a manifest trim. Manual, /-only.","manual"],
+    ["project-code-style-analyzer","Review / automation","Deliberate project code-style capture: fans out code-style-analyzer agents (one per detected language, parallel), merges their structured reports into docs/PROJECT-CODE-STYLE.md (the project's ACTUAL style - config-enforced rules + idioms a linter cannot encode, house-skill divergence flagged), then generates .claude/hooks/inject-code-style.js from its template - extension filter derived from the agents' observed extensions - and wires it into settings.json idempotently. The hook injects the doc once per session on the first code-file edit. Re-run reconciles the doc in place and rewrites the hook only if invalid or outdated. Manual, /-only.","manual"],
+    ["project-related-context","Review / automation","Deliberate related-projects capture, args-driven (paths or git URLs, never a scan): fans out related-project-analyzer agents (one per sibling, parallel; URL siblings shallow-cloned to scratch), writes both tiers from their YAML entries (evidence-grounded or UNVERIFIED) - the generated always-on awareness rule .claude/rules/baseline-project-related-context.md (name/location/relation/seam, loaded every session and subagent) and docs/PROJECT-RELATED-CONTEXT.md (first_read + the evidence behind each seam, read on a seam touch). Re-run upserts entries per passed sibling in both files, keeps the rest. Manual, /-only.","manual"],
+    ["project-build-from-scratch","Greenfield / scaffolding","Build a new application or major module from scratch: DESIGN runs in-session on the skill's opus/xhigh pinned turn (the spec becomes 2-3 reasoned architecture options, grounded in the house architecture skills - no dispatched greenfield seat), the user picks (hard gate - nothing scaffolds before it), then the stack's real new-project command + baseline wiring, then the build slice by slice through the domain seats (designer -> implementers -> verifier; multi-stack slices producer-first per project-task-flow). Ends by suggesting the capture skills so the new repo gets its map + style artifacts. Manual, /-only.","manual"],
+    ["main-stack-agents-flow","Build / orchestration","Build a feature through a stack specialist team: the domain solution-designer decomposes it into independent parallel tasks, several implementers build them at once, and the domain verifier gates the assembled result against the plan and quality, looping punch-lists back until it signs off. Dispatches the per-domain agent trio (ASP.NET / Angular / WPF / console-worker / mobile / data / DevOps) - pick the skill by the stack under change.","manual"],
+    ["project-task-flow","Build / orchestration","Entry-point router for multi-agent engineering work: scopes the task IN-SESSION (the generated awareness rules + a bounded serena pass; deep reads via a code-analyzer digest), then runs the smallest safe execution mode - single chat, one implementer, a single-stack main-stack-agents-flow trio, or a producer-first cross-domain run ordered by the dependency direction. The producer designer's interface IS the contract; consumer seats build against it and the integration-reviewer gates the assembled whole before commit. Home of the shared subagent policies: execution modes, contract change, structured output, progress ledger, model and token routing.","manual"],
+    ["project-verify-plan","Build / orchestration","Audit an implementation plan or design BEFORE writing code: a risk-coverage review that checks the plan names the non-obvious traps its stack will hit (routing to the stack skill - dotnet-web-backend, angular-conventions, dotnet-wpf - for the trap list), matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (creates the plan) and precedes /code-review (reviews the built code).","manual"],
+    ["project-implement","Build / orchestration","Single-chat build step - the implementer seat's execution protocol in your context: take a verified plan (project-solution-design -> project-verify-plan), execute it task by task honoring each card's contract (files owned, traps, anchors, acceptance criterion), gate every task green (stubborn reds route to the matching resolver agent), flag scope beyond the plan instead of riding it along, then finish via /code-review + the done-gate - completing the in-session designer -> implementer -> verifier vertical.","manual"],
+    ["project-solution-design","Build / orchestration","Work out how a feature fits the existing code before building, in a single chat - the in-context form of the solution-designer seat. Reads docs/architecture/ARCHITECTURE.md, judges where the change belongs (extend an existing seam, refactor first, or isolate a new boundary) tied to the forcing edge, loads the stack skill (dotnet-web-backend, angular-conventions, dotnet-wpf) for the real traps, and decomposes the work into an ordered, minimal plan. Feeds project-verify-plan (which audits the plan) and precedes the build under the stack skill. The single-chat twin of the dispatched designer agent, kept in your context so you check each step.","manual"],
+    ["project-failure-signatures","Diagnostics","A lookup of the common local-runtime failure signatures - null-reference, DI / composition-root resolution, async deadlock / sync-over-async hang, race / shared mutable state, disposed-lifecycle, config / environment drift, boundary / off-by-one, database contention / exhaustion, HTTP error with a clean response - each mapped to where the cause actually lives, which is almost never the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method (this names the signature, that runs the hypothesis-and-test loop).","manual"],
+    ["project-ci-failure-signatures","Diagnostics","Triage a red CI pipeline or PR check in the current chat - match the failure to a signature (compile/restore, green-locally-red-on-the-runner, quality gate, signing/release, workflow-config drift, infra flake), make the red-in-CI/green-locally call between a real code defect and an environment/pin/config/workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat and the CI sibling of project-failure-signatures; pull the failing log yourself via gh rather than dispatching evidence-gatherers.","manual"],
     ["devops","Build / DevOps","Containers, CI/CD, and safe deploys for the .NET/Angular house: multi-stage, cache-ordered, digest-pinned, non-root Docker images; GitHub Actions CI/CD (lint/test/build graph, lockfile-hash cache keys, real service-container integration tests, masked secrets, SHA-pinned actions, least-privilege permissions, OIDC over stored creds); safe deploy (environments + approvals, expand-contract migrations gated before the roll, health-gated blue-green/rolling cutover with rollback). Points at dotnet-aspire, dotnet-migrate, dotnet-security/data-security."],
     ["postgres","Database / Postgres","PostgreSQL engine delta over database-conventions: index-type selection (B-tree/GIN/GiST/BRIN), JSONB + full-text, SARGable rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum, work_mem), connection pooling modes. Original house skill."],
     ["sqlite","Database / SQLite","SQLite engine delta over database-conventions: WAL / single-writer concurrency + busy_timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables, limited ALTER TABLE + table-rebuild, connection-per-thread, FTS5. Original house skill."],
@@ -784,9 +812,11 @@ function renderFixedSource(g, filtered) {
   // header; Install stays a per-row column by request (uniform within the group).
   const meta = (g.meta ? g.meta + " &middot; " : "") + `Source ${srcCell}`;
   let html = `<h2>${g.title}</h2><div class="group-meta">${meta}</div>`;
-  html += `<table><thead><tr><th style="width:15%">Skill</th><th style="width:13%">Area</th><th style="width:26%">Install</th><th>Description</th></tr></thead><tbody>`;
-  for (const [name, area, desc] of filtered) {
-    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${g.install}</code></td><td class="desc">${desc}</td></tr>`;
+  const inv = g.invokeColumn === true;
+  html += `<table><thead><tr><th style="width:15%">Skill</th><th style="width:12%">Area</th>${inv ? `<th style="width:13%">Invocation</th>` : ``}<th style="width:${inv ? 20 : 26}%">Install</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, area, desc, invoke] of filtered) {
+    const invCell = inv ? `<td><code>${invoke === "manual" ? `/${name} (manual)` : "auto (description)"}</code></td>` : ``;
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td>${invCell}<td><code>${g.install}</code></td><td class="desc">${desc}</td></tr>`;
   }
   html += `</tbody></table>`;
   return html;
@@ -1032,7 +1062,7 @@ const otherTools = [
   ["evidence-gatherer", "subagent", "Diagnosis / support", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only gather-task runner a diagnoser dispatches: reproduces a failure, pulls a run log via gh, greps to the failing frames, or locates a symbol, then returns a compact quoted digest - keeping the raw log volume off the opus diagnoser. Never diagnoses or fixes. Pinned sonnet/low."],
   ["security-auditor", "subagent", "Security / audit", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only cross-stack security posture audit: sweeps auth, authorization, input/injection, secrets, config, and data exposure across ASP.NET/Angular/WPF/mobile/SQL, proves each finding against the code, and returns an OWASP/CWE punch-list routed to the domain implementers to fix and the verifier to confirm. Complements /security-review (diff/PR-scoped) and the security-guidance commit hook; finds and reports, never fixes. Pinned opus/xhigh."],
   ["integration-reviewer", "subagent", "Review / integration gate", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only cross-domain final gate: after every affected domain verifier signs off, checks the assembled feature as a whole - the frozen contract honored end to end and the current contract_version used everywhere, the full solution builds, unit/integration/E2E pass, DB migrations apply from a clean DB and from the previous version, the API matches every Angular/mobile/WPF consumer, auth and the error envelope match the contract, deploy order safe - then returns a commit-or-punch-list verdict. Independent of the Team Lead; the mandatory gate before a cross-domain commit that no single-stack verifier is. Pinned sonnet/xhigh - a verifier's pin for a verifier's job."],
-  // Per-domain specialist team (6 stacks x solution-designer/implementer/verifier), dispatched by the main-stack-agents-flow skill:
+  // Per-domain specialist team (7 stacks x solution-designer/implementer/verifier), dispatched by the main-stack-agents-flow skill:
   ["aspnet-solution-designer", "subagent", "ASP.NET / design", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only ASP.NET Core backend/API design pass: fixes architecture, plan, and test strategy for the C# stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the aspnet-implementer fan-out and the aspnet-verifier. Pinned opus/xhigh."],
   ["aspnet-implementer", "subagent", "ASP.NET / build", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Builds ONE task from an aspnet-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["aspnet-verifier", "subagent", "ASP.NET / verify", "fetched into .claude/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate once every aspnet-implementer task has landed: verifies the assembled work against the designer plan and C# code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
@@ -1125,9 +1155,9 @@ const rules = [
   ["baseline-navigation", "(none - always on)", "House baseline: serena-first symbol navigation, read-before-edit, never guess an ambiguous reference."],
   ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.slnx,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
-  ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.spec.ts,**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
+  ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.spec.ts,**/*.scss,**/src/app/**/*.ts,**/src/lib/**/*.ts", "Routes Angular build/test repair to the ng resolvers."],
   ["typescript-conventions", "**/*.ts,**/*.tsx,**/*.js,**/*.jsx,**/*.mjs,**/*.cjs", "TS/JS conventions: points any TS/JS-family edit at the typescript skill - the framework-agnostic baseline."],
-  ["angular-conventions", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.service.ts,**/*.directive.ts,**/*.pipe.ts,**/*.guard.ts,**/*.resolver.ts,**/*.module.ts,**/*.routes.ts", "Angular/Ionic conventions: points Angular file shapes at the angular-conventions skill, on top of the typescript baseline."],
+  ["angular-conventions", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.service.ts,**/*.directive.ts,**/*.pipe.ts,**/*.guard.ts,**/*.resolver.ts,**/*.module.ts,**/*.routes.ts,**/src/app/**/*.ts,**/src/app/**/*.html,**/src/lib/**/*.ts,**/src/lib/**/*.html", "Angular/Ionic conventions: points Angular file shapes at the angular-conventions skill, on top of the typescript baseline (the src/app + src/lib globs catch v20 suffix-less names)."],
   ["angular-styling-conventions", "**/*.scss,**/*.css", "Angular styling conventions: points stylesheet edits at the angular-styling skill."],
   ["csharp-conventions", "**/*.cs", "C# baseline conventions: points any .cs edit at the csharp skill - backend, desktop, or console (a WPF view-model is C# too)."],
   ["wpf-conventions", "**/*.xaml", "WPF conventions: points a .xaml edit at the dotnet-wpf skill."],
