@@ -1,5 +1,5 @@
 ---
-description: House baseline - interaction: communication style, adversarial review of the user's proposals, and planning/execution thresholds. Always-on (no paths), installer-managed - update overwrites local edits.
+description: "House baseline - interaction: communication style, adversarial review of the user's proposals, and planning/execution thresholds. Always-on (no paths), installer-managed - update overwrites local edits."
 ---
 
 # Interaction

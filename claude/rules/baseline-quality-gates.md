@@ -1,5 +1,5 @@
 ---
-description: House baseline - quality gates: code quality and the done-claim gate. Always-on (no paths), installer-managed - update overwrites local edits.
+description: "House baseline - quality gates: code quality and the done-claim gate. Always-on (no paths), installer-managed - update overwrites local edits."
 ---
 
 # Quality gates
