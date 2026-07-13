@@ -52,12 +52,13 @@ made only inside a consuming project is throwaway (see Invariants).
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
     `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker
     contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
-  - `rules/` - sixteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
+  - `rules/` - fifteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Five
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
-    (code quality + definition of done), security, git + pre-commit, navigation, agents-skills - loaded every session and
+    (code quality + definition of done), security, git + pre-commit, navigation - loaded every session and
     subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
-    MCP routing is per-project data, carried in each project's `CLAUDE.md` Stack table).
+    the skill/agent usage policy + per-project MCP routing live in the GENERATED
+    baseline-project-capabilities.md, written by the `project-capabilities` skill).
     The other ten
     are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the two repair-loop
     routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the seven convention rules

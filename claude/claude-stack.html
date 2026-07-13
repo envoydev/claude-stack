@@ -247,7 +247,7 @@
     <div class="stat"><b>7</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>4</b><span>hooks</span></div>
-    <div class="stat"><b>16</b><span>rules</span></div>
+    <div class="stat"><b>15</b><span>rules</span></div>
     <div class="stat"><b>7</b><span>domains</span></div>
   </div>
 
@@ -1123,7 +1123,6 @@ const rules = [
   ["baseline-security", "(none - always on)", "House baseline: security-review routing, never log secrets/PII, hardcoded-secret protocol, deny-list caveat."],
   ["baseline-git", "(none - always on)", "House baseline: Conventional Commits, review-before-commit, no AI attribution, PR shape, pre-commit checkpoint."],
   ["baseline-navigation", "(none - always on)", "House baseline: serena-first symbol navigation, read-before-edit, never guess an ambiguous reference."],
-  ["baseline-agents-skills", "(none - always on)", "House baseline: skill-loading discipline, explicit-only subagent dispatch, the slash-only orchestration skills."],
   ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.slnx,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
   ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.spec.ts,**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
@@ -1137,7 +1136,7 @@ const rules = [
 ];
 
 function renderRules(filtered) {
-  let html = `<h2>Rules</h2><div class="group-meta">Rules fetched into <code>.claude/rules/</code> (Claude-only; not skills): one always-on baseline, the rest path-scoped. ${filtered.length} entries.</div>`;
+  let html = `<h2>Rules</h2><div class="group-meta">Rules fetched into <code>.claude/rules/</code> (Claude-only; not skills): the always-on baseline set, the rest path-scoped. ${filtered.length} entries.</div>`;
   html += `<table><thead><tr><th style="width:18%">Rule</th><th style="width:27%">Paths</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
   for (const [name, paths, desc] of filtered) {
     html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td><code>fetched into .claude/rules/</code></td><td class="desc">${desc}</td></tr>`;
