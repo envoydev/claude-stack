@@ -133,6 +133,10 @@ npx skills remove      # uninstall skills
   or package major): plan in-session from the real breaking surface (context7 + usage digests),
   approval gate (auto mode only on an explicit ask), then staged execution - implementers edit,
   resolvers clear reds, a gate after every stage. Manual, `/`-only.
+- **project-capabilities** - Deliberate capabilities capture: inventories the installed skills,
+  seats, MCPs, and plugins, and generates the always-on awareness rule
+  `baseline-project-capabilities.md` from the real inventory - so sessions are never steered at a
+  capability the project doesn't carry. Re-run after install/update/trim. Manual, `/`-only.
 - **project-code-style-analyzer** - Deliberate project code-style capture: fans out code-style-analyzer
   agents (one per detected language, parallel), merges their reports into `docs/PROJECT-CODE-STYLE.md`
   (the project's actual style - config-enforced rules + idioms a linter cannot encode), then generates

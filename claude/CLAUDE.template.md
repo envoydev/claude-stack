@@ -23,7 +23,7 @@ file is touched and are not listed here - their own `paths:` frontmatter says wh
 | baseline-security | /security-review routing for sensitive diffs, never log PII / secrets, hardcoded-secret protocol, the permissions.deny subprocess caveat |
 | baseline-git | Conventional Commits + branch naming, review-before-commit, never auto-push, no AI attribution, PR shape, force-with-lease, the pre-commit checkpoint |
 | baseline-navigation | serena-first symbol lookup, read-before-edit, ambiguous-reference handling, pasted-code-is-illustrative |
-| baseline-agents-skills | skill-loading discipline, explicit-only subagent dispatch, the nine slash-only orchestration skills |
+| baseline-agents-skills | skill-loading discipline, explicit-only subagent dispatch; the per-project inventory (orchestration skills, seats, MCP routing) is the GENERATED baseline-project-capabilities.md - run /project-capabilities after install or a trim |
 
 ## Per-project additions
 
@@ -40,18 +40,10 @@ lean; interleave as reads best - the project intro usually comes first):
 
 **Stack - what it is built with:**
 
-6. **Stack** - languages, frameworks, key libraries, test stack + coverage gate, the LSP plugin for the primary language(s), plus this MCP routing table trimmed to the servers the project actually registers:
-
-   | Server | Use for |
-   |---|---|
-   | `serena` | default symbol navigator + symbol-level editor - `find_symbol` / `find_referencing_symbols` before any whole-file Read; self-activates on launch (never call `activate_project`). Also holds the per-project memory (`.serena/memories/`) the agent flows use for hand-off notes. |
-   | `context7` | up-to-date docs for any API you don't own - resolve + query before writing or changing hand-written code against a third-party package, vendor SDK, or version-sensitive framework surface; never answer library-API questions from recall. Generated code doesn't count. |
-   | `memory` | *cross-project* recall only - search when this project's context is thin; store a significant cross-project outcome at task end (decision / gotcha / architecture, + project & date). Per-project hand-off lives in serena, not here. Drop the row (and the server) in a standalone project. |
-   | `playwright` | drive a browser for visual checks / large HTML reports - don't text-read them |
-   | framework CLI (`angular-cli` in Angular projects) | the framework CLI's own docs / commands |
-   | issue-tracker connector | the project's tracker read-write; ticket skills write the content, the connector files it - always confirm before filing |
-   | `chrome-devtools` / `appium-mcp` | browser / native-mobile debug - only for browser / mobile targets |
-   | `<project-added MCP>` | `<what it routes>` |
+6. **Stack** - languages, frameworks, key libraries, test stack + coverage gate, the LSP plugin
+   for the primary language(s). MCP routing is NOT hand-filled here: it lives in the generated
+   `baseline-project-capabilities.md` - run `/project-capabilities` after install, an update, or a
+   manifest trim, and it stamps routing rows for exactly the servers `.mcp.json` registers.
 7. **Commands** - copy-pasteable build / test / run / migrate / publish, with any environment quirks.
 8. **Code conventions** - the house-style skill for each file type (a path-scoped rule in `.claude/rules/` glob-attaches it; a file matching two globs loads both skills).
 9. **Testing approach** - per-layer strategy, what's excluded, the integration / regression net.

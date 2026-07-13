@@ -90,6 +90,10 @@ const NON_SKILL_TOKENS = new Set([
     // project-task-flow's in-session scoping step.
     'baseline-project-architecture',
     'baseline-project-related-context',
+    // MCP server names stamped by project-capabilities' routing map - servers, not skills.
+    'angular-cli',
+    'chrome-devtools',
+    'appium-mcp',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
