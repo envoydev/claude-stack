@@ -265,24 +265,6 @@ npm install              # one-time: the lint needs js-yaml
 node scripts/lint-skills.js   # or: npm run lint
 ```
 
-## Credits / Acknowledgements
-
-Every skill is house-owned - original expression of standard practice, carrying no copied
-text. Where a skill was distilled or mined from an MIT source, that source is credited here
-and an inline note marks the skill. Nothing installs from a third-party skill kit at runtime
-any more; the sources below are fork origins, not live dependencies.
-
-.NET / Ionic - distilled and trimmed into house skills:
-
-- [`aaronontheweb` (wshaddix)/`dotnet-skills`](https://github.com/wshaddix/dotnet-skills) (MIT, (c) 2025 Aaron Stannard) - fed `dotnet-project-setup`, `dotnet-performance`, `dotnet-code-quality`, `dotnet-testing`, `dotnet-hosted-services`, `csharp`, `dotnet-web-backend`, and `ilspy-decompile`.
-- [Microsoft `dotnet/skills`](https://github.com/dotnet/skills) (MIT) - microbenchmarking + dump-collect distilled into `dotnet-diagnostics`.
-- [`capawesome-team/skills`](https://github.com/capawesome-team/skills) (MIT) - the Ionic navigation + page-lifecycle nucleus distilled into `ionic`.
-
-Angular - conventions mined into `angular-conventions` and `angular-material`:
-
-- [`alfredoperez/angular-best-practices`](https://github.com/alfredoperez/angular-best-practices) (MIT) - signal queries, host-property syntax, `NgOptimizedImage`, route input-binding + resolvers, and testing-harness conventions folded into `angular-conventions` and `angular-material`.
-- [`angular/skills`](https://github.com/angular/skills) (MIT, (c) 2026 Google LLC) - v20/v21 delta conventions folded into `angular-conventions`.
-
 ## License
 
 [MIT](LICENSE) © 2026 envoydev

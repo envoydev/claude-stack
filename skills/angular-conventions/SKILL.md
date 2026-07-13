@@ -134,5 +134,3 @@ The recurring ways a change fakes a green build or suite instead of earning it -
 
 (The language baseline - strict typing and no `any`, modules and barrels, async, error handling, JSDoc, ESLint, Prettier, `tsc`, and `npm audit` - lives in `typescript`.)
 
-<!-- Some conventions here were mined from alfredoperez/angular-best-practices (MIT) and the official angular/skills (MIT, (c) 2026 Google LLC) - see Credits in README.md. -->
-
