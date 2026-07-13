@@ -149,11 +149,12 @@ cd /path/to/your/project        # run inside the target project
 bash claude-stack.sh install
 bash claude-stack.sh update
 
-# Named flags (any order): --space (account + memory DB), --scope, --context7, --github-cli
+# Named flags (any order): --space (account + memory DB), --scope, --context7, --github-cli, --keep-pins
 bash claude-stack.sh install --space work                    # space 'work' -> ~/.claude-work account + memory_work.db
 bash claude-stack.sh install --github-cli
 bash claude-stack.sh install --space work --scope global --github-cli
 bash claude-stack.sh install --context7 local               # local npx context7 (default: remote hosted server)
+bash claude-stack.sh update --keep-pins                     # refresh, but keep local model/effort pin edits
 ```
 
 ```powershell
@@ -163,6 +164,7 @@ pwsh claude-stack.ps1 update
 pwsh claude-stack.ps1 install -Space work                   # space 'work' -> ~/.claude-work + memory_work.db
 pwsh claude-stack.ps1 install -GitHubCli                    # install gh (switch)
 pwsh claude-stack.ps1 install -Scope global -Context7 local # global scope + local npx context7 (default: remote)
+pwsh claude-stack.ps1 update -KeepPins                      # refresh, but keep local model/effort pin edits
 ```
 
 > On Windows PowerShell 5.1 use `powershell` instead of `pwsh`. If scripts are blocked, run once:
@@ -180,6 +182,7 @@ old positional forms (`install work`, `install github-cli`) are gone - pass a va
 | **`--scope`** \| **`-Scope`** | `project` (default) \| `global` | `project` installs INTO this repo; `global` installs into the active account. Falls back to the `SCOPE` env var when the flag is absent. |
 | **`--context7`** \| **`-Context7`** | `remote` (default) \| `local` | context7 transport: `remote` is the hosted HTTP server, `local` the npx stdio server. |
 | **`--github-cli`** \| **`-GitHubCli`** | flag / switch | Install the GitHub CLI (`gh`) if missing. No auth during install; run `gh auth login` once before first GitHub platform use. |
+| **`--keep-pins`** \| **`-KeepPins`** | flag / switch | Keep this project's **local `model:`/`effort:` frontmatter edits** on installed agents (`.claude/agents/`) and skills (`SKILL.md`) across the refresh - values are snapshotted before the fetch/reinstall and re-applied after (which otherwise resets them to upstream). Only keys present in both the old local file and the refreshed one are re-applied, and the local value always wins over an upstream pin change - drop the flag for one run to take upstream pins. |
 
 ### Claude-driven install - analyze, trim, confirm, run
 
@@ -209,7 +212,9 @@ the project root this three-step brief:
    (named flags as needed - see Arguments above), then follow the script's printed next steps.
 
 The trimmed copy IS the per-project manifest: keep it (committed or local), and re-run it for
-`update` so the trim survives - a fresh download restores the full manifest.
+`update` so the trim survives - a fresh download restores the full manifest. If the project also
+re-pinned any agent/skill `model:`/`effort:`, add `--keep-pins` to that `update` so the local pins
+survive the refresh too.
 
 ---
 
@@ -220,7 +225,9 @@ The trimmed copy IS the per-project manifest: keep it (committed or local), and 
   Hooks are fetched into `.claude/hooks/` and wired into `.claude/settings.json`.
 - **`update`** - removes and re-adds skills (real copies, not symlinks), re-resolves/re-pins MCP
   versions, refreshes plugins, and re-fetches hook files. It does **not** rewrite the
-  `settings.json` hook wiring (that happens only on `install`).
+  `settings.json` hook wiring (that happens only on `install`). The refresh resets every agent/skill
+  file to upstream - if this project re-pinned a seat's `model:`/`effort:`, run with `--keep-pins`
+  (`-KeepPins`) to carry those local values across.
 
 **Claude-only steps fail soft** if the `claude` CLI is absent - skills still install.
 

@@ -33,6 +33,12 @@
 .PARAMETER GitHubCli
   Install the GitHub CLI (gh) via winget if missing. Reminds you to run `gh auth login` when unauthenticated.
 
+.PARAMETER KeepPins
+  Keep this project's LOCAL model/effort frontmatter edits on installed agents (.claude/agents) and
+  skills (SKILL.md) across the refresh - the local value is re-applied after the fetch/reinstall
+  (which otherwise resets it to upstream). Only existing keys are re-applied; with the switch on, a
+  local pin edit always wins over an upstream pin change.
+
 .NOTES
   Environment variables:
     SCOPE=project|global  fallback for -Scope when the flag is absent (default project).
@@ -74,7 +80,10 @@ param(
   [string]$Context7 = 'remote',
   # Optional: install the GitHub CLI (gh) via winget if missing; prompts for `gh auth login`
   # when unauthenticated. e.g.: .\claude-stack.ps1 install -GitHubCli
-  [switch]$GitHubCli
+  [switch]$GitHubCli,
+  # Optional: keep local model/effort frontmatter edits on installed agents/skills across the
+  # refresh (an update resets them to upstream otherwise). e.g.: .\claude-stack.ps1 update -KeepPins
+  [switch]$KeepPins
 )
 
 $ErrorActionPreference = 'Stop'
@@ -816,6 +825,94 @@ function Update-Hooks { Get-Hooks }   # UPDATE: refresh hook files only; setting
 function Update-Agents { Get-Agents } # UPDATE: refresh subagent files
 function Update-Rules { Get-Rules }   # UPDATE: refresh rule files
 
+# ===========================================================================
+# KEEP-PINS (-KeepPins) - preserve local model/effort frontmatter edits across the refresh.
+# The agent fetch and the skills clean-reinstall reset every file to upstream, wiping a per-project
+# model/effort re-pin. With -KeepPins the values are snapshotted BEFORE the refresh and re-applied
+# AFTER it - only keys present in both the old local file and the refreshed one (no add/remove), and
+# the local value always wins over an upstream pin change (the switch cannot tell the two apart).
+# ===========================================================================
+function Get-FrontmatterPin([string]$Path, [string]$Key) {
+  # Return the key's value from the leading frontmatter block ('' if absent).
+  try { $lines = [System.IO.File]::ReadAllLines($Path) } catch { return '' }
+  if (-not $lines -or $lines.Count -eq 0 -or $lines[0] -notmatch '^---\s*$') { return '' }
+  for ($i = 1; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match '^---\s*$') { break }
+    if ($lines[$i] -match ('^' + [regex]::Escape($Key) + ':\s*(.*?)\s*$')) { return $Matches[1] }
+  }
+  return ''
+}
+
+function Set-FrontmatterPin([string]$Path, [string]$Key, [string]$Value) {
+  # Rewrite the key's line INSIDE the frontmatter block only. .NET IO keeps UTF-8 intact
+  # (Set-Content on PS 5.1 would re-encode the body), and the LF join keeps the fetched files'
+  # Unix line endings (WriteAllLines would rewrite the whole file CRLF on Windows).
+  $lines = [System.IO.File]::ReadAllLines($Path)
+  if (-not $lines -or $lines.Count -eq 0 -or $lines[0] -notmatch '^---\s*$') { return }
+  for ($i = 1; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match '^---\s*$') { break }
+    if ($lines[$i] -match ('^' + [regex]::Escape($Key) + ':')) {
+      $lines[$i] = "${Key}: $Value"
+      [System.IO.File]::WriteAllText($Path, (($lines -join "`n") + "`n"))
+      return
+    }
+  }
+}
+
+function Get-PinFiles {
+  # Every locally-installed pin-bearing target: manifest agents + skill SKILL.md files.
+  $files = @()
+  $root = Get-RepoRoot
+  if ($root) {
+    foreach ($f in $Agents) {
+      $p = Join-Path $root ".claude/agents/$f"
+      if (Test-Path -LiteralPath $p) { $files += $p }
+    }
+  }
+  $skillsDir = if ($Scope -eq 'project') { if ($root) { Join-Path $root '.claude/skills' } } else { Join-Path $ConfigDir 'skills' }
+  if ($skillsDir) {
+    foreach ($entry in $Skills) {
+      $p = Join-Path $skillsDir ($entry.Split('|', 2)[1] + '/SKILL.md')
+      if (Test-Path -LiteralPath $p) { $files += $p }
+    }
+  }
+  return $files
+}
+
+$script:PinSnapshot = @{}
+function Save-Pins {
+  # -KeepPins: record each installed agent/skill file's model/effort before the refresh.
+  if (-not $KeepPins) { return }
+  foreach ($f in Get-PinFiles) {
+    $m = Get-FrontmatterPin $f 'model'
+    $e = Get-FrontmatterPin $f 'effort'
+    if ($m -or $e) { $script:PinSnapshot[$f] = @{ model = $m; effort = $e } }
+  }
+  Log "keep-pins: snapshotted model/effort from $($script:PinSnapshot.Count) file(s)"
+}
+
+function Restore-Pins {
+  # -KeepPins: re-apply every snapshotted value the refresh changed.
+  if (-not $KeepPins) { return }
+  $kept = 0
+  foreach ($f in Get-PinFiles) {
+    if (-not $script:PinSnapshot.ContainsKey($f)) { continue }
+    # Display name matching the .sh twin: agents/<file> or skills/<skill>/SKILL.md.
+    $disp = if ($f -match '[\\/]\.claude[\\/]agents[\\/]') { 'agents/' + (Split-Path -Leaf $f) } else { 'skills/' + (Split-Path -Leaf (Split-Path -Parent $f)) + '/SKILL.md' }
+    foreach ($key in @('model', 'effort')) {
+      $saved = $script:PinSnapshot[$f][$key]
+      if (-not $saved) { continue }
+      $cur = Get-FrontmatterPin $f $key
+      if ($cur -and $cur -ne $saved) {
+        Set-FrontmatterPin $f $key $saved; $kept++
+        Log "  pin kept: $disp $key=$saved (upstream: $cur)"
+      }
+    }
+  }
+  $script:PinSnapshot = @{}
+  Log "keep-pins: re-applied $kept local pin value(s)"
+}
+
 function Remove-AgentsCache {
   # npx skills stages an agent-neutral .agents/ store. With a STRICT per-agent copy (.claude/skills is
   # a real copy), nothing reads .agents/ anymore - prune it. Guard: keep it if any skill entry under
@@ -876,14 +973,17 @@ Test-Prerequisites
 Install-GitHubCli
 
 # claude-only steps fail soft (Get-Command claude) if the CLI is not installed.
+Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills unconditionally too, so both actions refresh)
 if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; Repair-SerenaTsLspWindows }
 else { Update-Skills; Update-Plugins; Update-Mcps; Update-Hooks; Update-Agents; Update-Rules; Repair-SerenaTsLspWindows }
+Restore-Pins
 
 Remove-AgentsCache
 Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
 $summary = "  skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$($Hooks.Count), agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
 if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
+if ($KeepPins) { $summary += '; keep-pins=on' }
 Log "$summary; context7=$Context7"
 if ($script:ClaudeMissing) { Log "  !! claude CLI absent - plugins, MCPs, and settings.json wiring were SKIPPED (install it, then re-run)" }
 if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed above - re-run '$Action' to retry" }

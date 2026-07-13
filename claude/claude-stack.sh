@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
-# [--github-cli] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
+# [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
 # claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
 # system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; Cursor lives
 # in cursor-stack.sh.
@@ -26,6 +26,11 @@
 #                           npx stdio server.
 #   --github-cli            install the GitHub CLI (gh) via Homebrew (macOS) if missing; prompts for
 #                           `gh auth login` when unauthenticated.
+#   --keep-pins             keep this project's LOCAL model/effort frontmatter edits on installed
+#                           agents (.claude/agents) and skills (SKILL.md) across the refresh - the
+#                           local value is re-applied after the fetch/reinstall (which otherwise
+#                           resets it to upstream). Only existing keys are re-applied; with the flag
+#                           on, a local pin edit always wins over an upstream pin change.
 #
 # Full inventory - comment out manifest entries below to trim it to a curated subset.
 set -euo pipefail
@@ -34,7 +39,7 @@ usage() {
   cat <<USAGE
 claude-stack.sh - install or update the Claude Code stack into a project.
 
-Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--github-cli]
+Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--github-cli] [--keep-pins]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; MCP/plugin versions freeze until the next update; wires .claude/settings.json
@@ -45,6 +50,8 @@ Named flags (any order, each optional with a default):
   --scope project|global   project (default) installs INTO this repo; global installs into the account
   --context7 local|remote  context7 transport; remote (default) is the hosted server, local the npx server
   --github-cli             install the GitHub CLI (gh) if missing
+  --keep-pins              keep local model/effort frontmatter edits on installed agents/skills across
+                           the refresh (an update resets them to upstream otherwise)
 
 Environment variables:
   SCOPE=project|global   fallback for --scope when the flag is absent (default project)
@@ -75,12 +82,14 @@ esac
 AGENT="claude-code"
 
 # Named flags (any order, each with a default): --space <name> (account ~/.claude-<name> +
-# memory_<name>.db), --scope project|global, --context7 local|remote, --github-cli (install gh).
+# memory_<name>.db), --scope project|global, --context7 local|remote, --github-cli (install gh),
+# --keep-pins (preserve local model/effort pin edits across the refresh).
 # Named-only: there is no positional space - a value must be attached to its flag, so a space can be
 # literally any word (no reserved-word collisions with the flag names).
 SPACE=""
 SCOPE_FLAG=""
 INSTALL_GITHUB_CLI=false
+KEEP_PINS=false
 CONTEXT7_MODE="remote"
 _flag_val() {  # $1 = flag name, $2 = the arg meant to be its value ('' when the flag was last)
   [ -n "$2" ] || { usage >&2; echo "error: $1 needs a value" >&2; exit 1; }
@@ -94,7 +103,8 @@ while [ $# -gt 0 ]; do
     --context7)   _flag_val "$1" "${2:-}"; CONTEXT7_MODE="$2"; shift 2 ;;
     --context7=*) CONTEXT7_MODE="${1#*=}";                     shift ;;
     --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli)" >&2; exit 1 ;;
+    --keep-pins)  KEEP_PINS=true;                              shift ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins)" >&2; exit 1 ;;
   esac
 done
 
@@ -735,6 +745,84 @@ update_hooks() { download_hooks; }   # UPDATE: refresh hook files only; settings
 update_agents() { download_agents; } # UPDATE: refresh subagent files
 update_rules() { download_rules; }   # UPDATE: refresh rule files
 
+# ===========================================================================
+# KEEP-PINS (--keep-pins) - preserve local model/effort frontmatter edits across the refresh.
+# The agent fetch and the skills clean-reinstall reset every file to upstream, wiping a per-project
+# model/effort re-pin. With --keep-pins the values are snapshotted BEFORE the refresh and re-applied
+# AFTER it - only keys present in both the old local file and the refreshed one (no add/remove), and
+# the local value always wins over an upstream pin change (the flag cannot tell the two apart).
+# ===========================================================================
+_fm_pin() {  # $1=file $2=key -> print the key's value from the leading frontmatter block ('' if absent)
+  awk -v k="$2" '
+    NR==1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+    /^---[[:space:]]*$/ { exit }
+    index($0, k":") == 1 { sub("^"k":[[:space:]]*", ""); sub(/[[:space:]]+$/, ""); print; exit }
+  ' "$1" 2>/dev/null
+}
+
+_fm_set_pin() {  # $1=file $2=key $3=value - rewrite the key's line INSIDE the frontmatter block only
+  local tmp; tmp="$(mktemp)"
+  awk -v k="$2" -v v="$3" '
+    NR==1 && /^---[[:space:]]*$/ { fm=1; print; next }
+    fm==1 && /^---[[:space:]]*$/ { fm=2; print; next }
+    fm==1 && index($0, k":") == 1 { print k": "v; next }
+    { print }
+  ' "$1" > "$tmp" && mv "$tmp" "$1"
+}
+
+_pin_files() {  # print every locally-installed pin-bearing target: manifest agents + skill SKILL.md files
+  local root file entry skills_dir
+  root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+  for file in "${AGENTS[@]}"; do
+    [ -f "$root/.claude/agents/$file" ] && printf '%s\n' "$root/.claude/agents/$file"
+  done
+  if [ "$SCOPE" = "project" ]; then skills_dir="$root/.claude/skills"; else skills_dir="$CONFIG_DIR/skills"; fi
+  for entry in "${SKILLS[@]}"; do
+    [ -f "$skills_dir/${entry#*|}/SKILL.md" ] && printf '%s\n' "$skills_dir/${entry#*|}/SKILL.md"
+  done
+}
+
+PIN_DIR=""
+snapshot_pins() {  # --keep-pins: record each installed agent/skill file's model/effort before the refresh
+  $KEEP_PINS || return 0
+  PIN_DIR="$(mktemp -d)"
+  local f key m e count=0
+  while IFS= read -r f; do
+    m="$(_fm_pin "$f" model)"; e="$(_fm_pin "$f" effort)"
+    [ -z "$m" ] && [ -z "$e" ] && continue
+    key="$(printf '%s' "$f" | tr '/' '_')"   # flatten the path -> one snapshot file per target
+    printf 'model=%s\neffort=%s\n' "$m" "$e" > "$PIN_DIR/$key"
+    count=$((count + 1))
+  done < <(_pin_files)
+  log "keep-pins: snapshotted model/effort from $count file(s)"
+}
+
+restore_pins() {  # --keep-pins: re-apply every snapshotted value the refresh changed
+  $KEEP_PINS || return 0
+  [ -n "$PIN_DIR" ] || return 0
+  local f key k saved cur disp kept=0
+  while IFS= read -r f; do
+    key="$(printf '%s' "$f" | tr '/' '_')"
+    [ -f "$PIN_DIR/$key" ] || continue
+    case "$f" in
+      */.claude/agents/*) disp="agents/${f##*/.claude/agents/}" ;;
+      */skills/*)         disp="skills/${f##*/skills/}" ;;
+      *)                  disp="$f" ;;
+    esac
+    for k in model effort; do
+      saved="$(sed -n "s/^$k=//p" "$PIN_DIR/$key")"
+      [ -n "$saved" ] || continue
+      cur="$(_fm_pin "$f" "$k")"
+      if [ -n "$cur" ] && [ "$cur" != "$saved" ]; then
+        _fm_set_pin "$f" "$k" "$saved"; kept=$((kept + 1))
+        log "  pin kept: $disp $k=$saved (upstream: $cur)"
+      fi
+    done
+  done < <(_pin_files)
+  rm -rf "$PIN_DIR"; PIN_DIR=""
+  log "keep-pins: re-applied $kept local pin value(s)"
+}
+
 prune_agents_cache() {
   # npx skills stages an agent-neutral .agents/ store. With a STRICT per-agent copy (.claude/skills is
   # a real copy), nothing reads .agents/ anymore - prune it. Guard: keep it if any skill entry under
@@ -760,17 +848,20 @@ prerequisites_check
 install_github_cli
 
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
+snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
   install_skills; install_plugins; install_mcps; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md
 else
   update_skills; update_plugins; update_mcps; update_hooks; update_agents; update_rules
 fi
+restore_pins
 
 prune_agents_cache
 echo
 log "done: $ACTION [scope=$SCOPE, account=$CONFIG_DIR, agent=$AGENT]"
 _summary="  skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=${#HOOKS[@]}, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
 [ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"
+[ "$KEEP_PINS" = true ] && _summary="$_summary; keep-pins=on"
 log "$_summary; context7=$CONTEXT7_MODE"
 if [ "$CLAUDE_MISSING" = true ]; then
   log "  !! claude CLI absent - plugins, MCPs, and settings.json wiring were SKIPPED (install it, then re-run)"
