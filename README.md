@@ -118,7 +118,7 @@ npx skills remove      # uninstall skills
   rewrites, the planner (EXPLAIN, pg_stat_statements, autovacuum), connection pooling.
 - **sqlite** - SQLite engine specialist: WAL / single-writer concurrency, PRAGMAs, type affinity vs
   STRICT, limited ALTER TABLE, connection-per-thread, FTS5.
-- **project-quality-loop** - Autonomous review-and-fix loop pipeline: run a `loops/` folder of
+- **project-quality-loop** - Autonomous review-and-fix loop pipeline: run a `docs/loops/` folder of
   numbered prompts in order, looping each on a target to zero findings, deciding autonomously.
 - **project-architecture-quality-loop** - Deliberate architecture analyze-assess-improve loop: the
   project-architecture-analyzer capture writes `docs/architecture/ARCHITECTURE.md` + a reasoned strengths/weaknesses `docs/architecture/ASSESSMENT.md`,
