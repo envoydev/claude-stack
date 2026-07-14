@@ -247,7 +247,8 @@ survive the refresh too.
 
 ### Before you start - the first-run captures
 
-After `install`, fill the seeded `CLAUDE.md` `<placeholders>`, then run the capture skills once
+After `install`, fill the seeded `CLAUDE.md` (write the project top from its authoring-outline
+comment, trim its rules table to what was laid down), then run the capture skills once
 from a Claude Code session at the project root - all four are manual `/`-commands (they never
 auto-fire), in this order:
 

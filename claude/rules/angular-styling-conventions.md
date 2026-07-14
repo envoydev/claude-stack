@@ -1,5 +1,5 @@
 ---
-paths: ["**/*.scss", "**/*.css"]
+paths: ["**/*.component.scss", "**/src/styles.scss", "**/src/styles.css", "**/src/global.scss", "**/src/theme/**/*.scss", "**/src/app/**/*.scss", "**/src/app/**/*.css", "**/src/lib/**/*.scss", "**/src/lib/**/*.css"]
 ---
 
 Editing stylesheets in an Angular / Ionic workspace - load `angular-styling` before the edit - skip the load when it is already in context (some seats preload it);

@@ -1,6 +1,6 @@
 ---
 name: mobile
-description: "Router and index for Ionic / Capacitor mobile + hybrid app work - maps a mobile area (Ionic Angular UI, Capacitor app structure, native plugins, release + signing, security hardening) to the focused skill: ionic (conventions + plugins - the default for day-to-day feature work), capacitor-release (release + signing), mobile-security (hardening). Load when starting mobile work and unsure which of those applies, or orienting in a mobile codebase; go straight to the leaf skill when the area is known. Companions: angular-conventions, typescript. For plain web frontend see frontend; for .NET backend see dotnet."
+description: "Router and index for Ionic / Capacitor mobile + hybrid app work - maps a mobile area (Ionic Angular UI, Capacitor app structure, native plugins, release + signing, security hardening) to the focused skill: ionic (conventions + plugins - the default for day-to-day feature work), capacitor-release (release + signing), mobile-security (hardening). Load when starting mobile work and unsure which of those applies - 'add a camera feature to the app', 'why does the back button close the app', 'get this build into TestFlight' - or when orienting in a mobile codebase; go straight to the leaf skill when the area is known. Companions: angular-conventions, typescript. For plain web frontend see frontend; for .NET backend see dotnet."
 ---
 
 # mobile (Ionic / Capacitor router)
@@ -20,6 +20,10 @@ Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, 
 | write the Angular framework code underneath | `angular-conventions` |
 | write the TypeScript / JavaScript baseline | `typescript` |
 | build plain (non-mobile) web frontend | `frontend` |
+
+## Example
+
+'The app shows a blank screen after resuming on Android.' -> resume is lifecycle + bridge territory, not release or hardening: load `ionic` (its `references/navigation-and-lifecycle.md` owns resume/lifecycle listeners). Only if the trail ends at a backgrounding-snapshot or WebView-hardening flag does it cross to `mobile-security`.
 
 ## Notes
 - Native Swift / Kotlin platform code and custom-plugin authoring are deliberately out of scope here - Capacitor generates the native shell, so reach for the platform native docs for that, not this router.

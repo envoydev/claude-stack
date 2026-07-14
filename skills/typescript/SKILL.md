@@ -90,7 +90,7 @@ You don't lose the type checker by writing `.js`. The same language server check
 - Identifier casing (camelCase / PascalCase / UPPER_CASE), boolean predicate prefixes (`isReady`, `hasItems`), and file naming are `references/typescript-style.md`'s rules - it owns the detail and the enforcing lint config.
 - No abbreviations past the universally understood ones (`id`, `url`, `http`).
 - A function does one thing. Prefer pure functions and early returns to deep nesting; a flat function with guard clauses is easier to read and to test than a pyramid.
-- Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - follows `references/typescript-style.md`: order is static fields, instance fields, constructor, then methods, public before protected before private within each group, so a reader meets the type's surface before its internals. Per that reference `public` is implicit and NOT written out (the typescript-eslint convention), and constructor parameter properties lead with the non-public ones: `constructor(private readonly repo: Repo, ...)`.
+- Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - is `references/typescript-style.md`'s ground: it owns the ordering rule and the implicit-`public` convention; follow it there rather than from recall.
 
 ## Tooling
 

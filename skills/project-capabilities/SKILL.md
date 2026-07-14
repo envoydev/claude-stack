@@ -60,6 +60,7 @@ The house routing map the MCP rows are stamped from (only for servers actually p
 - `playwright` - drive a browser for visual checks / large HTML reports - don't text-read them.
 - `angular-cli` - the framework CLI's own docs / commands.
 - `chrome-devtools` / `appium-mcp` - browser / native-mobile debug, only for those targets.
+- `sentry` - production error monitoring; pull the reported issue / event detail before diagnosing a production error, never from the stack trace alone.
 - an issue-tracker connector - tracker read-write; ticket skills write the content, the connector files it - confirm before filing.
 
 The usage-policy section is the house skill/agent policy's ONE home - it retired the fetched baseline-agents-skills rule, so it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). The rule's name is deliberately NOT in the stack installer's fetch manifest (and never may be - a fetch would overwrite the generated copy); nothing prunes the rules directory, so it survives `stack update`.

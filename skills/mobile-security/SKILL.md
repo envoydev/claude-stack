@@ -1,6 +1,6 @@
 ---
 name: mobile-security
-description: "Personal Ionic / Capacitor mobile security-hardening reference for the native attack surface a WebView app adds beyond its web risks: secret storage in the Keychain / Keystore (never localStorage or Preferences - plaintext on-device), deep links as untrusted input, least-privilege native permissions, cleartext traffic and WebView debugging off in release, an allowNavigation allowlist and no live-reload server.url in production, FLAG_SECURE and backgrounding snapshots, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Load when hardening or reviewing an Ionic/Capacitor feature, or when the security-auditor sweeps the mobile stack. Points at angular-security, dotnet-security, capacitor-release. Do NOT load for non-security work."
+description: "Personal Ionic / Capacitor mobile security-hardening reference for the native attack surface a WebView app adds beyond its web risks: secret storage in the Keychain / Keystore (never localStorage or Preferences - plaintext on-device), deep links as untrusted input, least-privilege native permissions, cleartext traffic and WebView debugging off in release, an allowNavigation allowlist and no live-reload server.url in production, FLAG_SECURE and backgrounding snapshots, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when the security-auditor sweeps the mobile stack. Points at angular-security, dotnet-security, capacitor-release. Do NOT load for non-security work."
 ---
 
 # Ionic / Capacitor mobile security
@@ -63,8 +63,8 @@ Android enforces the cleartext ban in `res/xml/network_security_config.xml`, ref
 
 ## Build and distribution
 
-- Signing and store/OTA integrity is `capacitor-release`'s ground; a security review confirms the release is signed, cleartext/debug flags are off, and any live-update / OTA channel is served over signed HTTPS with an integrity check so an attacker cannot substitute the bundle.
+- Signing and store/OTA integrity is `capacitor-release`'s ground - it owns the signed-HTTPS + integrity-check control on the live-update channel; a security review confirms the release is signed, cleartext/debug flags are off, and that OTA control is actually in place.
 
-## Where the rest lives
+## Review output
 
-The web layer - XSS, the DomSanitizer bypasses, CSP, token-in-localStorage - is `angular-security` (it all applies inside the WebView too). The API side is `dotnet-security`. Signing and release-channel mechanics are `capacitor-release`.
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `Preferences token store | anyone with the device reads the session token | move to the Keychain/Keystore plugin, biometric-gate the read`. Findings on the web layer inside the WebView route to `angular-security`, on the API side to `dotnet-security` - name the route, do not restate their content here.

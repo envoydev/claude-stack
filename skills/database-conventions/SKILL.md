@@ -35,7 +35,7 @@ The rules here hold across engines; the deep mechanics live with the engine skil
 
 The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` syntax, `AS` aliases, column qualification, SARGable predicates, and clause order - is in `references/sql-style.md`. The operational safety rules here:
 
-- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation, not even for inputs you believe are safe - use parameterized queries or the ORM's query API, because the one 'trusted' value that turns out to be user-controlled is the whole exploit. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
+- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation - the full injection treatment (per-ORM mechanics, dynamic SQL, identifier allowlisting) is owned by `data-security`. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
 - **Read with the least authority the work needs.** Default reads to read-only intent and `READ COMMITTED` isolation; reach for `SNAPSHOT` or `REPEATABLE READ` only when a specific consistency requirement justifies the extra cost, and say why.
 - **Bound every result set that could grow** - a `LIMIT` or `TOP` on any open-ended query - and never `SELECT *`, which drags unused columns over the wire and breaks the moment the schema changes.
 - **Deep pagination is keyset (seek), never `OFFSET`.** `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower; a keyset seek with a unique tiebreaker column holds every page equally fast:
@@ -54,7 +54,7 @@ limit 20;
 
 ## N+1 prevention
 
-- The N+1 query is the most common performance regression in data access, and it hides in code that reads perfectly: a loop over rows that lazily fetches a relation per iteration. Eager-load the relations you know you need explicitly rather than letting per-row lazy loads fire; for a document store that is a `Populate` (Mongoose) or a single shaped read.
+- The N+1 query hides in code that reads perfectly - a loop over rows lazily fetching a relation per iteration; the fix (eager fetch or one set query) is the ORM read-path shape `dotnet-data-access` owns - for a document store, a single shaped read.
 - Do the join in the database - never pull two tables into the application and join them in memory, which fetches more rows than the result needs and throws away the engine's join optimizer.
 - This skill is engine and SQL only. All .NET data access routes out: the ORM mechanics (`Include` / `ThenInclude`, `AsSplitQuery`, `AsNoTracking`, and their NHibernate equivalents) and read-path shape belong to `dotnet-data-access`. Do not restate them here.
 

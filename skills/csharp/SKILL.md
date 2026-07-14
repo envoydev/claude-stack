@@ -21,10 +21,9 @@ Specialized concerns route through the `dotnet` router - one table mapping each 
 
 ## File structure
 - Max 300 lines per file - a file past that is accreting more than one responsibility. Split by extracting cohesive groups of methods into new classes.
-- Max 120 chars per line in `.cs` files. Count visible characters before committing. Markdown, JSON, config files exempt.
+- 120 columns per line in `.cs` files - the soft limit `references/csharp-style.md` sets; markdown, JSON, config files exempt.
 - Partial classes only for generated code (EF migrations, designer files) or extending a generated class.
-- One top-level type per file. File name must match the type name exactly.
-- File-scoped namespaces: `namespace MyApp.Services;` - never the braced form.
+- One-type-per-file, file naming, and file-scoped namespaces follow `references/csharp-style.md` - it owns the detail.
 
 ## Naming
 

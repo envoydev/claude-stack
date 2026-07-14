@@ -6,13 +6,13 @@ disable-model-invocation: true
 
 # Verify Plan - a risk-coverage audit of a plan before you build
 
-A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, /code-review). This reviews an EXISTING plan or design (yours, or one `writing-plans` produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
+A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, /code-review). This reviews an EXISTING plan or design (yours, or one `superpowers:writing-plans` produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
 
 ## When to use / not
 
 - Use it the moment a plan exists and before implementation starts - especially for anything with a boundary, state, auth, migration, or concurrency surface.
 - Not code review - that is `/code-review`, after the build.
-- Not plan *creation* - that is `writing-plans` / `superpowers:brainstorming`. This audits a plan that already exists.
+- Not plan *creation* - that is `superpowers:writing-plans` / `superpowers:brainstorming`. This audits a plan that already exists.
 
 ## The audit - four passes, in order
 
