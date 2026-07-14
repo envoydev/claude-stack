@@ -454,8 +454,8 @@ SECRET_DENY=(
 
 # (5) Subagents (claude-code): specialist agents fetched into .claude/agents/ on BOTH actions
 # (per-agent fail-soft - an agent not yet upstream keeps its committed repo copy). Claude Code auto-discovers
-# .claude/agents/*.md; no settings.json wiring needed. Cursor twins exist for the four resolvers only; the
-# model-routed pipeline agents are Claude-only (Cursor agents pin a model but have no effort pin).
+# .claude/agents/*.md; no settings.json wiring needed. Cursor ships adapted twins of 29 of these (all but
+# the 4 dispatch-only support seats); the model/effort pins are Claude-only (Cursor agents have no effort pin).
 AGENT_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/agents"
 AGENTS=(
   "dotnet-build-error-resolver.md"   # implement phase (sonnet/high): dotnet build -> categorize errors -> minimal fix loop (serena/csharp-lsp), capped

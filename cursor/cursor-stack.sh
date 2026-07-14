@@ -297,7 +297,7 @@ CURSOR_HOOKS=(
   "guard-catastrophic-rm.js::beforeShellExecution"
 )
 # A rule entry is "name" (fetched from CURSOR_RULES_BASE_URL) or "name|url" (fetched from that url -
-# e.g. a third-party rule like ponytail, which we reference rather than vendor here).
+# the form for a third-party rule we would reference rather than vendor; currently unused).
 CURSOR_RULES=(
   # Per-file-type convention rules, soft and auto-attaching by glob (cs ng sql ts).
   "csharp-conventions.mdc"                    # cs  -> csharp (globs **/*.cs)
@@ -306,21 +306,53 @@ CURSOR_RULES=(
   "angular-conventions.mdc"                   # ng  -> angular-conventions (*.component.ts &c.)
   "wpf-conventions.mdc"                       # xaml -> dotnet-wpf
   "scss-conventions.mdc"                      # scss/css -> angular-styling
-  "ponytail.mdc|https://raw.githubusercontent.com/DietrichGebert/ponytail/main/.cursor/rules/ponytail.mdc" # ponytail 'lazy senior dev' minimal-code rule (alwaysApply) - fetched from its repo, not vendored
+  "ponytail.mdc"                              # ponytail 'lazy senior dev' minimal-code rule (alwaysApply) - vendored here, the Cursor form of the Claude ponytail plugin
 )
 
 # (6) Subagents (cursor): Cursor-native specialist agents fetched into .cursor/agents/ on BOTH actions
 # (per-agent fail-soft - an agent not yet upstream keeps any existing local copy). Cursor auto-discovers
-# .cursor/agents/*.md; no settings wiring needed. These mirror the four Claude resolver subagents (the
-# pipeline agents and all model/effort pins are Claude-only) in Cursor's weaker contract: prompt-only guardrails, no
-# per-tool allowlist (only a `readonly` bool) - so the agent bodies lean on the auto-attaching .cursor/rules
-# for conventions, the same soft model Claude's .claude/rules now use.
+# .cursor/agents/*.md; no settings wiring needed. These are adapted twins of 29 Claude subagents (the 4
+# resolvers + the 21 per-domain designer/implementer/verifier trio seats + 4 cross-cutting; only the 4
+# dispatch-only support seats stay Claude-only) in Cursor's weaker contract: prompt-only guardrails, no
+# per-tool allowlist (only a `readonly` bool) and no model/effort pin - so the bodies lean on the
+# auto-attaching .cursor/rules + installed skills, the same soft model Claude's .claude/rules now use.
+# Cursor has no orchestrated fan-out, so the twins run as manual @agent invocations.
 CURSOR_AGENT_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/agents"
 CURSOR_AGENTS=(
+  # Build/test resolvers (readonly false - they edit to restore green)
   "dotnet-build-error-resolver.md"   # implement phase: dotnet build -> categorize errors -> minimal fix loop (serena/LSP), capped
   "dotnet-test-failure-resolver.md"  # implement phase: dotnet test -> red->green repair loop, anti-reward-hacking guard, capped
   "ng-build-error-resolver.md"       # implement phase: ng build -> minimal fix loop (serena/LSP), capped
   "angular-test-resolver.md"         # implement phase: ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
+  # Per-domain solution designers (readonly - decompose a feature into contracted tasks)
+  "aspnet-solution-designer.md"      # ASP.NET Core backend/API design + task decomposition
+  "angular-solution-designer.md"     # Angular frontend design + task decomposition
+  "wpf-solution-designer.md"         # WPF desktop design + task decomposition
+  "console-solution-designer.md"     # headless Generic-Host worker/bot/CLI design + task decomposition
+  "mobile-solution-designer.md"      # Capacitor/Ionic mobile design + task decomposition
+  "data-solution-designer.md"        # SQL schema/migration/index design + task decomposition
+  "devops-solution-designer.md"      # CI/CD pipeline design + task decomposition
+  # Per-domain implementers (readonly false - build ONE task, code + tests)
+  "aspnet-implementer.md"            # build one ASP.NET Core backend/API task to contract
+  "angular-implementer.md"           # build one Angular task to contract
+  "wpf-implementer.md"               # build one WPF task to contract
+  "console-implementer.md"           # build one console/worker task to contract
+  "mobile-implementer.md"            # build one Capacitor/Ionic task to contract
+  "data-implementer.md"              # build one SQL schema/migration task to contract
+  "devops-implementer.md"            # build one CI/CD task to contract
+  # Per-domain verifiers (readonly - gate the assembled build vs plan + quality, punch-list loop)
+  "aspnet-verifier.md"               # gate assembled ASP.NET Core work
+  "angular-verifier.md"              # gate assembled Angular work
+  "wpf-verifier.md"                  # gate assembled WPF work
+  "console-verifier.md"              # gate assembled console/worker work
+  "mobile-verifier.md"               # gate assembled Capacitor/Ionic work
+  "data-verifier.md"                 # gate assembled SQL schema/migration work
+  "devops-verifier.md"               # gate assembled CI/CD work
+  # Cross-cutting (readonly - diagnose / audit / final gate; manual @-invoke on Cursor)
+  "issue-diagnoser.md"               # read-only local-runtime bug diagnosis -> root cause + fix plan
+  "ci-failure-diagnoser.md"          # read-only red-CI diagnosis via gh -> categorize + route
+  "security-auditor.md"              # read-only cross-stack OWASP/CWE security posture audit
+  "integration-reviewer.md"          # read-only cross-domain final gate before commit
 )
 
 # ===========================================================================
@@ -655,7 +687,7 @@ set_cursor_mcps
 set_cursor_hooks
 install_cursor_rules
 install_cursor_agents
-log "plugins: Cursor marketplace plugins are UI-only - install them from the Cursor UI; their skill / mcp / hook components are provisioned here (+ .cursor/rules)."
+log "plugins: Cursor plugins install from Cursor chat, not this script. Run '/add-plugin superpowers' in Cursor to add the superpowers workflow skills + hooks (the Cursor form of the Claude superpowers plugin). Other Claude plugins map to Cursor natives (Bugbot, AGENTS.md, Open-VSX LSP extensions); their skill / mcp / hook components are already provisioned here (+ .cursor/rules)."
 
 prune_agents_cache
 log "done: $ACTION ($SCOPE, agent=$AGENT). ${#SKILLS[@]} skills, MCPs, cursor-hooks=${#CURSOR_HOOKS[@]}, rules=${#CURSOR_RULES[@]}, agents=${#CURSOR_AGENTS[@]}."

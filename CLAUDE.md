@@ -51,8 +51,14 @@ made only inside a consuming project is throwaway (see Invariants).
     2026-07-14), and for cross-domain work freezes the shared contract and drives the parallel
     per-stack runs through the `integration-reviewer` final gate. All 33 carry
     frontmatter model/effort pins (see the divergence table). Fetched into a project's
-    `.claude/agents/`. Cursor ships twins of the four resolvers only (its own `cursor/agents/`, weaker
-    contract - see the divergence table); the cross-cutting and per-domain agents are Claude-only.
+    `.claude/agents/`. Cursor ships adapted twins of 29 of them (its own `cursor/agents/`, weaker
+    contract - see the divergence table): the 4 resolvers, the 21 per-domain trio seats, and 4
+    cross-cutting seats (issue-diagnoser, ci-failure-diagnoser, security-auditor, integration-reviewer);
+    only the 4 dispatch-only support seats (evidence-gatherer, code-analyzer, code-style-analyzer,
+    related-project-analyzer) stay Claude-only, as they are meaningless without the orchestrated fan-out
+    Cursor lacks. The Cursor twins strip the Claude-only machinery (model/effort/tools/skills frontmatter,
+    the serena-memory handoff, the status protocol, superpowers) and lean on the auto-attaching
+    `.cursor/rules` + installed skills; they run as manual `@agent` invocations, not an orchestrated flow.
   - `rules/` - fifteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Five
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
@@ -77,10 +83,13 @@ made only inside a consuming project is throwaway (see Invariants).
     `beforeShellExecution` contract.
   - `rules/` - `csharp` / `typescript` / `sql` / `angular`-conventions.mdc: soft, glob-auto-attaching
     convention rules - the same model Claude's `.claude/rules` convention rules now use.
-  - `agents/` - the Cursor-contract twins of the four Claude resolver subagents (.NET build/test +
-    Angular build/test; the nine pipeline agents have no Cursor twins), fetched into a project's
-    `.cursor/agents/`. No `tools:` allowlist (only a `readonly` bool), so the bodies lean on
-    `.cursor/rules` - as the Claude bodies now do too, both stacks having moved to soft convention rules.
+  - `agents/` - the Cursor-contract twins of 29 Claude subagents (the 4 build/test resolvers, the 21
+    per-domain designer/implementer/verifier trio seats, and 4 cross-cutting seats - issue-diagnoser,
+    ci-failure-diagnoser, security-auditor, integration-reviewer; only the 4 dispatch-only support seats
+    stay Claude-only), fetched into a project's `.cursor/agents/`. No `tools:` allowlist (only a `readonly`
+    bool) and no model/effort pin, so the bodies lean on `.cursor/rules` + installed skills - as the Claude
+    bodies now do too, both stacks having moved to soft convention rules. Cursor has no orchestrated
+    fan-out, so the twins run as manual `@agent` invocations, not the designer -> implementer -> verifier flow.
   - `README.md`.
 - `scripts/lint-skills.js` - the 4-way parity lint (below). `scripts/analyze-usage.js` - offline
   token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
@@ -98,7 +107,7 @@ because the platforms differ:
 | MCP | `claude mcp add` → `<repo>/.mcp.json` | written into `.cursor/mcp.json` (tokens pre-resolved) |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) | **none** - Cursor has no Claude-style `/plugin install` (its own format installs via `/add-plugin`); equivalents are MCP / native (Skills, Subagents, Bugbot `/review`, Rules) / Open-VSX extensions. ponytail additionally ships a Cursor rule that `cursor-stack` fetches (see `cursor-stack.html`'s mapping) |
 | Hooks | `.claude/hooks/` wired into `.claude/settings.json` (3 wired + 1 fetched-unwired instrumentation) | `.cursor/hooks.json` (force-push + catastrophic-rm - Cursor's contract differs) |
-| Agents | `.claude/agents/` - the 33 model/effort-pinned subagents described under Layout (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Fetched like hooks; per-tool `tools:` allowlist | `.cursor/agents/` - twins of the 4 RESOLVERS only, fetched like hooks; the cross-cutting and per-domain agents are Claude-only and no pin carries over (Cursor agents take a `model` field but have no `effort` pin - the twins inherit Cursor's session model). Cursor's contract is weaker: no per-tool allowlist (only a `readonly` bool) - its bodies lean on the auto-attaching `.cursor/rules`, as Claude's now do too |
+| Agents | `.claude/agents/` - the 33 model/effort-pinned subagents described under Layout (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Fetched like hooks; per-tool `tools:` allowlist | `.cursor/agents/` - twins of 29 (the 4 resolvers + 21 per-domain trio seats + 4 cross-cutting; only the 4 dispatch-only support seats stay Claude-only), fetched like hooks; no pin carries over (Cursor agents take a `model` field but have no `effort` pin - the twins inherit Cursor's session model) and the orchestrated fan-out does not exist on Cursor, so the twins run as manual `@agent` invocations. Cursor's contract is weaker: no per-tool allowlist (only a `readonly` bool) - its bodies lean on the auto-attaching `.cursor/rules` + installed skills, as Claude's now do too |
 | Convention gate | five path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) | `.cursor/rules/*.mdc` (soft, auto-attach by glob - no session skill-load state) |
 | Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) | Cursor **Bugbot** (`/review`); the `security-auditor` agent is Claude-only |
 | Project instructions | `CLAUDE.md` | `AGENTS.md` |

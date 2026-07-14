@@ -28,8 +28,8 @@ The `.sh`/`.ps1` twins take the **same arguments** and produce the **same result
 | **Skills** (64) | `.cursor/skills/` | real copies; run as Cursor Skills (`agentskills.io`); includes `project-task-flow` orchestration + routing (single-stack trios + cross-domain). `npx skills add … --agent cursor` |
 | **MCP servers** (8) | `.cursor/mcp.json` | `angular-cli`, `serena` (`--context ide-assistant`), `playwright`, `memory`, `context7`, plus `chrome-devtools` + `appium-mcp` (heavy - active; comment out where not needed) and `sentry` (error monitoring - hosted remote MCP, `SENTRY_ACCESS_TOKEN` as an OS env var expanded via `${env:VAR}`; comment out without Sentry). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project. Cursor supports MCP natively; shell `${…}` path tokens are resolved to concrete paths and bare `${VAR}` secrets rewritten to `${env:VAR}` (Cursor does no shell interpolation) |
 | **Hooks** (2) | `.cursor/hooks/` + `.cursor/hooks.json` | `guard-protected-force-push` + `guard-catastrophic-rm` (`beforeShellExecution`): block force-push to main/master/develop and a recursive rm of /, ~, $HOME, or a bare *. Fetched from the repo's `cursor/hooks/` |
-| **Rules** (7) | `.cursor/rules/` | `csharp` / `typescript` / `sql` / `angular`-conventions.mdc (house conventions, auto-attach by glob) + `wpf-conventions.mdc` (`.xaml`, opt-in for WPF repos) + `scss-conventions.mdc` (`.scss`/`.css`, opt-in for Angular workspaces owning their stylesheets) + `ponytail.mdc` (minimal-code, `alwaysApply`; fetched from the ponytail repo, not vendored here) |
-| **Agents** (4) | `.cursor/agents/` | .NET (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`, `angular-test-resolver`) - the same four resolvers the Claude stack ships, in Cursor's weaker contract: a `readonly` bool rather than a per-tool allowlist. Conventions are soft auto-attaching rules in both stacks now, so the bodies lean on the rules above. Fetched from the repo's `cursor/agents/` |
+| **Rules** (7) | `.cursor/rules/` | `csharp` / `typescript` / `sql` / `angular`-conventions.mdc (house conventions, auto-attach by glob) + `wpf-conventions.mdc` (`.xaml`, opt-in for WPF repos) + `scss-conventions.mdc` (`.scss`/`.css`, opt-in for Angular workspaces owning their stylesheets) + `ponytail.mdc` (minimal-code, `alwaysApply`; vendored here as the Cursor form of the Claude ponytail plugin) |
+| **Agents** (29) | `.cursor/agents/` | the four resolvers (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`, `angular-test-resolver`) plus adapted twins of the Claude roster: the 7-stack designer/implementer/verifier trios (ASP.NET, Angular, WPF, console, mobile, data, DevOps) and four cross-cutting seats (`issue-diagnoser`, `ci-failure-diagnoser`, `security-auditor`, `integration-reviewer`). In Cursor's weaker contract - a `readonly` bool rather than a per-tool allowlist, no model/effort pin - the bodies lean on the auto-attaching convention rules above and the installed skills. Cursor has no orchestrated fan-out, so these run as manual `@agent` invocations (the four dispatch-only support seats are Claude-only). Fetched from the repo's `cursor/agents/` |
 
 ### Install cadence - keep always vs install on occasion
 
@@ -37,7 +37,7 @@ Cost differs by artifact, so the keep-or-skip call does too:
 
 - **Skills** - permanent by default: keyword-gated and ~free when idle, so install all and let them self-gate. Whole-domain sets (the Ionic/Capacitor `mobile` group, `dotnet-wpf`) are optional only if you never touch that domain.
 - **MCPs** - real launch cost, so split: baseline `context7` / `serena` / `memory` / `playwright`; domain-gated `angular-cli` (Angular projects only); opt-in `chrome-devtools` and `appium-mcp` (heavy native deps - left commented unless needed). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project.
-- **Rules and agents** - permanent: the convention rules auto-attach by glob (free when no file matches) and `ponytail.mdc` is `alwaysApply`; the four resolver agents run on demand. Cursor has no plugins - the Claude `*-lsp` pair maps to per-language Open-VSX extensions (install those matching the project's languages); design-taste guidance for distinctive UI now lives in the `frontend` skill (installed like any Cursor skill), not a plugin.
+- **Rules and agents** - permanent: the convention rules auto-attach by glob (free when no file matches) and `ponytail.mdc` is `alwaysApply`; the 29 agents run on demand as manual `@agent` invocations (no orchestrated fan-out on Cursor). Cursor has no plugins - the Claude `*-lsp` pair maps to per-language Open-VSX extensions (install those matching the project's languages); design-taste guidance for distinctive UI now lives in the `frontend` skill (installed like any Cursor skill), not a plugin.
 
 To provision Claude Code too, run [`../claude/claude-stack.*`](../claude/README.md).
 
@@ -48,7 +48,7 @@ To provision Claude Code too, run [`../claude/claude-stack.*`](../claude/README.
 Cursor adds capabilities three ways, none a Claude-style plugin marketplace:
 
 - **MCP servers** (native) - the five above, plus anything else in `.cursor/mcp.json`.
-- **Native features** - Skills, Commands, Rules, Subagents (`.cursor/agents/` - the four resolvers
+- **Native features** - Skills, Commands, Rules, Subagents (`.cursor/agents/` - the 29 agents
   this script installs), and **Bugbot** (`/review`) for security review.
 - **Open-VSX VS Code extensions** - e.g. a Roslyn-based C# extension
   (DotRush / `muhammad-sammy.csharp` / ReSharper) since Microsoft's C# Dev Kit is blocked in Cursor.

@@ -792,11 +792,11 @@ function main()
     //     Claude carries Skills/Plugins/MCP/Hooks/Agents/Rules; Cursor carries
     //     Skills/MCP/Hooks/Rules/Agents (no Plugins). Both spell the count two
     //     ways: a table cell ('| 67 |') and an inline '(67)'. Hook / agent / rule
-    //     counts come from the installer array sizes - the cursor Rules count
-    //     includes the ponytail rule (fetched, not stored on disk), so the
-    //     installer array (not the on-disk .mdc set) is authoritative. The
-    //     claude Rules count is validated against the CLAUDE_RULES array the
-    //     same way. The cursor Agents count is validated against the CURSOR_AGENTS array.
+    //     counts come from the installer array sizes (all cursor rules are now
+    //     vendored on disk, but the installer CURSOR_RULES array - not the on-disk
+    //     .mdc set - stays authoritative, since a rule could still be fetched by
+    //     url). The claude Rules count is validated against the CLAUDE_RULES array
+    //     the same way. The cursor Agents count is validated against CURSOR_AGENTS.
     const skillCount = primary.active.size;
     const pluginCount = pluginsClaudeSh.active.size;
     const mcpCount = mcpsPrimary.active.size;
@@ -964,7 +964,7 @@ function main()
     //     HTML in a dotnet-* context. Scoped to the false 'vendored from' label
     //     only - an honest 'Adapted from' / third-party notice is NOT blocked, so
     //     a future genuinely-incorporated skill can still carry its MIT credit.
-    //     (The ponytail 'not vendored' note is unrelated and lives on a
+    //     (The ponytail row's vendoring note is unrelated and lives on a
     //     non-dotnet row, so scope the HTML scan to dotnet-* lines.)
     const provenance = /\bvendored from\b/i;
     for (const dir of dirs.filter(d => d.startsWith('dotnet')))
