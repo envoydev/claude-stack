@@ -268,11 +268,13 @@ const hooksRules = [
 ];
 
 // ---- Subagents (Cursor-native; fetched into .cursor/agents/) ----
-// [name, area, lands in, source url, description]. 29 agents: the four resolvers plus adapted twins of
-// the Claude roster (7-stack designer/implementer/verifier trios + four cross-cutting seats), in Cursor's
-// contract: a `readonly` bool rather than a per-tool allowlist, no model/effort pin. Both stacks lean on
-// the same soft convention rules (.cursor/rules here, .claude/rules on Claude). Cursor has no orchestrated
-// fan-out, so these run as manual @agent invocations; the four dispatch-only support seats are Claude-only.
+// [name, area, lands in, source url, description]. 33 agents - full twins of the Claude roster. Cursor
+// (2.5+) has a Task tool and subagents that inherit the parent's MCP servers, so the twins carry the full
+// orchestration: project-task-flow fans out designer/implementer/verifier via the Task tool, the diagnosers
+// dispatch evidence-gatherer, and the serena-memory handoff works. They differ from Claude only in the
+// genuine platform gaps: model:inherit (no reliable effort/model tiering), no per-tool `tools:` allowlist
+// (only `readonly`), superpowers optional via /add-plugin, and no hard-disable of auto-delegation. Both
+// stacks lean on the same soft convention rules (.cursor/rules here, .claude/rules on Claude).
 const agents = [
   ["dotnet-build-error-resolver", ".NET / build", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-build fix loop: categorize CS/NU/MSB errors, locate via serena, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to disable tests/warnings or stub code to pass. Implement phase, pairs after /brainstorm -> /plan. Cursor contract: readonly false, no tool allowlist - leans on the csharp-conventions rule."],
   ["dotnet-test-failure-resolver", ".NET / test", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Autonomous dotnet-test red->green loop: fix the real defect (production vs test side), never skip/weaken/game a test or coverage threshold (5-cycle cap). Pairs after the build-error resolver. Cursor contract: prompt-only guardrails, no tool scoping."],
@@ -299,10 +301,14 @@ const agents = [
   ["mobile-verifier", "Mobile / verify", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate over assembled Capacitor/Ionic work vs the plan + TS quality (bridge, platform parity, permissions): reruns build/test, returns a per-task punch-list. readonly true."],
   ["data-verifier", "Data / verify", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate over assembled SQL schema/migration work vs the plan (migration up+forward, index use, constraints): reruns the migrations, returns a per-task punch-list. readonly true."],
   ["devops-verifier", "DevOps / verify", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only gate over assembled CI/CD work vs the plan (workflow re-validation, image/AppHost checks, secret hygiene): returns a per-task punch-list. readonly true."],
-  ["issue-diagnoser", "Cross-cutting / diagnose", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only local-runtime bug diagnosis: work from the evidence + code, reproduce inline, read the signature, isolate the root cause to a file+symbol, lay out a contracted fix plan. Investigates inline (no fan-out on Cursor). readonly true."],
+  ["issue-diagnoser", "Cross-cutting / diagnose", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only local-runtime bug diagnosis: work from the evidence + code, read the signature, isolate the root cause to a file+symbol, lay out a contracted fix plan. Dispatches evidence-gatherer via the Task tool to absorb log volume. readonly true."],
   ["ci-failure-diagnoser", "Cross-cutting / CI", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only red-CI diagnosis: pull each failing run's log via gh, attempt one local repro, categorize to a signature, make the code-vs-environment call, return the verdict + route. readonly true."],
   ["security-auditor", "Cross-cutting / security", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only cross-stack security posture audit: adversarial sweep of auth/authz/input/secrets/config/data-exposure, proven against the code, returns an OWASP/CWE punch-list. Complements Bugbot's /review (this is the deeper posture pass). readonly true."],
   ["integration-reviewer", "Cross-cutting / gate", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only cross-domain final gate: over the WHOLE assembled feature - contract consistency end-to-end, assembled build/tests, migration/deploy safety, cross-stack behavior - returns a commit-or-punch-list verdict. readonly true."],
+  ["evidence-gatherer", "Support / gather", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only: a diagnoser dispatches it via the Task tool to reproduce/confirm one hypothesis and return a compact digest, keeping log volume off the reasoning seat. readonly true."],
+  ["code-analyzer", "Support / analyze", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the project-architecture-analyzer skill fans it out via the Task tool; also independently callable. readonly true."],
+  ["code-style-analyzer", "Support / analyze", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only per-language style characterizer - the project-code-style-analyzer skill fans it out and merges docs/PROJECT-CODE-STYLE.md from the structured reports. readonly true."],
+  ["related-project-analyzer", "Support / analyze", "fetched into .cursor/agents/", "https://github.com/envoydev/agents-stack", "Read-only sibling-repo characterizer (name/relation/first_read/seam; URL siblings shallow-cloned) - the project-related-context skill fans it out and merges docs/PROJECT-RELATED-CONTEXT.md. readonly true."],
 ];
 
 // ---- Claude plugins -> Cursor equivalent (what maps, and how it's delivered) ----
@@ -387,9 +393,9 @@ function renderHooks(filtered) {
 }
 
 function renderAgents(filtered) {
-  let html = `<h2>Subagents</h2><div class="group-meta">Cursor-native specialist subagents, fetched into the project's <code>.cursor/agents/</code> tree. The four resolvers plus adapted twins of the Claude roster (7-stack designer/implementer/verifier trios + four cross-cutting seats), in Cursor's contract (a <code>readonly</code> bool rather than a per-tool allowlist, no model/effort pin; both stacks lean on the same soft convention rules). No orchestrated fan-out on Cursor - run them as manual <code>@agent</code> invocations. ${filtered.length} agents.</div>`;
+  let html = `<h2>Subagents</h2><div class="group-meta">Cursor-native specialist subagents, fetched into the project's <code>.cursor/agents/</code> tree - full twins of the Claude roster. Cursor (2.5+) has a Task tool and MCP-inheriting subagents, so the twins carry the full orchestration: <code>project-task-flow</code> fans out designer/implementer/verifier, the diagnosers dispatch <code>evidence-gatherer</code>, and the serena-memory handoff works. They differ from Claude only in the genuine gaps (a <code>readonly</code> bool rather than a per-tool allowlist, <code>model: inherit</code> - no reliable effort/model tiering, superpowers optional via <code>/add-plugin</code>). ${filtered.length} agents.</div>`;
   const rows = filtered;
-  // All four resolvers share the same 'lands in' and source; lift whatever is uniform into
+  // All agents share the same 'lands in' and source; lift whatever is uniform into
   // the header so it does not repeat down a column and squeeze the description.
   const same = i => rows.length && rows.every(r => r[i] === rows[0][i]);
   const showWhere = rows.length && !same(2), showSource = rows.length && !same(3);

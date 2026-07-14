@@ -487,7 +487,8 @@ $SecretDeny = @(
 
 # (5) Subagents (claude-code): specialist agents fetched into .claude/agents/ on BOTH actions
 # (per-agent fail-soft). Claude Code auto-discovers .claude/agents/*.md; no settings.json wiring. Cursor ships
-# adapted twins of 29 of these (all but the 4 dispatch-only support seats); the model/effort pins are Claude-only.
+# adapted twins of all 33 (Task-tool dispatch + MCP-inheriting subagents let the flow run there); the
+# model/effort tiering stays Claude-only (Cursor documents only opus-at-high, so the twins inherit).
 $AgentBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/agents'
 $Agents = @(
   'dotnet-build-error-resolver.md'   # implement phase (sonnet/high): dotnet build -> minimal fix loop (serena/csharp-lsp), capped

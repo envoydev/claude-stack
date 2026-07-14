@@ -311,12 +311,14 @@ CURSOR_RULES=(
 
 # (6) Subagents (cursor): Cursor-native specialist agents fetched into .cursor/agents/ on BOTH actions
 # (per-agent fail-soft - an agent not yet upstream keeps any existing local copy). Cursor auto-discovers
-# .cursor/agents/*.md; no settings wiring needed. These are adapted twins of 29 Claude subagents (the 4
-# resolvers + the 21 per-domain designer/implementer/verifier trio seats + 4 cross-cutting; only the 4
-# dispatch-only support seats stay Claude-only) in Cursor's weaker contract: prompt-only guardrails, no
-# per-tool allowlist (only a `readonly` bool) and no model/effort pin - so the bodies lean on the
-# auto-attaching .cursor/rules + installed skills, the same soft model Claude's .claude/rules now use.
-# Cursor has no orchestrated fan-out, so the twins run as manual @agent invocations.
+# .cursor/agents/*.md; no settings wiring needed. Adapted twins of all 33 Claude subagents. Cursor (2.5+)
+# has a Task tool and subagents that inherit the parent's MCP servers, so the twins carry the FULL
+# orchestration - project-task-flow fans out designer/implementer/verifier via the Task tool, the diagnosers
+# dispatch evidence-gatherer, and the serena-memory handoff works (MCP is inherited). The genuine gaps that
+# remain vs Claude: `model: inherit` (Cursor documents only opus-at-high, so the model/effort tiering does
+# not reliably port - the twins inherit the session model), no per-tool `tools:` allowlist (only `readonly`),
+# superpowers is an optional /add-plugin (methods referenced 'if installed'), and auto-delegation cannot be
+# hard-disabled at the agent level. Bodies lean on the auto-attaching .cursor/rules + installed skills.
 CURSOR_AGENT_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/agents"
 CURSOR_AGENTS=(
   # Build/test resolvers (readonly false - they edit to restore green)
@@ -348,11 +350,16 @@ CURSOR_AGENTS=(
   "mobile-verifier.md"               # gate assembled Capacitor/Ionic work
   "data-verifier.md"                 # gate assembled SQL schema/migration work
   "devops-verifier.md"               # gate assembled CI/CD work
-  # Cross-cutting (readonly - diagnose / audit / final gate; manual @-invoke on Cursor)
-  "issue-diagnoser.md"               # read-only local-runtime bug diagnosis -> root cause + fix plan
-  "ci-failure-diagnoser.md"          # read-only red-CI diagnosis via gh -> categorize + route
+  # Cross-cutting (readonly - diagnose / audit / final gate)
+  "issue-diagnoser.md"               # read-only local-runtime bug diagnosis -> root cause + fix plan; dispatches evidence-gatherer
+  "ci-failure-diagnoser.md"          # read-only red-CI diagnosis via gh -> categorize + route; dispatches evidence-gatherer
   "security-auditor.md"              # read-only cross-stack OWASP/CWE security posture audit
   "integration-reviewer.md"          # read-only cross-domain final gate before commit
+  # Read-only support seats (dispatched by a diagnoser or a capture skill via the Task tool)
+  "evidence-gatherer.md"             # read-only: reproduce/confirm + return a compact digest (the diagnosers dispatch it)
+  "code-analyzer.md"                 # read-only per-module characterizer (the project-architecture-analyzer skill fans it out)
+  "code-style-analyzer.md"           # read-only per-language style characterizer (the project-code-style-analyzer skill fans it out)
+  "related-project-analyzer.md"      # read-only sibling-repo characterizer (the project-related-context skill fans it out)
 )
 
 # ===========================================================================
