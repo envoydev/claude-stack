@@ -299,6 +299,13 @@ CURSOR_HOOKS=(
 # A rule entry is "name" (fetched from CURSOR_RULES_BASE_URL) or "name|url" (fetched from that url -
 # the form for a third-party rule we would reference rather than vendor; currently unused).
 CURSOR_RULES=(
+  # Always-on baseline set (alwaysApply, no globs) - the cross-cutting conventions, twins of the
+  # Claude .claude/rules/baseline-*.md set; loaded every turn like AGENTS.md, installer-refreshed.
+  "baseline-interaction.mdc"                  # communication, adversarial proposal review, planning thresholds
+  "baseline-quality-gates.mdc"                # code quality + the done-claim gate
+  "baseline-security.mdc"                     # secret hygiene, /review on sensitive diffs
+  "baseline-git.mdc"                          # commits/PRs, commit-message shape, do-not-commit-until-asked
+  "baseline-navigation.mdc"                   # serena-first navigation, never Read a whole file to locate a symbol
   # Per-file-type convention rules, soft and auto-attaching by glob (cs ng sql ts).
   "csharp-conventions.mdc"                    # cs  -> csharp (globs **/*.cs)
   "typescript-conventions.mdc"                # ts  -> typescript (.ts/.tsx/.js/.jsx/.mjs/.cjs)

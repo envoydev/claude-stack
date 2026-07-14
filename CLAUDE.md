@@ -82,8 +82,11 @@ made only inside a consuming project is throwaway (see Invariants).
     is filled in from (Cursor reads `AGENTS.md`).
   - `hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` in Cursor's
     `beforeShellExecution` contract.
-  - `rules/` - `csharp` / `typescript` / `sql` / `angular`-conventions.mdc: soft, glob-auto-attaching
-    convention rules - the same model Claude's `.claude/rules` convention rules now use.
+  - `rules/` - twelve rules mirroring the Claude split: five always-on `baseline-*.mdc`
+    (`alwaysApply`, no globs - interaction / quality-gates / security / git / navigation, twins of the
+    Claude `baseline-*.md` set) + the glob-auto-attaching `csharp` / `typescript` / `sql` / `angular` /
+    `wpf` / `scss`-conventions.mdc convention rules + the always-on `ponytail.mdc` - the same model
+    Claude's `.claude/rules` now use.
   - `agents/` - the Cursor-contract twins of all 33 Claude subagents, fetched into a project's
     `.cursor/agents/`. Cursor (2.5+) has a Task tool and MCP-inheriting subagents, so the twins keep the full
     orchestration - `project-task-flow` fans out designer -> implementer -> verifier via the Task tool, the
@@ -182,10 +185,11 @@ because the platforms differ:
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`claude/hooks/` or `cursor/hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/` on Claude, `.cursor/rules/*.mdc` on Cursor). A keyword capability → the skill's own description. Cross-cutting guidance →
-  the always-on `claude/rules/baseline-*.md` set on Claude (fleet-updatable; the base template
-  `claude/CLAUDE.template.md` carries only per-project structure) and the base template
-  `cursor/AGENTS.template.md` on Cursor, filled into the project's `CLAUDE.md` / `AGENTS.md`.
-  Never state one trigger twice.
+  the always-on `baseline-*.md`/`.mdc` set on BOTH stacks (fleet-updatable, `alwaysApply` on Cursor):
+  `claude/rules/baseline-*.md` and its `cursor/rules/baseline-*.mdc` twins (interaction, quality-gates,
+  security, git, navigation). The base templates (`claude/CLAUDE.template.md`, `cursor/AGENTS.template.md`)
+  carry only per-project structure + platform routing, never the baseline conventions. Never state one
+  trigger twice.
 - **Prove a behavioral change, don't assert it.** A change to a model / effort pin, a routing rule, or a
   plugin set - any claim the flow got cheaper or still catches the same bugs - ships only with evidence:
   run the affected build + tests yourself and read the code (never a run's self-report), measure the cost /

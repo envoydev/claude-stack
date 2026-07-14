@@ -1,0 +1,12 @@
+---
+description: House baseline - code navigation and reading.
+globs:
+alwaysApply: true
+---
+
+# Navigation and code reading
+
+- Read only what's needed; before editing, read the body end-to-end and any function it depends on.
+- **Hard rule - never `Read` a whole file to find a symbol.** Locate symbols, callers, and resolved types with `serena` (`find_symbol` / `find_referencing_symbols`) or the editor's `LSP` (built-in TypeScript, plus an Open-VSX extension per language) - inline, never delegated to a broad-sweep subagent; reserve those for genuinely broad multi-file sweeps. `Read` is for code you have already located.
+- Ambiguous reference with multiple matches: list the matches, ask. Do not guess.
+- Pasted code in chat is illustrative unless stated otherwise; confirm the target file before editing.
