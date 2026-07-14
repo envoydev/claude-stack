@@ -24,6 +24,8 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 - Anti-gaming over grade-chasing. A high number earned by padding, keyword stuffing, over-granting tools, persona flattery, or fabricated references is a failure, not a pass. Re-score honestly after every edit.
 - Treat agents, skills, and rules as one system. An agent should not restate a procedure a skill owns or a process a rule defines, and two agents should not carry the same text. Shared content belongs in one place: a skill the agent invokes, a rule the agent cites, or a shared reference.
 - Least privilege and bounded autonomy are features, not limitations. Do not loosen either to make an agent look more capable.
+- Generic by default. An agent names a technology, framework, or product only where its role requires it - a stack-scoped seat naming its own stack, a routing boundary naming the sibling that wins, or a load-bearing per-stack example that changes what the agent checks. An incidental tech mention in a role-generic passage is a defect - cite the line and score it under Dimension 3.
+- No conflicts, no cycles. An agent must not contradict a rule or skill it loads or the sibling seat it hands off to, and the cross-layer invocation graph must stay acyclic - a skill -> agent -> skill -> agent chain compounds context without bound. Both are system-level defects invisible from any single file.
 - Reversibility. Snapshot each agent before editing so a regression can be undone.
 
 ---
@@ -35,6 +37,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 3. Read the rules catalog from `RULES_ROOT` and the project CLAUDE.md files: for each rule file, capture its path, topic, and whether it is unconditional or path-scoped. You need this to detect when an agent restates a process or convention a rule already defines, and to validate that any rule an agent cites actually exists.
 4. For each agent, read the full file and record: file name, `name` and `description` from frontmatter, the `tools` grant (or note that it inherits all tools if absent), `model` if set, body line count, and any explicit constraints the author wrote (stop conditions, safety rules, privacy rules, tool restrictions, output contract). These constraints are load-bearing. Treat them as fixed.
 5. Build a duplication map across the whole system. Find repeated content in four directions: agent to agent (identical instruction blocks, rules, templates restated across agents), agent to skill (an agent inlines a procedure a skill already owns), agent to rule (an agent restates a convention, workflow, or standard a rule file or CLAUDE.md already defines), and agent to reference (content that should live in a cited reference). Record each as a cluster: what repeats, where it lives now, and whether the fix is invoke-a-skill, cite-a-rule, delegate-to-an-agent, or a shared reference. Where several agents inline the same procedure and no skill owns it yet, flag it as a candidate for a new extracted skill.
+6. Build an invocation and conflict map. Record each agent's outbound edges - the skills it preloads or its body invokes, the agents its tool grant and body let it dispatch - and chain them with each skill's own dispatch targets into one directed call graph. Any cycle, at any depth, is the highest-severity defect this phase can find; note where a wall legitimately terminates a chain (no Agent tool = cannot dispatch, no Skill tool = cannot invoke, a manual-only skill cannot re-fire by description-match) so you do not report a loop an existing wall already breaks. Separately record cross-layer contradictions: an agent instruction that conflicts with a rule that auto-loads inside it, with a skill it preloads, or with the sibling seat it hands off to.
 
 Do not edit anything in this phase.
 
@@ -101,13 +104,15 @@ Floor for A: >= 17/20.
 
 An agent reaches A / 9 only when the total is >= 90 and every dimension clears its floor. This is deliberate: it blocks acing some dimensions and averaging away a weak one. An agent with a sharp prompt but blanket tool access is not an A agent, because the over-grant is a real risk. An agent that reads perfectly but inlines a procedure a skill owns, or forks a convention a rule defines, is not an A agent either, because the duplication is a maintenance defect the reader of one file cannot see.
 
+An agent implicated in an unresolved invocation cycle or cross-layer contradiction is blocked from A until it is resolved, whatever its own total.
+
 Produce a baseline report (see Output contract) before any editing.
 
 ---
 
 ## Phase 2 - Remediation loop
 
-Resolve duplication first, at the system level, before the per-agent loops. Duplication fixes touch several files at once, so doing them first stops you from polishing a body you are about to delete. For each cluster in the duplication map:
+Work system-level defects first, before the per-agent loops. Break every invocation cycle structurally - drop the unsanctioned dispatch edge or tool grant, or make the re-entrant skill manual-only - never with a prose depth counter; resolve every cross-layer contradiction by deciding the owner and rewriting the loser to defer, or report it unresolved with the affected files blocked. Then resolve duplication, still at the system level - duplication fixes touch several files at once, so doing them before the per-agent loops stops you from polishing a body you are about to delete. For each cluster in the duplication map:
 
 - Snapshot every agent in the cluster.
 - Choose the home for the shared content:
@@ -185,7 +190,8 @@ Produce a single report with:
 1. Summary table: one row per agent with columns `agent`, `baseline grade`, `final grade`, `iterations`, `status` (`raised to A`, `already A`, `blocked: <reason>`).
 2. Per agent, a short block containing: baseline score by dimension with the top 2-3 cited deductions; what changed, as a terse list of edits; final score by dimension; any blocker and why a guard prevented an A.
 3. Duplication map: each cluster, the direction (agent-to-agent, agent-to-skill, agent-to-rule, agent-to-reference), and how it was resolved (invoke skill, cite rule, delegate to agent, shared reference, new extracted skill), or why it was left local.
-4. Extracted-skill recommendations: procedures repeated across agents with no skill owner that should become skills, whether or not you extracted them this run.
-5. If `WRITE` is true, the list of files edited, moved, or created, including any new skills or shared references, and the snapshot location for rollback.
+4. Invocation and conflict map: every cycle found and how it was broken, every cross-layer contradiction and its resolution (or why it is unresolved and the agents are blocked), and any genericity flags with cited lines.
+5. Extracted-skill recommendations: procedures repeated across agents with no skill owner that should become skills, whether or not you extracted them this run.
+6. If `WRITE` is true, the list of files edited, moved, or created, including any new skills or shared references, and the snapshot location for rollback.
 
 Keep the report dense. No preamble, no restating this prompt back, no filler.

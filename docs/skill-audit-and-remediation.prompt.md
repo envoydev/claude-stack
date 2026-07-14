@@ -19,6 +19,8 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 - Preserve intent. You improve how a skill is written, never what it does. Same inputs must yield the same behavior after your edits.
 - Anti-gaming over grade-chasing. A high number that was earned by padding, keyword stuffing, or fabricated examples is a failure, not a pass. Re-score honestly after every edit.
 - Treat the skill set as one codebase. Skills should reuse each other, not repeat each other. Content that appears in more than one skill (shared instructions, templates, rules, glossaries) is a duplication defect: factor it into a shared reference the skills point to, or have one skill delegate to another, so it lives in exactly one place.
+- Generic by default. A skill names a technology, framework, or product only where its scope requires it: its own stack, a routing target it delegates to by name, or a clearly-marked illustrative example. An incidental tech mention in a generic skill is a defect - cite the line and score it under Dimension 3.
+- No conflicts, no cycles. Two skills must not give contradictory guidance for the same situation, and the cross-layer invocation graph must stay acyclic - a skill that dispatches an agent whose body invokes a skill that dispatches another agent is an unbounded context loop, not composition. Both are set-level defects invisible from any single file.
 - Reversibility. Snapshot each skill before editing so a regression can be undone.
 
 ---
@@ -29,6 +31,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 2. For each skill, read the full `SKILL.md` and enumerate bundled resources (`references/`, `scripts/`, `assets/`). Read reference files that the body points to. Note script names and what they do, but you do not need to read long scripts line by line.
 3. Record for each skill: directory name, `name` and `description` from frontmatter, body line count, resource inventory, and any explicit constraints the author wrote (trigger-only keywords, privacy rules, language rules, formatting rules). These constraints are load-bearing. Treat them as fixed.
 4. Build a duplication map across the whole set. Find content that repeats across two or more skills: identical or near-identical instruction blocks, shared output templates, the same rules restated, overlapping glossaries, or two skills whose scopes overlap enough that one should delegate to the other. Record each duplication as a cluster: the skills involved, the shared content, and whether the right fix is a shared reference or delegation. This map drives the reuse dimension in scoring and the shared-content extraction in remediation.
+5. Build an invocation and conflict map. Record each skill's outbound edges - the agents it dispatches, the skills it delegates to by name, whether it is manual-only (`disable-model-invocation`) - and chain them with the agents' own skill preloads and dispatch targets into one directed call graph. Any cycle, at any depth, is the highest-severity defect this phase can find. Note the structural walls that legitimately terminate a chain (a manual-only skill cannot re-fire by description-match; a dispatched agent without the Skill or Agent tool is terminal) so you do not report a loop an existing wall already breaks. Separately record contradictions: two skills prescribing incompatible behavior for the same trigger, file type, or task.
 
 Do not edit anything in this phase.
 
@@ -93,13 +96,15 @@ Floor for A: >= 17/20.
 
 A skill reaches A / 9 only when the total is >= 90 and every dimension clears its floor. This is deliberate: it blocks the common failure of acing some dimensions and averaging away a weak one. A skill with a strong body but a vague description is not an A skill, because the description decides whether the body is ever loaded. A skill that reads perfectly but copy-pastes half its body from a sibling skill is not an A skill either, because the duplication is a maintenance defect the reader of one skill cannot see.
 
+A skill implicated in an unresolved invocation cycle or contradiction is blocked from A until the loop or conflict is resolved, whatever its own total - both are set-level defects that make behavior unbounded or nondeterministic.
+
 Produce a baseline report (see Output contract) before any editing.
 
 ---
 
 ## Phase 2 - Remediation loop
 
-Resolve cross-skill duplication first, at the set level, before the per-skill loops. Duplication fixes touch several skills at once, so doing them first stops you from polishing a body you are about to delete. For each cluster in the duplication map:
+Work set-level defects first, before the per-skill loops. Break every invocation cycle structurally - remove the unsanctioned dispatch edge, or make the re-entrant skill manual-only - never with a prose depth counter; resolve every contradiction by deciding which skill owns the behavior and rewriting the loser to defer by name, or, where the repo does not decide the winner, leave both, flag it prominently, and mark both skills blocked. Then resolve cross-skill duplication, still at the set level - duplication fixes touch several skills at once, so doing them before the per-skill loops stops you from polishing a body you are about to delete. For each cluster in the duplication map:
 
 - Snapshot every skill in the cluster.
 - Move the shared content into one home: a shared reference file that each skill cites, or the narrower skill, which the others then delegate to by name.
@@ -170,6 +175,7 @@ Produce a single report with:
 1. Summary table: one row per skill with columns `skill`, `baseline grade`, `final grade`, `iterations`, `status` (`raised to A`, `already A`, `blocked: <reason>`).
 2. Per skill, a short block containing: baseline score by dimension with the top 2-3 cited deductions; what changed, as a terse list of edits; final score by dimension; any blocker and why a guard prevented an A.
 3. Duplication map: each cluster found, the skills involved, and how it was resolved (shared reference or delegation), or why it was left local.
-4. If `WRITE` is true, the list of files edited, moved, or created, including any shared reference files, and the snapshot location for rollback.
+4. Invocation and conflict map: every cycle found and how it was broken, every contradiction and its resolution (or why it is unresolved and the skills are blocked), and any genericity flags with cited lines.
+5. If `WRITE` is true, the list of files edited, moved, or created, including any shared reference files, and the snapshot location for rollback.
 
 Keep the report dense. No preamble, no restating this prompt back, no filler.

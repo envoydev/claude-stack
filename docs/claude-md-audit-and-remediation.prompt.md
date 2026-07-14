@@ -47,6 +47,7 @@ Template mode: when the audited file is a template that installers copy into tar
 - Every line must change behavior or route the reader. CLAUDE.md lines are paid on every session; a line that neither changes what Claude does nor points to a governing document is a tax.
 - Facts must be true. Build commands, paths, and architecture claims in CLAUDE.md are executed and trusted every session; verify them against the repository itself. A wrong command in CLAUDE.md is worse than a missing one.
 - Hub over encyclopedia. When content grows, the fix is routing (rules, skills, hooks) plus a clear map, not a longer file.
+- Generic by default. In template mode this is the placeholder discipline already scored (no baked-in stack facts); in a filled file, a technology is named only where the project actually uses it or a shipped tool requires it. A decorative tech mention is a defect - cite the line and score it under Dimension 3.
 - Reversibility. Snapshot every file before editing so a regression can be undone.
 
 ---
@@ -59,7 +60,7 @@ Template mode: when the audited file is a template that installers copy into tar
 4. Verify project facts. Check every command, path, and tool claim in CLAUDE.md against the repository: build and test commands against `package.json`, `Makefile`, `*.csproj`, or equivalents; directory claims against the actual tree; version claims against lockfiles. Record each claim as verified, stale, or wrong.
 5. Build a linkage map: which unconditional rules exist, which are named in CLAUDE.md, which are named but do not exist, and which exist but are unmapped. Do the same for skills and agents that CLAUDE.md mentions.
 6. Build a duplication map: content repeated between CLAUDE.md and rule files, between CLAUDE.md tiers, between CLAUDE.md and skills or agents, and between CLAUDE.md and repo docs (README, AGENTS.md, style guides).
-7. Build a conflict map: instructions in CLAUDE.md that contradict a rule file, another tier, a hook, or a permissions entry. Conflicts are the highest-severity defect class because they silently make behavior nondeterministic.
+7. Build a conflict map: instructions in CLAUDE.md that contradict a rule file, another tier, a hook, a permissions entry, or a skill or agent it routes to. Conflicts are the highest-severity defect class because they silently make behavior nondeterministic.
 8. Build a mechanism map: for each block, classify it as per-session fact (stays), multi-step procedure (skill), path-specific guidance (path-scoped rule), deterministic must-run step (hook), hard block (permissions), personal preference (local or user tier), or content that belongs nowhere.
 
 Do not edit anything in this phase.
