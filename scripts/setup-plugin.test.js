@@ -33,3 +33,39 @@ test('no tracked plugin file leaks an email address', () => {
         assert.ok(!/@[a-z0-9.-]+\.[a-z]{2,}/i.test(text.replace(/@agents-stack|@main/g, '')), `${rel} must not contain an email`);
     }
 });
+
+const { computeClosure } = require('./stack-select.js');
+const graph = require('./stack-graph.json');
+
+const RECS = path.join(PLUGIN_DIR, 'skills', 'setup-claude-stack', 'references', 'recommendations.json');
+
+test('every recommendation name resolves in the dependency graph', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const agentKeys = new Set(Object.keys(graph.agents));
+    const ruleKeys = new Set(Object.keys(graph.rules));
+    const skillKeys = new Set(Object.keys(graph.skills));
+    const seeds = [recs.always, ...Object.values(recs.stacks)];
+    for (const seed of seeds)
+    {
+        for (const a of seed.agents || []) assert.ok(agentKeys.has(a), `recommendation agent '${a}' not in graph`);
+        for (const r of seed.rules || []) assert.ok(ruleKeys.has(r), `recommendation rule '${r}' not in graph`);
+        for (const s of seed.skills || []) assert.ok(skillKeys.has(s), `recommendation skill '${s}' not in graph`);
+    }
+});
+
+test('the aspnet seed closes to its .NET vertical', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const seed = recs.stacks['aspnet'];
+    assert.ok(seed, 'an aspnet stack recommendation exists');
+    const closed = computeClosure(graph, { agents: [...(recs.always.agents || []), ...(seed.agents || [])], rules: [...(recs.always.rules || []), ...(seed.rules || [])] });
+    assert.ok(closed.skills.includes('csharp'), 'aspnet closure pulls csharp');
+    assert.ok(closed.skills.includes('dotnet-web-backend'), 'aspnet closure pulls the web hub');
+});
+
+test('the always block seeds the cross-cutting agents and baseline rules', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    for (const r of ['baseline-interaction', 'baseline-security', 'baseline-git'])
+    {
+        assert.ok((recs.always.rules || []).includes(r), `always seeds ${r}`);
+    }
+});

@@ -1,0 +1,110 @@
+{
+  "always": {
+    "agents": [
+      "ci-failure-diagnoser",
+      "issue-diagnoser",
+      "security-auditor",
+      "integration-reviewer",
+      "evidence-gatherer",
+      "code-analyzer",
+      "code-style-analyzer",
+      "related-project-analyzer"
+    ],
+    "rules": [
+      "baseline-git",
+      "baseline-interaction",
+      "baseline-navigation",
+      "baseline-quality-gates",
+      "baseline-security",
+      "markdown-docs"
+    ]
+  },
+  "stacks": {
+    "aspnet": {
+      "agents": [
+        "aspnet-solution-designer",
+        "aspnet-implementer",
+        "aspnet-verifier",
+        "dotnet-build-error-resolver",
+        "dotnet-test-failure-resolver"
+      ],
+      "rules": [
+        "csharp-conventions",
+        "dotnet-repair-agents"
+      ]
+    },
+    "angular": {
+      "agents": [
+        "angular-solution-designer",
+        "angular-implementer",
+        "angular-verifier",
+        "ng-build-error-resolver",
+        "angular-test-resolver"
+      ],
+      "rules": [
+        "typescript-conventions",
+        "angular-conventions",
+        "angular-styling-conventions",
+        "angular-repair-agents"
+      ]
+    },
+    "wpf": {
+      "agents": [
+        "wpf-solution-designer",
+        "wpf-implementer",
+        "wpf-verifier",
+        "dotnet-build-error-resolver",
+        "dotnet-test-failure-resolver"
+      ],
+      "rules": [
+        "csharp-conventions",
+        "wpf-conventions",
+        "dotnet-repair-agents"
+      ]
+    },
+    "console": {
+      "agents": [
+        "console-solution-designer",
+        "console-implementer",
+        "console-verifier",
+        "dotnet-build-error-resolver",
+        "dotnet-test-failure-resolver"
+      ],
+      "rules": [
+        "csharp-conventions",
+        "dotnet-repair-agents"
+      ]
+    },
+    "mobile": {
+      "agents": [
+        "mobile-solution-designer",
+        "mobile-implementer",
+        "mobile-verifier"
+      ],
+      "rules": [
+        "typescript-conventions",
+        "angular-conventions"
+      ]
+    },
+    "data": {
+      "agents": [
+        "data-solution-designer",
+        "data-implementer",
+        "data-verifier"
+      ],
+      "rules": [
+        "sql-conventions"
+      ]
+    },
+    "devops": {
+      "agents": [
+        "devops-solution-designer",
+        "devops-implementer",
+        "devops-verifier"
+      ],
+      "rules": [
+        "devops-conventions"
+      ]
+    }
+  }
+}
