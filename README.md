@@ -199,6 +199,10 @@ see what's installed, delete a folder to drop a skill.
 - **markdown-style** - Markdown authoring and review: a syntax canon (valid,
   portable Markdown) plus an opinionated house style overlay, applied in a
   two-pass procedure. Form only, not prose (Vale) or spelling.
+- **docs-as-code** - Docs-as-code authoring: Mermaid sequence and ER
+  diagrams, architecture decision records (Nygard and MADR 4, with the
+  operational discipline), and C4 context/container views - when to use each,
+  per-type syntax and pitfalls, and when to graduate to DBML or Structurizr.
 - **ilspy-decompile** - Decompile a compiled .NET assembly with ilspycmd to
   read its real implementation: framework internals, NuGet source, or
   behavior confirmation before a framework upgrade.

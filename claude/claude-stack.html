@@ -243,7 +243,7 @@
   </p>
   <div class="stat-row">
     <div class="stat"><b>33</b><span>subagents</span></div>
-    <div class="stat"><b>64</b><span>house skills</span></div>
+    <div class="stat"><b>65</b><span>house skills</span></div>
     <div class="stat"><b>8</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>4</b><span>hooks</span></div>
@@ -771,6 +771,7 @@ const personal = {
     ["sqlite","Database / SQLite","SQLite engine delta over database-conventions: WAL / single-writer concurrency + busy_timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables, limited ALTER TABLE + table-rebuild, connection-per-thread, FTS5. Original house skill."],
     ["typescript","TypeScript / JavaScript","Framework-agnostic TS/JS baseline: strict flags, discriminated unions, utility types, ESM modules, async (no floating promises), typed errors + Result, readonly, plain-JS via JSDoc + checkJs, ESLint/Prettier/tsconfig. Companion to angular-conventions; covers Node, browser, build scripts, service workers, extensions."],
     ["markdown-style","Docs / Markdown","Markdown authoring + review: a syntax canon (valid, portable Markdown) plus an opinionated house style overlay, applied in a two-pass procedure - fix syntax bugs directly, then batch the style judgment calls. Form only, not prose clarity (Vale) or spelling. The markdown-docs rule routes .md authoring here."],
+    ["docs-as-code","Docs / Diagrams + ADRs","Docs-as-code authoring: Mermaid sequenceDiagram (interaction flows) + erDiagram (schema sketches), architecture decision records (Nygard default, MADR 4 for option analysis, plus the operational discipline that keeps a log alive), and C4 context/container views - routing per doc type via references/, syntax canon, pitfalls, graduation points (DBML/dbdiagram, Structurizr DSL). The committed architecture map stays owned by project-architecture-analyzer."],
     ["ilspy-decompile","C# / .NET","Decompile a compiled .NET assembly with ilspycmd (via dnx) to read its real implementation - framework internals, NuGet source you do not ship, or behavior confirmation before a framework upgrade. For source you already have, use serena / the LSP."],
     ["dotnet-project-setup","Setup / .NET","Set up a new .NET solution's build spine: the src / tests / .config layout, .slnx solution files, Directory.Build.props (shared Nullable / ImplicitUsings / LangVersion / global usings), global.json SDK pinning, central package management (Directory.Packages.props), and pinning a dotnet tool in .config/dotnet-tools.json. Analyzers route to dotnet-code-quality, CI and packaging to devops."],
     ["dotnet-performance","Performance / .NET","Performance-aware .NET design decisions and where they matter: allocation and memory layout (struct vs class, readonly struct, seal by default, Span, ValueTask, frozen collections) and serialization-format choice (System.Text.Json source-gen, Protobuf, MessagePack). Measure first with the benchmarking / diagnostics skills."],

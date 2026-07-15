@@ -49,6 +49,10 @@
       "mcps": [],
       "plugins": []
     },
+    "docs-as-code": {
+      "mcps": [],
+      "plugins": []
+    },
     "dotnet": {
       "mcps": [],
       "plugins": []
