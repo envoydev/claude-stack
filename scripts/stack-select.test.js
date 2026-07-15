@@ -40,6 +40,12 @@ test('empty selection yields empty closure', () => {
     assert.deepStrictEqual(c, { skills: [], agents: [], rules: [], mcps: [], plugins: [], reasons: {} });
 });
 
+test('a non-array raw field does not char-split into bogus items', () => {
+    const c = computeClosure(graph, { skills: 'csharp' });   // scalar, not an array
+    assert.deepStrictEqual(c.skills, [], 'a scalar skills field yields no skills, not per-character entries');
+    assert.ok(!c.skills.includes('c') && !c.skills.includes('s'), 'no single-character bogus skills');
+});
+
 const { evaluatePrereqs } = require('./stack-select.js');
 
 const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { SENTRY_ACCESS_TOKEN: true, CONTEXT7_API_KEY: true } };

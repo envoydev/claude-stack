@@ -14,9 +14,9 @@ const { execFileSync } = require('child_process');
 // (to fixpoint), then every kept skill/agent/rule -> its mcps/plugins.
 function computeClosure(graph, raw)
 {
-    const skills = new Set(raw.skills || []);
-    const agents = new Set(raw.agents || []);
-    const rules = new Set(raw.rules || []);
+    const skills = new Set(Array.isArray(raw.skills) ? raw.skills : []);
+    const agents = new Set(Array.isArray(raw.agents) ? raw.agents : []);
+    const rules = new Set(Array.isArray(raw.rules) ? raw.rules : []);
     const reasons = {};
     const note = (name, why) => { if (!reasons[name]) reasons[name] = why; };
 
