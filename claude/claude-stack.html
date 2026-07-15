@@ -671,7 +671,7 @@
     <div id="content"></div>
 
     <div class="inv-sources">
-      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>personal</code> published to <code>envoydev/agents-stack</code>, installed via <code>npx skills add envoydev/agents-stack</code> &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> installed via <code>npx skills add &lt;owner/repo&gt;</code>.
+      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>personal</code> published to <code>envoydev/agents-stack</code>, installed via the stack installer's git-clone + copy step (<code>claude-stack.sh install --skills-only</code>, or the <code>claude-stack-setup</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
     </div>
   </section>
 
@@ -707,10 +707,10 @@ const builtin = {
 
 const personal = {
   title: "Skills (Personal)",
-  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the skills CLI. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
+  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the stack installer's git-clone + copy step. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
   invokeColumn: true,
   source: "https://github.com/envoydev/agents-stack",
-  install: "npx skills add envoydev/agents-stack",
+  install: "claude-stack.sh install --skills-only",
   rows: [
     ["create-ticket","Tickets / tracker","Generate a bug, user story, epic, or technical task ticket in English from a raw description (Ukrainian or English input). Detects the type and routes to a per-type template (references/{bug,story,epic,task}.md). Tracker-agnostic Markdown (Jira, Azure DevOps, GitHub, GitLab, YouTrack); offers to file via a connected tracker MCP."],
     ["dev-log-convert","Logs / docs","Convert daily Ukrainian/English/mixed raw work logs into structured form. Trigger: literal 'dev-log'."],
@@ -831,11 +831,11 @@ const pluginInstallByUrl = {
     name => "/plugin install " + name.split(":")[0] + "@ponytail",
 };
 
-// All other repos come from the `skills` CLI: `npx skills add owner/repo`.
+// Any repo not in pluginInstallByUrl has no automated install path (the git-clone step only
+// fetches STACK_SKILLS_REPO) - falls back to "manual".
 function installCmdFor(url) {
   if (pluginInstallByUrl[url]) return null;  // handled per-row
-  const m = url.match(/^https:\/\/github\.com\/([^\/]+\/[^\/]+)\/?$/);
-  return m ? `npx skills add ${m[1]}` : "manual";
+  return "manual";
 }
 
 // Compact source link: a known code-forge URL (GitHub, Codeberg, GitLab, Bitbucket) shows as
@@ -956,7 +956,7 @@ function renderPlugins(plugins) {
   return html;
 }
 
-// Repository: rows installed via `npx skills add owner/repo`. Multi-skill repos get a sub-group.
+// Repository: plugin-bundled commands, installed with their plugin. Multi-skill repos get a sub-group.
 function renderRepository(filtered) {
   // Group by url; build counts on the full non-plugin repo set (so single-skill status doesn't flip when filtering).
   const fullCounts = {};
@@ -978,7 +978,7 @@ function renderRepository(filtered) {
     return d !== 0 ? d : a.localeCompare(b);
   });
 
-  let html = `<h2>Repository</h2><div class="group-meta">Installed via <code>npx skills add &lt;owner/repo&gt;</code>. ${filtered.length} skills. Repos with multiple skills get a dedicated sub-group; single-skill repos go to "Other".</div>`;
+  let html = `<h2>Repository</h2><div class="group-meta">Installed with their plugin (see Plugins) - no separate skill-install step. ${filtered.length} skills. Repos with multiple skills get a dedicated sub-group; single-skill repos go to "Other".</div>`;
 
   for (const url of orderedUrls) {
     const rows = multi[url];

@@ -28,7 +28,7 @@ everything below applies to both unless a row is marked otherwise.
 
 | Component | Count | Notes |
 | --------- | ----- | ----- |
-| **Skills**  | 64 | conventions + utilities (ticket writers, C#/.NET, Angular/TS, SQL, `project-task-flow` orchestration + routing (single-stack trios + cross-domain), `project-quality-loop` + `project-architecture-quality-loop` review loops) - `npx skills add … --agent claude-code` |
+| **Skills**  | 64 | conventions + utilities (ticket writers, C#/.NET, Angular/TS, SQL, `project-task-flow` orchestration + routing (single-stack trios + cross-domain), `project-quality-loop` + `project-architecture-quality-loop` review loops) - git-clone + copy from `envoydev/agents-stack` (`claude-stack.sh install --skills-only`, or the `claude-stack-setup` plugin) |
 | **Plugins** | 7  | `superpowers`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`, `security-guidance`, `claude-hud`, `ponytail` - `claude plugin install` (needs the `claude` CLI) |
 | **MCP servers** | 8 | `angular-cli`, `serena`, `playwright`, `memory`, `context7`, plus `chrome-devtools` + `appium-mcp` (heavy - active; comment out where not needed) and `sentry` (error monitoring - hosted remote MCP, needs `SENTRY_ACCESS_TOKEN` in settings `env`; comment out without Sentry). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project → `<repo>/.mcp.json` |
 | **Hooks** | 4 | `guard-protected-force-push` (blocks force-push to main/master/develop) + `guard-catastrophic-rm` (blocks recursive rm of /, ~, $HOME, or a bare *) + `guard-read-whole-file` (PreToolUse Read - blocks a whole-file Read of a >100-line source file, locate via serena first) → `.claude/hooks/` + wired into `.claude/settings.json`; plus `instrument-tool-usage` fetched UNWIRED (opt-in per-run stats - see the instrumentation section) |
@@ -61,7 +61,7 @@ install what you need for the work you actually do, then re-run.
 | Tool | Needed for | Required? | Install (macOS/Linux) | Install (Windows) |
 | ---- | ---------- | --------- | --------------------- | ----------------- |
 | **node** ≥ 22.12 LTS | Claude Code, hooks, all `npx` MCPs | **Yes** | `brew install node` / nvm | `winget install OpenJS.NodeJS.LTS` |
-| **npx** | skills CLI (ships with node) | **Yes** | (with node) | (with node) |
+| **npx** | `npx` MCPs (e.g. context7 local transport; ships with node) | **Yes** | (with node) | (with node) |
 | **claude** CLI | plugins, MCP registration, hook wiring | **Yes** | `npm i -g @anthropic-ai/claude-code` | `winget install Anthropic.ClaudeCode` |
 | **git** | project-scope path resolution (repo root) | **Yes** for project scope | `brew install git` | `winget install Git.Git` |
 | **uvx** (uv) | `serena` + `memory` MCPs | for those MCPs | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/install.ps1 \| iex"` |

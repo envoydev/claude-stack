@@ -25,7 +25,7 @@ The `.sh`/`.ps1` twins take the **same arguments** and produce the **same result
 
 | Component | Lands in | Notes |
 | --------- | -------- | ----- |
-| **Skills** (64) | `.cursor/skills/` | real copies; run as Cursor Skills (`agentskills.io`); includes `project-task-flow` orchestration + routing (single-stack trios + cross-domain). `npx skills add … --agent cursor` |
+| **Skills** (64) | `.cursor/skills/` | real copies; run as Cursor Skills (`agentskills.io`); includes `project-task-flow` orchestration + routing (single-stack trios + cross-domain). git-clone + copy from `envoydev/agents-stack` (`cursor-stack.sh install skills-only`) |
 | **MCP servers** (8) | `.cursor/mcp.json` | `angular-cli`, `serena` (`--context ide-assistant`), `playwright`, `memory`, `context7`, plus `chrome-devtools` + `appium-mcp` (heavy - active; comment out where not needed) and `sentry` (error monitoring - hosted remote MCP, `SENTRY_ACCESS_TOKEN` as an OS env var expanded via `${env:VAR}`; comment out without Sentry). `memory` is cross-project recall (the subagent handoff runs on serena) - comment it out in a standalone project. Cursor supports MCP natively; shell `${…}` path tokens are resolved to concrete paths and bare `${VAR}` secrets rewritten to `${env:VAR}` (Cursor does no shell interpolation) |
 | **Hooks** (2) | `.cursor/hooks/` + `.cursor/hooks.json` | `guard-protected-force-push` + `guard-catastrophic-rm` (`beforeShellExecution`): block force-push to main/master/develop and a recursive rm of /, ~, $HOME, or a bare *. Fetched from the repo's `cursor/hooks/` |
 | **Rules** (12) | `.cursor/rules/` | five always-on `baseline-*.mdc` (`interaction` / `quality-gates` / `security` / `git` / `navigation` - `alwaysApply`, the cross-cutting conventions, twins of the Claude `.claude/rules/baseline-*` set) + the glob-auto-attaching convention rules `csharp` / `typescript` / `sql` / `angular`-conventions.mdc + `wpf-conventions.mdc` (`.xaml`, opt-in for WPF repos) + `scss-conventions.mdc` (`.scss`/`.css`, opt-in for Angular workspaces) + `ponytail.mdc` (minimal-code, `alwaysApply`; the Cursor form of the Claude ponytail plugin) |
@@ -91,8 +91,8 @@ The script runs a **prerequisites check first and warns (never fails)** - instal
 
 | Tool | Needed for | Required? | Install (macOS/Linux) | Install (Windows) |
 | ---- | ---------- | --------- | --------------------- | ----------------- |
-| **node** ≥ 22.12 LTS | the Cursor hook (runs via `node`), `npx` MCPs, skills CLI | **Yes** | `brew install node` / nvm | `winget install OpenJS.NodeJS.LTS` |
-| **npx** | skills CLI (ships with node) | **Yes** | (with node) | (with node) |
+| **node** ≥ 22.12 LTS | the Cursor hook (runs via `node`), `npx` MCPs | **Yes** | `brew install node` / nvm | `winget install OpenJS.NodeJS.LTS` |
+| **npx** | `npx` MCPs (e.g. context7 local transport; ships with node) | **Yes** | (with node) | (with node) |
 | **git** | project-scope path resolution (repo root) | **Yes** for project scope | `brew install git` | `winget install Git.Git` |
 | **uvx** (uv) | `serena` + `memory` MCPs | for those MCPs | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `irm https://astral.sh/uv/install.ps1 \| iex` |
 | **python3** | the `.cursor/mcp.json` + `.cursor/hooks.json` merges (**bash only** - PowerShell merges natively) | **Yes** (bash) | `brew install python` | `winget install Python.Python.3.12` (Store stub does **not** count) |

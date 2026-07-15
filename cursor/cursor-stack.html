@@ -153,7 +153,7 @@
 
   <footer>
     Sources: <code>personal</code> &amp; <code>repository</code> skills installed via
-    <code>npx skills add &lt;owner/repo&gt; --agent cursor</code> (run as Cursor Skills) ·
+    the stack installer's git-clone + copy step (<code>cursor-stack.sh install skills-only</code>), run as Cursor Skills ·
     <code>MCP</code> servers written to <code>.cursor/mcp.json</code> ·
     <code>hooks</code> to <code>.cursor/hooks/</code> + <code>.cursor/hooks.json</code> ·
     <code>rules</code> to <code>.cursor/rules/</code> ·
@@ -166,9 +166,9 @@
 // ---- Personal skills (run as Cursor Skills; same set as Claude) ----
 const personal = {
   title: "Personal skills",
-  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the skills CLI as Cursor Skills.",
+  meta: "Personal convention skills, authored locally and published to envoydev/agents-stack. Installed via the stack installer's git-clone + copy step, run as Cursor Skills.",
   source: "https://github.com/envoydev/agents-stack",
-  install: "npx skills add envoydev/agents-stack --agent cursor",
+  install: "cursor-stack.sh install skills-only",
   rows: [
     ["create-ticket","Tickets / tracker","Generate a bug, user story, epic, or technical task ticket in English from a raw description (Ukrainian or English input). Detects the type and routes to a per-type template (references/{bug,story,epic,task}.md). Tracker-agnostic Markdown (Jira, Azure DevOps, GitHub, GitLab, YouTrack); offers to file via a connected tracker MCP."],
     ["dev-log-convert","Logs / docs","Convert daily Ukrainian/English/mixed raw work logs into structured form. Trigger: literal 'dev-log'."],
@@ -237,7 +237,7 @@ const personal = {
   ]
 };
 
-// ---- Repository skills (npx skills add; same as Claude MINUS the plugin-marketplace rows,
+// ---- Repository skills (git-clone + copy, same as Claude MINUS the plugin-marketplace rows,
 //      which are not Cursor-installable skills - see the plugin-mapping table). ----
 const repository = [
 ];
@@ -360,9 +360,9 @@ function renderRepository(filtered) {
     (fullCounts[row[2]] > 1 ? (multi[row[2]] ||= []) : others).push(row);
   }
   const orderedUrls = Object.keys(multi).sort((a, b) => (multi[b].length - multi[a].length) || a.localeCompare(b));
-  const repoInstall = u => { const m = u.match(/^https:\/\/github\.com\/([^\/]+\/[^\/]+)\/?$/); return m ? `npx skills add ${m[1]} --agent cursor` : "manual"; };
+  const repoInstall = () => "manual";  // no per-repo mechanism - the git-clone step only fetches STACK_SKILLS_REPO
 
-  let html = `<h2>Repository skills</h2><div class="group-meta">Installed via <code>npx skills add &lt;owner/repo&gt; --agent cursor</code> (run as Cursor Skills). ${filtered.length} skills. Claude plugin-marketplace skills are excluded - see the plugin-mapping table.</div>`;
+  let html = `<h2>Repository skills</h2><div class="group-meta">No automated install path beyond the pinned personal repo (git-clone fetches only STACK_SKILLS_REPO). ${filtered.length} skills. Claude plugin-marketplace skills are excluded - see the plugin-mapping table.</div>`;
   const tableFor = (rows) => {
     let t = `<table><thead><tr><th style="width:16%">Skill</th><th style="width:12%">Area</th><th style="width:24%">Install</th><th style="width:12%">Source</th><th>Description</th></tr></thead><tbody>`;
     for (const [name, area, u, desc] of rows.sort((a, b) => a[0].localeCompare(b[0]))) {

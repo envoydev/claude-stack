@@ -39,7 +39,6 @@ examples/**/obj/
 examples/**/*.db
 examples/**/*.db-wal
 examples/**/*.db-shm
-examples/**/skills-lock.json
 examples/ANSWER-KEY.md
 examples/*ANSWER-KEY*.md
 examples/*-test-prompt.md

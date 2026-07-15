@@ -255,10 +255,8 @@ HOME_MEMORY_DIR="$HOME/.memory-mcp"
 
 if [ "$SCOPE" = "project" ]; then
   cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-  SKILLS_ADD_FLAG=""           # npx skills add: project is the default (no -g)
   CLAUDE_SCOPE="project"
 else
-  SKILLS_ADD_FLAG="-g"
   CLAUDE_SCOPE="user"
 fi
 
@@ -959,7 +957,6 @@ Add these stack-generated, machine-local artifacts to the project's .gitignore (
   .slopwatch       dotnet-slopwatch output
   .playwright      playwright MCP user-data-dir + screenshots
   .mcp.json        generated MCP server config (machine-local)
-  skill-lock.json  skills CLI lock file
   docs/superpowers superpowers / brainstorming scratch specs (docs/ itself - the committed architecture map - stays tracked)
 
 If the project's CLAUDE.md 'Generated docs root' is relocated under .claude/, the generated docs

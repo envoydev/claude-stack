@@ -177,10 +177,6 @@ $SerenaContext = @{ 'claude-code' = 'claude-code'; 'cursor' = 'ide-assistant' }
 if ($Scope -eq 'project') {
   $top = (& git rev-parse --show-toplevel 2>$null)
   if ($LASTEXITCODE -eq 0 -and $top) { Set-Location -LiteralPath $top }
-  $SkillsAddFlag = ''        # npx skills add: project is the default (no -g)
-}
-else {
-  $SkillsAddFlag = '-g'
 }
 
 # ===========================================================================
@@ -758,4 +754,3 @@ Write-Host '  .serena          serena per-project state: registry, cache, langua
 Write-Host '  .cursor          Cursor stack: skills + mcp.json + hooks.json + hook scripts + rules'
 Write-Host '  .slopwatch       dotnet-slopwatch output'
 Write-Host '  .playwright      playwright MCP user-data-dir + screenshots'
-Write-Host '  skill-lock.json  skills CLI lock file'

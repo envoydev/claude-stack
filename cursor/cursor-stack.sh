@@ -145,9 +145,6 @@ HOME_MEMORY_DIR="$HOME/.memory-mcp"
 
 if [ "$SCOPE" = "project" ]; then
   cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-  SKILLS_ADD_FLAG=""           # npx skills add: project is the default (no -g)
-else
-  SKILLS_ADD_FLAG="-g"
 fi
 
 # ===========================================================================
@@ -698,5 +695,4 @@ Add these stack-generated, machine-local artifacts to the project's .gitignore (
   .cursor          Cursor stack: skills + mcp.json + hooks.json + hook scripts + rules
   .slopwatch       dotnet-slopwatch output
   .playwright      playwright MCP user-data-dir + screenshots
-  skill-lock.json  skills CLI lock file
 GITIGNORE

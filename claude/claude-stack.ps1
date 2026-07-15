@@ -285,11 +285,9 @@ $SerenaContext = @{ 'claude-code' = 'claude-code'; 'cursor' = 'ide-assistant' }
 if ($Scope -eq 'project') {
   $top = (& git rev-parse --show-toplevel 2>$null)
   if ($LASTEXITCODE -eq 0 -and $top) { Set-Location -LiteralPath $top }
-  $SkillsAddFlag = ''        # npx skills add: project is the default (no -g)
   $ClaudeScope = 'project'
 }
 else {
-  $SkillsAddFlag = '-g'
   $ClaudeScope = 'user'
 }
 
@@ -1093,7 +1091,6 @@ Write-Host '  .claude          Claude Code project config + local state (setting
 Write-Host '  .slopwatch       dotnet-slopwatch output'
 Write-Host '  .playwright      playwright MCP user-data-dir + screenshots'
 Write-Host '  .mcp.json        generated MCP server config (machine-local)'
-Write-Host '  skill-lock.json  skills CLI lock file'
 Write-Host '  docs/superpowers superpowers / brainstorming scratch specs (docs/ itself - the committed architecture map - stays tracked)'
 Write-Host ''
 Write-Host "If the project's CLAUDE.md 'Generated docs root' is relocated under .claude\, the generated docs"

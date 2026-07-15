@@ -7,14 +7,16 @@ not an application. It collects everything applied to *other* projects: the hous
 skills, the per-agent base instruction templates those projects extend, the hook scripts and
 convention rules, and the installers that wire skills / MCP servers / plugins (Claude) or
 rules (Cursor) into each project. Consuming projects pull from here - they do not own their
-copy. Skills install via `npx skills add envoydev/agents-stack`; the rest is laid down by the
-per-agent stack installers. The durable change always lives in *this* repo's source; a change
+copy. Skills install via a git-clone-and-copy step built into the per-agent stack installers
+(or the `claude-stack-setup` plugin's `/claude-stack`); the rest is laid down by the same
+installers. The durable change always lives in *this* repo's source; a change
 made only inside a consuming project is throwaway (see Invariants).
 
 ## Layout - one home per concern
 
 - `skills/` - the personal house-style skills, each a `SKILL.md`. Auto-activate on their own
-  keywords / file types in consuming projects. Distributed by `npx skills add envoydev/agents-stack`.
+  keywords / file types in consuming projects. Distributed via the per-agent stack installers'
+  git-clone-and-copy step (or the `claude-stack-setup` plugin).
 - `claude/` - the **Claude Code** stack:
   - `claude-stack.{sh,ps1}` installer (Unix / Windows) + `claude-stack.html` browser inventory.
   - `CLAUDE.template.md` - the stack-neutral per-project skeleton (with `<placeholders>`) that each
@@ -107,7 +109,7 @@ because the platforms differ:
 
 | | Claude Code (`claude/`) | Cursor (`cursor/`) |
 |---|---|---|
-| Skills | `npx skills add … --agent claude-code` → `.claude/skills` | `… --agent cursor` → `.cursor/skills` (Cursor Skills) |
+| Skills | installer git-clone + copy → `.claude/skills` (or plugin `/claude-stack`) | installer git-clone + copy → `.cursor/skills` (Cursor Skills) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` | written into `.cursor/mcp.json` (tokens pre-resolved) |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) | **none** - Cursor has no Claude-style `/plugin install` (its own format installs via `/add-plugin`); equivalents are MCP / native (Skills, Subagents, Bugbot `/review`, Rules) / Open-VSX extensions. ponytail additionally ships a Cursor rule that `cursor-stack` fetches (see `cursor-stack.html`'s mapping) |
 | Hooks | `.claude/hooks/` wired into `.claude/settings.json` (3 wired + 1 fetched-unwired instrumentation) | `.cursor/hooks.json` (force-push + catastrophic-rm - Cursor's contract differs) |

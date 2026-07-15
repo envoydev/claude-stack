@@ -2,21 +2,26 @@
 
 A collection of personal agent skills - reusable coding conventions and small utilities - plus
 per-agent **stack installers** for [Claude Code](https://code.claude.com/docs/en/skills) and
-[Cursor](https://cursor.com). The skills install with the [skills CLI](https://skills.sh) from
-`skills.sh`; the full stack (skills + MCP servers + hooks/rules, plus plugins on Claude) is laid
-down by the installers under `claude/` and `cursor/`.
+[Cursor](https://cursor.com). Skills install via a git-clone-and-copy step built into the
+installers; the full stack (skills + MCP servers + hooks/rules, plus plugins on Claude) is laid
+down by the same installers under `claude/` and `cursor/`.
 
 ## Installation
 
-Install every skill in this repo into the current project:
+Install just the skills into the current project (no MCP servers, hooks, rules, or plugins):
 
 ```bash
-npx skills add envoydev/agents-stack                 # Claude Code -> .claude/skills/
-npx skills add envoydev/agents-stack --agent cursor  # Cursor      -> .cursor/skills/
+mkdir -p .claude && curl -fsSL https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/claude-stack.sh -o .claude/claude-stack.sh
+bash .claude/claude-stack.sh install --skills-only   # Claude Code -> .claude/skills/
 ```
 
-Add `-g` to install globally (`~/.claude/skills/` or `~/.cursor/skills/`) instead. The agent picks
-up the `SKILL.md` files automatically the next session.
+```bash
+mkdir -p .cursor && curl -fsSL https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/cursor-stack.sh -o .cursor/cursor-stack.sh
+bash .cursor/cursor-stack.sh install skills-only   # Cursor      -> .cursor/skills/
+```
+
+Add `--scope global` to install into the account-wide `~/.claude/skills/` or `~/.cursor/skills/`
+instead of the project. The agent picks up the `SKILL.md` files automatically the next session.
 
 **Want the whole stack** (skills + MCP servers + hooks/rules, plus plugins on Claude), not just the
 skills? Use the per-agent installers - see [`claude/`](claude/README.md) for Claude Code and
@@ -36,11 +41,12 @@ Then, in a target project, run `/claude-stack` (the `setup-claude-stack` skill):
 ## Managing installed skills
 
 ```bash
-npx skills ls          # list installed skills
-npx skills find        # search and select skills interactively
-npx skills update      # update installed skills to the latest version
-npx skills remove      # uninstall skills
+bash .claude/claude-stack.sh update --skills-only   # refresh every skill to latest (Claude Code)
+bash .cursor/cursor-stack.sh update skills-only      # refresh every skill to latest (Cursor)
 ```
+
+Skills are plain directories under `.claude/skills/` / `.cursor/skills/` - `ls` the directory to
+see what's installed, delete a folder to drop a skill.
 
 ## Available skills
 
@@ -248,9 +254,9 @@ cursor/                 # Cursor stack: cursor-stack.{sh,ps1,html}, AGENTS.templ
 scripts/lint-skills.js  # repo lint (keeps skills / manifests / HTML in sync)
 ```
 
-`skills/` is the flat layout the skills CLI discovers automatically. `claude/` and `cursor/` are the
-per-agent stacks (each has its own README); each ships a stack-neutral `*.template.md` you copy into
-a project and fill in.
+`skills/` is the flat layout the per-agent installers copy directly from (one `<skill-name>/SKILL.md`
+per skill). `claude/` and `cursor/` are the per-agent stacks (each has its own README); each ships a
+stack-neutral `*.template.md` you copy into a project and fill in.
 
 ## Maintenance
 
@@ -259,8 +265,8 @@ lint. The per-agent installer scripts (`claude/claude-stack.{sh,ps1}` and
 `cursor/cursor-stack.{sh,ps1}`) are the single source of truth for everything in
 use; the lint verifies every skill directory is registered in the manifests
 and this README, that each `SKILL.md` frontmatter loads as valid YAML (using
-js-yaml, the same parser `skills.sh` uses, so a malformed block fails here
-instead of silently dropping from the registry), that cross-skill references
+js-yaml, so a malformed block fails here instead of reaching a project
+uncaught), that cross-skill references
 resolve everywhere they appear (`SKILL.md` files, the Claude subagents, the base
 templates, and the Claude + Cursor rules - a renamed skill is caught in all of them),
 that all four
