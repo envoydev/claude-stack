@@ -66,6 +66,14 @@ test('sh: script parses with no syntax errors', () => {
     assert.strictEqual(r.status, 0, r.stderr);
 });
 
+test('sh: filterable arrays are always expanded nounset-safe (empty category must not crash install)', () => {
+    const src = fs.readFileSync(SH, 'utf8');
+    // A negative lookbehind for the preceding "+" excludes the SAFE idiom ${arr[@]+"${arr[@]}"},
+    // whose own quoted half would otherwise self-match this pattern and false-positive forever.
+    const bare = src.match(/(?<!\+)"\$\{(?:SKILLS|PLUGINS|MCPS|AGENTS|CLAUDE_RULES)\[@\]\}"/g) || [];
+    assert.deepStrictEqual(bare, [], `bare (non-nounset-safe) array expansions found: ${bare.join(', ')} - use \${arr[@]+"\${arr[@]}"}`);
+});
+
 // The ps1 twin can only be exercised where PowerShell is installed. Run it if
 // pwsh is present; otherwise log a visible SKIP so the gap is never silent.
 const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;

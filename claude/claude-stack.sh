@@ -564,12 +564,12 @@ fi
 install_skills() {
   command -v npx >/dev/null 2>&1 || { note_failure "npx not found - skills not installed"; return 0; }   # fail-soft: skip, never abort
   local seen="" entry repo skill sargs names
-  for entry in "${SKILLS[@]}"; do
+  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do
     repo="${entry%%|*}"
     case " $seen " in *" $repo "*) continue ;; esac   # repo already done
     seen="$seen $repo"
     sargs=(); names=""                                 # one --skill flag per skill (CLI rejects comma lists)
-    for skill in "${SKILLS[@]}"; do
+    for skill in ${SKILLS[@]+"${SKILLS[@]}"}; do
       [ "${skill%%|*}" = "$repo" ] || continue
       sargs+=(--skill "${skill#*|}")
       names="${names:+$names,}${skill#*|}"
@@ -582,7 +582,7 @@ install_skills() {
 install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   for mp in ${EXTRA_MARKETPLACES[@]+"${EXTRA_MARKETPLACES[@]}"}; do claude plugin marketplace add "$mp" 2>/dev/null || true; done
-  for p in "${PLUGINS[@]}"; do
+  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
@@ -596,7 +596,7 @@ install_mcps() {
   local entry name args spec tok_cfg url hdr
   local -a spec_words
   tok_cfg='${CLAUDE_CONFIG_DIR}'
-  for entry in "${MCPS[@]}"; do
+  for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
     spec="${args//@SERENA_CONTEXT@/$SERENA_CTX}"
     spec="${spec//@HOME_MEMORY_DIR@/$HOME_MEMORY_DIR}"
@@ -638,7 +638,7 @@ download_agents() {  # fetch each subagent .md into .claude/agents/; per-agent f
   command -v curl >/dev/null || { log "  !! curl not found - skipping agent fetch"; return 0; }
   local root file dest tmp
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping agents"; return 0; }
-  for file in "${AGENTS[@]}"; do
+  for file in ${AGENTS[@]+"${AGENTS[@]}"}; do
     dest="$root/.claude/agents/$file"; mkdir -p "$(dirname "$dest")"
     tmp="$(mktemp)"
     if ! curl -fsSL "$AGENT_BASE_URL/$file" -o "$tmp"; then log "  !! fetch failed (kept repo copy if any): $file"; rm -f "$tmp"; continue; fi
@@ -651,7 +651,7 @@ download_rules() {  # fetch each rule .md into .claude/rules/; per-rule fail-sof
   command -v curl >/dev/null || { log "  !! curl not found - skipping rule fetch"; return 0; }
   local root file dest tmp
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping rules"; return 0; }
-  for file in "${CLAUDE_RULES[@]}"; do
+  for file in ${CLAUDE_RULES[@]+"${CLAUDE_RULES[@]}"}; do
     dest="$root/.claude/rules/$file"; mkdir -p "$(dirname "$dest")"
     tmp="$(mktemp)"
     if ! curl -fsSL "$RULES_BASE_URL/$file" -o "$tmp"; then log "  !! fetch failed (kept repo copy if any): $file"; rm -f "$tmp"; continue; fi
@@ -740,7 +740,7 @@ PY
 remove_skills() {  # uninstall the manifest skills so the following re-add lands as fresh COPIES
   command -v npx >/dev/null || return 0
   local sargs=() entry
-  for entry in "${SKILLS[@]}"; do sargs+=(--skill "${entry#*|}"); done
+  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do sargs+=(--skill "${entry#*|}"); done
   log "skills [$SCOPE -> $AGENT]: removing ${#SKILLS[@]} for clean reinstall"
   npx -y skills remove "${sargs[@]}" --agent "$AGENT" $SKILLS_ADD_FLAG --yes 2>/dev/null || true
 }
@@ -755,7 +755,7 @@ update_skills() {
 update_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   claude plugin marketplace update 2>/dev/null || true            # refresh marketplaces first
-  for p in "${PLUGINS[@]}"; do
+  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
     pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac   # claude-hud is user-scope (statusline)
     log "plugin update [$pscope]: $p"
     claude plugin update "$p" --scope "$pscope" 2>&1 | tail -1 || true
@@ -768,7 +768,7 @@ update_mcps() {
   local entry name args spec tok_cfg url hdr
   local -a spec_words
   tok_cfg='${CLAUDE_CONFIG_DIR}'
-  for entry in "${MCPS[@]}"; do
+  for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
     spec="${args//@SERENA_CONTEXT@/$SERENA_CTX}"
     spec="${spec//@HOME_MEMORY_DIR@/$HOME_MEMORY_DIR}"
@@ -820,11 +820,11 @@ _fm_set_pin() {  # $1=file $2=key $3=value - rewrite the key's line INSIDE the f
 _pin_files() {  # print every locally-installed pin-bearing target: manifest agents + skill SKILL.md files
   local root file entry skills_dir
   root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-  for file in "${AGENTS[@]}"; do
+  for file in ${AGENTS[@]+"${AGENTS[@]}"}; do
     [ -f "$root/.claude/agents/$file" ] && printf '%s\n' "$root/.claude/agents/$file"
   done
   if [ "$SCOPE" = "project" ]; then skills_dir="$root/.claude/skills"; else skills_dir="$CONFIG_DIR/skills"; fi
-  for entry in "${SKILLS[@]}"; do
+  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do
     [ -f "$skills_dir/${entry#*|}/SKILL.md" ] && printf '%s\n' "$skills_dir/${entry#*|}/SKILL.md"
   done
 }
