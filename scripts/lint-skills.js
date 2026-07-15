@@ -1191,4 +1191,16 @@ function main()
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean).`);
 }
 
-main();
+module.exports = {
+    paths: { ROOT, SKILLS_DIR, CLAUDE_SH, CLAUDE_PS1, AGENTS_DIR, CLAUDE_RULES_DIR },
+    parseManifest,
+    parseStringArray,
+    parseFlatBlock,
+    localSkillDirs,
+    NON_SKILL_TOKENS,
+};
+
+if (require.main === module)
+{
+    main();
+}
