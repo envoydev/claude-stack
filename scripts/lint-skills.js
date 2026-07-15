@@ -1165,6 +1165,15 @@ function main()
         }
     }
 
+    // 20. The committed dependency graph (scripts/stack-graph.json) must match a
+    //     fresh build from the current skills/agents/rules/manifests. Lazy-require
+    //     avoids a load-time cycle (stack-graph.js requires this module back).
+    const stackGraph = require('./stack-graph.js');
+    if (stackGraph.readCommitted() !== stackGraph.serialize(stackGraph.buildStackGraph()))
+    {
+        flag('stack-graph: scripts/stack-graph.json is stale - run `node scripts/stack-graph.js --write` and commit it');
+    }
+
     if (warnings.length > 0)
     {
         for (const warning of warnings)

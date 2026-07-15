@@ -42,3 +42,10 @@ test('an agent never lists itself as an agent edge', () => {
         assert.ok(!node.agents.includes(name), `${name} lists itself`);
     }
 });
+
+const { serialize, readCommitted } = require('./stack-graph.js');
+
+test('the committed stack-graph.json is in sync with a fresh build', () => {
+    assert.strictEqual(readCommitted(), serialize(buildStackGraph()),
+        'run `node scripts/stack-graph.js --write` and commit the result');
+});
