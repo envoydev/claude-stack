@@ -1,10 +1,11 @@
 # Personal coding-agent skills & stacks
 
 A collection of personal agent skills - reusable coding conventions and small utilities - plus
-per-agent **stack installers** for [Claude Code](https://code.claude.com/docs/en/skills) and
-[Cursor](https://cursor.com). Skills install via a git-clone-and-copy step built into the
-installers; the full stack (skills + MCP servers + hooks/rules, plus plugins on Claude) is laid
-down by the same installers under `claude/` and `cursor/`.
+the **Claude Code stack installer** under `claude/` (skills + MCP servers + hooks/rules/agents +
+plugins). Skills install via a git-clone-and-copy step built into the installers. The **Cursor**
+twin stack lives in its own repo, [`cursor-stack`](https://github.com/envoydev/cursor-stack) -
+its installers clone THIS repo for the shared skills, so the skill/MCP baseline stays
+single-sourced here.
 
 ## Installation
 
@@ -15,17 +16,14 @@ mkdir -p .claude && curl -fsSL https://raw.githubusercontent.com/envoydev/agents
 bash .claude/claude-stack.sh install --skills-only   # Claude Code -> .claude/skills/
 ```
 
-```bash
-mkdir -p .cursor && curl -fsSL https://raw.githubusercontent.com/envoydev/agents-stack/main/cursor/cursor-stack.sh -o .cursor/cursor-stack.sh
-bash .cursor/cursor-stack.sh install skills-only   # Cursor      -> .cursor/skills/
-```
+For Cursor, use the installer from [`cursor-stack`](https://github.com/envoydev/cursor-stack) -
+it clones this repo for the same skills.
 
-Add `--scope global` to install into the account-wide `~/.claude/skills/` or `~/.cursor/skills/`
+Add `--scope global` to install into the account-wide `~/.claude/skills/`
 instead of the project. The agent picks up the `SKILL.md` files automatically the next session.
 
-**Want the whole stack** (skills + MCP servers + hooks/rules, plus plugins on Claude), not just the
-skills? Use the per-agent installers - see [`claude/`](claude/README.md) for Claude Code and
-[`cursor/`](cursor/README.md) for Cursor.
+**Want the whole stack** (skills + MCP servers + hooks/rules/agents + plugins), not just the
+skills? Use the stack installer - see [`claude/`](claude/README.md).
 
 ## Bootstrapping a project with the setup plugin
 
@@ -41,11 +39,10 @@ Then, in a target project, run `/claude-stack` (the `setup-claude-stack` skill):
 ## Managing installed skills
 
 ```bash
-bash .claude/claude-stack.sh update --skills-only   # refresh every skill to latest (Claude Code)
-bash .cursor/cursor-stack.sh update skills-only      # refresh every skill to latest (Cursor)
+bash .claude/claude-stack.sh update --skills-only   # refresh every skill to latest
 ```
 
-Skills are plain directories under `.claude/skills/` / `.cursor/skills/` - `ls` the directory to
+Skills are plain directories under `.claude/skills/` - `ls` the directory to
 see what's installed, delete a folder to drop a skill.
 
 ## Available skills
@@ -250,31 +247,32 @@ single-stack work, dispatch the team for large, parallel, cross-domain, or log-h
 ```text
 skills/                 # the personal skills - one <skill-name>/SKILL.md per skill (some carry a references/ subfolder)
 claude/                 # Claude Code stack: claude-stack.{sh,ps1,html} (agent roster viz + full inventory), CLAUDE.template.md, hooks/, agents/, rules/
-cursor/                 # Cursor stack: cursor-stack.{sh,ps1,html}, AGENTS.template.md, hooks/, rules/, agents/
 scripts/lint-skills.js  # repo lint (keeps skills / manifests / HTML in sync)
 ```
 
-`skills/` is the flat layout the per-agent installers copy directly from (one `<skill-name>/SKILL.md`
-per skill). `claude/` and `cursor/` are the per-agent stacks (each has its own README); each ships a
-stack-neutral `*.template.md` you copy into a project and fill in.
+`skills/` is the flat layout the installers copy directly from (one `<skill-name>/SKILL.md`
+per skill) - including the Cursor installers in [`cursor-stack`](https://github.com/envoydev/cursor-stack),
+which clone this repo. `claude/` is the Claude Code stack (its own README); it ships a
+stack-neutral `CLAUDE.template.md` you copy into a project and fill in.
 
 ## Maintenance
 
 After adding, renaming, or removing a skill, plugin, or MCP, run the repo
-lint. The per-agent installer scripts (`claude/claude-stack.{sh,ps1}` and
-`cursor/cursor-stack.{sh,ps1}`) are the single source of truth for everything in
+lint. The installer scripts (`claude/claude-stack.{sh,ps1}`) are the single
+source of truth for everything in
 use; the lint verifies every skill directory is registered in the manifests
 and this README, that each `SKILL.md` frontmatter loads as valid YAML (using
 js-yaml, so a malformed block fails here instead of reaching a project
 uncaught), that cross-skill references
 resolve everywhere they appear (`SKILL.md` files, the Claude subagents, the base
-templates, and the Claude + Cursor rules - a renamed skill is caught in all of them),
-that all four
-installers agree (4-way: `SKILLS` + `MCPS` identical across both agents and both
-shells, in the SAME ORDER, `PLUGINS` claude-only), that the on-disk subagents match
-the set the installers fetch, that every per-agent README headline count (skills /
+template, and the Claude rules - a renamed skill is caught in all of them),
+that both installers agree (`SKILLS` + `MCPS` + `PLUGINS` identical across both
+shells, `SKILLS` in the SAME ORDER), that the on-disk subagents match
+the set the installers fetch, that every README headline count (skills /
 plugins / MCPs / hooks / agents / rules) matches the installer, and that the stack
-inventory HTML matches the manifests in both directions:
+inventory HTML matches the manifests in both directions. A change to the shared
+`SKILLS`/`MCPS` baseline is a two-repo commit - mirror the manifest lists in
+`cursor-stack` in the same sitting:
 
 ```bash
 npm install              # one-time: the lint needs js-yaml

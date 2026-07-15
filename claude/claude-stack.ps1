@@ -7,7 +7,7 @@
   PowerShell port of claude-stack.sh: every skill / plugin / MCP from claude-stack.html (the complete
   toolset, not a curated subset), installed INTO a project. Built-in/system CLI skills are excluded
   (they ship with the CLI). Requires the `claude` CLI; claude-only steps fail soft if it is absent.
-  Cursor lives in cursor-stack.ps1.
+  The Cursor stack lives in the cursor-stack repo.
 
   Windows differences vs claude-stack.sh: hook .js files are invoked via `node` (no shebang/exec bit);
   settings.json is merged natively (ConvertFrom/To-Json), no python dependency; MCP arg strings stay
@@ -252,7 +252,7 @@ if ($Scope -notin @('project', 'global')) {
   exit 1
 }
 
-# This script provisions the Claude Code agent. (Cursor lives in cursor-stack.ps1.)
+# This script provisions the Claude Code agent. (The Cursor stack lives in the cursor-stack repo.)
 $Agent = 'claude-code'
 
 # $ConfigDir is for path resolution only and is normally NOT exported - EXCEPT when a space is given:
@@ -279,8 +279,7 @@ if ($Space) {
   }
 }
 
-# serena's --context is per-agent: Cursor uses the generic ide-assistant context.
-$SerenaContext = @{ 'claude-code' = 'claude-code'; 'cursor' = 'ide-assistant' }
+$SerenaContext = 'claude-code'   # serena's --context for Claude Code
 
 if ($Scope -eq 'project') {
   $top = (& git rev-parse --show-toplevel 2>$null)
@@ -382,8 +381,8 @@ $Plugins = @(
 # (3) MCP servers "name|args"; scope follows $Scope. SINGLE-QUOTED so ${...} stays LITERAL ->
 #     Claude Code interpolates ${CLAUDE_PROJECT_DIR:-.} at server launch.
 #     memory: uses ${HOME_MEMORY_DIR} - a script-local token resolved to $HOME\.memory-mcp at install
-#     time for BOTH agents, so Claude Code and Cursor share the same DB. A space (e.g. 'work')
-#     switches to a separate per-space DB (memory_<space>.db).
+#     time (a fixed home path, so a Cursor install on the same machine shares the same DB). A space
+#     (e.g. 'work') switches to a separate per-space DB (memory_<space>.db).
 # PERFORMANCE (see claude-stack.sh for the full rationale): resolve each runtime's LATEST version
 # HERE (install/update network step) and bake it into the registration. `install` skips already-
 # registered MCPs, so the resolved version stays FROZEN until `update` re-resolves and bumps it -
@@ -425,7 +424,7 @@ $MemoryEntry   = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
 
 # npx-launched MCPs (context7, angular-cli, playwright): on Windows the spawned stdio server can't
 # resolve the bare `npx` shim (it's npx.cmd), so it dies with JSON-RPC -32000 - wrap in `cmd /c`.
-# Non-Windows (Cursor on mac/Linux) keeps bare npx. $IsWindows is $null on PS 5.1 Desktop -> Windows.
+# Non-Windows (pwsh on mac/Linux) keeps bare npx. $IsWindows is $null on PS 5.1 Desktop -> Windows.
 # Entries are built by single-quote concatenation so ${CLAUDE_PROJECT_DIR:-.} stays LITERAL for
 # launch-time interpolation (a double-quoted PS string would mangle it).
 $OnWindows = if ($null -ne $IsWindows) { $IsWindows } else { $true }
@@ -493,7 +492,7 @@ $Hooks = @(
 # own deny entries are preserved). Bare globs match at any depth (gitignore semantics), and Claude Code
 # applies a Read() deny to recognized Bash reads too (cat/head/tail/sed) - not to arbitrary subprocesses.
 # Stack-specific secret/config globs stay a per-project addition (baseline-security.md tells the agent to extend the deny list in settings.json).
-# Claude-only - Cursor has no settings.json deny-list.
+# The settings.json deny-list is a Claude Code feature (no equivalent elsewhere).
 $SecretDeny = @(
   'Read(.env)'
   'Read(.env.*)'
@@ -504,9 +503,8 @@ $SecretDeny = @(
 )
 
 # (5) Subagents (claude-code): specialist agents fetched into .claude/agents/ on BOTH actions
-# (per-agent fail-soft). Claude Code auto-discovers .claude/agents/*.md; no settings.json wiring. Cursor ships
-# adapted twins of all 33 (Task-tool dispatch + MCP-inheriting subagents let the flow run there); the
-# model/effort tiering stays Claude-only (Cursor documents only opus-at-high, so the twins inherit).
+# (per-agent fail-soft). Claude Code auto-discovers .claude/agents/*.md; no settings.json wiring.
+# (Cursor's twins of these live in the cursor-stack repo.)
 $AgentBaseUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/agents'
 $Agents = @(
   'dotnet-build-error-resolver.md'   # implement phase (sonnet/high): dotnet build -> minimal fix loop (serena/csharp-lsp), capped
@@ -670,11 +668,11 @@ function Install-Mcps {
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
-    $spec = $parts[1].Replace('@SERENA_CONTEXT@', $SerenaContext['claude-code'])
+    $spec = $parts[1].Replace('@SERENA_CONTEXT@', $SerenaContext)
     # CLAUDE_CONFIG_DIR unset -> the CLI can't interpolate ${CLAUDE_CONFIG_DIR} at launch, so resolve it now.
     if (-not $env:CLAUDE_CONFIG_DIR) { $spec = $spec.Replace('${CLAUDE_CONFIG_DIR}', $ConfigDir) }
-    # HOME_MEMORY_DIR: shared memory root ($HOME\.memory-mcp) - always resolved at install time so both
-    # Claude Code and Cursor point to the same DB path regardless of agent.
+    # HOME_MEMORY_DIR: shared memory root ($HOME\.memory-mcp) - always resolved at install time to a
+    # fixed home path, so a Cursor install on the same machine points to the same DB.
     $spec = $spec.Replace('${HOME_MEMORY_DIR}', (Join-Path $HOME '.memory-mcp'))
     # ASSUMPTION: no resolved path token ($ConfigDir / $HOME\.memory-mcp) contains a space - the MCP
     # spec is space-separated by design (-e KEY=VAL -- cmd args), so a space inside one token cannot
@@ -881,7 +879,7 @@ function Update-Mcps {
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
-    $spec = $parts[1].Replace('@SERENA_CONTEXT@', $SerenaContext['claude-code'])
+    $spec = $parts[1].Replace('@SERENA_CONTEXT@', $SerenaContext)
     if (-not $env:CLAUDE_CONFIG_DIR) { $spec = $spec.Replace('${CLAUDE_CONFIG_DIR}', $ConfigDir) }
     $spec = $spec.Replace('${HOME_MEMORY_DIR}', (Join-Path $HOME '.memory-mcp'))
     # Same no-spaces-in-resolved-path assumption as Install-Mcps (see there); .Split(' ') is array, no glob.

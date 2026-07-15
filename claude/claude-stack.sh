@@ -3,8 +3,8 @@
 # claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
 # [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
 # claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
-# system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; Cursor lives
-# in cursor-stack.sh.
+# system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; the Cursor
+# stack lives in the cursor-stack repo.
 #
 # Usage - run this file directly inside the target project:
 #   bash claude-stack.sh install   # install for Claude Code
@@ -17,8 +17,8 @@
 #   --space <name>          any word; selects the Claude account ~/.claude-<name> (skills/plugins/MCPs
 #                           install there - CLAUDE_CONFIG_DIR is exported for the claude CLI) AND a
 #                           separate memory DB (memory_<name>.db). Omit for the default ~/.claude
-#                           account + shared DB. Both agents share ~/.memory-mcp so Claude Code and
-#                           Cursor see the same per-space DB.
+#                           account + shared DB. The DB lives at ~/.memory-mcp, so a Cursor install
+#                           on the same machine sees the same per-space DB.
 #   --scope project|global  project (default) installs the full set INTO this repo (skills project-
 #                           scoped, plugins/mcps --scope project); global installs it into the active
 #                           account (skills -g, plugins/mcps --scope user). Overrides the SCOPE env var.
@@ -83,7 +83,7 @@ case "$ACTION" in
   *) usage >&2; echo "error: first argument must be 'install' or 'update' (got '${ACTION:-<none>}')" >&2; exit 1 ;;
 esac
 
-# This script provisions the Claude Code agent. (Cursor lives in cursor-stack.sh.)
+# This script provisions the Claude Code agent. (The Cursor stack lives in the cursor-stack repo.)
 AGENT="claude-code"
 
 # Named flags (any order, each with a default): --space <name> (account ~/.claude-<name> +
@@ -161,7 +161,7 @@ prerequisites_check() {
   if command -v python3 >/dev/null 2>&1; then
     printf '  python3: %s\n' "$(command -v python3)"
   else
-    echo "  !! python3 not found - the security-guidance hook and the Cursor/settings JSON merges will fail." >&2
+    echo "  !! python3 not found - the security-guidance hook and the settings.json wiring will fail." >&2
     ok=false
   fi
   # node: required by Claude Code, the convention hooks, and npx-based MCPs. Below 22.12 LTS some
@@ -249,8 +249,8 @@ fi
 
 SERENA_CTX="claude-code"   # serena's --context for Claude Code
 
-# Shared memory root - always resolved at install time so both Claude Code and Cursor point to the
-# same DB path regardless of agent.
+# Shared memory root - always resolved at install time to a fixed home path, so a Cursor install on
+# the same machine points to the same DB.
 HOME_MEMORY_DIR="$HOME/.memory-mcp"
 
 if [ "$SCOPE" = "project" ]; then
@@ -349,10 +349,9 @@ PLUGINS=(
 )
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.
-#     @SERENA_CONTEXT@   -> resolved at install time per-agent (claude-code | ide-assistant).
-#     @HOME_MEMORY_DIR@  -> resolved at install time to ~/.memory-mcp for BOTH agents (shared DB).
-#     \${CLAUDE_PROJECT_DIR:-.} stays LITERAL so Claude Code interpolates it at server launch; for
-#       Cursor (no shell interpolation) it is resolved to a concrete path when .cursor/mcp.json is written.
+#     @SERENA_CONTEXT@   -> resolved at install time to claude-code.
+#     @HOME_MEMORY_DIR@  -> resolved at install time to ~/.memory-mcp (shared with any Cursor install on the box).
+#     \${CLAUDE_PROJECT_DIR:-.} stays LITERAL so Claude Code interpolates it at server launch.
 #     memory (mcp-memory-service): a space (e.g. 'work') switches to memory_<space>.db.
 #
 # PERFORMANCE - network resolution is the cost of a slow new-session start, so it happens HERE
@@ -430,7 +429,7 @@ MCPS=(
   "playwright|-- npx -y @playwright/mcp${PW_PIN} --user-data-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright/screenshots" # drive a real browser for visual checks / web app verification
   "chrome-devtools|-- npx chrome-devtools-mcp@latest" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   "appium-mcp|-- npx -y appium-mcp@latest" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
-  "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev); the Authorization header keeps ${SENTRY_ACCESS_TOKEN} LITERAL and expands at launch (Claude: settings.json "env"; Cursor: ${env:VAR}, OS env); comment out where the project has no Sentry
+  "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev); the Authorization header keeps ${SENTRY_ACCESS_TOKEN} LITERAL, expanded at launch from settings.json "env"; comment out where the project has no Sentry
   "$MEMORY_ENTRY"  # memory: cross-project recall - the subagent handoff runs on serena; comment out in a standalone project
   "$CONTEXT7_ENTRY"                           # up-to-date library/framework/SDK docs (beats recalled API knowledge)
 )
@@ -452,7 +451,7 @@ HOOKS=(
 # own deny entries are preserved). Bare globs match at any depth (gitignore semantics), and Claude Code
 # applies a Read() deny to recognized Bash reads too (cat/head/tail/sed) - not to arbitrary subprocesses.
 # Stack-specific secret/config globs stay a per-project addition (baseline-security.md tells the agent to extend the deny list in settings.json).
-# Claude-only - Cursor has no settings.json deny-list.
+# The settings.json deny-list is a Claude Code feature (no equivalent elsewhere).
 SECRET_DENY=(
   "Read(.env)"
   "Read(.env.*)"
@@ -464,9 +463,7 @@ SECRET_DENY=(
 
 # (5) Subagents (claude-code): specialist agents fetched into .claude/agents/ on BOTH actions
 # (per-agent fail-soft - an agent not yet upstream keeps its committed repo copy). Claude Code auto-discovers
-# .claude/agents/*.md; no settings.json wiring needed. Cursor ships adapted twins of all 33 (Task-tool
-# dispatch + MCP-inheriting subagents let the flow run there too); the model/effort tiering stays Claude-only
-# (Cursor documents only opus-at-high, so the twins inherit the session model).
+# .claude/agents/*.md; no settings.json wiring needed. (Cursor's twins of these live in the cursor-stack repo.)
 AGENT_BASE_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/agents"
 AGENTS=(
   "dotnet-build-error-resolver.md"   # implement phase (sonnet/high): dotnet build -> categorize errors -> minimal fix loop (serena/csharp-lsp), capped

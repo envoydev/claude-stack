@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Repo lint: keep the registration surfaces and all cross-skill references in
-// sync. The installer is split per agent into four manifests:
-//   claude/claude-stack.{sh,ps1}  and  cursor/cursor-stack.{sh,ps1}
-// SKILLS and MCPS are SHARED (must be identical across all four); PLUGINS are
-// claude-only (claude-stack.sh must equal claude-stack.ps1; cursor carries none).
+// sync. The installer is split into two manifests: claude/claude-stack.{sh,ps1}.
+// SKILLS and MCPS must be identical across both twins - and they are ALSO shared
+// with the Cursor stack (the separate cursor-stack repo, whose installers clone
+// this repo for skills); that cross-repo parity is held by discipline (a baseline
+// change is a two-repo commit), each repo linting its own twins.
 // Catches the failure modes that actually happen:
 //   1. a skill directory exists but is missing from a manifest or the README
 //      index (it would silently never install);
@@ -12,22 +13,21 @@
 //   3. a SKILL.md frontmatter block that a strict YAML parser (js-yaml here)
 //      cannot load, which silently drops the skill from the registry, e.g. an
 //      unquoted `description:` containing `Companion: ` (colon-space);
-//   4. drift between the four manifests, or between them and the stack HTML;
-//   5. headline Skills/Plugins/MCP/Hooks/Agents/Rules counts in the per-agent
-//      READMEs drifting from the actual installer/on-disk set sizes (those prose
+//   4. drift between the two manifests, or between them and the stack HTML;
+//   5. headline Skills/Plugins/MCP/Hooks/Agents/Rules counts in the
+//      README drifting from the actual installer/on-disk set sizes (those prose
 //      numbers can no longer lie);
 //   6. a backticked skill name that resolves to nothing - scanned in skill files,
-//      claude/agents/*.md subagents, AND the base templates + cursor rules + claude rules
-//      (CLAUDE.template.md / AGENTS.template.md / cursor/rules/*.mdc / claude/rules/*.md),
-//      where a renamed skill would otherwise rot silently; tokens there resolve against
+//      claude/agents/*.md subagents, AND the base template + claude rules
+//      (CLAUDE.template.md / claude/rules/*.md), where a renamed skill would
+//      otherwise rot silently; tokens there resolve against
 //      skills + plugins + MCPs + agent names + NON_SKILL_TOKENS;
 //   7. a false 'Vendored from' label on a house dotnet-* skill (they are
 //      original work; honest 'Adapted from'/attribution is allowed);
-//   8. the claude and cursor installers listing the SKILLS block in a DIFFERENT
+//   8. the two installers listing the SKILLS block in a DIFFERENT
 //      ORDER (not just a different set);
 //   9. the on-disk claude/agents/*.md set diverging from the agents the
-//      installers fetch (the AGENTS manifest array) - same check for cursor/agents/*.md
-//      against the CURSOR_AGENTS manifest in BOTH cursor-stack.{sh,ps1}.
+//      installers fetch (the AGENTS manifest array).
 // Also verifies the require-convention-skill hook only demands skills that exist,
 // that every NON_SKILL_TOKENS allowlist entry is still actually used (no dead
 // config), that claude/rules/*.md + claude/agents/*.md frontmatter parses as
@@ -45,18 +45,11 @@ const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'skills');
 const CLAUDE_SH = path.join(ROOT, 'claude', 'claude-stack.sh');
 const CLAUDE_PS1 = path.join(ROOT, 'claude', 'claude-stack.ps1');
-const CURSOR_SH = path.join(ROOT, 'cursor', 'cursor-stack.sh');
-const CURSOR_PS1 = path.join(ROOT, 'cursor', 'cursor-stack.ps1');
 const README = path.join(ROOT, 'README.md');
 const CLAUDE_README = path.join(ROOT, 'claude', 'README.md');
-const CURSOR_README = path.join(ROOT, 'cursor', 'README.md');
 const STACK_HTML = path.join(ROOT, 'claude', 'claude-stack.html');
-const CURSOR_STACK_HTML = path.join(ROOT, 'cursor', 'cursor-stack.html');
 const AGENTS_DIR = path.join(ROOT, 'claude', 'agents');
-const CURSOR_AGENTS_DIR = path.join(ROOT, 'cursor', 'agents');
 const CLAUDE_TEMPLATE = path.join(ROOT, 'claude', 'CLAUDE.template.md');
-const CURSOR_TEMPLATE = path.join(ROOT, 'cursor', 'AGENTS.template.md');
-const CURSOR_RULES_DIR = path.join(ROOT, 'cursor', 'rules');
 const CLAUDE_RULES_DIR = path.join(ROOT, 'claude', 'rules');
 const CONVENTION_HOOK = path.join(ROOT, 'claude', 'hooks', 'require-convention-skill.js');
 const PLUGIN_MARKETPLACE_URLS = new Set([
@@ -195,7 +188,7 @@ function localSkillDirs()
 // name is the part before `sep` ('@' for plugins, '|' for MCPs). Bare variable
 // lines (e.g. "$MEMORY_ENTRY" / $MemoryEntry) are resolved by locating the
 // variable's assignment elsewhere in the file. Returns empty sets if the block
-// is absent (e.g. PLUGINS in a cursor manifest).
+// is absent.
 function parseFlatBlock(file, quote, blockStart, sep)
 {
     const text = fs.readFileSync(file, 'utf8');
@@ -324,16 +317,14 @@ function main()
 {
     const dirs = localSkillDirs();
 
-    // SKILLS are SHARED across all four manifests. Parse each; claude-stack.sh is
-    // the reference for the existing dir/README/HTML checks, and a 4-way parity
-    // check proves the other three match it.
+    // SKILLS are shared across both manifests (and, cross-repo, with the
+    // cursor-stack twins). Parse each; claude-stack.sh is the reference for the
+    // dir/README/HTML checks, and a parity check proves the ps1 matches it.
     const skills = {
         'claude-stack.sh':  parseManifest(CLAUDE_SH, '"', 'SKILLS=('),
         'claude-stack.ps1': parseManifest(CLAUDE_PS1, "'", '$Skills = @('),
-        'cursor-stack.sh':  parseManifest(CURSOR_SH, '"', 'SKILLS=('),
-        'cursor-stack.ps1': parseManifest(CURSOR_PS1, "'", '$Skills = @('),
     };
-    const primary = skills['claude-stack.sh'];   // canonical SKILLS view (all four are identical)
+    const primary = skills['claude-stack.sh'];   // canonical SKILLS view (both are identical)
 
     const readme = fs.readFileSync(README, 'utf8');
     const readmeSection = readme.split(/^## Available skills$/m)[1]?.split(/^## /m)[0] ?? '';
@@ -425,11 +416,11 @@ function main()
         }
     }
 
-    // 4. All four manifests agree on the active SKILLS set.
+    // 4. Both manifests agree on the active SKILLS set.
     assertSameSet('skill', Object.fromEntries(
         Object.entries(skills).map(([label, m]) => [label, new Set(m.active.keys())])));
 
-    // 4b. The four manifests must list the active SKILLS in the SAME ORDER, not
+    // 4b. The manifests must list the active SKILLS in the SAME ORDER, not
     //     just the same set - the installers were aligned so a diff/review of one
     //     against another stays line-for-line. parseManifest's Map preserves
     //     insertion order, so the active keys ARE the install order. Compare each
@@ -455,8 +446,7 @@ function main()
     }
 
     // 5. The ps1 'every skill (N)' inventory count matches active + commented entries.
-    for (const [label, file, parsed] of [['claude-stack.ps1', CLAUDE_PS1, skills['claude-stack.ps1']],
-        ['cursor-stack.ps1', CURSOR_PS1, skills['cursor-stack.ps1']]])
+    for (const [label, file, parsed] of [['claude-stack.ps1', CLAUDE_PS1, skills['claude-stack.ps1']]])
     {
         const counted = fs.readFileSync(file, 'utf8').match(/every skill \((\d+)\)/);
         if (counted)
@@ -559,20 +549,17 @@ function main()
     }
 
     // 8-10. The agent scripts are the source of truth for EVERYTHING in use:
-    // skills, plugins, and MCPs. PLUGINS are claude-only (claude-stack.sh ==
-    // claude-stack.ps1; cursor scripts carry none); MCPS are shared (all four
-    // identical). The stack HTML must agree with claude-stack.sh (the superset).
+    // skills, plugins, and MCPs (claude-stack.sh == claude-stack.ps1 for all
+    // three blocks). The stack HTML must agree with claude-stack.sh.
     const html = parseStackHtml();
     const pluginsClaudeSh = parseFlatBlock(CLAUDE_SH, '"', 'PLUGINS=(', '@');
     const pluginsClaudePs1 = parseFlatBlock(CLAUDE_PS1, "'", '$Plugins = @(', '@');
     const mcps = {
         'claude-stack.sh':  parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|'),
         'claude-stack.ps1': parseFlatBlock(CLAUDE_PS1, "'", '$Mcps = @(', '|'),
-        'cursor-stack.sh':  parseFlatBlock(CURSOR_SH, '"', 'MCPS=(', '|'),
-        'cursor-stack.ps1': parseFlatBlock(CURSOR_PS1, "'", '$Mcps = @(', '|'),
     };
 
-    // 18. Backticked skill names in the base templates + cursor rules + claude rules must
+    // 18. Backticked skill names in the base template + claude rules must
     //     resolve too, or a renamed skill rots silently there (the gap check 6
     //     left open). Unlike a skill file, a template/rule legitimately names
     //     plugins (`csharp-lsp`, `claude-hud`), MCPs (`angular-cli`,
@@ -592,12 +579,7 @@ function main()
     }
 
     const resolvableLower = new Map([...resolvable].map(k => [k.toLowerCase(), k]));
-    const templateFiles = [CLAUDE_TEMPLATE, CURSOR_TEMPLATE];
-    if (fs.existsSync(CURSOR_RULES_DIR))
-    {
-        templateFiles.push(...fs.readdirSync(CURSOR_RULES_DIR).filter(f => f.endsWith('.mdc')).map(f => path.join(CURSOR_RULES_DIR, f)));
-    }
-
+    const templateFiles = [CLAUDE_TEMPLATE];
     if (fs.existsSync(CLAUDE_RULES_DIR))
     {
         templateFiles.push(...fs.readdirSync(CLAUDE_RULES_DIR).filter(f => f.endsWith('.md')).map(f => path.join(CLAUDE_RULES_DIR, f)));
@@ -649,30 +631,6 @@ function main()
         }
     }
 
-    // 8b. cursor-stack.html's personal inventory was previously unchecked (parseStackHtml
-    //     reads only claude-stack.html). Validate its personal-skill rows against the dirs
-    //     both directions. (Cursor HTML has no 'otherTools' block, so check only personal.)
-    if (fs.existsSync(CURSOR_STACK_HTML))
-    {
-        const cursorPersonal = new Set([...(fs.readFileSync(CURSOR_STACK_HTML, 'utf8')
-            .split('const personal = {')[1] ?? '').split('};')[0].matchAll(/\["([a-z0-9-]+)","/g)].map(m => m[1]));
-        for (const name of cursorPersonal)
-        {
-            if (!dirs.includes(name))
-            {
-                flag(`cursor-stack.html personal row '${name}' has no skills/${name}/ directory`);
-            }
-        }
-
-        for (const dir of dirs)
-        {
-            if (!cursorPersonal.has(dir))
-            {
-                flag(`skills/${dir} is missing from the cursor-stack.html personal section`);
-            }
-        }
-    }
-
     const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== 'envoydev/agents-stack'));
     const inventory = new Set([...thirdPartyActive, ...primary.commented.keys()]);
     for (const name of thirdPartyActive)
@@ -691,52 +649,9 @@ function main()
         }
     }
 
-    // 8c. cursor-stack.html's third-party `repository` block was also unchecked (8b
-    //     covers only its personal block) - validate it against the manifest inventory
-    //     both directions, exactly as the claude repository block is checked above.
-    if (fs.existsSync(CURSOR_STACK_HTML))
-    {
-        const cursorBlock = (fs.readFileSync(CURSOR_STACK_HTML, 'utf8').split('const repository = [')[1] ?? '').split('\n];')[0];
-        const cursorRepo = new Set();
-        for (const m of cursorBlock.matchAll(/\["([a-zA-Z0-9:_-]+)","[^"]*","([^"]+)"/g))
-        {
-            if (!PLUGIN_MARKETPLACE_URLS.has(m[2]))
-            {
-                cursorRepo.add(m[1]);
-            }
-        }
-
-        for (const name of thirdPartyActive)
-        {
-            if (!cursorRepo.has(name))
-            {
-                flag(`manifest skill '${name}' is missing from the cursor-stack.html repository section`);
-            }
-        }
-
-        for (const name of cursorRepo)
-        {
-            if (!inventory.has(name))
-            {
-                flag(`cursor-stack.html repository row '${name}' is not in the installer manifests (active or commented)`);
-            }
-        }
-    }
-
-    // 9. Plugins: claude-only. claude-stack.sh == claude-stack.ps1; cursor carries none;
-    //    every active plugin appears in the HTML (and vice versa).
+    // 9. Plugins: claude-stack.sh == claude-stack.ps1; every active plugin
+    //    appears in the HTML (and vice versa).
     assertSameSet('plugin', { 'claude-stack.sh': pluginsClaudeSh.active, 'claude-stack.ps1': pluginsClaudePs1.active });
-    for (const [label, file] of [['cursor-stack.sh', CURSOR_SH], ['cursor-stack.ps1', CURSOR_PS1]])
-    {
-        const cursorPlugins = label.endsWith('.ps1')
-            ? parseFlatBlock(file, "'", '$Plugins = @(', '@')
-            : parseFlatBlock(file, '"', 'PLUGINS=(', '@');
-        for (const name of cursorPlugins.active)
-        {
-            flag(`${label} should carry no plugins (claude-only) but lists '${name}'`);
-        }
-    }
-
     for (const name of pluginsClaudeSh.active)
     {
         if (!html.plugins.has(name))
@@ -753,7 +668,7 @@ function main()
         }
     }
 
-    // 10. MCPs: shared. All four agree, and the HTML MCP rows equal the manifest set exactly.
+    // 10. MCPs: both twins agree, and the HTML MCP rows equal the manifest set exactly.
     assertSameSet('MCP', Object.fromEntries(
         Object.entries(mcps).map(([label, m]) => [label, m.active])));
     const mcpsPrimary = mcps['claude-stack.sh'];
@@ -775,7 +690,7 @@ function main()
 
     // 11. Reverse allowlist check: every NON_SKILL_TOKENS entry must actually
     //     appear as a backtick in some scanned surface - a skill file (check 6)
-    //     or a base template / cursor rule / claude rule (check 18), both of which
+    //     or the base template / a claude rule (check 18), both of which
     //     record matches. A never-matched entry is dead config (e.g. a `dev-log` left
     //     behind after the trigger word stopped being backticked) - prune it.
     for (const token of NON_SKILL_TOKENS)
@@ -788,24 +703,16 @@ function main()
 
     // 12. The active manifest set sizes (and the installer's HOOKS/AGENTS/RULES
     //     arrays) are the single source of truth; the headline counts in the
-    //     per-agent READMEs must equal them so the prose cannot silently drift.
-    //     Claude carries Skills/Plugins/MCP/Hooks/Agents/Rules; Cursor carries
-    //     Skills/MCP/Hooks/Rules/Agents (no Plugins). Both spell the count two
-    //     ways: a table cell ('| 67 |') and an inline '(67)'. Hook / agent / rule
-    //     counts come from the installer array sizes (all cursor rules are now
-    //     vendored on disk, but the installer CURSOR_RULES array - not the on-disk
-    //     .mdc set - stays authoritative, since a rule could still be fetched by
-    //     url). The claude Rules count is validated against the CLAUDE_RULES array
-    //     the same way. The cursor Agents count is validated against CURSOR_AGENTS.
+    //     claude README must equal them so the prose cannot silently drift.
+    //     The README spells the count two ways: a table cell ('| 67 |') and an
+    //     inline '(67)'. Hook / agent / rule counts come from the installer
+    //     array sizes; the Rules count is validated against CLAUDE_RULES.
     const skillCount = primary.active.size;
     const pluginCount = pluginsClaudeSh.active.size;
     const mcpCount = mcpsPrimary.active.size;
     const claudeHookCount = parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').length;
     const claudeAgentCount = parseStringArray(CLAUDE_SH, '"', 'AGENTS=(').length;
     const claudeRuleCount = parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=(').length;
-    const cursorHookCount = parseStringArray(CURSOR_SH, '"', 'CURSOR_HOOKS=(').length;
-    const cursorRuleCount = parseStringArray(CURSOR_SH, '"', 'CURSOR_RULES=(').length;
-    const cursorAgentCount = parseStringArray(CURSOR_SH, '"', 'CURSOR_AGENTS=(').length;
 
     // 12b. Stack hooks in claude-stack.html: the 'Stack hooks' section rows and the
     //      c-hooks count must match the installer HOOKS=() array (names stripped of
@@ -841,7 +748,7 @@ function main()
     const readmeCount = (file, label, rowLabel) =>
     {
         const text = fs.readFileSync(file, 'utf8');
-        // '| **Skills** | 67 |' (claude) or '| **Skills** (67) |' (cursor).
+        // '| **Skills** | 67 |' (table cell) or '| **Skills** (67) |' (inline).
         const m = text.match(new RegExp(`\\*\\*${rowLabel}[^*]*\\*\\*\\s*(?:\\((\\d+)\\)|\\|\\s*(\\d+))`));
         if (!m)
         {
@@ -852,30 +759,19 @@ function main()
         return Number(m[1] ?? m[2]);
     };
 
-    for (const [file, label] of [[CLAUDE_README, 'claude/README.md'], [CURSOR_README, 'cursor/README.md']])
+    for (const [rowLabel, expected] of [
+        ['Skills', skillCount],
+        ['MCP servers', mcpCount],
+        ['Plugins', pluginCount],
+        ['Hooks', claudeHookCount],
+        ['Agents', claudeAgentCount],
+        ['Rules', claudeRuleCount],
+    ])
     {
-        const checks = [['Skills', skillCount], ['MCP servers', mcpCount]];
-        if (file === CLAUDE_README)
+        const got = readmeCount(CLAUDE_README, 'claude/README.md', rowLabel);
+        if (got !== null && got !== expected)
         {
-            checks.push(['Plugins', pluginCount]);   // Cursor carries no plugins
-            checks.push(['Hooks', claudeHookCount]);
-            checks.push(['Agents', claudeAgentCount]);
-            checks.push(['Rules', claudeRuleCount]);
-        }
-        else
-        {
-            checks.push(['Hooks', cursorHookCount]);
-            checks.push(['Rules', cursorRuleCount]);   // Claude has no Rules row
-            checks.push(['Agents', cursorAgentCount]); // Cursor now ships the 4 resolver subagents
-        }
-
-        for (const [rowLabel, expected] of checks)
-        {
-            const got = readmeCount(file, label, rowLabel);
-            if (got !== null && got !== expected)
-            {
-                flag(`${label}: headline ${rowLabel} count is ${got} but the installer holds ${expected}`);
-            }
+            flag(`claude/README.md: headline ${rowLabel} count is ${got} but the installer holds ${expected}`);
         }
     }
 
@@ -890,18 +786,6 @@ function main()
         ? new Set(fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')))
         : new Set();
     assertSameSet('agent file', { 'claude/agents/': agentDiskSet, 'claude-stack.sh AGENTS': agentManifestSh });
-
-    // 12c. Same parity for the CURSOR subagents: the on-disk cursor/agents/*.md set must equal the
-    //      CURSOR_AGENTS manifest array in BOTH cursor shells (both shells agree first, then the
-    //      on-disk set equals them). A drift means a committed Cursor subagent never installs, or the
-    //      installer fetches a Cursor agent that no longer exists in-repo.
-    const cursorAgentManifestSh = new Set(parseStringArray(CURSOR_SH, '"', 'CURSOR_AGENTS=('));
-    const cursorAgentManifestPs1 = new Set(parseStringArray(CURSOR_PS1, "'", '$CursorAgents = @('));
-    assertSameSet('cursor agent', { 'cursor-stack.sh': cursorAgentManifestSh, 'cursor-stack.ps1': cursorAgentManifestPs1 });
-    const cursorAgentDiskSet = fs.existsSync(CURSOR_AGENTS_DIR)
-        ? new Set(fs.readdirSync(CURSOR_AGENTS_DIR).filter(f => f.endsWith('.md')))
-        : new Set();
-    assertSameSet('cursor agent file', { 'cursor/agents/': cursorAgentDiskSet, 'cursor-stack.sh CURSOR_AGENTS': cursorAgentManifestSh });
 
     // 12d. Same parity for the CLAUDE rules: the on-disk claude/rules/*.md set must equal the
     //      CLAUDE_RULES manifest array in BOTH claude shells (both shells agree first, then the
@@ -936,31 +820,9 @@ function main()
         }
     }
 
-    // 13b. Same reference check for the Cursor subagents: each backticked hyphenated token in
-    //      cursor/agents/*.md must resolve to a local skill dir or a manifest selector (the cursor
-    //      bodies cite house skills like `angular-conventions` / `package-management` the same way).
-    //      Mirrors check 13; the same rule keeps a renamed skill from rotting silently in the Cursor
-    //      twins. (Cursor agents have NO `tools:` field and no Skill-tool gate, so check 16's
-    //      Skill-allowlist guard intentionally does NOT scan them - it stays scoped to claude/agents.)
-    if (fs.existsSync(CURSOR_AGENTS_DIR))
-    {
-        for (const agentFile of fs.readdirSync(CURSOR_AGENTS_DIR).filter(f => f.endsWith('.md')))
-        {
-            const text = fs.readFileSync(path.join(CURSOR_AGENTS_DIR, agentFile), 'utf8');
-            for (const m of text.matchAll(/`([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`/g))
-            {
-                const token = m[1];
-                if (!known.has(token) && !NON_SKILL_TOKENS.has(token))
-                {
-                    flag(`cursor/agents/${agentFile} references skill \`${token}\` - not a local skill dir or a manifest selector`);
-                }
-            }
-        }
-    }
-
     // 14. House dotnet-* skills are original work, not vendored copies. Guard
     //     against the CONTRADICTORY 'Vendored from <kit>' inventory label
-    //     reappearing on a dotnet-* SKILL.md (or its references) or either stack
+    //     reappearing on a dotnet-* SKILL.md (or its references) or the stack
     //     HTML in a dotnet-* context. Scoped to the false 'vendored from' label
     //     only - an honest 'Adapted from' / third-party notice is NOT blocked, so
     //     a future genuinely-incorporated skill can still carry its MIT credit.
@@ -985,19 +847,11 @@ function main()
         }
     }
 
-    for (const [htmlFile, label] of [[STACK_HTML, 'claude-stack.html'], [CURSOR_STACK_HTML, 'cursor-stack.html']])
+    for (const line of fs.readFileSync(STACK_HTML, 'utf8').split('\n'))
     {
-        if (!fs.existsSync(htmlFile))
+        if (/dotnet-/.test(line) && provenance.test(line))
         {
-            continue;
-        }
-
-        for (const line of fs.readFileSync(htmlFile, 'utf8').split('\n'))
-        {
-            if (/dotnet-/.test(line) && provenance.test(line))
-            {
-                flag(`${label} has a dotnet-* line with a 'Vendored from' label - house dotnet-* skills are original work`);
-            }
+            flag(`claude-stack.html has a dotnet-* line with a 'Vendored from' label - house dotnet-* skills are original work`);
         }
     }
 
@@ -1052,28 +906,6 @@ function main()
             {
                 flag(`claude/agents/${agentFile} tells the agent to invoke the Skill tool but 'Skill' is not in its tools: allowlist - it would deadlock on the convention gate`);
             }
-        }
-    }
-
-    // 17. The Cursor angular rule's globs must match the convention hook's 'ng'
-    //     suffix table. A drift (e.g. a '.module.ts' glob the hook excludes) means
-    //     the two stacks gate Angular files differently for the same project.
-    const NG_RULE = path.join(ROOT, 'cursor', 'rules', 'angular-conventions.mdc');
-    if (fs.existsSync(CONVENTION_HOOK) && fs.existsSync(NG_RULE))
-    {
-        const ngBlock = fs.readFileSync(CONVENTION_HOOK, 'utf8').split('ng: {')[1]?.split('}')[0] ?? '';
-        const ngSuffixes = new Set([...ngBlock.matchAll(/'([^']+)'\s*:/g)].map(m => m[1]));
-        const globsLine = fs.readFileSync(NG_RULE, 'utf8').match(/^globs:\s*"([^"]+)"/m);
-        const ruleSuffixes = new Set((globsLine ? globsLine[1].split(',') : [])
-            .map(g => g.trim().replace(/^\*\*\/\*/, '')));
-        for (const s of ngSuffixes)
-        {
-            if (!ruleSuffixes.has(s)) flag(`cursor/rules/angular-conventions.mdc globs miss '${s}' that the hook 'ng' table gates`);
-        }
-
-        for (const s of ruleSuffixes)
-        {
-            if (!ngSuffixes.has(s)) flag(`cursor/rules/angular-conventions.mdc globs '${s}' but the hook 'ng' table does not gate it (drift)`);
         }
     }
 
@@ -1196,7 +1028,7 @@ function main()
     }
 
     console.log(`lint-skills: clean (${dirs.length} skills, ${primary.active.size} active manifest entries, `
-        + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; 4 manifests + HTML in sync; `
+        + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; both manifests + HTML in sync; `
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean).`);
 }
 

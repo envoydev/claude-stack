@@ -2,21 +2,26 @@
 
 ## What this repo is
 
-The single source of truth for a personal coding-agent setup - **Claude Code and Cursor** -
+The single source of truth for the **Claude Code** half of a personal coding-agent setup -
 not an application. It collects everything applied to *other* projects: the house-style
-skills, the per-agent base instruction templates those projects extend, the hook scripts and
-convention rules, and the installers that wire skills / MCP servers / plugins (Claude) or
-rules (Cursor) into each project. Consuming projects pull from here - they do not own their
-copy. Skills install via a git-clone-and-copy step built into the per-agent stack installers
-(or the `claude-stack-setup` plugin's `/claude-stack`); the rest is laid down by the same
-installers. The durable change always lives in *this* repo's source; a change
-made only inside a consuming project is throwaway (see Invariants).
+skills, the base instruction template those projects extend, the hook scripts and
+convention rules, and the installer that wires skills / MCP servers / plugins into each
+project. The **Cursor** twin stack was split out to its own repo,
+[`cursor-stack`](https://github.com/envoydev/cursor-stack) - its installers git-clone THIS
+repo for the shared skills, so the skill + MCP baseline stays single-sourced here, and a
+baseline change is a TWO-REPO commit (the manifest lists are mirrored there in the same
+sitting; each repo lints its own `.sh`/`.ps1` twins). Consuming projects pull from here -
+they do not own their copy. Skills install via a git-clone-and-copy step built into the
+stack installers (or the `claude-stack-setup` plugin's `/claude-stack`); the rest is laid
+down by the same installers. The durable change always lives in *this* repo's source; a
+change made only inside a consuming project is throwaway (see Invariants).
 
 ## Layout - one home per concern
 
 - `skills/` - the personal house-style skills, each a `SKILL.md`. Auto-activate on their own
-  keywords / file types in consuming projects. Distributed via the per-agent stack installers'
-  git-clone-and-copy step (or the `claude-stack-setup` plugin).
+  keywords / file types in consuming projects. Distributed via the stack installers'
+  git-clone-and-copy step (or the `claude-stack-setup` plugin) - including `cursor-stack`'s
+  installers, which clone this repo.
 - `claude/` - the **Claude Code** stack:
   - `claude-stack.{sh,ps1}` installer (Unix / Windows) + `claude-stack.html` browser inventory.
   - `CLAUDE.template.md` - the stack-neutral per-project skeleton (with `<placeholders>`) that each
@@ -52,16 +57,12 @@ made only inside a consuming project is throwaway (see Invariants).
     `references/domain-trio-protocol.md` (main-stack-agents-flow was folded into that reference
     2026-07-14), and for cross-domain work freezes the shared contract and drives the parallel
     per-stack runs through the `integration-reviewer` final gate. All 33 carry
-    frontmatter model/effort pins (see the divergence table). Fetched into a project's
-    `.claude/agents/`. Cursor ships adapted twins of all 33 (its own `cursor/agents/` - see the divergence
-    table). Cursor (2.5+) has a Task tool and subagents that inherit the parent's MCP servers, so the twins
-    keep the FULL orchestration: `project-task-flow` fans out designer/implementer/verifier via the Task tool,
-    the diagnosers dispatch `evidence-gatherer`, and the serena-memory handoff works (MCP is inherited). The
-    twins differ from Claude only where the platform genuinely does: `model: inherit` (Cursor documents only
-    opus-at-high, so the model/effort tiering does not reliably port), no per-tool `tools:` allowlist (only a
-    `readonly` bool), `superpowers` is an optional `/add-plugin` (its methods referenced 'if installed'), and
-    auto-delegation cannot be hard-disabled at the agent level. They lean on the auto-attaching `.cursor/rules`
-    + installed skills.
+    frontmatter model/effort pins (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers
+    `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Fetched into
+    a project's `.claude/agents/`. The `cursor-stack` repo ships adapted twins of all 33 - a
+    protocol change to an agent here usually needs the same edit to its twin there (the deliberate
+    divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
+    per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
   - `rules/` - fifteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Five
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
@@ -78,46 +79,36 @@ made only inside a consuming project is throwaway (see Invariants).
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
     hard gate.
   - `README.md`.
-- `cursor/` - the **Cursor** stack (peer of `claude/`):
-  - `cursor-stack.{sh,ps1}` installer + `cursor-stack.html` inventory.
-  - `AGENTS.template.md` - the Cursor analog: the stack-neutral base each project's `AGENTS.md`
-    is filled in from (Cursor reads `AGENTS.md`).
-  - `hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` in Cursor's
-    `beforeShellExecution` contract.
-  - `rules/` - twelve rules mirroring the Claude split: five always-on `baseline-*.mdc`
-    (`alwaysApply`, no globs - interaction / quality-gates / security / git / navigation, twins of the
-    Claude `baseline-*.md` set) + the glob-auto-attaching `csharp` / `typescript` / `sql` / `angular` /
-    `wpf` / `scss`-conventions.mdc convention rules + the always-on `ponytail.mdc` - the same model
-    Claude's `.claude/rules` now use.
-  - `agents/` - the Cursor-contract twins of all 33 Claude subagents, fetched into a project's
-    `.cursor/agents/`. Cursor (2.5+) has a Task tool and MCP-inheriting subagents, so the twins keep the full
-    orchestration - `project-task-flow` fans out designer -> implementer -> verifier via the Task tool, the
-    diagnosers dispatch `evidence-gatherer`, and the serena-memory handoff works (MCP is inherited). They
-    differ from Claude only in the genuine platform gaps: `model: inherit` (no reliable effort/model pin - see
-    the divergence table), no per-tool `tools:` allowlist (only a `readonly` bool), `superpowers` optional via
-    `/add-plugin`, and no hard-disable of auto-delegation; the bodies lean on `.cursor/rules` + installed skills.
-  - `README.md`.
-- `scripts/lint-skills.js` - the 4-way parity lint (below). `scripts/analyze-usage.js` - offline
+- `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
   token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
   side of the flow instrumentation (`instrument-tool-usage.js` is the identity side - hooks never
   see tokens). `README.md` - repo overview.
 
-## The two agent stacks - shared skills/MCPs, different delivery
+The **Cursor** delivery - installers, the 33 agent twins, `.mdc` rules, hooks,
+`AGENTS.template.md` - lives in the `cursor-stack` repo (its own CLAUDE.md documents the
+platform gaps and the twin-maintenance rule).
 
-`SKILLS` and `MCPS` are **shared** (identical across all four installers); the rest differs
-because the platforms differ:
+## The stack's delivery surfaces (and the Cursor twin repo)
 
-| | Claude Code (`claude/`) | Cursor (`cursor/`) |
-|---|---|---|
-| Skills | installer git-clone + copy → `.claude/skills` (or plugin `/claude-stack`) | installer git-clone + copy → `.cursor/skills` (Cursor Skills) |
-| MCP | `claude mcp add` → `<repo>/.mcp.json` | written into `.cursor/mcp.json` (tokens pre-resolved) |
-| Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) | **none** - Cursor has no Claude-style `/plugin install` (its own format installs via `/add-plugin`); equivalents are MCP / native (Skills, Subagents, Bugbot `/review`, Rules) / Open-VSX extensions. ponytail additionally ships a Cursor rule that `cursor-stack` fetches (see `cursor-stack.html`'s mapping) |
-| Hooks | `.claude/hooks/` wired into `.claude/settings.json` (3 wired + 1 fetched-unwired instrumentation) | `.cursor/hooks.json` (force-push + catastrophic-rm - Cursor's contract differs) |
-| Agents | `.claude/agents/` - the 33 model/effort-pinned subagents described under Layout (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Fetched like hooks; per-tool `tools:` allowlist | `.cursor/agents/` - twins of all 33, fetched like hooks. Cursor (2.5+) has a Task tool and MCP-inheriting subagents, so the orchestrated fan-out DOES run here: `project-task-flow` dispatches designer/implementer/verifier and the diagnosers dispatch `evidence-gatherer`, with the serena-memory handoff intact (MCP is inherited). The genuine gaps: `model: inherit` (Cursor documents only `claude-opus-4-8[effort=high]` and it silently falls back without Max Mode, so the opus/sonnet + effort tiering does not reliably port - the twins inherit the session model), no per-tool `tools:` allowlist (only a `readonly` bool), `superpowers` optional via `/add-plugin` (methods referenced 'if installed'), and auto-delegation cannot be hard-disabled. Bodies lean on the auto-attaching `.cursor/rules` + installed skills, as Claude's now do too |
-| Convention gate | five path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) | `.cursor/rules/*.mdc` (soft, auto-attach by glob - no session skill-load state) |
-| Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) | Cursor **Bugbot** (`/review`); the `security-auditor` agent is Claude-only |
-| Project instructions | `CLAUDE.md` | `AGENTS.md` |
-| LSP | `csharp-lsp` / `typescript-lsp` plugins | built-in TypeScript + Open-VSX extensions (a Roslyn C# extension - MS's C# Dev Kit is blocked in Cursor) |
+The Claude Code delivery, per surface:
+
+| Surface | Delivery |
+|---|---|
+| Skills | installer git-clone + copy → `.claude/skills` (or plugin `/claude-stack`) |
+| MCP | `claude mcp add` → `<repo>/.mcp.json` |
+| Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
+| Hooks | `.claude/hooks/` wired into `.claude/settings.json` (3 wired + 1 fetched-unwired instrumentation) |
+| Agents | `.claude/agents/` - the 33 model/effort-pinned subagents described under Layout. Fetched like hooks; per-tool `tools:` allowlist |
+| Convention gate | seven path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
+| Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) |
+| Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
+| LSP | `csharp-lsp` / `typescript-lsp` plugins |
+
+The Cursor deliveries of the same surfaces (`.cursor/skills`, `.cursor/mcp.json` with tokens
+pre-resolved, no plugins, `.cursor/hooks.json`, `.cursor/agents/` twins, `.mdc` rules, Bugbot
+`/review`, `AGENTS.md`) live in the `cursor-stack` repo - `SKILLS` and `MCPS` stay identical
+across the two repos' installers by the two-repo-commit discipline; the platform gaps are
+documented there.
 
 ## The model these templates encode
 
@@ -179,18 +170,19 @@ because the platforms differ:
 - **Public repo.** No private project names or absolute personal paths in any tracked file - generic
   'consuming project' references only; real names / paths stay in untracked local files.
 - **Parity / source-of-truth.** A change to skills / MCPs / hooks / rules / plugins lands in the
-  SOURCE here, kept in parity: `SKILLS` + `MCPS` identical across all FOUR installers; `PLUGINS`
-  claude-only (both `claude-stack` twins agree); each `.sh`/`.ps1` twin matches its sibling.
-  **`npm run lint` enforces this 4-way** (and that the HTML agrees, and the skill count). Never patch
-  only a generated `.mcp.json` / `.cursor/` tree or a consuming project's copy - the installer
+  SOURCE here, kept in parity: `SKILLS` + `MCPS` + `PLUGINS` identical across both `claude-stack`
+  twins - **`npm run lint` enforces it** (and that the HTML agrees, and the skill count). A change
+  to the shared `SKILLS`/`MCPS` baseline is additionally mirrored into the `cursor-stack` repo's
+  manifests in the same sitting (cross-repo parity is discipline, not a networked lint). Never patch
+  only a generated `.mcp.json` or a consuming project's copy - the installer
   regenerates and silently wipes it.
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
-  (`claude/hooks/` or `cursor/hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
-  its house-style skill (`.claude/rules/` on Claude, `.cursor/rules/*.mdc` on Cursor). A keyword capability → the skill's own description. Cross-cutting guidance →
-  the always-on `baseline-*.md`/`.mdc` set on BOTH stacks (fleet-updatable, `alwaysApply` on Cursor):
-  `claude/rules/baseline-*.md` and its `cursor/rules/baseline-*.mdc` twins (interaction, quality-gates,
-  security, git, navigation). The base templates (`claude/CLAUDE.template.md`, `cursor/AGENTS.template.md`)
-  carry only per-project structure + platform routing, never the baseline conventions. Never state one
+  (`claude/hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
+  its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.
+  Cross-cutting guidance → the always-on `baseline-*.md` set (fleet-updatable): interaction,
+  quality-gates, security, git, navigation - each with an `.mdc` twin in `cursor-stack` that a
+  content change must be mirrored to. The base template (`claude/CLAUDE.template.md`)
+  carries only per-project structure + platform routing, never the baseline conventions. Never state one
   trigger twice.
 - **Prove a behavioral change, don't assert it.** A change to a model / effort pin, a routing rule, or a
   plugin set - any claim the flow got cheaper or still catches the same bugs - ships only with evidence:
@@ -202,13 +194,16 @@ because the platforms differ:
 
 ## Maintenance gotchas
 
-- The installer regenerates `.mcp.json` / the `.cursor/` tree on every run - fix the template, not
-  the output.
+- The installer regenerates `.mcp.json` on every run - fix the template, not the output.
 - Editing a consuming project's installed copy is local-only; mirror the change into this repo's
-  `claude/` + `cursor/` stack scripts (all four) or the next install wipes it.
-- Hooks and Cursor rules are **fetched from GitHub** at install (`…/main/claude/hooks`,
-  `…/main/cursor/hooks`, `…/main/cursor/rules`), so a change ships only once committed + pushed;
+  `claude/` stack scripts (both shells) or the next install wipes it - and into `cursor-stack`
+  when the change touches the shared skills/MCP baseline or a twinned agent/rule.
+- Hooks and rules are **fetched from GitHub** at install (`…/main/claude/hooks`,
+  `…/main/claude/rules`), so a change ships only once committed + pushed;
   until then the per-hook / per-rule fail-soft keeps any existing copy.
 - Authoring or editing a house skill in skills/? The superpowers writing-skills method is a useful
-  reference - subordinate it to the 4-way parity lint, the HTML + skill-count sync, and the house
+  reference - subordinate it to the parity lint, the HTML + skill-count sync, and the house
   voice; take its skill-testing discipline, not its own formatting or its push-to-fork deploy step.
+- Skills are shared with Cursor: a skill body must stay platform-neutral (execution-mode
+  conditionals like 'INLINE when no dispatch' handle the platform delta inside the skill - never
+  fork a skill per platform).

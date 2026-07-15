@@ -5,7 +5,7 @@
     "url": "https://github.com/envoydev"
   },
   "metadata": {
-    "description": "Personal Claude Code + Cursor agent stack - the setup plugin that bootstraps skills, agents, rules, hooks, and MCP servers into a project.",
+    "description": "Personal Claude Code agent stack - the setup plugin that bootstraps skills, agents, rules, hooks, and MCP servers into a project.",
     "version": "0.1.0"
   },
   "plugins": [

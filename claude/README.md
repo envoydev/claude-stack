@@ -3,7 +3,8 @@
 Two twin scripts that install (or update) the **complete Claude Code stack into a project** -
 every skill, plugin, MCP server, and hook from the curated inventory in `claude-stack.html`.
 Built-in/system CLI skills are excluded (they ship with the CLI). The agent is the script you
-run, so there is **no agent argument**. (Cursor is the peer in [`../cursor/`](../cursor/README.md).)
+run, so there is **no agent argument**. (Cursor is the peer stack, in
+[`cursor-stack`](https://github.com/envoydev/cursor-stack).)
 
 > The subagent roster - the per-domain specialist team and the cross-cutting agents - is laid out
 > visually at the top of [`claude-stack.html`](claude-stack.html), above the full stack inventory it now folds in.
@@ -17,9 +18,10 @@ The `.sh`/`.ps1` twins take the **same arguments** and produce the **same result
 everything below applies to both unless a row is marked otherwise.
 
 > The scripts are the **single source of truth** for the stack. `SKILLS` and `MCPS` are shared
-> with the Cursor scripts (identical across all four); `PLUGINS` are Claude-only. To trim or
+> with the Cursor stack (the `cursor-stack` repo clones this one for skills - mirror a baseline
+> change there in the same sitting); `PLUGINS` are Claude-only. To trim or
 > extend, comment/uncomment entries in the manifest blocks near the top, then re-run. After
-> editing, run the repo lint (`npm run lint` from the repo root) - it verifies all four manifests
+> editing, run the repo lint (`npm run lint` from the repo root) - it verifies both manifests
 > agree (and match the HTML).
 
 ---
