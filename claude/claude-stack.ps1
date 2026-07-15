@@ -761,15 +761,17 @@ function Get-Rules {
 
 $ClaudeMdUrl = 'https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/CLAUDE.template.md'
 function New-ClaudeMd {
-  # INSTALL: lay down a starter CLAUDE.md from the template when the project has none (never clobber a filled one).
+  # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one).
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping CLAUDE.md'; return }
-  $dest = Join-Path $root 'CLAUDE.md'
-  if (Test-Path -LiteralPath $dest) { Log '  CLAUDE.md: already present - left as-is (fill any remaining <placeholders>)'; return }
+  # Auto-loaded from either ./CLAUDE.md or ./.claude/CLAUDE.md - skip if EITHER exists so we never leave two copies.
+  if ((Test-Path -LiteralPath (Join-Path $root 'CLAUDE.md')) -or (Test-Path -LiteralPath (Join-Path $root '.claude/CLAUDE.md'))) { Log '  CLAUDE.md: already present - left as-is (fill any remaining <placeholders>)'; return }
+  $dest = Join-Path $root '.claude/CLAUDE.md'
+  New-Item -ItemType Directory -Force -Path (Join-Path $root '.claude') | Out-Null
   $tmp = [System.IO.Path]::GetTempFileName()
   try { Invoke-WebRequest -Uri $ClaudeMdUrl -OutFile $tmp -UseBasicParsing -ErrorAction Stop }
-  catch { Log '  !! CLAUDE.md template fetch failed - create it by hand from claude/CLAUDE.template.md'; Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue; return }
-  Move-Item -LiteralPath $tmp -Destination $dest -Force; Log '  CLAUDE.md: seeded from the template - FILL its <placeholders> for this project before you start'
+  catch { Log '  !! CLAUDE.md template fetch failed - create .claude/CLAUDE.md by hand from claude/CLAUDE.template.md'; Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue; return }
+  Move-Item -LiteralPath $tmp -Destination $dest -Force; Log '  CLAUDE.md: seeded to .claude/CLAUDE.md - FILL its <placeholders>, and keep the .claude/* + !.claude/CLAUDE.md gitignore lines so it stays committed'
 }
 
 function Set-HookSettings {
@@ -1088,7 +1090,8 @@ if ($GitHubCli) { Log "  - run 'gh auth login' if gh is not yet authenticated (n
 Write-Host ''
 Write-Host "Add these stack-generated, machine-local artifacts to the project's .gitignore (or .git\info\exclude):"
 Write-Host '  .serena          serena per-project state: registry, cache, language servers (SERENA_HOME=.serena/home)'
-Write-Host '  .claude          Claude Code project config + local state (settings.local.json, hooks)'
+Write-Host '  .claude/*        Claude Code project config + local state (settings.local.json, hooks) - ignore the contents...'
+Write-Host '  !.claude/CLAUDE.md   ...but TRACK the project instructions: they live at .claude/CLAUDE.md and must be committed (git can only re-include a file if the parent dir is not wholesale-ignored, hence .claude/* not .claude/)'
 Write-Host '  .slopwatch       dotnet-slopwatch output'
 Write-Host '  .playwright      playwright MCP user-data-dir + screenshots'
 Write-Host '  .mcp.json        generated MCP server config (machine-local)'

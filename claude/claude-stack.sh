@@ -671,15 +671,16 @@ download_rules() {  # fetch each rule .md into .claude/rules/; per-rule fail-sof
 }
 
 CLAUDE_MD_URL="https://raw.githubusercontent.com/envoydev/agents-stack/main/claude/CLAUDE.template.md"
-seed_claude_md() {  # INSTALL: lay down a starter CLAUDE.md from the template when the project has none (never clobber a filled one)
-  command -v curl >/dev/null || { log "  !! curl not found - create CLAUDE.md by hand from claude/CLAUDE.template.md"; return 0; }
+seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one)
+  command -v curl >/dev/null || { log "  !! curl not found - create .claude/CLAUDE.md by hand from claude/CLAUDE.template.md"; return 0; }
   local root dest tmp
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping CLAUDE.md"; return 0; }
-  dest="$root/CLAUDE.md"
-  if [ -f "$dest" ]; then log "  CLAUDE.md: already present - left as-is (fill any remaining <placeholders>)"; return 0; fi
+  # Auto-loaded from either ./CLAUDE.md or ./.claude/CLAUDE.md - skip if EITHER exists so we never leave two copies.
+  if [ -f "$root/CLAUDE.md" ] || [ -f "$root/.claude/CLAUDE.md" ]; then log "  CLAUDE.md: already present - left as-is (fill any remaining <placeholders>)"; return 0; fi
+  dest="$root/.claude/CLAUDE.md"; mkdir -p "$root/.claude"
   tmp="$(mktemp)"
-  if ! curl -fsSL "$CLAUDE_MD_URL" -o "$tmp"; then log "  !! CLAUDE.md template fetch failed - create it by hand from claude/CLAUDE.template.md"; rm -f "$tmp"; return 0; fi
-  mv "$tmp" "$dest"; log "  CLAUDE.md: seeded from the template - FILL its <placeholders> for this project before you start"
+  if ! curl -fsSL "$CLAUDE_MD_URL" -o "$tmp"; then log "  !! CLAUDE.md template fetch failed - create .claude/CLAUDE.md by hand from claude/CLAUDE.template.md"; rm -f "$tmp"; return 0; fi
+  mv "$tmp" "$dest"; log "  CLAUDE.md: seeded to .claude/CLAUDE.md - FILL its <placeholders>, and keep the '.claude/*' + '!.claude/CLAUDE.md' gitignore lines so it stays committed"
 }
 
 wire_hooks_settings() {  # INSTALL: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent)
@@ -954,7 +955,8 @@ cat <<'GITIGNORE'
 
 Add these stack-generated, machine-local artifacts to the project's .gitignore (or .git/info/exclude):
   .serena          serena per-project state: registry, cache, language servers (SERENA_HOME=.serena/home)
-  .claude          Claude Code project config + local state (settings.local.json, hooks)
+  .claude/*        Claude Code project config + local state (settings.local.json, hooks) - ignore the contents...
+  !.claude/CLAUDE.md   ...but TRACK the project instructions: they live at .claude/CLAUDE.md and must be committed (git can only re-include a file if the parent dir is not wholesale-ignored, hence '.claude/*' not '.claude/')
   .slopwatch       dotnet-slopwatch output
   .playwright      playwright MCP user-data-dir + screenshots
   .mcp.json        generated MCP server config (machine-local)

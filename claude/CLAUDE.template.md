@@ -1,6 +1,9 @@
 # CLAUDE.md (stack-neutral template)
 
-<!-- Fill-in block - delete once done. Copy this file into a new project as CLAUDE.md, then:
+<!-- Fill-in block - delete once done. Copy this file into a new project as .claude/CLAUDE.md (auto-loaded,
+     same as a root CLAUDE.md; keeps the repo root tidy). To keep it committed, the project's .gitignore must
+     ignore the .claude contents but track this file: '.claude/*' then '!.claude/CLAUDE.md' (git cannot
+     re-include a file when its parent dir is wholesale-ignored via '.claude/'). Then:
 1. Write the project top from the authoring outline in the comment below - the project intro
    usually comes first, above ## Rules - then delete that comment.
 2. Trim the ## Rules table to what the installer actually laid down.
