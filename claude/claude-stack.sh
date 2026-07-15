@@ -883,9 +883,10 @@ restore_pins() {  # --keep-pins: re-apply every snapshotted value the refresh ch
 }
 
 prune_agents_cache() {
-  # npx skills stages an agent-neutral .agents/ store. With a STRICT per-agent copy (.claude/skills is
-  # a real copy), nothing reads .agents/ anymore - prune it. Guard: keep it if any skill entry under
-  # .claude/skills is a symlink (a symlinked tree still depends on .agents/; removing it would dangle).
+  # Legacy cleanup: an npx-skills-era install staged an agent-neutral .agents/ store. The git-copy
+  # install_skills never creates one, so this is a no-op on a fresh install and only matters for a
+  # project upgrading from the old flow. Guard: keep it if any skill entry under .claude/skills is a
+  # symlink (a symlinked tree still depends on .agents/; removing it would dangle).
   local root d; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
   [ -d "$root/.agents" ] || return 0
   local has_symlink=false

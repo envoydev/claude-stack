@@ -992,9 +992,10 @@ function Restore-Pins {
 }
 
 function Remove-AgentsCache {
-  # npx skills stages an agent-neutral .agents/ store. With a STRICT per-agent copy (.claude/skills is
-  # a real copy), nothing reads .agents/ anymore - prune it. Guard: keep it if any skill entry under
-  # .claude/skills is a symlink (a symlinked tree still depends on .agents/; removing it would dangle).
+  # Legacy cleanup: an npx-skills-era install staged an agent-neutral .agents/ store. The git-copy
+  # install_skills never creates one, so this is a no-op on a fresh install and only matters for a
+  # project upgrading from the old flow. Guard: keep it if any skill entry under .claude/skills is a
+  # symlink (a symlinked tree still depends on .agents/; removing it would dangle).
   $root = Get-RepoRoot
   if (-not $root) { return }
   $agents = Join-Path $root '.agents'

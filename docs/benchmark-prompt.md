@@ -57,7 +57,7 @@ the source repo:
    GREEN** (`dotnet test` = 9 passing; `ng build` + `ng test --watch=false --browsers=ChromeHeadless`
    = 21 passing), commit, and `git tag baseline`.
 3. Install the stack into each: run `<STACK>/claude/claude-stack.sh install` from inside the project
-   (skills via `npx skills add`, MCPs into `.mcp.json`, hooks/rules/agents fetched, plugins installed).
+   (skills git-copied from the stack repo, MCPs into `.mcp.json`, hooks/rules/agents fetched, plugins installed).
    Enable the `angular-cli` MCP for `angular-project` and comment it out for `aspnet-api-project`;
    comment out the `memory` MCP in **both** - it is not needed here (the static cross-project map lives
    in `docs/RELATED-PROJECTS.md`, step 4, and serena's per-repo local memory carries the per-feature

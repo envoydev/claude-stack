@@ -9,7 +9,7 @@
 //      index (it would silently never install);
 //   2. a SKILL.md references a skill name that does not exist anywhere (typo or
 //      rename rot, e.g. `vertical-slice` vs `vertical-slice-architecture`);
-//   3. a SKILL.md frontmatter block that js-yaml (the parser skills.sh uses)
+//   3. a SKILL.md frontmatter block that a strict YAML parser (js-yaml here)
 //      cannot load, which silently drops the skill from the registry, e.g. an
 //      unquoted `description:` containing `Companion: ` (colon-space);
 //   4. drift between the four manifests, or between them and the stack HTML;
