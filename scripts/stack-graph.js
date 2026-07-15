@@ -30,10 +30,30 @@ function bodyAfterFrontmatter(text)
 // Every distinct backticked token in the text (content between a pair of
 // backticks, trimmed). Catalog membership - not a shape regex - decides what is
 // an edge, so single-word MCPs (`serena`, `context7`) resolve as well as
-// hyphenated ones (`angular-cli`).
+// hyphenated ones (`angular-cli`). Tokenized LINE BY LINE - a markdown inline-code
+// span never crosses a line, so scanning each line independently prevents a stray
+// or odd backtick count (including a ```` ```bash ```` fence line) from desyncing
+// the open/close pairing into later lines.
 function backtickedTokens(text)
 {
-    return new Set([...text.matchAll(/`([^`]+)`/g)].map(m => m[1].trim()));
+    const tokens = new Set();
+    for (const line of text.split(/\r?\n/))
+    {
+        for (const m of line.matchAll(/`([^`]+)`/g)) tokens.add(m[1].trim());
+    }
+
+    return tokens;
+}
+
+// Resolve the owning plugin for a token: either the token itself is a plugin
+// catalog name, or its colon prefix (`plugin:skill` namespacing) is.
+function pluginFromToken(token, plugins)
+{
+    if (plugins.has(token)) return token;
+    const i = token.indexOf(':');
+    if (i === -1) return null;
+    const prefix = token.slice(0, i);
+    return plugins.has(prefix) ? prefix : null;
 }
 
 function catalogs()
@@ -52,7 +72,14 @@ function catalogs()
 function categorize(tokens, cat)
 {
     const pick = set => [...tokens].filter(t => set.has(t)).sort();
-    return { skills: pick(cat.skills), agents: pick(cat.agents), mcps: pick(cat.mcps), plugins: pick(cat.plugins) };
+    const plugins = new Set();
+    for (const t of tokens)
+    {
+        const p = pluginFromToken(t, cat.plugins);
+        if (p) plugins.add(p);
+    }
+
+    return { skills: pick(cat.skills), agents: pick(cat.agents), mcps: pick(cat.mcps), plugins: [...plugins].sort() };
 }
 
 function skillFiles(name)
@@ -96,6 +123,7 @@ function buildStackGraph()
         const fmText = frontmatterBlock(text);
         let declared = [];
         let source = 'none';
+        const fmPlugins = new Set();
         if (fmText)
         {
             let meta = null;
@@ -104,10 +132,16 @@ function buildStackGraph()
             {
                 declared = meta.skills.filter(s => cat.skills.has(s));
                 source = 'frontmatter';
+                for (const s of meta.skills)
+                {
+                    const p = pluginFromToken(s, cat.plugins);
+                    if (p) fmPlugins.add(p);
+                }
             }
         }
 
         const c = categorize(backtickedTokens(bodyAfterFrontmatter(text)), cat);
+        const plugins = [...new Set([...fmPlugins, ...c.plugins])].sort();
         let skills = declared;
         if (source !== 'frontmatter')
         {
@@ -120,7 +154,7 @@ function buildStackGraph()
             skillsSource: source,
             agents: c.agents.filter(a => a !== name),
             mcps: c.mcps,
-            plugins: c.plugins,
+            plugins,
         };
     }
 

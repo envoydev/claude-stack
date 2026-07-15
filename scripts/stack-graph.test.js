@@ -49,3 +49,18 @@ test('the committed stack-graph.json is in sync with a fresh build', () => {
     assert.strictEqual(readCommitted(), serialize(buildStackGraph()),
         'run `node scripts/stack-graph.js --write` and commit the result');
 });
+
+test('project-capabilities mcps edge includes all 8 backticked MCPs (fenced code block must not desync the tokenizer)', () => {
+    const s = graph.skills['project-capabilities'];
+    assert.ok(s, 'project-capabilities must be in the graph');
+    for (const m of ['serena', 'context7', 'memory', 'playwright', 'angular-cli', 'sentry', 'chrome-devtools', 'appium-mcp'])
+    {
+        assert.ok(s.mcps.includes(m), `expected skill->mcp edge to ${m}`);
+    }
+});
+
+test('ci-failure-diagnoser plugins edge resolves from a namespaced plugin:skill frontmatter entry', () => {
+    const a = graph.agents['ci-failure-diagnoser'];
+    assert.ok(a, 'ci-failure-diagnoser must be in the graph');
+    assert.ok(a.plugins.includes('superpowers'), 'expected agent->plugin edge to superpowers');
+});

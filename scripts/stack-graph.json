@@ -208,13 +208,21 @@
     "project-capabilities": {
       "mcps": [
         "angular-cli",
-        "memory"
+        "appium-mcp",
+        "chrome-devtools",
+        "context7",
+        "memory",
+        "playwright",
+        "sentry",
+        "serena"
       ],
       "plugins": []
     },
     "project-ci-failure-signatures": {
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "project-code-style-analyzer": {
       "mcps": [],
@@ -222,11 +230,15 @@
     },
     "project-failure-signatures": {
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "project-implementer": {
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "project-quality-loop": {
       "mcps": [],
@@ -238,15 +250,21 @@
     },
     "project-solution-design": {
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "project-task-flow": {
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "project-verify-plan": {
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "project-version-upgrade": {
       "mcps": [],
@@ -274,7 +292,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "angular-solution-designer": {
       "skills": [
@@ -299,7 +319,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "angular-verifier": {
       "skills": [
@@ -311,7 +333,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "aspnet-implementer": {
       "skills": [
@@ -327,7 +351,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "aspnet-solution-designer": {
       "skills": [
@@ -351,7 +377,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "ci-failure-diagnoser": {
       "skills": [
@@ -360,7 +388,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "code-analyzer": {
       "skills": [],
@@ -397,7 +427,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "console-solution-designer": {
       "skills": [
@@ -421,7 +453,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "data-implementer": {
       "skills": [
@@ -437,7 +471,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "data-solution-designer": {
       "skills": [
@@ -458,7 +494,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "devops-implementer": {
       "skills": [
@@ -467,7 +505,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "devops-solution-designer": {
       "skills": [
@@ -486,7 +526,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "dotnet-build-error-resolver": {
       "skills": [
@@ -500,7 +542,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "dotnet-test-failure-resolver": {
       "skills": [
@@ -513,7 +557,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "evidence-gatherer": {
       "skills": [],
@@ -538,7 +584,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "mobile-implementer": {
       "skills": [
@@ -552,7 +600,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "mobile-solution-designer": {
       "skills": [
@@ -575,7 +625,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "ng-build-error-resolver": {
       "skills": [
@@ -587,7 +639,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "related-project-analyzer": {
       "skills": [],
@@ -617,7 +671,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     },
     "wpf-implementer": {
       "skills": [
@@ -631,7 +687,9 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "ponytail"
+      ]
     },
     "wpf-solution-designer": {
       "skills": [
@@ -655,7 +713,9 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": []
+      "plugins": [
+        "superpowers"
+      ]
     }
   },
   "rules": {
@@ -734,7 +794,9 @@
       "skills": [],
       "agents": [],
       "mcps": [],
-      "plugins": [],
+      "plugins": [
+        "ponytail"
+      ],
       "paths": []
     },
     "baseline-navigation": {
@@ -750,7 +812,9 @@
       "skills": [],
       "agents": [],
       "mcps": [],
-      "plugins": [],
+      "plugins": [
+        "superpowers"
+      ],
       "paths": []
     },
     "baseline-security": {
