@@ -762,9 +762,15 @@
         "**/*.component.ts",
         "**/*.component.html",
         "**/*.spec.ts",
-        "**/*.scss",
+        "**/*.component.scss",
+        "**/src/styles.scss",
+        "**/src/theme/**/*.scss",
         "**/src/app/**/*.ts",
-        "**/src/lib/**/*.ts"
+        "**/src/app/**/*.html",
+        "**/src/app/**/*.scss",
+        "**/src/lib/**/*.ts",
+        "**/src/lib/**/*.html",
+        "**/src/lib/**/*.scss"
       ]
     },
     "angular-styling-conventions": {
@@ -776,6 +782,7 @@
       "plugins": [],
       "paths": [
         "**/*.component.scss",
+        "**/*.component.css",
         "**/src/styles.scss",
         "**/src/styles.css",
         "**/src/global.scss",
@@ -798,7 +805,8 @@
       "agents": [],
       "mcps": [],
       "plugins": [
-        "ponytail"
+        "ponytail",
+        "superpowers"
       ],
       "paths": []
     },
@@ -872,11 +880,16 @@
         "**/*.csproj",
         "**/*.sln",
         "**/*.slnx",
-        "**/*.xaml"
+        "**/*.xaml",
+        "**/Directory.Build.props",
+        "**/Directory.Packages.props",
+        "**/*.targets",
+        "**/nuget.config"
       ]
     },
     "markdown-docs": {
       "skills": [
+        "docs-as-code",
         "markdown-style"
       ],
       "agents": [],
@@ -889,7 +902,8 @@
     "sql-conventions": {
       "skills": [
         "csharp",
-        "database-conventions"
+        "database-conventions",
+        "dotnet-data-access"
       ],
       "agents": [],
       "mcps": [],

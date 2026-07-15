@@ -1,5 +1,5 @@
 ---
-paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.spec.ts", "**/*.scss", "**/src/app/**/*.ts", "**/src/lib/**/*.ts"]
+paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.spec.ts", "**/*.component.scss", "**/src/styles.scss", "**/src/theme/**/*.scss", "**/src/app/**/*.ts", "**/src/app/**/*.html", "**/src/app/**/*.scss", "**/src/lib/**/*.ts", "**/src/lib/**/*.html", "**/src/lib/**/*.scss"]
 ---
 
 A broken Angular build or red spec suite (Ionic/Capacitor included - ionic build wraps ng
@@ -8,4 +8,4 @@ build) - default to delegating rather than looping in-session: fix-the-build goe
 the build is green. The subagent absorbs the repeated build/test output and returns only a
 diagnosis. A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a
 shared-contract change - outside its bounded scope by design; route it through
-`project-task-flow`, never edit the contract to go green. A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is the orchestrator's, owned by `project-task-flow`; run your own bounded fix loop and report the red per your cap.
+`project-task-flow`, never edit the contract to go green. A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is the orchestrator's, owned by `project-task-flow`; run your own bounded fix loop and report the red per your cap. A diagnoser carries the Agent tool but its one sanctioned dispatch is the evidence-gatherer: it names the resolver in its report, never dispatches one.

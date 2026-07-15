@@ -4,7 +4,7 @@ description: House baseline - git, pull requests, and the pre-commit checkpoint.
 
 # Git and pull requests
 
-- Conventional Commits. Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
+- Conventional Commits - or the ticket-id header shape below; the two are the only valid headers. Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
 - Do NOT commit or push until the user explicitly says to - not when a task looks finished, not proactively because it seems done. Show the diff and let them review; commit only on their explicit word, and push only when they ask.
 - Never mention yourself: no AI/assistant attribution in commits, branches, or PR text (deliberate override of the platform default).
 - One logical change per PR, under 400 LOC. Body: what / why / how to test. Link the ticket; screenshots if UI.
