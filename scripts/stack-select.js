@@ -120,4 +120,60 @@ function evaluatePrereqs(selection, env, options)
     return { blockers, warnings, ok: blockers.length === 0 };
 }
 
-module.exports = { computeClosure, evaluatePrereqs, HARD_PREREQS, SCOPED_PREREQS };
+// Impure - probe the current machine. bins: is the command on PATH; envs: is
+// the variable set and non-empty. Kept thin; the pure evaluator is the tested
+// part. Extend the probe lists as the prereq map grows.
+function detectEnvironment()
+{
+    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'chrome', 'appium', 'brew'];
+    const ENVS = ['SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
+    const bins = {};
+    for (const b of BINS)
+    {
+        try { execFileSync('command', ['-v', b], { stdio: 'ignore', shell: '/bin/bash' }); bins[b] = true; }
+        catch { bins[b] = false; }
+    }
+    const envs = {};
+    for (const e of ENVS) envs[e] = typeof process.env[e] === 'string' && process.env[e].trim() !== '';
+    return { bins, envs };
+}
+
+function emitSelectionFile(closure)
+{
+    const lines = [];
+    for (const s of closure.skills || []) lines.push(`skill ${s}`);
+    for (const a of closure.agents || []) lines.push(`agent ${a}`);
+    for (const m of closure.mcps || []) lines.push(`mcp ${m}`);
+    for (const p of closure.plugins || []) lines.push(`plugin ${p}`);
+    for (const r of closure.rules || []) lines.push(`rule ${r}`);
+    return lines.join('\n') + '\n';
+}
+
+function main(argv)
+{
+    const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
+    const has = name => argv.includes(name);
+    const rawFile = arg('--selection');
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--check] [--context7-local] [--github-cli]'); process.exit(2); }
+    const graphPath = arg('--graph') || path.join(__dirname, 'stack-graph.json');
+    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(rawFile, 'utf8'));
+    const closure = computeClosure(graph, raw);
+
+    const emit = arg('--emit');
+    if (emit) fs.writeFileSync(emit, emitSelectionFile(closure));
+
+    for (const [name, why] of Object.entries(closure.reasons)) console.log(`required: ${name} - ${why}`);
+
+    if (has('--check'))
+    {
+        const report = evaluatePrereqs(closure, detectEnvironment(), { context7Local: has('--context7-local'), githubCli: has('--github-cli') });
+        for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
+        for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
+        if (!report.ok) process.exit(1);
+    }
+}
+
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, HARD_PREREQS, SCOPED_PREREQS };
+
+if (require.main === module) main(process.argv.slice(2));

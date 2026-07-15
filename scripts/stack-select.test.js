@@ -80,3 +80,56 @@ test('chrome-devtools mcp missing Chrome is a warning, not a blocker', () => {
     assert.ok(!r.blockers.some(b => /Chrome/i.test(b.need)));
     assert.strictEqual(r.ok, true, 'a warning alone keeps ok true');
 });
+
+test('computeClosure follows an agent->agent chain and terminates on a cycle', () => {
+    const g = {
+        skills: { s1: { mcps: [], plugins: [] }, s2: { mcps: [], plugins: [] } },
+        agents: {
+            a1: { skills: ['s1'], skillsSource: 'x', agents: ['a2'], mcps: [], plugins: [] },
+            a2: { skills: ['s2'], skillsSource: 'x', agents: ['a1'], mcps: [], plugins: [] }, // cycle back to a1
+        },
+        rules: {}, catalog: { mcps: [], plugins: [] },
+    };
+    const c = computeClosure(g, { agents: ['a1'] });
+    assert.ok(c.agents.includes('a2'), 'a1 pulls a2');
+    assert.ok(c.skills.includes('s1') && c.skills.includes('s2'), 'skills pulled through the agent chain');
+    // if this test returns at all, the cycle terminated
+});
+
+const { emitSelectionFile } = require('./stack-select.js');
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+
+test('emitSelectionFile produces Component B selection lines', () => {
+    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['ponytail'] });
+    const lines = text.trim().split('\n');
+    assert.ok(lines.includes('skill csharp'));
+    assert.ok(lines.includes('agent aspnet-implementer'));
+    assert.ok(lines.includes('mcp serena'));
+    assert.ok(lines.includes('plugin ponytail'));
+    assert.ok(lines.includes('rule csharp-conventions'));
+});
+
+test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
+    const rawFile = path.join(dir, 'raw.json');
+    const selFile = path.join(dir, 'selection.txt');
+    fs.writeFileSync(rawFile, JSON.stringify({ agents: ['aspnet-implementer'] }));
+    try
+    {
+        execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--emit', selFile], { encoding: 'utf8' });
+        const emitted = fs.readFileSync(selFile, 'utf8');
+        // aspnet-implementer pulls csharp (a skill) - the emitted file must list it
+        assert.ok(emitted.split('\n').includes('skill csharp'));
+
+        const sh = path.join(__dirname, '..', 'claude', 'claude-stack.sh');
+        const plan = execFileSync('bash', [sh, 'install', '--scope', 'project', '--selection', selFile, '--print-plan'], { encoding: 'utf8' });
+        const planSkills = (plan.match(/^plan skills:(.*)$/m) || [,''])[1].trim().split(/\s+/);
+        assert.ok(planSkills.includes('csharp'), 'installer plan reflects the closed selection');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
