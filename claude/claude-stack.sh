@@ -111,7 +111,7 @@ while [ $# -gt 0 ]; do
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
     --selection=*) SELECTION="${1#*=}";                          shift ;;
     --print-plan)  PRINT_PLAN=true;                              shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins)" >&2; exit 1 ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins, --selection, --print-plan)" >&2; exit 1 ;;
   esac
 done
 

@@ -39,6 +39,13 @@
   (which otherwise resets it to upstream). Only existing keys are re-applied; with the switch on, a
   local pin edit always wins over an upstream pin change.
 
+.PARAMETER Selection
+  Install ONLY the skills/plugins/mcps/agents/rules named in <file> (one 'category name' per line);
+  hooks always install.
+
+.PARAMETER PrintPlan
+  With -Selection, print the resolved per-category install set and exit (dry run).
+
 .NOTES
   Environment variables:
     SCOPE=project|global  fallback for -Scope when the flag is absent (default project).
@@ -83,7 +90,12 @@ param(
   [switch]$GitHubCli,
   # Optional: keep local model/effort frontmatter edits on installed agents/skills across the
   # refresh (an update resets them to upstream otherwise). e.g.: .\claude-stack.ps1 update -KeepPins
-  [switch]$KeepPins
+  [switch]$KeepPins,
+  # Optional: install ONLY the skills/plugins/mcps/agents/rules named in <file> (one 'category name'
+  # per line; hooks always install). e.g.: .\claude-stack.ps1 install -Selection selection.txt
+  [string]$Selection = '',
+  # Optional: with -Selection, print the resolved per-category install set and exit (dry run).
+  [switch]$PrintPlan
 )
 
 $ErrorActionPreference = 'Stop'
@@ -555,6 +567,37 @@ $ClaudeRules = @(
   'sql-conventions.md'        # sql: .sql -> database-conventions
   'devops-conventions.md'     # rest (devops): Dockerfile/compose/workflow -> devops
 )
+
+# --- Selection subset filter (Component B twin of claude-stack.sh) --------
+# With -Selection <file>, keep only the entries whose name appears in the file
+# (one 'category name' per line; '#' comments and blank lines ignored). Hooks
+# are never filtered. -PrintPlan prints the resolved set and exits (dry run).
+if ($Selection) {
+  if (-not (Test-Path $Selection)) { Write-Error "selection file not found: $Selection"; exit 1 }
+  $sel = @{}
+  foreach ($line in Get-Content $Selection) {
+    $t = $line.Trim()
+    if ($t -eq '' -or $t.StartsWith('#')) { continue }
+    $p = $t -split '\s+', 2
+    if ($p.Count -eq 2) { $sel["$($p[0]) $($p[1])"] = $true }
+  }
+  $SelHas = { param($cat, $name) $sel.ContainsKey("$cat $name") }
+
+  $Skills      = @($Skills      | Where-Object { & $SelHas 'skill'  (($_ -replace '^[^|]*\|', '')) })
+  $Plugins     = @($Plugins     | Where-Object { & $SelHas 'plugin' (($_ -split '@', 2)[0]) })
+  $Mcps        = @($Mcps        | Where-Object { & $SelHas 'mcp'    (($_ -split '\|', 2)[0]) })
+  $Agents      = @($Agents      | Where-Object { & $SelHas 'agent'  ((($_ -split '::', 2)[0]) -replace '\.md$', '') })
+  $ClaudeRules = @($ClaudeRules | Where-Object { & $SelHas 'rule'   ((($_ -split '::', 2)[0]) -replace '\.md$', '') })
+}
+
+if ($PrintPlan) {
+  'plan skills: '  + (($Skills      | ForEach-Object { ($_ -replace '^[^|]*\|', '') }) -join ' ')
+  'plan plugins: ' + (($Plugins     | ForEach-Object { ($_ -split '@', 2)[0] }) -join ' ')
+  'plan mcps: '    + (($Mcps        | ForEach-Object { ($_ -split '\|', 2)[0] }) -join ' ')
+  'plan agents: '  + (($Agents      | ForEach-Object { ((($_ -split '::', 2)[0]) -replace '\.md$', '') }) -join ' ')
+  'plan rules: '   + (($ClaudeRules | ForEach-Object { ((($_ -split '::', 2)[0]) -replace '\.md$', '') }) -join ' ')
+  exit 0
+}
 
 function Get-RepoRoot {
   $r = (& git rev-parse --show-toplevel 2>$null)
