@@ -12,23 +12,12 @@ before running, never run past an unmet blocker. `stack-select.js` does the dete
 you orchestrate. The one difference from `setup`: the baseline selection is what is INSTALLED,
 not the recommendations - and the action is `update`, not `install`.
 
-**ONE shallow clone is the entire download** - nothing is fetched from a raw URL, and the installer
-runs FROM that clone so it does not take a second one:
-
-```bash
-TMP=$(mktemp -d); git clone --depth 1 https://github.com/envoydev/claude-stack "$TMP/repo"
-```
-
-The clone is the tip of `main` as one self-consistent snapshot; the `raw.githubusercontent.com`
-URLs are per-file and sit behind a CDN that serves a cached copy for ~5 min after a push, so raw
-can hand back a stale installer or a skewed mix of versions. Everything comes out of `$TMP/repo` -
-the installer, `scripts/stack-select.js`, `scripts/stack-graph.json`,
-`templates/CLAUDE.template.md`, and the history step 3 diffs the stamp against - and step 8 hands
-the same clone back via `--source "$TMP/repo"` (`-Source` on Windows), which is what keeps a guided
-run at one clone instead of two. `git` is a hard prerequisite (the installer needs it regardless,
-and without it there is nothing to update FROM): if it is missing, say so and stop - do not fall
-back to raw URLs. Never write the clone into the project tree, and always remove it when the run
-ends - see step 12.
+**ONE shallow clone is the entire download** - the shared contract lives in the sibling `setup`
+skill's `references/clone-protocol.md`; read it first and hold the whole run to it: clone once
+into `$TMP/repo`, use every tool from that clone (never a raw URL; `git` missing means stop),
+hand it back with `--source` in step 8, and remove `$TMP` on every exit path in step 12. This
+skill's extra stake in the clone: its git history is what step 3 fetches the stamped commit into
+to diff what an update would bring.
 
 ## 1. Preconditions - find the install
 - Project mode: cwd is a project root with a populated `.claude/` (skills/agents/rules dirs, or
@@ -79,11 +68,9 @@ to remove). Also ask: keep local model/effort pins? (`--keep-pins`, default yes 
 run - an existing install often carries deliberate pin edits).
 
 ## 5. Use the tools from the clone
-From `$TMP/repo` (cloned as above), use the right installer (`scripts/claude-stack.sh` on
-`darwin`/`linux`, `scripts/claude-stack.ps1` on Windows), plus `scripts/stack-select.js`,
-`scripts/stack-graph.json`, and `templates/CLAUDE.template.md` (for step 10). Run the later
-`node`/`bash` steps against these clone copies - never re-fetch one from a raw URL; the clone is
-already the newest, consistent copy, and it is the copy step 8 updates from.
+Per the `setup` skill's `references/clone-protocol.md`: the installer, `stack-select.js`,
+`stack-graph.json`, and `templates/CLAUDE.template.md` (for step 10) all come out of `$TMP/repo` -
+never a raw re-fetch.
 
 ## 6. Build the selection and close it
 - Selection = installed set, plus the adds, minus the drops; write it to `raw.json`.
@@ -127,12 +114,9 @@ anything deferred, and remind that a restart picks up MCP registration changes. 
 `claude-stack.stamp` to the revision it installed, so the next configure diffs from here.
 
 ## 12. Clean up the temp dir - ALWAYS
-`rm -rf "$TMP"` (PowerShell: `Remove-Item -Recurse -Force $TMP`). The clone plus the working files
-you wrote next to it (`raw.json`, `selection.txt`) live there and nothing else will remove them -
-the installer only cleans up a clone IT took, never the one you passed via `--source`. Do this on
-EVERY exit path, not just the happy one: after a successful update, after an abort, after a
-blocker, and after the step-3 'nothing changed, stop here' case. Then confirm the project tree
-holds only installed artifacts - no clone, no `raw.json`/`selection.txt`, no installer copy.
+Remove `$TMP` per the `setup` skill's `references/clone-protocol.md`, on EVERY exit path of THIS
+skill: after a successful update, after an abort, after a blocker, and after the step-3 'nothing
+changed, stop here' case. Then confirm the project tree holds only installed artifacts.
 
 ## Do not
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the

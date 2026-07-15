@@ -46,14 +46,12 @@ create index products_brand_idx on products ((attributes->>'brand'));       -- a
 
 ## Queries and the planner
 
-- SARGability: a predicate that wraps the indexed column in a function or cast can't use the index. Leave the column bare.
+- SARGability is engine-neutral and owned by `database-conventions` (its `references/sql-style.md` SARGability section): leave the indexed column bare. The Postgres spellings of the trap:
 
 | Non-sargable | Rewrite |
 |---|---|
 | `extract(year from d) = 2026` | `d >= '2026-01-01' and d < '2027-01-01'` |
 | `date_trunc('day', ts) = :d` | `ts >= :d and ts < :d + interval '1 day'` |
-| `left(name,3) = 'ABC'` | `name like 'ABC%'` |
-| `amount * 1.1 > 1000` | `amount > 1000 / 1.1` |
 | `id::text = '42'` (cast on the column) | `id = 42` |
 
 - Must filter on a function (e.g. case-insensitive email)? The escape hatch is a matching expression index: `create index on users ((lower(email)))` then `where lower(email) = :v`.

@@ -21,7 +21,7 @@ This is the single home of the architecture rule, and it has one job: stop two p
 
 Reach for `IHttpClientFactory` and never `new HttpClient()`. A factory-managed client pools and rotates its handlers, so it picks up DNS changes and avoids the socket exhaustion a long-lived raw client causes. Prefer a typed client (`AddHttpClient<TClient>()`) so the call surface is an injected, testable interface rather than a stringly-keyed lookup, and so the resilience handler below has one obvious place to attach.
 
-Use `Directory.Packages.props` (central package management) wherever the project supports it, so every project resolves one version of each dependency. Pin exact versions for anything security-sensitive rather than floating a range.
+Use `Directory.Packages.props` (central package management) wherever the project supports it, so every project resolves one version of each dependency - the CPM mechanics are `dotnet-project-setup`'s. Pin exact versions for anything security-sensitive rather than floating a range.
 
 ## Validation
 
@@ -142,8 +142,8 @@ Anti-patterns:
 
 ## Tooling
 
-- Run `dotnet format` before every commit and enforce it in CI - formatting drift should never reach review.
-- Audit dependencies with `dotnet list package --vulnerable` before any release-bound change.
+- Run the repo's formatter before every commit and enforce it in CI (`dotnet-code-quality` owns the pick and the analyzer gates) - formatting drift should never reach review.
+- Audit dependencies with `dotnet list package --vulnerable` before any release-bound change; `dotnet-security` (A06) carries the CI form with `--include-transitive`.
 
 ## Deep specialists
 
@@ -160,8 +160,4 @@ Default a new HTTP surface to minimal APIs; the full minimal-vs-controllers deci
 - Broker messaging / outbox / sagas -> `dotnet-messaging`
 - Per-layer tests -> `dotnet-testing`
 
-Errors (`dotnet-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above.
-
-## See also
-
-Full index of every .NET specialist skill: the `dotnet` router. Architecture choice (exactly one per project) is governed by `## Architecture` above.
+Errors (`dotnet-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above. The full index of every .NET specialist skill is the `dotnet` router.

@@ -1,6 +1,6 @@
 # Microservices
 
-Independently deployable, independently scalable services split by bounded context. Load when a boundary genuinely forces distribution. Authored from knowledge, current to 2026. Read the warning first - most microservice pain is self-inflicted, and many teams are now consolidating nanoservices back toward coarser services or a modular monolith.
+Independently deployable, independently scalable services split by bounded context. Load when a boundary genuinely forces distribution. Read the warning first - most microservice pain is self-inflicted, and many teams are now consolidating nanoservices back toward coarser services or a modular monolith.
 
 ## Start by not needing them
 

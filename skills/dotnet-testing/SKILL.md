@@ -37,7 +37,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 - **AAA structure** (Arrange / Act / Assert). One logical behavior per test.
 - Every test asserts on **observable behavior or state** - no assertion-free or coverage-padding tests.
 - Cover edge cases: nulls, empty / boundary values, cancellation tokens, concurrency where relevant, and every thrown-exception path.
-- **Deterministic**: no real time - never call `DateTime.UtcNow` directly; inject `TimeProvider` (the .NET 8 abstraction, advanced in tests via `FakeTimeProvider`; a hand-rolled `IClock` only on a pre-.NET-8 floor) and advance the clock explicitly. No real I/O, no network, no `Thread.Sleep`. Seed any randomness.
+- **Deterministic**: no real time - the clock seam (inject `TimeProvider`, never call `DateTime.UtcNow` directly) is `csharp`'s baseline rule; the test side is advancing that seam explicitly with `FakeTimeProvider` instead of waiting on the wall clock. No real I/O, no network, no `Thread.Sleep`. Seed any randomness.
 - **Parameterized tests** for branch and boundary matrices instead of duplicated single-case tests.
 - **Test naming**: `Do_Something_When_Condition` (PascalCase with underscores) regardless of runner.
 - If production code is **untestable** (hidden statics, sealed deps, no seams, hidden side effects), refactor for testability (extract interface, constructor injection) rather than writing a bad test. Flag these explicitly.

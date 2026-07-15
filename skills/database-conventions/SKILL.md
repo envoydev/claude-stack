@@ -73,7 +73,7 @@ The migration *workflow* - previewing the generated SQL, carrying a rollback, re
 The naming *style* - keyword casing, table singular/plural, column suffixes, and constraint/index name prefixes - lives in `references/sql-style.md`. The schema-side essentials here:
 
 - Naming is a convention, which means its only job is to be consistent - the specific choice matters far less than not mixing two. Keep all identifiers in English.
-- Pick one case per project and hold it: `snake_case` for PostgreSQL by default, `PascalCase` for SQL Server unless the project overrides it. Pick singular or plural table names once and never mix the two.
+- Pick one case per project and hold it. `references/sql-style.md`'s universal default is `snake_case` unquoted; on SQL Server the established engine idiom is `PascalCase` and that override wins there unless the project says otherwise. Pick singular or plural table names once and never mix the two.
 - Foreign-key columns follow the related table - `<related_table>_id` or `<RelatedTable>Id` to match the project's case. Indexes self-describe (`ix_orders_customer_id_status`) so a name tells you what it serves; leave anonymous index names to the tool only when the migration generator produces them.
 
 ## Indexes
@@ -126,5 +126,5 @@ The full per-engine data-type tables (text, numbers, boolean, date/time, UUID) a
 - **Money and exact quantities** - store as `decimal` / `NUMERIC(p,s)` on every engine, never `float` or `double`, since binary floats cannot represent decimal fractions and drift silently on sums.
 - **PostgreSQL** - `SERIAL` is legacy; use `GENERATED ALWAYS AS IDENTITY` for new tables (it is SQL-standard and avoids the sequence-ownership surprises `SERIAL` carries). Prefer `TEXT` over `VARCHAR(n)` unless you need a hard length cap, since the two perform identically and `TEXT` never forces a migration to widen a limit.
 - **SQL Server** - use `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode is preserved. Avoid `DATETIME`; use `DATETIME2` for higher precision and a sane range, or `DATETIMEOFFSET` when the value is timezone-aware.
-- **SQLite** - foreign keys are *off by default*: issue `PRAGMA foreign_keys = ON` on every connection or the constraints you declared do nothing. Type affinity and the boolean / date storage idioms are owned by `sqlite` (data-type tables in `references/sql-style.md`).
+- **SQLite** - foreign keys are *off by default*: issue `PRAGMA foreign_keys = ON` on every connection or the constraints you declared do nothing. Type affinity and the boolean / date storage idioms are owned by the `sqlite` skill; `references/sql-style.md`'s data-type tables carry only the cross-engine comparison row.
 - **MongoDB** - the 16 MB document limit is a hard ceiling, so design to sit well under it rather than near it. The `ObjectId` already embeds a creation timestamp - read it from there instead of duplicating a separate created-at field.

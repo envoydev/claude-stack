@@ -4,7 +4,7 @@ Loaded from `dotnet-source-generators` when actually writing or reviewing genera
 
 ## Project file and packaging
 
-The generator assembly is loaded into the compiler, so it must target `netstandard2.0` (what Roslyn runs on) regardless of what the consuming project targets. The project file:
+The project file that satisfies the body's package-as-`netstandard2.0`-analyzer rule:
 
 ```xml
 <PropertyGroup>
@@ -24,7 +24,7 @@ The generator assembly is loaded into the compiler, so it must target `netstanda
 
 ## The trigger pipeline
 
-Drive the pipeline from a marker attribute and select nodes with `ForAttributeWithMetadataName`. It is the fast path: Roslyn maintains an index of attribute usages, so the predicate only sees the handful of nodes that actually carry the attribute.
+Drive the pipeline from a marker attribute and select nodes with `ForAttributeWithMetadataName` - the fast-path rule the body carries:
 
 ```csharp
 [Generator]
@@ -47,17 +47,17 @@ Mark the lambdas `static` so they cannot accidentally capture state. Drop to the
 
 ## Models that keep the cache alive
 
-The pipeline caches each step's output and skips downstream work when the new output `Equals` the cached one, so everything flowing between steps must have correct value equality and be cheap to compare:
+The body's model rule (value-equatable `record`s, no symbols past `transform`) is satisfied like this:
 
 - Project into small `record` / `record struct` models holding only primitives, strings, and equatable collections. Records give you structural equality for free.
-- Pull the strings and flags you need inside `transform`, then let the symbol go - `Compilation`, `ISymbol`, `SyntaxNode`, and `SyntaxTree` are reference-equal, mutable, and enormous.
-- Wrap collections in an equatable type (an `EquatableArray<T>`, or a record holding an `ImmutableArray<T>` with a custom `Equals`) so two structurally-identical models actually compare equal - a plain array field compares by reference and silently breaks caching.
+- Pull the strings and flags you need inside `transform`, then let the symbol go.
+- Wrap collections in an equatable type - an `EquatableArray<T>`, or a record holding an `ImmutableArray<T>` with a custom `Equals` - so two structurally-identical models actually compare equal.
 
-Get this right and an edit elsewhere in the file produces an identical model, the cache hits, and `RegisterSourceOutput` never re-runs. Get it wrong and the generator re-emits on every keystroke - correct output, terrible editor.
+Get this right and an edit elsewhere in the file produces an identical model, the cache hits, and `RegisterSourceOutput` never re-runs.
 
 ## Diagnostics
 
-Validate inside the pipeline and surface every problem as a `Diagnostic` built from a `DiagnosticDescriptor` (stable id, category, severity) with a real `Location` so the squiggle lands on the offending code. Reserve exceptions for genuine bugs in the generator itself.
+Validate inside the pipeline and build every `Diagnostic` from a `DiagnosticDescriptor` (stable id, category, severity) with a real `Location` so the squiggle lands on the offending code.
 
 ## Emitting output
 

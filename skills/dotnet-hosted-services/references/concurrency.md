@@ -4,18 +4,10 @@ The async-correctness rules a worker loop leans on: how to await without deadloc
 
 ## async/await correctness
 
-- **No `async void`.** An `async void` method's exceptions escape onto the thread pool where no caller can `await` or `catch` them - they crash the process. The one exception is an event handler, whose signature forces `void`; keep its body tiny and wrap it in a `try`/`catch`. Everything else returns `Task` or `Task<T>`.
-- **Never block on async with `.Result` or `.Wait()`.** Sync-over-async deadlocks whenever a captured `SynchronizationContext` (classic ASP.NET, WPF/WinForms UI thread) is waiting on the thread the continuation needs to resume on - each side holds what the other wants. It also burns a thread pool thread for the whole wait. The fix is not a clever workaround - it is to make the caller async and `await`. Async all the way up.
+The rules themselves are `csharp`'s (authoritative in its `references/csharp-style.md`): async all the way up - no sync-over-async blocking with `.Result` / `.Wait()` - no `async void` outside event handlers, `ConfigureAwait(false)` in library code. What the worker loop adds:
 
-```csharp
-// deadlock-prone: blocks the current thread waiting on a continuation that needs it
-var user = GetUserAsync(id).Result;
-
-// correct: await propagates without blocking
-var user = await GetUserAsync(id);
-```
-
-- **`ConfigureAwait(false)` in library code.** A method in a reusable library has no reason to resume on the caller's captured context, so append `ConfigureAwait(false)` to every `await` in it - the continuation runs on any thread pool thread, avoiding the deadlock above and skipping the context hop. Application code (a `BackgroundService`, an ASP.NET Core handler - neither captures a context) does not need it; library code does.
+- A `BackgroundService` body captures no `SynchronizationContext`, so it needs no `ConfigureAwait(false)` of its own and the sync-over-async deadlock cannot bite inside it - but every reusable library it calls still follows `csharp`'s library rule.
+- In a 24/7 process an `async void` exception is not an abstract leak: it escapes to the thread pool with no caller to catch it and kills the host at an arbitrary later moment - so every worker entry point returns `Task` and funnels failures into the `ExecuteAsync` handling in `SKILL.md`.
 
 ## On .NET Framework 4.8
 

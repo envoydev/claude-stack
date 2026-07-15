@@ -1,6 +1,6 @@
 # Modular monolith
 
-The topology to reach for by default when one team-and-domain no longer fits, before microservices. Distinct bounded contexts live as modules in **one deployable, one process** - you get clear boundaries without the distributed-systems tax. Authored from knowledge. Load when a system has several bounded contexts but should still deploy as one.
+The topology to reach for by default when one team-and-domain no longer fits, before microservices. Distinct bounded contexts live as modules in **one deployable, one process** - you get clear boundaries without the distributed-systems tax. Load when a system has several bounded contexts but should still deploy as one.
 
 ## Modules
 

@@ -1,6 +1,6 @@
 ---
 name: data-security
-description: "Personal SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. Load when hardening or reviewing a SQL / data-persistence feature, or when the security-auditor sweeps the data stack. Points at dotnet-security for the app-layer EF and injection surface, dotnet-cryptography for crypto primitives, and dotnet-migrate for safe migration mechanics. Do NOT load for non-security work."
+description: "Personal SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. Load when hardening or reviewing a SQL / data-persistence feature, when the security-auditor sweeps the data stack, or on asks like 'is this query injectable' or 'can one tenant read another's rows'. Points at dotnet-security for the app-layer EF and injection surface, dotnet-cryptography for crypto primitives, and dotnet-migrate for safe migration mechanics. Do NOT load for non-security work."
 ---
 
 # SQL / data-layer security
@@ -44,3 +44,7 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 
 - Audit who-changed-what on sensitive tables - temporal (system-versioned) tables, an audit trigger, or `created/modified by+at` columns - but the audit record must **never** store the secret it is tracking (log the fact of a password change, not the password).
 - A migration or seed that inserts a default admin credential, grants a broad role, or disables a constraint is a finding - flag it (safe migration mechanics are `dotnet-migrate`).
+
+## Review output
+
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `runtime login is db_owner | any injection becomes schema-level compromise | split a CRUD-only runtime login from the migration login`. Findings on the app-layer EF/access-control surface route to `dotnet-security`, crypto-primitive misuse to `dotnet-cryptography` - name the route, do not restate their content here.

@@ -29,13 +29,13 @@ Assess blast radius with serena (`find_symbol`, `find_referencing_symbols`) or t
 2. **Move the SDK first.** Bump `global.json` if it pins one, then `<TargetFramework>` and `<LangVersion>` in each project. Sweep the whole solution for stragglers on the old TFM - a mixed-framework solution is its own class of bug.
 3. **Match the packages to the framework.** Update Microsoft and third-party packages to the line that targets the new framework, build, and work through the breaks. The official breaking-changes list for the release is the map; read it rather than guessing at each error. For a large or legacy solution an automated sweep drives the mechanical TFM and package bumps and surfaces the analyzers - the .NET Upgrade Assistant (`dotnet tool install -g upgrade-assistant`) still ships but is now deprecated in favor of the GitHub Copilot app modernization agent; whichever you use, still read the breaking-changes list for the behavioral breaks it cannot catch.
 4. **Adopt new features on purpose.** A release's additions (`TimeProvider` for testable time, `HybridCache`, keyed services, primary constructors) are opt-in - take them where they pay, in their own follow-up commits, not bundled into the bump.
-5. **Verify the full set.** Build, test, then `dotnet format` so the diff is upgrade-only and not noise. The floor is .NET 8 / C# 12; how far you go above it is the target you chose.
+5. **Verify the full set.** Build, test, then run the repo's formatter (`dotnet-code-quality` owns the pick - CSharpier or `dotnet format`, never both) so the diff is upgrade-only and not noise. The floor is .NET 8 / C# 12; how far you go above it is the target you chose.
 
 A .NET Framework 4.8 -> modern .NET move is more than a TFM bump - different programming models and hard blockers (WebForms, server-side WCF, .NET Remoting, AppDomains). Its stance and upgrade-vs-replace blocker map are in `references/net-framework-48.md`.
 
 ## Flow C - NuGet package updates
 
-1. **Audit first.** `dotnet list package --outdated` for what is behind, `dotnet list package --vulnerable` (add `--include-transitive`) for what is unsafe. Security fixes jump the queue.
+1. **Audit first.** `dotnet list package --outdated` for what is behind, `dotnet list package --vulnerable` (add `--include-transitive`) for what is unsafe - the same audit trio `dotnet-project-setup`'s `references/central-package-management.md` owns for routine dependency hygiene. Security fixes jump the queue.
 2. **Sort by semver risk.** Patch and minor are usually safe; a major is a contract change - read its release notes before you commit to it. Group the work so the riskiest bumps are isolated.
 3. **One package at a time.** Update a package, build, test, then the next. A single-package step is the only step you can bisect; a mass bump turns one regression into a hunt across a dozen libraries.
 4. **Centralize versions.** With central package management the version lives once in `Directory.Packages.props`, not scattered across `.csproj` files - that mechanism is `dotnet-project-setup`.

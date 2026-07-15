@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You are bootstrapping the claude-stack FROM SCRATCH. If the stack is already installed here (a populated `.claude/skills` + `.claude/agents`, or the global account equivalents in no-project mode), stop and route to the sibling `configure` skill - updates are its job. Work in order and drive it interactively: ask the scalar choices, always show the resolved selection and the prerequisite report before installing, and never install past an unmet blocker. The deterministic work is done by `stack-select.js`; you orchestrate. Two modes, decided at step 1: **project mode** (the normal case - the selection is decided from the project itself) and **no-project mode** (a global install seeded from the recommended set).
 
-**ONE shallow clone is the entire download** - nothing is fetched from a raw URL, and the installer runs FROM that clone so it does not take a second one: `TMP=$(mktemp -d); git clone --depth 1 https://github.com/envoydev/claude-stack "$TMP/repo"`. The clone is the tip of `main` as one self-consistent snapshot; the `raw.githubusercontent.com` URLs are per-file and sit behind a CDN that serves a cached copy for ~5 min after a push, so raw can hand back a stale installer or a skewed mix of versions. Everything comes out of `$TMP/repo` - the installer, `scripts/stack-select.js`, `scripts/stack-graph.json`, `templates/CLAUDE.template.md` - and step 8 hands the same clone back to the installer via `--source "$TMP/repo"` (`-Source` on Windows), which is what keeps a guided run at one clone instead of two. `git` is a hard prerequisite (the installer needs it regardless, and without it there is nothing to install FROM): if it is missing, say so and stop - do not fall back to raw URLs. Never write the clone into the project tree, and always remove it when the run ends - see step 11.
+**ONE shallow clone is the entire download** - read `references/clone-protocol.md` before step 1 and hold the whole run to it: clone once into `$TMP/repo`, use every tool from that clone (never a raw URL; `git` missing means stop), hand it to the installer with `--source` in step 8, and remove `$TMP` on every exit path in step 11.
 
 ## 1. Preconditions - pick the mode
 - Cwd is a project root in a git repo -> **project mode**; continue at step 2.
@@ -27,7 +27,7 @@ You are bootstrapping the claude-stack FROM SCRATCH. If the stack is already ins
 Ask with the question tool (one screen): scope (`project` default / `global`), space (optional account name), context7 transport (`remote` default / `local`), install the GitHub CLI? (default no), keep local pins? (`--keep-pins`, default no).
 
 ## 4. Use the tools from the clone
-From `$TMP/repo` (cloned as above), use the right installer (`scripts/claude-stack.sh` on `darwin`/`linux`, `scripts/claude-stack.ps1` on Windows), plus `scripts/stack-select.js`, `scripts/stack-graph.json`, and `templates/CLAUDE.template.md` (for step 9). Run the later `node`/`bash` steps against these clone copies - never re-fetch one from a raw URL; the clone is already the newest, consistent copy, and it is the copy step 8 installs from.
+Per `references/clone-protocol.md`: the installer, `stack-select.js`, `stack-graph.json`, and `templates/CLAUDE.template.md` (for step 9) all come out of `$TMP/repo` - never a raw re-fetch.
 
 ## 5. Build the recommended selection and close it
 - Read this skill's `references/recommendations.json`. Union `always` with the seed of each confirmed stack into a raw selection `{ agents: [...], rules: [...], skills: [...], plugins: [...] }`; write it to `raw.json` in the temp dir.
@@ -56,7 +56,7 @@ The installer seeded `.claude/CLAUDE.md` from `templates/CLAUDE.template.md` whe
 Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install -g csharp-ls` on a .NET setup), the `/claude-hud:setup` statusline step, and that the first `claude plugin install` may prompt to trust. Finally, surface the installer's own gitignore reminder so the stack-generated artifacts are not committed.
 
 ## 11. Clean up the temp dir - ALWAYS
-`rm -rf "$TMP"` (PowerShell: `Remove-Item -Recurse -Force $TMP`). The clone plus the working files you wrote next to it (`raw.json`, `selection.txt`) live there and nothing else will remove them - the installer only cleans up a clone IT took, never the one you passed via `--source`. Do this on EVERY exit path, not just the happy one: after a successful install, after an abort, and after a blocker or a user 'no' that stops the run early. Then confirm the project tree holds only installed artifacts - no clone, no `raw.json`/`selection.txt`, no installer copy.
+Remove `$TMP` per `references/clone-protocol.md`, on EVERY exit path of THIS skill: after a successful install, after an abort, and after a blocker or a user 'no' that stops the run early. Then confirm the project tree holds only installed artifacts.
 
 ## Do not
 - Do not install the full set - always go through the selection. Do not skip the review or the prerequisite gate. Do not write the clone or the working files into the project tree, and do not leave `$TMP` behind on any exit path. Do not commit anything on the user's behalf.

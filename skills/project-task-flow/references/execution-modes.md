@@ -51,7 +51,7 @@ De-escalation runs the same way, a step DOWN the ladder. A pure presentational l
 
 The independent verifier (`domain_trio`+) is the flow's main cost premium: a fresh seat that re-runs the gates and catches a defect the implementer missed - but at roughly double the tokens of one self-verifying context. So it is **opt-in on risk, not the default**. Convene it only when the work trips an explicit **risk trigger**: auth, a migration or other data-loss exposure, concurrency, security-sensitive behavior, a shared contract seam, or a large refactor. Ordinary single-domain features - even medium ones that carry a boundary, overflow, or reactivity edge - do NOT convene it; they run in `implementer_only`, where the main session builds and self-verifies.
 
-So the trio's trigger is an explicit risk (the escalation-guardrail set below), not task size and not a merely non-obvious edge. **The deliberate trade:** below that bar a medium feature is self-verified by the one context that wrote it, so a subtle edge-case defect - an int32 overflow on an unbounded page, a reactivity slip - CAN ship, because no independent seat re-derives it. That is accepted on purpose: it roughly halves the token cost of ordinary single-domain work, and the risk triggers still force the mode UP the instant real, costly risk (auth, migration, data-loss, cross-domain, security, large refactor, unclear legacy) appears - so the independent gate is spent where a bug is expensive, not on every medium feature. A convened trio still runs a guarded Haiku implementer (`references/model-routing.md`). Fewer seats is the token lever that dominates all per-seat tuning; this rung is how you pull it.
+So the trio's trigger is an explicit risk (the escalation-guardrail set below), not task size and not a merely non-obvious edge. **The deliberate trade:** below that bar a medium feature is self-verified by the one context that wrote it, so a subtle edge-case defect - an int32 overflow on an unbounded page, a reactivity slip - CAN ship, because no independent seat re-derives it. That is accepted on purpose: it roughly halves the token cost of ordinary single-domain work, and the risk triggers still force the mode UP the instant real, costly risk (auth, migration, data-loss, cross-domain, security, large refactor, unclear legacy) appears - so the independent gate is spent where a bug is expensive, not on every medium feature. A convened trio can still run its mechanical task cards on haiku - the designer assigns each task's implementer model, sonnet floor on risk (`references/model-routing.md`). Fewer seats is the token lever that dominates all per-seat tuning; this rung is how you pull it.
 
 ## Escalation guardrails
 
@@ -113,7 +113,8 @@ For a bug, incident, CI failure, flaky test, or unclear behavior, do not use the
 
 ```text
 Do not run full_cross_domain by default. Use single_chat for tiny tasks,
-implementer_only for small domain-local ones, domain_trio for medium.
+implementer_only for small AND medium domain-local work with no risk trigger,
+domain_trio only when a risk trigger fires (the decision ladder above).
 Use full_cross_domain only when cross-domain coordination risk justifies the cost.
 The full flow costs 2x-5x the tokens of a single chat - parallelism buys wall-clock
 and separation of concerns, not tokens.

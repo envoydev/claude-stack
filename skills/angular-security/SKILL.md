@@ -75,6 +75,10 @@ this.router.navigateByUrl(
 
 - No PII or tokens in `console.log` shipped to production. No secrets rendered into the DOM. Strip debug panels and diagnostic routes from the production build.
 
+## Review output
+
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `[innerHTML] fed through bypassSecurityTrustHtml | stored XSS runs in every viewer's session | bind the sanitized value and keep trust calls away from user-influenced input`. Findings on the server side route to `dotnet-security`, on the native shell to `mobile-security` - name the route, do not restate their content here.
+
 ## Where the rest lives
 
 Server-side authorization, injection, CORS, and error-envelope leakage are `dotnet-security`. The Ionic / Capacitor native shell - secure storage, deep-link validation, WebView hardening, native permissions - is `mobile-security` (an Ionic app inherits everything here **plus** that native surface).

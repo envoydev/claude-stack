@@ -193,3 +193,5 @@ Baseline to be established during investigation.
 - Check for missing indexes on product search columns first - low-effort, high-impact candidate.
 - Use Application Insights / slow query log for initial profiling.
 ```
+
+The worked example above is illustrative, not a default stack - the same stack-agnostic rule as `bug.md`: adapt tool and stack names to the project the ticket is for.

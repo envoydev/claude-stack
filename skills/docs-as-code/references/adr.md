@@ -110,10 +110,9 @@ operational, not editorial:
 
 ## House integration
 
-`project-architecture-analyzer` reads the decision log at ORIENT: an accepted ADR is declared
-intent to reconcile against the enforced structure, and a tradeoff an ADR records deliberately
-lands in ASSESSMENT.md as an accepted tradeoff, not a weakness. Keep rationale here, not on
-diagrams - a diagram shows the outcome and links the ADR that chose it.
+How the repo's architecture capture consumes the decision log at ORIENT is
+`project-architecture-analyzer`'s protocol - this file owns only the ADR format it reads. Keep
+rationale here, not on diagrams - a diagram shows the outcome and links the ADR that chose it.
 
 ## Checklist
 
