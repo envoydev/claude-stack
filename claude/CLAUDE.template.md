@@ -49,6 +49,11 @@ gitignored, so they will NOT be committed, will not survive a fresh clone, and w
 teammate - keep the root under a committed path (the `docs/` default) unless you specifically want
 them machine-local.
 
+Superpowers writes its implementation plans and design specs under this root too -
+`<root>/superpowers/plans/` and `<root>/superpowers/specs/` (default `docs/superpowers/plans/` and
+`docs/superpowers/specs/`) - overriding its own default location so they are committed alongside the
+other project docs, not left as local scratch. Track them: do NOT gitignore `docs/superpowers/`.
+
 <!-- Authoring outline - write these sections into the project-specific top of this file
 (each section lean; interleave as reads best - the project intro usually comes first, above
 ## Rules), then delete this comment block. Comments are stripped from injection, so this

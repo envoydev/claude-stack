@@ -958,7 +958,6 @@ Add these stack-generated, machine-local artifacts to the project's .gitignore (
   .slopwatch       dotnet-slopwatch output
   .playwright      playwright MCP user-data-dir + screenshots
   .mcp.json        generated MCP server config (machine-local)
-  docs/superpowers superpowers / brainstorming scratch specs (docs/ itself - the committed architecture map - stays tracked)
 
 If the project's CLAUDE.md 'Generated docs root' is relocated under .claude/, the generated docs
 inherit the .claude ignore above and become local-only - not committed, not shared. Keep the docs
