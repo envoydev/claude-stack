@@ -594,14 +594,9 @@
     },
     "mobile-implementer": {
       "skills": [
-        "angular-conventions",
-        "angular-styling",
-        "capacitor-release",
-        "ionic",
-        "project-task-flow",
-        "typescript"
+        "ionic"
       ],
-      "skillsSource": "body",
+      "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": [
@@ -623,6 +618,7 @@
     "mobile-verifier": {
       "skills": [
         "angular-conventions",
+        "angular-styling",
         "ionic",
         "typescript"
       ],
@@ -648,8 +644,10 @@
       ]
     },
     "related-project-analyzer": {
-      "skills": [],
-      "skillsSource": "none",
+      "skills": [
+        "project-related-context"
+      ],
+      "skillsSource": "body",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -712,6 +710,7 @@
       "skills": [
         "csharp",
         "dotnet-code-quality",
+        "dotnet-testing",
         "dotnet-wpf"
       ],
       "skillsSource": "frontmatter",

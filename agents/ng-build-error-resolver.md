@@ -29,7 +29,7 @@ Group by code family, fix the cascading layer first, and reach for the known Ang
 1. Run `ng build` (or the project's `npm run build`) and capture the full error output.
 2. If clean, build once more to confirm, then stop and report.
 3. Group by the families in Failure modes I hunt and fix the cascading layer first.
-4. For each error, locate the cause via serena, apply the smallest correct edit, and prefer one root-cause fix over many local patches.
+4. For each error, locate the cause via serena - and when the error implicates a bumped library's changed API, resolve the current signature with context7 rather than guessing - then apply the smallest correct edit, preferring one root-cause fix over many local patches.
 5. Rebuild and repeat. **Hard cap: 5 build cycles.** If still red, stop and report the remaining errors with your diagnosis.
 
 The 5-cycle cap is not the only bound: if a single build runs unusually long (a large workspace, a cold cache), report what you have and stop rather than burning wall-clock on repeated full builds.
