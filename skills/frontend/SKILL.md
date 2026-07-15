@@ -9,6 +9,8 @@ Index mapping a web-frontend work area to the skill to load. It routes rather th
 
 **Companion, not optional:** load `typescript` for any TS/JS - strict typing, type modeling, modules, async, errors. Every row below is in addition to that language baseline.
 
+**Required vs optional.** In an Angular project the always-on spine is three skills: this router, `typescript` (every `.ts` / `.js` file), and `angular-conventions` (the framework layer, on any Angular file) - the convention rule already auto-attaches the latter two on `.ts` edits. Every other row below is an optional specialist, loaded only when its area is in play - `angular-material` (Material/CDK), `angular-styling` (CSS/SCSS), `angular-security` (hardening a feature), `mobile` (Ionic/Capacitor) - never up front. A plain non-Angular TypeScript project needs only `typescript`.
+
 ## Area -> skill
 
 | You are about to... | Load |
