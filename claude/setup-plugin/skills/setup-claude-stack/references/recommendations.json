@@ -3,11 +3,9 @@
     "agents": [
       "ci-failure-diagnoser",
       "issue-diagnoser",
-      "security-auditor",
       "integration-reviewer",
       "evidence-gatherer",
       "code-analyzer",
-      "code-style-analyzer",
       "related-project-analyzer"
     ],
     "rules": [
@@ -31,6 +29,9 @@
       "rules": [
         "csharp-conventions",
         "dotnet-repair-agents"
+      ],
+      "plugins": [
+        "csharp-lsp"
       ]
     },
     "angular": {
@@ -46,6 +47,9 @@
         "angular-conventions",
         "angular-styling-conventions",
         "angular-repair-agents"
+      ],
+      "plugins": [
+        "typescript-lsp"
       ]
     },
     "wpf": {
@@ -60,6 +64,9 @@
         "csharp-conventions",
         "wpf-conventions",
         "dotnet-repair-agents"
+      ],
+      "plugins": [
+        "csharp-lsp"
       ]
     },
     "console": {
@@ -73,6 +80,9 @@
       "rules": [
         "csharp-conventions",
         "dotnet-repair-agents"
+      ],
+      "plugins": [
+        "csharp-lsp"
       ]
     },
     "mobile": {
@@ -84,6 +94,9 @@
       "rules": [
         "typescript-conventions",
         "angular-conventions"
+      ],
+      "plugins": [
+        "typescript-lsp"
       ]
     },
     "data": {

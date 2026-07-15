@@ -39,7 +39,7 @@ function computeClosure(graph, raw)
     }
 
     const mcps = new Set();
-    const plugins = new Set();
+    const plugins = new Set(Array.isArray(raw.plugins) ? raw.plugins : []);
     const pull = (node, why) =>
     {
         if (!node) return;
@@ -156,8 +156,11 @@ function main(argv)
     const rawFile = arg('--selection');
     if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--check] [--context7-local] [--github-cli]'); process.exit(2); }
     const graphPath = arg('--graph') || path.join(__dirname, 'stack-graph.json');
-    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
-    const raw = JSON.parse(fs.readFileSync(rawFile, 'utf8'));
+    let graph, raw;
+    try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
+    catch (e) { console.error(`stack-select: cannot read graph ${graphPath}: ${e.code || e.message}`); process.exit(1); }
+    try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
+    catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
     const closure = computeClosure(graph, raw);
 
     const emit = arg('--emit');

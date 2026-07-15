@@ -50,7 +50,15 @@ test('every recommendation name resolves in the dependency graph', () => {
         for (const a of seed.agents || []) assert.ok(agentKeys.has(a), `recommendation agent '${a}' not in graph`);
         for (const r of seed.rules || []) assert.ok(ruleKeys.has(r), `recommendation rule '${r}' not in graph`);
         for (const s of seed.skills || []) assert.ok(skillKeys.has(s), `recommendation skill '${s}' not in graph`);
+        const pluginCatalog = new Set(graph.catalog.plugins);
+        for (const p of seed.plugins || []) assert.ok(pluginCatalog.has(p), `recommendation plugin '${p}' not in catalog`);
     }
+});
+
+test('the aspnet seed installs the csharp LSP plugin', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const closed = computeClosure(graph, { agents: recs.stacks.aspnet.agents, rules: recs.stacks.aspnet.rules, plugins: recs.stacks.aspnet.plugins });
+    assert.ok(closed.plugins.includes('csharp-lsp'), 'aspnet installs csharp-lsp');
 });
 
 test('the aspnet seed closes to its .NET vertical', () => {
@@ -68,6 +76,20 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
     {
         assert.ok((recs.always.rules || []).includes(r), `always seeds ${r}`);
     }
+});
+
+test('a single-stack (aspnet) recommendation does not pull cross-stack skills', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const closed = computeClosure(graph, { agents: [...(recs.always.agents||[]), ...recs.stacks.aspnet.agents], rules: [...(recs.always.rules||[]), ...recs.stacks.aspnet.rules], plugins: recs.stacks.aspnet.plugins });
+    // dotnet-wpf is left out of this list on purpose: it still reaches an aspnet
+    // closure via the shared dotnet-build-error-resolver / dotnet-test-failure-resolver
+    // (both part of aspnet's own seed, mentioning dotnet-wpf for mixed-solution build
+    // errors) - a separate, pre-existing edge this always-roster trim does not touch.
+    for (const cross of ['angular-security', 'mobile', 'mobile-security'])
+    {
+        assert.ok(!closed.skills.includes(cross), `aspnet setup must not pull ${cross}`);
+    }
+    assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
 test('the setup skill exists with valid manual-only frontmatter', () => {

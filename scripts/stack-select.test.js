@@ -117,6 +117,13 @@ test('emitSelectionFile produces Component B selection lines', () => {
     assert.ok(lines.includes('rule csharp-conventions'));
 });
 
+test('CLI prints a clean error and exits 1 on a missing selection file', () => {
+    const r = require('node:child_process').spawnSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', '/no/such/raw.json'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stderr, /cannot read selection/);
+    assert.ok(!/at Object\.|at Module\./.test(r.stderr), 'no raw stack trace');
+});
+
 test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
     const rawFile = path.join(dir, 'raw.json');

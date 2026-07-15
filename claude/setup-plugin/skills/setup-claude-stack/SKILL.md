@@ -28,7 +28,7 @@ Ask with the question tool (one screen): scope (`project` default / `global`), s
 Into the temp dir, download from `.../main`: the right installer (`claude/claude-stack.sh` or `claude/claude-stack.ps1`), `scripts/stack-select.js`, and `scripts/stack-graph.json`.
 
 ## 5. Build the recommended selection and close it
-- Read this skill's `references/recommendations.json`. Union `always` with the seed of each confirmed stack into a raw selection `{ agents: [...], rules: [...], skills: [...] }`; write it to `raw.json` in the temp dir.
+- Read this skill's `references/recommendations.json`. Union `always` with the seed of each confirmed stack into a raw selection `{ agents: [...], rules: [...], skills: [...], plugins: [...] }`; write it to `raw.json` in the temp dir.
 - Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check [--context7-local] [--github-cli]`
   - `--context7-local` only when the user chose context7 `local`; `--github-cli` only when they opted in.
   - It prints `required: <name> - <why>` (closure adds) and `BLOCKER: ...` / `warning: ...` lines, and writes `selection.txt` (the installer selection file).
