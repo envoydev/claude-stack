@@ -730,8 +730,9 @@ else:
     print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default already present - unchanged")
 PY
 )
-  local -a mcp_names; mcp_names=("${MCPS[@]%%|*}")   # server name = the token before the first '|'
-  printf '%s\n' "${HOOKS[@]}" | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP "${mcp_names[@]}" || log "  !! settings.json wiring failed"
+  local -a mcp_names; mcp_names=()
+  for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
+  printf '%s\n' "${HOOKS[@]}" | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} || log "  !! settings.json wiring failed"
 }
 
 # ===========================================================================

@@ -70,8 +70,10 @@ test('sh: filterable arrays are always expanded nounset-safe (empty category mus
     const src = fs.readFileSync(SH, 'utf8');
     // A negative lookbehind for the preceding "+" excludes the SAFE idiom ${arr[@]+"${arr[@]}"},
     // whose own quoted half would otherwise self-match this pattern and false-positive forever.
-    const bare = src.match(/(?<!\+)"\$\{(?:SKILLS|PLUGINS|MCPS|AGENTS|CLAUDE_RULES)\[@\]\}"/g) || [];
-    assert.deepStrictEqual(bare, [], `bare (non-nounset-safe) array expansions found: ${bare.join(', ')} - use \${arr[@]+"\${arr[@]}"}`);
+    // No trailing \}" here (deliberately) - a modifier form like "${MCPS[@]%%|*}" is bare/unsafe
+    // too and must still be flagged; matching only the exact "${ARR[@]}" shape let that slip past.
+    const bare = src.match(/(?<!\+)"\$\{(?:SKILLS|PLUGINS|MCPS|AGENTS|CLAUDE_RULES)\[@\]/g) || [];
+    assert.deepStrictEqual(bare, [], `bare (non-nounset-safe) array expansions found: ${bare.join(', ')} - use \${arr[@]+"\${arr[@]}"} (or a guarded loop for modifier forms)`);
 });
 
 // The ps1 twin can only be exercised where PowerShell is installed. Run it if
