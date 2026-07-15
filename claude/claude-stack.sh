@@ -54,10 +54,13 @@ Named flags (any order, each optional with a default):
                            the refresh (an update resets them to upstream otherwise)
   --selection <file>       install ONLY the skills/plugins/mcps/agents/rules named in <file> (one 'category name' per line); hooks always install
   --print-plan             with --selection, print the resolved per-category install set and exit (dry run)
+  --skills-only            run only the skill install/update step, then exit (testability; skips
+                           prerequisites/plugins/mcps/hooks/agents/rules)
 
 Environment variables:
   SCOPE=project|global   fallback for --scope when the flag is absent (default project)
   CLAUDE_CONFIG_DIR      target a specific account when no --space is given (default ~/.claude)
+  STACK_SKILLS_REPO      skills source repo for git clone (default https://github.com/envoydev/agents-stack)
   CONTEXT7_API_KEY       context7 API key, read from the environment at launch (higher rate limits)
   CONTEXT7_BAKE_KEY      with --context7 local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted)
 
@@ -95,6 +98,7 @@ KEEP_PINS=false
 CONTEXT7_MODE="remote"
 SELECTION=""
 PRINT_PLAN=false
+SKILLS_ONLY=false
 _flag_val() {  # $1 = flag name, $2 = the arg meant to be its value ('' when the flag was last)
   [ -n "$2" ] || { usage >&2; echo "error: $1 needs a value" >&2; exit 1; }
 }
@@ -111,7 +115,8 @@ while [ $# -gt 0 ]; do
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
     --selection=*) SELECTION="${1#*=}";                          shift ;;
     --print-plan)  PRINT_PLAN=true;                              shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins, --selection, --print-plan)" >&2; exit 1 ;;
+    --skills-only) SKILLS_ONLY=true;                              shift ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins, --selection, --print-plan, --skills-only)" >&2; exit 1 ;;
   esac
 done
 
@@ -562,21 +567,28 @@ fi
 # INSTALL - skills re-add UNCONDITIONALLY (clean copy each run); MCPs and plugins SKIP if already present
 # ===========================================================================
 install_skills() {
-  command -v npx >/dev/null 2>&1 || { note_failure "npx not found - skills not installed"; return 0; }   # fail-soft: skip, never abort
-  local seen="" entry repo skill sargs names
+  # git-copy: clone the stack repo (depth 1) and copy each selected skills/<name>/ into the scope
+  # dest directly - all 64 house skills live in ONE repo (envoydev/agents-stack), so a plain copy
+  # fully reproduces what the skills CLI used to stage; no npx/network-registry dependency.
+  command -v git >/dev/null 2>&1 || { note_failure "git not found - skills not installed"; return 0; }   # fail-soft: skip, never abort
+  local repo_url tmp name dest entry
+  repo_url="${STACK_SKILLS_REPO:-https://github.com/envoydev/agents-stack}"
+  case "$CLAUDE_SCOPE" in user) dest="$CONFIG_DIR/skills" ;; *) dest="$PWD/.claude/skills" ;; esac
+  tmp="$(mktemp -d)"
+  if ! git clone --depth 1 "$repo_url" "$tmp" >/dev/null 2>&1; then
+    note_failure "clone of $repo_url failed - skills not installed"; rm -rf "$tmp"; return 0
+  fi
+  mkdir -p "$dest"
   for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do
-    repo="${entry%%|*}"
-    case " $seen " in *" $repo "*) continue ;; esac   # repo already done
-    seen="$seen $repo"
-    sargs=(); names=""                                 # one --skill flag per skill (CLI rejects comma lists)
-    for skill in ${SKILLS[@]+"${SKILLS[@]}"}; do
-      [ "${skill%%|*}" = "$repo" ] || continue
-      sargs+=(--skill "${skill#*|}")
-      names="${names:+$names,}${skill#*|}"
-    done
-    log "skills [$SCOPE -> $AGENT]: $repo -> $names"
-    npx -y skills add "$repo" "${sargs[@]}" --agent "$AGENT" $SKILLS_ADD_FLAG --yes || note_failure "$repo ($AGENT) failed - check selectors (npx skills add $repo --list)"
+    name="${entry#*|}"
+    if [ -d "$tmp/skills/$name" ]; then
+      rm -rf "$dest/$name"; cp -R "$tmp/skills/$name" "$dest/$name"
+      log "skill [$CLAUDE_SCOPE]: $name -> $dest/$name"
+    else
+      note_failure "skill '$name' not found in $repo_url"
+    fi
   done
+  rm -rf "$tmp"
 }
 
 install_plugins() {
@@ -738,17 +750,18 @@ PY
 # ===========================================================================
 # UPDATE - bring everything to latest
 # ===========================================================================
-remove_skills() {  # uninstall the manifest skills so the following re-add lands as fresh COPIES
-  command -v npx >/dev/null || return 0
-  local sargs=() entry
-  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do sargs+=(--skill "${entry#*|}"); done
-  log "skills [$SCOPE -> $AGENT]: removing ${#SKILLS[@]} for clean reinstall"
-  npx -y skills remove "${sargs[@]}" --agent "$AGENT" $SKILLS_ADD_FLAG --yes 2>/dev/null || true
+remove_skills() {  # rm -rf each manifest skill under the scope dest, so update starts from a clean slate
+  local dest entry name
+  case "$CLAUDE_SCOPE" in user) dest="$CONFIG_DIR/skills" ;; *) dest="$PWD/.claude/skills" ;; esac
+  log "skills [$CLAUDE_SCOPE]: removing ${#SKILLS[@]} for clean reinstall"
+  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do
+    name="${entry#*|}"
+    rm -rf "$dest/$name"
+  done
 }
 
 update_skills() {
-  # Clean reinstall (remove + add), NOT `npx skills update`: keeps skills as real COPIES instead of
-  # symlinks into .agents/, and `npx skills add` re-clones each repo = latest.
+  # Fresh clone + copy - the same as install (the copy overwrites), just cleared first.
   remove_skills
   install_skills
 }
@@ -892,6 +905,13 @@ prune_agents_cache() {
 # ===========================================================================
 # DISPATCH
 # ===========================================================================
+# --skills-only: run ONLY the skill step and exit, before any prerequisite check or claude-CLI-
+# dependent step (testability - drives just the git-copy with no claude/gh/network dependency).
+if [ "$SKILLS_ONLY" = true ]; then
+  if [ "$ACTION" = "install" ]; then install_skills; else update_skills; fi
+  exit 0
+fi
+
 prerequisites_check
 install_github_cli
 

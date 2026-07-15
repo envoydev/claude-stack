@@ -22,11 +22,14 @@
 #                  `gh auth login` when unauthenticated. e.g.:
 #                    bash cursor-stack.sh install github-cli
 #                    bash cursor-stack.sh install work github-cli
+#   skills-only -> run only the skill install/update step, then exit (testability - skips
+#                  prerequisites/mcps/hooks/rules/agents)
 #
 # Scope (default PROJECT - installs the full set INTO this repo; SCOPE=global installs it into the
 # active account instead):
 #   SCOPE=project  -> skills project-scoped; cursor tree -> <repo>/.cursor/  (default)
 #   SCOPE=global   -> skills -g;             cursor tree -> ~/.cursor/
+# STACK_SKILLS_REPO   skills source repo for git clone (default https://github.com/envoydev/agents-stack)
 # Full inventory - comment out manifest entries below to trim it to a curated subset.
 set -euo pipefail
 
@@ -34,7 +37,7 @@ set -euo pipefail
 ACTION="${1:-}"
 case "$ACTION" in
   install|update) ;;
-  *) echo "usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote]" >&2; exit 1 ;;
+  *) echo "usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote] [skills-only]" >&2; exit 1 ;;
 esac
 
 # This script provisions the Cursor agent. (Claude Code lives in claude-stack.sh.)
@@ -46,20 +49,22 @@ AGENT="cursor"
 SPACE=""
 INSTALL_GITHUB_CLI=false
 CONTEXT7_MODE="remote"
+SKILLS_ONLY=false
 for extra in "${@:2}"; do
   case "$extra" in
     github-cli) INSTALL_GITHUB_CLI=true ;;
     context7-local) CONTEXT7_MODE="local" ;;
     context7-remote) CONTEXT7_MODE="remote" ;;
+    skills-only) SKILLS_ONLY=true ;;
     *)
       # Any other single word is the SPACE (memory-DB namespace). Reserved flags are matched above;
       # a second bare word, or a disallowed charset, is an error.
       if [ -n "$SPACE" ]; then
-        echo "usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote]   (only one space name; got '$SPACE' and '$extra')" >&2; exit 1
+        echo "usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote] [skills-only]   (only one space name; got '$SPACE' and '$extra')" >&2; exit 1
       fi
       case "$extra" in
         [!A-Za-z0-9]*|*[!A-Za-z0-9._-]*)
-          echo "usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote]   (space '$extra' must start alphanumeric; chars [A-Za-z0-9._-])" >&2; exit 1 ;;
+          echo "usage: bash $0 <install|update> [space] [github-cli] [context7-local|context7-remote] [skills-only]   (space '$extra' must start alphanumeric; chars [A-Za-z0-9._-])" >&2; exit 1 ;;
       esac
       SPACE="$extra" ;;
   esac
@@ -374,59 +379,30 @@ CURSOR_AGENTS=(
 # (mcp.json: install skips an already-present server / update re-writes it; hooks.json / rules skip if already wired)
 # ===========================================================================
 install_skills() {
-  command -v npx >/dev/null || { echo "npx not found"; return 1; }
-  local seen="" entry repo skill sargs names
-  for entry in "${SKILLS[@]}"; do
-    repo="${entry%%|*}"
-    case " $seen " in *" $repo "*) continue ;; esac   # repo already done
-    seen="$seen $repo"
-    sargs=(); names=""                                 # one --skill flag per skill (CLI rejects comma lists)
-    for skill in "${SKILLS[@]}"; do
-      [ "${skill%%|*}" = "$repo" ] || continue
-      sargs+=(--skill "${skill#*|}")
-      names="${names:+$names,}${skill#*|}"
-    done
-    log "skills [$SCOPE -> $AGENT]: $repo -> $names"
-    npx -y skills add "$repo" "${sargs[@]}" --agent "$AGENT" $SKILLS_ADD_FLAG --yes || log "  !! $repo ($AGENT) failed - check selectors (npx skills add $repo --list)"
-  done
-}
-
-# ===========================================================================
-# CURSOR - self-contained .cursor/ tree (never touches .claude / never calls claude CLI)
-# ===========================================================================
-copy_cursor_skills() {
-  # STRICT independence: copy each manifest skill into .cursor/skills as REAL copies so Cursor never
-  # depends on .claude/skills or the shared .agents/ store. Source is the npx staging (.agents/skills)
-  # with a .claude/skills fallback. Idempotent: an existing destination skill is replaced.
-  local root base dest n r src target copied=0
-  root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  if [ "$SCOPE" = "project" ]; then
-    [ -n "$root" ] || { log "  !! not in a git repo - skipping cursor skills"; return 0; }
-    base="$root"
-  else
-    base="$HOME"
+  # git-copy: clone the stack repo (depth 1) and copy each selected skills/<name>/ straight into
+  # .cursor/skills - all 64 house skills live in ONE repo (envoydev/agents-stack), so a plain copy
+  # fully reproduces what the skills CLI used to stage. STRICT independence preserved: the dest is
+  # .cursor/skills as real copies, never a dependency on .claude/skills or a shared .agents/ store
+  # (no separate npx-then-copy step needed any more - this writes .cursor/skills directly).
+  command -v git >/dev/null 2>&1 || { log "  !! git not found - skills not installed"; return 0; }   # fail-soft: skip, never abort
+  local repo_url tmp name dest entry
+  repo_url="${STACK_SKILLS_REPO:-https://github.com/envoydev/agents-stack}"
+  case "$SCOPE" in project) dest="$PWD/.cursor/skills" ;; *) dest="$CONFIG_DIR/skills" ;; esac
+  tmp="$(mktemp -d)"
+  if ! git clone --depth 1 "$repo_url" "$tmp" >/dev/null 2>&1; then
+    log "  !! clone of $repo_url failed - skills not installed"; rm -rf "$tmp"; return 0
   fi
-  dest="$base/.cursor/skills"; mkdir -p "$dest"
-
-  local names=() seen="" e nm
-  for e in "${SKILLS[@]}"; do
-    nm="${e#*|}"
-    case " $seen " in *" $nm "*) continue ;; esac
-    seen="$seen $nm"; names+=("$nm")
+  mkdir -p "$dest"
+  for entry in "${SKILLS[@]}"; do
+    name="${entry#*|}"
+    if [ -d "$tmp/skills/$name" ]; then
+      rm -rf "$dest/$name"; cp -R "$tmp/skills/$name" "$dest/$name"
+      log "skill [$SCOPE]: $name -> $dest/$name"
+    else
+      log "  !! skill '$name' not found in $repo_url"
+    fi
   done
-
-  for n in "${names[@]}"; do
-    src=""
-    for r in "$base/.agents/skills" "$base/.claude/skills"; do
-      [ -d "$r/$n" ] && { src="$r/$n"; break; }
-    done
-    [ -n "$src" ] || { log "  !! cursor skill source missing: $n (install skills first)"; continue; }
-    target="$dest/$n"
-    rm -rf "$target"
-    cp -R "$src" "$target"
-    copied=$((copied + 1))
-  done
-  log "  cursor skills -> $dest ($copied/${#names[@]} copied)"
+  rm -rf "$tmp"
 }
 
 set_cursor_mcps() {
@@ -646,27 +622,29 @@ install_cursor_agents() {
 # ===========================================================================
 # UPDATE - bring everything to latest
 # ===========================================================================
-remove_skills() {  # uninstall the manifest skills so the following re-add lands as fresh COPIES
-  command -v npx >/dev/null || return 0
-  local sargs=() entry
-  for entry in "${SKILLS[@]}"; do sargs+=(--skill "${entry#*|}"); done
-  log "skills [$SCOPE -> $AGENT]: removing ${#SKILLS[@]} for clean reinstall"
-  npx -y skills remove "${sargs[@]}" --agent "$AGENT" $SKILLS_ADD_FLAG --yes 2>/dev/null || true
+remove_skills() {  # rm -rf each manifest skill under the scope dest, so update starts from a clean slate
+  local dest entry name
+  case "$SCOPE" in project) dest="$PWD/.cursor/skills" ;; *) dest="$CONFIG_DIR/skills" ;; esac
+  log "skills [$SCOPE]: removing ${#SKILLS[@]} for clean reinstall"
+  for entry in "${SKILLS[@]}"; do
+    name="${entry#*|}"
+    rm -rf "$dest/$name"
+  done
 }
 
 update_skills() {
-  # Clean reinstall (remove + add), NOT `npx skills update`: keeps skills as real COPIES instead of
-  # symlinks into .agents/, and `npx skills add` re-clones each repo = latest.
+  # Fresh clone + copy - the same as install (the copy overwrites), just cleared first.
   remove_skills
   install_skills
 }
 
 prune_agents_cache() {
-  # npx skills stages an agent-neutral .agents/ store. With a STRICT per-agent copy (.cursor/skills is
-  # a real copy), nothing reads .agents/ anymore - prune it. Guard: keep it if any skill entry under
-  # .cursor/skills is a symlink (a symlinked tree still depends on .agents/; removing it would dangle).
-  # BASE must match the copy step (copy_cursor_skills): repo root for SCOPE=project, $HOME for global -
-  # otherwise a global install leaves $HOME/.agents unpruned while we check the wrong (repo) base.
+  # Legacy cleanup: an npx-skills-era install staged an agent-neutral .agents/ store. The git-copy
+  # install_skills never creates one, so this is a no-op on a fresh install and only matters for a
+  # project upgrading from the old flow. Guard: keep it if any skill entry under .cursor/skills is a
+  # symlink (a symlinked tree still depends on .agents/; removing it would dangle).
+  # BASE must match install_skills's dest: repo root for SCOPE=project, $HOME for global - otherwise
+  # a global install leaves $HOME/.agents unpruned while we check the wrong (repo) base.
   local root d base
   root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
   if [ "$SCOPE" = "project" ]; then
@@ -691,12 +669,18 @@ prune_agents_cache() {
 # ===========================================================================
 # DISPATCH
 # ===========================================================================
+# skills-only: run ONLY the skill step and exit, before any prerequisite check (testability -
+# drives just the git-copy with no gh/other-tool dependency).
+if [ "$SKILLS_ONLY" = true ]; then
+  if [ "$ACTION" = "install" ]; then install_skills; else update_skills; fi
+  exit 0
+fi
+
 prerequisites_check
 install_github_cli
 
 # Cursor path: 100% claude-free. install == update (clean re-add of skills, then refresh the .cursor tree).
 if [ "$ACTION" = "install" ]; then install_skills; else update_skills; fi
-copy_cursor_skills
 set_cursor_mcps
 set_cursor_hooks
 install_cursor_rules
