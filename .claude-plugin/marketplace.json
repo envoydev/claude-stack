@@ -12,7 +12,7 @@
     {
       "name": "claude-stack",
       "source": "./setup-plugin",
-      "description": "The personal Claude Code stack, guided: setup (fresh install from scratch) + configure (update an existing install), both selection-driven with prerequisite checks.",
+      "description": "The personal Claude Code stack, guided: setup (fresh install from scratch) + update (refresh + prune upstream removals) + configure (adjust the selection), all selection-driven with prerequisite checks.",
       "category": "development",
       "tags": [
         "setup",

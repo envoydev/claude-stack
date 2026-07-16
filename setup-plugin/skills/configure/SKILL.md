@@ -10,7 +10,9 @@ You are refreshing or adjusting a claude-stack install that already exists. Same
 `setup`: drive it interactively, always show the resolved selection and the prerequisite report
 before running, never run past an unmet blocker. `stack-select.js` does the deterministic work;
 you orchestrate. The one difference from `setup`: the baseline selection is what is INSTALLED,
-not the recommendations - and the action is `update`, not `install`.
+not the recommendations - and the action is `update`, not `install`. (For a no-questions refresh
+that also prunes what upstream removed, the sibling `update` skill is the shorter path - this
+skill is for CHOOSING what changes.)
 
 **ONE release archive is the entire download** - the shared contract lives in the sibling `setup`
 skill's `references/source-protocol.md`; read it first and hold the whole run to it: download +

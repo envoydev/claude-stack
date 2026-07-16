@@ -1,9 +1,10 @@
-# The one-download protocol - shared by the setup and configure skills
+# The one-download protocol - shared by the setup, update, and configure skills
 
-Both plugin skills (`setup` - fresh install - and its sibling `configure` - update) drive their
-whole run from ONE source snapshot. This file is the shared contract; each skill's numbered steps
-say WHEN to apply it, this file says WHAT holds. It lives under the `setup` skill's `references/`
-and the `configure` skill cites it by path - the two skills always ship together in the plugin.
+All three plugin skills (`setup` - fresh install, `update` - refresh + prune, `configure` -
+adjust the selection) drive their whole run from ONE source snapshot. This file is the shared
+contract; each skill's numbered steps say WHEN to apply it, this file says WHAT holds. It lives
+under the `setup` skill's `references/` and the siblings cite it by path - the skills always
+ship together in the plugin.
 
 ## One release archive is the entire download
 

@@ -1,0 +1,95 @@
+---
+name: update
+description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release AND prune what the stack itself deleted or renamed upstream since the stamped install. The prune list is computed, never guessed: files whose status is 'removed' in the GitHub compare between the stamp and the new snapshot - user-authored artifacts and the generated baseline-project-*.md rules never appear in that diff, so they can never be touched. One confirmation before anything is deleted. Trigger by invoking /claude-stack:update or 'just update the stack here'. NOT for choosing items to add or drop - that is the sibling configure skill; not a first install - that is setup."
+disable-model-invocation: true
+---
+
+# Update the Claude stack - refresh everything, prune what upstream removed
+
+You are refreshing an existing install to the newest release, unchanged in shape: the same
+items, new content - plus removing the artifacts the STACK removed upstream, which a plain
+refresh leaves orphaned forever. No selection questions; the one gate is the deletion confirm.
+`stack-select.js` still closes and prerequisite-checks the refreshed selection; you orchestrate.
+
+**ONE release archive is the entire download** - the shared contract lives in the sibling `setup`
+skill's `references/source-protocol.md`; read it first and hold the whole run to it: download +
+extract once into `$TMP/repo`, use every tool from that snapshot, hand it back with `--source` in
+step 6, and remove `$TMP` on every exit path in step 10.
+
+## 1. Preconditions - find the install
+Exactly as the sibling `configure` skill's step 1: project mode (populated `.claude/`) or global
+mode (the account's skills). Nothing installed in either place -> stop and route to the sibling
+`setup` skill. The user names items to add or drop -> that is the sibling `configure` skill, not
+this one. OS: `darwin`/`linux` -> the sh installer; Windows -> the ps1 (via `pwsh`).
+
+## 2. Inventory the installed set
+Build the CURRENT selection from disk exactly as the sibling `configure` skill's step 2 does -
+skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md`),
+mcps from `<repo>/.mcp.json`, plugins fail-soft - never from memory or assumption.
+
+## 3. Compute the delta since the stamp
+Read the stamp (`.claude/claude-stack.stamp`, or the account's) and the snapshot's
+`RELEASE-SOURCE`; lead with the version delta (`0.1.0 -> 0.2.0`). Then the same compare the
+`configure` skill's step 3 runs, but split by status:
+
+- **modified / added files under an installed item** -> covered by the refresh; count them.
+- **removed** -> the prune list, mapped to installed artifacts: `skills/<name>/...` gone entirely
+  from `$TMP/repo/skills/` -> `.claude/skills/<name>`; `agents/<f>.md` -> `.claude/agents/<f>.md`;
+  `rules/<f>.md` -> `.claude/rules/<f>.md`; `hooks/<f>` -> `.claude/hooks/<f>` plus its
+  `.claude/settings.json` wiring. A path still present in the snapshot is a move WITHIN the item,
+  not a removal - the refresh handles it; prune only what the snapshot no longer has.
+- **added items not installed** -> an FYI list for the report; never auto-install - route the user
+  to `configure` to adopt them.
+- **No stamp, or the compare unreachable** -> refresh-only mode: say pruning needs a stamped,
+  reachable baseline, and continue WITHOUT deletions - never guess a prune list.
+
+## 4. Confirm once
+Show the version delta, the refresh counts by category, and the NAMED prune list. Ask one
+question: proceed with refresh + prune, or refresh only. Nothing is ever deleted silently; a 'no'
+means refresh-only.
+
+## 5. Selection and gates
+Selection = installed minus the confirmed prune list; write `raw.json`, run `stack-select.js
+--selection raw.json --graph stack-graph.json --emit selection.txt --check`. A `required:` line
+(a dependency the new release introduced) is auto-kept and reported. An installed name the new
+graph no longer knows is an upstream retirement - drop it from the selection and treat it like a
+prune (for an MCP, the removal command is `claude mcp remove <name>`, shown like any other).
+Blockers stop the run with their fixes - never update past one; warnings are listed and passed.
+
+## 6. Run the update
+From the snapshot, handing it back so the run lands the revision step 3 previewed:
+- Unix: `bash "$TMP/repo/scripts/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection selection.txt [--space <name>] --keep-pins`
+- Windows: `pwsh -File "$TMP/repo/scripts/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection selection.txt [-Space <name>] -KeepPins`
+Scope/space mirror how the install was laid down. `--keep-pins` is the default here - a fast
+refresh must not flatten deliberate local model/effort pin edits.
+
+## 7. Prune
+Delete each item on the confirmed list, showing every command before running it. A deleted hook
+also loses its `.claude/settings.json` wiring in the same pass - show that edit too. Then re-run
+`/project-capabilities` (when installed) so the generated awareness rule reflects the new
+inventory.
+
+## 8. Reconcile the project's CLAUDE.md (project mode)
+Against the snapshot's `templates/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
+`configure` skill's step 10: add sections the template gained, update the rules table for what
+this run pruned, never overwrite the project's own prose, show changes before writing. Skip in
+global mode.
+
+## 9. Post-check
+Report the version delta, refreshed / pruned counts by category (naming the pruned items), the
+FYI additions routed to `configure`, and the MCP-restart reminder. The run rewrote
+`claude-stack.stamp` - the next update or configure diffs from here.
+
+## 10. Clean up the temp dir - ALWAYS
+Remove `$TMP` per the `setup` skill's `references/source-protocol.md`, on EVERY exit path: after
+a successful run, after refresh-only, after a blocker, and after a user 'no'. Then confirm the
+project tree holds only installed artifacts.
+
+## Do not
+- Never delete anything the upstream diff did not name - user-authored skills/agents/rules/hooks
+  and the generated `baseline-project-*.md` rules never appear in it; if a candidate is not in
+  the diff, it stays.
+- Never install additions and never remove an MCP or plugin the diff did not retire - adopting or
+  dropping by choice is the sibling `configure` skill.
+- Never skip the step-4 confirm before deletions, never run past a blocker, and never leave
+  `$TMP` behind. Do not commit anything on the user's behalf.

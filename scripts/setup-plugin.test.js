@@ -92,7 +92,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
-for (const name of ['setup', 'configure'])
+for (const name of ['setup', 'update', 'configure'])
 {
     test(`the ${name} skill exists with valid manual-only frontmatter`, () => {
         const skill = path.join(PLUGIN_DIR, 'skills', name, 'SKILL.md');
@@ -103,3 +103,16 @@ for (const name of ['setup', 'configure'])
         assert.match(fm[1], /disable-model-invocation:\s*true/, 'manual-only');
     });
 }
+
+test('every plugin skill holds to the shared one-download protocol and the router names them all', () => {
+    for (const name of ['update', 'configure'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', name, 'SKILL.md'), 'utf8');
+        assert.match(body, /references\/source-protocol\.md/, `${name} cites the setup skill's source-protocol.md`);
+    }
+    const router = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'claude-stack.md'), 'utf8');
+    for (const name of ['setup', 'update', 'configure'])
+    {
+        assert.match(router, new RegExp('`' + name + '`'), `/claude-stack routes to ${name}`);
+    }
+});

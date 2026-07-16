@@ -77,7 +77,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
     hard gate.
-- `setup-plugin/` - the claude-stack plugin: two guided skills, `/claude-stack:setup` (fresh install from scratch) and `/claude-stack:configure` (update an existing install - refresh, add, or drop), plus the `/claude-stack` router command.
+- `setup-plugin/` - the claude-stack plugin: three guided skills, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare) and `/claude-stack:configure` (adjust an existing install - add or drop), plus the `/claude-stack` router command.
 - `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
   token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
   side of the flow instrumentation (`instrument-tool-usage.js` is the identity side - hooks never
