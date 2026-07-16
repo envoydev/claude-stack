@@ -1,11 +1,11 @@
 ---
-description: "FRESH install of the claude-stack, from scratch - detect the OS + analyse the project, ask scope + profile, fetch the tools, then walk the selection in five dependency-ordered layers (rules -> agents -> skills -> hooks -> MCPs + plugins): each layer shows ONE numbered table of the whole catalog (recommended pre-selected, locked rows carrying the required-by reason), then two number-answer questions - add, then drop. Prerequisite check, install, and an OFFERED (never forced) CLAUDE.md fill-in close the run. In a project, the selection is decided FROM the project (detected stacks seed the recommendations); outside any project it falls back to a global install seeded from the recommended set, stacks chosen by the user. NOT for an existing install - a plain refresh is the sibling update command, choosing what to add or drop is configure."
+description: "FRESH install of the claude-stack, from scratch - ask scope + profile up front, then detect the OS + analyse the project and walk the selection in five dependency-ordered layers (rules -> agents -> skills -> hooks -> MCPs + plugins): each layer shows ONE numbered table of the whole catalog (recommended pre-selected, locked rows carrying the required-by reason), then two number-answer questions - add, then drop. Prerequisite check, install, and an OFFERED (never forced) CLAUDE.md fill-in close the run. In a project, the selection is decided FROM the project (detected stacks seed the recommendations); outside any project it falls back to a global install seeded from the recommended set, stacks chosen by the user. NOT for an existing install - a plain refresh is the sibling update command, choosing what to add or drop is configure."
 disable-model-invocation: true
 ---
 
 # Set up the Claude stack - fresh install
 
-You are bootstrapping the claude-stack FROM SCRATCH. If the stack is already installed here (a populated `.claude/skills` + `.claude/agents`, or the global account equivalents in no-project mode), stop and route to a sibling command: `/claude-stack:update` for a plain refresh, `/claude-stack:configure` to adjust the selection - updates are their job. Work the ladder in order and drive it interactively; the deterministic work is done by `stack-select.js`, you orchestrate. Two modes, decided at step 1: **project mode** (the normal case - the selection is decided from the project itself) and **no-project mode** (a global install seeded from the recommended set).
+You are bootstrapping the claude-stack FROM SCRATCH. If the stack is already installed here (a populated `.claude/skills` + `.claude/agents`, or the global account equivalents in no-project mode), stop and route to a sibling command: `/claude-stack:update` for a plain refresh, `/claude-stack:configure` to adjust the selection - updates are their job. Work the ladder in order and drive it interactively; the deterministic work is done by `stack-select.js`, you orchestrate. Two modes, detected silently before the first question: **project mode** (the normal case - cwd is a project root in a git repo; the selection is decided from the project itself) and **no-project mode** (anything else - a global install seeded from the recommended set).
 
 **ONE release archive is the entire download** - read `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md` before step 1 and hold the whole run to it: download + extract once into `$TMP/repo` (the reference owns the fallback), use every tool from that snapshot, hand it to the installer with `--source` in step 9, and remove `$TMP` per the 'Clean up' section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool call in this run: one quiet call per recompute, no pasted tool output, one narration line between steps.
 
@@ -17,28 +17,28 @@ Ten user-facing steps; the machinery between them runs silently. Before EVERY qu
 [step 3/10 - rules] choose the rule set · next: agents
 ```
 
-1 project analysis · 2 install choices · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs + plugins · 8 prerequisite check · 9 install · 10 CLAUDE.md (optional)
+1 install choices · 2 project analysis · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs + plugins · 8 prerequisite check · 9 install · 10 CLAUDE.md (optional)
 
-## 1. Project analysis - mode, OS, stacks
+## 1. Install choices
 
-- OS: on `darwin`/`linux` use `claude-stack.sh`; on Windows use `claude-stack.ps1` (via `pwsh`).
-- Cwd is a project root in a git repo -> **project mode**. Detect stacks by artifact and record which apply (this detection IS the recommendation input; decide from the project, not from a generic default):
-  - `*.csproj` / `*.sln` -> .NET. Split by content: a `Microsoft.NET.Sdk.Web` project -> `aspnet`; `<UseWPF>true` -> `wpf`; otherwise `console`.
-  - `angular.json` -> `angular`; `ionic.config.json` / `capacitor.config.*` -> `mobile`.
-  - `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
-- A project can match several. Report the detected stacks and let the user confirm/adjust before proceeding:
+Detect silently first - the OS (`darwin`/`linux` -> `claude-stack.sh`; Windows -> `claude-stack.ps1` via `pwsh`) and the mode (project root in a git repo -> project mode; anything else -> no-project mode) - then ask ONE screen with only the choices a fresh install actually needs: scope (`project` default / `global`; in no-project mode this question becomes the no-project-mode confirmation instead - a `global` install into the account `~/.claude` - since there is no project to scope to) and profile (the optional `--space` account name, default none). One conditional extra: 'install the GitHub CLI?' - asked ONLY when `gh` is not already on PATH, skipped entirely when it is. Everything else moved to where it belongs: the context7 transport is asked at step 7 only if context7 ends up selected, and `--keep-pins` is a configure/update question - a fresh install has no local pin edits to keep, so never ask it here.
+
+## 2. Project analysis - the stacks
+
+Project mode - detect stacks by artifact and record which apply (this detection IS the recommendation input; decide from the project, not from a generic default):
+
+- `*.csproj` / `*.sln` -> .NET. Split by content: a `Microsoft.NET.Sdk.Web` project -> `aspnet`; `<UseWPF>true` -> `wpf`; otherwise `console`.
+- `angular.json` -> `angular`; `ionic.config.json` / `capacitor.config.*` -> `mobile`.
+- `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
+
+A project can match several. Report the detected stacks and let the user confirm/adjust - the walk starts IMMEDIATELY after this answer, no other question in between:
 
 ```
-[step 1/10 - project analysis] confirm the detected stacks · next: install choices
+[step 2/10 - project analysis] confirm the detected stacks · next: rules
 Detected: aspnet (src/Api/Api.csproj - Microsoft.NET.Sdk.Web), angular (angular.json), devops (Dockerfile + .github/workflows/)
 ```
 
-- No project here (not a git repo, or an empty/unrelated directory) -> offer **no-project mode**: a `global` install into the account (`~/.claude`), seeded from the recommended set - confirm with the user before proceeding. Skip the artifact detection and instead present the stacks available in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json` as a multi-pick ('which stacks do you work with?'); picking none installs just the `always` baseline. Scope is `global` (step 2 does not re-ask it); every later step applies unchanged.
-- A repo with NO recognizable artifacts (greenfield) falls back the same way: present the recommendations stacks as a multi-pick of what the project WILL be, then continue normally at project scope.
-
-## 2. Install choices
-
-One screen, ONLY the choices a fresh install actually needs: scope (`project` default / `global`) and profile (the optional `--space` account name, default none). One conditional extra: 'install the GitHub CLI?' - asked ONLY when `gh` is not already on PATH, skipped entirely when it is. Everything else moved to where it belongs: the context7 transport is asked at step 7 only if context7 ends up selected, and `--keep-pins` is a configure/update question - a fresh install has no local pin edits to keep, so never ask it here.
+No-project mode, and a repo with NO recognizable artifacts (greenfield): skip the artifact detection and instead present the stacks available in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json` as a multi-pick ('which stacks do you work with?' / 'what will this project be?'); picking none installs just the `always` baseline. Every later step applies unchanged.
 
 ## The walk - steps 3-7, one layer at a time
 
@@ -82,7 +82,7 @@ Locked = what the kept selection pulls (typically just `serena`, via `baseline-n
 
 ## 8. Prerequisite check
 
-Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check [--context7-local] [--github-cli]` (`--context7-local` only when the user chose context7 `local`; `--github-cli` only when they opted in at step 2). It writes `selection.txt` - the closed installer selection.
+Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check [--context7-local] [--github-cli]` (`--context7-local` only when the user chose context7 `local`; `--github-cli` only when they opted in at step 1). It writes `selection.txt` - the closed installer selection.
 
 - Blockers: list each with its fix. Ask: fix them now and continue, or drop the affected items (reopen the owning layer's table, re-run, re-emit). Never install past a blocker.
 - Warnings: list them and proceed.
