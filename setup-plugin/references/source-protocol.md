@@ -64,8 +64,10 @@ header, so keep the machinery to as few, small calls as possible and put ALL mea
 narration lines between them:
 
 - ONE quiet call per recompute: write the working file(s) and run `stack-select.js` in a single
-  short command; parse its output yourself. Never a call per file, never a re-run to re-read what
-  you already have.
+  short command - with its output redirected to a file (`> "$TMP/select.out" 2>&1`), never to the
+  terminal: the tool-result preview would otherwise dump the whole `required:`/`orphan:` wall
+  into the chat. Read the file to parse; the visible result of the call should be empty or one
+  count line. Never a call per file, never a re-run to re-read what you already have.
 - Never paste tool output (`required:`/`orphan:` dumps, file listings, diffs) into the chat - the
   tables and banners you compose ARE the presentation; raw lines are your input, not the user's.
 - Between steps, one narration line in this shape - what just closed, what is being computed,

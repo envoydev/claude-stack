@@ -120,7 +120,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, /rules -> agents -> skills -> hooks -> MCPs \+ plugins/, `${name} walks the layers in dependency order`);
+        assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
         assert.match(body, /\[step \d+\/\d+ - /, `${name} announces every step with the n/total banner`);
     }
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
