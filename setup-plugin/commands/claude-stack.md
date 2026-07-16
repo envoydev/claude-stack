@@ -1,5 +1,6 @@
 ---
 description: Install or update the Claude Code stack (routes to the setup, update, or configure skill).
+disable-model-invocation: true
 ---
 
 Route by state, then follow the chosen skill exactly - never skip its selection-review or prerequisite gates:
