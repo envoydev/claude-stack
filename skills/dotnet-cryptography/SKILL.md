@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Personal .NET cryptography conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Load when encrypting, decrypting, hashing, signing, verifying, or deriving a key. Secret STORAGE belongs to your secrets/config layer (never source); sign-in to dotnet-authentication; OWASP categories to dotnet-security. Do NOT load for TLS/HTTPS pipeline config."
+description: "House .NET cryptography conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Load when encrypting, decrypting, hashing, signing, verifying, or deriving a key. Secret STORAGE belongs to your secrets/config layer (never source); sign-in to dotnet-authentication; OWASP categories to dotnet-security. Do NOT load for TLS/HTTPS pipeline config."
 ---
 
 # .NET cryptography

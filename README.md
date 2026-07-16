@@ -1,6 +1,6 @@
 # claude-stack
 
-The Claude Code half of a personal coding-agent setup - an installable stack of house skills,
+The Claude Code half of a coding-agent setup - an installable stack of house skills,
 subagents, always-on and path-scoped rules, hooks, MCP servers, and plugins that gets applied to
 the projects you actually work in. This repo is the single source of truth: everything installs from
 one release archive of this repo per run (the rolling `latest` release, with a shallow git clone

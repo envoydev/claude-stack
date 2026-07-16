@@ -1,6 +1,6 @@
 ---
 name: setup
-description: "FRESH install of the personal claude-stack, from scratch - detect the OS + analyse the project, ask the scalar install choices, fetch the tools, curate a dependency-complete selection with a prerequisite check, and run the installer's install action. In a project, the selection is decided FROM the project (detected stacks seed the recommendations); outside any project it falls back to a global install seeded from the recommended set (references/recommendations.json), stacks chosen by the user. Trigger by invoking /claude-stack:setup or 'set up the claude stack here'. NOT for refreshing or adjusting an existing install - that is the sibling configure skill."
+description: "FRESH install of the claude-stack, from scratch - detect the OS + analyse the project, ask the scalar install choices, fetch the tools, curate a dependency-complete selection with a prerequisite check, and run the installer's install action. In a project, the selection is decided FROM the project (detected stacks seed the recommendations); outside any project it falls back to a global install seeded from the recommended set (references/recommendations.json), stacks chosen by the user. Trigger by invoking /claude-stack:setup or 'set up the claude stack here'. NOT for refreshing or adjusting an existing install - that is the sibling configure skill."
 disable-model-invocation: true
 ---
 

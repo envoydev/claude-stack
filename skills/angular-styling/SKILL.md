@@ -1,6 +1,6 @@
 ---
 name: angular-styling
-description: "Personal Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace. Companions: angular-conventions, angular-material. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
+description: "House Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace. Companions: angular-conventions, angular-material. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
 ---
 
 # Angular styling

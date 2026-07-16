@@ -237,15 +237,15 @@ function parseFlatBlock(file, quote, blockStart, sep)
     return { active, commented };
 }
 
-// Extract the stack HTML's view of the inventory: personal skill names,
+// Extract the stack HTML's view of the inventory: house skill names,
 // third-party repo skill names, plugin names (from plugin-URL skill rows and
 // "/plugin install X@" install cells), and MCP server names.
 function parseStackHtml()
 {
     const html = fs.readFileSync(STACK_HTML, 'utf8');
-    const personal = new Set([...html.split('const personal = {')[1].split('};')[0]
+    const house = new Set([...html.split('const house = {')[1].split('};')[0]
         .matchAll(/\["([a-z0-9-]+)","/g)].map(m => m[1]));
-    const personalManual = new Set([...html.split('const personal = {')[1].split('};')[0]
+    const houseManual = new Set([...html.split('const house = {')[1].split('};')[0]
         .matchAll(/\["([a-z0-9-]+)",[^\n]*"manual"\]/g)].map(m => m[1]));
 
     const repoBlock = html.split('const repository = [')[1].split('\n];')[0];
@@ -282,7 +282,7 @@ function parseStackHtml()
     const hooksBlock = (html.split('const hooks = [')[1] ?? '').split('\n];')[0];
     const hooks = new Set([...hooksBlock.matchAll(/\["([a-z0-9-]+)"/g)].map(m => m[1]));
 
-    return { personal, personalManual, repoSkills, plugins, mcps, hooks };
+    return { house, houseManual, repoSkills, plugins, mcps, hooks };
 }
 
 // Every manifest in `manifests` ({label -> Set}) must hold the same entries as
@@ -597,20 +597,20 @@ function main()
         }
     }
 
-    // 8. HTML skills vs manifests (personal section vs dirs; repo rows vs third-party inventory).
-    for (const name of html.personal)
+    // 8. HTML skills vs manifests (house section vs dirs; repo rows vs third-party inventory).
+    for (const name of html.house)
     {
         if (!dirs.includes(name))
         {
-            flag(`HTML personal row '${name}' has no skills/${name}/ directory`);
+            flag(`HTML house row '${name}' has no skills/${name}/ directory`);
         }
     }
 
     for (const dir of dirs)
     {
-        if (!html.personal.has(dir))
+        if (!html.house.has(dir))
         {
-            flag(`skills/${dir} is missing from the HTML personal section`);
+            flag(`skills/${dir} is missing from the HTML house section`);
         }
     }
 
@@ -961,18 +961,18 @@ function main()
         }
     }
 
-    // 19. The HTML personal-skills invocation column must match frontmatter:
+    // 19. The HTML house-skills invocation column must match frontmatter:
     //     every disable-model-invocation skill carries the "manual" row flag,
     //     and no auto-invoked skill claims it.
     for (const name of manualSkills)
     {
-        if (!html.personalManual.has(name))
+        if (!html.houseManual.has(name))
         {
-            flag(`claude-stack.html personal row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
+            flag(`claude-stack.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
         }
     }
 
-    for (const name of html.personalManual)
+    for (const name of html.houseManual)
     {
         if (!manualSkills.has(name))
         {

@@ -32,7 +32,7 @@ syntax, factual questions, and casual conversation are exempt: just answer.
 ## Formatting and privacy
 
 - No em-dashes - use single dashes. No double quotes - use single quotes.
-- Never use or mention the user's personal name in responses or any skill output unless the user explicitly says so.
+- Never use or mention the user's name in responses or any skill output unless the user explicitly says so.
 - No `ponytail:` marker comments in code or output, and no mentions of them - a deliberate simplification's ceiling and upgrade path goes in the report or summary, never into a code comment.
 
 ## Planning and execution

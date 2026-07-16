@@ -1,6 +1,6 @@
 ---
 name: database-conventions
-description: "Personal database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Deeper work routes out: engine tuning to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, security posture to `data-security`. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
+description: "House database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Deeper work routes out: engine tuning to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, security posture to `data-security`. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
 ---
 
 # Database conventions

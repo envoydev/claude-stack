@@ -109,7 +109,7 @@ Total time: <sum across all groups>.
 - Day with no work (vacation, sick leave, public holiday): output the day header followed by a single line `Off (<reason>).` and skip `Total time`.
 - Input mentions a task but provides no action verb: prefix with `Worked on` (English) or `Працював над` (Ukrainian).
 - Time mismatch (bullets sum to a different total than the input's stated total): trust the bullets, recompute `Total time` from them, do not echo the input's total.
-- Pure non-work entries that aren't a ticket and aren't a recurring item (lunch, coffee break): omit entirely. Personal life is not in the log.
+- Pure non-work entries that aren't a ticket and aren't a recurring item (lunch, coffee break): omit entirely. Private life is not in the log.
 
 ## Style guidance
 

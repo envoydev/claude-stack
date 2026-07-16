@@ -1,6 +1,6 @@
 ---
 name: dotnet-code-quality
-description: "Personal .NET conventions for mechanically enforcing code quality - making the house style a build gate, not a review opinion. Floors at .NET 8 / C# 12. Load when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate, or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. Companions: csharp (the conventions this enforces), dotnet-project-setup (Directory.Build.props), dotnet-security (CA3xxx/CA5xxx rules), dotnet-migrate (analyzer churn on upgrades). Do NOT load for authoring Roslyn analyzers/source generators (dotnet-source-generators) or test-suite quality (dotnet-testing)."
+description: "House .NET conventions for mechanically enforcing code quality - making the house style a build gate, not a review opinion. Floors at .NET 8 / C# 12. Load when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate, or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. Companions: csharp (the conventions this enforces), dotnet-project-setup (Directory.Build.props), dotnet-security (CA3xxx/CA5xxx rules), dotnet-migrate (analyzer churn on upgrades). Do NOT load for authoring Roslyn analyzers/source generators (dotnet-source-generators) or test-suite quality (dotnet-testing)."
 ---
 
 # .NET code quality - enforcement, not opinion

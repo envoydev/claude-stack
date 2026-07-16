@@ -61,7 +61,7 @@ Template mode: when the audited file is a template that installers copy into tar
 5. Build a linkage map: which unconditional rules exist, which are named in CLAUDE.md, which are named but do not exist, and which exist but are unmapped. Do the same for skills and agents that CLAUDE.md mentions.
 6. Build a duplication map: content repeated between CLAUDE.md and rule files, between CLAUDE.md tiers, between CLAUDE.md and skills or agents, and between CLAUDE.md and repo docs (README, AGENTS.md, style guides).
 7. Build a conflict map: instructions in CLAUDE.md that contradict a rule file, another tier, a hook, a permissions entry, or a skill or agent it routes to. Conflicts are the highest-severity defect class because they silently make behavior nondeterministic.
-8. Build a mechanism map: for each block, classify it as per-session fact (stays), multi-step procedure (skill), path-specific guidance (path-scoped rule), deterministic must-run step (hook), hard block (permissions), personal preference (local or user tier), or content that belongs nowhere.
+8. Build a mechanism map: for each block, classify it as per-session fact (stays), multi-step procedure (skill), path-specific guidance (path-scoped rule), deterministic must-run step (hook), hard block (permissions), individual preference (local or user tier), or content that belongs nowhere.
 
 Do not edit anything in this phase.
 
@@ -75,7 +75,7 @@ Score each CLAUDE.md on four weighted dimensions, 100 points total. For every po
 
 - Right content. The file holds what Claude needs every session: build and test commands, architecture at a glance, core conventions, always-do rules. Multi-step procedures, path-specific guidance, deterministic steps, and hard blocks are routed to skills, path-scoped rules, hooks, and permissions respectively, per the mechanism map. (10)
 - Facts are verified. Every command, path, and claim checks out against the repository. Stale or wrong facts are the most damaging defect this file can have, because they are trusted and executed. (8)
-- Right tier. Team-shared standards in project scope, personal preference in user or local scope, org policy in managed scope. Personal preference committed into a shared project file is a defect even when the content is good. (7)
+- Right tier. Team-shared standards in project scope, individual preference in user or local scope, org policy in managed scope. Individual preference committed into a shared project file is a defect even when the content is good. (7)
 - Nested CLAUDE.md files are used deliberately: subdirectory files carry only what is specific to that subtree, since they load on demand when Claude works there. (5)
 
 Floor for A: >= 26/30.
@@ -137,7 +137,7 @@ Correct every stale or wrong fact against the verified repository state. For eac
 
 ### Step 2 - Relocate misplaced content
 
-For each block the mechanism map classified as misplaced: move procedures to skills, path-specific guidance to path-scoped rules, deterministic steps to hooks, hard blocks to permissions entries, and personal preference to local or user tier - under the same do-not-delete-before-the-replacement-exists condition as the rules audit prompt. Anything you create must meet the bar of its own family prompt (skills the skill audit, rules the rules audit), or do not create it and leave the content in place with a recommendation instead. Respect the scope boundary: when running alongside the rules audit prompt, emit rule-file changes as recommendations for it rather than editing rule files yourself.
+For each block the mechanism map classified as misplaced: move procedures to skills, path-specific guidance to path-scoped rules, deterministic steps to hooks, hard blocks to permissions entries, and individual preference to local or user tier - under the same do-not-delete-before-the-replacement-exists condition as the rules audit prompt. Anything you create must meet the bar of its own family prompt (skills the skill audit, rules the rules audit), or do not create it and leave the content in place with a recommendation instead. Respect the scope boundary: when running alongside the rules audit prompt, emit rule-file changes as recommendations for it rather than editing rule files yourself.
 
 ### Step 3 - Build the hub
 

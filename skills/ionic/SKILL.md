@@ -1,6 +1,6 @@
 ---
 name: ionic
-description: "Personal Ionic / Capacitor mobile + hybrid app conventions - house rules for Ionic Angular UI (standalone + signals, IonRouterOutlet, lazy routes, page-caching view lifecycle, CSS-variable theming), Capacitor lifecycle + platform guards, runtime permissions, and Capacitor plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Targets Ionic 8 / Angular 17+ / Capacitor 6+ (8 current). Load before building or editing an Ionic/Capacitor app. Companions: angular-conventions (the Angular framework), typescript (the language); per-plugin install/config is fetched live (context7 / the plugin README), the sourcing + typed-wrapping guidance is here. Do NOT load for plain web Angular with no native shell."
+description: "House Ionic / Capacitor mobile + hybrid app conventions - house rules for Ionic Angular UI (standalone + signals, IonRouterOutlet, lazy routes, page-caching view lifecycle, CSS-variable theming), Capacitor lifecycle + platform guards, runtime permissions, and Capacitor plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Targets Ionic 8 / Angular 17+ / Capacitor 6+ (8 current). Load before building or editing an Ionic/Capacitor app. Companions: angular-conventions (the Angular framework), typescript (the language); per-plugin install/config is fetched live (context7 / the plugin README), the sourcing + typed-wrapping guidance is here. Do NOT load for plain web Angular with no native shell."
 ---
 
 # Ionic / Capacitor Conventions

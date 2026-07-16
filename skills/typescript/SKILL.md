@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: "Personal TypeScript and JavaScript conventions, framework-agnostic - lean on the compiler (full strict plus the extra safety flags), model data with types, narrow unknown instead of any, keep the two failure channels apart (typed result for expected, thrown Error for unexpected), default to immutability, and treat plain JS as checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load before writing or editing any .ts, .tsx, .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. In an Angular project also load `angular-conventions`, the framework layer. Not for C#/.NET or other languages."
+description: "House TypeScript and JavaScript conventions, framework-agnostic - lean on the compiler (full strict plus the extra safety flags), model data with types, narrow unknown instead of any, keep the two failure channels apart (typed result for expected, thrown Error for unexpected), default to immutability, and treat plain JS as checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load before writing or editing any .ts, .tsx, .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. In an Angular project also load `angular-conventions`, the framework layer. Not for C#/.NET or other languages."
 ---
 
 # TypeScript and JavaScript conventions

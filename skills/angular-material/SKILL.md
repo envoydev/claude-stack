@@ -1,6 +1,6 @@
 ---
 name: angular-material
-description: "Personal Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. Load when building UI with @angular/material or @angular/cdk. Companions: angular-conventions, typescript, angular-styling. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
+description: "House Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. Load when building UI with @angular/material or @angular/cdk. Companions: angular-conventions, typescript, angular-styling. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
 ---
 
 # Angular Material and CDK

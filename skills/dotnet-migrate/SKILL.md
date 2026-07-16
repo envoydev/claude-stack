@@ -1,6 +1,6 @@
 ---
 name: dotnet-migrate
-description: "Personal safe-migration playbook for .NET - the disciplined way to evolve a schema with EF Core, lift a solution onto a newer target framework, and refresh NuGet dependencies without breaking production. A process skill, version-neutral with a .NET 8 floor. Load when you run a database migration, raise the target framework or SDK, or bump packages - trigger words migrate, upgrade, update packages. Companions: `dotnet-data-access` for query and migration mechanics, `dotnet-project-setup` for central package management, `dotnet-web-backend` for the surrounding service. Skip it for ordinary feature work that touches no schema, no version, and no package."
+description: "House safe-migration playbook for .NET - the disciplined way to evolve a schema with EF Core, lift a solution onto a newer target framework, and refresh NuGet dependencies without breaking production. A process skill, version-neutral with a .NET 8 floor. Load when you run a database migration, raise the target framework or SDK, or bump packages - trigger words migrate, upgrade, update packages. Companions: `dotnet-data-access` for query and migration mechanics, `dotnet-project-setup` for central package management, `dotnet-web-backend` for the surrounding service. Skip it for ordinary feature work that touches no schema, no version, and no package."
 ---
 
 # Safe migration workflow (.NET)

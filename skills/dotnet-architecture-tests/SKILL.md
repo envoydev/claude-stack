@@ -1,6 +1,6 @@
 ---
 name: dotnet-architecture-tests
-description: "Personal .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure dotnet-architecture prescribes cannot erode silently. Floors at .NET 8 / C# 12. Load when adding or reviewing architecture / fitness tests or enforcing layer/dependency rules, or when the user names NetArchTest, ArchUnitNET, fitness function, architecture test, or dependency rule. Companions: dotnet-testing (the test-suite host), dotnet-architecture (the boundaries enforced), dotnet-code-quality (the analyzer/style counterpart). Do NOT load for runtime behavior tests (dotnet-testing) or analyzer/formatter config (dotnet-code-quality)."
+description: "House .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure dotnet-architecture prescribes cannot erode silently. Floors at .NET 8 / C# 12. Load when adding or reviewing architecture / fitness tests or enforcing layer/dependency rules, or when the user names NetArchTest, ArchUnitNET, fitness function, architecture test, or dependency rule. Companions: dotnet-testing (the test-suite host), dotnet-architecture (the boundaries enforced), dotnet-code-quality (the analyzer/style counterpart). Do NOT load for runtime behavior tests (dotnet-testing) or analyzer/formatter config (dotnet-code-quality)."
 ---
 
 # .NET architecture tests - fitness functions

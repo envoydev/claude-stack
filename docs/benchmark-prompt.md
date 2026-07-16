@@ -1,6 +1,6 @@
 # Benchmark prompt - measure the Claude agent stack against the linked example projects
 
-You are running an autonomous **benchmark** of a personal Claude Code agent stack. Your job is to
+You are running an autonomous **benchmark** of a Claude Code agent stack. Your job is to
 install the stack into two linked example projects, drive a fixed matrix of tasks and investigations
 through it, **measure** what the stack actually does (which skills / MCPs / hooks / rules / agents fire,
 how many times, and how many tokens each test case burns), and then write a statistics report and a

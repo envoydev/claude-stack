@@ -1,6 +1,6 @@
 ---
 name: dotnet-aspire
-description: "Personal .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. This is the local run, NOT production deployment or container publishing. Floors at .NET 8 / C# 12. Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. Companions: dotnet-web-backend, dotnet-testing. Do NOT load for non-Aspire projects, production deployment, or publishing images."
+description: "House .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. This is the local run, NOT production deployment or container publishing. Floors at .NET 8 / C# 12. Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. Companions: dotnet-web-backend, dotnet-testing. Do NOT load for non-Aspire projects, production deployment, or publishing images."
 ---
 
 # .NET Aspire - local orchestration

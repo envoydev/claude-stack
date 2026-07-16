@@ -651,14 +651,14 @@
   <section>
     <div class="sec-head"><span class="sec-num">03</span><h2>The full inventory</h2></div>
     <p class="sec-sub">
-      Everything the installer lays down, live-filterable: the <b>subagents</b>, the <b>skills</b> (built-in and personal - the repository tier is empty, every stack skill is house-owned), the <b>plugins</b> (one row each, expand to see the skills / commands / hooks a pack ships), the <b>MCP servers</b>, the <b>hooks</b>, and the path-scoped <b>rules</b>. Type to filter across name, source, and description.
+      Everything the installer lays down, live-filterable: the <b>subagents</b>, the <b>skills</b> (built-in and house - the repository tier is empty, every stack skill is house-owned), the <b>plugins</b> (one row each, expand to see the skills / commands / hooks a pack ships), the <b>MCP servers</b>, the <b>hooks</b>, and the path-scoped <b>rules</b>. Type to filter across name, source, and description.
     </p>
 
     <div class="counts">
       <div><strong id="c-total">112</strong> total</div>
       <div><strong id="c-subagents">37</strong> subagents</div>
       <div><strong id="c-bi">14</strong> built-in</div>
-      <div><strong id="c-personal">52</strong> personal</div>
+      <div><strong id="c-house">52</strong> house</div>
       <div><strong id="c-plugins">7</strong> plugins</div>
       <div><strong id="c-mcp">7</strong> MCP</div>
       <div><strong id="c-hooks">4</strong> hooks</div>
@@ -671,7 +671,7 @@
     <div id="content"></div>
 
     <div class="inv-sources">
-      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>personal</code> published to <code>envoydev/claude-stack</code>, installed via the stack installer's release-archive download + copy step (<code>claude-stack.sh install --skills-only</code>, or the <code>claude-stack-setup</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
+      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/claude-stack</code>, installed via the stack installer's release-archive download + copy step (<code>claude-stack.sh install --skills-only</code>, or the <code>claude-stack-setup</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
     </div>
   </section>
 
@@ -705,9 +705,9 @@ const builtin = {
   ]
 };
 
-const personal = {
-  title: "Skills (Personal)",
-  meta: "Personal convention skills, authored locally and published to envoydev/claude-stack. Installed via the stack installer's release-archive download + copy step. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
+const house = {
+  title: "Skills (House)",
+  meta: "House convention skills, authored in this repo and published to envoydev/claude-stack. Installed via the stack installer's release-archive download + copy step. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
   invokeColumn: true,
   source: "https://github.com/envoydev/claude-stack",
   install: "claude-stack.sh install --skills-only",
@@ -1019,7 +1019,7 @@ function render(query) {
   const mcpsF      = otherF.filter(r => bucketOfType(r[1]) === "mcps");
 
   const biF       = builtin.rows.filter(([n, a, d]) => has(n, a, d, builtin.source));
-  const personalF = personal.rows.filter(([n, a, d]) => has(n, a, d, personal.source));
+  const houseF = house.rows.filter(([n, a, d]) => has(n, a, d, house.source));
   const plugins   = filterPlugins(collectPlugins(), q);
   const repoF     = (q ? repository.filter(([n, a, u, d]) => has(n, a, u, d)) : repository)
                       .filter(r => !pluginInstallByUrl[r[2]]);
@@ -1029,7 +1029,7 @@ function render(query) {
   const add = h => root.insertAdjacentHTML("beforeend", h);
   if (subagentsF.length) add(renderSubagents(subagentsF));
   if (biF.length)        add(renderFixedSource(builtin, biF));
-  if (personalF.length)  add(renderFixedSource(personal, personalF));
+  if (houseF.length)  add(renderFixedSource(house, houseF));
   if (plugins.length)    add(renderPlugins(plugins));
   if (repoF.length)      add(renderRepository(repoF));
   if (mcpsF.length)      add(renderMcps(mcpsF));
@@ -1039,11 +1039,11 @@ function render(query) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set("c-subagents", subagentsF.length);
   set("c-bi", biF.length);
-  set("c-personal", personalF.length);
+  set("c-house", houseF.length);
   set("c-plugins", plugins.length);
   set("c-mcp", mcpsF.length);
   set("c-hooks", hooksF.length);   // hooks tallied separately, never folded into c-total
-  set("c-total", subagentsF.length + biF.length + personalF.length + plugins.length + repoF.length + mcpsF.length);
+  set("c-total", subagentsF.length + biF.length + houseF.length + plugins.length + repoF.length + mcpsF.length);
 }
 
 // Non-skill capabilities: plugins providing only agents/LSPs/commands, plus top-level MCP servers.

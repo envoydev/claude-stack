@@ -1,6 +1,6 @@
 ---
 name: dotnet-security
-description: "Personal .NET application-security hardening reference, organized by the OWASP Top 10 (2021) mapped to concrete ASP.NET Core / .NET 8 mitigations: broken access control (fallback authz policy, resource-based ownership checks against IDOR, CORS lockdown), injection and XSS, cryptographic and integrity failures, insecure deserialization, misconfiguration, vulnerable dependencies, SSRF, and security logging. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Load when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities. Companions: dotnet-authentication, dotnet-cryptography, data-security. Do NOT load for building the sign-in flow itself (dotnet-authentication) or choosing crypto primitives (dotnet-cryptography) - this skill reviews and hardens; those build."
+description: "House .NET application-security hardening reference, organized by the OWASP Top 10 (2021) mapped to concrete ASP.NET Core / .NET 8 mitigations: broken access control (fallback authz policy, resource-based ownership checks against IDOR, CORS lockdown), injection and XSS, cryptographic and integrity failures, insecure deserialization, misconfiguration, vulnerable dependencies, SSRF, and security logging. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Load when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities. Companions: dotnet-authentication, dotnet-cryptography, data-security. Do NOT load for building the sign-in flow itself (dotnet-authentication) or choosing crypto primitives (dotnet-cryptography) - this skill reviews and hardens; those build."
 ---
 
 # .NET application security - the OWASP Top 10, applied
@@ -113,7 +113,7 @@ This category is where insecure deserialization lives - the moment untrusted byt
 You cannot respond to what you never recorded, and you cannot trust logs that leak what they were meant to protect.
 
 - **Log the security-relevant events.** Authentication success and failure, authorization denials, and high-value actions, each carrying a correlation/trace id so a single request can be reconstructed end to end. The observability wiring - Serilog, the correlation id, structured fields - is `dotnet-web-backend`; this skill says which events are worth logging.
-- **Never log a secret or PII.** Passwords, tokens, keys, full card or account numbers, and personal data stay out of logs - redact or omit them at the source, because a log aggregator is a far softer target than the database.
+- **Never log a secret or PII.** Passwords, tokens, keys, full card or account numbers, and identifying data stay out of logs - redact or omit them at the source, because a log aggregator is a far softer target than the database.
 - **Make logs actionable.** Alert on the patterns that signal an attack (a spike of authorization denials, repeated login failures from one source); a log nobody watches is not monitoring.
 
 ## A10 - Server-side request forgery (SSRF)

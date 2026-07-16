@@ -1,8 +1,8 @@
-# CLAUDE.md - personal claude-stack repo
+# CLAUDE.md - claude-stack repo
 
 ## What this repo is
 
-The single source of truth for the **Claude Code** half of a personal coding-agent setup -
+The single source of truth for the **Claude Code** half of the house coding-agent setup -
 not an application. It collects everything applied to *other* projects: the house-style
 skills, the base instruction template those projects extend, the hook scripts and
 convention rules, and the installer that wires skills / MCP servers / plugins into each
@@ -18,7 +18,7 @@ change made only inside a consuming project is throwaway (see Invariants).
 
 ## Layout - one home per concern
 
-- `skills/` - the personal house-style skills, each a `SKILL.md`. Auto-activate on their own
+- `skills/` - the house-style skills, each a `SKILL.md`. Auto-activate on their own
   keywords / file types in consuming projects. Distributed via the stack installers'
   snapshot-download-and-copy step (or the claude-stack plugin) - including `cursor-stack`'s
   installers, which clone this repo.
@@ -180,7 +180,7 @@ documented there.
   README's raw installer bootstrap delivers the default branch; the installers' and skills'
   clone fallback is pinned `-b main` regardless). The lint + test workflows gate every push and
   PR, so a merge to `main` only ever promotes a green tree.
-- **Public repo.** No private project names or absolute personal paths in any tracked file - generic
+- **Public repo.** No private project names or absolute local paths in any tracked file - generic
   'consuming project' references only; real names / paths stay in untracked local files.
 - **Parity / source-of-truth.** A change to skills / MCPs / hooks / rules / plugins lands in the
   SOURCE here, kept in parity: `SKILLS` + `MCPS` + `PLUGINS` identical across both `claude-stack`

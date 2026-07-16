@@ -1,6 +1,6 @@
 ---
 name: dotnet-grpc
-description: "Personal .NET gRPC conventions - the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Load when defining, implementing, or calling a gRPC service, or weighing gRPC against REST. Companions: dotnet-web-backend, dotnet-authentication, csharp. Do NOT load for plain REST or minimal APIs - that is dotnet-minimal-api."
+description: "House .NET gRPC conventions - the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Load when defining, implementing, or calling a gRPC service, or weighing gRPC against REST. Companions: dotnet-web-backend, dotnet-authentication, csharp. Do NOT load for plain REST or minimal APIs - that is dotnet-minimal-api."
 ---
 
 # .NET gRPC

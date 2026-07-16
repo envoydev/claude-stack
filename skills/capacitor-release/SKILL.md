@@ -1,6 +1,6 @@
 ---
 name: capacitor-release
-description: "Personal release-pipeline conventions for an Ionic / Capacitor app - the gap from a feature-complete build to a signed store submission: cap sync and native build artifacts (.ipa, .aab), iOS and Android code signing, store submission (TestFlight, Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, and the Fastlane / GitHub Actions CI shape with secrets handling and dSYM / sourcemap upload. Targets Capacitor 6+ (8 current). Load when cutting a release, wiring signing, or building the release CI. Companions: ionic, mobile. Do NOT load for in-app feature work with no release or signing concern."
+description: "House release-pipeline conventions for an Ionic / Capacitor app - the gap from a feature-complete build to a signed store submission: cap sync and native build artifacts (.ipa, .aab), iOS and Android code signing, store submission (TestFlight, Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, and the Fastlane / GitHub Actions CI shape with secrets handling and dSYM / sourcemap upload. Targets Capacitor 6+ (8 current). Load when cutting a release, wiring signing, or building the release CI. Companions: ionic, mobile. Do NOT load for in-app feature work with no release or signing concern."
 ---
 
 # Capacitor release pipeline
@@ -15,7 +15,7 @@ This skill owns the last mile: turning a feature-complete Ionic/Capacitor app in
 
 ## Signing and store submission - the invariants
 The mechanics - certificate + provisioning-profile setup, App Store Connect API keys and Fastlane match, keystore flags and apksigner, the TestFlight / Play track ladder - live in `references/signing.md`; load it when actually wiring signing or a submission. What holds regardless:
-- iOS signs with a distribution **certificate** + App Store provisioning profile; in CI authenticate with an **App Store Connect API key** (a `.p8`), never a hand-copied personal cert - the API key removes the 2FA prompt that breaks an unattended pipeline.
+- iOS signs with a distribution **certificate** + App Store provisioning profile; in CI authenticate with an **App Store Connect API key** (a `.p8`), never a hand-copied developer cert - the API key removes the 2FA prompt that breaks an unattended pipeline.
 - Android uses Play App Signing, and the two keys must differ: the **upload key** you hold and sign the `.aab` with, and the **app-signing key** Google holds and re-signs the served APKs with. That split is the key-loss story - a leaked upload key gets reset by Google without touching your app identity. Never check a keystore or its passwords into the repo - they are CI secrets (see below).
 - A release proves itself in a testing track - TestFlight / a Play testing track - before any production promotion; both stores promote the same build without rebuilding.
 

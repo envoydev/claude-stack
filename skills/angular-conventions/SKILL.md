@@ -1,6 +1,6 @@
 ---
 name: angular-conventions
-description: "Personal Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, and the reward-hacking shortcuts to reject. Load before writing or editing any Angular file so the agent commits to current idioms, not recalled ones. Companions: typescript, angular-material, angular-styling, angular-security, frontend, mobile. Do NOT load for React, Vue, Svelte, Solid, plain DOM, or any non-Angular TypeScript."
+description: "House Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, and the reward-hacking shortcuts to reject. Load before writing or editing any Angular file so the agent commits to current idioms, not recalled ones. Companions: typescript, angular-material, angular-styling, angular-security, frontend, mobile. Do NOT load for React, Vue, Svelte, Solid, plain DOM, or any non-Angular TypeScript."
 ---
 
 # Angular conventions

@@ -1,6 +1,6 @@
 {
   "name": "claude-stack",
-  "description": "The personal Claude Code stack, guided: setup installs it from scratch into a project (or globally), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop) - all drive a dependency-complete selection with a prerequisite check.",
+  "description": "The Claude Code stack, guided: setup installs it from scratch into a project (or globally), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop) - all drive a dependency-complete selection with a prerequisite check.",
   "version": "0.2.0",
   "author": {
     "name": "envoydev",

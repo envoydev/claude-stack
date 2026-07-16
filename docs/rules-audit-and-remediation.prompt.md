@@ -77,7 +77,7 @@ This is the dimension that has no analogue in the skill or agent rubric, and it 
 
 - Right mechanism. The content is genuine behavioral guidance, not a deterministic must-run step that should be a hook, a hard block that should be `permissions.deny`, or a multi-step procedure that should be a skill. Prose that tries to enforce what only a hook can enforce is a defect, because it is unreliable by construction and reads as a guarantee it cannot make. (10)
 - Earns always-on residency. Content that is relevant to most sessions loads unconditionally; content relevant only to a subset of files sits behind a `paths` glob; content relevant only occasionally lives in a skill. An unconditional rule that matters in a tenth of sessions is paying rent nine times out of ten. (8)
-- Right tier. Team-shared standards in project scope, personal preference in user or local scope, org policy in managed scope. Personal preference committed into a shared project file, or team standards stranded in a local file, are both defects. (7)
+- Right tier. Team-shared standards in project scope, individual preference in user or local scope, org policy in managed scope. Individual preference committed into a shared project file, or team standards stranded in a local file, are both defects. (7)
 - Path globs are correct and tight. Where `paths` is used, the patterns actually match the intended files, and are neither so broad they load everywhere nor so narrow they silently drop coverage the rule is supposed to have. (5)
 
 Floor for A: >= 26/30.
@@ -157,7 +157,7 @@ Then, for each file still scoring below A / 9, run this bounded loop:
 
 1. Snapshot the file before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.
-3. Apply the smallest edit that removes the deduction. Typical fixes: rewrite a vague rule into a verifiable one; add a `paths` glob to a rule that only applies to a subset; move personal preference out of a shared file into local or user scope; cut lines that change no behavior; add the reason to a bare imperative; convert maintainer commentary into stripped HTML comments; reorganize a grab-bag file into one concern per descriptively named file, moving each rule to the file a reader would predict, and regroup within-file content under headers ordered by importance or workflow.
+3. Apply the smallest edit that removes the deduction. Typical fixes: rewrite a vague rule into a verifiable one; add a `paths` glob to a rule that only applies to a subset; move individual preference out of a shared file into local or user scope; cut lines that change no behavior; add the reason to a bare imperative; convert maintainer commentary into stripped HTML comments; reorganize a grab-bag file into one concern per descriptively named file, moving each rule to the file a reader would predict, and regroup within-file content under headers ordered by importance or workflow.
 4. Re-score the file from scratch against the rubric with fresh eyes. Do not carry forward the previous score.
 5. Repeat until it reaches A / 9, or you hit `MAX_ITERATIONS`, or a pass produces no material score gain.
 
