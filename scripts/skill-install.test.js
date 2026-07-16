@@ -22,7 +22,9 @@ const skipNoPwsh = hasPwsh ? false : 'pwsh not installed - ps1 behavioral test s
 const SRC_FIXTURE = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-fixture-'));
 const SRC_REPO = path.join(SRC_FIXTURE, 'repo');
 execFileSync('git', ['clone', '--no-hardlinks', `file://${ROOT}`, SRC_REPO], { stdio: 'ignore' });
-execFileSync('git', ['-C', SRC_REPO, 'branch', '-f', 'main', 'HEAD'], { stdio: 'ignore' });
+// switch -C, not branch -f: the clone's checked-out branch varies by environment (develop
+// locally, main on CI), and branch -f refuses to move the branch that is checked out.
+execFileSync('git', ['-C', SRC_REPO, 'switch', '-C', 'main'], { stdio: 'ignore' });
 test.after(() => fs.rmSync(SRC_FIXTURE, { recursive: true, force: true }));
 
 // Invoke ONLY the skill-copy logic by sourcing the installer's function in a
