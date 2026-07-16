@@ -47,7 +47,7 @@ The layer order follows the dependency graph's arrows: rules pull agents + skill
 Per layer, the SAME three-beat shape:
 
 1. **Recompute quietly** - one call: fold the previous layer's picks into `raw.json`, run `node stack-select.js --selection raw.json --graph stack-graph.json`, parse the category-tagged `required: <category> <name> - <why>` lines yourself. The current layer's lines are its **locked** set.
-2. **Show ONE numbered table of the layer's ENTIRE catalog** (the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps`, `catalog.plugins`) - every item the release ships, so nothing is ever offered later or out-of-band. Emit it as ONE contiguous markdown table in a single reply - header row, then every data row, no blank lines inside and nothing interleaved: a table split across blocks renders as misaligned fragments. Columns: number, name, `selected` (why it is in - `recommended`, `stack:<name>`, `required` for a closure-locked item no seed names, or `-` for not selected), `required by` (the lock reason, or `-`). Recommended = the union of `always` + each confirmed stack in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json`, pre-selected:
+2. **Show ONE numbered table of the layer's ENTIRE catalog** (the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps`, `catalog.plugins`) - every item the release ships, so nothing is ever offered later or out-of-band. Emit it as ONE contiguous markdown table in a single reply - header row, then every data row, no blank lines inside and nothing interleaved: a table split across blocks renders as misaligned fragments. Columns: number, name, `selected` (why it is in - `recommended`, `stack:<name>`, `required` for a closure-locked item no seed names, `suggested` for a conditional load a kept agent's protocol names (pre-selected, freely droppable - never locked), or `-` for not selected), `required by` (the lock reason, or `-`). Recommended = the union of `always` + each confirmed stack in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json`, pre-selected:
 
 ```
 [step 4/11 - agents] adjust the agent roster · next: skills
@@ -70,7 +70,7 @@ Locked = agents the kept rules require (the repair-loop rules pin their resolver
 
 ## 5. Skills
 
-The full release catalog in one table - the generator `project-*` skills and every other house skill included, so THIS is the only place skills are ever chosen; later steps (CLAUDE.md included) never offer skill additions. Locked = every skill the kept rules and agents pull, each with the reason naming its dependent; there is no separate skills seed - the recommended set IS the locked set, plus whatever the user adds as extras (an extra is a direct pick - freely droppable on a later configure run).
+The full release catalog in one table - the generator `project-*` skills and every other house skill included, so THIS is the only place skills are ever chosen; later steps (CLAUDE.md included) never offer skill additions. Locked = every skill the kept rules and agents REQUIRE (rule attachments and `skills:` frontmatter preloads), each with the reason naming its dependent. The kept agents' `suggests` (their bodies' conditional 'load X when...' mentions) join the table pre-selected as `suggested` - an option is not a requirement, so they drop freely, no cascade. There is no separate skills seed: recommended = locked + suggested, plus whatever the user adds as extras.
 
 ## 6. Hooks
 

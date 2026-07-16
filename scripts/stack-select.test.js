@@ -5,14 +5,19 @@ const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
 const graph = require('./stack-graph.json');
 
-test('an agent pulls its declared skills and plugins', () => {
-    const c = computeClosure(graph, { agents: ['aspnet-implementer'] });
-    for (const s of ['csharp', 'dotnet-web-backend', 'dotnet-testing'])
+test('an agent pulls its declared skills and plugins; body mentions only suggest', () => {
+    const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
+    for (const s of ['dotnet', 'dotnet-web-backend', 'dotnet-testing'])
     {
-        assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-implementer`);
+        assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-solution-designer's frontmatter`);
     }
-    assert.ok(c.plugins.includes('ponytail'), 'aspnet-implementer pulls the ponytail plugin');
-    assert.match(c.reasons['csharp'], /aspnet-implementer/);
+    assert.match(c.reasons['dotnet'], /aspnet-solution-designer/);
+    // aspnet-implementer declares no skills: frontmatter - its body's conditional
+    // loads are suggestions, so the closure locks nothing for it (plugins stay hard).
+    const impl = computeClosure(graph, { agents: ['aspnet-implementer'] });
+    assert.deepStrictEqual(impl.skills, [], 'a body-sourced agent locks no skills');
+    assert.ok(graph.agents['aspnet-implementer'].suggests.includes('csharp'), 'the conditional loads live in suggests');
+    assert.ok(impl.plugins.includes('ponytail'), 'aspnet-implementer still pulls the ponytail plugin');
 });
 
 test('a rule pulls its skills', () => {
@@ -277,18 +282,18 @@ test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-'));
     const rawFile = path.join(dir, 'raw.json');
     const selFile = path.join(dir, 'selection.txt');
-    fs.writeFileSync(rawFile, JSON.stringify({ agents: ['aspnet-implementer'] }));
+    fs.writeFileSync(rawFile, JSON.stringify({ agents: ['aspnet-solution-designer'] }));
     try
     {
         execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--emit', selFile], { encoding: 'utf8' });
         const emitted = fs.readFileSync(selFile, 'utf8');
-        // aspnet-implementer pulls csharp (a skill) - the emitted file must list it
-        assert.ok(emitted.split('\n').includes('skill csharp'));
+        // aspnet-solution-designer's frontmatter pulls dotnet-web-backend - the emitted file must list it
+        assert.ok(emitted.split('\n').includes('skill dotnet-web-backend'));
 
         const sh = path.join(__dirname, 'os', 'claude-stack.sh');
         const plan = execFileSync('bash', [sh, 'install', '--scope', 'project', '--selection', selFile, '--print-plan'], { encoding: 'utf8' });
         const planSkills = (plan.match(/^plan skills:(.*)$/m) || [,''])[1].trim().split(/\s+/);
-        assert.ok(planSkills.includes('csharp'), 'installer plan reflects the closed selection');
+        assert.ok(planSkills.includes('dotnet-web-backend'), 'installer plan reflects the closed selection');
     }
     finally
     {

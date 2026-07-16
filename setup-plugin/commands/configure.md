@@ -152,8 +152,10 @@ Locked = agents a kept rule requires. Orphans here trace back to rule drops in s
 
 ## 5. Skills
 
-Locked = skills the kept rules + agents require. Orphans trace back to the rule and agent drops
-before them.
+Locked = skills the kept rules + agents require (rule attachments and `skills:` frontmatter
+preloads). A kept agent's `suggests` - its body's conditional 'load X when...' mentions - are
+never locks: those installed rows show `-` in required-by and drop freely, no cascade. Orphans
+trace back to the rule and agent drops before them.
 
 ## 6. Hooks
 

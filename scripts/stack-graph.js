@@ -165,15 +165,20 @@ function buildStackGraph()
 
         const c = categorize(backtickedTokens(bodyAfterFrontmatter(text)), cat);
         const plugins = [...new Set([...fmPlugins, ...c.plugins])].sort();
-        let skills = declared;
-        if (source !== 'frontmatter')
-        {
-            skills = c.skills;
-            source = c.skills.length ? 'body' : 'none';
-        }
+        // A skill mentioned only in the BODY is a conditional load ('load X when the
+        // failure touches Y') - an OPTION, not a requirement. Hard skill edges come
+        // solely from the declared skills: frontmatter (a preload must exist on disk);
+        // a body-sourced agent's mentions land in suggests: pre-selected in the guided
+        // walk, never locked. Frontmatter agents keep their body mentions ignored, as
+        // always - promoting those would balloon every install with cross-stack noise
+        // from the cross-cutting seats' routing examples.
+        if (source !== 'frontmatter' && c.skills.length) source = 'body';
+        const skills = source === 'frontmatter' ? declared : [];
+        const suggests = source === 'body' ? c.skills : [];
 
         graph.agents[name] = {
             skills: [...skills].sort(),
+            suggests: [...suggests].sort(),
             skillsSource: source,
             agents: c.agents.filter(a => a !== name),
             mcps: c.mcps,

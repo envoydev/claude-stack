@@ -282,7 +282,8 @@
   },
   "agents": {
     "angular-implementer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "angular-conventions",
         "angular-material",
         "angular-styling",
@@ -305,13 +306,15 @@
         "frontend",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": []
     },
     "angular-test-resolver": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "angular-conventions",
         "ionic",
         "project-task-flow",
@@ -331,6 +334,7 @@
         "angular-styling",
         "typescript"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -339,7 +343,8 @@
       ]
     },
     "aspnet-implementer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "csharp",
         "dotnet-data-access",
         "dotnet-error-handling",
@@ -363,6 +368,7 @@
         "dotnet-web-backend",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -375,6 +381,7 @@
         "dotnet-testing",
         "dotnet-web-backend"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -386,6 +393,7 @@
       "skills": [
         "project-ci-failure-signatures"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -395,13 +403,15 @@
     },
     "code-analyzer": {
       "skills": [],
+      "suggests": [],
       "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []
     },
     "code-style-analyzer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "angular-conventions",
         "angular-styling",
         "csharp",
@@ -415,7 +425,8 @@
       "plugins": []
     },
     "console-implementer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "csharp",
         "dotnet-console-apps",
         "dotnet-error-handling",
@@ -439,6 +450,7 @@
         "dotnet-testing",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -451,6 +463,7 @@
         "dotnet-hosted-services",
         "dotnet-testing"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -459,7 +472,8 @@
       ]
     },
     "data-implementer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "csharp",
         "database-conventions",
         "dotnet-data-access",
@@ -482,6 +496,7 @@
         "dotnet-migrate",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -492,6 +507,7 @@
         "database-conventions",
         "dotnet-migrate"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -503,6 +519,7 @@
       "skills": [
         "devops"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -515,6 +532,7 @@
         "devops",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -524,6 +542,7 @@
       "skills": [
         "devops"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -532,7 +551,8 @@
       ]
     },
     "dotnet-build-error-resolver": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "csharp",
         "dotnet",
         "dotnet-code-quality",
@@ -548,7 +568,8 @@
       ]
     },
     "dotnet-test-failure-resolver": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "csharp",
         "dotnet-code-quality",
         "dotnet-testing",
@@ -564,6 +585,7 @@
     },
     "evidence-gatherer": {
       "skills": [],
+      "suggests": [],
       "skillsSource": "none",
       "agents": [],
       "mcps": [],
@@ -573,6 +595,7 @@
       "skills": [
         "project-task-flow"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -582,6 +605,7 @@
       "skills": [
         "project-failure-signatures"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -593,6 +617,7 @@
       "skills": [
         "ionic"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -607,6 +632,7 @@
         "mobile",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -619,6 +645,7 @@
         "ionic",
         "typescript"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -627,7 +654,8 @@
       ]
     },
     "ng-build-error-resolver": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "angular-conventions",
         "ionic",
         "project-task-flow",
@@ -641,7 +669,8 @@
       ]
     },
     "related-project-analyzer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "project-related-context"
       ],
       "skillsSource": "body",
@@ -650,7 +679,8 @@
       "plugins": []
     },
     "security-auditor": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "angular-conventions",
         "angular-security",
         "csharp",
@@ -675,7 +705,8 @@
       ]
     },
     "wpf-implementer": {
-      "skills": [
+      "skills": [],
+      "suggests": [
         "csharp",
         "csharp-design-patterns",
         "dotnet-hosted-services",
@@ -698,6 +729,7 @@
         "dotnet-wpf",
         "project-solution-design"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -710,6 +742,7 @@
         "dotnet-testing",
         "dotnet-wpf"
       ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],

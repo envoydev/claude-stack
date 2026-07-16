@@ -22,6 +22,14 @@ test('rule skill edges resolve from the rule body', () => {
     assert.deepStrictEqual(r.paths, ['**/*.cs']);
 });
 
+test('body-mentioned skills are suggestions, never locked edges', () => {
+    const r = graph.agents['dotnet-build-error-resolver'];
+    assert.strictEqual(r.skillsSource, 'body');
+    assert.deepStrictEqual(r.skills, [], 'no skills: frontmatter -> no hard skill edges');
+    assert.ok(r.suggests.includes('dotnet-wpf'), 'the conditional WPF load is a suggestion');
+    assert.ok(graph.agents['data-implementer'].suggests.includes('postgres'), 'postgres is suggested by the data seat, not required');
+});
+
 test('every edge target exists in a catalog (no dangling references)', () => {
     const skills = new Set(Object.keys(graph.skills));
     const agents = new Set(Object.keys(graph.agents));
@@ -30,6 +38,7 @@ test('every edge target exists in a catalog (no dangling references)', () => {
     for (const [name, node] of Object.entries(graph.agents))
     {
         for (const s of node.skills) assert.ok(skills.has(s), `${name} -> unknown skill ${s}`);
+        for (const s of node.suggests || []) assert.ok(skills.has(s), `${name} -> unknown suggested skill ${s}`);
         for (const a of node.agents) assert.ok(agents.has(a), `${name} -> unknown agent ${a}`);
         for (const m of node.mcps) assert.ok(mcps.has(m), `${name} -> unknown mcp ${m}`);
         for (const p of node.plugins) assert.ok(plugins.has(p), `${name} -> unknown plugin ${p}`);
