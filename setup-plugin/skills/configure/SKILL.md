@@ -53,9 +53,12 @@ curl -fsSL "https://api.github.com/repos/envoydev/claude-stack/compare/$SHA...$N
 `git -C "$TMP/repo" rev-parse HEAD` for `NEW`; the compare API works the same.)
 
 Summarise the result by category (`N skills, N agents, N rules changed`), naming the items - that
-is the honest answer to 'what does updating get me'. The diff is what has been RELEASED since the
-stamp (merges to `main`, the release branch) - work still on `develop` is invisible here by
-design, so never diff against or mention `develop`. Two cases to handle, neither an error:
+is the honest answer to 'what does updating get me'. When the stamp and `RELEASE-SOURCE` both
+carry a `version:`, lead with the delta (`0.1.0 -> 0.2.0` - the plugin/marketplace version; equal
+versions with differing shas just means no release bumped it). The diff is what has been RELEASED
+since the stamp (merges to `main`, the release branch) - work still on `develop` is invisible
+here by design, so never diff against or mention `develop`. Two cases to handle, neither an
+error:
 - **No stamp** - an install predating stamping, or one whose source never resolved. Say the
   baseline is unknown, so an update's effect cannot be previewed; the update itself is unaffected
   and will write a stamp.

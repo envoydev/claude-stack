@@ -1,7 +1,7 @@
 {
   "name": "claude-stack",
   "description": "The personal Claude Code stack, guided: setup installs it from scratch into a project (or globally), configure updates an existing install - both drive a dependency-complete selection with a prerequisite check.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "envoydev",
     "url": "https://github.com/envoydev"

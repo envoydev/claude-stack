@@ -22,10 +22,12 @@ Invoke-WebRequest -Uri https://github.com/envoydev/claude-stack/releases/latest/
 Expand-Archive -LiteralPath "$TMP/claude-stack.zip" -DestinationPath "$TMP/repo"
 ```
 
-- The archive is the rolling `latest` release the repo's release workflow republishes on every
-  release merge to `main` - `main` is the RELEASE branch (development lands on `develop`, so an
-  install never picks up unreleased work) - one self-consistent snapshot, whose `RELEASE-SOURCE`
-  file names the exact commit it was built from. The `raw.githubusercontent.com` URLs are
+- The archive is the newest release - the repo's release workflow republishes it on every
+  release merge to `main`, tagged `v<version>` from the plugin manifest, so the release version
+  always equals the plugin/marketplace version; the `releases/latest/download/...` URLs above
+  always resolve to the newest one. `main` is the RELEASE branch (development lands on
+  `develop`, so an install never picks up unreleased work) - one self-consistent snapshot, whose
+  `RELEASE-SOURCE` file names the exact commit and version it was built from. The `raw.githubusercontent.com` URLs are
   per-file and sit behind a CDN that serves a cached copy for ~5 min after a push, so raw can
   hand back a stale installer or a skewed mix of versions. Never fetch anything from a raw URL -
   not even as a fallback.

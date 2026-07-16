@@ -69,6 +69,10 @@ test('install stamps the exact source revision it installed from', () => {
         // The fallback clone is pinned to main (the release branch) - never the checked-out branch.
         const mainTip = execFileSync('git', ['-C', ROOT, 'rev-parse', 'main'], { encoding: 'utf8' }).trim();
         assert.strictEqual(stamp.sha, mainTip, 'stamped sha is the release branch tip, not an approximation');
+        // A git source has no RELEASE-SOURCE - the version comes from the plugin manifest at main,
+        // the same file the marketplace serves, so stamp == release == marketplace version.
+        const mainManifest = JSON.parse(execFileSync('git', ['-C', ROOT, 'show', 'main:setup-plugin/.claude-plugin/plugin.json'], { encoding: 'utf8' }));
+        assert.strictEqual(stamp.version, mainManifest.version, 'stamped version is the plugin/marketplace version at main');
         assert.strictEqual(stamp.action, 'install');
         assert.strictEqual(stamp.scope, 'project');
         assert.ok(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(stamp.installed), `installed is a UTC timestamp: ${stamp.installed}`);
@@ -129,7 +133,7 @@ test('installs from the release archive and stamps its RELEASE-SOURCE commit', (
     const dl = path.join(fake, 'releases', 'latest', 'download');
     fs.mkdirSync(dl, { recursive: true });
     const relSrc = path.join(fake, 'RELEASE-SOURCE');
-    fs.writeFileSync(relSrc, `sha: ${FAKE_SHA}\nref: main\nbuilt: 2026-07-16T00:00:00Z\n`);
+    fs.writeFileSync(relSrc, `sha: ${FAKE_SHA}\nref: main\nversion: 9.9.9\nbuilt: 2026-07-16T00:00:00Z\n`);
     execFileSync('git', ['-C', ROOT, 'archive', '--format=tar.gz', `--add-file=${relSrc}`, '-o', path.join(dl, 'claude-stack.tar.gz'), 'HEAD'], { stdio: 'ignore' });
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-'));
     const sel = path.join(work, 'sel.txt');
@@ -144,6 +148,7 @@ test('installs from the release archive and stamps its RELEASE-SOURCE commit', (
         assert.match(out, /releases\/latest\/download/, 'took the archive route, not the clone fallback');
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'installed from the extracted archive');
         assert.strictEqual(readStamp(work).sha, FAKE_SHA, 'stamps the RELEASE-SOURCE commit, no git involved');
+        assert.strictEqual(readStamp(work).version, '9.9.9', 'stamps the RELEASE-SOURCE version (the plugin/marketplace version)');
     }
     finally
     {
@@ -160,13 +165,14 @@ test('--source pointed at an extracted archive stamps from its RELEASE-SOURCE', 
     const repo = path.join(src, 'repo');
     fs.mkdirSync(path.join(repo, 'agents'), { recursive: true });
     fs.cpSync(path.join(ROOT, 'skills', 'csharp'), path.join(repo, 'skills', 'csharp'), { recursive: true });
-    fs.writeFileSync(path.join(repo, 'RELEASE-SOURCE'), `sha: ${FAKE_SHA}\nref: main\n`);
+    fs.writeFileSync(path.join(repo, 'RELEASE-SOURCE'), `sha: ${FAKE_SHA}\nref: main\nversion: 8.8.8\n`);
     const { work, out } = runSkillCopy(['csharp'], ['--source', repo]);
     try
     {
         assert.match(out, /\(provided\)/, 'reports the borrowed source');
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'installed from the extracted archive');
         assert.strictEqual(readStamp(work).sha, FAKE_SHA, 'stamp read from RELEASE-SOURCE when there is no git checkout');
+        assert.strictEqual(readStamp(work).version, '8.8.8', 'stamp version read from RELEASE-SOURCE');
         assert.ok(fs.existsSync(path.join(repo, 'skills')), 'the caller owns the extracted archive - the installer must not delete it');
     }
     finally
@@ -227,7 +233,7 @@ test('ps1: -Source pointed at an extracted archive stamps from its RELEASE-SOURC
     const repo = path.join(src, 'repo');
     fs.mkdirSync(path.join(repo, 'agents'), { recursive: true });
     fs.cpSync(path.join(ROOT, 'skills', 'csharp'), path.join(repo, 'skills', 'csharp'), { recursive: true });
-    fs.writeFileSync(path.join(repo, 'RELEASE-SOURCE'), `sha: ${FAKE_SHA}\nref: main\n`);
+    fs.writeFileSync(path.join(repo, 'RELEASE-SOURCE'), `sha: ${FAKE_SHA}\nref: main\nversion: 7.7.7\n`);
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-ps-'));
     const sel = path.join(work, 'sel.txt');
     fs.writeFileSync(sel, 'skill csharp\n');
@@ -239,6 +245,7 @@ test('ps1: -Source pointed at an extracted archive stamps from its RELEASE-SOURC
             env: { ...process.env, HOME: work },
         });
         assert.strictEqual(readStamp(work).sha, FAKE_SHA, 'ps1 stamp read from RELEASE-SOURCE when there is no git checkout');
+        assert.strictEqual(readStamp(work).version, '7.7.7', 'ps1 stamp version read from RELEASE-SOURCE');
         assert.ok(fs.existsSync(path.join(repo, 'skills')), 'the caller owns the extracted archive - the ps1 must not delete it');
     }
     finally

@@ -989,6 +989,22 @@ function main()
         flag('stack-graph: scripts/stack-graph.json is stale - run `node scripts/stack-graph.js --write` and commit it');
     }
 
+    // 21. ONE version everywhere: the plugin manifest (what the marketplace serves from
+    //     main) and the marketplace metadata must agree - the release workflow tags each
+    //     release v<version> from the plugin manifest, so a mismatch here would ship a
+    //     release whose version differs from the marketplace's.
+    const pluginManifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8'));
+    const marketplaceManifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const marketplaceVersion = marketplaceManifest.metadata && marketplaceManifest.metadata.version;
+    if (!pluginManifest.version)
+    {
+        flag('setup-plugin/.claude-plugin/plugin.json has no version - the release workflow tags each release from it');
+    }
+    else if (pluginManifest.version !== marketplaceVersion)
+    {
+        flag(`version drift: setup-plugin plugin.json '${pluginManifest.version}' vs .claude-plugin/marketplace.json metadata '${marketplaceVersion}' - the plugin, the marketplace, and the release must carry ONE version`);
+    }
+
     if (warnings.length > 0)
     {
         for (const warning of warnings)

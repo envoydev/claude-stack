@@ -12,7 +12,7 @@ repo for the shared skills, so the skill + MCP baseline stays single-sourced her
 baseline change is a TWO-REPO commit (the manifest lists are mirrored there in the same
 sitting; each repo lints its own `.sh`/`.ps1` twins). Consuming projects pull from here -
 they do not own their copy. Skills install via the installers' one-snapshot download (the
-rolling `latest` release archive, git-clone fallback; or the claude-stack plugin's
+versioned release archive, git-clone fallback; or the claude-stack plugin's
 `/claude-stack:setup`); the rest is laid down by the same installers. The durable change always lives in *this* repo's source; a
 change made only inside a consuming project is throwaway (see Invariants).
 
@@ -90,7 +90,7 @@ platform gaps and the twin-maintenance rule).
 ## The stack's delivery surfaces (and the Cursor twin repo)
 
 The Claude Code delivery, per surface. Skills, hooks, agents, rules and the CLAUDE.md template all
-come from the SAME one-per-run source snapshot (the `latest` release archive, or the shallow-clone
+come from the SAME one-per-run source snapshot (the newest release archive, or the shallow-clone
 fallback), so an install is a single revision - the one `claude-stack.stamp` records:
 
 | Surface | Delivery |
@@ -171,7 +171,11 @@ documented there.
 
 - **`develop` is where work lands; `main` is the release branch.** Commit to `develop` (or a
   branch off it); merging `develop` -> `main` IS the release act - the release workflow rebuilds
-  the rolling `latest` archive from that merge, and that revision is what every install delivers.
+  the release archive from that merge, and that revision is what every install delivers. ONE
+  version everywhere: the workflow tags each release `v<version>` from
+  `setup-plugin/.claude-plugin/plugin.json` - the same manifest the marketplace serves from
+  `main` - so bump it (plus `marketplace.json` metadata; the lint enforces they stay equal) on
+  `develop` as part of any release-worthy change.
   Never commit feature work directly to `main`, and keep `main` the GitHub default branch (the
   README's raw installer bootstrap delivers the default branch; the installers' and skills'
   clone fallback is pinned `-b main` regardless). The lint + test workflows gate every push and
@@ -208,9 +212,10 @@ documented there.
   installer twins (both shells) or the next install wipes it - and into `cursor-stack`
   when the change touches the shared skills/MCP baseline or a twinned agent/rule.
 - **Everything installs from ONE source snapshot** of this repo, taken once per run (`stack_src` /
-  `Get-StackSrc`): the rolling `latest` release archive that `.github/workflows/release.yml`
-  republishes on every push to main (a `RELEASE-SOURCE` file inside names the exact commit),
-  falling back to a shallow git clone when no release is reachable. Skills, hooks, agents, rules
+  `Get-StackSrc`): the release archive that `.github/workflows/release.yml` republishes on every
+  release merge to main - tagged `v<plugin version>`, always served by the
+  `releases/latest/download` URL, with a `RELEASE-SOURCE` file inside naming the exact commit +
+  version - falling back to a shallow git clone when no release is reachable. Skills, hooks, agents, rules
   and the CLAUDE.md template are all copied out of it, so a change ships only once merged to
   `main` (the release branch - the workflow rebuilds the archive from the merge); until then the
   per-file fail-soft keeps any existing copy. The snapshot replaced the per-file `…/main/…` raw fetches - the raw CDN is per-file and
@@ -226,7 +231,7 @@ documented there.
 - **The install is versioned, not the file.** Claude Code has no per-artifact version: `version:` is
   in the plugin.json schema and NOWHERE else (a `version:` key on a skill/agent/rule parses but is
   ignored - don't add one). Instead each run writes `claude-stack.stamp` (project `.claude/`, or the
-  account dir for a global install) naming the source commit; `/claude-stack:configure` diffs it
+  account dir for a global install) naming the source commit and release version; `/claude-stack:configure` diffs it
   against the new snapshot's commit (the GitHub compare API - an archive has no local history) to
   report what an update would bring. A run whose source never resolved writes NO stamp - a wrong
   stamp is worse than none.

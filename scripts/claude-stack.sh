@@ -797,13 +797,22 @@ seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the tem
 #     <repo>/compare/<sha>...main  (the GitHub compare view / API)
 # Machine-local by design (it describes THIS checkout's install) and already covered by the
 # '.claude/*' gitignore line the run prints.
+stack_version_from() {
+  # The stack's ONE version: an extracted release archive carries it in RELEASE-SOURCE; a git
+  # checkout reads it from the plugin manifest - the same file the marketplace serves from main,
+  # so the stamp, the release, and the marketplace always name the same version.
+  { sed -n 's/^version: //p' "$1/RELEASE-SOURCE" 2>/dev/null | head -1 | grep .; } ||
+    sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1
+}
+
 write_stamp() {
   # No SHA means no source resolved this run (the archive download and the clone fallback both
   # failed, and every step fail-softly kept its existing copy). Stamping then would claim an
   # install that did not occur, and a wrong stamp is worse than none - so leave any previous
   # stamp untouched.
   [ -n "$STACK_SHA" ] || { log "  stamp: skipped - no source revision resolved this run"; return 0; }
-  local dir dest root
+  local dir dest root version
+  version="$(stack_version_from "$STACK_SRC")"
   case "$CLAUDE_SCOPE" in
     user) dir="$CONFIG_DIR" ;;
     # Prefer the repo root - that is where hooks/agents/rules land. Outside a repo fall back to
@@ -823,6 +832,7 @@ write_stamp() {
 source: $STACK_REPO_URL
 ref: $STACK_REF
 sha: $STACK_SHA
+version: $version
 installed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 action: $ACTION
 scope: $CLAUDE_SCOPE

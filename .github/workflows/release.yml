@@ -1,10 +1,14 @@
 name: release
 
-# Rebuild the rolling 'latest' release on every push to main: one tar.gz + one zip source
-# snapshot per revision, with a RELEASE-SOURCE file inside naming the exact commit. The
-# installers (claude-stack.sh / .ps1) and the setup/configure plugin skills download this
-# instead of cloning; a shallow git clone is their fallback when no release is reachable
-# (which includes the brief delete/recreate window this job opens).
+# Republish the release on every release merge to main: one tar.gz + one zip source
+# snapshot per revision, tagged v<version> from the plugin manifest
+# (setup-plugin/.claude-plugin/plugin.json) - the marketplace serves that same manifest
+# from main, so the marketplace, main, and the release always carry ONE version (the
+# parity lint keeps marketplace.json equal). A RELEASE-SOURCE file inside each archive
+# names the exact commit and version. The installers and the setup/configure plugin
+# skills download releases/latest/download/... (always the newest release); a shallow
+# clone of main is their fallback - which covers the brief delete/recreate window this
+# job opens.
 
 on:
   push:
@@ -19,17 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve the version (the plugin/marketplace version)
+        id: ver
+        run: echo "version=$(node -p "require('./setup-plugin/.claude-plugin/plugin.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Build the source archives
         run: |
-          printf 'sha: %s\nref: main\nbuilt: %s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > RELEASE-SOURCE
+          printf 'sha: %s\nref: main\nversion: %s\nbuilt: %s\n' "$GITHUB_SHA" "${{ steps.ver.outputs.version }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > RELEASE-SOURCE
           git archive --format=tar.gz --add-file=RELEASE-SOURCE -o claude-stack.tar.gz HEAD
           git archive --format=zip    --add-file=RELEASE-SOURCE -o claude-stack.zip    HEAD
 
-      - name: Recreate the rolling release
+      - name: Recreate the release for this version
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest claude-stack.tar.gz claude-stack.zip \
-            --latest --title 'claude-stack (rolling)' \
-            --notes "Source snapshot of main @ ${GITHUB_SHA} - consumed by the stack installers and the setup/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true      # the pre-versioning rolling release; no-op once gone
+          gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # a same-version re-release refreshes the assets
+          gh release create "v$VERSION" claude-stack.tar.gz claude-stack.zip \
+            --latest --title "claude-stack v$VERSION" \
+            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."

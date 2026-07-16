@@ -898,12 +898,30 @@ function New-ClaudeMd {
 #     <repo>/compare/<sha>...main  (the GitHub compare view / API)
 # Machine-local by design (it describes THIS checkout's install) and already covered by the
 # '.claude/*' gitignore line the run prints.
+function Get-StackVersionFrom {
+  # The stack's ONE version: an extracted release archive carries it in RELEASE-SOURCE; a git
+  # checkout reads it from the plugin manifest - the same file the marketplace serves from main,
+  # so the stamp, the release, and the marketplace always name the same version.
+  param([string]$Dir)
+  $rel = Join-Path $Dir 'RELEASE-SOURCE'
+  if (Test-Path -LiteralPath $rel) {
+    $v = ((Get-Content -LiteralPath $rel | Where-Object { $_ -match '^version: ' } | Select-Object -First 1) -replace '^version: ', '')
+    if ($v) { return $v }
+  }
+  $manifest = Join-Path $Dir 'setup-plugin/.claude-plugin/plugin.json'
+  if (Test-Path -LiteralPath $manifest) {
+    try { return [string](Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).version } catch { }
+  }
+  return ''
+}
+
 function Write-Stamp {
   # No SHA means no source resolved this run (the archive download and the clone fallback both
   # failed, and every step fail-softly kept its existing copy). Stamping then would claim an
   # install that did not occur, and a wrong stamp is worse than none - so leave any previous
   # stamp untouched.
   if (-not $script:StackSha) { Log '  stamp: skipped - no source revision resolved this run'; return }
+  $version = if ($script:StackSrc) { Get-StackVersionFrom -Dir $script:StackSrc } else { '' }
   if ($ClaudeScope -eq 'user') { $dir = $ConfigDir }
   else {
     # Prefer the repo root - that is where hooks/agents/rules land. Outside a repo fall back to the
@@ -925,6 +943,7 @@ function Write-Stamp {
     "source: $StackRepoUrl"
     "ref: $($script:StackRef)"
     "sha: $($script:StackSha)"
+    "version: $version"
     "installed: $stampedAt"
     "action: $Action"
     "scope: $ClaudeScope"
