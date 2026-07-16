@@ -51,6 +51,28 @@ skip this check silently). When they differ, the plugin is behind the release: s
 offer to continue anyway - the snapshot tooling is current either way; the risk is only that
 these instructions lag it.
 
+## Narrate, don't trace
+
+The run must read as a guided installer, not a terminal log. The user sees every tool call's
+header, so keep the machinery to as few, small calls as possible and put ALL meaning in your own
+narration lines between them:
+
+- ONE quiet call per recompute: write the working file(s) and run `stack-select.js` in a single
+  short command; parse its output yourself. Never a call per file, never a re-run to re-read what
+  you already have.
+- Never paste tool output (`required:`/`orphan:` dumps, file listings, diffs) into the chat - the
+  tables and banners you compose ARE the presentation; raw lines are your input, not the user's.
+- Between steps, one narration line in this shape - what just closed, what is being computed,
+  what comes next:
+
+```
+Final rule set: the 10 recommended (customize round confirmed no changes). Folding into raw.json and recomputing the agents layer's locked set.
+24 locked skills. Computing the extras list (release catalog minus locked) before presenting the table.
+```
+
+- Machinery that produces no decision (mktemp, downloads, cleanup) gets no narration beyond the
+  protocol's own one-liners; a failure is narrated with its consequence, never a stack trace.
+
 ## Use the tools from the snapshot
 
 Everything comes out of `$TMP/repo`:

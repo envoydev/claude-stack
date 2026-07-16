@@ -29,7 +29,8 @@ change made only inside a consuming project is throwaway (see Invariants).
 - `stack/hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
   `guard-read-whole-file.js` (PreToolUse `Read`), all wired; plus `instrument-tool-usage.js`,
   installed UNWIRED (opt-in per-run tool/skill/MCP stats via STACK_INSTRUMENT=1 + manual wiring).
-  Copied from the run's clone into a project's `.claude/hooks/`.
+  Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
+  makes them selectable per install (a selection with no `hook` lines installs all four).
 - `stack/agents/` - the Claude-contract subagents, 33 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
     `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `issue-diagnoser`, `security-auditor` - a read-only

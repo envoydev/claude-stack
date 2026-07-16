@@ -1,5 +1,5 @@
 ---
-description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), then walk the installed selection in the same four dependency-ordered layers as setup (rules -> agents -> skills -> MCPs + plugins), no recommended phase: each layer is a straight modify of what exists - drop what is no longer wanted, add from the catalog. An item another kept item requires is locked, always with the reason shown; a drop cascades forward - what it alone pulled in is offered for removal at its own layer, never removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), then walk the installed selection in the same five dependency-ordered layers as setup (rules -> agents -> skills -> hooks -> MCPs + plugins), no recommended phase: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then two number-answer questions - add, then drop. A drop cascades forward - what it alone pulled in is offered for removal at its own layer, never removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
@@ -9,30 +9,29 @@ You are adjusting a claude-stack install that already exists. Same discipline as
 it interactively, walk the selection one layer at a time, always show the prerequisite report
 before running, never run past an unmet blocker. `stack-select.js` does the deterministic work;
 you orchestrate. Two differences from `setup`: the baseline selection is what is INSTALLED, not
-the recommendations - every layer is a straight modify, no accept-recommended phase - and the
-action is `update`, not `install`. (For a no-questions refresh that also prunes what upstream
-removed, the sibling `update` command is the shorter path - this command is for CHOOSING what
-changes.)
+the recommendations - every layer is a straight modify, no recommended phase - and the action is
+`update`, not `install`. (For a no-questions refresh that also prunes what upstream removed, the
+sibling `update` command is the shorter path - this command is for CHOOSING what changes.)
 
 **ONE release archive is the entire download** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
-it: download + extract the `latest` release archive once into `$TMP/repo` (the reference owns the
-fallback), use every tool from that snapshot, hand it back with `--source` in step 7, and remove
-`$TMP` per the 'Clean up' section on every exit path. This command's extra stake in the snapshot:
-its `RELEASE-SOURCE` commit is what step 1 compares the stamp against to report what an update
-would bring.
+it: download + extract once into `$TMP/repo` (the reference owns the fallback), use every tool
+from that snapshot, hand it back with `--source` in step 8, and remove `$TMP` per the 'Clean up'
+section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
+call: one quiet call per recompute, no pasted tool output, one narration line between steps.
+This command's extra stake in the snapshot: its `RELEASE-SOURCE` commit is what step 1 compares
+the stamp against to report what an update would bring.
 
 ## The ladder - announce every step
 
-Eight user-facing steps; the machinery between them (the download, the post-check, the cleanup)
-runs silently. Before EVERY question, one banner line so the user always knows where they are,
-what is being decided, and what comes next:
+Nine user-facing steps; the machinery between them runs silently. Before EVERY question, one
+banner line so the user always knows where they are, what is being decided, and what comes next:
 
 ```
-[step 2/8 - rules] adjust the installed rules · next: agents
+[step 2/9 - rules] adjust the installed rules · next: agents
 ```
 
-1 install status · 2 rules · 3 agents · 4 skills · 5 MCPs + plugins · 6 prerequisite check · 7 update · 8 CLAUDE.md (optional)
+1 install status · 2 rules · 3 agents · 4 skills · 5 hooks · 6 MCPs + plugins · 7 prerequisite check · 8 update · 9 CLAUDE.md (optional)
 
 ## 1. Install status - find it, inventory it, diff it
 
@@ -45,6 +44,7 @@ what is being decided, and what comes next:
   directory names under `.claude/skills/` (or the account's `skills/`); agents =
   `.claude/agents/*.md`; rules = `.claude/rules/*.md` (exclude the GENERATED
   `baseline-project-*.md` awareness rules - they are written by capture skills, never installed);
+  hooks = `.claude/hooks/*.js` (exclude the GENERATED `inject-code-style.js` - same reason);
   mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` (fail-soft
   without the CLI). Show the inventory grouped by category, with counts.
 - **Report what changed since the install.** `.claude/claude-stack.stamp` (or the account's)
@@ -78,48 +78,54 @@ cases to handle, neither an error:
 
 A `TRUNCATED` first line means the preview may be missing files - say so alongside the summary.
 
-Close the step with one question: **walk the layers** (steps 2-5, adjust the selection), or
-**refresh as-is** (nothing to change - skip straight to step 6; when upstream changed nothing
+Close the step with one question: **walk the layers** (steps 2-6, adjust the selection), or
+**refresh as-is** (nothing to change - skip straight to step 7; when upstream changed nothing
 either, offer to stop rather than running a no-op, and note the sibling `update` command is the
 no-questions path for plain refreshes).
 
-## The walk - steps 2-5, one layer at a time
+## The walk - steps 2-6, one layer at a time
 
 Same dependency-ordered walk as `setup` (rules pull agents + skills, agents pull skills,
-everything pulls MCPs + plugins - dependencies only point FORWARD), applied to the installed set
-with no recommended phase. Hold TWO running files in the temp dir: `raw.json` - the remaining
-selection (installed + adds - drops, every category incl. mcps) - and `dropped.json` -
-everything dropped so far, per category.
+everything pulls MCPs + plugins, hooks stand alone - dependencies only point FORWARD), applied to
+the installed set with no recommended phase. Hold TWO running files in the temp dir: `raw.json` -
+the remaining selection (installed + adds - drops, every category incl. `hooks` and `mcps`) - and
+`dropped.json` - everything dropped so far, per category.
 
-Per layer:
+Per layer, the SAME three-beat shape as setup:
 
-- Recompute first: `node stack-select.js --selection raw.json --graph stack-graph.json --dropped dropped.json`.
-  Two line kinds drive the step:
-  - `required: <category> <name> - <why>` naming a DROPPED item -> the drop is blocked: something
-    kept still depends on it. Show the reason; the user keeps it, or also drops the dependents
-    the reason names (their layer is reopened if already walked, and its own cascade re-runs).
-  - `orphan: <category> <name> - <why> (dropped); nothing kept still needs it` -> the cascade:
-    an installed item whose only dependents were dropped at an earlier layer. Offer this layer's
-    orphans for removal - 'it was only there for what you dropped; remove it too, or keep it?' -
-    never remove one silently, never re-offer one the user chose to keep.
-- Present the layer: **kept** (the installed items, staying by default), **locked** (kept items
-  something else kept requires - marked with the reason, deselectable only via their dependents),
-  **orphaned** (the offer above), **addable** (the release catalog minus installed - the graph's
-  `rules`/`agents`/`skills` keys, `catalog.mcps`/`catalog.plugins`). One question: keep as-is, or
-  modify (multi-pick of drops + adds)?
-- Fold the answers into `raw.json` + `dropped.json` and move on. An `unknown:` line marks an
-  installed name this release no longer ships (retired or renamed upstream) - it is excluded
-  from the emitted selection automatically; surface it: adopt the replacement here if step 1
-  showed a rename, or let the sibling `update` command prune the leftover artifact.
-
-A layer step looks like:
+1. **Recompute quietly** - one call:
+   `node stack-select.js --selection raw.json --graph stack-graph.json --dropped dropped.json`,
+   parsed by you, never pasted. Two line kinds drive the step:
+   - `required: <category> <name> - <why>` naming a DROPPED item -> the drop is blocked: something
+     kept still depends on it. Show the reason; the user keeps it, or also drops the dependents
+     the reason names (their layer is reopened if already walked, and its own cascade re-runs).
+   - `orphan: <category> <name> - <why> (dropped); nothing kept still needs it` -> the cascade:
+     an installed item whose only dependents were dropped at an earlier layer. Offer this layer's
+     orphans for removal - 'it was only there for what you dropped; remove it too, or keep it?' -
+     never remove one silently, never re-offer one the user chose to keep.
+2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed alike -
+   the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps` +
+   `catalog.plugins`). Columns: number, name, `installed` (`yes`, `orphaned` for the cascade
+   offers, or `-`), `required by` (the lock reason for kept items something else kept needs, or
+   `-`):
 
 ```
-[step 4/8 - skills] adjust the installed skills · next: MCPs + plugins
-kept 41 (37 locked by your rules + agents) · orphaned by dropping rule dotnet-repair-agents:
-  dotnet-project-setup, dotnet-wpf (were required by agent dotnet-build-error-resolver - dropped)
-Remove the orphans too, keep them, or modify the list further?
+[step 4/9 - skills] adjust the installed skills · next: hooks
+| # | skill | installed | required by |
+|---|-------|-----------|-------------|
+| 1 | csharp | yes | rule csharp-conventions |
+| 2 | dotnet-wpf | orphaned | was: agent dotnet-build-error-resolver (dropped) |
+| 3 | postgres | - | - |
 ```
+
+3. **Two questions, answered with numbers.** First: 'add - which numbers?'. Then: 'drop - which
+   numbers?' (orphaned rows are pre-suggested here, each with its cascade origin). A drop naming
+   a LOCKED row is refused with its reason shown - the remedy is dropping the dependent at its
+   own layer, never a silent override. Fold the answers into `raw.json` + `dropped.json`, narrate
+   the one-line handoff, move on. An `unknown:` line marks an installed name this release no
+   longer ships (retired or renamed upstream) - it is excluded from the emitted selection
+   automatically; surface it: adopt the replacement here if step 1 showed a rename, or let the
+   sibling `update` command prune the leftover artifact.
 
 ## 2. Rules
 
@@ -136,13 +142,20 @@ Locked = agents a kept rule requires. Orphans here trace back to rule drops in s
 Locked = skills the kept rules + agents require. Orphans trace back to the rule and agent drops
 before them.
 
-## 5. MCPs + plugins
+## 5. Hooks
 
-Locked = what the kept selection pulls; the rest of the installed servers/plugins are direct
-picks - droppable, and preserved across runs now that `raw.json` carries them. Addable from
-`catalog.mcps` + `catalog.plugins`.
+Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
+cascade never reaches here. Dropping a wired hook removes its `.claude/settings.json` wiring too
+(step 8 shows that edit).
 
-## 6. Prerequisite check
+## 6. MCPs + plugins
+
+Locked = what the kept selection pulls (typically just `serena`, via `baseline-navigation`); the
+rest of the installed servers/plugins are direct picks - droppable, and preserved across runs
+(`raw.json` carries them). Addable from `catalog.mcps` + `catalog.plugins`; note next to `sentry`
+that it needs `SENTRY_ACCESS_TOKEN`.
+
+## 7. Prerequisite check
 
 Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check`.
 Show the closed selection grouped by category - closure adds marked with their reasons, the final
@@ -151,7 +164,7 @@ one (fix now, or reopen the owning layer and drop the affected items). Warnings 
 passed. Also ask here: keep local model/effort pins? (`--keep-pins`, default yes for a configure
 run - an existing install often carries deliberate pin edits).
 
-## 7. Update + removals
+## 8. Update + removals
 
 Run the installer **from the snapshot**, passing it back with `--source` so the run lands the
 same revision step 1 previewed:
@@ -163,19 +176,23 @@ same revision step 1 previewed:
 
 `update --selection` refreshes the selected set - it does NOT uninstall what was dropped. Remove
 dropped items (incl. accepted orphans) explicitly, show each command before running it: delete
-the skill directory / agent file / rule file; `claude mcp remove <name>` for an MCP;
+the skill directory / agent file / rule file; a hook loses BOTH its `.claude/hooks/` file and its
+`.claude/settings.json` wiring (show that edit too); `claude mcp remove <name>` for an MCP;
 `claude plugin uninstall <name>` for a plugin. Then re-run `/project-agent-capabilities` (when
 installed) so the generated awareness rule reflects the new inventory.
 
-## 8. CLAUDE.md - the user's call (project mode)
+## 9. CLAUDE.md - the user's call (project mode)
 
-Not required - ask first, and a 'no' ends the run cleanly. On a yes: reconcile the project's
-CLAUDE.md against the fetched `stack/CLAUDE.template.md` - add the sections the template
-gained since the install, update the selection-tied parts (the rules table and any capability
-mentions) for what this run added or dropped, and complete any still-unwritten authoring-outline
-sections from what the inventory established. Reconcile ADDITIVELY: never overwrite the project's
-own prose, and show the changes before writing. Skip in global mode (no project file to
-reconcile).
+Not required - open with WHERE it lives and WHAT a yes changes, then ask; a 'no' ends the run
+cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
+seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
+On a yes: reconcile it against the fetched `stack/CLAUDE.template.md` - add the sections the
+template gained since the install, update the selection-tied parts (the rules table and any
+capability mentions) for what this run added or dropped, and complete any still-unwritten
+authoring-outline sections from what the inventory established. Reconcile ADDITIVELY: never
+overwrite the project's own prose, and show the changes before writing. Never offer
+skill/agent/MCP additions here - the walk owned the selection. Skip in global mode (no project
+file to reconcile).
 
 ## Post-check
 
@@ -194,10 +211,13 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
   sibling `setup` command. Never present a layer question without its
-  `[step n/8 - <name>] ... · next: <name>` banner.
-- Never drop a locked item on the user's behalf, never remove an orphan silently, and never
-  re-offer an orphan the user chose to keep - the reason line is the answer, the dependent's
+  `[step n/9 - <name>] ... · next: <name>` banner or without the full-catalog table.
+- Never drop a locked row on the user's behalf, never remove an orphan silently, and never
+  re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's
   layer is the remedy.
-- Do not skip the walk, the prerequisite gate, or the explicit-removal pass. Do not write the
-  archive, the extracted repo, or the working files into the project tree, and do not leave
-  `$TMP` behind on any exit path. Do not commit anything on the user's behalf.
+- Do not paste tool output or run chatty per-file commands - the 'Narrate, don't trace' contract
+  holds for the whole run.
+- Do not skip the walk, the two-question rounds, the prerequisite gate, or the explicit-removal
+  pass. Do not write the archive, the extracted repo, or the working files into the project
+  tree, and do not leave `$TMP` behind on any exit path. Do not commit anything on the user's
+  behalf.

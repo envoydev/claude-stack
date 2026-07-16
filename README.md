@@ -51,9 +51,10 @@ Then `/claude-stack:setup` runs a fresh install (in a project it decides the sel
 project; outside one it offers a global install from the recommended set),
 `/claude-stack:update` refreshes an existing one to the newest release and prunes what the stack
 removed upstream, and `/claude-stack:configure` adjusts it (add or drop items). Setup and
-configure walk the selection one layer at a time (rules -> agents -> skills -> MCPs + plugins),
-locking only what something kept still requires - always with the reason shown; all three detect
-the OS and check prerequisites before anything runs, and `/claude-stack` alone routes by state.
+configure walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs +
+plugins) as numbered full-catalog tables, locking only what something kept still requires -
+always with the reason shown; all three detect the OS and check prerequisites before anything
+runs, and `/claude-stack` alone routes by state.
 
 ## Install - with the script
 

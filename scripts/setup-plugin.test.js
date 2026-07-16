@@ -60,6 +60,10 @@ test('every recommendation name resolves in the dependency graph', () => {
         for (const s of seed.skills || []) assert.ok(skillKeys.has(s), `recommendation skill '${s}' not in graph`);
         const pluginCatalog = new Set(graph.catalog.plugins);
         for (const p of seed.plugins || []) assert.ok(pluginCatalog.has(p), `recommendation plugin '${p}' not in catalog`);
+        const mcpCatalog = new Set(graph.catalog.mcps);
+        for (const m of seed.mcps || []) assert.ok(mcpCatalog.has(m), `recommendation mcp '${m}' not in catalog`);
+        const hookCatalog = new Set(graph.catalog.hooks);
+        for (const h of seed.hooks || []) assert.ok(hookCatalog.has(h), `recommendation hook '${h}' not in catalog`);
     }
 });
 
@@ -116,7 +120,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, /rules -> agents -> skills -> MCPs \+ plugins/, `${name} walks the layers in dependency order`);
+        assert.match(body, /rules -> agents -> skills -> hooks -> MCPs \+ plugins/, `${name} walks the layers in dependency order`);
         assert.match(body, /\[step \d+\/\d+ - /, `${name} announces every step with the n/total banner`);
     }
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');

@@ -13,7 +13,9 @@ refresh leaves orphaned forever. No selection questions; the one gate is the del
 **ONE release archive is the entire download** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
 it: download + extract once into `$TMP/repo`, use every tool from that snapshot, hand it back
-with `--source` in step 6, and remove `$TMP` on every exit path in step 10.
+with `--source` in step 6, and remove `$TMP` on every exit path in step 10. The protocol's
+'Narrate, don't trace' section governs every tool call: quiet machinery, no pasted output, one
+narration line between steps.
 
 ## 1. Preconditions - find the install
 Exactly as the sibling `configure` command's step 1: project mode (populated `.claude/`) or global
@@ -25,7 +27,8 @@ mode (the account's skills). Nothing installed in either place -> stop and route
 ## 2. Inventory the installed set
 Build the CURRENT selection from disk exactly as the sibling `configure` command's step 1 does -
 skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md`),
-mcps from `<repo>/.mcp.json`, plugins fail-soft - never from memory or assumption.
+hooks (`.claude/hooks/*.js`, excluding the GENERATED `inject-code-style.js`), mcps from
+`<repo>/.mcp.json`, plugins fail-soft - never from memory or assumption.
 
 ## 3. Compute the delta since the stamp
 Read the stamp (`.claude/claude-stack.stamp`, or the account's) and the snapshot's
@@ -85,7 +88,7 @@ inventory.
 
 ## 8. Reconcile the project's CLAUDE.md (project mode)
 Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` command's step 8: add sections the template gained, update the rules table for what
+`configure` command's step 9: add sections the template gained, update the rules table for what
 this run pruned, never overwrite the project's own prose, show changes before writing. Skip in
 global mode.
 

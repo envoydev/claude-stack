@@ -61,6 +61,15 @@ test('sh: a category with no lines installs nothing for it', () => {
     assert.deepStrictEqual(planLine(out, 'rules'), []);
 });
 
+test('sh: hook lines filter hooks; a selection without them keeps the install-all legacy behavior', () => {
+    const filtered = runShPlan(['skill csharp', 'hook guard-catastrophic-rm']);
+    assert.deepStrictEqual(planLine(filtered, 'hooks'), ['guard-catastrophic-rm'], 'only the selected hook survives');
+    const legacy = runShPlan(['skill csharp']);
+    assert.deepStrictEqual(planLine(legacy, 'hooks'),
+        ['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'instrument-tool-usage'],
+        'a pre-hooks-layer selection still installs every hook');
+});
+
 test('sh: script parses with no syntax errors', () => {
     const r = spawnSync('bash', ['-n', SH], { encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);
