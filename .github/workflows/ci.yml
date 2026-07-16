@@ -1,0 +1,23 @@
+name: ci
+
+# The development-branch gate: lint + tests on every push to develop and on PRs into
+# main/develop, so a develop -> main merge (the release act - it republishes the rolling
+# 'latest' archive) only ever promotes a green tree.
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run lint
+      - run: npm test

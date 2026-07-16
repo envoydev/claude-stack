@@ -169,6 +169,12 @@ documented there.
 
 ## Working in THIS repo - invariants
 
+- **`develop` is where work lands; `main` is the release branch.** Commit to `develop` (or a
+  branch off it); merging `develop` -> `main` IS the release act - the release workflow rebuilds
+  the rolling `latest` archive from that merge, and that revision is what every install delivers.
+  Never commit feature work directly to `main`, and keep `main` the GitHub default branch (the
+  installers' clone fallback and the README's raw installer bootstrap both deliver the default
+  branch). CI (lint + tests) gates every `develop` push and every PR into `main`.
 - **Public repo.** No private project names or absolute personal paths in any tracked file - generic
   'consuming project' references only; real names / paths stay in untracked local files.
 - **Parity / source-of-truth.** A change to skills / MCPs / hooks / rules / plugins lands in the
@@ -204,9 +210,9 @@ documented there.
   `Get-StackSrc`): the rolling `latest` release archive that `.github/workflows/release.yml`
   republishes on every push to main (a `RELEASE-SOURCE` file inside names the exact commit),
   falling back to a shallow git clone when no release is reachable. Skills, hooks, agents, rules
-  and the CLAUDE.md template are all copied out of it, so a change ships only once committed +
-  pushed (the workflow rebuilds the archive); until then the per-file fail-soft keeps any existing
-  copy. The snapshot replaced the per-file `…/main/…` raw fetches - the raw CDN is per-file and
+  and the CLAUDE.md template are all copied out of it, so a change ships only once merged to
+  `main` (the release branch - the workflow rebuilds the archive from the merge); until then the
+  per-file fail-soft keeps any existing copy. The snapshot replaced the per-file `…/main/…` raw fetches - the raw CDN is per-file and
   ~5 min stale after a push, so a run could mix revisions. One snapshot = one revision, which is
   what makes the stamp below true. Never reintroduce a raw fetch of a repo-owned file.
 - **One download per RUN, not per layer.** The plugin skills (`/claude-stack:setup`, `:configure`)
