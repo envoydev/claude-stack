@@ -77,7 +77,10 @@ Stack - what it is built with:
    for the primary language(s). MCP routing is NOT hand-filled here - it lives in the generated
    .claude/rules/baseline-project-capabilities.md (run /project-capabilities).
 7. Commands - copy-pasteable build / test / run / migrate / publish, with any environment quirks.
-8. Code conventions - the house-style skill for each file type (auto-attached by the path-scoped rules above).
-9. Testing approach - per-layer strategy, what's excluded, the integration / regression net.
-10. Load by artifact - a table mapping this repo's concrete files / types / constructs to the third-party skills it can't re-describe (house-style skills self-fire, so they're not in it).
+8. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
+   permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
+   cert blocks.
+9. Code conventions - the house-style skill for each file type (auto-attached by the path-scoped rules above).
+10. Testing approach - per-layer strategy, what's excluded, the integration / regression net.
+11. Load by artifact - a table mapping this repo's concrete files / types / constructs to the third-party skills it can't re-describe (house-style skills self-fire, so they're not in it).
 -->
