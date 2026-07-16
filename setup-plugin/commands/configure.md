@@ -107,21 +107,24 @@ Per layer, the SAME three-beat shape as setup:
      an installed item whose only dependents were dropped at an earlier layer. Offer this layer's
      orphans for removal - 'it was only there for what you dropped; remove it too, or keep it?' -
      never remove one silently, never re-offer one the user chose to keep.
-2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed alike -
-   the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps`,
-   `catalog.plugins`) - emitted as ONE contiguous markdown table in a single reply, no blank
-   lines inside and nothing interleaved: a table split across blocks renders as misaligned
-   fragments. Columns: number, name, `installed` (`yes`, `orphaned` for the cascade
+2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed
+   alike). The TOOL renders it, never you:
+   `node stack-select.js --selection raw.json --graph stack-graph.json --table <layer> --installed installed.json --dropped dropped.json > "$TMP/table.txt"`
+   (write the step-1 inventory to `installed.json` once) - then paste `table.txt` verbatim
+   inside a fenced code block: the one sanctioned paste, pre-padded by the tool so it stays
+   aligned at any length; a hand-written markdown table shears when the renderer flushes it in
+   segments. Rows are labeled `yes` / `orphaned` (with the cascade origin) / `-`, the lock
+   reason rides the last column, and row numbers are stable across rounds. Columns: number, name, `installed` (`yes`, `orphaned` for the cascade
    offers, or `-`), `required by` (the lock reason for kept items something else kept needs, or
    `-`):
 
 ```
 [step 5/11 - skills] adjust the installed skills · next: hooks
-| # | skill | installed | required by |
-|---|-------|-----------|-------------|
-| 1 | csharp | yes | rule csharp-conventions |
-| 2 | dotnet-wpf | orphaned | was: agent dotnet-build-error-resolver (dropped) |
-| 3 | postgres | - | - |
+ # | skill      | installed | required by
+---+------------+-----------+------------------------------------------
+ 1 | csharp     | yes       | rule csharp-conventions
+ 2 | dotnet-wpf | orphaned  | was: required by agent dotnet-build-error-resolver
+ 3 | postgres   | -         | -
 ```
 
 3. **Two rounds - ADD, then DROP.** The add round first, quick options + numbers: **Keep as-is**

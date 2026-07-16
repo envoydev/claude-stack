@@ -240,6 +240,89 @@ function findOrphans(graph, remaining, dropped)
     return orphans;
 }
 
+// Presentation-ready layer table for the guided walks - emitted by the tool so
+// alignment never depends on a streaming markdown renderer (long tables re-measure
+// per flush segment and shear). The commands paste this verbatim inside a code
+// fence. Numbering is the sorted catalog, so it is stable across rounds.
+function emitTable(graph, layer, opts)
+{
+    opts = opts || {};
+    const catalog = {
+        rules: Object.keys(graph.rules),
+        agents: Object.keys(graph.agents),
+        skills: Object.keys(graph.skills),
+        hooks: graph.catalog.hooks || [],
+        mcps: graph.catalog.mcps,
+        plugins: graph.catalog.plugins,
+    }[layer];
+    if (!catalog) return null;
+
+    const raw = opts.raw || {};
+    const closure = computeClosure(graph, raw);
+    const reasons = closure.reasons;
+    const direct = new Set(raw[layer] || []);
+
+    const suggesters = {};   // skills layer only: name -> first kept agent whose body suggests it
+    if (layer === 'skills')
+    {
+        for (const a of closure.agents)
+        {
+            for (const s of (graph.agents[a] || {}).suggests || [])
+            {
+                if (!closure.skills.includes(s) && !suggesters[s]) suggesters[s] = a;
+            }
+        }
+    }
+
+    const seedOf = name =>
+    {
+        const recs = opts.recs;
+        if (!recs) return null;
+        if (((recs.always || {})[layer] || []).includes(name)) return 'recommended';
+        for (const st of opts.stacks || [])
+        {
+            if ((((recs.stacks || {})[st] || {})[layer] || []).includes(name)) return `stack:${st}`;
+        }
+
+        return null;
+    };
+
+    const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
+    const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
+    const orphanWhy = {};
+    for (const o of opts.orphans || []) if (o.category === layer.slice(0, -1)) orphanWhy[o.name] = o.why;
+
+    const rows = [];
+    const singular = { rules: 'rule', agents: 'agent', skills: 'skill', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' }[layer];
+    catalog.sort().forEach((name, i) =>
+    {
+        let status, why;
+        if (installed)
+        {
+            status = orphanSet.has(name) ? 'orphaned' : installed.has(name) ? 'yes' : '-';
+            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}` : reasons[name] || '-';
+        }
+        else if (reasons[name]) { status = 'required'; why = reasons[name]; }
+        else
+        {
+            const seed = seedOf(name);
+            if (seed) { status = seed; why = '-'; }
+            else if (suggesters[name]) { status = 'suggested'; why = `agent ${suggesters[name]}`; }
+            else if (direct.has(name)) { status = 'added'; why = '-'; }
+            else { status = '-'; why = '-'; }
+        }
+
+        rows.push([String(i + 1), name, status, why.replace(/^required by /, '')]);
+    });
+
+    const header = ['#', singular, installed ? 'installed' : 'selected', 'required by'];
+    const width = c => Math.max(header[c].length, ...rows.map(r => r[c].length));
+    const w = [width(0), width(1), width(2), width(3)];
+    const line = r => `${r[0].padStart(w[0])} | ${r[1].padEnd(w[1])} | ${r[2].padEnd(w[2])} | ${r[3]}`;
+    const rule = `${'-'.repeat(w[0])}-+-${'-'.repeat(w[1])}-+-${'-'.repeat(w[2])}-+-${'-'.repeat(w[3])}`;
+    return [line(header), rule, ...rows.map(line)].join('\n') + '\n';
+}
+
 function emitSelectionFile(closure)
 {
     const lines = [];
@@ -265,13 +348,18 @@ function main(argv)
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
     const unknown = findUnknownNames(graph, raw);
-    for (const u of unknown) console.log(`unknown: ${u.category} '${u.name}' - not in this release (retired upstream, renamed, or a typo); excluded from the selection`);
+    const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
+    for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (retired upstream, renamed, or a typo); excluded from the selection`);
     const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
 
     const emit = arg('--emit');
     if (emit) fs.writeFileSync(emit, emitSelectionFile(closure));
 
-    for (const [name, why] of Object.entries(closure.reasons)) console.log(`required: ${categoryOf(closure, name)} ${name} - ${why}`);
+    // --table is a pure presentation mode: stdout carries ONLY the table, so the
+    // guided walks can paste it verbatim; the required:/orphan: diagnostics are
+    // already baked into its columns.
+    const tableMode = !!arg('--table');
+    if (!tableMode) for (const [name, why] of Object.entries(closure.reasons)) console.log(`required: ${categoryOf(closure, name)} ${name} - ${why}`);
 
     const droppedFile = arg('--dropped');
     if (droppedFile)
@@ -279,7 +367,26 @@ function main(argv)
         let dropped;
         try { dropped = JSON.parse(fs.readFileSync(droppedFile, 'utf8')); }
         catch (e) { console.error(`stack-select: cannot read dropped ${droppedFile}: ${e.code || e.message}`); process.exit(1); }
-        for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
+        if (!tableMode) for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
+    }
+
+    const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
+    if (tableLayer)
+    {
+        const readJson = (flag, file) =>
+        {
+            if (!file) return null;
+            try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+            catch (e) { console.error(`stack-select: cannot read ${flag} ${file}: ${e.code || e.message}`); process.exit(1); }
+        };
+        const recs = readJson('--recs', arg('--recs'));
+        const installed = readJson('--installed', arg('--installed'));
+        const droppedForTable = readJson('--dropped', arg('--dropped'));
+        const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
+        const stacks = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans });
+        if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
+        process.stdout.write(table);
     }
 
     const dependentsOf = arg('--dependents');   // '<category>:<name>', singular category, e.g. skill:csharp
@@ -301,6 +408,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, findUnknownNames, dropUnknownNames, findOrphans, findDependents, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

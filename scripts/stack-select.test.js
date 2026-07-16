@@ -219,6 +219,24 @@ test('dropping every dependent cascades transitively; direct picks never orphan'
     assert.ok(!names.includes('skill s2'), 'the direct pick s2 is untouched');
 });
 
+// The presentation table is emitted by the tool so alignment never depends on a
+// markdown renderer - every row must share the exact separator positions.
+const { emitTable } = require('./stack-select.js');
+
+test('emitTable emits a perfectly aligned, fully labeled layer table', () => {
+    const table = emitTable(orphanGraph, 'skills', { raw: { rules: ['r2'], skills: ['s2'] } });
+    const lines = table.trimEnd().split('\n');
+    const pos = l => JSON.stringify([...l].flatMap((c, i) => (c === '|' ? [i] : [])));
+    for (const l of lines.slice(2)) assert.strictEqual(pos(l), pos(lines[0]), `separators shear on: ${l}`);
+    assert.match(lines[0], /# \| skill/, 'header names the layer singular');
+    assert.match(table, /1 \| s1 +\| required +\| rule r2/, 's1 is closure-locked with its reason');
+    assert.match(table, /2 \| s2 +\| added +\| -/, 's2 is a bare direct pick');
+    const cfg = emitTable(orphanGraph, 'skills', { raw: { rules: ['r2'] }, installed: { skills: ['s1'] } });
+    assert.match(cfg, /installed/, 'configure mode swaps the column');
+    assert.match(cfg, /1 \| s1 +\| yes +\| rule r2/, 'installed + still-required');
+    assert.strictEqual(emitTable(orphanGraph, 'nope', {}), null, 'unknown layer returns null');
+});
+
 // The inverse cascade: dropping a locked item honestly means dropping everything
 // that still requires it - the configure flow turns a flat refusal into a consent-drop.
 const { findDependents } = require('./stack-select.js');

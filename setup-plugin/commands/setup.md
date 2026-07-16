@@ -47,15 +47,15 @@ The layer order follows the dependency graph's arrows: rules pull agents + skill
 Per layer, the SAME three-beat shape:
 
 1. **Recompute quietly** - one call: fold the previous layer's picks into `raw.json`, run `node stack-select.js --selection raw.json --graph stack-graph.json`, parse the category-tagged `required: <category> <name> - <why>` lines yourself. The current layer's lines are its **locked** set.
-2. **Show ONE numbered table of the layer's ENTIRE catalog** (the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps`, `catalog.plugins`) - every item the release ships, so nothing is ever offered later or out-of-band. Emit it as ONE contiguous markdown table in a single reply - header row, then every data row, no blank lines inside and nothing interleaved: a table split across blocks renders as misaligned fragments. Columns: number, name, `selected` (why it is in - `recommended`, `stack:<name>`, `required` for a closure-locked item no seed names, `suggested` for a conditional load a kept agent's protocol names (pre-selected, freely droppable - never locked), or `-` for not selected), `required by` (the lock reason, or `-`). Recommended = the union of `always` + each confirmed stack in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json`, pre-selected:
+2. **Show ONE numbered table of the layer's ENTIRE catalog** - every item the release ships, so nothing is ever offered later or out-of-band. The TOOL renders it, never you: `node stack-select.js --selection raw.json --graph stack-graph.json --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> > "$TMP/table.txt"`, then paste `table.txt` verbatim inside a fenced code block (the one sanctioned paste - pre-padded by the tool, so it stays aligned at any length; a hand-written markdown table shears when the renderer flushes it in segments). Row numbers come from the tool and are stable across rounds. The tool labels each row: `required` (closure-locked, reason in the last column), `recommended` / `stack:<name>` (seeded, droppable), `suggested` (a conditional load a kept agent's protocol names - pre-selected, freely droppable, never locked), `added` (the user's own pick), `-` (not selected). Recommended = the union of `always` + each confirmed stack in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json`, pre-selected:
 
 ```
 [step 4/11 - agents] adjust the agent roster · next: skills
-| # | agent | selected | required by |
-|---|-------|----------|-------------|
-| 1 | ci-failure-diagnoser | recommended | - |
-| 2 | dotnet-build-error-resolver | stack:aspnet | rule dotnet-repair-agents |
-| 3 | wpf-implementer | - | - |
+ # | agent                       | selected     | required by
+---+-----------------------------+--------------+---------------------------
+ 1 | ci-failure-diagnoser        | recommended  | -
+ 2 | dotnet-build-error-resolver | stack:aspnet | rule dotnet-repair-agents
+ 3 | wpf-implementer             | -            | -
 ```
 
 3. **One selection round - quick options + numbers.** Ask with the question tool, options in this order: **Recommended** (keep the table exactly as shown - the default), **All** (select every row in the layer's catalog), **None** (keep only the locked rows), and typed adjustments through the free-text answer - `add 3 7 12`, `drop 5`, or both (bare numbers mean add). A drop naming a LOCKED row is refused with its reason shown ('#2 stays - required by rule dotnet-repair-agents; drop that rule first (reopening step 3) or keep it'), never silently honored or silently ignored. Restate the outcome in one line (added N, dropped M), fold it into `raw.json`, and narrate the handoff to the next layer. An `unknown:` line from the recompute is a typo or a retired name - surface it, never pass it through.
