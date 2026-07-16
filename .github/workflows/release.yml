@@ -5,8 +5,8 @@ name: release
 # (setup-plugin/.claude-plugin/plugin.json) - the marketplace serves that same manifest
 # from main, so the marketplace, main, and the release always carry ONE version (the
 # parity lint keeps marketplace.json equal). A RELEASE-SOURCE file inside each archive
-# names the exact commit and version. The installers and the setup/configure plugin
-# skills download releases/latest/download/... (always the newest release); a shallow
+# names the exact commit and version. The installers and the setup/update/configure
+# plugin skills download releases/latest/download/... (always the newest release); a shallow
 # clone of main is their fallback - which covers the brief delete/recreate window this
 # job opens.
 
@@ -41,5 +41,5 @@ jobs:
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true      # the pre-versioning rolling release; no-op once gone
           gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # a same-version re-release refreshes the assets
           gh release create "v$VERSION" claude-stack.tar.gz claude-stack.zip \
-            --latest --title "claude-stack v$VERSION" \
-            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."
+            --latest --title "v$VERSION" \
+            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/update/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."
