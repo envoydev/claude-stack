@@ -214,6 +214,38 @@ test('dropping every dependent cascades transitively; direct picks never orphan'
     assert.ok(!names.includes('skill s2'), 'the direct pick s2 is untouched');
 });
 
+// The inverse cascade: dropping a locked item honestly means dropping everything
+// that still requires it - the configure flow turns a flat refusal into a consent-drop.
+const { findDependents } = require('./stack-select.js');
+
+test('findDependents names every kept rule/agent whose closure reaches the item', () => {
+    const remaining = { ...orphanInstalled };
+    const deps = findDependents(orphanGraph, remaining, 'skills', 's1').map(d => `${d.category} ${d.name}`).sort();
+    assert.deepStrictEqual(deps, ['agent a1', 'rule r1', 'rule r2'], 'r2 directly, a1 directly, r1 via a1 - all transitive holders');
+    assert.deepStrictEqual(findDependents(orphanGraph, remaining, 'skills', 's2'), [], 'a direct pick nothing needs has no dependents');
+    const mcpDeps = findDependents(orphanGraph, remaining, 'mcps', 'm1').map(d => `${d.category} ${d.name}`).sort();
+    assert.deepStrictEqual(mcpDeps, ['agent a1', 'rule r1', 'rule r2', 'skill s1'], 'an mcp counts its holding skills too');
+});
+
+test('CLI: --dependents prints the consent-drop list', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-deps-'));
+    try
+    {
+        const graphFile = path.join(dir, 'graph.json');
+        const rawFile = path.join(dir, 'raw.json');
+        fs.writeFileSync(graphFile, JSON.stringify(orphanGraph));
+        fs.writeFileSync(rawFile, JSON.stringify(orphanInstalled));
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--graph', graphFile, '--dependents', 'skill:s1'], { encoding: 'utf8' });
+        assert.match(out, /^dependent: rule r2 - requires skill s1$/m);
+        assert.match(out, /^dependent: agent a1 - requires skill s1$/m);
+        assert.ok(!/dependent: .* s2/.test(out), 's2 has no dependents and appears nowhere');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('CLI: required lines carry the category, --dropped prints the orphan lines', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-orphan-'));
     try

@@ -88,7 +88,7 @@ inventory.
 
 ## 8. Reconcile the project's CLAUDE.md (project mode)
 Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` command's step 10: add sections the template gained, update the rules table for what
+`configure` command's step 11: add sections the template gained, update the rules table for what
 this run pruned, never overwrite the project's own prose, show changes before writing. Skip in
 global mode.
 

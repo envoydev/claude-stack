@@ -185,6 +185,24 @@ function categoryOf(closure, name)
     return 'item';
 }
 
+// The inverse cascade: everything in the remaining selection that (transitively)
+// requires <name> - the rules/agents (and, for mcps/plugins, skills) whose own
+// closure reaches it. Dropping a locked item honestly means dropping these too;
+// the configure flow presents them for a consent-drop instead of a flat refusal.
+function findDependents(graph, remaining, category, name)
+{
+    const reaches = raw => (computeClosure(graph, raw)[category] || []).includes(name);
+    const deps = [];
+    for (const r of remaining.rules || []) if (reaches({ rules: [r] })) deps.push({ category: 'rule', name: r });
+    for (const a of remaining.agents || []) if (reaches({ agents: [a] })) deps.push({ category: 'agent', name: a });
+    if (category === 'mcps' || category === 'plugins')
+    {
+        for (const s of remaining.skills || []) if (reaches({ skills: [s] })) deps.push({ category: 'skill', name: s });
+    }
+
+    return deps;
+}
+
 // The configure skill's cascade: given the REMAINING selection (after drops) and
 // the DROPPED items, list what the drops pulled in that nothing remaining still
 // needs - the orphans the user may want to drop too. One pass covers the whole
@@ -264,6 +282,16 @@ function main(argv)
         for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
     }
 
+    const dependentsOf = arg('--dependents');   // '<category>:<name>', singular category, e.g. skill:csharp
+    if (dependentsOf)
+    {
+        const i = dependentsOf.indexOf(':');
+        const cat = { skill: 'skills', agent: 'agents', mcp: 'mcps', plugin: 'plugins' }[dependentsOf.slice(0, i)];
+        const name = dependentsOf.slice(i + 1);
+        if (!cat || !name) { console.error(`stack-select: --dependents wants <skill|agent|mcp|plugin>:<name>, got '${dependentsOf}'`); process.exit(2); }
+        for (const d of findDependents(graph, raw, cat, name)) console.log(`dependent: ${d.category} ${d.name} - requires ${dependentsOf.slice(0, i)} ${name}`);
+    }
+
     if (has('--check'))
     {
         const report = evaluatePrereqs(closure, detectEnvironment(), { context7Local: has('--context7-local'), githubCli: has('--github-cli') });
@@ -273,6 +301,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, findUnknownNames, dropUnknownNames, findOrphans, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, findUnknownNames, dropUnknownNames, findOrphans, findDependents, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));
