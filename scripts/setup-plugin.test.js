@@ -104,6 +104,18 @@ for (const name of ['setup', 'update', 'configure'])
     });
 }
 
+test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
+    for (const name of ['setup', 'configure'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', name, 'SKILL.md'), 'utf8');
+        assert.match(body, /rules -> agents -> skills -> MCPs \+ plugins/, `${name} walks the layers in dependency order`);
+        assert.match(body, /\[step \d+\/\d+ - /, `${name} announces every step with the n/total banner`);
+    }
+    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'configure', 'SKILL.md'), 'utf8');
+    assert.match(configure, /--dropped/, 'configure drives the drop cascade through stack-select --dropped');
+    assert.match(configure, /orphan:/, 'configure consumes the orphan: lines');
+});
+
 test('every plugin skill holds to the shared one-download protocol and the router names them all', () => {
     for (const name of ['update', 'configure'])
     {

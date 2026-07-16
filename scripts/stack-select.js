@@ -9,9 +9,11 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-// Expand raw = { skills?, agents?, rules? } into the dependency-complete set.
-// Edges (skills never pull skills): rule -> skill/agent, agent -> skill/agent
-// (to fixpoint), then every kept skill/agent/rule -> its mcps/plugins.
+// Expand raw = { skills?, agents?, rules?, mcps?, plugins? } into the
+// dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
+// agent -> skill/agent (to fixpoint), then every kept skill/agent/rule -> its
+// mcps/plugins. raw.mcps/raw.plugins are direct picks kept as-is - that is how a
+// user-added MCP or plugin beyond the closure survives a re-run.
 function computeClosure(graph, raw)
 {
     const skills = new Set(Array.isArray(raw.skills) ? raw.skills : []);
@@ -38,7 +40,7 @@ function computeClosure(graph, raw)
         for (const a2 of node.agents) if (!agents.has(a2)) { agents.add(a2); note(a2, `required by agent ${a}`); queue.push(a2); }
     }
 
-    const mcps = new Set();
+    const mcps = new Set(Array.isArray(raw.mcps) ? raw.mcps : []);
     const plugins = new Set(Array.isArray(raw.plugins) ? raw.plugins : []);
     const pull = (node, why) =>
     {
@@ -155,16 +157,65 @@ function findUnknownNames(graph, raw)
     check(raw.skills, new Set(Object.keys(graph.skills)), 'skill');
     check(raw.agents, new Set(Object.keys(graph.agents)), 'agent');
     check(raw.rules, new Set(Object.keys(graph.rules)), 'rule');
+    check(raw.mcps, new Set(graph.catalog.mcps), 'mcp');
     check(raw.plugins, new Set(graph.catalog.plugins), 'plugin');
     return unknown;
 }
 
 function dropUnknownNames(raw, unknown)
 {
-    const byCat = { skill: new Set(), agent: new Set(), rule: new Set(), plugin: new Set() };
+    const byCat = { skill: new Set(), agent: new Set(), rule: new Set(), mcp: new Set(), plugin: new Set() };
     for (const u of unknown) byCat[u.category].add(u.name);
     const drop = (list, cat) => (Array.isArray(list) ? list.filter(n => !byCat[cat].has(n)) : list);
-    return { ...raw, skills: drop(raw.skills, 'skill'), agents: drop(raw.agents, 'agent'), rules: drop(raw.rules, 'rule'), plugins: drop(raw.plugins, 'plugin') };
+    return { ...raw, skills: drop(raw.skills, 'skill'), agents: drop(raw.agents, 'agent'), rules: drop(raw.rules, 'rule'), mcps: drop(raw.mcps, 'mcp'), plugins: drop(raw.plugins, 'plugin') };
+}
+
+// Which category a closed-selection name belongs to - for tagging output lines.
+function categoryOf(closure, name)
+{
+    if ((closure.skills || []).includes(name)) return 'skill';
+    if ((closure.agents || []).includes(name)) return 'agent';
+    if ((closure.rules || []).includes(name)) return 'rule';
+    if ((closure.mcps || []).includes(name)) return 'mcp';
+    if ((closure.plugins || []).includes(name)) return 'plugin';
+    return 'item';
+}
+
+// The configure skill's cascade: given the REMAINING selection (after drops) and
+// the DROPPED items, list what the drops pulled in that nothing remaining still
+// needs - the orphans the user may want to drop too. One pass covers the whole
+// transitive cascade: computeClosure of the dropped set already reaches every
+// downstream dependency, and re-closing the remaining set (with the candidates
+// taken out of its direct picks) re-adds exactly what is still required.
+function findOrphans(graph, remaining, dropped)
+{
+    const cats = ['skills', 'agents', 'rules', 'mcps', 'plugins'];
+    const asSet = (obj, cat) => new Set(Array.isArray(obj[cat]) ? obj[cat] : []);
+    const dropClosure = computeClosure(graph, dropped);
+
+    const candidates = {};
+    for (const c of cats)
+    {
+        const rem = asSet(remaining, c);
+        const drp = asSet(dropped, c);
+        candidates[c] = (dropClosure[c] || []).filter(n => rem.has(n) && !drp.has(n));
+    }
+
+    const trimmed = {};
+    for (const c of cats) trimmed[c] = [...asSet(remaining, c)].filter(n => !candidates[c].includes(n));
+    const still = computeClosure(graph, trimmed);
+
+    const orphans = [];
+    for (const c of cats)
+    {
+        const stillSet = new Set(still[c] || []);
+        for (const n of candidates[c])
+        {
+            if (stillSet.has(n)) continue;
+            orphans.push({ category: c.slice(0, -1), name: n, why: dropClosure.reasons[n] || 'required only by the dropped items' });
+        }
+    }
+    return orphans;
 }
 
 function emitSelectionFile(closure)
@@ -183,7 +234,7 @@ function main(argv)
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
     const has = name => argv.includes(name);
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--check] [--context7-local] [--github-cli]'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--github-cli]'); process.exit(2); }
     const graphPath = arg('--graph') || path.join(__dirname, 'stack-graph.json');
     let graph, raw;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
@@ -197,7 +248,16 @@ function main(argv)
     const emit = arg('--emit');
     if (emit) fs.writeFileSync(emit, emitSelectionFile(closure));
 
-    for (const [name, why] of Object.entries(closure.reasons)) console.log(`required: ${name} - ${why}`);
+    for (const [name, why] of Object.entries(closure.reasons)) console.log(`required: ${categoryOf(closure, name)} ${name} - ${why}`);
+
+    const droppedFile = arg('--dropped');
+    if (droppedFile)
+    {
+        let dropped;
+        try { dropped = JSON.parse(fs.readFileSync(droppedFile, 'utf8')); }
+        catch (e) { console.error(`stack-select: cannot read dropped ${droppedFile}: ${e.code || e.message}`); process.exit(1); }
+        for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
+    }
 
     if (has('--check'))
     {
@@ -208,6 +268,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, findUnknownNames, dropUnknownNames, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, findUnknownNames, dropUnknownNames, findOrphans, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

@@ -23,14 +23,14 @@ mode (the account's skills). Nothing installed in either place -> stop and route
 this one. OS: `darwin`/`linux` -> the sh installer; Windows -> the ps1 (via `pwsh`).
 
 ## 2. Inventory the installed set
-Build the CURRENT selection from disk exactly as the sibling `configure` skill's step 2 does -
+Build the CURRENT selection from disk exactly as the sibling `configure` skill's step 1 does -
 skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md`),
 mcps from `<repo>/.mcp.json`, plugins fail-soft - never from memory or assumption.
 
 ## 3. Compute the delta since the stamp
 Read the stamp (`.claude/claude-stack.stamp`, or the account's) and the snapshot's
 `RELEASE-SOURCE`; lead with the version delta (`0.1.0 -> 0.2.0`). Then the same status-emitting
-compare the `configure` skill's step 3 runs, and split by status:
+compare the `configure` skill's step 1 runs, and split by status:
 
 - **modified / added files under an installed item** -> covered by the refresh; count them.
 - **removed** -> the prune list, mapped to installed artifacts: `skills/<name>/...` gone entirely
@@ -85,7 +85,7 @@ inventory.
 
 ## 8. Reconcile the project's CLAUDE.md (project mode)
 Against the snapshot's `templates/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` skill's step 10: add sections the template gained, update the rules table for what
+`configure` skill's step 8: add sections the template gained, update the rules table for what
 this run pruned, never overwrite the project's own prose, show changes before writing. Skip in
 global mode.
 
