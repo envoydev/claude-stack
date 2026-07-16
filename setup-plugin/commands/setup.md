@@ -47,7 +47,7 @@ The layer order follows the dependency graph's arrows: rules pull agents + skill
 Per layer, the SAME three-beat shape:
 
 1. **Recompute quietly** - one call: fold the previous layer's picks into `raw.json`, run `node stack-select.js --selection raw.json --graph stack-graph.json`, parse the category-tagged `required: <category> <name> - <why>` lines yourself. The current layer's lines are its **locked** set.
-2. **Show ONE numbered table of the layer's ENTIRE catalog** (the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps` + `catalog.plugins`) - every item the release ships, so nothing is ever offered later or out-of-band. Columns: number, name, `selected` (why it is in - `recommended`, `stack:<name>`, or `-` for not selected), `required by` (the lock reason, or `-`). Recommended = the union of `always` + each confirmed stack in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json`, pre-selected:
+2. **Show ONE numbered table of the layer's ENTIRE catalog** (the graph's `rules`/`agents`/`skills` keys, `catalog.hooks`, `catalog.mcps` + `catalog.plugins`) - every item the release ships, so nothing is ever offered later or out-of-band. Columns: number, name, `selected` (why it is in - `recommended`, `stack:<name>`, `required` for a closure-locked item no seed names, or `-` for not selected), `required by` (the lock reason, or `-`). Recommended = the union of `always` + each confirmed stack in `${CLAUDE_PLUGIN_ROOT}/references/recommendations.json`, pre-selected:
 
 ```
 [step 4/10 - agents] adjust the agent roster · next: skills
