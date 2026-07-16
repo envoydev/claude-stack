@@ -49,7 +49,13 @@ installed plugin - so compare versions right after the download: the snapshot's 
 skip this check silently). When they differ, the plugin is behind the release: say so, recommend
 `claude plugin marketplace update claude-stack` then `claude plugin update claude-stack`, and
 offer to continue anyway - the snapshot tooling is current either way; the risk is only that
-these instructions lag it.
+these instructions lag it. The plugin cache is keyed by version
+(`~/.claude/plugins/cache/claude-stack/claude-stack/<version>/`), so after an update the old
+version dirs are inert leftovers - safe to delete, keeping only the dir the update installed.
+And if an update ever does NOT change the running content (a same-version re-release - the trap
+every release now avoids by bumping), the hard reset is `claude plugin uninstall claude-stack`
+then `claude plugin install claude-stack@claude-stack`, which rebuilds the cache from the
+marketplace.
 
 ## Narrate, don't trace
 
