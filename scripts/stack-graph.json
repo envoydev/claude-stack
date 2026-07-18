@@ -249,7 +249,7 @@
         "superpowers"
       ]
     },
-    "project-task-cycle": {
+    "project-solve-task": {
       "mcps": [],
       "plugins": [
         "superpowers"
@@ -259,6 +259,12 @@
       "mcps": [],
       "plugins": [
         "ponytail"
+      ]
+    },
+    "project-verify-code": {
+      "mcps": [],
+      "plugins": [
+        "superpowers"
       ]
     },
     "project-verify-plan": {
@@ -378,6 +384,7 @@
       "skills": [
         "csharp",
         "dotnet-code-quality",
+        "dotnet-data-access",
         "dotnet-testing",
         "dotnet-web-backend"
       ],

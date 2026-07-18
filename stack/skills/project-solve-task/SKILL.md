@@ -1,12 +1,12 @@
 ---
-name: project-task-cycle
-description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> plan-conformance verify (skippable) -> /code-review + done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-task-flow), not greenfield (project-build-from-scratch), not a one-line edit."
+name: project-solve-task
+description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable): project-verify-code inline or the verifier seat -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-task-flow), not greenfield (project-build-from-scratch), not a one-line edit."
 disable-model-invocation: true
 ---
 
-# Task Cycle - the gated single-chat vertical
+# Solve Task - the gated single-chat vertical
 
-One task/feature/bug, six steps, and the user holds the gate between every two. The three twin
+One task/feature/bug, six steps, and the user holds the gate between every two. The four twin
 skills do the work; this skill owns the chain, the stops, the mode choices, and the state that
 survives a compaction or a fresh session. It never designs, builds, or reviews anything itself.
 
@@ -50,7 +50,8 @@ explicit word; silence is not a go.
    found. Gaps route back to step 1 on the user's word. *Stop.*
 3. **APPROVE** - present the gated plan and ask two things in one gate: approval to build, and the
    build mode - **session** (default: the build runs in this chat) or **agents** (each task
-   dispatched to its stack's `<stack>-implementer` seat). Stamp `Approved: <date> - mode <session|agents>`
+   dispatched to its stack's `<stack>-implementer` seat, up to 3 at once, each on its frontmatter
+   model unless you name one). Stamp `Approved: <date> - mode <session|agents>`
    into the plan file. Nothing builds without this stamp. Agents mode exists only where subagent
    dispatch is available; otherwise session is the only mode - say so rather than pretending.
 4. **BUILD** - per the approved mode:
@@ -60,19 +61,21 @@ explicit word; silence is not a go.
      fan-out per the shared policy `project-task-flow` owns, the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
      per task as reports land.
-   *Stop* - and this stop doubles as the conformance decision: run the verify in-session
-   (default), dispatch the stack's `<stack>-verifier` for independent eyes, or **skip** straight
-   to step 6. The user can inspect the diff themselves here first.
+   *Stop* - and this stop chooses the reviewer for step 5: run `project-verify-code` in-session
+   (default - no dispatch, stays in this context), dispatch the stack's `<stack>-verifier` seat for
+   isolated eyes (on its frontmatter model unless you name one), or **skip** the review straight to step 6's done-gate. (For a broad parallel sweep you can still invoke `/code-review` yourself - it is not part of this flow.) The user can
+   inspect the diff themselves here first.
 5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`, an honest
-   record, not a silent gap) - audit the code against the plan file: every task present, nothing
-   built outside a task's boundary, each acceptance criterion DEMONSTRATED the way
-   `superpowers:verification-before-completion` prescribes - by a run in this session, quoted,
-   never assumed from reading the diff. Deviations become a punch list routed back to step 4.
-   Stamp the verdict. *Stop.*
-6. **CLOSE** - `/code-review` over the assembled diff, pointed at the plan file so it reviews
-   against the plan, not in isolation; apply the findings; then the done-gate
-   (`superpowers:verification-before-completion` on the whole feature). Stamp
-   `Completed: <date>` with the per-task evidence table. Delete or archive the cycle note.
+   record, not a silent gap) - run the reviewer chosen at the step-4 stop over the assembled diff,
+   pointed at the plan file so it reviews against the plan, not in isolation. The review protocol -
+   build + tests rerun, plan conformance, stack traps, the live-run probe, the wire-contract trace -
+   is `project-verify-code`'s (the inline default, twin of the verifier seat); the `<stack>-verifier`
+   seat runs the same protocol dispatched.
+   Deviations and findings become a punch list routed back to step 4. Stamp the verdict. *Stop.*
+6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
+   (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
+   demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
+   per-task evidence table. Delete or archive the cycle note.
 
 ## Do not
 

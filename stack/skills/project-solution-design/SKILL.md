@@ -1,16 +1,21 @@
 ---
 name: project-solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow (that is project-task-flow dispatching the designer agent) - this keeps the whole design in your context so you check each step.
+description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow with its own verifier and fan-out (that is project-task-flow) - this keeps the whole design in your context by default so you check each step, and dispatches the designer seat only if you ask.
+disable-model-invocation: true
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
 
 The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan, all in the current context so you can inspect and correct each step instead of reading a dispatched agent's final report. It plans; it does not write the code (that is the build step under the stack skill) and it does not audit its own plan (that is `project-verify-plan`).
 
+## Design mode - inline by default
+
+Default: design inline in this chat, the method below, so you inspect each step. On an explicit agents request, dispatch the `<stack>-solution-designer` seat instead - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. Only one designer runs, there is no fan-out here. Dispatch nothing you were not asked to.
+
 ## When not
 
 - Not for a change with an obvious single home - just make it.
-- Not plan *audit* (`project-verify-plan`) or built-code review (`/code-review`) - those come after.
+- Not plan *audit* (`project-verify-plan`) or built-code review (`project-verify-code`) - those come after.
 
 ## The method - orient, judge, decompose
 
@@ -21,7 +26,7 @@ The design carries the quality: a build handles the traps its plan named and shi
 
 ## Output
 
-An ordered task plan: the fit verdict and its forcing edge first, then one entry per task - what it does, the files, the traps to handle, the located anchors - in build order. Before writing it, name what oriented you - the architecture doc read (or the bounded pass) from step 1 and the stack skill loaded in step 2; if you cannot name them, those steps did not happen - do them now, a plan designed blind ships the traps it never saw. Write it to `<docs-root>/superpowers/plans/<feature>.md` (docs root per the project's CLAUDE.md) before handing off - the FILE is the handoff artifact: it survives compaction and a fresh session, where the chat copy does not. Then hand off: gate the plan with `project-verify-plan` before building, build each task with `project-implementer` under the stack skill, and review the built code with `/code-review` (`project-task-cycle` drives this whole chain with a user gate between every step). Pairs with `superpowers:writing-plans` for the plan format; this adds the house architecture-fit and stack-trap layer that a generic plan is silent on.
+An ordered task plan: the fit verdict and its forcing edge first, then one entry per task - what it does, the files, the traps to handle, the located anchors - in build order. Before writing it, name what oriented you - the architecture doc read (or the bounded pass) from step 1 and the stack skill loaded in step 2; if you cannot name them, those steps did not happen - do them now, a plan designed blind ships the traps it never saw. Write it to `<docs-root>/superpowers/plans/<feature>.md` (docs root per the project's CLAUDE.md) before handing off - the FILE is the handoff artifact: it survives compaction and a fresh session, where the chat copy does not. Then hand off: gate the plan with `project-verify-plan` before building, build each task with `project-implementer` under the stack skill, and review the built code with `project-verify-code` (`project-solve-task` drives this whole chain with a user gate between every step). Pairs with `superpowers:writing-plans` for the plan format; this adds the house architecture-fit and stack-trap layer that a generic plan is silent on.
 
 ## Example
 
@@ -33,4 +38,4 @@ Plan (single-chat output):
 - **Task 2** - add the export entry point returning a streamed response. Trap: map to a transfer shape at the edge, never the persistence entity (the stack skill's boundary trap). Anchor: the located edge (`file:symbol`).
 - **Task 3** - an integration test asserting the header row, one data row, and the success status. Anchor: the located test suite.
 
-Then gate with `project-verify-plan`, build each task with `project-implementer` under the stack's house skills, and review with `/code-review`.
+Then gate with `project-verify-plan`, build each task with `project-implementer` under the stack's house skills, and review with `project-verify-code`.

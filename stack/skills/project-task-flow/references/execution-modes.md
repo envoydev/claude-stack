@@ -5,19 +5,19 @@ The full team is not the default. Classify size, risk, domains, and contract imp
 ## DELEGATED vs INLINE - dispatch capability
 Before the size/risk modes below, each orchestration skill (`project-task-flow`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
 
-- **DELEGATED** - the default whenever the session can dispatch subagents (the Agent tool is present). The main session orchestrates and dispatches every seat, never doing their work itself.
-- **INLINE** - the fallback when dispatch is unavailable (a Cursor session, a non-stack project with no domain agents, or a change too small to fan out). Do the same steps in-session.
+- **DELEGATED** - the main session orchestrates and dispatches every seat, never doing their work itself. `project-build-from-scratch` and the quality loops hold this as their run-start default whenever the Agent tool is present; `project-task-flow` uses it as the default only for cross-domain work.
+- **INLINE** - the same steps, done in-session, no dispatch. This is `project-task-flow`'s default for single-stack work (agents are a per-step opt-in from there), and every skill's fallback when dispatch is unavailable (a Cursor session, a non-stack project with no domain agents, or a change too small to fan out).
 
-Detection keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. The size/risk modes below assume DELEGATED; in INLINE the same routing applies, done in-session.
+Dispatch is explicit-only, house-wide: never dispatch a seat the user did not choose. A dispatched seat runs on its frontmatter model/effort pin unless the user names a model; fan-out is capped at 3 implementers at once by default, more only on the user's ask. Detection keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. The size/risk modes below apply in either case; in INLINE they are done in-session.
 
 ## Feature / change modes
 
 | Mode | Flow | Use when | Token profile |
 |---|---|---|---|
 | `single_chat` | main session only | tiny, clear, safe, one-domain change | lowest |
-| `implementer_only` | main session -> one domain implementer -> main session verifies | the DEFAULT single-domain rung: small OR medium work with no risk trigger - the main session self-verifies (build / test / review) | low |
+| `implementer_only` | main session -> one domain implementer -> main session verifies | the lightest single-domain dispatch rung: small OR medium work with no risk trigger - the main session self-verifies (build / test / review) | low |
 | `domain_trio` | domain designer -> one implementer -> domain verifier | single-domain work that trips a risk trigger - auth, migration, data-loss, concurrency, security, or a large refactor (opt-in on risk, NOT the medium-work default) | medium |
-| `fanout_domain_trio` | domain designer -> 2-4 implementers -> domain verifier | large/risky work inside one domain | medium-high |
+| `fanout_domain_trio` | domain designer -> up to 3 implementers at once (more on ask) -> domain verifier | large/risky work inside one domain | medium-high |
 | `cross_domain_light` | producer designer -> producer + consumer implement/verify -> integration-reviewer | 2+ domains, routine stable seam | high |
 | `full_cross_domain` | producer designer -> consumer designer validates the seam -> domain pipelines -> integration-reviewer | novel or risky seam: new public/versioned API, streaming or eventing, auth, migrations, deployment order, production-critical | highest |
 
@@ -27,7 +27,7 @@ Detection keys on dispatch capability, not file presence - a project can carry t
 
 ```text
 tiny and one-domain                                 -> single_chat
-small OR medium, one-domain, no risk trigger        -> implementer_only   (the default rung)
+small OR medium, one-domain, no risk trigger        -> implementer_only   (the lightest dispatch rung)
 one-domain WITH a risk trigger (auth / migration /
   data-loss / concurrency / security / big refactor) -> domain_trio
 large/risky, one-domain                             -> fanout_domain_trio

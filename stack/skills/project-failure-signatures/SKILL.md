@@ -1,6 +1,7 @@
 ---
 name: project-failure-signatures
 description: Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method. NOT for a CI or build/test-gate failure (the resolvers and ci-failure-diagnoser own those) or a production incident - local-runtime evidence only. Keywords NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, IndexOutOfRangeException, 401, 403, config drift.
+disable-model-invocation: true
 ---
 
 # Failure Signatures - what the crash means and where the cause actually lives
