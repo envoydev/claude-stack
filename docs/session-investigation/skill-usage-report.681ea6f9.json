@@ -1,0 +1,1694 @@
+{
+  "main": {
+    "file": "C:/Users/Admin/.claude/projects/D--Projects-Agiliway-SpeechDirect/681ea6f9-4d99-421a-86d8-42fc339d0a2f.jsonl",
+    "total": {
+      "input": 2458,
+      "cacheCreate": 2930393,
+      "cacheRead": 57039297,
+      "output": 343367,
+      "msgs": 295
+    },
+    "byModel": {
+      "claude-sonnet-5": {
+        "input": 1127,
+        "cacheCreate": 2811472,
+        "cacheRead": 55449614,
+        "output": 323471,
+        "msgs": 280
+      },
+      "claude-opus-4-8": {
+        "input": 1331,
+        "cacheCreate": 118921,
+        "cacheRead": 1589683,
+        "output": 19896,
+        "msgs": 15
+      }
+    },
+    "toolCalls": {
+      "Read": {
+        "calls": 57,
+        "resultChars": 457322,
+        "errors": 6
+      },
+      "Bash": {
+        "calls": 83,
+        "resultChars": 114382,
+        "errors": 5
+      },
+      "Glob": {
+        "calls": 7,
+        "resultChars": 5207,
+        "errors": 0
+      },
+      "Grep": {
+        "calls": 48,
+        "resultChars": 51507,
+        "errors": 1
+      },
+      "ToolSearch": {
+        "calls": 7,
+        "resultChars": 673,
+        "errors": 0
+      },
+      "mcp__serena__get_symbols_overview": {
+        "calls": 7,
+        "resultChars": 5310,
+        "errors": 0
+      },
+      "mcp__serena__find_symbol": {
+        "calls": 66,
+        "resultChars": 173033,
+        "errors": 4
+      },
+      "mcp__serena__find_referencing_symbols": {
+        "calls": 3,
+        "resultChars": 13921,
+        "errors": 0
+      },
+      "AskUserQuestion": {
+        "calls": 2,
+        "resultChars": 1534,
+        "errors": 1
+      },
+      "Skill": {
+        "calls": 2,
+        "resultChars": 51,
+        "errors": 0
+      },
+      "Edit": {
+        "calls": 29,
+        "resultChars": 5988,
+        "errors": 0
+      },
+      "Write": {
+        "calls": 15,
+        "resultChars": 2938,
+        "errors": 0
+      },
+      "ScheduleWakeup": {
+        "calls": 10,
+        "resultChars": 1725,
+        "errors": 0
+      },
+      "TaskOutput": {
+        "calls": 6,
+        "resultChars": 1974,
+        "errors": 0
+      },
+      "TaskStop": {
+        "calls": 2,
+        "resultChars": 1130,
+        "errors": 0
+      },
+      "TaskCreate": {
+        "calls": 1,
+        "resultChars": 1423,
+        "errors": 1
+      },
+      "Agent": {
+        "calls": 17,
+        "resultChars": 15090,
+        "errors": 2
+      },
+      "ReportFindings": {
+        "calls": 1,
+        "resultChars": 20,
+        "errors": 0
+      }
+    },
+    "skillInvocations": {
+      "csharp": {
+        "calls": 1,
+        "injectedChars": 23
+      },
+      "code-review": {
+        "calls": 1,
+        "injectedChars": 28
+      }
+    },
+    "skillAttribution": {
+      "project-solution-design": {
+        "msgs": 15,
+        "output": 19896
+      },
+      "project-implementer": {
+        "msgs": 98,
+        "output": 129590
+      },
+      "csharp": {
+        "msgs": 49,
+        "output": 63838
+      },
+      "code-review": {
+        "msgs": 5,
+        "output": 10428
+      }
+    },
+    "mcp": {
+      "serena": {
+        "calls": 76,
+        "resultChars": 192264,
+        "errors": 4,
+        "tools": {
+          "get_symbols_overview": 7,
+          "find_symbol": 66,
+          "find_referencing_symbols": 3
+        }
+      }
+    },
+    "agentDispatches": [
+      {
+        "id": "toolu_01KxoCoaRxt4aNykJBtCDivC",
+        "desc": "Line-by-line diff scan (Angle A)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01NCgtiWr1CdCv6iW2MfaDhe",
+        "desc": "Removed-behavior auditor (Angle B)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_017sQWqLXhMxsTCyxpeYGYDB",
+        "desc": "Cross-file tracer (Angle C)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01EYi2nrUUaSTBGaLD1r6Vt4",
+        "desc": "Reuse angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01EuZPp8Ne96zF75TJ5K3H78",
+        "desc": "Simplification angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_013rHjrZXji8FFTpWZEcwWjg",
+        "desc": "Efficiency angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01Pe8XsQuMB3dUh67arS3xZf",
+        "desc": "Altitude angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01NKvs5a2QKfETjTeHA9X9rB",
+        "desc": "Conventions angle (CLAUDE.md)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01ShVVR5TXyboWGPSG8R86Ga",
+        "desc": "Conventions angle (CLAUDE.md)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01VXL7GGjYmFBZ9d4qWrnQpz",
+        "desc": "Line-by-line diff scan (Angle A)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01PwsGHStVyWSd6ezyWMnGes",
+        "desc": "Removed-behavior auditor (Angle B)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01MgkJqngqZTzPrq8hg5Tew5",
+        "desc": "Cross-file tracer (Angle C)",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01TLXgFDoKZtVkCFRBrvHEWp",
+        "desc": "Reuse angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01MLBAoYwqpf3fmt6fgmbGPT",
+        "desc": "Simplification angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01RnXGuKwSwSia7jVNVfjMV1",
+        "desc": "Efficiency angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01RqqvRYBzBk2fkivQFbsC3V",
+        "desc": "Altitude angle",
+        "subagentType": "general-purpose"
+      },
+      {
+        "id": "toolu_01CRGBUCkdRsdfFHvRWarzxM",
+        "desc": "Conventions angle (CLAUDE.md)",
+        "subagentType": "general-purpose"
+      }
+    ],
+    "userPrompts": 47,
+    "compactions": 6,
+    "apiErrors": 4,
+    "firstTs": "2026-07-15T06:30:08.911Z",
+    "lastTs": "2026-07-16T06:59:54.284Z",
+    "spikes": [
+      {
+        "ts": "2026-07-15T08:29:37.745Z",
+        "delta": 26739,
+        "ctx": 351940,
+        "causes": "mcp__serena__find_symbol×13 (~10.3k tok)"
+      },
+      {
+        "ts": "2026-07-15T13:00:23.086Z",
+        "delta": 25502,
+        "ctx": 367862,
+        "causes": "Read×1 (~11.5k tok)"
+      },
+      {
+        "ts": "2026-07-15T14:04:08.177Z",
+        "delta": 25206,
+        "ctx": 123851,
+        "causes": "Read×1 (~7.9k tok)"
+      },
+      {
+        "ts": "2026-07-15T08:38:28.529Z",
+        "delta": 19580,
+        "ctx": 141107,
+        "causes": "mcp__serena__find_symbol×13 (~8.3k tok)"
+      },
+      {
+        "ts": "2026-07-15T08:41:13.712Z",
+        "delta": 16456,
+        "ctx": 165895,
+        "causes": "Write×1 (~52 tok)"
+      }
+    ]
+  },
+  "agents": [
+    {
+      "id": "a08240b10fe0679a4",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Removed-behavior auditor (Angle B)",
+        "toolUseId": "toolu_01PwsGHStVyWSd6ezyWMnGes",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a08240b10fe0679a4.jsonl",
+        "total": {
+          "input": 34,
+          "cacheCreate": 114677,
+          "cacheRead": 1615094,
+          "output": 7748,
+          "msgs": 17
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 34,
+            "cacheCreate": 114677,
+            "cacheRead": 1615094,
+            "output": 7748,
+            "msgs": 17
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 10,
+            "resultChars": 178313,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 5,
+            "resultChars": 5293,
+            "errors": 0
+          },
+          "Bash": {
+            "calls": 1,
+            "resultChars": 4,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:22.142Z",
+        "lastTs": "2026-07-15T11:14:21.792Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:11:29.151Z",
+            "delta": 32552,
+            "ctx": 71512,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:00.678Z",
+            "delta": 9208,
+            "ctx": 89757,
+            "causes": "Read×1 (~5.5k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:55.651Z",
+            "delta": 8933,
+            "ctx": 112775,
+            "causes": "Read×1 (~5.4k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:01.575Z",
+            "delta": 8451,
+            "ctx": 121226,
+            "causes": "Read×1 (~4.7k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:11:42.396Z",
+            "delta": 8017,
+            "ctx": 79529,
+            "causes": "Read×1 (~5.0k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a0bfef163cb0b3a83",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Cross-file tracer (Angle C)",
+        "toolUseId": "toolu_01MgkJqngqZTzPrq8hg5Tew5",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a0bfef163cb0b3a83.jsonl",
+        "total": {
+          "input": 161,
+          "cacheCreate": 78145,
+          "cacheRead": 1817695,
+          "output": 13207,
+          "msgs": 25
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 161,
+            "cacheCreate": 78145,
+            "cacheRead": 1817695,
+            "output": 13207,
+            "msgs": 25
+          }
+        },
+        "toolCalls": {
+          "Bash": {
+            "calls": 6,
+            "resultChars": 6770,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 10,
+            "resultChars": 5374,
+            "errors": 0
+          },
+          "Read": {
+            "calls": 17,
+            "resultChars": 60464,
+            "errors": 4
+          },
+          "ToolSearch": {
+            "calls": 1,
+            "resultChars": 140,
+            "errors": 0
+          },
+          "mcp__serena__get_symbols_overview": {
+            "calls": 7,
+            "resultChars": 704,
+            "errors": 0
+          },
+          "mcp__serena__find_symbol": {
+            "calls": 4,
+            "resultChars": 12252,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {
+          "serena": {
+            "calls": 11,
+            "resultChars": 12956,
+            "errors": 0,
+            "tools": {
+              "get_symbols_overview": 7,
+              "find_symbol": 4
+            }
+          }
+        },
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:35.573Z",
+        "lastTs": "2026-07-15T11:17:15.845Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:11:46.616Z",
+            "delta": 7281,
+            "ctx": 46148,
+            "causes": "Grep×1 (~78 tok), Bash×1 (~36 tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:09.263Z",
+            "delta": 6104,
+            "ctx": 79381,
+            "causes": "Read×1 (~3.6k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:35.328Z",
+            "delta": 5997,
+            "ctx": 66002,
+            "causes": "mcp__serena__find_symbol×3 (~2.7k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:42.727Z",
+            "delta": 5655,
+            "ctx": 85036,
+            "causes": "Read×1 (~2.9k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:52.497Z",
+            "delta": 5125,
+            "ctx": 90161,
+            "causes": "Read×2 (~1.4k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a325d52a9fcf26268",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Simplification angle",
+        "toolUseId": "toolu_01EuZPp8Ne96zF75TJ5K3H78",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a325d52a9fcf26268.jsonl",
+        "total": {
+          "input": 14,
+          "cacheCreate": 80234,
+          "cacheRead": 504476,
+          "output": 1513,
+          "msgs": 7
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 14,
+            "cacheCreate": 80234,
+            "cacheRead": 504476,
+            "output": 1513,
+            "msgs": 7
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 6,
+            "resultChars": 114413,
+            "errors": 3
+          },
+          "Glob": {
+            "calls": 2,
+            "resultChars": 5226,
+            "errors": 0
+          },
+          "ToolSearch": {
+            "calls": 1,
+            "resultChars": 140,
+            "errors": 0
+          },
+          "mcp__serena__find_symbol": {
+            "calls": 4,
+            "resultChars": 1576,
+            "errors": 4
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 7,
+            "output": 1513
+          }
+        },
+        "mcp": {
+          "serena": {
+            "calls": 4,
+            "resultChars": 1576,
+            "errors": 4,
+            "tools": {
+              "find_symbol": 4
+            }
+          }
+        },
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:53:21.150Z",
+        "lastTs": "2026-07-15T08:55:52.905Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:30.305Z",
+            "delta": 32555,
+            "ctx": 69810,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:36.209Z",
+            "delta": 19936,
+            "ctx": 89746,
+            "causes": "Read×1 (~12.3k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:44.553Z",
+            "delta": 3693,
+            "ctx": 96717,
+            "causes": "Read×4 (~1.5k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:40.019Z",
+            "delta": 3278,
+            "ctx": 93024,
+            "causes": "Glob×2 (~1.3k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:48.034Z",
+            "delta": 1879,
+            "ctx": 98596,
+            "causes": "ToolSearch×1 (~35 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a5975dcd60d8086e3",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Reuse angle",
+        "toolUseId": "toolu_01EYi2nrUUaSTBGaLD1r6Vt4",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a5975dcd60d8086e3.jsonl",
+        "total": {
+          "input": 440,
+          "cacheCreate": 116701,
+          "cacheRead": 1359077,
+          "output": 7423,
+          "msgs": 14
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 440,
+            "cacheCreate": 116701,
+            "cacheRead": 1359077,
+            "output": 7423,
+            "msgs": 14
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 9,
+            "resultChars": 188687,
+            "errors": 1
+          },
+          "Grep": {
+            "calls": 9,
+            "resultChars": 13875,
+            "errors": 0
+          },
+          "Bash": {
+            "calls": 2,
+            "resultChars": 1577,
+            "errors": 0
+          },
+          "Glob": {
+            "calls": 1,
+            "resultChars": 761,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 14,
+            "output": 7423
+          }
+        },
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:53:13.871Z",
+        "lastTs": "2026-07-15T08:55:26.294Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:21.180Z",
+            "delta": 32558,
+            "ctx": 69673,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:29.739Z",
+            "delta": 29299,
+            "ctx": 98972,
+            "causes": "Read×1 (~16.9k tok), Grep×1 (~725 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:55:24.256Z",
+            "delta": 6562,
+            "ctx": 136043,
+            "causes": "Read×1 (~3.9k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:33.910Z",
+            "delta": 6212,
+            "ctx": 118787,
+            "causes": "Read×1 (~3.3k tok), Grep×1 (~72 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:55.389Z",
+            "delta": 6025,
+            "ctx": 129481,
+            "causes": "Read×1 (~3.5k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a5dcbc31e023d960c",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Cross-file tracer (Angle C)",
+        "toolUseId": "toolu_017sQWqLXhMxsTCyxpeYGYDB",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a5dcbc31e023d960c.jsonl",
+        "total": {
+          "input": 26,
+          "cacheCreate": 93714,
+          "cacheRead": 1143729,
+          "output": 8149,
+          "msgs": 13
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 26,
+            "cacheCreate": 93714,
+            "cacheRead": 1143729,
+            "output": 8149,
+            "msgs": 13
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 5,
+            "resultChars": 135615,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 11,
+            "resultChars": 12561,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 13,
+            "output": 8149
+          }
+        },
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:53:09.069Z",
+        "lastTs": "2026-07-15T08:55:01.421Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:16.369Z",
+            "delta": 32560,
+            "ctx": 70334,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:24.396Z",
+            "delta": 14294,
+            "ctx": 84628,
+            "causes": "Read×1 (~8.9k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:02.261Z",
+            "delta": 8772,
+            "ctx": 101739,
+            "causes": "Read×1 (~5.2k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:36.336Z",
+            "delta": 5946,
+            "ctx": 92967,
+            "causes": "Read×1 (~3.4k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:15.863Z",
+            "delta": 3174,
+            "ctx": 108487,
+            "causes": "Read×1 (~1.6k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a6be10eaedbf5e387",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Altitude angle",
+        "toolUseId": "toolu_01Pe8XsQuMB3dUh67arS3xZf",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a6be10eaedbf5e387.jsonl",
+        "total": {
+          "input": 12,
+          "cacheCreate": 71524,
+          "cacheRead": 363084,
+          "output": 1872,
+          "msgs": 6
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 12,
+            "cacheCreate": 71524,
+            "cacheRead": 363084,
+            "output": 1872,
+            "msgs": 6
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 5,
+            "resultChars": 97042,
+            "errors": 2
+          },
+          "Glob": {
+            "calls": 2,
+            "resultChars": 4534,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 1,
+            "resultChars": 206,
+            "errors": 0
+          },
+          "Bash": {
+            "calls": 3,
+            "resultChars": 3026,
+            "errors": 1
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 6,
+            "output": 1872
+          }
+        },
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:53:34.855Z",
+        "lastTs": "2026-07-15T08:55:18.885Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:42.108Z",
+            "delta": 32776,
+            "ctx": 70144,
+            "causes": "Read×1 (~14.8k tok), Glob×1 (~4 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:09.800Z",
+            "delta": 15016,
+            "ctx": 89040,
+            "causes": "Read×2 (~9.1k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:57.143Z",
+            "delta": 3034,
+            "ctx": 73178,
+            "causes": "Glob×1 (~1.1k tok), Grep×1 (~52 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:15.376Z",
+            "delta": 1826,
+            "ctx": 90866,
+            "causes": "Bash×2 (~663 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:02.301Z",
+            "delta": 846,
+            "ctx": 74024,
+            "causes": "Read×2 (~321 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a7d33a4db056092c9",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Line-by-line diff scan (Angle A)",
+        "toolUseId": "toolu_01VXL7GGjYmFBZ9d4qWrnQpz",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a7d33a4db056092c9.jsonl",
+        "total": {
+          "input": 24,
+          "cacheCreate": 148344,
+          "cacheRead": 1293527,
+          "output": 13075,
+          "msgs": 12
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 24,
+            "cacheCreate": 148344,
+            "cacheRead": 1293527,
+            "output": 13075,
+            "msgs": 12
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 6,
+            "resultChars": 204229,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 4,
+            "resultChars": 2159,
+            "errors": 0
+          },
+          "Bash": {
+            "calls": 1,
+            "resultChars": 4,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:14.291Z",
+        "lastTs": "2026-07-15T11:14:16.552Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:11:36.654Z",
+            "delta": 32554,
+            "ctx": 71351,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:11:43.713Z",
+            "delta": 19220,
+            "ctx": 90571,
+            "causes": "Read×1 (~11.0k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:11:51.667Z",
+            "delta": 18780,
+            "ctx": 109351,
+            "causes": "Read×1 (~10.7k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:02.001Z",
+            "delta": 14203,
+            "ctx": 123554,
+            "causes": "Read×1 (~8.5k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:43.128Z",
+            "delta": 10166,
+            "ctx": 133720,
+            "causes": "Read×1 (~5.1k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a8302cf94ac57a3f6",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Efficiency angle",
+        "toolUseId": "toolu_01RnXGuKwSwSia7jVNVfjMV1",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a8302cf94ac57a3f6.jsonl",
+        "total": {
+          "input": 40,
+          "cacheCreate": 67911,
+          "cacheRead": 1279075,
+          "output": 8042,
+          "msgs": 20
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 40,
+            "cacheCreate": 67911,
+            "cacheRead": 1279075,
+            "output": 8042,
+            "msgs": 20
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 4,
+            "resultChars": 8473,
+            "errors": 2
+          },
+          "ToolSearch": {
+            "calls": 1,
+            "resultChars": 140,
+            "errors": 0
+          },
+          "mcp__serena__get_symbols_overview": {
+            "calls": 12,
+            "resultChars": 5422,
+            "errors": 0
+          },
+          "mcp__serena__find_symbol": {
+            "calls": 18,
+            "resultChars": 44072,
+            "errors": 3
+          },
+          "Bash": {
+            "calls": 1,
+            "resultChars": 145,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 9,
+            "resultChars": 5633,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {
+          "serena": {
+            "calls": 30,
+            "resultChars": 49494,
+            "errors": 3,
+            "tools": {
+              "get_symbols_overview": 12,
+              "find_symbol": 18
+            }
+          }
+        },
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:46.202Z",
+        "lastTs": "2026-07-15T11:14:43.922Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:11:51.759Z",
+            "delta": 7542,
+            "ctx": 45774,
+            "causes": "Read×2 (~321 tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:25.588Z",
+            "delta": 7267,
+            "ctx": 58208,
+            "causes": "mcp__serena__find_symbol×3 (~4.2k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:49.985Z",
+            "delta": 6219,
+            "ctx": 66975,
+            "causes": "mcp__serena__find_symbol×5 (~2.9k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:14:09.628Z",
+            "delta": 4850,
+            "ctx": 82847,
+            "causes": "mcp__serena__find_symbol×2 (~2.5k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:41.049Z",
+            "delta": 3560,
+            "ctx": 75529,
+            "causes": "Grep×2 (~252 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a92c818cdf3984831",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Removed-behavior auditor (Angle B)",
+        "toolUseId": "toolu_01NCgtiWr1CdCv6iW2MfaDhe",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a92c818cdf3984831.jsonl",
+        "total": {
+          "input": 14,
+          "cacheCreate": 118475,
+          "cacheRead": 583727,
+          "output": 10684,
+          "msgs": 7
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 14,
+            "cacheCreate": 118475,
+            "cacheRead": 583727,
+            "output": 10684,
+            "msgs": 7
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 7,
+            "resultChars": 199388,
+            "errors": 0
+          },
+          "Bash": {
+            "calls": 1,
+            "resultChars": 122,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 7,
+            "output": 10684
+          }
+        },
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:52:58.308Z",
+        "lastTs": "2026-07-15T08:55:04.400Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:07.657Z",
+            "delta": 32555,
+            "ctx": 70422,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:14.746Z",
+            "delta": 24420,
+            "ctx": 94842,
+            "causes": "Read×1 (~14.7k tok), Bash×1 (~31 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:20.219Z",
+            "delta": 14747,
+            "ctx": 109589,
+            "causes": "Read×1 (~8.4k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:57.165Z",
+            "delta": 14703,
+            "ctx": 133191,
+            "causes": "Read×1 (~5.2k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:54:16.599Z",
+            "delta": 8899,
+            "ctx": 118488,
+            "causes": "Read×1 (~5.4k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "a92f091c608ac40a2",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Efficiency angle",
+        "toolUseId": "toolu_013rHjrZXji8FFTpWZEcwWjg",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-a92f091c608ac40a2.jsonl",
+        "total": {
+          "input": 14,
+          "cacheCreate": 77768,
+          "cacheRead": 506217,
+          "output": 827,
+          "msgs": 7
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 14,
+            "cacheCreate": 77768,
+            "cacheRead": 506217,
+            "output": 827,
+            "msgs": 7
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 3,
+            "resultChars": 118839,
+            "errors": 1
+          },
+          "Grep": {
+            "calls": 1,
+            "resultChars": 879,
+            "errors": 0
+          },
+          "ToolSearch": {
+            "calls": 1,
+            "resultChars": 140,
+            "errors": 0
+          },
+          "mcp__serena__find_symbol": {
+            "calls": 2,
+            "resultChars": 788,
+            "errors": 2
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 7,
+            "output": 827
+          }
+        },
+        "mcp": {
+          "serena": {
+            "calls": 2,
+            "resultChars": 788,
+            "errors": 2,
+            "tools": {
+              "find_symbol": 2
+            }
+          }
+        },
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:53:26.418Z",
+        "lastTs": "2026-07-15T08:55:55.331Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:33.294Z",
+            "delta": 32561,
+            "ctx": 69700,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:39.359Z",
+            "delta": 24030,
+            "ctx": 93730,
+            "causes": "Read×1 (~14.7k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:49.578Z",
+            "delta": 1859,
+            "ctx": 96822,
+            "causes": "ToolSearch×1 (~35 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:43.290Z",
+            "delta": 805,
+            "ctx": 94535,
+            "causes": "Grep×1 (~220 tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:45.355Z",
+            "delta": 428,
+            "ctx": 94963,
+            "causes": "Read×1 (~161 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ac501629f084e4865",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Simplification angle",
+        "toolUseId": "toolu_01MLBAoYwqpf3fmt6fgmbGPT",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-ac501629f084e4865.jsonl",
+        "total": {
+          "input": 26,
+          "cacheCreate": 111954,
+          "cacheRead": 1276958,
+          "output": 9380,
+          "msgs": 13
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 26,
+            "cacheCreate": 111954,
+            "cacheRead": 1276958,
+            "output": 9380,
+            "msgs": 13
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 6,
+            "resultChars": 177529,
+            "errors": 1
+          },
+          "Grep": {
+            "calls": 6,
+            "resultChars": 4913,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:41.350Z",
+        "lastTs": "2026-07-15T11:14:22.716Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:11:47.214Z",
+            "delta": 32553,
+            "ctx": 70901,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:11:55.926Z",
+            "delta": 19909,
+            "ctx": 90810,
+            "causes": "Read×1 (~12.3k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:10.932Z",
+            "delta": 15780,
+            "ctx": 107948,
+            "causes": "Read×1 (~9.4k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:33.857Z",
+            "delta": 8246,
+            "ctx": 116896,
+            "causes": "Read×1 (~4.7k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:49.976Z",
+            "delta": 7989,
+            "ctx": 128265,
+            "causes": "Read×1 (~3.0k tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ac9fbcfbc4fbc8254",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Altitude angle",
+        "toolUseId": "toolu_01RqqvRYBzBk2fkivQFbsC3V",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-ac9fbcfbc4fbc8254.jsonl",
+        "total": {
+          "input": 26,
+          "cacheCreate": 80419,
+          "cacheRead": 994090,
+          "output": 9706,
+          "msgs": 13
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 26,
+            "cacheCreate": 80419,
+            "cacheRead": 994090,
+            "output": 9706,
+            "msgs": 13
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 3,
+            "resultChars": 60572,
+            "errors": 2
+          },
+          "Glob": {
+            "calls": 1,
+            "resultChars": 267,
+            "errors": 0
+          },
+          "ToolSearch": {
+            "calls": 1,
+            "resultChars": 140,
+            "errors": 0
+          },
+          "mcp__serena__get_symbols_overview": {
+            "calls": 8,
+            "resultChars": 3840,
+            "errors": 0
+          },
+          "mcp__serena__find_symbol": {
+            "calls": 8,
+            "resultChars": 43679,
+            "errors": 2
+          },
+          "Bash": {
+            "calls": 2,
+            "resultChars": 148,
+            "errors": 0
+          },
+          "Grep": {
+            "calls": 1,
+            "resultChars": 1574,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {
+          "serena": {
+            "calls": 16,
+            "resultChars": 47519,
+            "errors": 2,
+            "tools": {
+              "get_symbols_overview": 8,
+              "find_symbol": 8
+            }
+          }
+        },
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:54.441Z",
+        "lastTs": "2026-07-15T11:14:03.589Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:12:01.209Z",
+            "delta": 32556,
+            "ctx": 71017,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:40.646Z",
+            "delta": 15746,
+            "ctx": 93606,
+            "causes": "mcp__serena__find_symbol×2 (~9.6k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:08.390Z",
+            "delta": 2746,
+            "ctx": 98677,
+            "causes": "mcp__serena__find_symbol×2 (~634 tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:21.683Z",
+            "delta": 2422,
+            "ctx": 77155,
+            "causes": "mcp__serena__get_symbols_overview×4 (~884 tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:58.251Z",
+            "delta": 2325,
+            "ctx": 95931,
+            "causes": "mcp__serena__find_symbol×2 (~560 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "add26bc759b909248",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Conventions angle (CLAUDE.md)",
+        "toolUseId": "toolu_01CRGBUCkdRsdfFHvRWarzxM",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-add26bc759b909248.jsonl",
+        "total": {
+          "input": 10,
+          "cacheCreate": 62173,
+          "cacheRead": 282804,
+          "output": 3645,
+          "msgs": 5
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 10,
+            "cacheCreate": 62173,
+            "cacheRead": 282804,
+            "output": 3645,
+            "msgs": 5
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 2,
+            "resultChars": 77439,
+            "errors": 0
+          },
+          "Glob": {
+            "calls": 6,
+            "resultChars": 95,
+            "errors": 0
+          },
+          "Bash": {
+            "calls": 2,
+            "resultChars": 4660,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:59.404Z",
+        "lastTs": "2026-07-15T11:12:53.193Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:12:08.304Z",
+            "delta": 32848,
+            "ctx": 71419,
+            "causes": "Read×1 (~14.8k tok), Glob×2 (~6 tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:25.284Z",
+            "delta": 7245,
+            "ctx": 79817,
+            "causes": "Read×1 (~4.5k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:38.553Z",
+            "delta": 2791,
+            "ctx": 82608,
+            "causes": "Bash×1 (~1.1k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:15.096Z",
+            "delta": 1153,
+            "ctx": 72572,
+            "causes": "Bash×1 (~91 tok), Glob×4 (~18 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ade9b63ffac2f3deb",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Reuse angle",
+        "toolUseId": "toolu_01TLXgFDoKZtVkCFRBrvHEWp",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-ade9b63ffac2f3deb.jsonl",
+        "total": {
+          "input": 32,
+          "cacheCreate": 112378,
+          "cacheRead": 1550854,
+          "output": 5539,
+          "msgs": 16
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 32,
+            "cacheCreate": 112378,
+            "cacheRead": 1550854,
+            "output": 5539,
+            "msgs": 16
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 7,
+            "resultChars": 179577,
+            "errors": 2
+          },
+          "Grep": {
+            "calls": 10,
+            "resultChars": 10591,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {},
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 0,
+        "firstTs": "2026-07-15T11:11:35.714Z",
+        "lastTs": "2026-07-15T11:13:29.198Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T11:11:44.716Z",
+            "delta": 32554,
+            "ctx": 70762,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:11:51.364Z",
+            "delta": 24344,
+            "ctx": 95106,
+            "causes": "Read×1 (~14.7k tok), Grep×1 (~100 tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:25.102Z",
+            "delta": 15743,
+            "ctx": 117015,
+            "causes": "Read×1 (~9.4k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:12:58.528Z",
+            "delta": 9682,
+            "ctx": 128482,
+            "causes": "Read×1 (~5.4k tok)"
+          },
+          {
+            "ts": "2026-07-15T11:13:11.097Z",
+            "delta": 2233,
+            "ctx": 130715,
+            "causes": "Grep×1 (~123 tok)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "af2efdc5c598f51d5",
+      "meta": {
+        "agentType": "general-purpose",
+        "description": "Line-by-line diff scan (Angle A)",
+        "toolUseId": "toolu_01KxoCoaRxt4aNykJBtCDivC",
+        "spawnDepth": 1
+      },
+      "stats": {
+        "file": "C:\\Users\\Admin\\.claude\\projects\\D--Projects-Agiliway-SpeechDirect\\681ea6f9-4d99-421a-86d8-42fc339d0a2f\\subagents\\agent-af2efdc5c598f51d5.jsonl",
+        "total": {
+          "input": 14,
+          "cacheCreate": 126022,
+          "cacheRead": 520407,
+          "output": 11256,
+          "msgs": 7
+        },
+        "byModel": {
+          "claude-sonnet-5": {
+            "input": 14,
+            "cacheCreate": 126022,
+            "cacheRead": 520407,
+            "output": 11256,
+            "msgs": 7
+          }
+        },
+        "toolCalls": {
+          "Read": {
+            "calls": 7,
+            "resultChars": 200164,
+            "errors": 0
+          }
+        },
+        "skillInvocations": {},
+        "skillAttribution": {
+          "code-review": {
+            "msgs": 7,
+            "output": 11256
+          }
+        },
+        "mcp": {},
+        "agentDispatches": [],
+        "userPrompts": 1,
+        "compactions": 0,
+        "apiErrors": 1,
+        "firstTs": "2026-07-15T08:52:45.435Z",
+        "lastTs": "2026-07-15T08:55:01.092Z",
+        "spikes": [
+          {
+            "ts": "2026-07-15T08:53:05.278Z",
+            "delta": 32605,
+            "ctx": 70309,
+            "causes": "Read×1 (~14.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:11.797Z",
+            "delta": 15429,
+            "ctx": 85738,
+            "causes": "Read×1 (~8.9k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:22.619Z",
+            "delta": 13966,
+            "ctx": 99704,
+            "causes": "Read×1 (~8.0k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:30.890Z",
+            "delta": 9257,
+            "ctx": 108961,
+            "causes": "Read×1 (~4.8k tok)"
+          },
+          {
+            "ts": "2026-07-15T08:53:42.835Z",
+            "delta": 9042,
+            "ctx": 118003,
+            "causes": "Read×1 (~5.3k tok)"
+          }
+        ]
+      }
+    }
+  ],
+  "hookLog": null
+}
