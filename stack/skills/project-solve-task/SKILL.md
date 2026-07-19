@@ -52,7 +52,11 @@ explicit word; silence is not a go.
 3. **APPROVE** - present the gated plan and ask two things in one gate: approval to build, and the
    build mode - **session** (default: the build runs in this chat) or **agents** (each task
    dispatched to its stack's `<stack>-implementer` seat, up to 3 at once, each on its frontmatter
-   model unless you name one). Stamp `Approved: <date> - mode <session|agents>`
+   model unless you name one). The gate accepts only an answer that NAMES the mode: a bare 'go',
+   'yes', or 'approved' names none and approves nothing - re-present the two modes and end the
+   turn again, never default one in. (When the ask itself already named the mode, the stop needs
+   only the approval word - restate the mode you are stamping.) Stamp
+   `Approved: <date> - mode <session|agents>`
    into the plan file. Nothing builds without this stamp. Agents mode exists only where subagent
    dispatch is available; otherwise session is the only mode - say so rather than pretending.
 4. **BUILD** - per the approved mode:
@@ -81,7 +85,8 @@ explicit word; silence is not a go.
 ## Do not
 
 - Never pass a stop without the user's explicit word, and never approve the plan yourself - the
-  APPROVE stamp records the user's decision, not yours.
+  APPROVE stamp records the user's decision, not yours; an answer that names no build mode
+  approves nothing.
 - Never dispatch a seat the user did not choose at a stop - dispatch is explicit-only house-wide.
 - Never keep cycle state only in chat: a stamp or tick that is not in the plan file does not
   exist. The serena note is a cursor, never the truth.

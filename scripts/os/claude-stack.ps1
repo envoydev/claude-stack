@@ -962,7 +962,7 @@ function Write-Stamp {
 }
 
 function Set-HookSettings {
-  # INSTALL: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent).
+  # INSTALL + UPDATE: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent).
   $root = Get-RepoRoot
   if (-not $root) { return }
   $settings = Join-Path $root '.claude/settings.json'
@@ -1051,6 +1051,11 @@ function Remove-Skills {
     $name = $entry.Split('|', 2)[1]
     Remove-Item -LiteralPath (Join-Path $dest $name) -Recurse -Force -ErrorAction SilentlyContinue
   }
+  # Renamed/retired upstream skills: their old dirs left the manifest, so the loop above never
+  # clears them - prune the known old names explicitly (a leftover copy keeps firing forever).
+  foreach ($name in @('project-task-flow')) {
+    Remove-Item -LiteralPath (Join-Path $dest $name) -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Update-Skills {
@@ -1095,7 +1100,7 @@ function Update-Mcps {
   }
 }
 
-function Update-Hooks { Get-Hooks }   # UPDATE: refresh hook files only; settings.json untouched
+function Update-Hooks { Get-Hooks; Set-HookSettings }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
 function Update-Agents { Get-Agents } # UPDATE: refresh subagent files
 function Update-Rules { Get-Rules }   # UPDATE: refresh rule files
 
