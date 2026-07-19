@@ -52,7 +52,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     `code-analyzer` per module, reasons in the main session, writes `docs/architecture/ARCHITECTURE.md` +
     the pros/cons `docs/architecture/ASSESSMENT.md` + the generated always-on awareness rule
     `baseline-project-architecture.md`; never in a build flow); the per-change fit
-    verdict moved to the domain solution-designers. The `project-task-flow` skill is the single
+    verdict moved to the domain solution-designers. The `project-solve-cross-task` skill is the single
     entry-point orchestrator - it picks the execution mode, runs a single stack's vertical per its
     `references/domain-trio-protocol.md` (main-stack-agents-flow was folded into that reference),
     and for cross-domain work freezes the shared contract and drives the parallel

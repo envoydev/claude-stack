@@ -8,14 +8,14 @@ disable-model-invocation: true
 
 You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at edit time. Three artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place, rewrites the hook only if it is invalid or outdated, and leaves the wiring alone:
 
-1. `docs/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. Written under the project's configured docs root (default `docs/`, per the project's CLAUDE.md).
-2. `.claude/hooks/inject-code-style.js` - a generated PreToolUse hook that injects that doc into context once per session, on the first edit of a file whose extension the analysis actually observed - so the style is in front of whoever writes code without anyone remembering to open a doc. When the docs root is relocated, the generation step bakes the configured root into the hook - HOOK below owns the why and the mechanics.
+1. `docs/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. Written under the project's configured docs root (`CLAUDE_DOCS_PATH` in `.claude/settings.json` env, default `.claude/docs`).
+2. `.claude/hooks/inject-code-style.js` - a generated PreToolUse hook that injects that doc into context once per session, on the first edit of a file whose extension the analysis actually observed - so the style is in front of whoever writes code without anyone remembering to open a doc. The hook resolves the docs root itself at runtime from the same `CLAUDE_DOCS_PATH` env value - no per-root generation differences.
 3. The `.claude/settings.json` wiring for that hook (idempotent - added once, kept thereafter).
 
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `docs/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
 
 ## Execution modes
-DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-task-flow` owns. Pick once, hold for the run:
+DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-solve-cross-task` owns. Pick once, hold for the run:
 
 - **DELEGATED** (dispatch available) - fan out code-style-analyzer per language as below; you merge and write.
 - **INLINE** (no dispatch: Cursor, or a single-language repo too small to fan out) - do the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.
@@ -28,7 +28,7 @@ A cheap Glob scan, in-session: `*.cs`, `*.xaml`, `*.ts`, `*.html`, `*.scss`/`*.c
 ### 2. FAN OUT - one code-style-analyzer per language, in parallel
 Dispatch all seats in a single message. Each dispatch prompt names its language-family scope and nothing else - the agent reads its config + representative code and returns the structured report (project type, observed extensions, enforcement map, enforced rules, idioms, uncertain/inconsistent). The agents write no files; their final messages are your merge input.
 
-### 3. MERGE - write docs/PROJECT-CODE-STYLE.md (the project's configured docs root, default `docs/`)
+### 3. MERGE - write docs/PROJECT-CODE-STYLE.md (under the configured docs root - `CLAUDE_DOCS_PATH`, default `.claude/docs`)
 Consolidate the reports into one doc - apply the `markdown-style` skill so it reads as a quick reference, not a wall of prose. Shape:
 
 1. One opening line - the project's actual style; configs stay enforced; this captures what they cannot; where this doc and a house convention skill disagree, THIS doc wins.
@@ -47,8 +47,8 @@ Build the extension union from the agents' **Language + extensions** sections ON
    - same template generation: its `template-version:` line matches `references/inject-code-style.template.js`;
    - same filter: the extension alternation in its `/\.( ... )$/` test equals the fresh union (order-insensitive).
    All three hold -> leave the hook untouched, report 'hook current', skip to WIRE.
-2. **Invalid or outdated** (any check fails) -> regenerate: copy the template over it, replacing the `__EXTENSIONS__` placeholder with the pipe-joined fresh union (e.g. `cs|xaml`). The template's docs-root line (`const docsRoot = process.env.STACK_DOCS_ROOT || 'docs';`) already matches the default - leave it as-is for a project on the default root. When the project's configured docs root (per its CLAUDE.md) is NOT the default, bake that value into the copied hook - the hook is deterministic code, it cannot read the remap rule at runtime, so either replace the `'docs'` fallback literal with the configured root, or set `STACK_DOCS_ROOT` in the hook's environment (e.g. `.claude/settings.json` env) - so the generated hook resolves the same root the doc was written under. Never hand-edit anything else in the copy or patch it in place - the template is the only source.
-3. **Verify what you (re)generated before trusting it:** `node --check`, then drive it once - pipe a fake PreToolUse JSON (`{"session_id":"test","cwd":"<root>","tool_input":{"file_path":"x.<ext>"}}`) through it and confirm it emits the `additionalContext` JSON; pipe a non-matching extension and confirm silence. Delete the test's temp marker (`$TMPDIR/claude-codestyle-*.marker`).
+2. **Invalid or outdated** (any check fails) -> regenerate: copy the template over it, replacing the `__EXTENSIONS__` placeholder with the pipe-joined fresh union (e.g. `cs|xaml`). The template's docs-root line (`const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';`) resolves the SAME `CLAUDE_DOCS_PATH` the docs were written under (the installer seeds it into `.claude/settings.json` env; the fallback is the default root) - nothing to bake, on any root. Never hand-edit anything else in the copy or patch it in place - the template is the only source.
+3. **Verify what you (re)generated before trusting it:** `node --check`, then drive it once - pipe a fake PreToolUse JSON (`{"session_id":"test","cwd":"<project-root>","tool_input":{"file_path":"x.<ext>"}}`) through it and confirm it emits the `additionalContext` JSON; pipe a non-matching extension and confirm silence. Delete the test's temp marker (`$TMPDIR/claude-codestyle-*.marker`).
 
 This generated hook is per-project output, deliberately NOT in the stack installer's HOOKS manifest - the installer fetches only named files and prunes nothing in `.claude/hooks/`, so `stack update` never touches it.
 

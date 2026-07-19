@@ -39,24 +39,32 @@ rules in the same directory attach on a matching file touch - their own `paths:`
 
 ## Generated docs root
 
-**Any documentation a skill or agent generates lives under a single docs root, `docs/` by default** -
-the architecture map (`architecture/`), `PROJECT-CODE-STYLE.md`, `PROJECT-RELATED-CONTEXT.md`, the
-quality-loop prompts (`loops/`), superpowers plans/specs, and any other generated markdown. This is
-the default home for generated project docs; a first-class repo doc with a conventional home (the
-top-level `README.md`, ADRs where the project keeps them) stays where it belongs. To relocate the
-generated docs, set the root here:
+**Any documentation a skill or agent generates lives under a single docs root, `.claude/docs/` by
+default** - the architecture map (`architecture/`), `PROJECT-CODE-STYLE.md`,
+`PROJECT-RELATED-CONTEXT.md`, the quality-loop prompts (`loops/`), superpowers plans/specs, and any
+other generated markdown. This is the default home for generated project docs; a first-class repo
+doc with a conventional home (the top-level `README.md`, an existing ADR home) stays where it
+belongs. ADRs with no existing home default to `<docs-path>/decisions/` under this same
+`CLAUDE_DOCS_PATH` root.
 
-- **Docs root:** `docs/`
+- **Docs root:** the `CLAUDE_DOCS_PATH` env value in `.claude/settings.json` (the installer seeds
+  `.claude/docs`); when the variable is absent, `.claude/docs/` is the default. Read
+  `.claude/settings.json` once before first writing a generated doc in a session. To relocate the
+  docs, change the value there - forward slashes on every OS, Windows included (hooks read it as
+  `process.env.CLAUDE_DOCS_PATH`, PowerShell as `$env:CLAUDE_DOCS_PATH`).
 
-Wherever a skill or agent instruction names a generated project doc as `docs/<name>` (for example
-`docs/architecture/ARCHITECTURE.md`), resolve it under the configured root instead. Relocating to
-`.claude/docs/` makes the docs machine-local (`.claude/` is gitignored, so nothing there is
-committed or reaches a teammate) - keep the root under a committed path (the `docs/` default)
-unless you specifically want them machine-local.
+Wherever a skill or agent instruction names a generated project doc as `<docs-path>/<name>` - or as
+legacy shorthand `docs/<name>` (for example `docs/architecture/ARCHITECTURE.md`) - resolve it under
+the configured root. The default is
+MACHINE-LOCAL: `.claude/*` is gitignored, so nothing under `.claude/docs/` is committed, reaches a
+teammate, or survives a fresh clone - after a re-clone, re-run the captures. To share the generated
+docs with the team (commit them, review them in PRs), set `CLAUDE_DOCS_PATH` to a committed path
+such as `docs` instead.
 
-Superpowers (when installed) writes its implementation plans and design specs under this root too -
-`<root>/superpowers/plans/` and `<root>/superpowers/specs/` - so they are committed alongside the
-other project docs, not left as local scratch. Track them: do NOT gitignore `docs/superpowers/`.
+Superpowers (when installed) writes its implementation plans and design specs under this same
+`CLAUDE_DOCS_PATH` root too - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never
+its own location - machine-local under the default root like every other generated doc. When the
+root is a committed path (e.g. `docs`), track them: do NOT gitignore `<docs-path>/superpowers/`.
 
 <!-- Authoring outline - write these sections into the project-specific top of this file
 (each section lean; interleave as reads best - the project intro usually comes first, above

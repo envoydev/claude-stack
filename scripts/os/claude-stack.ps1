@@ -317,7 +317,7 @@ $Skills = @(
   'envoydev/claude-stack|project-agent-capabilities'           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only
   'envoydev/claude-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/PROJECT-RELATED-CONTEXT.md; manual /-only
   'envoydev/claude-stack|project-build-from-scratch' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
-  'envoydev/claude-stack|project-task-flow'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
+  'envoydev/claude-stack|project-solve-cross-task'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
   'envoydev/claude-stack|project-verify-plan'      # audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review
   'envoydev/claude-stack|project-verify-code'     # single-chat, no-dispatch review of an assembled build - the inline alternative to /code-review: rerun build/test, gate vs plan, RUN the app on failable inputs, trace wire-contract changes to consumers, ranked punch-list
   'envoydev/claude-stack|project-implementer'              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate
@@ -1014,6 +1014,13 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -NotePropertyValue '40'
     $changed = $true
   }
+  # generated-docs root: the authoritative value the CLAUDE.md docs-root section points at.
+  # Forward slashes DELIBERATELY, also on Windows - the value is consumed by Node hooks and the
+  # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
+  if (-not $data.env.PSObject.Properties['CLAUDE_DOCS_PATH']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'
+    $changed = $true
+  }
   if ($changed) {
     try {
       Write-JsonFile $data $settings
@@ -1292,6 +1299,7 @@ Write-Host '  .slopwatch       dotnet-slopwatch output'
 Write-Host '  .playwright      playwright MCP user-data-dir + screenshots'
 Write-Host '  .mcp.json        generated MCP server config (machine-local)'
 Write-Host ''
-Write-Host "If the project's CLAUDE.md 'Generated docs root' is relocated under .claude\, the generated docs"
-Write-Host 'inherit the .claude ignore above and become local-only - not committed, not shared. Keep the docs'
-Write-Host 'root at its committed docs/ default unless that machine-local tradeoff is wanted.'
+Write-Host "The generated-docs root is CLAUDE_DOCS_PATH in .claude\settings.json env (seeded '.claude/docs') -"
+Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
+Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed'
+Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."

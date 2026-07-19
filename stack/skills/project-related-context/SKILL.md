@@ -9,14 +9,14 @@ disable-model-invocation: true
 You drive the deliberate capture of a project's related repositories, and you own both tiers of the house related-projects model:
 
 1. `.claude/rules/baseline-project-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
-2. `docs/PROJECT-RELATED-CONTEXT.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Lives under the project's configured docs root (default `docs/`, per its CLAUDE.md).
+2. `docs/PROJECT-RELATED-CONTEXT.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Lives under the project's configured docs root (`CLAUDE_DOCS_PATH` in `.claude/settings.json` env, default `.claude/docs`).
 
 Both are committed files; a re-run refreshes both in place. The rule's name is deliberately NOT in the stack installer's fetch manifest (and never may be - a fetch would overwrite the generated copy) and nothing prunes the rules directory, so both survive `stack update`.
 
-**Args-driven, never a scan.** The user names the related projects - local paths or git URLs, optionally with a relation hint each (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too: `./server`, `./client` in a monorepo are valid locations, and their entries give project-task-flow the dependency direction for producer-first ordering. No args: ask for them and stop. Do not guess at siblings from the filesystem.
+**Args-driven, never a scan.** The user names the related projects - local paths or git URLs, optionally with a relation hint each (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too: `./server`, `./client` in a monorepo are valid locations, and their entries give project-solve-cross-task the dependency direction for producer-first ordering. No args: ask for them and stop. Do not guess at siblings from the filesystem.
 
 ## Execution modes
-DELEGATED vs INLINE - the shared policy `project-task-flow` owns. Pick once, hold for the run:
+DELEGATED vs INLINE - the shared policy `project-solve-cross-task` owns. Pick once, hold for the run:
 
 - **DELEGATED** (dispatch available) - fan out related-project-analyzer per sibling as below; you merge and write.
 - **INLINE** (no dispatch: Cursor) - do the same characterization in-session, one sibling at a time, honoring the agent's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes, UNVERIFIED over fabrication; a URL sibling is shallow-cloned to scratch and removed after) - then continue at MERGE identically.
@@ -32,7 +32,7 @@ Dispatch all seats in a single message. Each dispatch prompt carries: the HOST p
 ### 3. MERGE - write docs/PROJECT-RELATED-CONTEXT.md
 Consolidate into one doc - apply the `markdown-style` skill so it reads as a quick reference. Shape:
 
-1. One opening line - what the doc is: the committed orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the memory MCP, never here.
+1. One opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the memory MCP, never here.
 2. **The entries** - one `related_projects:` YAML block, the house schema per sibling:
 ```yaml
 related_projects:

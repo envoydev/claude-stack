@@ -3,10 +3,10 @@
 The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create an angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
 
 ## DELEGATED vs INLINE - dispatch capability
-Before the size/risk modes below, each orchestration skill (`project-task-flow`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
+Before the size/risk modes below, each orchestration skill (`project-solve-cross-task`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
 
-- **DELEGATED** - the main session orchestrates and dispatches every seat, never doing their work itself. `project-build-from-scratch` and the quality loops hold this as their run-start default whenever the Agent tool is present; `project-task-flow` uses it as the default only for cross-domain work.
-- **INLINE** - the same steps, done in-session, no dispatch. This is `project-task-flow`'s default for single-stack work (agents are a per-step opt-in from there), and every skill's fallback when dispatch is unavailable (a Cursor session, a non-stack project with no domain agents, or a change too small to fan out).
+- **DELEGATED** - the main session orchestrates and dispatches every seat, never doing their work itself. `project-build-from-scratch` and the quality loops hold this as their run-start default whenever the Agent tool is present; `project-solve-cross-task` uses it as the default only for cross-domain work.
+- **INLINE** - the same steps, done in-session, no dispatch. This is `project-solve-cross-task`'s default for single-stack work (agents are a per-step opt-in from there), and every skill's fallback when dispatch is unavailable (a Cursor session, a non-stack project with no domain agents, or a change too small to fan out).
 
 Dispatch is explicit-only, house-wide: never dispatch a seat the user did not choose. A dispatched seat runs on its frontmatter model/effort pin unless the user names a model; fan-out is capped at 3 implementers at once by default, more only on the user's ask. Detection keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. The size/risk modes below apply in either case; in INLINE they are done in-session.
 

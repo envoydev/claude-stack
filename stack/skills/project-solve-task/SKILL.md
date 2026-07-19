@@ -1,6 +1,6 @@
 ---
 name: project-solve-task
-description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable): project-verify-code inline or the verifier seat -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-task-flow), not greenfield (project-build-from-scratch), not a one-line edit."
+description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable): project-verify-code inline or the verifier seat -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-solve-cross-task), not greenfield (project-build-from-scratch), not a one-line edit."
 disable-model-invocation: true
 ---
 
@@ -12,8 +12,9 @@ survives a compaction or a fresh session. It never designs, builds, or reviews a
 
 ## State - two layers, split by durability
 
-- **The plan file** (`<docs-root>/superpowers/plans/<feature>.md`, docs root per the project's
-  CLAUDE.md) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
+- **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`, docs root = `CLAUDE_DOCS_PATH`
+  from `.claude/settings.json` env, default `.claude/docs` - see the project CLAUDE.md docs-root
+  section) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence. On any
   conflict with memory or the chat, the file wins.
 - **The serena cycle note** (`write_memory` named `<feature>__cycle`) is the working cursor:
@@ -26,7 +27,7 @@ note, and read the plan file's stamps. A cycle mid-flight resumes at its cursor 
 step whose stamp says it already passed. A cycle mid-build looks like:
 
 ```
-plan docs/superpowers/plans/csv-export.md:
+plan .claude/docs/superpowers/plans/csv-export.md:
   Gated: passed | Approved: 2026-07-16 - mode session
   task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
 cycle note 'csv-export__cycle': step 4 BUILD - resume at task 2, mode session
@@ -58,7 +59,7 @@ explicit word; silence is not a go.
    - *session*: run `project-implementer` - it marks each task `IN_PROGRESS` before code, ticks it
      `DONE` with evidence after its green gate, and keeps the plan's resume note current.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
-     fan-out per the shared policy `project-task-flow` owns, the main session the only
+     fan-out per the shared policy `project-solve-cross-task` owns, the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
      per task as reports land.
    *Stop* - and this stop chooses the reviewer for step 5: run `project-verify-code` in-session

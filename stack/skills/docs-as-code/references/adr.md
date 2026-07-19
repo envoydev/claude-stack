@@ -11,9 +11,6 @@ what they inherit.
 - **Immutable** - never rewrite an accepted ADR; write a new one and mark the old
   `superseded by ADR-NNNN` (both link to each other). Adding newly discovered consequences later
   is allowed - that is additive, not mutation.
-- **In-repo, in version control** - `docs/decisions/` under the configured docs root by default
-  (an existing ADR home wins - some projects use docs/adr). Decisions affecting one app live in
-  that app's repo.
 - **Numbered and named**: monotonic zero-padded sequence, lowercase dash-separated title -
   `0001-use-postgresql.md` - so a directory listing reads as the log.
 - **Written for a future developer**: full sentences, active voice ('We will ...'), inverted
@@ -116,7 +113,7 @@ rationale here, not on diagrams - a diagram shows the outcome and links the ADR 
 
 ## Checklist
 
-- One decision, short, in-repo, `NNNN-kebab-title` naming.
+- One decision, short, `NNNN-kebab-title` naming.
 - Superseded, never rewritten or deleted; supersede links run both ways.
 - All consequences listed, negative included.
 - Reviewed via PR; part of the definition of done; indexed.

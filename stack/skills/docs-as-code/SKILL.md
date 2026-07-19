@@ -7,11 +7,10 @@ description: "Authoring conventions for documentation as versioned text artifact
 
 Documentation is a text artifact in git: diffable, PR-reviewed, and rendered natively on
 GitHub/GitLab. That is the whole stance - it is what keeps docs from rotting - and it applies to
-any subject, not just architecture: an API flow, a schema, a process, a decision. Everything
-this skill produces lives under the project's configured docs root (per its CLAUDE.md): diagrams
-inline in the doc they explain (or standalone `.mmd` under the root), decision records in
-`docs/decisions/` by default - an existing ADR home in the project wins. Structure goes in
-diagrams; rationale goes in ADRs; the two link to each other, never restate each other.
+any subject, not just architecture: an API flow, a schema, a process, a decision. Diagrams live
+inline in the doc they explain (a standalone `.mmd` only when several docs share one).
+Structure goes in diagrams; rationale goes in ADRs; the two link to each other, never restate
+each other.
 
 ## Pick the artifact
 
@@ -21,7 +20,7 @@ diagrams; rationale goes in ADRs; the two link to each other, never restate each
 | A relational schema sketch - a handful of tables, keys, cardinality | Mermaid ER diagram | `references/mermaid-er.md` |
 | A load-bearing decision - structure, cross-cutting NFRs, external dependencies, interfaces | ADR - Nygard by default, MADR 4 when options were weighed | `references/adr.md` |
 | System-in-environment or deployable-parts structure, incl. for stakeholders | C4 context/container view | `references/c4.md` |
-| THIS project's committed architecture map | owned by `project-architecture-analyzer` (flowchart + module table per its doc-shapes contract) - supplement it, never re-draw it |
+| THIS project's architecture map | owned by `project-architecture-analyzer` (flowchart + module table per its doc-shapes contract) - supplement it, never re-draw it |
 
 Branching business logic is a flowchart, not a sequence diagram; static structure is ER/C4, not
 sequence. When a diagram and an ADR both apply (a decision that changed structure), write both -

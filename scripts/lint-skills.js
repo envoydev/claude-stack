@@ -74,11 +74,11 @@ const NON_SKILL_TOKENS = new Set([
     'mat-flat-button',
     'mat-stroked-button',
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
-    // prose in project-task-flow + the base template - a field name, not a skill.
+    // prose in project-solve-cross-task + the base template - a field name, not a skill.
     'disable-model-invocation',
     // the two GENERATED per-project awareness rules (written by the capture skills,
     // never in the installer manifest) - rule file names, not skills; referenced by
-    // project-task-flow's in-session scoping step.
+    // project-solve-cross-task's in-session scoping step.
     'baseline-project-architecture',
     'baseline-project-related-context',
     // MCP server names stamped by project-agent-capabilities' routing map - servers, not skills.
