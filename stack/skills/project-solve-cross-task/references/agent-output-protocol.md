@@ -93,9 +93,11 @@ The orchestrator keeps a compact ledger - a short file, not just in-context note
 ```yaml
 feature: user-invitations
 current_contract: v2
+plan_review: approved            # or waived - only on the user's explicit review-waiver words
 lanes:
   data:
     phase: verified
+    plan_audit: { risk: pass, scope: pass, edges: 1 gap re-briefed, soundness: pass }   # the four project-verify-plan verdicts, REQUIRED before the lane builds - an entry that cannot fill them is an audit that did not run
     tasks: { data-01: DONE, data-02: DONE_WITH_CONCERNS }
     verifier: SIGNED_OFF
   backend:

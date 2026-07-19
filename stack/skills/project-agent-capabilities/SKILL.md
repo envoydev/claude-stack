@@ -19,7 +19,7 @@ Every project trims the stack differently - skills commented out of the manifest
 Inventory only - nothing is judged, nothing is read beyond frontmatter and config. No dispatch; the whole run is in-session and cheap.
 
 ### 2. GENERATE - write .claude/rules/baseline-project-agent-capabilities.md
-A valid PATHLESS rule (frontmatter with a `description:` marking it generated, NO `paths:`), regenerated WHOLESALE each run - it is fully derived, so no upsert, no hand edits to preserve. This skill was renamed from project-capabilities: when a legacy `.claude/rules/baseline-project-capabilities.md` exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules. Keep it lean (always-on tokens are paid every session and subagent); the shape:
+A valid PATHLESS rule (frontmatter with a `description:` marking it generated, NO `paths:`), regenerated WHOLESALE each run - it is fully derived, so no upsert, no hand edits to preserve. Wholesale is mechanical, not a mood: DELETE the existing rule file first, then write the new one from scratch - an edit-in-place keeps stale policy wording the skill has since changed (measured: an upsert run silently missed a new usage-policy bullet). This skill was renamed from project-capabilities: when a legacy `.claude/rules/baseline-project-capabilities.md` exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules. Keep it lean (always-on tokens are paid every session and subagent); the shape:
 
 ```markdown
 ---
