@@ -848,7 +848,7 @@ STAMP
   log "  stamp: $dest @ $(printf '%.12s' "$STACK_SHA")"
 }
 
-wire_hooks_settings() {  # INSTALL: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent)
+wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent)
   local root settings; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
   settings="$root/.claude/settings.json"; mkdir -p "$(dirname "$settings")"
   command -v python3 >/dev/null || { log "  !! python3 not found - wire hooks into settings.json by hand"; return 0; }
@@ -926,6 +926,9 @@ remove_skills() {  # rm -rf each manifest skill under the scope dest, so update 
     name="${entry#*|}"
     rm -rf "$dest/$name"
   done
+  # Renamed/retired upstream skills: their old dirs left the manifest, so the loop above never
+  # clears them - prune the known old names explicitly (a leftover copy keeps firing forever).
+  for name in project-task-flow; do rm -rf "$dest/$name"; done
 }
 
 update_skills() {
@@ -970,7 +973,7 @@ update_mcps() {
   done
 }
 
-update_hooks() { download_hooks; }   # UPDATE: refresh hook files only; settings.json untouched
+update_hooks() { download_hooks; wire_hooks_settings; }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
 update_agents() { download_agents; } # UPDATE: refresh subagent files
 update_rules() { download_rules; }   # UPDATE: refresh rule files
 
