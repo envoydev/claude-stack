@@ -127,7 +127,7 @@ Output:
 Log of work 13.04.2026.
 
 Monday:
-1 ABC-1319 (2h) - Investigated a crop rotation issue by field ID. Fixed missing record handling and tested the change. Testing. Merged changes.
+1 ABC-1319 (2h) - Investigated a crop rotation issue by field ID. Fixed missing record handling. Testing.
 2 ABC-1320 (30m) - Created a merge request.
 3 Other (1h) - Attended team meeting.
 Total time: 3h 30m.

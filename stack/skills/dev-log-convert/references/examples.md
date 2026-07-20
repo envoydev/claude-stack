@@ -15,7 +15,7 @@ Wednesday:
 
 XYZ:
 1 XYZ-7169 (3h) - Moved the legend control onto the chart and added half-view / full-view configuration.
-2 XYZ-7205 (2h 30m) - Investigated a job status issue in JobScheduler and fixed it. Testing. Merged changes.
+2 XYZ-7205 (2h 30m) - Investigated a job status issue in JobScheduler and fixed it.
 3 Other (15m) - Daily standup.
 
 ABC:

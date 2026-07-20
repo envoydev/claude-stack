@@ -59,7 +59,8 @@ the configured root. The default is
 MACHINE-LOCAL: `.claude/*` is gitignored, so nothing under `.claude/docs/` is committed, reaches a
 teammate, or survives a fresh clone - after a re-clone, re-run the captures. To share the generated
 docs with the team (commit them, review them in PRs), set `CLAUDE_DOCS_PATH` to a committed path
-such as `docs` instead.
+such as `docs` instead - and state that root here in this section, so a fresh clone resolves it
+before the machine-local `.claude/settings.json` exists.
 
 Superpowers (when installed) writes its implementation plans and design specs under this same
 `CLAUDE_DOCS_PATH` root too - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never

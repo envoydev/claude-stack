@@ -3,7 +3,7 @@ name: project-implementer
 description: "Use when you have a task plan in hand - from project-solution-design, ideally gated by project-verify-plan - and want to BUILD it in the current chat, task by task: the single-chat form of the implementer seat's execution protocol. Honors each task's contract, builds code + tests per task, gates each task green before the next, resolves every red INLINE (builds in this chat by default, dispatching nothing), and hands to the build review (`project-verify-code` inline or the `<stack>-verifier` seat) + the done-gate. Trigger on execute the plan, build the plan, implement the tasks, build task 2, continue the plan. On an explicit agents request it hands each task to its `<stack>-implementer` seat instead (up to 3 at once, each on its frontmatter model unless you name one); the full multi-agent flow with its own designer and verifier is project-solve-cross-task. Not a plan-less ad-hoc edit - just make that."
 ---
 
-# Project Implement - execute a verified plan, task by task, in one chat
+# Project Implementer - execute a verified plan, task by task, in one chat
 
 This is the build step of the single-session vertical: `project-solution-design` produced the plan, `project-verify-plan` audited it, this executes it - one task at a time, in the plan's dependency order, in your context so every diff is inspectable as it lands. It carries the implementer seat's *execution protocol* only; the coding conventions themselves need no restating - the path-scoped rules auto-attach the house skill per file type, the generated code-style hook injects the project's actual style on the first edit, and the plan's task cards name the stack traps.
 

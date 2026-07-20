@@ -18,7 +18,8 @@ with `--source` in step 6, and remove `$TMP` on every exit path in step 10. The 
 narration line between steps.
 
 ## 1. Preconditions - find the install
-Exactly as the sibling `configure` command's step 1: project mode (populated `.claude/`) or global
+Exactly as the sibling `configure` command's step 1 (`${CLAUDE_PLUGIN_ROOT}/commands/configure.md` -
+read it for any step cited below, command bodies do not co-load): project mode (populated `.claude/`) or global
 mode (the account's skills). Nothing installed in either place -> stop and route to the sibling
 `/claude-stack:setup` command. The user names items to add or drop -> that is the sibling
 `configure` command, not this one. OS: `darwin`/`linux` -> the sh installer; Windows -> the ps1
