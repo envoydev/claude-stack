@@ -300,18 +300,40 @@ test('CLI --evidence-gaps prints both directions and dedupes vs stack-missing', 
     {
         const foundFile = path.join(dir, 'found.json');
         const invFile = path.join(dir, 'installed.json');
-        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: { 'angular-material': '@angular/material in web/package.json', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'dotnet-messaging': 'MassTransit in src/Api.csproj' }, mcps: {}, plugins: {} } }));
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: { 'dotnet-data-access': 'Npgsql in src/Api.csproj', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'dotnet-messaging': 'MassTransit in src/Api.csproj' }, mcps: {}, plugins: {} } }));
         fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: ['dotnet-messaging', 'dotnet-openapi'], mcps: [], plugins: [], hooks: [] }));
         const catalogPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'evidence.json');
         const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
         const base = ['--evidence-gaps', '--found', foundFile, '--catalog', catalogPath, '--installed', invFile, '--graph', path.join(__dirname, 'stack-graph.json')];
-        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), ...base, '--recs', recsPath, '--stacks', 'angular'], { encoding: 'utf8' });
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), ...base, '--recs', recsPath, '--stacks', 'aspnet'], { encoding: 'utf8' });
         assert.match(out, /^evidence-missing: skill dotnet-grpc - Grpc\.AspNetCore in src\/Api\.csproj, not installed$/m);
-        assert.ok(!/evidence-missing: skill angular-material/.test(out), 'deduped - angular stack-missing already lists it');
+        assert.ok(!/evidence-missing: skill dotnet-data-access/.test(out), 'deduped - aspnet stack-missing already lists it');
         assert.ok(!/evidence-missing: skill dotnet-messaging/.test(out), 'installed - not missing');
         assert.match(out, /^no-evidence: skill dotnet-openapi - installed, no signal found \(advisory\)$/m);
         const noDedupe = execFileSync('node', [path.join(__dirname, 'stack-select.js'), ...base], { encoding: 'utf8' });
-        assert.match(noDedupe, /evidence-missing: skill angular-material/, 'without --recs the line stays');
+        assert.match(noDedupe, /evidence-missing: skill dotnet-data-access/, 'without --recs the line stays');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// The advisory tier must never overstate droppability: a no-evidence item the kept closure
+// still requires names its holders, so 'your call' and 'closure-locked' can't diverge again
+// (the angular-material-at-0.1.15 wording defect).
+test('no-evidence lines name their closure holders', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-held-'));
+    try
+    {
+        const foundFile = path.join(dir, 'found.json');
+        const invFile = path.join(dir, 'installed.json');
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: {}, mcps: {}, plugins: {} } }));
+        // dotnet-data-access is catalog-listed and hard-held by aspnet-verifier's frontmatter
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: ['aspnet-verifier'], skills: ['dotnet-data-access', 'dotnet-performance'], mcps: [], plugins: [], hooks: [] }));
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--evidence-gaps', '--found', foundFile, '--catalog', path.join(__dirname, '..', 'setup-plugin', 'references', 'evidence.json'), '--installed', invFile, '--graph', path.join(__dirname, 'stack-graph.json')], { encoding: 'utf8' });
+        assert.match(out, /^no-evidence: skill dotnet-data-access - installed, no signal found \(advisory; held by agent aspnet-verifier\)$/m, 'a closure-held item names its holder');
+        assert.match(out, /^no-evidence: skill dotnet-performance - installed, no signal found \(advisory\)$/m, 'an unheld item keeps the plain advisory');
     }
     finally
     {

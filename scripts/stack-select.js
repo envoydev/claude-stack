@@ -500,7 +500,15 @@ function main(argv)
         {
             if (!covered.has(`${m.category}:${m.name}`)) console.log(`evidence-missing: ${m.category} ${m.name} - ${m.signal}, not installed`);
         }
-        for (const u of gaps.unevidenced) console.log(`no-evidence: ${u.category} ${u.name} - installed, no signal found (advisory)`);
+        // Never overstate droppability: an advisory item the kept closure still requires
+        // names its holders - dropping it means dropping the holder, not the item.
+        const plural = { skill: 'skills', mcp: 'mcps', plugin: 'plugins' };
+        for (const u of gaps.unevidenced)
+        {
+            const deps = findDependents(graph, installed, plural[u.category], u.name);
+            const held = deps.length ? `; held by ${deps.map(d => `${d.category} ${d.name}`).join(', ')}` : '';
+            console.log(`no-evidence: ${u.category} ${u.name} - installed, no signal found (advisory${held})`);
+        }
         return;
     }
 

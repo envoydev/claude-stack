@@ -307,7 +307,6 @@
     "angular-solution-designer": {
       "skills": [
         "angular-conventions",
-        "angular-material",
         "angular-styling",
         "frontend",
         "project-solution-design"
@@ -336,7 +335,6 @@
     "angular-verifier": {
       "skills": [
         "angular-conventions",
-        "angular-material",
         "angular-styling",
         "typescript"
       ],

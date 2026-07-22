@@ -95,7 +95,9 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
    (not installed, add?; `evidence-missing:` lines join as MISSING with the signal as the reason),
    each with its reason. Under the table, this layer's `no-evidence:` lines as PLAIN TEXT - no row
    numbers, no consent: 'advisory: dotnet-messaging installed, no messaging package found - kept,
-   your call'. A layer with none of the three gets a single line ('rules: nothing to reconcile')
+   your call'. A line carrying `held by <cat> <name>` is NOT your-call: the kept closure requires
+   it, so present it as locked-by-holder info - its real drop path is dropping the holder via the
+   sibling configure, never a promise this walk can keep. A layer with none of the three gets a single line ('rules: nothing to reconcile')
    and you move straight on - do not invent rows.
 
 ```
