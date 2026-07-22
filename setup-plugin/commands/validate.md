@@ -1,5 +1,5 @@
 ---
-description: "RECONCILE an existing claude-stack install to THIS project - detect the project's real stacks by artifact (the setup step-2 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions, and mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep) - drops and adds proposed only with gate evidence (a corroboration trail or a verbatim-cited conflict), visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Adds run the installer for the accepted set; removes delete explicitly - the same paths setup/configure use. Project mode only. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
+description: "RECONCILE an existing claude-stack install to THIS project - detect the project's real stacks by artifact (the setup step-2 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Adds run the installer for the accepted set; removes delete explicitly - the same paths setup/configure use. Project mode only. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
 disable-model-invocation: true
 ---
 
@@ -133,7 +133,7 @@ provably never touches, or whose domain the code provably DOES touch without any
 is invisible to every scanner. Drop scope: installed artifacts still untouched
 this run that nothing kept requires (probe `--dependents` first - a closure-held item is NOT in
 scope; at most note the finding and name the holder, its drop path is the sibling configure).
-Add scope: release-shipped artifacts the walk left unproposed. Three inputs, three gates:
+Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four gates:
 
 1. **The advisory list FIRST - corroborate non-use in the code.** Every `no-evidence:` item is a
    prime drop candidate the package scan alone cannot judge. For each: derive the skill's domain
@@ -145,10 +145,16 @@ Add scope: release-shipped artifacts the walk left unproposed. Three inputs, thr
    never propose against the project's documented intent. Zero code hits + no doc citation ->
    propose JUDGMENT-DROP with the trail as the citation: the greps run, their zero results, the
    matching exclusion.
-2. **The rest vs the project's stated conventions.** Review the remaining scope against the
-   project's OWN docs - the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
+2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
+   scope against the project's OWN docs - the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
    `ASSESSMENT.md`, `PROJECT-CODE-STYLE.md`, where they exist - and propose a drop on a cited
-   conflict: quote the conflicting rule verbatim and name its source. No project docs -> this
+   conflict: quote the conflicting rule verbatim and name its source. Version pins count as
+   conventions: an item whose guidance surface targets a different major than the project runs
+   (a latest-Angular best-practices tool in a project pinned to an older Angular whose CLAUDE.md
+   says `standalone: false`, no signals) conflicts even when no prose rule names the tool - cite
+   the pin (package.json version, the CLAUDE.md convention) next to the item's conflicting
+   guidance, and say which half of the item survives (its docs lookups may still earn a keep when
+   only its advice half fights the project). No project docs -> this
    path is skipped (say so); path 1 still runs - it reads code, not conventions.
 3. **Corroborated need - the uninstalled mirror of gate 1.** An uninstalled skill whose domain the
    code provably touches but no manifest signal covers (BCL-only cryptography, a hand-rolled
@@ -159,18 +165,32 @@ Add scope: release-shipped artifacts the walk left unproposed. Three inputs, thr
    exclusions do not match this project (an exclusion hit kills the proposal). Propose
    JUDGMENT-ADD with the trail as the citation: the greps run, the quoted hits, the exclusion
    check. No surfaced trail, no proposal - 'the project might grow into it' passes no gate.
+4. **Functional overlap among kept items.** Two installed items covering the same capability
+   (two browser-driving MCPs; a plugin and an MCP doing the same job) where the project's own
+   docs or config cite only one: propose the uncited one as a drop. The citation carries all
+   three parts or the proposal does not stand: the overlap (what both do), the project's
+   preference (which one its docs actually name), and the survivor's GAP - the one thing the
+   drop candidate does that the kept one cannot, stated so the user keeps it by needing exactly
+   that. No gap named = the analysis is not finished.
 
 No gate evidence, no proposal: unused-looking, stale-feeling, or 'probably never needed' passes
-neither gate. One table, VISIBLY separate from the signal tiers, then the usual per-item consent
-round:
+no gate. Present the findings RANKED, each verdict carrying its severity - MATERIAL (a real
+per-session cost, or guidance that actively fights the project) above MINOR (marginal value at
+near-zero cost - trim only if the user wants lean) - and each proposal readable as four parts:
+what the item does, why it is marginal or wrong in THIS project (the citation), the exception
+that would justify keeping it, and the recommendation. Close the step with one 'correct as-is'
+line naming what the review cleared and why in a clause - the user must see the reasoning
+covered everything, not only the cuts. One table, VISIBLY separate from the signal tiers, then
+the usual per-item consent round:
 
 ```
-[step 9/11 - judgment] corroborated non-use + conflicts + corroborated need · next: apply
- # | artifact                   | verdict       | citation
----+----------------------------+---------------+--------------------------------------------------
- 1 | skill dotnet-architecture  | JUDGMENT-DROP | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
- 2 | skill dotnet-realtime      | JUDGMENT-DROP | advisory, corroborated: 0 hits for SignalR/hub/web-host across src/ (3 greps); outbound ClientWebSocket is the skill's own do-not-load case
- 3 | skill dotnet-cryptography  | JUDGMENT-ADD  | corroborated: AesGcm in src/Vault/Sealer.cs, Rfc2898DeriveBytes in src/Auth/Hasher.cs (2 greps, hits quoted); no crypto package = no scanner signal; no exclusion match
+[step 9/11 - judgment] corroborated non-use + conflicts + corroborated need + overlap · next: apply
+ # | artifact                   | verdict                  | citation
+---+----------------------------+--------------------------+--------------------------------------------------
+ 1 | mcp chrome-devtools        | JUDGMENT-DROP · MATERIAL | overlap: playwright also drives a browser and is the only one the project docs cite; unique gap - live console/network debug of an already-open Chrome; keep only if that is real here
+ 2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
+ 3 | skill dotnet-realtime      | JUDGMENT-DROP · MINOR    | advisory, corroborated: 0 hits for SignalR/hub/web-host across src/ (3 greps); outbound ClientWebSocket is the skill's own do-not-load case
+ 4 | skill dotnet-cryptography  | JUDGMENT-ADD             | corroborated: AesGcm in src/Vault/Sealer.cs, Rfc2898DeriveBytes in src/Auth/Hasher.cs (2 greps, hits quoted); no crypto package = no scanner signal; no exclusion match
 ```
 
 This step is model judgment, not a signal: it is non-deterministic and can be confidently wrong,
@@ -237,6 +257,8 @@ THIS command: after apply, after an abort, after a disputed-detection stop, and 
   (named greps with their zero or quoted-positive hits, the skill's own exclusion check) or the
   verbatim-quoted conflicting rule with its source - and never put a JUDGMENT row in a signal-tier
   table - the two have different reliability and the user must always see which is which. A
-  judgment add additionally needs a trail the run itself surfaced - never a speculative catalog sweep.
+  judgment add additionally needs a trail the run itself surfaced - never a speculative catalog
+  sweep - and an overlap drop additionally needs the survivor's gap named: a 'redundant' claim
+  that cannot say what the drop candidate uniquely does has not finished the analysis.
 - Do not skip the prerequisite gate before an install, and never remove what a kept item still
   needs. Do not paste tool output or leave `$TMP` behind on any exit path. Do not commit anything.
