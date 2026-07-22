@@ -75,7 +75,13 @@ function collectPackages(root, files)
             // PackageReference ONLY - under central package management a Directory.Packages.props
             // <PackageVersion> pin can exist for a package no project references, so a pin alone
             // is never usage; the version-less CPM PackageReference carries the name.
-            for (const m of text.matchAll(/<PackageReference\s[^>]*Include="([^"]+)"/g)) out.push({ pkg: m[1], rel });
+            for (const t of text.matchAll(/<PackageReference\b[^>]*>/g))
+            {
+                const inc = /Include="([^"]+)"/.exec(t[0]);
+                if (!inc) continue;
+                const ver = /Version="([^"]+)"/.exec(t[0]);
+                out.push({ pkg: inc[1], rel, version: ver ? ver[1] : undefined });
+            }
         }
         else if (path.basename(file) === 'package.json')
         {
@@ -86,7 +92,7 @@ function collectPackages(root, files)
             catch { continue; }
             for (const section of ['dependencies', 'devDependencies'])
             {
-                for (const pkg of Object.keys(json[section] || {})) out.push({ pkg, rel });
+                for (const [pkg, version] of Object.entries(json[section] || {})) out.push({ pkg, rel, version });
             }
         }
     }
@@ -133,6 +139,30 @@ function scan(root, catalog)
     return found;
 }
 
+// First integer in a version string ('^16.2.0' -> 16); null when none is parseable.
+function majorOf(version)
+{
+    const m = /\d+/.exec(String(version || ''));
+    return m ? parseInt(m[0], 10) : null;
+}
+
+// Component of the judgment catalog the scan can decide deterministically: an item whose
+// guidance targets a newer major than the project runs. No version found = no claim.
+function findVersionConflicts(root, judgment)
+{
+    const packages = collectPackages(root, walk(root));
+    const out = [];
+    for (const c of judgment.versionConflicts || [])
+    {
+        const p = packages.find(x => x.pkg === c.package && majorOf(x.version) !== null);
+        if (p && majorOf(p.version) < parseInt(c.below, 10))
+        {
+            out.push({ item: c.item, package: c.package, version: p.version, below: c.below, conflict: c.conflict, survives: c.survives, rel: p.rel });
+        }
+    }
+    return out;
+}
+
 function main(argv)
 {
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
@@ -144,12 +174,22 @@ function main(argv)
     catch (e) { console.error(`scan-evidence: cannot read catalog ${catalogPath}: ${e.code || e.message}`); process.exit(1); }
     if (!fs.existsSync(root)) { console.error(`scan-evidence: no such root ${root}`); process.exit(1); }
 
-    const result = JSON.stringify({ found: scan(root, catalog) }, null, 2);
+    const payload = { found: scan(root, catalog) };
+    const judgmentPath = arg('--judgment');
+    if (judgmentPath)
+    {
+        let judgment;
+        try { judgment = JSON.parse(fs.readFileSync(judgmentPath, 'utf8')); }
+        catch (e) { console.error(`scan-evidence: cannot read judgment catalog ${judgmentPath}: ${e.code || e.message}`); process.exit(1); }
+        payload.judgment = { versionConflicts: findVersionConflicts(root, judgment) };
+    }
+
+    const result = JSON.stringify(payload, null, 2);
     const out = arg('--out');
     if (out) fs.writeFileSync(out, result);
     else process.stdout.write(result + '\n');
 }
 
-module.exports = { scan, matchesPackage, basenameMatches };
+module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts };
 
 if (require.main === module) main(process.argv.slice(2));

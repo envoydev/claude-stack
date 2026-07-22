@@ -354,6 +354,34 @@ function emitTable(graph, layer, opts)
     return [line(header), rule, ...rows.map(line), rule, footer].join('\n') + '\n';
 }
 
+// The judgment catalog's installed-set half (setup-plugin/references/judgment.json):
+// overlap pairs surfaced only when EVERY item of the pair is installed - each side's unique
+// gap rides the line so the keep decision hinges on it - and dormant lines for installed
+// occasion-bound items, the cadence text as the citation. The scan owns the catalog's third
+// section (versionConflicts - it needs the project's manifests, not the installed set).
+function findJudgment(judgment, installed)
+{
+    const plural = { skill: 'skills', agent: 'agents', mcp: 'mcps', plugin: 'plugins', rule: 'rules', hook: 'hooks' };
+    const split = ref => { const i = ref.indexOf(':'); return { cat: ref.slice(0, i), name: ref.slice(i + 1) }; };
+    const has = ref => { const { cat, name } = split(ref); return ((installed || {})[plural[cat]] || []).includes(name); };
+    const label = ref => { const { cat, name } = split(ref); return `${cat} ${name}`; };
+
+    const lines = [];
+    for (const o of judgment.overlaps || [])
+    {
+        if (!(o.items || []).length || !o.items.every(has)) continue;
+        const gaps = o.items.map(i => `gap ${label(i)}: ${(o.gaps || {})[i]}`).join('; ');
+        lines.push(`overlap: ${o.items.map(label).join(' + ')} - shared: ${o.shared}; ${gaps}`);
+    }
+
+    for (const [ref, cadence] of Object.entries(judgment.occasionBound || {}))
+    {
+        if (has(ref)) lines.push(`dormant: ${label(ref)} - ${cadence}`);
+    }
+
+    return lines;
+}
+
 function emitSelectionFile(closure)
 {
     const lines = [];
@@ -483,6 +511,18 @@ function main(argv)
         return;
     }
 
+    // --judgment: the judgment catalog's installed-set half for the validate command -
+    // overlap: lines for pairs with every side installed, dormant: lines for installed
+    // occasion-bound items. Needs no --selection; the scan owns versionConflicts.
+    if (has('--judgment'))
+    {
+        const judgment = readJson('--judgment', arg('--judgment'));
+        const installedForJudgment = readJson('--installed', arg('--installed'));
+        if (!judgment || !installedForJudgment) { console.error('stack-select: --judgment needs a judgment.json and --installed <inventory.json>'); process.exit(2); }
+        for (const line of findJudgment(judgment, installedForJudgment)) console.log(line);
+        return;
+    }
+
     // --evidence-gaps: both evidence directions for the guided commands. With --recs +
     // --stacks, evidence-missing lines that stack/baseline-missing already lists are dropped
     // (the closure reason wins - one line per artifact, not two).
@@ -590,6 +630,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

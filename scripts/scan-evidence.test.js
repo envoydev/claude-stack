@@ -40,7 +40,7 @@ function buildFixture()
     put('src/Gen/Gen.csproj', `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsRoslynComponent>true</IsRoslynComponent></PropertyGroup>
 </Project>`);
-    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0' }, devDependencies: { '@sentry/angular': '^7.0.0' } }));
+    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@sentry/angular': '^7.0.0' } }));
     put('nx.json', '{}');
     // content signal: a regex over a catalog-named code file (not a manifest)
     put('src/Api/Program.cs', 'app.MapGet("/health", () => "ok");\n');
@@ -92,6 +92,23 @@ test('scanner honors the skip-list, the depth cap, and reports nothing for absen
         // under central package management a PackageVersion pin can exist for a package no
         // project references - a pin alone must never count as usage (the knopka false-adds)
         assert.strictEqual(found.skills['dotnet-aspire'], undefined, 'a CPM PackageVersion pin with no PackageReference is not evidence');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('scanner with --judgment computes version conflicts from found package majors', () => {
+    const JUDGMENT = path.join(__dirname, '..', 'setup-plugin', 'references', 'judgment.json');
+    const root = buildFixture();
+    try
+    {
+        const out = execFileSync('node', [SCRIPT, '--root', root, '--catalog', CATALOG, '--judgment', JUDGMENT], { encoding: 'utf8' });
+        const conflicts = JSON.parse(out).judgment.versionConflicts;
+        const row = conflicts.find(c => c.item === 'mcp:angular-cli');
+        assert.ok(row, '@angular/core ^16 is below the catalog threshold 17');
+        assert.strictEqual(row.package, '@angular/core');
+        assert.strictEqual(row.version, '^16.2.0');
+        assert.strictEqual(row.below, '17');
+        assert.match(row.rel, /web\/package\.json/);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

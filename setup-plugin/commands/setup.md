@@ -19,6 +19,15 @@ Eleven user-facing steps; the machinery between them runs silently. Before EVERY
 
 1 install choices · 2 project analysis · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 prerequisite check · 10 install · 11 CLAUDE.md (optional)
 
+**The skeleton is INVARIANT - the stability contract.** Every run prints all 11 banners, in this
+order, exactly once each. A step that does not apply THIS run still prints its banner followed by
+ONE line naming why it is a no-op (`[step 2/11 - project analysis] skipped - no-project mode,
+stacks chosen by hand`, `[step 11/11 - CLAUDE.md] skipped - global install, no project file`),
+then moves on - a step never silently vanishes, and steps are never merged, reordered,
+renumbered, or invented. Two runs must be comparable banner by banner; the content varies, the
+skeleton never does. The closing next-steps card (Post-check below) is part of the skeleton too -
+every run ends with it.
+
 ## 1. Install choices
 
 Detect silently first - the OS (`darwin`/`linux` -> `claude-stack.sh`; Windows -> `claude-stack.ps1` via `pwsh`) and the mode (project root in a git repo -> project mode; anything else -> no-project mode) - then ask ONE screen with only the choices a fresh install actually needs: scope (`project` default / `global`; in no-project mode this question becomes the no-project-mode confirmation instead - a `global` install into the account `~/.claude` - since there is no project to scope to) and profile (the optional `--space` account name, default none), plus the two environment values the install writes into the scope's settings.json: the context auto-compact trigger (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` - accept the house default 40, type another percent, or 'off' = `autoCompactEnabled: false` instead) and the generated-docs root (`CLAUDE_DOCS_PATH` - default `.claude/docs`, machine-local; a committed forward-slash path like `docs` shares the captured docs with the team). Brownfield: when the target settings.json already carries either value, present THAT as the default - never silently override a pinned choice. One conditional extra: 'install the GitHub CLI?' - asked ONLY when `gh` is not already on PATH, skipped entirely when it is. Everything else moved to where it belongs: the context7 transport is asked at step 7 only if context7 ends up selected, and `--keep-pins` is a configure/update question - a fresh install has no local pin edits to keep, so never ask it here.
@@ -90,7 +99,7 @@ Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's c
 
 ## 9. Prerequisite check
 
-Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check [--context7-local] [--github-cli]` (`--context7-local` only when the user chose context7 `local`; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection.
+Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check [--context7-local] [--github-cli]` (`--context7-local` only when the user chose context7 `local`; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
 
 - Blockers: list each with its fix. Ask: fix them now and continue, or drop the affected items (reopen the owning layer's table, re-run, re-emit). Never install past a blocker.
 - Warnings: list them and proceed.

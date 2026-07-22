@@ -33,6 +33,13 @@ banner line so the user always knows where they are, what is being decided, and 
 
 1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 prerequisite check · 11 update · 12 CLAUDE.md (optional)
 
+**The skeleton is INVARIANT - the stability contract.** Every run prints all 12 banners, in this
+order, exactly once each. A step that does not apply THIS run still prints its banner followed by
+ONE line naming why it is a no-op (`[step 7/12 - MCPs] skipped - area not selected`,
+`[step 12/12 - CLAUDE.md] skipped - global mode`), then moves on - a step never silently
+vanishes, and steps are never merged, reordered, renumbered, or invented. Two runs must be
+comparable banner by banner; the content varies, the skeleton never does.
+
 ## 1. Install status - find it, inventory it, diff it
 
 - **Find the install.** Project mode: cwd is a project root with a populated `.claude/`
@@ -81,6 +88,14 @@ cases to handle, neither an error:
   and move on; never guess a diff, and never treat this as a reason to skip the update.
 
 A `TRUNCATED` first line means the preview may be missing files - say so alongside the summary.
+
+**This step's output has ONE fixed shape** - three blocks, nothing else: (1) the inventory table,
+fixed columns `category | count | items`, six rows in the fixed order
+rules/agents/skills/hooks/mcps/plugins (note excluded generated files in one trailing line, not
+per-row prose); (2) the update-preview verdict - one line leading with the version delta or 'no
+upstream changes', then the category summary only when there IS a diff; (3) the closing question.
+Detection detail, tool notes, and narration beyond these three blocks is the chaos this shape
+exists to prevent.
 
 Close the step with one question: **adjust the selection** (continue to the area pick at step 2), or
 **refresh as-is** (nothing to change - skip straight to step 10; when upstream changed nothing
@@ -210,9 +225,11 @@ skipped, or nothing changed: one narration line, nothing written.
 ## 10. Prerequisite check
 
 Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check`,
-output redirected to `$TMP/select.out` like every recompute. Show the closed selection grouped by category - closure adds marked with their reasons, the final
-drop list (incl. accepted orphans) named. Blockers: list each with its fix and never run past
-one (fix now, or reopen the owning layer and drop the affected items). Warnings are listed and
+output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
+verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
+adds marked with their reasons, the final drop list (incl. accepted orphans) named; (3) each
+blocker with its fix, each warning listed. Never run past a blocker
+(fix now, or reopen the owning layer and drop the affected items). Warnings are listed and
 passed. **Convention-conflict warnings (project mode only):** when the project carries stated
 conventions (a root or `.claude/` CLAUDE.md, `<docs-path>/architecture/` docs), check THIS RUN'S
 typed adds (never locked rows or kept installed items) against them - a conflicting add gets one
@@ -231,12 +248,15 @@ same revision step 1 previewed:
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
-`update --selection` refreshes the selected set - it does NOT uninstall what was dropped. Remove
-dropped items (incl. accepted orphans) explicitly, show each command before running it: delete
-the skill directory / agent file / rule file; a hook loses BOTH its `.claude/hooks/` file and its
-`.claude/settings.json` wiring (show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP;
-`claude plugin uninstall <name>` for a plugin. Then re-run `/project-agent-capabilities` (when
-installed) so the generated awareness rule reflects the new inventory.
+`update --selection` refreshes the selected set - it does NOT uninstall what was dropped.
+**Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
+stamp action) - never paste its output; (2) removals - each dropped item (incl. accepted
+orphans) with its command shown before running it: delete the skill directory / agent file /
+rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
+(show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP;
+`claude plugin uninstall <name>` for a plugin; 'removals: none' when nothing was dropped;
+(3) the follow-through line - re-run `/project-agent-capabilities` (when installed) so the
+generated awareness rule reflects the new inventory, and any environment writes from step 9.
 
 ## 12. CLAUDE.md - the user's call (project mode)
 

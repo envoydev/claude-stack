@@ -40,9 +40,14 @@ inventory at [`docs/claude-stack.html`](docs/claude-stack.html), not in this REA
 
 ## Install - with the marketplace plugin (guided)
 
-Install the setup plugin once, then run it inside any project:
+Register the marketplace and install the setup plugin **per project** - run both commands from
+inside the project, so the plugin binding lands in that project's own config. Per-project is the
+default to prefer: each repo pins exactly what it uses, and a machine-wide default never leaks
+the plugin into projects that do not want it (a user-scope install works, but choose it
+deliberately):
 
 ```
+cd <your-project>
 claude plugin marketplace add envoydev/claude-stack
 claude plugin install claude-stack@claude-stack
 ```

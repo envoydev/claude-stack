@@ -279,6 +279,53 @@ function lintEvidenceCatalog(catalog, rosters)
     return out;
 }
 
+// Lint the judgment catalog (setup-plugin/references/judgment.json) against the artifact
+// rosters: refs are '<category>:<name>' and a typo'd ref silently never fires; every overlap
+// item needs its unique gap (the keep decision hinges on it); versionConflicts need an integer
+// threshold; occasionBound cadences must be non-empty. Pure, like lintEvidenceCatalog.
+function lintJudgmentCatalog(catalog, rosters)
+{
+    const out = [];
+    const plural = { skill: 'skills', agent: 'agents', mcp: 'mcps', plugin: 'plugins' };
+    const known = ref =>
+    {
+        const i = ref.indexOf(':');
+        const layer = plural[ref.slice(0, i)];
+        return layer && rosters[layer] && rosters[layer].has(ref.slice(i + 1));
+    };
+    const checkRef = (ref, where) => { if (!known(ref)) out.push(`judgment.json ${where} names '${ref}' which resolves to no known artifact - it would silently never fire`); };
+
+    for (const o of catalog.overlaps || [])
+    {
+        const items = o.items || [];
+        if (items.length < 2) out.push('judgment.json has an overlap with fewer than 2 items - nothing to overlap');
+        if (typeof o.shared !== 'string' || o.shared.trim() === '') out.push(`judgment.json overlap [${items.join(', ')}] has no shared capability text`);
+        for (const ref of items)
+        {
+            checkRef(ref, 'overlap');
+            if (typeof (o.gaps || {})[ref] !== 'string' || !o.gaps[ref].trim()) out.push(`judgment.json overlap item '${ref}' has no gap - the keep decision hinges on each side's unique gap`);
+        }
+    }
+
+    for (const c of catalog.versionConflicts || [])
+    {
+        checkRef(c.item, 'versionConflicts');
+        for (const field of ['package', 'conflict', 'survives'])
+        {
+            if (typeof c[field] !== 'string' || !c[field].trim()) out.push(`judgment.json versionConflicts '${c.item}' is missing '${field}'`);
+        }
+        if (!/^\d+$/.test(String(c.below || ''))) out.push(`judgment.json versionConflicts '${c.item}' has non-integer below '${c.below}'`);
+    }
+
+    for (const [ref, cadence] of Object.entries(catalog.occasionBound || {}))
+    {
+        checkRef(ref, 'occasionBound');
+        if (typeof cadence !== 'string' || cadence.trim() === '') out.push(`judgment.json occasionBound '${ref}' has an empty cadence - the cadence IS the citation`);
+    }
+
+    return out;
+}
+
 // Extract the stack HTML's view of the inventory: house skill names,
 // third-party repo skill names, plugin names (from plugin-URL skill rows and
 // "/plugin install X@" install cells), and MCP server names.
@@ -1072,6 +1119,28 @@ function main()
         {
             flag(finding);
         }
+
+        // 23. The judgment catalog (setup-plugin/references/judgment.json) - same silent-miss
+        //     class: refs must resolve, overlaps carry both gaps, thresholds parse.
+        const judgmentPath = path.join(ROOT, 'setup-plugin', 'references', 'judgment.json');
+        let judgmentCatalog = null;
+        try
+        {
+            judgmentCatalog = JSON.parse(fs.readFileSync(judgmentPath, 'utf8'));
+        }
+        catch (err)
+        {
+            flag(`setup-plugin/references/judgment.json is unreadable: ${err.message}`);
+        }
+
+        if (judgmentCatalog)
+        {
+            const agentNames = fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''));
+            for (const finding of lintJudgmentCatalog(judgmentCatalog, { ...rosters, agents: new Set(agentNames) }))
+            {
+                flag(finding);
+            }
+        }
     }
 
     if (warnings.length > 0)
@@ -1107,6 +1176,7 @@ module.exports = {
     parseFlatBlock,
     localSkillDirs,
     lintEvidenceCatalog,
+    lintJudgmentCatalog,
     NON_SKILL_TOKENS,
 };
 

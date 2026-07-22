@@ -175,7 +175,12 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /JUDGMENT-DROP/, 'the judgment step exists with its labeled verdict');
     assert.match(body, /No gate evidence, no proposal/, 'judgment proposals are gate-evidence-gated');
     assert.match(body, /corroborate non-use in the code/, 'the advisory list is the judgment step\'s first input');
-    assert.match(body, /reads code, not conventions/, 'no project docs skips only the doc path, not the corroboration path');
+    assert.match(body, /read code and manifests,\s+not conventions/, 'no project docs skips only the doc path, not the corroboration path');
+    // the data-driven judgment candidates: overlap/dormant lines + precomputed version conflicts
+    assert.match(body, /JUDGMENT-ADD/, 'the corroborated-need gate exists');
+    assert.match(body, /--judgment/, 'validate computes the judgment lines through the tool');
+    assert.match(body, /`overlap:`/, 'overlap candidates come from the tool output');
+    assert.match(body, /`dormant:`/, 'dormant advisories come from the tool output');
 });
 
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {

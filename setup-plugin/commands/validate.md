@@ -60,7 +60,7 @@ mis-detection (a WPF app on a non-standard SDK, SQL in an odd path) is corrected
 walk removes anything on it. Detecting nothing is valid; confirm the detection is right, then walk.
 
 Compute the audits once against the current inventory, quietly - the two stack-level passes,
-the evidence scan, and the evidence gaps:
+the evidence scan (with the judgment catalog), the evidence gaps, and the judgment lines:
 
 ```
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
@@ -70,11 +70,13 @@ node "$TMP/repo/scripts/stack-select.js" --missing   --installed "$TMP/installed
   --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/missing.out"
 node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/setup-plugin/references/evidence.json" \
-  --out "$TMP/found.json"
+  --judgment "$TMP/repo/setup-plugin/references/judgment.json" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.json" \
   --catalog "$TMP/repo/setup-plugin/references/evidence.json" --installed "$TMP/installed.json" \
   --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/evidence.out"
+node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/setup-plugin/references/judgment.json" \
+  --installed "$TMP/installed.json" > "$TMP/judgment.out"
 ```
 
 `redundant:` lines = installed, whole owning stack absent (remove candidates). `missing:` lines =
@@ -82,6 +84,8 @@ detected-stack + baseline closure not installed (add candidates), each with `nee
 `evidence-missing:` lines = the scan found a signal for an artifact that is not installed (add
 candidates, the signal as the reason - already deduped against the `missing:` lines by the tool).
 `no-evidence:` lines = installed, catalog-listed, no signal found - ADVISORY ONLY, never an action.
+`overlap:` / `dormant:` lines (judgment.out) + the scan's `judgment.versionConflicts` rows
+(found.json) = step 9's precomputed candidates - carried there, never acted on in the walk.
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 and the curated `general` set in recommendations.json (cross-stack skills a narrow seat happens to
 preload - GoF patterns, dotnet-migrate) - you present its output, you do not re-derive it.
@@ -149,13 +153,14 @@ Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four
    scope against the project's OWN docs - the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
    `ASSESSMENT.md`, `PROJECT-CODE-STYLE.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
-   conventions: an item whose guidance surface targets a different major than the project runs
-   (a latest-Angular best-practices tool in a project pinned to an older Angular whose CLAUDE.md
-   says `standalone: false`, no signals) conflicts even when no prose rule names the tool - cite
-   the pin (package.json version, the CLAUDE.md convention) next to the item's conflicting
-   guidance, and say which half of the item survives (its docs lookups may still earn a keep when
-   only its advice half fights the project). No project docs -> this
-   path is skipped (say so); path 1 still runs - it reads code, not conventions.
+   conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
+   found.json arrive with the package, the found version, the threshold, the conflict text, and
+   the item's surviving half - present them as-is, adding the project-doc side where one exists.
+   A version conflict the catalog misses may still be proposed by hand with the full citation
+   (the pin next to the item's conflicting guidance) - and is worth an entry in
+   `references/judgment.json` upstream. No project docs -> the prose-conventions path
+   is skipped (say so); path 1 and the precomputed rows still run - they read code and manifests,
+   not conventions.
 3. **Corroborated need - the uninstalled mirror of gate 1.** An uninstalled skill whose domain the
    code provably touches but no manifest signal covers (BCL-only cryptography, a hand-rolled
    background-job loop) is gate 1's blind spot in reverse. Work ONLY from trails this run already
@@ -165,13 +170,14 @@ Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four
    exclusions do not match this project (an exclusion hit kills the proposal). Propose
    JUDGMENT-ADD with the trail as the citation: the greps run, the quoted hits, the exclusion
    check. No surfaced trail, no proposal - 'the project might grow into it' passes no gate.
-4. **Functional overlap among kept items.** Two installed items covering the same capability
-   (two browser-driving MCPs; a plugin and an MCP doing the same job) where the project's own
-   docs or config cite only one: propose the uncited one as a drop. The citation carries all
-   three parts or the proposal does not stand: the overlap (what both do), the project's
-   preference (which one its docs actually name), and the survivor's GAP - the one thing the
-   drop candidate does that the kept one cannot, stated so the user keeps it by needing exactly
-   that. No gap named = the analysis is not finished.
+4. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
+   (judgment.out) - pairs from the shipped catalog where BOTH sides are installed, each side's
+   unique gap precomputed on the line. Your judgment adds the third part: which one the
+   project's own docs or config actually cite - and the proposal drops the uncited one, its
+   precomputed gap stated so the user keeps it by needing exactly that. An overlapping pair the
+   catalog misses may still be proposed by hand, but then the citation carries all three parts
+   yourself (the overlap, the cited preference, the survivor's gap) - and it is worth an
+   upstream `judgment.json` entry. No gap named = the analysis is not finished.
 
 No gate evidence, no proposal: unused-looking, stale-feeling, or 'probably never needed' passes
 no gate. Present the findings RANKED, each verdict carrying its severity - MATERIAL (a real
@@ -200,11 +206,12 @@ removal set and accepted judgment adds its install set, both reported there unde
 JUDGMENT label.
 
 **The dormant advisory - fine to keep, fires rarely, by requirement.** Under the judgment table,
-as PLAIN TEXT (no row numbers, no consent - like the walk's `no-evidence:` lines), list installed
-items that are legitimately here but occasion-bound: their OWN description marks them
-release-time, upgrade-time, audit-time, or ad-hoc (`capacitor-release`, `project-version-upgrade`,
-`ilspy-decompile`, `security-auditor`...) - the description IS the citation; never claim a
-frequency you cannot observe. Name each item's idle cost and off lever honestly, per layer:
+as PLAIN TEXT (no row numbers, no consent - like the walk's `no-evidence:` lines), print the
+tool's `dormant:` lines (judgment.out) - the installed occasion-bound items from the shipped
+catalog, each line's cadence text being the citation. The list is the catalog's, not yours:
+never re-derive dormancy from descriptions or claim a frequency you cannot observe; an
+occasion-bound item the catalog misses is an upstream `judgment.json` entry, not an ad-hoc
+advisory. Name each item's idle cost and off lever honestly, per layer:
 agents and manual `/`-skills cost nothing installed (explicit dispatch only - say so, so working
 machinery is not pruned for phantom savings); an auto-firing skill costs its description line per
 session (lever: remove, or accept it); an MCP costs its server launch + tools every session

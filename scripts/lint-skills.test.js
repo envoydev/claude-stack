@@ -45,3 +45,33 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     assert.ok(findings.some(f => f.includes('csprojContent signal without a label')));
     assert.ok(findings.some(f => f.includes('content signal without a label')));
 });
+
+test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gaps, bad thresholds', () => {
+    const { lintJudgmentCatalog } = require('./lint-skills.js');
+    const rosters = {
+        skills: new Set(['capacitor-release']),
+        agents: new Set(['security-auditor']),
+        mcps: new Set(['playwright', 'chrome-devtools', 'angular-cli']),
+        plugins: new Set(),
+    };
+    const clean = {
+        _comment: 'x',
+        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtools'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'a', 'mcp:chrome-devtools': 'b' } }],
+        versionConflicts: [{ item: 'mcp:angular-cli', package: '@angular/core', below: '17', conflict: 'newer-major guidance', survives: 'docs lookups' }],
+        occasionBound: { 'skill:capacitor-release': 'release-time', 'agent:security-auditor': 'audit-time' },
+    };
+    assert.deepStrictEqual(lintJudgmentCatalog(clean, rosters), []);
+
+    const bad = {
+        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtool'], shared: '', gaps: { 'mcp:playwright': 'a' } }],
+        versionConflicts: [{ item: 'skill:nope', package: '@angular/core', below: 'seventeen', conflict: 'x', survives: 'y' }],
+        occasionBound: { 'skill:capacitor-release': '  ' },
+    };
+    const findings = lintJudgmentCatalog(bad, rosters);
+    assert.ok(findings.some(f => f.includes("'mcp:chrome-devtool'")), 'unknown ref flagged');
+    assert.ok(findings.some(f => f.includes('no gap')), 'overlap item without its gap flagged');
+    assert.ok(findings.some(f => f.includes('shared')), 'empty shared flagged');
+    assert.ok(findings.some(f => f.includes("'skill:nope'")), 'unknown versionConflicts item flagged');
+    assert.ok(findings.some(f => f.includes("below 'seventeen'")), 'non-integer threshold flagged');
+    assert.ok(findings.some(f => f.includes('empty cadence')), 'blank occasionBound cadence flagged');
+});

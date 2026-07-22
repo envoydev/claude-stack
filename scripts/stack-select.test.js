@@ -281,6 +281,20 @@ test('findEvidenceGaps: missing vs unevidenced vs uncatalogued', () => {
     assert.ok(!gaps.missing.some(m => m.name === 'sentry') && !unev.includes('mcp sentry'), 'not installed + not found = nothing');
 });
 
+test('findJudgment: overlap only when both installed, dormant only when installed', () => {
+    const { findJudgment } = require('./stack-select.js');
+    const judgment = {
+        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtools'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'automation + screenshots', 'mcp:chrome-devtools': 'live debug of an open tab' } }],
+        occasionBound: { 'skill:capacitor-release': 'release-time - store submission' },
+    };
+    const both = findJudgment(judgment, { mcps: ['playwright', 'chrome-devtools'], skills: ['capacitor-release'] });
+    assert.ok(both.some(l => l.startsWith('overlap: mcp playwright + mcp chrome-devtools - shared: drive a browser')), 'overlap line for an installed pair');
+    assert.ok(both.some(l => /gap mcp chrome-devtools: live debug of an open tab/.test(l)), 'each side\'s unique gap rides the line');
+    assert.ok(both.some(l => l === 'dormant: skill capacitor-release - release-time - store submission'), 'dormant line for an installed occasion-bound item');
+    const one = findJudgment(judgment, { mcps: ['playwright'], skills: [] });
+    assert.deepStrictEqual(one, [], 'no overlap with one side absent, no dormant when not installed');
+});
+
 test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
     const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'project-solve-cross-task': 'FAKE-SIGNAL-2' } };
     const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json'), 'utf8'));
