@@ -237,6 +237,32 @@ test('emitTable emits a perfectly aligned, fully labeled layer table', () => {
     assert.strictEqual(emitTable(orphanGraph, 'nope', {}), null, 'unknown layer returns null');
 });
 
+// A suggested skill that is core to ANOTHER stack (in that stack's required closure) must
+// not be flagged `suggested` when that stack is unconfirmed - e.g. dotnet-wpf / database-
+// conventions / ionic leaking into an aspnet+angular install via a shared resolver or the
+// universal code-style-analyzer. General within-stack conditionals (owned by no stack) stay.
+const recommendations = require('../setup-plugin/references/recommendations.json');
+
+test('a suggested skill owned only by unconfirmed stacks is not flagged suggested', () => {
+    const raw = {
+        rules: ['csharp-conventions', 'dotnet-repair-agents', 'typescript-conventions', 'angular-conventions', 'angular-styling-conventions', 'angular-repair-agents'],
+        agents: ['aspnet-solution-designer', 'aspnet-implementer', 'aspnet-verifier', 'dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'angular-solution-designer', 'angular-implementer', 'angular-verifier', 'ng-build-error-resolver', 'angular-test-resolver', 'code-style-analyzer'],
+    };
+    const table = emitTable(graph, 'skills', { raw, recs: recommendations, stacks: ['aspnet', 'angular'] });
+    const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
+    // cross-stack cores are demoted to a plain addable row - present (full catalog) but not suggested
+    for (const s of ['dotnet-wpf', 'database-conventions', 'ionic'])
+    {
+        assert.ok(rowOf(s), `${s} still appears in the full-catalog table`);
+        assert.doesNotMatch(rowOf(s), /suggested/, `${s} must not be suggested when its owning stack is unconfirmed`);
+    }
+    // general conditionals owned by no stack remain legitimate suggestions for this install
+    for (const s of ['dotnet-minimal-api', 'dotnet-project-setup'])
+    {
+        assert.match(rowOf(s), /suggested/, `${s} is a genuine cross-cutting suggestion, not stack-owned`);
+    }
+});
+
 // The inverse cascade: dropping a locked item honestly means dropping everything
 // that still requires it - the configure flow turns a flat refusal into a consent-drop.
 const { findDependents } = require('./stack-select.js');
@@ -312,6 +338,94 @@ test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
         const plan = execFileSync('bash', [sh, 'install', '--scope', 'project', '--selection', selFile, '--print-plan'], { encoding: 'utf8' });
         const planSkills = (plan.match(/^plan skills:(.*)$/m) || [,''])[1].trim().split(/\s+/);
         assert.ok(planSkills.includes('dotnet-web-backend'), 'installer plan reflects the closed selection');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// The validate command's core: given the detected project stacks and the installed
+// inventory, flag every installed artifact whose ENTIRE owning stack is absent. Shared
+// items (an owner is present), non-stack deliberate extras, and always-baseline items survive.
+const { findStackRedundant, findStackMissing } = require('./stack-select.js');
+
+test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/baseline', () => {
+    const installed = {
+        rules: ['baseline-navigation', 'csharp-conventions', 'wpf-conventions'],
+        agents: ['code-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
+        skills: ['csharp', 'dotnet-web-backend', 'dotnet-wpf'],
+        mcps: ['serena', 'sentry'],
+        plugins: ['csharp-lsp'],
+        hooks: ['guard-catastrophic-rm'],
+    };
+    const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
+    const flagged = redundant.map(r => `${r.category} ${r.name}`).sort();
+    assert.deepStrictEqual(flagged, [
+        'agent wpf-implementer',
+        'agent wpf-solution-designer',
+        'rule wpf-conventions',
+        'skill dotnet-wpf',
+    ], 'only wpf-owned installs are redundant when only aspnet is detected');
+    const names = new Set(redundant.map(r => r.name));
+    assert.ok(!names.has('dotnet-build-error-resolver'), 'a shared aspnet+wpf item survives - aspnet is present');
+    assert.ok(!names.has('csharp-conventions'), 'a rule owned by aspnet too survives');
+    assert.ok(!names.has('sentry'), 'a non-stack-owned deliberate extra is never redundant');
+    assert.ok(!names.has('baseline-navigation'), 'an always-baseline item is never redundant');
+    assert.strictEqual(redundant.find(r => r.name === 'wpf-conventions').ownedBy, 'wpf', 'the reason names the owning stack');
+});
+
+test('findStackMissing flags the detected stacks + baseline closure that is not installed', () => {
+    // a partial aspnet install - some of its vertical and the baseline are absent
+    const installed = {
+        rules: ['csharp-conventions'],
+        agents: ['aspnet-implementer'],
+        skills: ['csharp'],
+        mcps: ['serena'],
+        plugins: [],
+        hooks: [],
+    };
+    const missing = findStackMissing(graph, recommendations, installed, ['aspnet']);
+    const names = new Set(missing.map(m => `${m.category} ${m.name}`));
+    assert.ok(names.has('plugin csharp-lsp'), 'the aspnet LSP plugin is missing');
+    assert.ok(names.has('agent aspnet-verifier'), 'the aspnet vertical is incomplete');
+    assert.ok(names.has('skill dotnet-web-backend'), 'the aspnet web hub is missing');
+    assert.ok([...names].some(n => n.startsWith('rule baseline-')), 'missing always-baseline rules surface');
+    assert.ok(!names.has('agent aspnet-implementer'), 'an installed item is never missing');
+    assert.ok(!names.has('skill csharp'), 'an installed skill is never missing');
+    assert.ok(![...names].some(n => n.includes('wpf')), 'undetected-stack items are NOT proposed as missing');
+    assert.strictEqual(missing.find(m => m.name === 'csharp-lsp').neededBy, 'aspnet', 'the reason names who needs it');
+    assert.strictEqual(missing.find(m => m.name === 'baseline-security').neededBy, 'baseline', 'baseline items are attributed to baseline');
+});
+
+test('CLI --missing prints per-category missing lines from an installed inventory', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-missing-'));
+    try
+    {
+        const invFile = path.join(dir, 'installed.json');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: [], plugins: [], hooks: [] }));
+        const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--missing', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, 'stack-graph.json'), '--stacks', 'aspnet'], { encoding: 'utf8' });
+        assert.match(out, /^missing: plugin csharp-lsp - needed by aspnet, not installed$/m);
+        assert.ok(!/missing: agent aspnet-implementer/.test(out), 'an installed agent is not missing');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('CLI --redundant prints per-category redundant lines from an installed inventory', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-redundant-'));
+    try
+    {
+        const invFile = path.join(dir, 'installed.json');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: ['wpf-conventions'], agents: ['wpf-implementer'], skills: ['dotnet-wpf', 'csharp'], mcps: [], plugins: [], hooks: [] }));
+        const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--redundant', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, 'stack-graph.json'), '--stacks', 'aspnet'], { encoding: 'utf8' });
+        assert.match(out, /^redundant: rule wpf-conventions - owned by wpf, not detected$/m);
+        assert.match(out, /^redundant: skill dotnet-wpf - owned by wpf, not detected$/m);
+        assert.ok(!/redundant: skill csharp\b/.test(out), 'csharp is aspnet-owned and aspnet is detected - not redundant');
     }
     finally
     {

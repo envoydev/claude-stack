@@ -265,11 +265,28 @@ function emitTable(graph, layer, opts)
     const suggesters = {};   // skills layer only: name -> first kept agent whose body suggests it
     if (layer === 'skills')
     {
+        // A suggested skill that is core to ANOTHER stack (in that stack's required closure)
+        // is cross-stack noise unless that stack is confirmed - a shared resolver or the
+        // universal code-style-analyzer suggests every stack's skills, so dotnet-wpf would
+        // otherwise flag `suggested` on an aspnet install. Suppress it to a plain addable row.
+        // Ownership is derived, not annotated: run each stack's recommended set through the
+        // closure and record the skills it pulls.
+        const confirmed = new Set(opts.stacks || []);
+        const ownedByUnconfirmed = new Set();
+        if (opts.recs)
+        {
+            const owners = {};
+            for (const [st, sel] of Object.entries(opts.recs.stacks || {}))
+                for (const s of computeClosure(graph, sel).skills)
+                    (owners[s] = owners[s] || new Set()).add(st);
+            for (const [s, sts] of Object.entries(owners))
+                if (![...sts].some(st => confirmed.has(st))) ownedByUnconfirmed.add(s);
+        }
         for (const a of closure.agents)
         {
             for (const s of (graph.agents[a] || {}).suggests || [])
             {
-                if (!closure.skills.includes(s) && !suggesters[s]) suggesters[s] = a;
+                if (!closure.skills.includes(s) && !suggesters[s] && !ownedByUnconfirmed.has(s)) suggesters[s] = a;
             }
         }
     }
@@ -335,16 +352,112 @@ function emitSelectionFile(closure)
     return lines.join('\n') + '\n';
 }
 
+// The validate command's core: an installed artifact is REDUNDANT when its entire owning
+// stack is absent from the detected project. Ownership is derived - run each stack's
+// recommended set through the closure and record what it pulls; exclude the always-baseline
+// closure up front (never redundant). Shared items (an owner is detected) and non-stack
+// deliberate extras (owned by nothing) survive. Returns [{category, name, ownedBy}].
+function findStackRedundant(graph, recs, installed, detected)
+{
+    const detectedSet = new Set(detected || []);
+    const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
+    const singular = { rules: 'rule', agents: 'agent', skills: 'skill', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' };
+
+    const always = computeClosure(graph, (recs && recs.always) || {});
+    const owners = {};   // layer -> name -> Set<stack>
+    for (const l of LAYERS) owners[l] = {};
+    for (const [st, sel] of Object.entries((recs && recs.stacks) || {}))
+    {
+        const c = computeClosure(graph, sel);
+        for (const l of LAYERS)
+            for (const name of c[l] || [])
+                (owners[l][name] = owners[l][name] || new Set()).add(st);
+    }
+
+    const out = [];
+    for (const l of LAYERS)
+    {
+        for (const name of (installed && installed[l]) || [])
+        {
+            if ((always[l] || []).includes(name)) continue;             // always-baseline: never redundant
+            const own = owners[l][name];
+            if (!own || own.size === 0) continue;                       // deliberate extra: kept
+            if ([...own].some(st => detectedSet.has(st))) continue;     // an owner is present: kept
+            out.push({ category: singular[l], name, ownedBy: [...own].sort().join(',') });
+        }
+    }
+    return out;
+}
+
+// The inverse of findStackRedundant, for the validate walk's ADD side: what a fresh install
+// for the DETECTED stacks (plus the always-baseline) would lay down that is NOT installed here.
+// `neededBy` names the source(s) - 'baseline' or the detected stack(s) whose closure pulls it.
+function findStackMissing(graph, recs, installed, detected)
+{
+    const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
+    const singular = { rules: 'rule', agents: 'agent', skills: 'skill', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' };
+    const sources = { baseline: computeClosure(graph, (recs && recs.always) || {}) };
+    for (const st of new Set(detected || [])) sources[st] = computeClosure(graph, ((recs && recs.stacks) || {})[st] || {});
+
+    const out = [];
+    for (const l of LAYERS)
+    {
+        const have = new Set((installed && installed[l]) || []);
+        const ideal = new Set();
+        for (const c of Object.values(sources)) for (const n of c[l] || []) ideal.add(n);
+        for (const name of [...ideal].sort())
+        {
+            if (have.has(name)) continue;
+            const neededBy = Object.keys(sources).filter(k => (sources[k][l] || []).includes(name)).sort().join(',');
+            out.push({ category: singular[l], name, neededBy });
+        }
+    }
+    return out;
+}
+
 function main(argv)
 {
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
     const has = name => argv.includes(name);
-    const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--github-cli]'); process.exit(2); }
+    const readJson = (flag, file) =>
+    {
+        if (!file) return null;
+        try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+        catch (e) { console.error(`stack-select: cannot read ${flag} ${file}: ${e.code || e.message}`); process.exit(1); }
+    };
     const graphPath = arg('--graph') || path.join(__dirname, 'stack-graph.json');
-    let graph, raw;
+    let graph;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read graph ${graphPath}: ${e.code || e.message}`); process.exit(1); }
+
+    // --redundant: project-relative audit for the validate command. Uses --installed (the
+    // inventory from disk) + --recs + the detected --stacks; needs no --selection.
+    if (has('--redundant'))
+    {
+        const installed = readJson('--installed', arg('--installed'));
+        const recs = readJson('--recs', arg('--recs'));
+        if (!installed || !recs) { console.error('stack-select: --redundant needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
+        const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        for (const r of findStackRedundant(graph, recs, installed, detected))
+            console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
+        return;
+    }
+
+    // --missing: the ADD side of validate - detected-stack + baseline items not installed here.
+    if (has('--missing'))
+    {
+        const installed = readJson('--installed', arg('--installed'));
+        const recs = readJson('--recs', arg('--recs'));
+        if (!installed || !recs) { console.error('stack-select: --missing needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
+        const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        for (const m of findStackMissing(graph, recs, installed, detected))
+            console.log(`missing: ${m.category} ${m.name} - needed by ${m.neededBy}, not installed`);
+        return;
+    }
+
+    const rawFile = arg('--selection');
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--github-cli] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
     const unknown = findUnknownNames(graph, raw);
@@ -373,12 +486,6 @@ function main(argv)
     const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
     if (tableLayer)
     {
-        const readJson = (flag, file) =>
-        {
-            if (!file) return null;
-            try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-            catch (e) { console.error(`stack-select: cannot read ${flag} ${file}: ${e.code || e.message}`); process.exit(1); }
-        };
         const recs = readJson('--recs', arg('--recs'));
         const installed = readJson('--installed', arg('--installed'));
         const droppedForTable = readJson('--dropped', arg('--dropped'));
@@ -408,6 +515,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

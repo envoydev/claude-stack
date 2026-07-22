@@ -17,7 +17,7 @@ test('marketplace.json is valid and points at the setup-plugin subdir', () => {
     assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
 });
 
-test('plugin.json is valid, the three commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the four commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'claude-stack');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -25,8 +25,8 @@ test('plugin.json is valid, the three commands are listed, and the router skill 
     // Plugin COMMANDS display namespaced-only (/claude-stack:setup); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /claude-stack, no /claude-stack:claude-stack stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/setup.md', './commands/update.md', './commands/configure.md']);
-    for (const name of ['setup', 'update', 'configure'])
+    assert.deepStrictEqual(pj.commands, ['./commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md']);
+    for (const name of ['setup', 'update', 'configure', 'validate'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /claude-stack:${name} command exists`);
     }
@@ -104,7 +104,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
-for (const name of ['setup', 'update', 'configure'])
+for (const name of ['setup', 'update', 'configure', 'validate'])
 {
     test(`the ${name} command exists with valid manual-only frontmatter`, () => {
         const cmd = path.join(PLUGIN_DIR, 'commands', `${name}.md`);
@@ -117,7 +117,7 @@ for (const name of ['setup', 'update', 'configure'])
 }
 
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['setup', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
@@ -126,6 +126,15 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
     assert.match(configure, /--dropped/, 'configure drives the drop cascade through stack-select --dropped');
     assert.match(configure, /orphan:/, 'configure consumes the orphan: lines');
+});
+
+test('validate reconciles both ways (--redundant + --missing), walks layers, is project-mode-only', () => {
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
+    assert.match(body, /--redundant/, 'validate drives the remove side through stack-select --redundant');
+    assert.match(body, /--missing/, 'validate drives the add side through stack-select --missing');
+    assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
+    assert.match(body, /project mode only/i, 'validate refuses outside a project');
+    assert.match(body, /claude-stack\.sh" install/, 'validate installs the accepted adds via the installer');
 });
 
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
