@@ -55,7 +55,9 @@ removed upstream, `/claude-stack:configure` adjusts it (add or drop items), and
 not use and adds the detected stacks' missing artifacts, a per-layer walk (project mode only).
 Setup and configure walk the selection one layer at a time (rules ->
 agents -> skills -> hooks -> MCPs -> plugins) as numbered full-catalog tables, locking only what
-something kept still requires - always with the reason shown; all detect the OS, the install
+something kept still requires - always with the reason shown. A deterministic evidence scan of
+the project's package manifests (csproj / package.json) pre-selects the specialist skills the
+project provably uses, the matched signal shown as the reason. All detect the OS, the install
 commands check prerequisites before anything runs, and `/claude-stack` alone routes by state.
 
 ## Install - with the script

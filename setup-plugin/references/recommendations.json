@@ -26,6 +26,18 @@
       "guard-protected-force-push",
       "guard-catastrophic-rm",
       "guard-read-whole-file"
+    ],
+    "skills": [
+      "project-solve-cross-task"
+    ]
+  },
+  "general": {
+    "skills": [
+      "csharp-design-patterns",
+      "dotnet-migrate",
+      "dotnet-hosted-services",
+      "dotnet-data-access",
+      "frontend"
     ]
   },
   "stacks": {
@@ -137,6 +149,14 @@
       ],
       "rules": [
         "devops-conventions"
+      ]
+    },
+    "typescript": {
+      "rules": [
+        "typescript-conventions"
+      ],
+      "plugins": [
+        "typescript-lsp"
       ]
     }
   }

@@ -263,6 +263,71 @@ test('a suggested skill owned only by unconfirmed stacks is not flagged suggeste
     }
 });
 
+// The evidence layer: gaps between what the scanner found and what is installed.
+// missing = actionable add; unevidenced = advisory only (locked decision - never a removal).
+const { findEvidenceGaps } = require('./stack-select.js');
+const evidenceCatalog = require('../setup-plugin/references/evidence.json');
+
+test('findEvidenceGaps: missing vs unevidenced vs uncatalogued', () => {
+    const foundMap = { skills: { 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj' }, mcps: {}, plugins: {} };
+    const installed = { skills: ['dotnet-messaging', 'csharp'], mcps: [], plugins: [] };
+    const gaps = findEvidenceGaps(evidenceCatalog, foundMap, installed);
+    assert.deepStrictEqual(gaps.missing, [{ category: 'skill', name: 'dotnet-grpc', signal: 'Grpc.AspNetCore in src/Api.csproj' }], 'evidence found + not installed = missing');
+    const unev = gaps.unevidenced.map(u => `${u.category} ${u.name}`);
+    assert.deepStrictEqual(unev, ['skill dotnet-messaging'], 'installed + catalog-listed + no signal = advisory');
+    assert.ok(!unev.includes('skill csharp'), 'no catalog entry -> never unevidenced');
+    assert.ok(!gaps.missing.some(m => m.name === 'sentry') && !unev.includes('mcp sentry'), 'not installed + not found = nothing');
+});
+
+test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
+    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'project-solve-cross-task': 'FAKE-SIGNAL-2' } };
+    const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json'), 'utf8'));
+    const table = emitTable(graph, 'skills', { raw: { agents: ['aspnet-solution-designer'] }, recs, stacks: ['aspnet'], evidence });
+    const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
+    assert.match(rowOf('dotnet-web-backend'), /required/, 'a closure lock beats evidence');
+    assert.doesNotMatch(rowOf('dotnet-web-backend'), /FAKE-SIGNAL/, 'the lock reason wins the why column');
+    assert.match(rowOf('dotnet-grpc'), /evidence +\| Grpc\.AspNetCore in src\/Api\.csproj/, 'evidence row carries its signal');
+    assert.match(rowOf('project-solve-cross-task'), /evidence/, 'evidence beats the recommended seed label');
+    // configure's installed mode keeps yes/- states; the signal informs the why column
+    const cfg = emitTable(graph, 'skills', { raw: {}, installed: { skills: ['csharp'] }, evidence });
+    const cfgRow = name => cfg.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
+    assert.match(cfgRow('dotnet-grpc'), /\| - +\| Grpc\.AspNetCore in src\/Api\.csproj/, 'not-installed row shows the evidence as its why');
+});
+
+test('CLI --evidence-gaps prints both directions and dedupes vs stack-missing', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-evgaps-'));
+    try
+    {
+        const foundFile = path.join(dir, 'found.json');
+        const invFile = path.join(dir, 'installed.json');
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: { 'angular-material': '@angular/material in web/package.json', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'dotnet-messaging': 'MassTransit in src/Api.csproj' }, mcps: {}, plugins: {} } }));
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: ['dotnet-messaging', 'dotnet-openapi'], mcps: [], plugins: [], hooks: [] }));
+        const catalogPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'evidence.json');
+        const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
+        const base = ['--evidence-gaps', '--found', foundFile, '--catalog', catalogPath, '--installed', invFile, '--graph', path.join(__dirname, 'stack-graph.json')];
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), ...base, '--recs', recsPath, '--stacks', 'angular'], { encoding: 'utf8' });
+        assert.match(out, /^evidence-missing: skill dotnet-grpc - Grpc\.AspNetCore in src\/Api\.csproj, not installed$/m);
+        assert.ok(!/evidence-missing: skill angular-material/.test(out), 'deduped - angular stack-missing already lists it');
+        assert.ok(!/evidence-missing: skill dotnet-messaging/.test(out), 'installed - not missing');
+        assert.match(out, /^no-evidence: skill dotnet-openapi - installed, no signal found \(advisory\)$/m);
+        const noDedupe = execFileSync('node', [path.join(__dirname, 'stack-select.js'), ...base], { encoding: 'utf8' });
+        assert.match(noDedupe, /evidence-missing: skill angular-material/, 'without --recs the line stays');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('every evidence-catalog name resolves in the graph', () => {
+    const skillKeys = new Set(Object.keys(graph.skills));
+    for (const s of Object.keys(evidenceCatalog.skills || {})) assert.ok(skillKeys.has(s), `evidence skill '${s}' not in graph`);
+    const mcpCatalog = new Set(graph.catalog.mcps);
+    for (const m of Object.keys(evidenceCatalog.mcps || {})) assert.ok(mcpCatalog.has(m), `evidence mcp '${m}' not in catalog`);
+    const pluginCatalog = new Set(graph.catalog.plugins);
+    for (const p of Object.keys(evidenceCatalog.plugins || {})) assert.ok(pluginCatalog.has(p), `evidence plugin '${p}' not in catalog`);
+});
+
 // The inverse cascade: dropping a locked item honestly means dropping everything
 // that still requires it - the configure flow turns a flat refusal into a consent-drop.
 const { findDependents } = require('./stack-select.js');
@@ -373,6 +438,35 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
     assert.ok(!names.has('sentry'), 'a non-stack-owned deliberate extra is never redundant');
     assert.ok(!names.has('baseline-navigation'), 'an always-baseline item is never redundant');
     assert.strictEqual(redundant.find(r => r.name === 'wpf-conventions').ownedBy, 'wpf', 'the reason names the owning stack');
+});
+
+// The curated general list: skills that are cross-stack by nature but happen to be pulled
+// only by narrow closures (a wpf designer preloading the GoF skill, the data designer
+// preloading dotnet-migrate). Listed in recommendations.json `general`; never flagged
+// redundant - a false positive on a destructive command is worse than missed cleanup.
+test('a general-listed skill is never redundant even when its only owner is absent', () => {
+    const installed = {
+        rules: [],
+        agents: [],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'frontend', 'dotnet-wpf'],
+        mcps: [], plugins: [], hooks: [],
+    };
+    const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
+    const names = new Set(redundant.map(r => r.name));
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'frontend'])
+    {
+        assert.ok(!names.has(s), `${s} is general - never redundant`);
+    }
+    assert.ok(names.has('dotnet-wpf'), 'a genuinely stack-specific skill is still flagged');
+});
+
+test('every general-list name resolves in the graph', () => {
+    const skillKeys = new Set(Object.keys(graph.skills));
+    for (const s of (recommendations.general || {}).skills || [])
+    {
+        assert.ok(skillKeys.has(s), `general skill '${s}' not in graph`);
+    }
+    assert.ok(((recommendations.general || {}).skills || []).length >= 5, 'the curated general set is present');
 });
 
 test('findStackMissing flags the detected stacks + baseline closure that is not installed', () => {

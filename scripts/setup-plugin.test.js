@@ -88,6 +88,29 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
     {
         assert.ok((recs.always.rules || []).includes(r), `always seeds ${r}`);
     }
+    // the entry-point orchestrator installs everywhere - previously only the four
+    // repair-rule stacks pulled it, so a mobile/data/devops-only install shipped without
+    // the skill that drives its own trio.
+    assert.ok((recs.always.skills || []).includes('project-solve-cross-task'), 'always seeds the orchestrator');
+});
+
+test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    for (const st of ['aspnet', 'wpf', 'console'])
+    {
+        const closed = computeClosure(graph, recs.stacks[st]);
+        assert.ok(closed.skills.includes('dotnet'), `${st} closure pulls the dotnet router`);
+        assert.ok(closed.skills.includes('csharp'), `${st} closure pulls csharp`);
+    }
+});
+
+test('the typescript pseudo-stack seeds the TS rule and LSP plugin for plain TS/Node repos', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const ts = recs.stacks.typescript;
+    assert.ok(ts, 'a typescript stack recommendation exists');
+    assert.ok((ts.rules || []).includes('typescript-conventions'), 'seeds the conventions rule');
+    assert.ok((ts.plugins || []).includes('typescript-lsp'), 'seeds the LSP plugin');
+    assert.ok(computeClosure(graph, ts).skills.includes('typescript'), 'the closure pulls the typescript skill via the rule');
 });
 
 test('a single-stack (aspnet) recommendation does not pull cross-stack skills', () => {

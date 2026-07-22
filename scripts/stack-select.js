@@ -275,12 +275,13 @@ function emitTable(graph, layer, opts)
         const ownedByUnconfirmed = new Set();
         if (opts.recs)
         {
+            const general = new Set((opts.recs.general || {}).skills || []);
             const owners = {};
             for (const [st, sel] of Object.entries(opts.recs.stacks || {}))
                 for (const s of computeClosure(graph, sel).skills)
                     (owners[s] = owners[s] || new Set()).add(st);
             for (const [s, sts] of Object.entries(owners))
-                if (![...sts].some(st => confirmed.has(st))) ownedByUnconfirmed.add(s);
+                if (!general.has(s) && ![...sts].some(st => confirmed.has(st))) ownedByUnconfirmed.add(s);
         }
         for (const a of closure.agents)
         {
@@ -317,13 +318,22 @@ function emitTable(graph, layer, opts)
         if (installed)
         {
             status = orphanSet.has(name) ? 'orphaned' : installed.has(name) ? 'yes' : '-';
-            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}` : reasons[name] || '-';
+            // installed mode keeps its yes/orphaned/- states; evidence informs the why column
+            // when nothing stronger claims it - a not-installed row showing 'MassTransit in
+            // src/Api.csproj' tells the user the project uses what the install lacks.
+            const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
+            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}` : reasons[name] || evidence || '-';
         }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
         else
         {
+            // evidence sits below required (a closure lock is a fact of the selection) and
+            // above the seeds (the scan proved this project uses the tech) - pre-selected,
+            // droppable, the matched signal as the reason.
+            const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
             const seed = seedOf(name);
-            if (seed) { status = seed; why = '-'; }
+            if (evidence) { status = 'evidence'; why = evidence; }
+            else if (seed) { status = seed; why = '-'; }
             else if (suggesters[name]) { status = 'suggested'; why = `agent ${suggesters[name]}`; }
             else if (direct.has(name)) { status = 'added'; why = '-'; }
             else { status = '-'; why = '-'; }
@@ -377,9 +387,11 @@ function findStackRedundant(graph, recs, installed, detected)
     const out = [];
     for (const l of LAYERS)
     {
+        const general = new Set(((recs && recs.general) || {})[l] || []);
         for (const name of (installed && installed[l]) || [])
         {
             if ((always[l] || []).includes(name)) continue;             // always-baseline: never redundant
+            if (general.has(name)) continue;                            // curated general set: cross-stack by nature, never redundant
             const own = owners[l][name];
             if (!own || own.size === 0) continue;                       // deliberate extra: kept
             if ([...own].some(st => detectedSet.has(st))) continue;     // an owner is present: kept
@@ -415,6 +427,30 @@ function findStackMissing(graph, recs, installed, detected)
     return out;
 }
 
+// Evidence layer: gaps between what scan-evidence.js found and what is installed.
+// missing = evidence present, artifact not installed (actionable add). unevidenced =
+// installed, catalog-listed, no signal (ADVISORY ONLY - never a removal; package absence is
+// weak proof). Artifacts without a catalog entry never appear - absence of a signal
+// definition is not absence of evidence.
+function findEvidenceGaps(catalog, found, installed)
+{
+    const LAYERS = ['skills', 'mcps', 'plugins'];
+    const singular = { skills: 'skill', mcps: 'mcp', plugins: 'plugin' };
+    const missing = [], unevidenced = [];
+    for (const l of LAYERS)
+    {
+        const foundL = (found && found[l]) || {};
+        const have = new Set((installed && installed[l]) || []);
+        for (const name of Object.keys((catalog && catalog[l]) || {}))
+        {
+            const signal = foundL[name];
+            if (signal && !have.has(name)) missing.push({ category: singular[l], name, signal });
+            else if (!signal && have.has(name)) unevidenced.push({ category: singular[l], name });
+        }
+    }
+    return { missing, unevidenced };
+}
+
 function main(argv)
 {
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
@@ -440,6 +476,31 @@ function main(argv)
         const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
         for (const r of findStackRedundant(graph, recs, installed, detected))
             console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
+        return;
+    }
+
+    // --evidence-gaps: both evidence directions for the guided commands. With --recs +
+    // --stacks, evidence-missing lines that stack/baseline-missing already lists are dropped
+    // (the closure reason wins - one line per artifact, not two).
+    if (has('--evidence-gaps'))
+    {
+        const foundFile = readJson('--found', arg('--found'));
+        const catalog = readJson('--catalog', arg('--catalog'));
+        const installed = readJson('--installed', arg('--installed'));
+        if (!foundFile || !catalog || !installed) { console.error('stack-select: --evidence-gaps needs --found <found.json>, --catalog <evidence.json> and --installed <inventory.json>'); process.exit(2); }
+        const gaps = findEvidenceGaps(catalog, foundFile.found || foundFile, installed);
+        const covered = new Set();
+        const recs = readJson('--recs', arg('--recs'));
+        if (recs)
+        {
+            const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+            for (const m of findStackMissing(graph, recs, installed, detected)) covered.add(`${m.category}:${m.name}`);
+        }
+        for (const m of gaps.missing)
+        {
+            if (!covered.has(`${m.category}:${m.name}`)) console.log(`evidence-missing: ${m.category} ${m.name} - ${m.signal}, not installed`);
+        }
+        for (const u of gaps.unevidenced) console.log(`no-evidence: ${u.category} ${u.name} - installed, no signal found (advisory)`);
         return;
     }
 
@@ -491,7 +552,9 @@ function main(argv)
         const droppedForTable = readJson('--dropped', arg('--dropped'));
         const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
         const stacks = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
-        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans });
+        const foundFile = readJson('--found', arg('--found'));
+        const evidence = foundFile ? (foundFile.found || foundFile) : null;
+        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence });
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
         process.stdout.write(table);
     }
@@ -515,6 +578,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

@@ -51,13 +51,16 @@ The setup step-2 artifact scan:
   `<UseWPF>true` -> `wpf`; otherwise `console`.
 - `angular.json` -> `angular`; `ionic.config.json` / `capacitor.config.*` -> `mobile`.
 - `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
+- `tsconfig.json` / `jsconfig.json` -> `typescript` (language-level - keeps the TS rule/skill/LSP
+  plugin owned in a plain TS/Node repo with no framework marker).
 
 Report the detected set AND, for every stack you will treat as ABSENT, the exact signal you looked
 for and did not find (`wpf -> *.csproj <UseWPF>: none`). **This is the veto point** - a
 mis-detection (a WPF app on a non-standard SDK, SQL in an odd path) is corrected HERE, before the
 walk removes anything on it. Detecting nothing is valid; confirm the detection is right, then walk.
 
-Compute both audits once against the current inventory, quietly:
+Compute the audits once against the current inventory, quietly - the two stack-level passes,
+the evidence scan, and the evidence gaps:
 
 ```
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
@@ -66,12 +69,22 @@ node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed
 node "$TMP/repo/scripts/stack-select.js" --missing   --installed "$TMP/installed.json" \
   --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/missing.out"
+node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/setup-plugin/references/evidence.json" \
+  --out "$TMP/found.json"
+node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.json" \
+  --catalog "$TMP/repo/setup-plugin/references/evidence.json" --installed "$TMP/installed.json" \
+  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --stacks "<detected,csv>" > "$TMP/evidence.out"
 ```
 
 `redundant:` lines = installed, whole owning stack absent (remove candidates). `missing:` lines =
 detected-stack + baseline closure not installed (add candidates), each with `needed by <stack|baseline>`.
-The tool already excludes shared items, deliberate non-stack extras, and already-installed baseline
-- you present its output, you do not re-derive it.
+`evidence-missing:` lines = the scan found a signal for an artifact that is not installed (add
+candidates, the signal as the reason - already deduped against the `missing:` lines by the tool).
+`no-evidence:` lines = installed, catalog-listed, no signal found - ADVISORY ONLY, never an action.
+The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
+and the curated `general` set in recommendations.json (cross-stack skills a narrow seat happens to
+preload - GoF patterns, dotnet-migrate) - you present its output, you do not re-derive it.
 
 ## The walk - steps 3-8, one layer at a time
 
@@ -79,8 +92,11 @@ The layer order is the dependency order rules -> agents -> skills -> hooks -> MC
 layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shape:
 
 1. **Show one table** of this layer's actionable rows - REDUNDANT (installed, remove?) and MISSING
-   (not installed, add?), each with its reason. A layer with neither gets a single line
-   ('rules: nothing to reconcile') and you move straight on - do not invent rows.
+   (not installed, add?; `evidence-missing:` lines join as MISSING with the signal as the reason),
+   each with its reason. Under the table, this layer's `no-evidence:` lines as PLAIN TEXT - no row
+   numbers, no consent: 'advisory: dotnet-messaging installed, no messaging package found - kept,
+   your call'. A layer with none of the three gets a single line ('rules: nothing to reconcile')
+   and you move straight on - do not invent rows.
 
 ```
 [step 4/10 - agents] reconcile the agent layer · next: skills
@@ -141,5 +157,7 @@ THIS command: after apply, after an abort, after a disputed-detection stop, and 
   consent round - the evidence line and the per-layer consent are the whole safety model.
 - Do not touch a deliberate non-stack extra, an always-baseline item already installed, or a shared
   item whose owning stack IS present - the tool already excludes these; never second-guess it.
+- Do not act on a `no-evidence:` advisory - it is information, not a removal candidate; package
+  absence is weak proof (vendored code, a preinstalled skill for planned work, a scan miss).
 - Do not skip the prerequisite gate before an install, and never remove what a kept item still
   needs. Do not paste tool output or leave `$TMP` behind on any exit path. Do not commit anything.

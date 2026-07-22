@@ -1,0 +1,22 @@
+{
+  "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix), files (path basenames), csprojContent / content (regex with a display label). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts, or process skills with no artifact trace.",
+  "skills": {
+    "dotnet-messaging": { "packages": ["MassTransit", "RabbitMQ.Client", "Azure.Messaging.ServiceBus", "Confluent.Kafka", "NServiceBus"] },
+    "dotnet-grpc": { "packages": ["Grpc.AspNetCore", "Grpc.Net.Client", "Google.Protobuf"] },
+    "dotnet-realtime": { "packages": ["Microsoft.AspNetCore.SignalR.Client"] },
+    "dotnet-data-access": { "packages": ["Microsoft.EntityFrameworkCore.", "Dapper", "Npgsql", "Microsoft.Data.SqlClient"] },
+    "dotnet-aspire": { "packages": ["Aspire."] },
+    "dotnet-authentication": { "packages": ["Microsoft.AspNetCore.Authentication.JwtBearer", "Microsoft.Identity.Web", "OpenIddict.", "Duende.IdentityServer"] },
+    "dotnet-openapi": { "packages": ["Swashbuckle.AspNetCore", "NSwag.", "Microsoft.AspNetCore.OpenApi"] },
+    "dotnet-performance": { "packages": ["BenchmarkDotNet"] },
+    "dotnet-architecture-tests": { "packages": ["NetArchTest.Rules", "TngTech.ArchUnitNET"] },
+    "dotnet-source-generators": { "csprojContent": [{ "regex": "<IsRoslynComponent>\\s*true", "label": "<IsRoslynComponent>true" }] },
+    "dotnet-winforms": { "csprojContent": [{ "regex": "<UseWindowsForms>\\s*true", "label": "<UseWindowsForms>true" }] },
+    "angular-material": { "packages": ["@angular/material"] },
+    "nx": { "files": ["nx.json"] }
+  },
+  "mcps": {
+    "sentry": { "packages": ["Sentry", "Sentry.", "@sentry/"], "content": [{ "glob": "appsettings*.json", "regex": "sentry\\.io", "label": "a sentry.io DSN" }] }
+  },
+  "plugins": {}
+}

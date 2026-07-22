@@ -737,6 +737,7 @@
       "skills": [
         "csharp",
         "csharp-design-patterns",
+        "dotnet",
         "dotnet-testing",
         "dotnet-wpf",
         "project-solution-design"

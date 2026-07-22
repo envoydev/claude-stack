@@ -46,7 +46,11 @@ banner line so the user always knows where they are, what is being decided, and 
   `baseline-project-*.md` awareness rules - they are written by capture skills, never installed);
   hooks = `.claude/hooks/*.js` (exclude the GENERATED `inject-code-style.js` - same reason);
   mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` (fail-soft
-  without the CLI). Show the inventory grouped by category, with counts.
+  without the CLI). Show the inventory grouped by category, with counts. In project mode, also
+  run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
+  "$TMP/repo/setup-plugin/references/evidence.json" --out "$TMP/found.json"` - so the walk's
+  tables can label what the project provably uses (`--found`); skip it in global mode (no
+  project to scan).
 - **Report what changed since the install.** `.claude/claude-stack.stamp` (or the account's)
   records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
@@ -109,8 +113,10 @@ Per layer, the SAME three-beat shape as setup:
      never remove one silently, never re-offer one the user chose to keep.
 2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed
    alike). The TOOL renders it, never you:
-   `node stack-select.js --selection raw.json --graph stack-graph.json --table <layer> --installed installed.json --dropped dropped.json > "$TMP/table.txt"`
-   (write the step-1 inventory to `installed.json` once) - then paste `table.txt` verbatim
+   `node stack-select.js --selection raw.json --graph stack-graph.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json" > "$TMP/table.txt"`
+   (write the step-1 inventory to `installed.json` once; omit `--found` in global mode - no scan
+   ran. A not-installed row whose reason column carries a matched signal is the project telling
+   you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste `table.txt` verbatim
    inside a fenced code block: the one sanctioned paste, pre-padded by the tool so it stays
    aligned at any length; a hand-written markdown table shears when the renderer flushes it in
    segments. Rows are labeled `yes` / `orphaned` (with the cascade origin) / `-`, the lock
