@@ -33,19 +33,18 @@ rules in the same directory attach on a matching file touch - their own `paths:`
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline, the pre-commit checkpoint |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline |
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - run /project-agent-capabilities after install or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
-| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into docs/architecture/ |
+| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
 | `.claude/rules/baseline-project-related-context.md` (GENERATED - run /project-related-context with the sibling paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| inject-code-style hook (GENERATED - run /project-code-style-analyzer; a hook + doc, not a rule) | the project's actual code style - docs/PROJECT-CODE-STYLE.md surfaced at edit time, filtered to the observed file types |
+| inject-code-style hook (GENERATED - run /project-code-style-analyzer; a hook + doc, not a rule) | the project's actual code style - `<docs-path>/PROJECT-CODE-STYLE.md` surfaced at edit time, filtered to the observed file types |
 
 ## Generated docs root
 
 **Any documentation a skill or agent generates lives under a single docs root, `.claude/docs/` by
 default** - the architecture map (`architecture/`), `PROJECT-CODE-STYLE.md`,
 `PROJECT-RELATED-CONTEXT.md`, the quality-loop prompts (`loops/`), superpowers plans/specs, and any
-other generated markdown. This is the default home for generated project docs; a first-class repo
-doc with a conventional home (the top-level `README.md`, an existing ADR home) stays where it
-belongs. ADRs with no existing home default to `<docs-path>/decisions/` under this same
-`CLAUDE_DOCS_PATH` root.
+other generated markdown. A first-class repo doc with a conventional home (the top-level
+`README.md`, an existing ADR home) stays where it belongs. ADRs with no existing home default
+to `<docs-path>/decisions/` under this same `CLAUDE_DOCS_PATH` root.
 
 - **Docs root:** the `CLAUDE_DOCS_PATH` env value in `.claude/settings.json` (the installer seeds
   `.claude/docs`); when the variable is absent, `.claude/docs/` is the default. Read
@@ -64,8 +63,8 @@ before the machine-local `.claude/settings.json` exists.
 
 Superpowers (when installed) writes its implementation plans and design specs under this same
 `CLAUDE_DOCS_PATH` root too - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never
-its own location - machine-local under the default root like every other generated doc. When the
-root is a committed path (e.g. `docs`), track them: do NOT gitignore `<docs-path>/superpowers/`.
+its own location. When the root is a committed path (e.g. `docs`), track them: do NOT gitignore
+`<docs-path>/superpowers/`.
 
 <!-- Authoring outline - write these sections into the project-specific top of this file
 (each section lean; interleave as reads best - the project intro usually comes first, above

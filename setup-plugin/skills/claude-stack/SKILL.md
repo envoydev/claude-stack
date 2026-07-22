@@ -1,6 +1,6 @@
 ---
 name: claude-stack
-description: "Route to the right claude-stack action when unsure which fits - inspects the install state and answers with the exact command to run: /claude-stack:setup (fresh install from scratch), /claude-stack:update (no-questions refresh + prune of upstream removals), /claude-stack:configure (adjust an existing install - add or drop), /claude-stack:validate (reconcile an install against THIS project - prune what its framework does not use and add the detected stacks' missing artifacts). Trigger by invoking /claude-stack."
+description: "Route to the right claude-stack action when unsure which fits - inspects the install state and answers with the exact command to run: /claude-stack:setup (fresh install from scratch), /claude-stack:update (no-questions refresh + prune of upstream removals), /claude-stack:configure (adjust an existing install - add or drop), /claude-stack:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts). Trigger by invoking /claude-stack."
 disable-model-invocation: true
 ---
 
