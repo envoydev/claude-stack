@@ -94,6 +94,7 @@ Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit 
 
 - Blockers: list each with its fix. Ask: fix them now and continue, or drop the affected items (reopen the owning layer's table, re-run, re-emit). Never install past a blocker.
 - Warnings: list them and proceed.
+- **Convention-conflict warnings (brownfield only).** When the project already carries stated conventions - a root or `.claude/` CLAUDE.md, `<docs-path>/architecture/` docs - check the user's TYPED ADDS from the walk (never the closure-locked rows, never the stack/evidence seeds - those are signal-backed) against them: an add whose PURPOSE conflicts with a stated convention gets ONE warning line quoting the rule verbatim (`warning: skill dotnet-architecture conflicts with CLAUDE.md: 'NOT Clean Architecture / DDD / VSA'`) and one keep-or-drop consent. No citable conflict, no warning - unused-looking is not a conflict; no project docs, skip silently. A conflict warning never blocks the install - the user's keep is final.
 
 ## 10. Install
 

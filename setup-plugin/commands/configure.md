@@ -191,7 +191,12 @@ Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit 
 output redirected to `$TMP/select.out` like every recompute. Show the closed selection grouped by category - closure adds marked with their reasons, the final
 drop list (incl. accepted orphans) named. Blockers: list each with its fix and never run past
 one (fix now, or reopen the owning layer and drop the affected items). Warnings are listed and
-passed. Also ask here: keep local model/effort pins? (`--keep-pins`, default yes for a configure
+passed. **Convention-conflict warnings (project mode only):** when the project carries stated
+conventions (a root or `.claude/` CLAUDE.md, `<docs-path>/architecture/` docs), check THIS RUN'S
+typed adds (never locked rows or kept installed items) against them - a conflicting add gets one
+warning line quoting the rule verbatim plus a keep-or-drop consent. No citable conflict, no
+warning; no project docs, skip silently; a conflict warning never blocks the run. Also ask here:
+keep local model/effort pins? (`--keep-pins`, default yes for a configure
 run - an existing install often carries deliberate pin edits).
 
 ## 10. Update + removals

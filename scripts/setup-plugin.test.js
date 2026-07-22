@@ -151,6 +151,18 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     assert.match(configure, /orphan:/, 'configure consumes the orphan: lines');
 });
 
+// The install-time twin of validate's judgment gate: a typed add that conflicts with the
+// project's stated conventions gets a quote-gated, non-blocking warning at the prereq step.
+test('setup and configure carry the brownfield convention-conflict warning gate', () => {
+    for (const name of ['setup', 'configure'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(body, /Convention-conflict warnings/, `${name} has the conflict-warning gate`);
+        assert.match(body, /No citable conflict, no\s+warning/, `${name} keeps the citation gate`);
+        assert.match(body, /never blocks/, `${name} keeps the warning non-blocking`);
+    }
+});
+
 test('validate reconciles both ways (--redundant + --missing), walks layers, is project-mode-only', () => {
     const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
     assert.match(body, /--redundant/, 'validate drives the remove side through stack-select --redundant');
