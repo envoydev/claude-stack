@@ -1,5 +1,5 @@
 ---
-description: "RECONCILE an existing claude-stack install to THIS project - detect the project's real stacks by artifact (the setup step-2 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. Adds run the installer for the accepted set; removes delete explicitly - the same paths setup/configure use. Project mode only. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
+description: "RECONCILE an existing claude-stack install to THIS project - detect the project's real stacks by artifact (the setup step-2 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step reviews the untouched remainder against the project's own stated conventions (CLAUDE.md, architecture docs) - drops proposed only on a verbatim-cited conflict, visibly labeled as judgment, never mixed with the signal tiers. Adds run the installer for the accepted set; removes delete explicitly - the same paths setup/configure use. Project mode only. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
 disable-model-invocation: true
 ---
 
@@ -25,13 +25,13 @@ sh installer; Windows -> ps1 via `pwsh`).
 
 ## The ladder - announce every step
 
-Ten user-facing steps; the machinery between them runs silently. One banner line before each:
+Eleven user-facing steps; the machinery between them runs silently. One banner line before each:
 
 ```
-[step 3/10 - rules] reconcile the rule layer · next: agents
+[step 3/11 - rules] reconcile the rule layer · next: agents
 ```
 
-1 find + inventory · 2 detect stacks · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 apply · 10 post-check
+1 find + inventory · 2 detect stacks · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 judgment review · 10 apply · 11 post-check
 
 ## 1. Find the install and inventory it
 
@@ -101,7 +101,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
    and you move straight on - do not invent rows.
 
 ```
-[step 4/10 - agents] reconcile the agent layer · next: skills
+[step 4/11 - agents] reconcile the agent layer · next: skills
  # | agent                  | state     | reason
 ---+------------------------+-----------+-----------------------------------
  1 | wpf-implementer        | REDUNDANT | owned by wpf, not detected
@@ -124,7 +124,36 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   only if a baseline guard was removed.
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
 
-## 9. Apply - the same paths setup/configure use
+## 9. Judgment review - the installed set vs the project's stated conventions
+
+The mechanical tiers stop at what signals can prove; this step carries the judgment they cannot -
+a skill whose PURPOSE conflicts with the project's stated conventions is invisible to every
+scanner (`dotnet-architecture` in a repo whose CLAUDE.md bans clean-architecture). Scope:
+installed artifacts still untouched this run that nothing kept requires (probe `--dependents`
+first - a closure-held item is NOT in scope; at most note the conflict and name the holder, its
+drop path is the sibling configure). Review each against the project's OWN stated conventions -
+the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` / `ASSESSMENT.md`,
+`PROJECT-CODE-STYLE.md`, where they exist. No project docs at all -> say so and SKIP the step
+entirely: judgment without stated conventions is just taste.
+
+Propose a drop ONLY on a cited conflict - quote the conflicting rule verbatim and name its
+source. No citable conflict, no proposal: unused-looking, stale-feeling, or 'probably never
+needed' is not a conflict. One table, VISIBLY separate from the signal tiers, then the usual
+per-item consent round:
+
+```
+[step 9/11 - judgment] conventions vs installed · next: apply
+ # | artifact                  | verdict       | cited conflict
+---+---------------------------+---------------+--------------------------------------------------
+ 1 | skill dotnet-architecture | JUDGMENT-DROP | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
+```
+
+This step is model judgment, not a signal: it is non-deterministic and can be confidently wrong,
+which is exactly why every row carries its quotation and nothing here ever auto-applies. A
+decline is final for this run - never re-litigate it. Accepted judgment drops join step 10's
+removal set, reported there under their JUDGMENT label.
+
+## 10. Apply - the same paths setup/configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove. Emit + prereq-check it, then:
@@ -140,10 +169,11 @@ remove. Emit + prereq-check it, then:
 - Then re-run `/project-agent-capabilities` (when installed) so the generated awareness rule
   reflects the reconciled inventory. The run rewrites `claude-stack.stamp` to the snapshot revision.
 
-## 10. Post-check
+## 11. Post-check
 
-Report per category what was added, removed, and left as-is (disputed detections, deliberate
-extras, declined suggestions). Remind that a restart picks up MCP registration changes, and surface
+Report per category what was added, removed - signal-backed and JUDGMENT-labeled separately -
+and left as-is (disputed detections, deliberate extras, declined suggestions, declined
+judgment proposals). Remind that a restart picks up MCP registration changes, and surface
 the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 
@@ -161,5 +191,8 @@ THIS command: after apply, after an abort, after a disputed-detection stop, and 
   item whose owning stack IS present - the tool already excludes these; never second-guess it.
 - Do not act on a `no-evidence:` advisory - it is information, not a removal candidate; package
   absence is weak proof (vendored code, a preinstalled skill for planned work, a scan miss).
+- Do not propose a judgment drop without the verbatim-quoted conflicting rule and its source, and
+  never put a JUDGMENT row in a signal-tier table - the two have different reliability and the
+  user must always see which is which.
 - Do not skip the prerequisite gate before an install, and never remove what a kept item still
   needs. Do not paste tool output or leave `$TMP` behind on any exit path. Do not commit anything.
