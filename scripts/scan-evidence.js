@@ -72,7 +72,10 @@ function collectPackages(root, files)
         {
             const text = readCapped(file);
             if (text === null) continue;
-            for (const m of text.matchAll(/<(?:PackageReference|PackageVersion)\s[^>]*Include="([^"]+)"/g)) out.push({ pkg: m[1], rel });
+            // PackageReference ONLY - under central package management a Directory.Packages.props
+            // <PackageVersion> pin can exist for a package no project references, so a pin alone
+            // is never usage; the version-less CPM PackageReference carries the name.
+            for (const m of text.matchAll(/<PackageReference\s[^>]*Include="([^"]+)"/g)) out.push({ pkg: m[1], rel });
         }
         else if (path.basename(file) === 'package.json')
         {

@@ -28,6 +28,13 @@ function buildFixture()
     put('Directory.Packages.props', `<Project>
   <ItemGroup>
     <PackageVersion Include="Npgsql" Version="8.0.0" />
+    <PackageVersion Include="Aspire.Hosting" Version="9.0.0" />
+  </ItemGroup>
+</Project>`);
+    // CPM: the version-less PackageReference is the usage signal the central pin corroborates
+    put('src/Worker/Worker.csproj', `<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
 </Project>`);
     put('src/Gen/Gen.csproj', `<Project Sdk="Microsoft.NET.Sdk">
@@ -55,7 +62,7 @@ test('scanner finds package, central-package, csproj-property, npm, and file sig
         const found = scan(root);
         assert.match(found.skills['dotnet-messaging'], /MassTransit in src\/Api\/Api\.csproj/);
         assert.match(found.skills['dotnet-openapi'], /Swashbuckle\.AspNetCore in src\/Api\/Api\.csproj/);
-        assert.match(found.skills['dotnet-data-access'], /Npgsql in Directory\.Packages\.props/, 'central package management is read');
+        assert.match(found.skills['dotnet-data-access'], /Npgsql in src\/Worker\/Worker\.csproj/, 'a CPM version-less PackageReference is the usage signal');
         assert.match(found.skills['dotnet-source-generators'], /IsRoslynComponent/, 'csproj property signal');
         assert.match(found.skills['angular-material'], /@angular\/material in web\/package\.json/, 'npm dependency');
         assert.match(found.mcps['sentry'], /@sentry\/angular in web\/package\.json/, 'scoped npm prefix');
@@ -72,6 +79,9 @@ test('scanner honors the skip-list, the depth cap, and reports nothing for absen
         assert.strictEqual(found.skills['dotnet-performance'], undefined, 'a node_modules-only signal is not found');
         assert.strictEqual(found.skills['dotnet-grpc'], undefined, 'a beyond-depth-cap manifest is not read');
         assert.strictEqual(found.skills['dotnet-realtime'], undefined, 'no signal, no entry - absence is empty, not false');
+        // under central package management a PackageVersion pin can exist for a package no
+        // project references - a pin alone must never count as usage (the knopka false-adds)
+        assert.strictEqual(found.skills['dotnet-aspire'], undefined, 'a CPM PackageVersion pin with no PackageReference is not evidence');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

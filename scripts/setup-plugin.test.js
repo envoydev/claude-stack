@@ -158,10 +158,12 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
     assert.match(body, /project mode only/i, 'validate refuses outside a project');
     assert.match(body, /claude-stack\.sh" install/, 'validate installs the accepted adds via the installer');
-    // the judgment step: convention-conflict drops, citation-gated, never mixed with signal tiers
+    // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
+    // mixed with signal tiers
     assert.match(body, /JUDGMENT-DROP/, 'the judgment step exists with its labeled verdict');
-    assert.match(body, /No citable conflict, no proposal/, 'judgment proposals are citation-gated');
-    assert.match(body, /SKIP the step/, 'no project docs -> the judgment step is skipped, not improvised');
+    assert.match(body, /No gate evidence, no proposal/, 'judgment proposals are gate-evidence-gated');
+    assert.match(body, /corroborate non-use in the code/, 'the advisory list is the judgment step\'s first input');
+    assert.match(body, /reads code, not conventions/, 'no project docs skips only the doc path, not the corroboration path');
 });
 
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
