@@ -45,12 +45,12 @@ change made only inside a consuming project is throwaway (see Invariants).
     diagnosers dispatch it to reproduce and pull logs), `code-analyzer` (sonnet/low - the
     `project-architecture-analyzer` capture fans it out to characterize modules) and `code-style-analyzer` (sonnet/medium - the read-only
     per-language style characterizer the `project-code-style-analyzer` skill fans out and merges into
-    `docs/PROJECT-CODE-STYLE.md` + the generated inject-code-style hook) and `related-project-analyzer` (sonnet/medium -
+    `<docs-path>/PROJECT-CODE-STYLE.md` + the generated inject-code-style hook) and `related-project-analyzer` (sonnet/medium -
     characterizes one sibling repo, the `project-related-context` skill fans it out and merges
-    `docs/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
+    `<docs-path>/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
     the architecture capture is deliberate-only (the `project-architecture-analyzer` skill - dispatches
-    `code-analyzer` per module, reasons in the main session, writes `docs/architecture/ARCHITECTURE.md` +
-    the pros/cons `docs/architecture/ASSESSMENT.md` + the generated always-on awareness rule
+    `code-analyzer` per module, reasons in the main session, writes `<docs-path>/architecture/ARCHITECTURE.md` +
+    the pros/cons `<docs-path>/architecture/ASSESSMENT.md` + the generated always-on awareness rule
     `baseline-project-architecture.md`; never in a build flow); the per-change fit
     verdict moved to the domain solution-designers. The `project-solve-cross-task` skill is the single
     entry-point orchestrator - it picks the execution mode, runs a single stack's vertical per its
@@ -168,12 +168,12 @@ documented there.
   awareness rule (`.claude/rules/baseline-project-related-context.md`, written by the
   `/project-related-context` skill), not in memory.
 - **Two stores, split by durability** - the second hard rule (peer of the read-whole-file rule
-  below). The committed architecture docs - a lean `docs/architecture/ARCHITECTURE.md` core map plus the deep-dive
-  files under `docs/architecture/references/` it links to - are the DURABLE truth: every seat READS them at start
+  below). The committed architecture docs - a lean `<docs-path>/architecture/ARCHITECTURE.md` core map plus the deep-dive
+  files under `<docs-path>/architecture/references/` it links to - are the DURABLE truth: every seat READS them at start
   to orient (the structure, patterns, boundaries and packages already in place) instead of re-deriving
-  the project, and the `project-architecture-analyzer` skill owns them (plus a `docs/architecture/ASSESSMENT.md` pros/cons
+  the project, and the `project-architecture-analyzer` skill owns them (plus a `<docs-path>/architecture/ASSESSMENT.md` pros/cons
   doc), reasoning in the main session over `code-analyzer` module digests - refreshed deliberately via that
-  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `docs/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
+  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `<docs-path>/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
   per-project memory (`write_memory` / `read_memory` / `list_memories`, named
   `<feature>__<contract_version>__<seat>`, never the shared `memory` MCP) is the EPHEMERAL inter-agent
   comms bus - the transient per-feature handoff between seats: a diagnoser's task cards to the
