@@ -11,7 +11,7 @@ The plan FILE is the whole input - not the chat that produced it. Run this in a 
 
 ## Build mode - inline by default
 
-Default: build inline in this chat, the protocol below. On an explicit agents request, dispatch each task to its `<stack>-implementer` seat instead - up to 3 at once, each on its frontmatter model unless you name one - keeping the main session the only orchestrator, routing a red per the repair-agent rules, and ticking the plan file as reports land. Dispatch nothing you were not asked to; the inline build is the default.
+Default: build inline in this chat, the protocol below. On an explicit agents request, dispatch each task to its `<stack>-implementer` seat instead - up to 3 at once, each on its frontmatter model unless you name one - keeping the main session the only orchestrator, routing a red per the repair-agent rules, and ticking the plan file as reports land - and each seat's gate is build + fast tests only, never a minutes-long run like a coverage script or integration replays; the full suite stays with this session's finish step. Dispatch nothing you were not asked to; the inline build is the default.
 
 ## The protocol - per task, in plan order
 

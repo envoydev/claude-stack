@@ -12,9 +12,7 @@ survives a compaction or a fresh session. It never designs, builds, or reviews a
 
 ## State - two layers, split by durability
 
-- **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`, docs root = `CLAUDE_DOCS_PATH`
-  from `.claude/settings.json` env, default `.claude/docs` - see the project CLAUDE.md docs-root
-  section) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
+- **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence. On any
   conflict with memory or the chat, the file wins.
 - **The serena cycle note** (`write_memory` named `<feature>__cycle`) is the working cursor:
@@ -65,7 +63,9 @@ explicit word; silence is not a go.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
      fan-out per the shared policy `project-solve-cross-task` owns, the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
-     per task as reports land.
+     per task as reports land. Each seat's green gate stays fast - build + fast tests, never a
+     coverage script, integration replays, or another minutes-long run; the slow full run
+     happens once, in this session, at the step-5 review / step-6 done-gate.
    *Stop* - and this stop chooses the reviewer for step 5: run `project-verify-code` in-session
    (default - no dispatch, stays in this context), dispatch the stack's `<stack>-verifier` seat for
    isolated eyes (on its frontmatter model unless you name one), or **skip** the review straight to step 6's done-gate. (For a broad parallel sweep you can still invoke `/code-review` yourself - it is not part of this flow.) The user can

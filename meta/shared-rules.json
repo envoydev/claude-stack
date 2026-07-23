@@ -1,0 +1,671 @@
+{
+  "_comment": "Shared-rules registry - the sanctioned exceptions to one-home-per-piece: rules whose text deliberately lives in more than one stack file (one canonical owner + inline restatements, no prose cross-mentions). Each copy is pinned by a marker - a distinctive phrase from that file's own wording, matched whitespace-normalized so md line wrapping never breaks it. Lint check 24 fails the moment any copy's marker no longer matches, and the finding lists every other copy - the multi-home sync is forced by the lint, not remembered. Repo-internal, never shipped.",
+  "rules": {
+    "seat-gates-are-fast": {
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
+        "marker": "never a minutes-long verification (a coverage-instrumented run, an integration/replay suite, an E2E pass)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-solve-task/SKILL.md",
+          "marker": "never a coverage script, integration replays, or another minutes-long run; the slow full run happens once, in this session"
+        },
+        {
+          "file": "stack/skills/project-implementer/SKILL.md",
+          "marker": "never a minutes-long run like a coverage script or integration replays; the full suite stays with this session's finish step"
+        }
+      ]
+    },
+    "docs-root-resolution": {
+      "_note": "The docs-root default: CLAUDE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs. The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (the generated hook's fallback constant, the skill line that quotes it, both installer seeds) must state the same value.",
+      "owner": {
+        "file": "stack/rules/baseline-docs-root.md",
+        "marker": "the `CLAUDE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-code-style-analyzer/references/inject-code-style.template.js",
+          "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+        },
+        {
+          "file": "stack/skills/project-code-style-analyzer/SKILL.md",
+          "marker": "const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';"
+        },
+        {
+          "file": "scripts/os/claude-stack.sh",
+          "marker": "env[\"CLAUDE_DOCS_PATH\"] = \".claude/docs\""
+        },
+        {
+          "file": "scripts/os/claude-stack.ps1",
+          "marker": "Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'"
+        },
+        {
+          "file": "scripts/stamp-docs-root.js",
+          "marker": "const DEFAULT_ROOT = '.claude/docs';"
+        }
+      ]
+    },
+    "memory-handoff-mechanism": {
+      "_note": "The serena per-project memory handoff: name-addressed, local, never the shared memory MCP. Owner reference defines it; every seat restates it inline.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/capability-reuse.md",
+        "marker": "serena memory is local to this project and addressed by name, not searched"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/angular-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/mobile-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/angular-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/mobile-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/angular-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/mobile-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/ci-failure-diagnoser.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        }
+      ]
+    },
+    "orient-docs-durable-truth": {
+      "_note": "Committed docs are the durable truth, the serena note only the transient handoff.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/capability-reuse.md",
+        "marker": "the durable map lives in the docs, the transient handoff in the note"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/angular-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/mobile-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/angular-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/mobile-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/ci-failure-diagnoser.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        }
+      ]
+    },
+    "working-seat-status-vocabulary": {
+      "_note": "The working-seat status vocabulary (DONE .. BLOCKED_CONTRACT_CHANGE).",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/agent-output-protocol.md",
+        "marker": "status: DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED | BLOCKED_CONTRACT_CHANGE"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/angular-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/mobile-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "Lead with a status - DONE"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "Lead with a status - DONE"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "Lead with a status - DONE"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "Lead with a status - DONE"
+        }
+      ]
+    },
+    "verifier-output-contract": {
+      "_note": "The verifier verdict vocabulary and output contract.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/agent-output-protocol.md",
+        "marker": "status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/angular-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/mobile-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        }
+      ]
+    },
+    "diagnosis-status-vocabulary": {
+      "_note": "The diagnosis status vocabularies - issue and CI variants sync with the investigation reference.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/issue-investigation.md",
+        "marker": "status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser.md",
+          "marker": "DIAGNOSED, NOT_REPRODUCED, NEEDS_MORE_EVIDENCE, LIKELY_FLAKE, or INCONCLUSIVE"
+        },
+        {
+          "file": "stack/agents/ci-failure-diagnoser.md",
+          "marker": "DIAGNOSED, CI_PASSING, LIKELY_FLAKE, NEEDS_MORE_EVIDENCE, or INCONCLUSIVE"
+        }
+      ]
+    },
+    "ponytail-seat-disciplines": {
+      "_note": "The per-seat-class ponytail discipline briefs (ultra / full / review).",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/token-reduction.md",
+        "marker": "Run it at full discipline for the seats that write or judge code, lite for the seats that plan"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/angular-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/mobile-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest pipeline that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/angular-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/mobile-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+        },
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/angular-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/mobile-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        }
+      ]
+    },
+    "implementer-model-routing": {
+      "_note": "The per-task implementer_model routing designers emit (haiku mechanical / sonnet floor on risk).",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/model-routing.md",
+        "marker": "**`sonnet` FLOOR - never haiku** for any task carrying a risk trigger"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/angular-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/mobile-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        }
+      ]
+    },
+    "contract-freeze-protocol": {
+      "_note": "The seam-contract freeze + BLOCKED_CONTRACT_CHANGE stop protocol.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/contract-protocol.md",
+        "marker": "When a seat finds the recorded interface cannot be met, it stops and emits BLOCKED_CONTRACT_CHANGE"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/angular-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/mobile-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/angular-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/mobile-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        }
+      ]
+    },
+    "report-lean": {
+      "_note": "The identical Report-lean paragraph across the seat roster (code-analyzer carries a deliberate shorter variant).",
+      "owner": {
+        "file": "stack/agents/angular-implementer.md",
+        "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/angular-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/ci-failure-diagnoser.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/mobile-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/mobile-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/code-analyzer.md",
+          "marker": "Report lean.** Dense and factual - every substantive item this section requires and nothing more"
+        }
+      ]
+    }
+  }
+}

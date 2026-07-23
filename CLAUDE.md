@@ -63,10 +63,14 @@ change made only inside a consuming project is throwaway (see Invariants).
     protocol change to an agent here usually needs the same edit to its twin there (the deliberate
     divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
     per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
-- `stack/rules/` - fifteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Five
+- `stack/rules/` - sixteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
-    (code quality + definition of done), security, git + pre-commit, navigation - loaded every session and
+    (code quality + definition of done), security, git + pre-commit, navigation, docs-root (the
+    generated-docs root - `CLAUDE_DOCS_PATH` resolution, what lives under `<docs-path>`; the env var
+    is the ONLY lever, no CLAUDE.md restatement - the installers stamp the resolved value over the
+    rule's `__DOCS_ROOT__` placeholder on every install/update, and setup/configure re-stamp after
+    an env change) - loaded every session and
     subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
     the skill/agent usage policy + per-project MCP routing live in the GENERATED
     baseline-project-agent-capabilities.md, written by the `project-agent-capabilities` skill).
@@ -78,7 +82,16 @@ change made only inside a consuming project is throwaway (see Invariants).
     each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
     hard gate.
-- `setup-plugin/` - the claude-stack plugin: four guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare), `/claude-stack:configure` (adjust an existing install - add or drop) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`), their shared `references/` at the plugin root (`recommendations.json` - the seeds + the never-flag `general` list - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back.
+- `setup-plugin/` - the claude-stack plugin: four guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare), `/claude-stack:configure` (adjust an existing install - add or drop) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`), their data catalogs in repo `meta/` (`recommendations.json` - the seeds + the never-flag `general` list - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back.
+- `meta/` - the repo's own registries, never installed into a project: `shared-rules.json` pins
+  every deliberate multi-home rule (one canonical owner + its inline restatement sites, each copy
+  marker-pinned; no prose cross-mentions in the bodies) - the lint goes red when any copy's marker
+  breaks, so a multi-home edit syncs all copies mechanically; the generated `stack-graph.json`
+  (the dependency graph `stack-graph.js` builds and `stack-select.js` reads at guided-install
+  time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
+  catalogs (`recommendations.json`, `evidence.json`, `judgment.json`). Commands reach ALL of
+  these through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}` - the
+  installed plugin package is `setup-plugin/` only, so nothing in `meta/` exists inside it.
 - `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
   token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
   side of the flow instrumentation (`instrument-tool-usage.js` is the identity side - hooks never

@@ -55,7 +55,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` (fail-soft
   without the CLI). Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
-  "$TMP/repo/setup-plugin/references/evidence.json" --out "$TMP/found.json"` - so the walk's
+  "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - so the walk's
   tables can label what the project provably uses (`--found`); skip it in global mode (no
   project to scan).
 - **Report what changed since the install.** `.claude/claude-stack.stamp` (or the account's)
@@ -112,12 +112,14 @@ Same dependency-ordered walk as `setup` (rules pull agents + skills, agents pull
 everything pulls MCPs and plugins, hooks stand alone - dependencies only point FORWARD), applied to
 the installed set with no recommended phase. Hold TWO running files in the temp dir: `raw.json` -
 the remaining selection (installed + adds - drops, every category incl. `hooks` and `mcps`) - and
-`dropped.json` - everything dropped so far, per category.
+`dropped.json` - everything dropped so far, per category. Seed BOTH before the first recompute -
+`raw.json` from the step-1 inventory, `dropped.json` as `{}` - so no layer ever runs against a
+file that does not exist yet.
 
 Per layer, the SAME three-beat shape as setup:
 
 1. **Recompute quietly** - one call:
-   `node stack-select.js --selection raw.json --graph stack-graph.json --dropped dropped.json`,
+   `node stack-select.js --selection raw.json --dropped dropped.json`,
    output redirected to `$TMP/select.out` and parsed from there, never pasted. Two line kinds drive the step:
    - `required: <category> <name> - <why>` naming a DROPPED item -> the drop is blocked: something
      kept still depends on it. Show the reason; the user keeps it, or also drops the dependents
@@ -128,13 +130,18 @@ Per layer, the SAME three-beat shape as setup:
      never remove one silently, never re-offer one the user chose to keep.
 2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed
    alike). The TOOL renders it, never you:
-   `node stack-select.js --selection raw.json --graph stack-graph.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json" > "$TMP/table.txt"`
+   `node stack-select.js --selection raw.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json" > "$TMP/table.txt"`
    (write the step-1 inventory to `installed.json` once; omit `--found` in global mode - no scan
    ran. A not-installed row whose reason column carries a matched signal is the project telling
    you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste `table.txt` verbatim
-   inside a fenced code block: the one sanctioned paste, pre-padded by the tool so it stays
-   aligned at any length; a hand-written markdown table shears when the renderer flushes it in
-   segments. The table ends in a `total: N <layer>` footer line - it is part of the paste and the
+   inside a fenced code block. **The layer turn has ONE fixed shape, in order: (1) the
+   `[step n/12 - <layer>]` banner, (2) the fenced block holding `table.txt` byte-for-byte, (3) the
+   ADD round question - a layer turn missing the fenced table is invalid: render the table and
+   re-send.** A prose grouping that feels equivalent (`Installed (5): ...` / `Locked (3): ...`
+   lines) is the exact failure this shape exists to prevent, and the run's narrate-don't-trace
+   rule does not reach this paste - it is the rule's one sanctioned exception. The paste is
+   pre-padded by the tool so it stays aligned at any length; a hand-written markdown table shears
+   when the renderer flushes it in segments. The table ends in a `total: N <layer>` footer line - it is part of the paste and the
    user's truncation check: a display whose visible rows fall short of the footer's count (or that
    lacks the footer) was cut down and must be re-pasted in full; never summarize rows into prose,
    the user decides from the whole catalog, not from your shortlist. Rows are labeled `yes` / `orphaned` (with the cascade origin) / `-`, the lock
@@ -156,7 +163,7 @@ Per layer, the SAME three-beat shape as setup:
    Then the drop round: **Nothing** (the default; orphaned rows are pre-suggested, each with its
    cascade origin), **All droppable** (keep only locked rows), or typed numbers. A drop naming a
    LOCKED row triggers the consent cascade, not a refusal: run
-   `node stack-select.js --selection raw.json --graph stack-graph.json --dependents <category>:<name>`
+   `node stack-select.js --selection raw.json --dependents <category>:<name>`
    (output to `$TMP/select.out`) and present what holds it - 'csharp is required by rule
    csharp-conventions, rule dotnet-repair-agents + 4 agents; drop them ALL together, or keep it?'
    On consent, the item AND its dependents fold into `dropped.json` - dependents from
@@ -217,14 +224,17 @@ only when ABSENT, so this step is the one place they are changed deliberately:
 
 Show the CURRENT values read from the file - never assume the defaults - then one keep-or-change
 consent covering both. On a docs-root change, say plainly: existing generated docs do NOT move -
-they stay under the old root until moved by hand or re-captured, and the CLAUDE.md docs-root
-section must agree (the step-12 reconcile covers that row; surface it). Apply on consent with a
+they stay under the old root until moved by hand or re-captured. Then re-stamp the deployed rule - run
+`node $TMP/repo/scripts/stamp-docs-root.js <project root>`: it rewrites the 'This install's root:'
+line in `.claude/rules/baseline-docs-root.md` from the settings.json value just written, so the
+always-on awareness matches the env (every install/update run re-stamps it too). Nothing else
+needs editing. Apply on consent with a
 merge touching ONLY the chosen keys - everything else in settings.json is preserved. Area
 skipped, or nothing changed: one narration line, nothing written.
 
 ## 10. Prerequisite check
 
-Run: `node stack-select.js --selection raw.json --graph stack-graph.json --emit selection.txt --check`,
+Run: `node stack-select.js --selection raw.json --emit selection.txt --check`,
 output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
 adds marked with their reasons, the final drop list (incl. accepted orphans) named; (3) each

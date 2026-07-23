@@ -64,18 +64,18 @@ the evidence scan (with the judgment catalog), the evidence gaps, and the judgme
 
 ```
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
-  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/redundant.out"
 node "$TMP/repo/scripts/stack-select.js" --missing   --installed "$TMP/installed.json" \
-  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/missing.out"
-node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/setup-plugin/references/evidence.json" \
-  --judgment "$TMP/repo/setup-plugin/references/judgment.json" --out "$TMP/found.json"
+node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" \
+  --judgment "$TMP/repo/meta/judgment.json" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.json" \
-  --catalog "$TMP/repo/setup-plugin/references/evidence.json" --installed "$TMP/installed.json" \
-  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --catalog "$TMP/repo/meta/evidence.json" --installed "$TMP/installed.json" \
+  --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/evidence.out"
-node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/setup-plugin/references/judgment.json" \
+node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/meta/judgment.json" \
   --installed "$TMP/installed.json" > "$TMP/judgment.out"
 ```
 
@@ -158,7 +158,7 @@ Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four
    the item's surviving half - present them as-is, adding the project-doc side where one exists.
    A version conflict the catalog misses may still be proposed by hand with the full citation
    (the pin next to the item's conflicting guidance) - and is worth an entry in
-   `references/judgment.json` upstream. No project docs -> the prose-conventions path
+   `meta/judgment.json` upstream. No project docs -> the prose-conventions path
    is skipped (say so); path 1 and the precomputed rows still run - they read code and manifests,
    not conventions.
 3. **Corroborated need - the uninstalled mirror of gate 1.** An uninstalled skill whose domain the

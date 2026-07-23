@@ -9,6 +9,7 @@
       "related-project-analyzer"
     ],
     "rules": [
+      "baseline-docs-root",
       "baseline-git",
       "baseline-interaction",
       "baseline-navigation",

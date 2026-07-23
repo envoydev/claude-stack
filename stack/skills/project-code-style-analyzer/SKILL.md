@@ -1,6 +1,6 @@
 ---
 name: project-code-style-analyzer
-description: "The deliberate project code-style capture: fan out code-style-analyzer agents (one per detected language), merge their reports into docs/PROJECT-CODE-STYLE.md, and generate + wire the inject-code-style hook that surfaces that doc at edit time, filtered to the exact file extensions the agents observed. Re-run to refresh: the same analysis, but the doc reconciles in place and the hook is rewritten only if invalid or outdated. Manual, /-only. Triggers on 'capture the project code style' or 'set up the code-style doc and hook'. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "The deliberate project code-style capture: fan out code-style-analyzer agents (one per detected language), merge their reports into <docs-path>/PROJECT-CODE-STYLE.md, and generate + wire the inject-code-style hook that surfaces that doc at edit time, filtered to the exact file extensions the agents observed. Re-run to refresh: the same analysis, but the doc reconciles in place and the hook is rewritten only if invalid or outdated. Manual, /-only. Triggers on 'capture the project code style' or 'set up the code-style doc and hook'. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
 disable-model-invocation: true
 ---
 
@@ -8,11 +8,11 @@ disable-model-invocation: true
 
 You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at edit time. Three artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place, rewrites the hook only if it is invalid or outdated, and leaves the wiring alone:
 
-1. `docs/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. Written under the project's configured docs root (`CLAUDE_DOCS_PATH` in `.claude/settings.json` env, default `.claude/docs`).
+1. `<docs-path>/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged.
 2. `.claude/hooks/inject-code-style.js` - a generated PreToolUse hook that injects that doc into context once per session, on the first edit of a file whose extension the analysis actually observed - so the style is in front of whoever writes code without anyone remembering to open a doc. The hook resolves the docs root itself at runtime from the same `CLAUDE_DOCS_PATH` env value - no per-root generation differences.
 3. The `.claude/settings.json` wiring for that hook (idempotent - added once, kept thereafter).
 
-The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `docs/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
+The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
 
 ## Execution modes
 DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-solve-cross-task` owns. Pick once, hold for the run:
@@ -28,7 +28,7 @@ A cheap Glob scan, in-session: `*.cs`, `*.xaml`, `*.ts`, `*.html`, `*.scss`/`*.c
 ### 2. FAN OUT - one code-style-analyzer per language, in parallel
 Dispatch all seats in a single message. Each dispatch prompt names its language-family scope and nothing else - the agent reads its config + representative code and returns the structured report (project type, observed extensions, enforcement map, enforced rules, idioms, uncertain/inconsistent). The agents write no files; their final messages are your merge input.
 
-### 3. MERGE - write docs/PROJECT-CODE-STYLE.md (under the configured docs root - `CLAUDE_DOCS_PATH`, default `.claude/docs`)
+### 3. MERGE - write <docs-path>/PROJECT-CODE-STYLE.md
 Consolidate the reports into one doc - apply the `markdown-style` skill so it reads as a quick reference, not a wall of prose. Shape:
 
 1. One opening line - the project's actual style; configs stay enforced; this captures what they cannot; where this doc and a house convention skill disagree, THIS doc wins.
@@ -65,7 +65,7 @@ Read the project's `.claude/settings.json` (create `{}` if absent), and ensure `
 Parse, check, append, rewrite - never regex-edit JSON, and never remove or reorder the entries the stack installer wired. Already present (a re-run): leave it untouched.
 
 ### 6. REPORT
-Confirm the three artifacts (doc created/refreshed + sections touched; hook generated / rewritten-as-outdated / left current, with the extension union; wiring added/already present). Then briefly: the languages detected, the notable idioms a linter cannot enforce, and any divergence from the house skills worth attention. All three artifacts are committed files - remind the user they ship with the repo. No re-paste of the doc body - point to the file.
+Confirm the three artifacts (doc created/refreshed + sections touched; hook generated / rewritten-as-outdated / left current, with the extension union; wiring added/already present). Then briefly: the languages detected, the notable idioms a linter cannot enforce, and any divergence from the house skills worth attention. State where each landed - machine-local under the default layout (`.claude/*` is gitignored), shipped with the repo only when the project set a committed docs root. No re-paste of the doc body - point to the file.
 
 ## Don't game it
 The doc records the style the code actually follows, not an aspiration - the agents' rules bind the merge too: every idiom names observed code, splits stay 'inconsistent', absent conventions stay absent. The hook filter is derived, not designed - extensions come from the reports, and the verify step in HOOK runs against the real generated file, not the template.

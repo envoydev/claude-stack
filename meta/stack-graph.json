@@ -294,7 +294,6 @@
         "angular-material",
         "angular-styling",
         "frontend",
-        "project-solve-cross-task",
         "typescript"
       ],
       "skillsSource": "body",
@@ -322,7 +321,6 @@
       "suggests": [
         "angular-conventions",
         "ionic",
-        "project-solve-cross-task",
         "typescript"
       ],
       "skillsSource": "body",
@@ -355,8 +353,7 @@
         "dotnet-minimal-api",
         "dotnet-mvc-controllers",
         "dotnet-testing",
-        "dotnet-web-backend",
-        "project-solve-cross-task"
+        "dotnet-web-backend"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -438,8 +435,7 @@
         "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
-        "dotnet-testing",
-        "project-solve-cross-task"
+        "dotnet-testing"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -485,7 +481,6 @@
         "dotnet-migrate",
         "dotnet-testing",
         "postgres",
-        "project-solve-cross-task",
         "sqlite"
       ],
       "skillsSource": "body",
@@ -560,10 +555,7 @@
       "suggests": [
         "csharp",
         "dotnet",
-        "dotnet-code-quality",
-        "dotnet-project-setup",
-        "dotnet-wpf",
-        "project-solve-cross-task"
+        "dotnet-wpf"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -576,10 +568,8 @@
       "skills": [],
       "suggests": [
         "csharp",
-        "dotnet-code-quality",
         "dotnet-testing",
-        "dotnet-wpf",
-        "project-solve-cross-task"
+        "dotnet-wpf"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -668,7 +658,6 @@
       "suggests": [
         "angular-conventions",
         "ionic",
-        "project-solve-cross-task",
         "typescript"
       ],
       "skillsSource": "body",
@@ -680,10 +669,8 @@
     },
     "related-project-analyzer": {
       "skills": [],
-      "suggests": [
-        "project-related-context"
-      ],
-      "skillsSource": "body",
+      "suggests": [],
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -704,7 +691,6 @@
         "mobile",
         "mobile-security",
         "project-quality-loop",
-        "project-solve-cross-task",
         "typescript"
       ],
       "skillsSource": "body",
@@ -721,8 +707,7 @@
         "csharp-design-patterns",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-wpf",
-        "project-solve-cross-task"
+        "dotnet-wpf"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -833,6 +818,13 @@
         "**/src/lib/**/*.scss",
         "**/src/lib/**/*.css"
       ]
+    },
+    "baseline-docs-root": {
+      "skills": [],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": []
     },
     "baseline-git": {
       "skills": [],

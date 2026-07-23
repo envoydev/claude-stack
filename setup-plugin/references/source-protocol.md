@@ -86,7 +86,9 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
 Everything comes out of `$TMP/repo`:
 - the installer - `scripts/os/claude-stack.sh` on `darwin`/`linux`, `scripts/os/claude-stack.ps1` on
   Windows (via `pwsh`)
-- `scripts/stack-select.js` and `scripts/stack-graph.json` (selection closure + prerequisite check)
+- `scripts/stack-select.js` and `meta/stack-graph.json` (selection closure + prerequisite check)
+- the `meta/` catalogs - `recommendations.json`, `evidence.json`, `judgment.json` (seeds, the
+  evidence-scan signals, the judgment gates)
 - `stack/CLAUDE.template.md` (the CLAUDE.md fill-in / reconcile step)
 - `RELEASE-SOURCE` - the snapshot's commit (the `configure` command compares the stamp against it
   via the GitHub compare API; an archive has no git history to diff locally)

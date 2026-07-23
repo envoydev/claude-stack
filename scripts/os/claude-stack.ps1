@@ -568,6 +568,7 @@ $ClaudeRules = @(
   'baseline-security.md'
   'baseline-git.md'
   'baseline-navigation.md'
+  'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_DOCS_PATH)
   # Path-scoped routing
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
   'dotnet-repair-agents.md'   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
@@ -878,6 +879,28 @@ function Get-Rules {
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping rules'; return }
   Copy-FromStackSrc -SubDir 'stack/rules' -Label 'rule' -DestDir (Join-Path $root '.claude/rules') -Files $ClaudeRules
+  Set-DocsRootStamp $root
+}
+
+function Set-DocsRootStamp {
+  # Replace __DOCS_ROOT__ in the copied baseline-docs-root.md with the CURRENT env value
+  # (settings.json, else the default) - runs on install AND update, so the stamp always tracks the env.
+  param([string]$root)
+  $rule = Join-Path $root '.claude/rules/baseline-docs-root.md'
+  if (-not (Test-Path $rule)) { return }
+  $val = '.claude/docs'
+  $settings = Join-Path $root '.claude/settings.json'
+  if (Test-Path $settings) {
+    try {
+      $data = Get-Content $settings -Raw | ConvertFrom-Json
+      if ($data.env -and $data.env.PSObject.Properties['CLAUDE_DOCS_PATH'] -and $data.env.CLAUDE_DOCS_PATH) {
+        $val = $data.env.CLAUDE_DOCS_PATH
+      }
+    } catch { Log '  !! docs-root stamp: settings.json unreadable - stamping the default' }
+  }
+  try {
+    (Get-Content $rule -Raw).Replace('__DOCS_ROOT__', $val) | Set-Content $rule -NoNewline -Encoding utf8
+  } catch { Log '  !! docs-root stamp failed - the rule keeps the env-wins fallback' }
 }
 
 function New-ClaudeMd {
@@ -1014,7 +1037,7 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -NotePropertyValue '40'
     $changed = $true
   }
-  # generated-docs root: the authoritative value the CLAUDE.md docs-root section points at.
+  # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
   # Forward slashes DELIBERATELY, also on Windows - the value is consumed by Node hooks and the
   # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
   if (-not $data.env.PSObject.Properties['CLAUDE_DOCS_PATH']) {

@@ -43,9 +43,9 @@ test('no tracked plugin file leaks an email address', () => {
 });
 
 const { computeClosure } = require('./stack-select.js');
-const graph = require('./stack-graph.json');
+const graph = require('../meta/stack-graph.json');
 
-const RECS = path.join(PLUGIN_DIR, 'references', 'recommendations.json');
+const RECS = path.join(ROOT, 'meta', 'recommendations.json');
 
 test('every recommendation name resolves in the dependency graph', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));

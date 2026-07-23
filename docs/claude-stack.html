@@ -247,7 +247,7 @@
     <div class="stat"><b>8</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>4</b><span>hooks</span></div>
-    <div class="stat"><b>15</b><span>rules</span></div>
+    <div class="stat"><b>16</b><span>rules</span></div>
     <div class="stat"><b>7</b><span>domains</span></div>
   </div>
 
@@ -1156,6 +1156,7 @@ const rules = [
   ["baseline-security", "(none - always on)", "House baseline: security-review routing, never log secrets/PII, hardcoded-secret protocol, deny-list caveat."],
   ["baseline-git", "(none - always on)", "House baseline: Conventional Commits, review-before-commit, no AI attribution, PR shape, pre-commit checkpoint."],
   ["baseline-navigation", "(none - always on)", "House baseline: serena-first symbol navigation, read-before-edit, never guess an ambiguous reference."],
+  ["baseline-docs-root", "(none - always on)", "House baseline: the generated-docs root - CLAUDE_DOCS_PATH resolution (absent = .claude/docs), the &lt;docs-path&gt; shorthand, machine-local vs committed root."],
   ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
   ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.slnx,**/*.xaml", "Routes .NET build/test repair to the dotnet build/test resolvers."],
   ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.spec.ts,**/*.scss,**/src/app/**/*.ts,**/src/lib/**/*.ts", "Routes Angular build/test repair to the ng resolvers."],

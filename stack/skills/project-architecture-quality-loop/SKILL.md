@@ -20,7 +20,7 @@ DELEGATED vs INLINE - and why detection keys on dispatch capability, not file pr
 ## The loop
 
 ### 1. ANALYZE + ASSESS
-Run the `project-architecture-analyzer` capture over the target - its protocol owns the gather-and-reason mechanics. What this loop consumes is its output: `docs/architecture/ARCHITECTURE.md` (the structure map) and `docs/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural) - both paths resolve under the project's configured docs root (`CLAUDE_DOCS_PATH`, default `.claude/docs`). Read `docs/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not 'fix' a conscious choice.
+Run the `project-architecture-analyzer` capture over the target - its protocol owns the gather-and-reason mechanics. What this loop consumes is its output: `<docs-path>/architecture/ARCHITECTURE.md` (the structure map) and `<docs-path>/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural). Read `<docs-path>/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not 'fix' a conscious choice.
 
 ### 2. TRIAGE + FIX by tier
 Take the open weaknesses in leverage order (the assessment's top-few first). Route each by its tier - and confirm the green baseline (build + tests) before you start, so a regression is visible. Hold every fix against the assessment's Strengths list: a remediation whose entry names a strength tension is applied the way the entry preserves the strength, and a fix that turns out mid-round to erode a listed strength stops - resolving a weakness by breaking a strength is a net loss, and a genuine strength-vs-weakness tradeoff is a structural-tier user decision, never an auto-fix:
@@ -32,10 +32,10 @@ Take the open weaknesses in leverage order (the assessment's top-few first). Rou
 Keep the build and tests green across the round: after each fix batch, re-run them, and a red routes to the matching resolver (dotnet-build-error-resolver / dotnet-test-failure-resolver / ng-build-error-resolver / angular-test-resolver) before the next weakness.
 
 ### 3. UPDATE DOCS
-Re-run the project-architecture-analyzer capture, so `docs/architecture/ARCHITECTURE.md` and `docs/architecture/ASSESSMENT.md` reconcile with what shipped - the resolved weaknesses drop off, the new boundaries and patterns land in the map, and any weakness the fix exposed is added. The assessment is regenerated, not hand-edited: the capture owns those docs.
+Re-run the project-architecture-analyzer capture, so `<docs-path>/architecture/ARCHITECTURE.md` and `<docs-path>/architecture/ASSESSMENT.md` reconcile with what shipped - the resolved weaknesses drop off, the new boundaries and patterns land in the map, and any weakness the fix exposed is added. The assessment is regenerated, not hand-edited: the capture owns those docs.
 
 ### 4. LOOP or STOP
-Re-read the reconciled `docs/architecture/ASSESSMENT.md` and decide, off the weakness set, not by eye:
+Re-read the reconciled `<docs-path>/architecture/ASSESSMENT.md` and decide, off the weakness set, not by eye:
 
 - **SATISFIED** - no fixable (small/substantial) weakness remains; only accepted tradeoffs and user-declined structural items are left.
 - **PLATEAU** - the fixable-weakness set equals the previous round's and none is now resolvable - stop rather than re-run identically.
@@ -46,7 +46,7 @@ Then emit the final report:
 - **Outcome** - SATISFIED / PLATEAU / CAPPED / BLOCKED, and on which round.
 - **Resolved** - each weakness fixed, its tier, and the change that closed it.
 - **Deferred** - structural items the user declined or has not decided, plus accepted tradeoffs left alone.
-- **Docs** - the reconciled `docs/architecture/ARCHITECTURE.md` + `docs/architecture/ASSESSMENT.md` state.
+- **Docs** - the reconciled `<docs-path>/architecture/ARCHITECTURE.md` + `<docs-path>/architecture/ASSESSMENT.md` state.
 - **Baseline** - build + tests green at stop (or the red that blocked it).
 
 ## Example

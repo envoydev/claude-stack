@@ -2,7 +2,7 @@
 
 A findings-based audit. Review TARGET for correctness, clarity, and conformance to the project's recorded architecture. Run this stage FIRST: it carries the widest blast radius now that it covers structural conformance, so fixing it after the others would invalidate downstream work. Architecture-level restructuring (introducing a new boundary, inverting a layer wholesale, adopting a new pattern) is out of scope here - that is the `project-architecture-quality-loop` skill; in this stage you flag where the code violates the structure already recorded and fix it with the smallest correct change.
 
-First, read `docs/architecture/ARCHITECTURE.md` if it exists - the recorded layers, boundaries, dependency directions, and patterns - then audit TARGET against it and against general quality.
+First, read `<docs-path>/architecture/ARCHITECTURE.md` if it exists - the recorded layers, boundaries, dependency directions, and patterns - then audit TARGET against it and against general quality.
 
 Look for:
 - **Architecture conformance** (against ARCHITECTURE.md): logic in the wrong layer, a controller doing persistence, a domain model reaching into the UI; a dependency pointing the wrong way (a core depending on a detail) or a cycle between modules; a second architecture pattern bolted onto the one the map records - match the recorded structure, never introduce a rival even if it is better.

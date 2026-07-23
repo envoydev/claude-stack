@@ -23,7 +23,7 @@ touches - never dump the whole workspace or run every target.
   `nx affected -t test`, `nx affected -t lint`, against a base with `--base=main`. This is the biggest
   token and wall-clock win in a large monorepo - a change to one library tests only that library and
   its dependents, not every project.
-- The verifier and CI gate on `nx affected`, not `nx run-many` over everything. `nx affected --graph`
+- Verification and CI gate on `nx affected`, not `nx run-many` over everything. `nx affected --graph`
   shows exactly what a change touches before you run it.
 
 ## Serena vs Nx - route each question to the cheaper tool

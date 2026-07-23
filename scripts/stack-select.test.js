@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
-const graph = require('./stack-graph.json');
+const graph = require('../meta/stack-graph.json');
 
 test('an agent pulls its declared skills and plugins; body mentions only suggest', () => {
     const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
@@ -99,7 +99,7 @@ test('CLI: an unknown name prints an unknown: line and never reaches the emitted
     fs.writeFileSync(rawFile, JSON.stringify({ skills: ['csharp', 'totally-retired-skill'], agents: [], rules: [], plugins: [] }));
     try
     {
-        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--graph', path.join(__dirname, 'stack-graph.json'), '--emit', emitFile], { encoding: 'utf8' });
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'), '--emit', emitFile], { encoding: 'utf8' });
         assert.match(out, /unknown: skill 'totally-retired-skill'/, 'the retirement is named on stdout');
         const emitted = fs.readFileSync(emitFile, 'utf8');
         assert.ok(emitted.includes('skill csharp'), 'known names still emit');
@@ -243,7 +243,7 @@ test('emitTable emits a perfectly aligned, fully labeled layer table', () => {
 // not be flagged `suggested` when that stack is unconfirmed - e.g. dotnet-wpf / database-
 // conventions / ionic leaking into an aspnet+angular install via a shared resolver or the
 // universal code-style-analyzer. General within-stack conditionals (owned by no stack) stay.
-const recommendations = require('../setup-plugin/references/recommendations.json');
+const recommendations = require('../meta/recommendations.json');
 
 test('a suggested skill owned only by unconfirmed stacks is not flagged suggested', () => {
     const raw = {
@@ -259,16 +259,17 @@ test('a suggested skill owned only by unconfirmed stacks is not flagged suggeste
         assert.doesNotMatch(rowOf(s), /suggested/, `${s} must not be suggested when its owning stack is unconfirmed`);
     }
     // general conditionals owned by no stack remain legitimate suggestions for this install
-    for (const s of ['dotnet-minimal-api', 'dotnet-project-setup'])
-    {
-        assert.match(rowOf(s), /suggested/, `${s} is a genuine cross-cutting suggestion, not stack-owned`);
-    }
+    assert.match(rowOf('dotnet-minimal-api'), /suggested/, 'dotnet-minimal-api is a genuine cross-cutting suggestion, not stack-owned');
+    // dotnet-project-setup lost its only edge in the cross-mention purge (a resolver attribution,
+    // never load-bearing) - it stays a plain addable row, not a suggestion
+    assert.ok(rowOf('dotnet-project-setup'), 'dotnet-project-setup still appears in the full-catalog table');
+    assert.doesNotMatch(rowOf('dotnet-project-setup'), /suggested/, 'no live edge carries dotnet-project-setup for this install');
 });
 
 // The evidence layer: gaps between what the scanner found and what is installed.
 // missing = actionable add; unevidenced = advisory only (locked decision - never a removal).
 const { findEvidenceGaps } = require('./stack-select.js');
-const evidenceCatalog = require('../setup-plugin/references/evidence.json');
+const evidenceCatalog = require('../meta/evidence.json');
 
 test('findEvidenceGaps: missing vs unevidenced vs uncatalogued', () => {
     const foundMap = { skills: { 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj' }, mcps: {}, plugins: {} };
@@ -297,7 +298,7 @@ test('findJudgment: overlap only when both installed, dormant only when installe
 
 test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
     const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'project-solve-cross-task': 'FAKE-SIGNAL-2' } };
-    const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json'), 'utf8'));
+    const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8'));
     const table = emitTable(graph, 'skills', { raw: { agents: ['aspnet-solution-designer'] }, recs, stacks: ['aspnet'], evidence });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
     assert.match(rowOf('dotnet-web-backend'), /required/, 'a closure lock beats evidence');
@@ -318,9 +319,9 @@ test('CLI --evidence-gaps prints both directions and dedupes vs stack-missing', 
         const invFile = path.join(dir, 'installed.json');
         fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: { 'dotnet-data-access': 'Npgsql in src/Api.csproj', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'dotnet-messaging': 'MassTransit in src/Api.csproj' }, mcps: {}, plugins: {} } }));
         fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: ['dotnet-messaging', 'dotnet-openapi'], mcps: [], plugins: [], hooks: [] }));
-        const catalogPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'evidence.json');
-        const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
-        const base = ['--evidence-gaps', '--found', foundFile, '--catalog', catalogPath, '--installed', invFile, '--graph', path.join(__dirname, 'stack-graph.json')];
+        const catalogPath = path.join(__dirname, '..', 'meta', 'evidence.json');
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const base = ['--evidence-gaps', '--found', foundFile, '--catalog', catalogPath, '--installed', invFile, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')];
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), ...base, '--recs', recsPath, '--stacks', 'aspnet'], { encoding: 'utf8' });
         assert.match(out, /^evidence-missing: skill dotnet-grpc - Grpc\.AspNetCore in src\/Api\.csproj, not installed$/m);
         assert.ok(!/evidence-missing: skill dotnet-data-access/.test(out), 'deduped - aspnet stack-missing already lists it');
@@ -347,7 +348,7 @@ test('no-evidence lines name their closure holders', () => {
         fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: {}, mcps: {}, plugins: {} } }));
         // dotnet-data-access is catalog-listed and hard-held by aspnet-verifier's frontmatter
         fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: ['aspnet-verifier'], skills: ['dotnet-data-access', 'dotnet-performance'], mcps: [], plugins: [], hooks: [] }));
-        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--evidence-gaps', '--found', foundFile, '--catalog', path.join(__dirname, '..', 'setup-plugin', 'references', 'evidence.json'), '--installed', invFile, '--graph', path.join(__dirname, 'stack-graph.json')], { encoding: 'utf8' });
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--evidence-gaps', '--found', foundFile, '--catalog', path.join(__dirname, '..', 'meta', 'evidence.json'), '--installed', invFile, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
         assert.match(out, /^no-evidence: skill dotnet-data-access - installed, no signal found \(advisory; held by agent aspnet-verifier\)$/m, 'a closure-held item names its holder');
         assert.match(out, /^no-evidence: skill dotnet-performance - installed, no signal found \(advisory\)$/m, 'an unheld item keeps the plain advisory');
     }
@@ -536,8 +537,8 @@ test('CLI --missing prints per-category missing lines from an installed inventor
     {
         const invFile = path.join(dir, 'installed.json');
         fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: [], plugins: [], hooks: [] }));
-        const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
-        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--missing', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, 'stack-graph.json'), '--stacks', 'aspnet'], { encoding: 'utf8' });
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--missing', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'), '--stacks', 'aspnet'], { encoding: 'utf8' });
         assert.match(out, /^missing: plugin csharp-lsp - needed by aspnet, not installed$/m);
         assert.ok(!/missing: agent aspnet-implementer/.test(out), 'an installed agent is not missing');
     }
@@ -553,11 +554,95 @@ test('CLI --redundant prints per-category redundant lines from an installed inve
     {
         const invFile = path.join(dir, 'installed.json');
         fs.writeFileSync(invFile, JSON.stringify({ rules: ['wpf-conventions'], agents: ['wpf-implementer'], skills: ['dotnet-wpf', 'csharp'], mcps: [], plugins: [], hooks: [] }));
-        const recsPath = path.join(__dirname, '..', 'setup-plugin', 'references', 'recommendations.json');
-        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--redundant', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, 'stack-graph.json'), '--stacks', 'aspnet'], { encoding: 'utf8' });
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--redundant', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'), '--stacks', 'aspnet'], { encoding: 'utf8' });
         assert.match(out, /^redundant: rule wpf-conventions - owned by wpf, not detected$/m);
         assert.match(out, /^redundant: skill dotnet-wpf - owned by wpf, not detected$/m);
         assert.ok(!/redundant: skill csharp\b/.test(out), 'csharp is aspnet-owned and aspnet is detected - not redundant');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('onPath resolves a real binary without a shell and rejects a nonexistent one', () => {
+    const { onPath } = require('./stack-select.js');
+    assert.strictEqual(onPath('node'), true, 'node runs this test suite, so it must be on PATH');
+    assert.strictEqual(onPath('no-such-binary-claude-stack-test'), false);
+});
+
+test('detectEnvironment probes bins via the PATH walk (no /bin/bash dependency)', () => {
+    const { detectEnvironment } = require('./stack-select.js');
+    const { bins } = detectEnvironment();
+    assert.strictEqual(bins.node, true, 'all-false bins is the old /bin/bash-on-Windows failure signature');
+    assert.strictEqual(bins.git, true);
+});
+
+// The guided walks live or die on these renders: a layer table that fails to render is
+// what pushes the model into the prose-summary fallback the commands ban. Every layer
+// must produce its full catalog with a row count matching the total footer, in both the
+// setup shape (--recs/--stacks) and the configure shape (--installed).
+test('every layer table renders its full catalog with a matching total footer, in setup and configure shapes', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-tables-'));
+    try
+    {
+        const rawFile = path.join(dir, 'raw.json');
+        const invFile = path.join(dir, 'inv.json');
+        fs.writeFileSync(rawFile, '{}');
+        fs.writeFileSync(invFile, JSON.stringify({ skills: ['csharp'], agents: [], rules: [], mcps: [], plugins: [], hooks: [] }));
+        const script = path.join(__dirname, 'stack-select.js');
+        const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const shapes = {
+            setup: ['--recs', recsPath, '--stacks', 'aspnet'],
+            configure: ['--installed', invFile],
+        };
+        for (const layer of ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'])
+        {
+            for (const [shapeName, shapeArgs] of Object.entries(shapes))
+            {
+                const out = execFileSync('node', [script, '--selection', rawFile, '--graph', graphPath, '--table', layer, ...shapeArgs], { encoding: 'utf8' });
+                const footer = out.match(new RegExp(`^total: (\\d+) ${layer}`, 'm'));
+                assert.ok(footer, `${shapeName} ${layer}: total footer present`);
+                const n = Number(footer[1]);
+                assert.ok(n > 0, `${shapeName} ${layer}: catalog is not empty`);
+                const rows = out.split('\n').filter(l => /^\s*\d+ \|/.test(l)).length;
+                assert.strictEqual(rows, n, `${shapeName} ${layer}: visible rows match the footer count`);
+            }
+        }
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('a table still renders when --found and --dropped name missing files (advisory inputs warn, never kill the render)', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-soft-'));
+    try
+    {
+        const rawFile = path.join(dir, 'raw.json');
+        const invFile = path.join(dir, 'inv.json');
+        fs.writeFileSync(rawFile, '{}');
+        fs.writeFileSync(invFile, JSON.stringify({ skills: [], agents: [], rules: [], mcps: [], plugins: [], hooks: [] }));
+        const r = spawnSync('node', [
+            path.join(__dirname, 'stack-select.js'), '--selection', rawFile,
+            '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'),
+            '--table', 'skills', '--installed', invFile,
+            '--dropped', path.join(dir, 'no-such-dropped.json'),
+            '--found', path.join(dir, 'no-such-found.json'),
+        ], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `table render must survive missing advisory files (stderr: ${r.stderr})`);
+        assert.match(r.stdout, /^total: \d+ skills/m, 'the table still carries its footer');
+        assert.match(r.stderr, /warning - cannot read --dropped/);
+        assert.match(r.stderr, /warning - cannot read --found/);
     }
     finally
     {

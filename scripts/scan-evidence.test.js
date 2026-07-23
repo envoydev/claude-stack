@@ -7,7 +7,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const SCRIPT = path.join(__dirname, 'scan-evidence.js');
-const CATALOG = path.join(__dirname, '..', 'setup-plugin', 'references', 'evidence.json');
+const CATALOG = path.join(__dirname, '..', 'meta', 'evidence.json');
 
 // One fixture tree exercising every signal kind, the skip-list, and the depth cap.
 function buildFixture()
@@ -97,7 +97,7 @@ test('scanner honors the skip-list, the depth cap, and reports nothing for absen
 });
 
 test('scanner with --judgment computes version conflicts from found package majors', () => {
-    const JUDGMENT = path.join(__dirname, '..', 'setup-plugin', 'references', 'judgment.json');
+    const JUDGMENT = path.join(__dirname, '..', 'meta', 'judgment.json');
     const root = buildFixture();
     try
     {

@@ -528,6 +528,7 @@ CLAUDE_RULES=(
   "baseline-security.md"
   "baseline-git.md"
   "baseline-navigation.md"
+  "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_DOCS_PATH)
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "dotnet-repair-agents.md"   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
@@ -780,6 +781,24 @@ download_rules() {  # copy each rule .md into .claude/rules/; per-rule fail-soft
   local root
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping rules"; return 0; }
   _install_from_src stack/rules rule "$root/.claude/rules" no ${CLAUDE_RULES[@]+"${CLAUDE_RULES[@]}"}
+  stamp_docs_root_rule "$root"
+}
+
+stamp_docs_root_rule() {  # replace __DOCS_ROOT__ in the copied baseline-docs-root.md with the CURRENT env value (settings.json, else the default) - runs on install AND update, so the stamp always tracks the env
+  local root="$1" rule="$1/.claude/rules/baseline-docs-root.md"
+  [ -f "$rule" ] || return 0
+  python3 - "$rule" "$root/.claude/settings.json" <<'PY' || log "  !! docs-root stamp failed - the rule keeps the env-wins fallback"
+import json, sys
+rule, settings = sys.argv[1], sys.argv[2]
+val = ".claude/docs"
+try:
+    v = json.load(open(settings)).get("env", {}).get("CLAUDE_DOCS_PATH", "")
+    if v: val = v
+except Exception:
+    pass
+s = open(rule, encoding="utf-8").read()
+open(rule, "w", encoding="utf-8").write(s.replace("__DOCS_ROOT__", val))
+PY
 }
 
 seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one)
@@ -899,7 +918,7 @@ for name in mcp_names:
 env = data.setdefault("env", {})
 if "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env:
     env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "40"; changed = True
-# generated-docs root: the authoritative value the CLAUDE.md docs-root section points at.
+# generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
 # Forward slashes on every OS (Node hooks and the model resolve them fine on Windows).
 if "CLAUDE_DOCS_PATH" not in env:
     env["CLAUDE_DOCS_PATH"] = ".claude/docs"; changed = True

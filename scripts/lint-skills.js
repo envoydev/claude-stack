@@ -33,6 +33,8 @@
 // config), that rules/*.md + agents/*.md frontmatter parses as
 // strict YAML with the required keys (an unquoted ': ' scalar breaks GitHub
 // rendering and strict parsers - the skills already get this via check 1),
+// that every copy of a deliberate multi-home rule still matches its marker in
+// meta/shared-rules.json (edit one copy without syncing the others = red),
 // and warns (soft) on over-long SKILL.md descriptions.
 // Needs js-yaml (run `npm install` once). Run: node scripts/lint-skills.js
 //   -> exit 0 clean (warnings allowed), 1 with findings.
@@ -237,7 +239,7 @@ function parseFlatBlock(file, quote, blockStart, sep)
     return { active, commented };
 }
 
-// Lint the evidence catalog (setup-plugin/references/evidence.json) against the
+// Lint the evidence catalog (meta/evidence.json) against the
 // artifact rosters: a typo'd key silently never matches (the scan just skips it),
 // and a regex signal without a label surfaces as raw regex in the guided commands'
 // consent tables. Pure - main() feeds it the real catalog and rosters; the test
@@ -279,7 +281,7 @@ function lintEvidenceCatalog(catalog, rosters)
     return out;
 }
 
-// Lint the judgment catalog (setup-plugin/references/judgment.json) against the artifact
+// Lint the judgment catalog (meta/judgment.json) against the artifact
 // rosters: refs are '<category>:<name>' and a typo'd ref silently never fires; every overlap
 // item needs its unique gap (the keep decision hinges on it); versionConflicts need an integer
 // threshold; occasionBound cadences must be non-empty. Pure, like lintEvidenceCatalog.
@@ -321,6 +323,55 @@ function lintJudgmentCatalog(catalog, rosters)
     {
         checkRef(ref, 'occasionBound');
         if (typeof cadence !== 'string' || cadence.trim() === '') out.push(`judgment.json occasionBound '${ref}' has an empty cadence - the cadence IS the citation`);
+    }
+
+    return out;
+}
+
+// Lint the shared-rules registry (meta/shared-rules.json): each entry is ONE rule whose text
+// deliberately lives in several stack files (a canonical owner + inline restatements, no prose
+// cross-mentions). Every copy is pinned by a marker phrase from that file's own wording,
+// matched whitespace-normalized so md line wrapping cannot break it. A copy edited or deleted
+// breaks its marker -> the finding lists every other copy, forcing the sync mechanically.
+// Pure, like lintEvidenceCatalog: readFile is injected for testability.
+function lintSharedRules(registry, readFile)
+{
+    const out = [];
+    const squash = s => s.replace(/\s+/g, ' ');
+    for (const [name, rule] of Object.entries(registry.rules || {}))
+    {
+        const copies = [
+            ...(rule.owner ? [{ ...rule.owner, role: 'owner' }] : []),
+            ...(rule.sites || []).map(s => ({ ...s, role: 'site' })),
+        ];
+        if (!rule.owner) out.push(`shared-rules '${name}' has no owner - the canonical copy must be named`);
+        if (copies.length < 2) out.push(`shared-rules '${name}' lists fewer than 2 copies - nothing shared to sync`);
+
+        for (const copy of copies)
+        {
+            if (typeof copy.marker !== 'string' || copy.marker.trim() === '')
+            {
+                out.push(`shared-rules '${name}' ${copy.role} ${copy.file} has an empty marker`);
+                continue;
+            }
+
+            let content;
+            try
+            {
+                content = readFile(copy.file);
+            }
+            catch
+            {
+                out.push(`shared-rules '${name}' ${copy.role} names missing file ${copy.file}`);
+                continue;
+            }
+
+            if (!squash(content).includes(squash(copy.marker)))
+            {
+                const others = copies.filter(c => c !== copy).map(c => c.file).join(', ');
+                out.push(`shared-rules '${name}': marker not found in ${copy.file} - the copy was edited or removed; sync the other copies (${others}), then update the markers`);
+            }
+        }
     }
 
     return out;
@@ -1069,13 +1120,13 @@ function main()
         }
     }
 
-    // 20. The committed dependency graph (scripts/stack-graph.json) must match a
+    // 20. The committed dependency graph (meta/stack-graph.json) must match a
     //     fresh build from the current skills/agents/rules/manifests. Lazy-require
     //     avoids a load-time cycle (stack-graph.js requires this module back).
     const stackGraph = require('./stack-graph.js');
     if (stackGraph.readCommitted() !== stackGraph.serialize(stackGraph.buildStackGraph()))
     {
-        flag('stack-graph: scripts/stack-graph.json is stale - run `node scripts/stack-graph.js --write` and commit it');
+        flag('stack-graph: meta/stack-graph.json is stale - run `node scripts/stack-graph.js --write` and commit it');
     }
 
     // 21. ONE version everywhere: the plugin manifest (what the marketplace serves from
@@ -1097,7 +1148,7 @@ function main()
     // 22. The evidence catalog names only real artifacts, and every regex signal
     //     carries a display label. Rosters: skill dirs; MCPs/plugins from the
     //     installer blocks (active + commented - a commentable entry is still real).
-    const evidencePath = path.join(ROOT, 'setup-plugin', 'references', 'evidence.json');
+    const evidencePath = path.join(ROOT, 'meta', 'evidence.json');
     let evidenceCatalog = null;
     try
     {
@@ -1105,7 +1156,7 @@ function main()
     }
     catch (err)
     {
-        flag(`setup-plugin/references/evidence.json is unreadable: ${err.message}`);
+        flag(`meta/evidence.json is unreadable: ${err.message}`);
     }
 
     if (evidenceCatalog)
@@ -1120,9 +1171,9 @@ function main()
             flag(finding);
         }
 
-        // 23. The judgment catalog (setup-plugin/references/judgment.json) - same silent-miss
+        // 23. The judgment catalog (meta/judgment.json) - same silent-miss
         //     class: refs must resolve, overlaps carry both gaps, thresholds parse.
-        const judgmentPath = path.join(ROOT, 'setup-plugin', 'references', 'judgment.json');
+        const judgmentPath = path.join(ROOT, 'meta', 'judgment.json');
         let judgmentCatalog = null;
         try
         {
@@ -1130,7 +1181,7 @@ function main()
         }
         catch (err)
         {
-            flag(`setup-plugin/references/judgment.json is unreadable: ${err.message}`);
+            flag(`meta/judgment.json is unreadable: ${err.message}`);
         }
 
         if (judgmentCatalog)
@@ -1140,6 +1191,32 @@ function main()
             {
                 flag(finding);
             }
+        }
+    }
+
+    // 24. The shared-rules registry (meta/shared-rules.json) - the sanctioned multi-home
+    //     rules. Any copy edited without its marker (and its sibling copies) updated fails
+    //     here, so the multi-home sync is mechanical, not remembered.
+    const sharedRulesPath = path.join(ROOT, 'meta', 'shared-rules.json');
+    let sharedRules = null;
+    try
+    {
+        sharedRules = JSON.parse(fs.readFileSync(sharedRulesPath, 'utf8'));
+    }
+    catch (err)
+    {
+        flag(`meta/shared-rules.json is unreadable: ${err.message}`);
+    }
+
+    let sharedRuleCount = 0;
+    let sharedRuleCopies = 0;
+    if (sharedRules)
+    {
+        sharedRuleCount = Object.keys(sharedRules.rules || {}).length;
+        sharedRuleCopies = Object.values(sharedRules.rules || {}).reduce((n, r) => n + (r.owner ? 1 : 0) + (r.sites || []).length, 0);
+        for (const finding of lintSharedRules(sharedRules, f => fs.readFileSync(path.join(ROOT, f), 'utf8')))
+        {
+            flag(finding);
         }
     }
 
@@ -1166,7 +1243,8 @@ function main()
 
     console.log(`lint-skills: clean (${dirs.length} skills, ${primary.active.size} active manifest entries, `
         + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; both manifests + HTML in sync; `
-        + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean).`);
+        + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
+        + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync).`);
 }
 
 module.exports = {
@@ -1177,6 +1255,7 @@ module.exports = {
     localSkillDirs,
     lintEvidenceCatalog,
     lintJudgmentCatalog,
+    lintSharedRules,
     NON_SKILL_TOKENS,
 };
 
