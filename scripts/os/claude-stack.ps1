@@ -303,7 +303,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (67).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (68).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -325,6 +325,7 @@ $Skills = @(
   'envoydev/claude-stack|project-solve-task'       # gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: project-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction
   'envoydev/claude-stack|project-failure-signatures' # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
   'envoydev/claude-stack|project-ci-failure-signatures'        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-failure-signatures
+  'envoydev/claude-stack|project-stack-usage-analyzer' # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
   'envoydev/claude-stack|devops'           # DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost
   'envoydev/claude-stack|database-conventions' # cross-engine DB conventions + per-engine skill routing
   'envoydev/claude-stack|data-security'    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit

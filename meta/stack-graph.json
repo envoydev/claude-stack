@@ -261,6 +261,10 @@
         "superpowers"
       ]
     },
+    "project-stack-usage-analyzer": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-verify-code": {
       "mcps": [],
       "plugins": [
