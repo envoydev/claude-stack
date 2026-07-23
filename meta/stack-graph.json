@@ -17,6 +17,10 @@
       "mcps": [],
       "plugins": []
     },
+    "browser-extension": {
+      "mcps": [],
+      "plugins": []
+    },
     "capacitor-release": {
       "mcps": [],
       "plugins": []
@@ -177,6 +181,10 @@
       "mcps": [],
       "plugins": []
     },
+    "javascript": {
+      "mcps": [],
+      "plugins": []
+    },
     "markdown-style": {
       "mcps": [],
       "plugins": []
@@ -186,6 +194,10 @@
       "plugins": []
     },
     "mobile-security": {
+      "mcps": [],
+      "plugins": []
+    },
+    "npm": {
       "mcps": [],
       "plugins": []
     },
@@ -286,6 +298,10 @@
       "plugins": []
     },
     "typescript": {
+      "mcps": [],
+      "plugins": []
+    },
+    "webpack": {
       "mcps": [],
       "plugins": []
     }
@@ -924,6 +940,21 @@
         "**/nuget.config"
       ]
     },
+    "javascript-conventions": {
+      "skills": [
+        "javascript",
+        "typescript"
+      ],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": [
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    },
     "markdown-docs": {
       "skills": [
         "docs-as-code",
@@ -951,6 +982,7 @@
     },
     "typescript-conventions": {
       "skills": [
+        "javascript",
         "typescript"
       ],
       "agents": [],
@@ -958,11 +990,7 @@
       "plugins": [],
       "paths": [
         "**/*.ts",
-        "**/*.tsx",
-        "**/*.js",
-        "**/*.jsx",
-        "**/*.mjs",
-        "**/*.cjs"
+        "**/*.tsx"
       ]
     },
     "wpf-conventions": {

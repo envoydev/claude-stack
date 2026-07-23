@@ -80,6 +80,7 @@
       ],
       "rules": [
         "typescript-conventions",
+        "javascript-conventions",
         "angular-conventions",
         "angular-styling-conventions",
         "angular-repair-agents"
@@ -133,6 +134,7 @@
       ],
       "rules": [
         "typescript-conventions",
+        "javascript-conventions",
         "angular-conventions"
       ],
       "plugins": [
@@ -166,7 +168,8 @@
     },
     "typescript": {
       "rules": [
-        "typescript-conventions"
+        "typescript-conventions",
+        "javascript-conventions"
       ],
       "plugins": [
         "typescript-lsp"

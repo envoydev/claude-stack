@@ -7,16 +7,16 @@ description: "Router and index for web frontend work - maps a frontend area (Ang
 
 Index mapping a web-frontend work area to the skill to load. It routes rather than copies - load the named skill for the actual guidance; the one deliberate exception is the Design quality section below, which lives in-skill (it replaced the removed frontend-design plugin). If you already know the leaf skill, go straight to it and skip this router. The .NET backend has its own index (`dotnet`); this is the web-frontend side.
 
-**Companion, not optional:** load `typescript` for any TS/JS - strict typing, type modeling, modules, async, errors. Every row below is in addition to that language baseline.
+**Companion, not optional:** load `javascript` (the base language layer - modules, async, errors) plus `typescript` (the type layer) for any TS/JS. Every row below is in addition to that language baseline.
 
-**Required vs optional.** In an Angular project the always-on spine is three skills: this router, `typescript` (every `.ts` / `.js` file), and `angular-conventions` (the framework layer, on any Angular file) - the convention rule already auto-attaches the latter two on `.ts` edits. Every other row below is an optional specialist, loaded only when its area is in play - `angular-material` (Material/CDK), `angular-styling` (CSS/SCSS), `angular-security` (hardening a feature), `mobile` (Ionic/Capacitor) - never up front. A plain non-Angular TypeScript project needs only `typescript`.
+**Required vs optional.** In an Angular project the always-on spine is this router, the `javascript` + `typescript` language pair (every `.ts` / `.js` file), and `angular-conventions` (the framework layer, on any Angular file) - the convention rule already auto-attaches the latter two on `.ts` edits. Every other row below is an optional specialist, loaded only when its area is in play - `angular-material` (Material/CDK), `angular-styling` (CSS/SCSS), `angular-security` (hardening a feature), `mobile` (Ionic/Capacitor) - never up front. A plain non-Angular TypeScript project needs only the language pair; pure JS needs only `javascript`.
 
 ## Area -> skill
 
 | You are about to... | Load |
 |---|---|
 | write or edit Angular components, services, signals, templates, routing, forms, a11y | `angular-conventions` |
-| write any TypeScript / JavaScript (the framework-agnostic language baseline) | `typescript` (always) |
+| write any TypeScript / JavaScript (the framework-agnostic language baseline) | `javascript` + `typescript` (always; JS-only projects skip the type layer) |
 | build distinctive, production-grade UI that avoids generic AI aesthetics | the Design quality notes below (in-skill) |
 | build UI with Angular Material (`@angular/material`) + CDK components | `angular-material` |
 | write or edit CSS / SCSS in an Angular app - scoping, ViewEncapsulation, design tokens, responsive, a11y styling | `angular-styling` |

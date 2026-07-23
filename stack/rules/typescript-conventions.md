@@ -1,7 +1,8 @@
 ---
-paths: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+paths: ["**/*.ts", "**/*.tsx"]
 ---
 
-Editing TypeScript / JavaScript - load `typescript` before the edit - skip the load when it is already in context (some seats preload it); conventions are the source of
-truth, not recall. It is the framework-agnostic baseline; framework layers (Angular / Ionic)
-stack on top where installed. Skip one-line tweaks.
+Editing TypeScript - load `typescript` and the `javascript` base layer it stacks on, before the
+edit - skip a load when it is already in context (some seats preload them); conventions are the
+source of truth, not recall. Framework layers (Angular / Ionic) stack on top where installed.
+Skip one-line tweaks.

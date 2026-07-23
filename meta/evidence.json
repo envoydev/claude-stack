@@ -1,32 +1,245 @@
 {
-  "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix - matched against PackageReference Include= and package.json deps ONLY; a Directory.Packages.props PackageVersion pin alone is never usage under central package management), files (path basenames), csprojContent / content (regex with a required display label - the lint enforces it, and that every key names a real artifact). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts, or process skills with no artifact trace.",
-  "skills": {
-    "dotnet-messaging": { "packages": ["MassTransit", "MassTransit.", "RabbitMQ.Client", "Azure.Messaging.ServiceBus", "Azure.Messaging.EventHubs", "Confluent.Kafka", "NServiceBus"] },
-    "dotnet-grpc": { "packages": ["Grpc.AspNetCore", "Grpc.Net.Client", "Google.Protobuf"] },
-    "dotnet-realtime": { "packages": ["Microsoft.AspNetCore.SignalR.Client"], "content": [{ "glob": "Program.cs", "regex": "AddSignalR|MapHub<", "label": "SignalR server wiring in Program.cs" }] },
-    "dotnet-data-access": { "packages": ["Microsoft.EntityFrameworkCore.", "Dapper", "Dapper.", "Npgsql", "Microsoft.Data.SqlClient"] },
-    "dotnet-aspire": { "packages": ["Aspire."] },
-    "dotnet-authentication": { "packages": ["Microsoft.AspNetCore.Authentication.JwtBearer", "Microsoft.AspNetCore.Identity.", "Microsoft.Identity.Web", "OpenIddict.", "Duende.IdentityServer"] },
-    "dotnet-openapi": { "packages": ["Swashbuckle.AspNetCore", "NSwag.", "Microsoft.AspNetCore.OpenApi"] },
-    "dotnet-performance": { "packages": ["BenchmarkDotNet"] },
-    "dotnet-diagnostics": { "packages": ["BenchmarkDotNet"], "content": [{ "glob": "dotnet-tools.json", "regex": "dotnet-(dump|trace|counters|gcdump)", "label": "diagnostics dotnet tools pinned" }] },
-    "dotnet-error-handling": { "packages": ["FluentValidation", "FluentValidation.", "ErrorOr", "FluentResults", "CSharpFunctionalExtensions", "OneOf", "Hellang.Middleware.ProblemDetails"] },
-    "dotnet-cryptography": { "packages": ["BouncyCastle.Cryptography", "Portable.BouncyCastle", "NSec.Cryptography", "Konscious.Security.Cryptography."] },
-    "dotnet-console-apps": { "packages": ["System.CommandLine", "Spectre.Console", "Spectre.Console.", "Cocona", "Telegram.Bot", "Discord.Net", "SlackNet"] },
-    "dotnet-minimal-api": { "content": [{ "glob": "Program.cs", "regex": "\\.Map(Get|Post|Put|Delete|Patch|Group)\\(", "label": "minimal-API Map* wiring in Program.cs" }] },
-    "dotnet-mvc-controllers": { "content": [{ "glob": "*Controller.cs", "regex": "\\[ApiController\\]|:\\s*(Controller|ControllerBase)\\b", "label": "ApiController/Controller classes" }] },
-    "dotnet-architecture": { "files": ["*.Domain.csproj", "*.Application.csproj", "*.Infrastructure.csproj"] },
-    "dotnet-architecture-tests": { "packages": ["NetArchTest.Rules", "TngTech.ArchUnitNET"] },
-    "dotnet-source-generators": { "csprojContent": [{ "regex": "<IsRoslynComponent>\\s*true", "label": "<IsRoslynComponent>true" }] },
-    "dotnet-winforms": { "csprojContent": [{ "regex": "<UseWindowsForms>\\s*true", "label": "<UseWindowsForms>true" }] },
-    "angular-material": { "packages": ["@angular/material"] },
-    "capacitor-release": { "packages": ["@capacitor/cli", "@capacitor/core"], "files": ["Fastfile"] },
-    "postgres": { "packages": ["Npgsql", "Npgsql.", "pg", "postgres", "pg-promise"], "content": [{ "glob": "*compose*.yml", "regex": "image:\\s*['\"]?postgres", "label": "postgres service in docker-compose" }, { "glob": "*compose*.yaml", "regex": "image:\\s*['\"]?postgres", "label": "postgres service in docker-compose" }] },
-    "sqlite": { "packages": ["Microsoft.Data.Sqlite", "Microsoft.EntityFrameworkCore.Sqlite", "System.Data.SQLite", "better-sqlite3", "sqlite3", "@capacitor-community/sqlite"] },
-    "nx": { "files": ["nx.json"] }
+ "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix - matched against PackageReference Include= and package.json deps ONLY; a Directory.Packages.props PackageVersion pin alone is never usage under central package management), files (path basenames), csprojContent / content (regex with a required display label - the lint enforces it, and that every key names a real artifact). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts, or process skills with no artifact trace.",
+ "skills": {
+  "dotnet-messaging": {
+   "packages": [
+    "MassTransit",
+    "MassTransit.",
+    "RabbitMQ.Client",
+    "Azure.Messaging.ServiceBus",
+    "Azure.Messaging.EventHubs",
+    "Confluent.Kafka",
+    "NServiceBus"
+   ]
   },
-  "mcps": {
-    "sentry": { "packages": ["Sentry", "Sentry.", "@sentry/"], "content": [{ "glob": "appsettings*.json", "regex": "sentry\\.io", "label": "a sentry.io DSN" }] }
+  "dotnet-grpc": {
+   "packages": [
+    "Grpc.AspNetCore",
+    "Grpc.Net.Client",
+    "Google.Protobuf"
+   ]
   },
-  "plugins": {}
+  "dotnet-realtime": {
+   "packages": [
+    "Microsoft.AspNetCore.SignalR.Client"
+   ],
+   "content": [
+    {
+     "glob": "Program.cs",
+     "regex": "AddSignalR|MapHub<",
+     "label": "SignalR server wiring in Program.cs"
+    }
+   ]
+  },
+  "dotnet-data-access": {
+   "packages": [
+    "Microsoft.EntityFrameworkCore.",
+    "Dapper",
+    "Dapper.",
+    "Npgsql",
+    "Microsoft.Data.SqlClient"
+   ]
+  },
+  "dotnet-aspire": {
+   "packages": [
+    "Aspire."
+   ]
+  },
+  "dotnet-authentication": {
+   "packages": [
+    "Microsoft.AspNetCore.Authentication.JwtBearer",
+    "Microsoft.AspNetCore.Identity.",
+    "Microsoft.Identity.Web",
+    "OpenIddict.",
+    "Duende.IdentityServer"
+   ]
+  },
+  "dotnet-openapi": {
+   "packages": [
+    "Swashbuckle.AspNetCore",
+    "NSwag.",
+    "Microsoft.AspNetCore.OpenApi"
+   ]
+  },
+  "dotnet-performance": {
+   "packages": [
+    "BenchmarkDotNet"
+   ]
+  },
+  "dotnet-diagnostics": {
+   "packages": [
+    "BenchmarkDotNet"
+   ],
+   "content": [
+    {
+     "glob": "dotnet-tools.json",
+     "regex": "dotnet-(dump|trace|counters|gcdump)",
+     "label": "diagnostics dotnet tools pinned"
+    }
+   ]
+  },
+  "dotnet-error-handling": {
+   "packages": [
+    "FluentValidation",
+    "FluentValidation.",
+    "ErrorOr",
+    "FluentResults",
+    "CSharpFunctionalExtensions",
+    "OneOf",
+    "Hellang.Middleware.ProblemDetails"
+   ]
+  },
+  "dotnet-cryptography": {
+   "packages": [
+    "BouncyCastle.Cryptography",
+    "Portable.BouncyCastle",
+    "NSec.Cryptography",
+    "Konscious.Security.Cryptography."
+   ]
+  },
+  "dotnet-console-apps": {
+   "packages": [
+    "System.CommandLine",
+    "Spectre.Console",
+    "Spectre.Console.",
+    "Cocona",
+    "Telegram.Bot",
+    "Discord.Net",
+    "SlackNet"
+   ]
+  },
+  "dotnet-minimal-api": {
+   "content": [
+    {
+     "glob": "Program.cs",
+     "regex": "\\.Map(Get|Post|Put|Delete|Patch|Group)\\(",
+     "label": "minimal-API Map* wiring in Program.cs"
+    }
+   ]
+  },
+  "dotnet-mvc-controllers": {
+   "content": [
+    {
+     "glob": "*Controller.cs",
+     "regex": "\\[ApiController\\]|:\\s*(Controller|ControllerBase)\\b",
+     "label": "ApiController/Controller classes"
+    }
+   ]
+  },
+  "dotnet-architecture": {
+   "files": [
+    "*.Domain.csproj",
+    "*.Application.csproj",
+    "*.Infrastructure.csproj"
+   ]
+  },
+  "dotnet-architecture-tests": {
+   "packages": [
+    "NetArchTest.Rules",
+    "TngTech.ArchUnitNET"
+   ]
+  },
+  "dotnet-source-generators": {
+   "csprojContent": [
+    {
+     "regex": "<IsRoslynComponent>\\s*true",
+     "label": "<IsRoslynComponent>true"
+    }
+   ]
+  },
+  "dotnet-winforms": {
+   "csprojContent": [
+    {
+     "regex": "<UseWindowsForms>\\s*true",
+     "label": "<UseWindowsForms>true"
+    }
+   ]
+  },
+  "angular-material": {
+   "packages": [
+    "@angular/material"
+   ]
+  },
+  "capacitor-release": {
+   "packages": [
+    "@capacitor/cli",
+    "@capacitor/core"
+   ],
+   "files": [
+    "Fastfile"
+   ]
+  },
+  "postgres": {
+   "packages": [
+    "Npgsql",
+    "Npgsql.",
+    "pg",
+    "postgres",
+    "pg-promise"
+   ],
+   "content": [
+    {
+     "glob": "*compose*.yml",
+     "regex": "image:\\s*['\"]?postgres",
+     "label": "postgres service in docker-compose"
+    },
+    {
+     "glob": "*compose*.yaml",
+     "regex": "image:\\s*['\"]?postgres",
+     "label": "postgres service in docker-compose"
+    }
+   ]
+  },
+  "sqlite": {
+   "packages": [
+    "Microsoft.Data.Sqlite",
+    "Microsoft.EntityFrameworkCore.Sqlite",
+    "System.Data.SQLite",
+    "better-sqlite3",
+    "sqlite3",
+    "@capacitor-community/sqlite"
+   ]
+  },
+  "nx": {
+   "files": [
+    "nx.json"
+   ]
+  },
+  "npm": {
+   "files": [
+    "package-lock.json"
+   ]
+  },
+  "browser-extension": {
+   "content": [
+    {
+     "glob": "manifest.json",
+     "regex": "\"manifest_version\"",
+     "label": "WebExtension manifest (manifest_version in manifest.json)"
+    }
+   ]
+  },
+  "webpack": {
+   "files": [
+    "webpack.config.*"
+   ]
+  }
+ },
+ "mcps": {
+  "sentry": {
+   "packages": [
+    "Sentry",
+    "Sentry.",
+    "@sentry/"
+   ],
+   "content": [
+    {
+     "glob": "appsettings*.json",
+     "regex": "sentry\\.io",
+     "label": "a sentry.io DSN"
+    }
+   ]
+  }
+ },
+ "plugins": {}
 }

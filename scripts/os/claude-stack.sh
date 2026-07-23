@@ -299,6 +299,10 @@ SKILLS=(
   "envoydev/claude-stack|database-conventions" # cross-engine DB conventions + per-engine skill routing
   "envoydev/claude-stack|data-security"    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
   "envoydev/claude-stack|typescript"       # framework-agnostic TS/JS baseline (strict typing, modules, async, JS+JSDoc)
+  "envoydev/claude-stack|javascript"       # base JS-family language layer: ESM modules, async discipline, two failure channels, modern-feature adoption, untrusted input, naming; typescript stacks on it
+  "envoydev/claude-stack|npm"                 # professional npm: lockfile+ci discipline, supply-chain baseline (ignore-scripts/cooldown/allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns
+  "envoydev/claude-stack|browser-extension"    # MV3 browser extensions: ephemeral service worker + storage tiers, typed cross-context messaging, isolated vs MAIN world, least-privilege permissions, CSP-safe UI, WXT tooling, store review + monetization
+  "envoydev/claude-stack|webpack"             # webpack 5 library builds: transpile/type-check split (swc + fork-ts-checker + tsc declarations), externals from package.json, tree-shaking preconditions, ESM output state, resolution traps, config factory + cache pitfalls
   "envoydev/claude-stack|angular-conventions" # Angular 17+/TS house conventions (signals, OnPush, a11y)
   "envoydev/claude-stack|angular-material"   # Angular Material + CDK: selective imports, M3 theming, CDK primitives, harnesses
   "envoydev/claude-stack|angular-styling"    # Angular CSS/styling: ViewEncapsulation, :host, ::ng-deep ways-out, design tokens, responsive, a11y styling
@@ -532,6 +536,7 @@ CLAUDE_RULES=(
   "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_DOCS_PATH)
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
+  "javascript-conventions.md"  # JS-family conventions, path-scoped js/jsx/mjs/cjs
   "dotnet-repair-agents.md"   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
   "angular-repair-agents.md"  # Angular repair-loop routing, path-scoped
   # Convention rules (soft, glob auto-attach) - each points ONE file family at its house-style skill; replaced the require-convention-skill hard gate.

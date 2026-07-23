@@ -65,6 +65,27 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // npm flags, npmrc keys, and package names in the npm skill - tool identifiers, not skills.
+    'ignore-scripts',
+    'min-release-age',
+    'default-days',
+    'run-s',
+    'run-p',
+    // CSP directive + npm package named in the browser-extension skill - identifiers, not skills.
+    'unsafe-eval',
+    'chrome-types',
+    // lint rule, npm packages, and a CSS property named in the typescript skill's references.
+    'no-floating-promises',
+    'ts-pattern',
+    'web-vitals',
+    'aspect-ratio',
+    // webpack plugin/loader/devtool/mode identifiers named in the webpack skill - tools, not skills.
+    'fork-ts-checker-webpack-plugin',
+    'hidden-source-map',
+    'thread-loader',
+    'speed-measure-webpack-plugin',
+    'write-dts',
+    'tsconfig-paths-webpack-plugin',
     'app-order-list', // Angular selector example in angular-conventions
     'order-list',     // Angular selector example in angular-conventions
     'axe-core',       // a11y testing package in angular-conventions, not a skill

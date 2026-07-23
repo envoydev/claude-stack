@@ -63,7 +63,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     protocol change to an agent here usually needs the same edit to its twin there (the deliberate
     divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
     per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
-- `stack/rules/` - sixteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
+- `stack/rules/` - seventeen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
     (code quality + definition of done), security, git + pre-commit, navigation, docs-root (the
@@ -74,10 +74,11 @@ change made only inside a consuming project is throwaway (see Invariants).
     subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
     the skill/agent usage policy + per-project MCP routing live in the GENERATED
     baseline-project-agent-capabilities.md, written by the `project-agent-capabilities` skill).
-    The other ten
+    The other eleven
     are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the two repair-loop
-    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the seven convention rules
-    (`typescript-conventions.md` / `angular-conventions.md` / `angular-styling-conventions.md` /
+    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the eight convention rules
+    (`javascript-conventions.md` / `typescript-conventions.md` / `angular-conventions.md` /
+    `angular-styling-conventions.md` /
     `csharp-conventions.md` / `wpf-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
     each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
