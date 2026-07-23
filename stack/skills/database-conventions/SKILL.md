@@ -1,6 +1,6 @@
 ---
 name: database-conventions
-description: "database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Deeper work routes out: engine tuning to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, security posture to `data-security`. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
+description: "database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Deeper work routes out: engine tuning to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, security posture to `database-security`. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
 ---
 
 # Database conventions
@@ -35,7 +35,7 @@ The rules here hold across engines; the deep mechanics live with the engine skil
 
 The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` syntax, `AS` aliases, column qualification, SARGable predicates, and clause order - is in `references/sql-style.md`. The operational safety rules here:
 
-- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation - the full injection treatment (per-ORM mechanics, dynamic SQL, identifier allowlisting) is owned by `data-security`. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
+- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation - the full injection treatment (per-ORM mechanics, dynamic SQL, identifier allowlisting) is owned by `database-security`. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
 - **Read with the least authority the work needs.** Default reads to read-only intent and `READ COMMITTED` isolation; reach for `SNAPSHOT` or `REPEATABLE READ` only when a specific consistency requirement justifies the extra cost, and say why.
 - **Bound every result set that could grow** - a `LIMIT` or `TOP` on any open-ended query - and never `SELECT *`, which drags unused columns over the wire and breaks the moment the schema changes.
 - **Deep pagination is keyset (seek), never `OFFSET`.** `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower; a keyset seek with a unique tiebreaker column holds every page equally fast:
@@ -50,7 +50,7 @@ limit 20;
 
 (SQL Server has no row-value comparison - expand to `created_at < :ts OR (created_at = :ts AND id < :id)`.)
 
-- The data-layer hardening posture around injection and connection strings - parameterization at every sink, least-privilege accounts, secrets out of the connection string - is owned by `data-security`; this skill stops at the query.
+- The data-layer hardening posture around injection and connection strings - parameterization at every sink, least-privilege accounts, secrets out of the connection string - is owned by `database-security`; this skill stops at the query.
 
 ## N+1 prevention
 
@@ -113,7 +113,7 @@ Integrity belongs in the schema, where it cannot be bypassed, not in application
 
 ## Secrets
 
-A connection string is a credential. It comes from configuration or a secret store, never from a source-controlled file, and production credentials stay separate from local and staging so a leaked dev secret cannot reach production data. If a credential is even suspected of exposure, rotate it - and never commit a connection string carrying a password to git history, where it survives every later 'deletion'. The wider secret-handling posture is `data-security`.
+A connection string is a credential. It comes from configuration or a secret store, never from a source-controlled file, and production credentials stay separate from local and staging so a leaked dev secret cannot reach production data. If a credential is even suspected of exposure, rotate it - and never commit a connection string carrying a password to git history, where it survives every later 'deletion'. The wider secret-handling posture is `database-security`.
 
 ## Stored procedures and views
 

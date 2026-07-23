@@ -304,7 +304,7 @@ Current timestamp: PostgreSQL `now()` / `CURRENT_TIMESTAMP`; SQL Server `GETDATE
 
 ### 12. Security conventions
 - **Always parameterize user-supplied values; never build SQL by string concatenation of untrusted input.** This is the single most important defense against SQL injection. Use bound parameters/prepared statements (`$1`, `?`, `@param` depending on driver/engine) rather than interpolating values into the SQL text.
-- The full sink-by-sink treatment - dynamic SQL (`sp_executesql`, `format()` with `%L`/`%I` + `USING`), identifier allowlisting, least-privilege grants, `SECURITY DEFINER` + `search_path` hardening - is the `data-security` skill's; this file keeps only the style-level rule above.
+- The full sink-by-sink treatment - dynamic SQL (`sp_executesql`, `format()` with `%L`/`%I` + `USING`), identifier allowlisting, least-privilege grants, `SECURITY DEFINER` + `search_path` hardening - is the `database-security` skill's; this file keeps only the style-level rule above.
 
 ## Recommendations
 

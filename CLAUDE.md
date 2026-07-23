@@ -39,7 +39,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     checks the assembled feature against the frozen contract before commit) - plus
     30 per-domain seats, the same 3-agent vertical repeated across 10 stacks (ASP.NET, web Angular, WPF, WinForms,
     console, Windows Service, Ionic Angular, data, DevOps, browser extension - the five C# verticals split by surface: ASP.NET web/API,
-    WPF desktop, WinForms desktop LOB, console the headless Generic-Host worker/bot/daemon/CLI, dotnet-windows-service the SCM-hosted
+    WPF desktop, WinForms desktop LOB, console the headless Generic-Host worker/bot/daemon/CLI, windows-service the SCM-hosted
     worker; the three TypeScript verticals by runtime surface: Angular web, Ionic/Capacitor mobile, MV3 browser extension): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
     (builds one task, code + tests) → `<stack>-verifier` (gates the assembled build vs plan + quality,
     punch-list loop) - plus four read-only sonnet support seats: `evidence-gatherer` (sonnet/low - the two
@@ -64,7 +64,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     protocol change to an agent here usually needs the same edit to its twin there (the deliberate
     divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
     per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
-- `stack/rules/` - seventeen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
+- `stack/rules/` - eighteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
     (code quality + definition of done), security, git + pre-commit, navigation, docs-root (the
@@ -75,12 +75,12 @@ change made only inside a consuming project is throwaway (see Invariants).
     subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
     the skill/agent usage policy + per-project MCP routing live in the GENERATED
     baseline-project-agent-capabilities.md, written by the `project-agent-capabilities` skill).
-    The other eleven
+    The other twelve
     are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the two repair-loop
-    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the eight convention rules
+    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the nine convention rules
     (`javascript-conventions.md` / `typescript-conventions.md` / `angular-conventions.md` /
     `angular-styling-conventions.md` /
-    `csharp-conventions.md` / `wpf-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
+    `csharp-conventions.md` / `wpf-conventions.md` / `winforms-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
     each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
     hard gate.
@@ -119,7 +119,7 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (3 wired + 1 copied-unwired instrumentation) |
 | Agents | `.claude/agents/` - the 42 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
-| Convention gate | seven path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
+| Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
 | Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins |

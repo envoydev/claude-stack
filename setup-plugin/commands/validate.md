@@ -50,7 +50,7 @@ The setup step-2 artifact scan:
 - `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
   `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
   `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) ->
-  `dotnet-windows-service`; otherwise `console`.
+  `windows-service`; otherwise `console`.
 - `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`.
   An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report
   `web-angular` for the same app; both only when a second, distinct non-Ionic Angular app exists.
@@ -93,7 +93,7 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 (found.json) = step 9's precomputed candidates - carried there, never acted on in the walk.
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 and the curated `general` set in recommendations.json (cross-stack skills a narrow seat happens to
-preload - GoF patterns, dotnet-migrate) - you present its output, you do not re-derive it.
+preload - e.g. dotnet-data-access) - you present its output, you do not re-derive it.
 
 ## The walk - steps 3-8, one layer at a time
 

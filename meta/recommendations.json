@@ -4,6 +4,7 @@
       "ci-failure-diagnoser",
       "issue-diagnoser",
       "integration-reviewer",
+      "security-auditor",
       "evidence-gatherer",
       "code-analyzer",
       "related-project-analyzer"
@@ -38,6 +39,8 @@
       "project-related-context",
       "project-solve-cross-task",
       "project-solve-task",
+      "project-test-coverage-analyzer",
+      "project-test-coverage-loop",
       "project-verify-code",
       "project-verify-plan",
       "project-version-upgrade"
@@ -45,8 +48,6 @@
   },
   "general": {
     "skills": [
-      "csharp-design-patterns",
-      "dotnet-migrate",
       "dotnet-hosted-services",
       "dotnet-data-access",
       "frontend",
@@ -61,6 +62,16 @@
         "aspnet-verifier",
         "dotnet-build-error-resolver",
         "dotnet-test-failure-resolver"
+      ],
+      "skills": [
+        "csharp-design-patterns",
+        "dotnet-architecture",
+        "dotnet-diagnostics",
+        "dotnet-migrate",
+        "dotnet-performance",
+        "dotnet-security",
+        "dotnet-web-error-handling",
+        "ilspy-decompile"
       ],
       "rules": [
         "csharp-conventions",
@@ -101,6 +112,15 @@
         "dotnet-build-error-resolver",
         "dotnet-test-failure-resolver"
       ],
+      "skills": [
+        "csharp-design-patterns",
+        "dotnet-architecture",
+        "dotnet-diagnostics",
+        "dotnet-migrate",
+        "dotnet-performance",
+        "dotnet-security",
+        "ilspy-decompile"
+      ],
       "rules": [
         "csharp-conventions",
         "wpf-conventions",
@@ -118,8 +138,18 @@
         "dotnet-build-error-resolver",
         "dotnet-test-failure-resolver"
       ],
+      "skills": [
+        "csharp-design-patterns",
+        "dotnet-architecture",
+        "dotnet-diagnostics",
+        "dotnet-migrate",
+        "dotnet-performance",
+        "dotnet-security",
+        "ilspy-decompile"
+      ],
       "rules": [
         "csharp-conventions",
+        "winforms-conventions",
         "dotnet-repair-agents"
       ],
       "plugins": [
@@ -134,6 +164,15 @@
         "dotnet-build-error-resolver",
         "dotnet-test-failure-resolver"
       ],
+      "skills": [
+        "csharp-design-patterns",
+        "dotnet-architecture",
+        "dotnet-diagnostics",
+        "dotnet-migrate",
+        "dotnet-performance",
+        "dotnet-security",
+        "ilspy-decompile"
+      ],
       "rules": [
         "csharp-conventions",
         "dotnet-repair-agents"
@@ -142,13 +181,22 @@
         "csharp-lsp"
       ]
     },
-    "dotnet-windows-service": {
+    "windows-service": {
       "agents": [
-        "dotnet-windows-service-solution-designer",
-        "dotnet-windows-service-implementer",
-        "dotnet-windows-service-verifier",
+        "windows-service-solution-designer",
+        "windows-service-implementer",
+        "windows-service-verifier",
         "dotnet-build-error-resolver",
         "dotnet-test-failure-resolver"
+      ],
+      "skills": [
+        "csharp-design-patterns",
+        "dotnet-architecture",
+        "dotnet-diagnostics",
+        "dotnet-migrate",
+        "dotnet-performance",
+        "dotnet-security",
+        "ilspy-decompile"
       ],
       "rules": [
         "csharp-conventions",
@@ -163,6 +211,10 @@
         "ionic-angular-solution-designer",
         "ionic-angular-implementer",
         "ionic-angular-verifier"
+      ],
+      "skills": [
+        "capacitor-release",
+        "ionic-security"
       ],
       "rules": [
         "typescript-conventions",

@@ -2,9 +2,9 @@
 
 A GATE-based stage, not a judged audit - it names a verifiable command and the bar is that command exiting 0. Run this stage last: it has the narrowest blast radius and it verifies everything the earlier stages changed.
 
-Replace the placeholder below with this project's real test invocation (add the coverage flag if the project enforces a threshold):
+Replace the placeholder below with this project's real test invocation:
 
-    <test command, e.g. the project's test runner with coverage>
+    <test command, e.g. the project's test runner>
 
 Rules:
 - The command is the bar. A passing command beats opinion; do not judge the suite by eye.

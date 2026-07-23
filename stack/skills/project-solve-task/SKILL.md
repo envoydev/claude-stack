@@ -63,8 +63,8 @@ explicit word; silence is not a go.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
      fan-out per the shared policy `project-solve-cross-task` owns, the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
-     per task as reports land. Each seat's green gate stays fast - build + fast tests, never a
-     coverage script, integration replays, or another minutes-long run; the slow full run
+     per task as reports land. Each seat's green gate stays fast - build + fast tests, never
+     integration replays or another minutes-long run; the slow full run
      happens once, in this session, at the step-5 review / step-6 done-gate.
    *Stop* - and this stop chooses the reviewer for step 5: run `project-verify-code` in-session
    (default - no dispatch, stays in this context), dispatch the stack's `<stack>-verifier` seat for

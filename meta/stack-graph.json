@@ -37,11 +37,11 @@
       "mcps": [],
       "plugins": []
     },
-    "data-security": {
+    "database-conventions": {
       "mcps": [],
       "plugins": []
     },
-    "database-conventions": {
+    "database-security": {
       "mcps": [],
       "plugins": []
     },
@@ -94,10 +94,6 @@
       "plugins": []
     },
     "dotnet-diagnostics": {
-      "mcps": [],
-      "plugins": []
-    },
-    "dotnet-error-handling": {
       "mcps": [],
       "plugins": []
     },
@@ -157,6 +153,10 @@
       "mcps": [],
       "plugins": []
     },
+    "dotnet-web-error-handling": {
+      "mcps": [],
+      "plugins": []
+    },
     "dotnet-windows-service": {
       "mcps": [],
       "plugins": []
@@ -185,6 +185,10 @@
       "mcps": [],
       "plugins": []
     },
+    "ionic-security": {
+      "mcps": [],
+      "plugins": []
+    },
     "javascript": {
       "mcps": [],
       "plugins": []
@@ -194,10 +198,6 @@
       "plugins": []
     },
     "mobile": {
-      "mcps": [],
-      "plugins": []
-    },
-    "mobile-security": {
       "mcps": [],
       "plugins": []
     },
@@ -281,6 +281,14 @@
       "mcps": [],
       "plugins": []
     },
+    "project-test-coverage-analyzer": {
+      "mcps": [],
+      "plugins": []
+    },
+    "project-test-coverage-loop": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-verify-code": {
       "mcps": [],
       "plugins": [
@@ -330,11 +338,11 @@
       "suggests": [
         "csharp",
         "dotnet-data-access",
-        "dotnet-error-handling",
         "dotnet-minimal-api",
         "dotnet-mvc-controllers",
         "dotnet-testing",
-        "dotnet-web-backend"
+        "dotnet-web-backend",
+        "dotnet-web-error-handling"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -345,6 +353,7 @@
     },
     "aspnet-solution-designer": {
       "skills": [
+        "csharp-design-patterns",
         "dotnet",
         "dotnet-testing",
         "dotnet-web-backend",
@@ -449,7 +458,6 @@
       "suggests": [
         "csharp",
         "dotnet-console-apps",
-        "dotnet-error-handling",
         "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
@@ -464,6 +472,7 @@
     },
     "console-solution-designer": {
       "skills": [
+        "csharp-design-patterns",
         "dotnet",
         "dotnet-hosted-services",
         "dotnet-testing",
@@ -596,48 +605,6 @@
         "superpowers"
       ]
     },
-    "dotnet-windows-service-implementer": {
-      "skills": [
-        "dotnet-windows-service"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
-    },
-    "dotnet-windows-service-solution-designer": {
-      "skills": [
-        "dotnet",
-        "dotnet-hosted-services",
-        "dotnet-testing",
-        "dotnet-windows-service",
-        "project-solution-design"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
-    },
-    "dotnet-windows-service-verifier": {
-      "skills": [
-        "csharp",
-        "dotnet-code-quality",
-        "dotnet-hosted-services",
-        "dotnet-testing",
-        "dotnet-windows-service"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
-    },
     "evidence-gatherer": {
       "skills": [],
       "suggests": [],
@@ -742,15 +709,15 @@
         "angular-security",
         "browser-extension",
         "csharp",
-        "data-security",
         "database-conventions",
+        "database-security",
         "dotnet",
         "dotnet-authentication",
         "dotnet-cryptography",
         "dotnet-security",
         "frontend",
+        "ionic-security",
         "mobile",
-        "mobile-security",
         "project-quality-loop",
         "typescript"
       ],
@@ -795,6 +762,49 @@
         "angular-conventions",
         "angular-styling",
         "typescript"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
+    "windows-service-implementer": {
+      "skills": [
+        "dotnet-windows-service"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "ponytail"
+      ]
+    },
+    "windows-service-solution-designer": {
+      "skills": [
+        "csharp-design-patterns",
+        "dotnet",
+        "dotnet-hosted-services",
+        "dotnet-testing",
+        "dotnet-windows-service",
+        "project-solution-design"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "windows-service-verifier": {
+      "skills": [
+        "csharp",
+        "dotnet-code-quality",
+        "dotnet-hosted-services",
+        "dotnet-testing",
+        "dotnet-windows-service"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -1119,6 +1129,18 @@
       "paths": [
         "**/*.ts",
         "**/*.tsx"
+      ]
+    },
+    "winforms-conventions": {
+      "skills": [
+        "csharp",
+        "dotnet-winforms"
+      ],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": [
+        "**/*.Designer.cs"
       ]
     },
     "wpf-conventions": {

@@ -4,16 +4,16 @@
     "seat-gates-are-fast": {
       "owner": {
         "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
-        "marker": "never a minutes-long verification (a coverage-instrumented run, an integration/replay suite, an E2E pass)"
+        "marker": "never a minutes-long verification (an integration/replay suite, an E2E pass)"
       },
       "sites": [
         {
           "file": "stack/skills/project-solve-task/SKILL.md",
-          "marker": "never a coverage script, integration replays, or another minutes-long run; the slow full run happens once, in this session"
+          "marker": "never integration replays or another minutes-long run; the slow full run happens once, in this session"
         },
         {
           "file": "stack/skills/project-implementer/SKILL.md",
-          "marker": "never a minutes-long run like a coverage script or integration replays; the full suite stays with this session's finish step"
+          "marker": "never a minutes-long run like integration replays or an E2E pass; the full suite stays with this session's finish step"
         }
       ]
     },
@@ -86,7 +86,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "file": "stack/agents/windows-service-solution-designer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -126,7 +126,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "file": "stack/agents/windows-service-implementer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -166,7 +166,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "file": "stack/agents/windows-service-verifier.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -247,7 +247,7 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "file": "stack/agents/windows-service-implementer.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -287,7 +287,7 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "file": "stack/agents/windows-service-verifier.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -352,7 +352,7 @@
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "file": "stack/agents/windows-service-implementer.md",
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
@@ -417,7 +417,7 @@
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "file": "stack/agents/windows-service-verifier.md",
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         },
         {
@@ -483,7 +483,7 @@
           "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "file": "stack/agents/windows-service-solution-designer.md",
           "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
         },
         {
@@ -523,7 +523,7 @@
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "file": "stack/agents/windows-service-implementer.md",
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
@@ -579,7 +579,7 @@
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "file": "stack/agents/windows-service-verifier.md",
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         },
         {
@@ -628,7 +628,7 @@
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "file": "stack/agents/windows-service-solution-designer.md",
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         },
         {
@@ -677,7 +677,7 @@
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "file": "stack/agents/windows-service-solution-designer.md",
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
@@ -717,7 +717,7 @@
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "file": "stack/agents/windows-service-implementer.md",
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         },
         {
@@ -818,7 +818,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "file": "stack/agents/windows-service-implementer.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
@@ -834,7 +834,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "file": "stack/agents/windows-service-verifier.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {

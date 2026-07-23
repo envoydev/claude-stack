@@ -13,8 +13,12 @@
     "RabbitMQ.Client",
     "Azure.Messaging.ServiceBus",
     "Azure.Messaging.EventHubs",
+    "Azure.Storage.Queues",
     "Confluent.Kafka",
-    "NServiceBus"
+    "NServiceBus",
+    "Rebus",
+    "Wolverine",
+    "AWSSDK.SQS"
    ]
   },
   "dotnet-grpc": {
@@ -22,11 +26,16 @@
     "Grpc.AspNetCore",
     "Grpc.Net.Client",
     "Google.Protobuf"
+   ],
+   "files": [
+    "*.proto"
    ]
   },
   "dotnet-realtime": {
    "packages": [
-    "Microsoft.AspNetCore.SignalR.Client"
+    "Microsoft.AspNetCore.SignalR.Client",
+    "Microsoft.AspNetCore.SignalR",
+    "Microsoft.AspNetCore.SignalR."
    ],
    "content": [
     {
@@ -83,15 +92,17 @@
     }
    ]
   },
-  "dotnet-error-handling": {
+  "dotnet-web-error-handling": {
    "packages": [
-    "FluentValidation",
-    "FluentValidation.",
-    "ErrorOr",
-    "FluentResults",
-    "CSharpFunctionalExtensions",
-    "OneOf",
+    "FluentValidation.AspNetCore",
     "Hellang.Middleware.ProblemDetails"
+   ],
+   "content": [
+    {
+     "glob": "Program.cs",
+     "regex": "AddProblemDetails\\(|AddExceptionHandler<|UseExceptionHandler\\(",
+     "label": "built-in ProblemDetails/exception-handler wiring in Program.cs"
+    }
    ]
   },
   "dotnet-cryptography": {
@@ -145,6 +156,9 @@
    ]
   },
   "dotnet-source-generators": {
+   "packages": [
+    "Microsoft.CodeAnalysis.CSharp"
+   ],
    "csprojContent": [
     {
      "regex": "<IsRoslynComponent>\\s*true",

@@ -1,11 +1,11 @@
 ---
 name: devops
-description: "DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, digest-pinned base images), Compose local topology, GitHub Actions CI/CD (SHA-pinned actions, masked secrets, least-privilege permissions, OIDC, real service containers), and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost - or when the devops vertical or security-auditor sweeps the delivery stack. Points at dotnet-aspire, dotnet-migrate, and dotnet-security / data-security. Do NOT load for application or schema code."
+description: "DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, digest-pinned base images), Compose local topology, GitHub Actions CI/CD (SHA-pinned actions, masked secrets, least-privilege permissions, OIDC, real service containers), and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost - or when the devops vertical or security-auditor sweeps the delivery stack. Points at dotnet-aspire, dotnet-migrate, and dotnet-security / database-security. Do NOT load for application or schema code."
 ---
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
-The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with `dotnet-aspire` (orchestration), `dotnet-migrate` (migration mechanics), and `dotnet-security` / `data-security` (secret handling; the crypto primitives are `dotnet-cryptography`). The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
+The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with `dotnet-aspire` (orchestration), `dotnet-migrate` (migration mechanics), and `dotnet-security` / `database-security` (secret handling; the crypto primitives are `dotnet-cryptography`). The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 
 ## Docker - reproducible, minimal, non-root
 
@@ -61,7 +61,7 @@ ENTRYPOINT ["dotnet", "App.dll"]
 - Promote one immutable artifact through the environments (with required reviewers on prod); never rebuild per environment, or you ship something you never tested.
 - Run migrations as a discrete, gated step BEFORE the app rolls, expand-then-contract so the old and new app versions both work mid-deploy (mechanics in `dotnet-migrate`); every deploy carries a rollback path.
 - Cut over health-gated - blue-green, or a rolling update behind readiness checks, never a big-bang replace that routes traffic to a not-ready instance.
-- Pull config and secrets at runtime from the store (Key Vault, an OIDC-federated secret) - never bake them into the image (see `dotnet-security`, `data-security`).
+- Pull config and secrets at runtime from the store (Key Vault, an OIDC-federated secret) - never bake them into the image (see `dotnet-security`, `database-security`).
 
 ## .NET Aspire - orchestration
 

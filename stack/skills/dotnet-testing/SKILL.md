@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage thresholds computed after exclusions, and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest."
+description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage thresholds computed after exclusions, and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-web-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest."
 ---
 
 # .NET Testing Approach
@@ -124,4 +124,4 @@ The rules above are for *writing* tests; reviewing an existing suite is its own 
 
 - Performance microbenchmarks -> `dotnet-diagnostics` (its `references/microbenchmarking.md`); crash / hang dump capture -> `dotnet-diagnostics` (its `references/dumps.md`).
 - Reward-hacking / coverage-gaming check before 'done' -> `dotnet-code-quality`; CRAP-score risk hotspots -> its `references/crap-analysis.md` (paired at §Coverage above).
-- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`; exception / Result shapes under assertion -> `dotnet-error-handling`. Full .NET index: `dotnet`.
+- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`; exception / Result shapes under assertion -> `dotnet-web-error-handling`. Full .NET index: `dotnet`.

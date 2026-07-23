@@ -505,7 +505,7 @@ test('every general-list name resolves in the graph', () => {
     {
         assert.ok(skillKeys.has(s), `general skill '${s}' not in graph`);
     }
-    assert.ok(((recommendations.general || {}).skills || []).length >= 5, 'the curated general set is present');
+    assert.ok(((recommendations.general || {}).skills || []).length >= 1, 'the curated general set is present');
 });
 
 test('findStackMissing flags the detected stacks + baseline closure that is not installed', () => {

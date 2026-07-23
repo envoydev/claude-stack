@@ -1,5 +1,5 @@
 ---
-name: dotnet-error-handling
+name: dotnet-web-error-handling
 description: "ASP.NET Core error-handling conventions - keep the two failure channels apart (Result/typed errors for expected outcomes, exceptions caught once for the genuinely unexpected), surface everything as RFC 9457 ProblemDetails, centralize one error-to-status map, install a global IExceptionHandler (.NET 8+), and validate input in an endpoint filter with FluentValidation. Floors at .NET 8 / C# 12. Load before deciding how an API reports failures, adding a global handler, shaping error bodies, or wiring request validation, or when the user says ProblemDetails, IExceptionHandler, UseExceptionHandler, Result type, or error envelope. Companions: csharp (the throw-vs-return baseline), dotnet-minimal-api, dotnet-web-backend. Do NOT load for non-HTTP code - model expected failures with the Result half in csharp instead."
 ---
 

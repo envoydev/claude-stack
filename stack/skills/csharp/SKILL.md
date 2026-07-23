@@ -170,7 +170,7 @@ The async baseline - async all the way with no `.Result` / `.Wait()` / `.GetAwai
 - Do not use exceptions for control flow.
 - Re-throw with `throw;` not `throw ex;` (preserves stack trace).
 - Validate arguments at the top of public methods. Prefer the static throw-helpers over hand-written guards: `ArgumentNullException.ThrowIfNull(x)`, `ArgumentException.ThrowIfNullOrWhiteSpace(s)`, `ArgumentOutOfRangeException.ThrowIfNegative` / `ThrowIfGreaterThan(...)` (.NET 8).
-- Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via `dotnet` to `dotnet-error-handling`; don't shape HTTP errors in business code.
+- Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via `dotnet` to `dotnet-web-error-handling`; don't shape HTTP errors in business code.
 
 ## Logging
 - Structured logging via `ILogger<T>`. Use templates with named placeholders: `_logger.LogInformation('Order {OrderId} placed for {UserId}', orderId, userId)`. Never use string interpolation in log calls.

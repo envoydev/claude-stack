@@ -282,6 +282,8 @@ SKILLS=(
   "envoydev/claude-stack|project-architecture-quality-loop"        # deliberate analyze-assess-improve loop - the project-architecture-analyzer capture writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
   "envoydev/claude-stack|project-code-style-analyzer"    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
   "envoydev/claude-stack|project-architecture-analyzer"  # deliberate architecture capture - dispatches code-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + ASSESSMENT.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  "envoydev/claude-stack|project-test-coverage-analyzer" # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
+  "envoydev/claude-stack|project-test-coverage-loop"     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
   "envoydev/claude-stack|project-version-upgrade"        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + code-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
   "envoydev/claude-stack|project-agent-capabilities"           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only
   "envoydev/claude-stack|project-related-context"        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/PROJECT-RELATED-CONTEXT.md; manual /-only
@@ -297,7 +299,7 @@ SKILLS=(
   "envoydev/claude-stack|project-stack-usage-analyzer" # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
   "envoydev/claude-stack|devops"           # DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost
   "envoydev/claude-stack|database-conventions" # cross-engine DB conventions + per-engine skill routing
-  "envoydev/claude-stack|data-security"    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
+  "envoydev/claude-stack|database-security"    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
   "envoydev/claude-stack|typescript"       # framework-agnostic TS/JS baseline (strict typing, modules, async, JS+JSDoc)
   "envoydev/claude-stack|javascript"       # base JS-family language layer: ESM modules, async discipline, two failure channels, modern-feature adoption, untrusted input, naming; typescript stacks on it
   "envoydev/claude-stack|npm"                 # professional npm: lockfile+ci discipline, supply-chain baseline (ignore-scripts/cooldown/allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns
@@ -311,7 +313,7 @@ SKILLS=(
   "envoydev/claude-stack|mobile"           # Ionic/Capacitor router/index over the Angular (angular-conventions) + TypeScript baselines
   "envoydev/claude-stack|ionic"            # house Ionic/Capacitor conventions: UI, nav, lifecycle, permissions, plugin sourcing + wrapping
   "envoydev/claude-stack|capacitor-release" # Ionic/Capacitor release pipeline: cap sync/build, iOS+Android signing, store submission, OTA, versioning, CI, symbols
-  "envoydev/claude-stack|mobile-security"  # Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening
+  "envoydev/claude-stack|ionic-security"   # Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening
   "envoydev/claude-stack|csharp"           # C# house conventions - style, naming, async, logging, DI
   "envoydev/claude-stack|csharp-design-patterns" # all 23 GoF patterns with modern .NET 8+ forms
   "envoydev/claude-stack|dotnet"           # router mapping .NET work areas to specialist skills
@@ -321,7 +323,7 @@ SKILLS=(
   "envoydev/claude-stack|dotnet-code-quality" # C# quality enforcement: CSharpier formatter ownership, SDK analyzers + AnalysisLevel, .editorconfig severity, TreatWarningsAsErrors (+ legacy batch promotion), Roslynator, CI gate
   "envoydev/claude-stack|dotnet-console-apps" # console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli/Cocona) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService
   "envoydev/claude-stack|dotnet-cryptography" # System.Security.Cryptography: SHA-2, AES-GCM, RSA/ECDSA, PBKDF2/Argon2id, constant-time compare
-  "envoydev/claude-stack|dotnet-error-handling" # Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation
+  "envoydev/claude-stack|dotnet-web-error-handling" # Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation
   "envoydev/claude-stack|dotnet-grpc"      # gRPC: .proto/codegen, ASP.NET Core host, 4 streaming modes, JWT/mTLS, interceptors, health
   "envoydev/claude-stack|dotnet-hosted-services" # worker/background-service host: BackgroundService, ExecuteAsync trap, scoped scope, PeriodicTimer, shutdown, Channels
   "envoydev/claude-stack|dotnet-windows-service" # Windows Service SCM layer: AddWindowsService, budgets, non-zero-exit recovery, sc.exe install, gMSA/hardening, ServiceBase maintenance
@@ -487,7 +489,7 @@ AGENTS=(
   "dotnet-test-failure-resolver.md"  # implement phase (sonnet/high): dotnet test -> red->green repair loop, anti-reward-hacking guard, capped
   "ng-build-error-resolver.md"       # implement phase (sonnet/high): ng build -> minimal fix loop (serena/LSP), capped
   "angular-test-resolver.md"         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
-  "code-analyzer.md"                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the project-architecture-analyzer skill fans it out, also independently callable
+  "code-analyzer.md"                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the architecture + test-coverage captures fan it out, also independently callable
   "code-style-analyzer.md"                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
   "related-project-analyzer.md"           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/PROJECT-RELATED-CONTEXT.md
   "ci-failure-diagnoser.md"          # analysis phase (opus/high): read-only CI red-run diagnosis via gh - categorize, local repro, route
@@ -520,9 +522,9 @@ AGENTS=(
   "browser-extension-solution-designer.md" # design phase (opus/xhigh): MV3 extension architecture (SW/content/UI topology, message contract, permissions) + plan + test strategy, decomposes
   "browser-extension-implementer.md" # build phase (sonnet/medium): builds one extension task - code + tests
   "browser-extension-verifier.md"    # verify phase (sonnet/xhigh): gates the extension build vs plan + quality
-  "dotnet-windows-service-solution-designer.md" # design phase (opus/xhigh): SCM recovery/budget/identity topology + plan + test strategy, decomposes
-  "dotnet-windows-service-implementer.md" # build phase (sonnet/medium): builds one Windows Service task - code + tests
-  "dotnet-windows-service-verifier.md" # verify phase (sonnet/xhigh): gates the Windows Service build vs plan + quality
+  "windows-service-solution-designer.md" # design phase (opus/xhigh): SCM recovery/budget/identity topology + plan + test strategy, decomposes
+  "windows-service-implementer.md" # build phase (sonnet/medium): builds one Windows Service task - code + tests
+  "windows-service-verifier.md" # verify phase (sonnet/xhigh): gates the Windows Service build vs plan + quality
   "winforms-solution-designer.md"    # design phase (opus/xhigh): WinForms MVP seam / binding / disposal topology + plan + test strategy, decomposes
   "winforms-implementer.md"          # build phase (sonnet/medium): builds one WinForms task - code + tests
   "winforms-verifier.md"             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
@@ -555,6 +557,7 @@ CLAUDE_RULES=(
   "angular-styling-conventions.md" # scss/css -> angular-styling (Angular/Ionic projects only)
   "csharp-conventions.md"     # c#: .cs -> csharp (backend, desktop, console)
   "wpf-conventions.md"        # wpf: .xaml -> dotnet-wpf
+  "winforms-conventions.md"   # winforms: .Designer.cs -> dotnet-winforms
   "sql-conventions.md"        # sql: .sql -> database-conventions
   "devops-conventions.md"     # rest (devops): Dockerfile/compose/workflow -> devops
 )
