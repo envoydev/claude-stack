@@ -1,6 +1,6 @@
 ---
 name: angular-styling
-description: "Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace. Companions: angular-conventions, angular-material. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
+description: "Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace - in an Ionic app load it WITH ionic and see the shadow-DOM section here, because ion-* components ignore the usual escape hatches. Companions: angular-conventions, angular-material, ionic. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
 ---
 
 # Angular styling
@@ -37,6 +37,13 @@ app-order-card { --card-padding: 0.5rem; }
 3. **`ViewEncapsulation.None` on a small leaf** whose entire job is to emit global styles (a typography or print stylesheet host). Its selectors go global, so scope them under a single root class to avoid collisions. Use this last and only for a component that is meant to be global.
 
 If a third-party component gives you none of these, a global rule scoped under a wrapper class is the honest fallback - not `::ng-deep`.
+
+## Ionic surfaces are real shadow DOM - the ways out change
+
+`ion-*` components are web components with genuine shadow DOM, not Angular's emulated encapsulation, so on them the model above inverts:
+
+- Way out #2 - a global rule targeting a class inside the component - **silently does nothing**: real shadow DOM blocks inbound global styles, and nothing errors. Style an Ionic component only through what it publishes: its CSS custom properties (per-component ones like `--background`, and the `--ion-*` theme variables) and its `::part()` selectors - both cross the shadow boundary by design. Which parts and variables a component exposes is its Ionic docs page; fetch it live rather than guessing.
+- Keep the app's own token system for your own components, but know that `ion-*` components read only Ionic's variables - route theme values into `--ion-*` tokens or they never reach the UI kit. Dark mode on Ionic surfaces is the Ionic dark palette and its ion-palette-dark class strategy, owned by the `ionic` skill - not a hand-rolled `[data-theme]` re-bind.
 
 ## Design tokens as CSS custom properties
 

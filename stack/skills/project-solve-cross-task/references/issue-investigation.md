@@ -49,7 +49,7 @@ severity: critical | high | medium | low     # blast radius: data-loss/corruptio
 priority: P0 | P1 | P2 | P3                   # urgency on the P0-P3 ladder, NEVER a bare High/Med/Low (that is a severity): P0 outage/data-loss now, P1 blocks the release, P2 fix soon / has a workaround, P3 backlog
 evidence:
   - { type: log | stack_trace | failing_command | screenshot | code_reference | repro_step, detail: }
-affected_domains: [backend | data | angular | wpf | mobile | devops]
+affected_domains: [backend | data | web-angular | wpf | ionic-angular | devops]
 fix_recommendation:
   route: no_fix_needed | resolver | single_domain_implementer | cross_domain_contract_change | user_decision_needed
 fix_plan: [{ step: }]
@@ -130,7 +130,7 @@ issue_summary:
 source: { type: user_report | CI | log | screenshot | production_alert | test_failure }
 reproduction: { known_steps:, expected:, actual: }
 constraints: { can_modify_code:, require_user_approval_before_fix:, max_repair_iterations: }
-affected_domains_guess: [data | backend | angular | wpf | mobile | devops]
+affected_domains_guess: [data | backend | web-angular | wpf | ionic-angular | devops]
 allowed_agents: [issue-diagnoser, evidence-gatherer, ci-failure-diagnoser, domain implementers if fix approved]
 stop_conditions: [diagnosis DIAGNOSED and fix not approved, diagnosis NOT_REPRODUCED, repair_iterations exceeded]
 required_output: [diagnosis_report, evidence_list, fix_route, tests_or_repro_commands]

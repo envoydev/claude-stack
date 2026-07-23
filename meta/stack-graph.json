@@ -157,6 +157,10 @@
       "mcps": [],
       "plugins": []
     },
+    "dotnet-windows-service": {
+      "mcps": [],
+      "plugins": []
+    },
     "dotnet-winforms": {
       "mcps": [],
       "plugins": []
@@ -307,35 +311,6 @@
     }
   },
   "agents": {
-    "angular-implementer": {
-      "skills": [],
-      "suggests": [
-        "angular-conventions",
-        "angular-material",
-        "angular-styling",
-        "frontend",
-        "typescript"
-      ],
-      "skillsSource": "body",
-      "agents": [],
-      "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
-    },
-    "angular-solution-designer": {
-      "skills": [
-        "angular-conventions",
-        "angular-styling",
-        "frontend",
-        "project-solution-design"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
-    },
     "angular-test-resolver": {
       "skills": [],
       "suggests": [
@@ -344,20 +319,6 @@
         "typescript"
       ],
       "skillsSource": "body",
-      "agents": [],
-      "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
-    },
-    "angular-verifier": {
-      "skills": [
-        "angular-conventions",
-        "angular-styling",
-        "typescript"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": [
@@ -402,6 +363,43 @@
         "dotnet-data-access",
         "dotnet-testing",
         "dotnet-web-backend"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
+    "browser-extension-implementer": {
+      "skills": [
+        "browser-extension"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "ponytail"
+      ]
+    },
+    "browser-extension-solution-designer": {
+      "skills": [
+        "browser-extension",
+        "project-solution-design"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "browser-extension-verifier": {
+      "skills": [
+        "browser-extension",
+        "javascript",
+        "typescript"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -598,6 +596,48 @@
         "superpowers"
       ]
     },
+    "dotnet-windows-service-implementer": {
+      "skills": [
+        "dotnet-windows-service"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "ponytail"
+      ]
+    },
+    "dotnet-windows-service-solution-designer": {
+      "skills": [
+        "dotnet",
+        "dotnet-hosted-services",
+        "dotnet-testing",
+        "dotnet-windows-service",
+        "project-solution-design"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "dotnet-windows-service-verifier": {
+      "skills": [
+        "csharp",
+        "dotnet-code-quality",
+        "dotnet-hosted-services",
+        "dotnet-testing",
+        "dotnet-windows-service"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
     "evidence-gatherer": {
       "skills": [],
       "suggests": [],
@@ -621,19 +661,7 @@
       "mcps": [],
       "plugins": []
     },
-    "issue-diagnoser": {
-      "skills": [
-        "project-failure-signatures"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
-    },
-    "mobile-implementer": {
+    "ionic-angular-implementer": {
       "skills": [
         "ionic"
       ],
@@ -645,7 +673,7 @@
         "ponytail"
       ]
     },
-    "mobile-solution-designer": {
+    "ionic-angular-solution-designer": {
       "skills": [
         "angular-conventions",
         "ionic",
@@ -658,12 +686,24 @@
       "mcps": [],
       "plugins": []
     },
-    "mobile-verifier": {
+    "ionic-angular-verifier": {
       "skills": [
         "angular-conventions",
         "angular-styling",
         "ionic",
         "typescript"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
+    "issue-diagnoser": {
+      "skills": [
+        "project-failure-signatures"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -700,6 +740,7 @@
       "suggests": [
         "angular-conventions",
         "angular-security",
+        "browser-extension",
         "csharp",
         "data-security",
         "database-conventions",
@@ -720,6 +761,91 @@
         "superpowers"
       ]
     },
+    "web-angular-implementer": {
+      "skills": [],
+      "suggests": [
+        "angular-conventions",
+        "angular-material",
+        "angular-styling",
+        "frontend",
+        "typescript"
+      ],
+      "skillsSource": "body",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "ponytail"
+      ]
+    },
+    "web-angular-solution-designer": {
+      "skills": [
+        "angular-conventions",
+        "angular-styling",
+        "frontend",
+        "project-solution-design"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "web-angular-verifier": {
+      "skills": [
+        "angular-conventions",
+        "angular-styling",
+        "typescript"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
+    "winforms-implementer": {
+      "skills": [
+        "dotnet-winforms"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "ponytail"
+      ]
+    },
+    "winforms-solution-designer": {
+      "skills": [
+        "csharp",
+        "csharp-design-patterns",
+        "dotnet",
+        "dotnet-testing",
+        "dotnet-winforms",
+        "project-solution-design"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "winforms-verifier": {
+      "skills": [
+        "csharp",
+        "dotnet-code-quality",
+        "dotnet-testing",
+        "dotnet-winforms"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
     "wpf-implementer": {
       "skills": [],
       "suggests": [
@@ -727,6 +853,7 @@
         "csharp-design-patterns",
         "dotnet-hosted-services",
         "dotnet-testing",
+        "dotnet-windows-service",
         "dotnet-wpf"
       ],
       "skillsSource": "body",
@@ -771,6 +898,7 @@
     "angular-conventions": {
       "skills": [
         "angular-conventions",
+        "ionic",
         "typescript"
       ],
       "agents": [],

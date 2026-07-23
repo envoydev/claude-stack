@@ -117,9 +117,9 @@
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-content: center;
   }
-  .cols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .cols { display: grid; grid-template-columns: repeat(10, 1fr); gap: 10px; }
   .col-heads { display: grid; grid-template-columns: 138px 1fr; gap: 14px; margin-bottom: 2px; }
-  .col-heads .heads { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .col-heads .heads { display: grid; grid-template-columns: repeat(10, 1fr); gap: 10px; }
   .dom {
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; color: var(--muted);
     text-align: center; padding: 2px 4px 8px; border-bottom: 1px solid var(--line-soft);
@@ -242,13 +242,13 @@
     there.
   </p>
   <div class="stat-row">
-    <div class="stat"><b>33</b><span>subagents</span></div>
-    <div class="stat"><b>71</b><span>house skills</span></div>
+    <div class="stat"><b>42</b><span>subagents</span></div>
+    <div class="stat"><b>73</b><span>house skills</span></div>
     <div class="stat"><b>8</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
     <div class="stat"><b>4</b><span>hooks</span></div>
     <div class="stat"><b>17</b><span>rules</span></div>
-    <div class="stat"><b>7</b><span>domains</span></div>
+    <div class="stat"><b>10</b><span>domains</span></div>
   </div>
 
   <div class="flow">
@@ -309,11 +309,14 @@
           <div class="heads">
             <div class="dom">ASP.NET Core<b>Backend · API</b></div>
             <div class="dom">WPF<b>Desktop</b></div>
+            <div class="dom">WinForms<b>Desktop · LOB</b></div>
             <div class="dom">Console<b>Worker · Bot · CLI</b></div>
+            <div class="dom">SCM<b>Windows Service</b></div>
             <div class="dom">Angular<b>Web</b></div>
             <div class="dom">Ionic<b>Mobile</b></div>
             <div class="dom">SQL<b>Data</b></div>
             <div class="dom">Docker<b>DevOps</b></div>
+            <div class="dom">MV3<b>Browser Ext</b></div>
           </div>
         </div>
 
@@ -326,11 +329,14 @@
           <div class="cols">
             <div class="cell"><span class="agent design">aspnet-solution-designer<span class="role">clean-arch · API shape · auth</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">wpf-solution-designer<span class="role">strict MVVM · view composition</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">winforms-solution-designer<span class="role">MVP seam · binding · disposal</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">console-solution-designer<span class="role">Generic Host · lifecycle · resilience</span><span class="mdl opus">opus · xhigh</span></span></div>
-            <div class="cell"><span class="agent design">angular-solution-designer<span class="role">components · state · routing</span><span class="mdl opus">opus · xhigh</span></span></div>
-            <div class="cell"><span class="agent design">mobile-solution-designer<span class="role">shell · native bridge · release</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">dotnet-windows-service-solution-designer<span class="role">SCM recovery · budgets · identity</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">web-angular-solution-designer<span class="role">components · state · routing</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">ionic-angular-solution-designer<span class="role">shell · native bridge · release</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">data-solution-designer<span class="role">schema · model · perf</span><span class="mdl opus">opus · xhigh</span></span></div>
             <div class="cell"><span class="agent design">devops-solution-designer<span class="role">containers · CI/CD · deploy</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">browser-extension-solution-designer<span class="role">SW topology · messaging · permissions</span><span class="mdl opus">opus · xhigh</span></span></div>
           </div>
         </div>
 
@@ -343,11 +349,14 @@
           <div class="cols">
             <div class="cell"><span class="agent build">aspnet-implementer<span class="role">C# + xUnit / integration</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">wpf-implementer<span class="role">XAML + VM unit tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">winforms-implementer<span class="role">forms + presenter tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">console-implementer<span class="role">host/worker + fake-gateway tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
-            <div class="cell"><span class="agent build">angular-implementer<span class="role">TS + Jest / TestBed</span><span class="mdl sonnet">sonnet · medium</span></span></div>
-            <div class="cell"><span class="agent build">mobile-implementer<span class="role">Ionic + Appium E2E</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">dotnet-windows-service-implementer<span class="role">SCM worker + exit-code discipline</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">web-angular-implementer<span class="role">TS + Jest / TestBed</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">ionic-angular-implementer<span class="role">Ionic + Appium E2E</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">data-implementer<span class="role">SQL + migration tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
             <div class="cell"><span class="agent build">devops-implementer<span class="role">Docker + Actions + deploy</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">browser-extension-implementer<span class="role">TS + Vitest fake-chrome</span><span class="mdl sonnet">sonnet · medium</span></span></div>
           </div>
         </div>
 
@@ -360,11 +369,14 @@
           <div class="cols">
             <div class="cell"><span class="agent qa">aspnet-verifier<span class="role">vs clean-arch + async</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">wpf-verifier<span class="role">vs MVVM + bindings</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">winforms-verifier<span class="role">vs code-behind line + disposal</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">console-verifier<span class="role">vs lifecycle + captive deps</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
-            <div class="cell"><span class="agent qa">angular-verifier<span class="role">vs signals / OnPush / a11y</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
-            <div class="cell"><span class="agent qa">mobile-verifier<span class="role">vs native + platform parity</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">dotnet-windows-service-verifier<span class="role">vs recovery + paths + hardening</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">web-angular-verifier<span class="role">vs signals / OnPush / a11y</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">ionic-angular-verifier<span class="role">vs native + platform parity</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">data-verifier<span class="role">vs schema + query safety</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
             <div class="cell"><span class="agent qa">devops-verifier<span class="role">vs pinned builds + secrets</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">browser-extension-verifier<span class="role">vs SW state + permissions + CSP</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
           </div>
         </div>
 
@@ -386,9 +398,9 @@
             <span class="d">bounded fix loops, already per-domain</span>
           </div>
           <div class="cols">
-            <div class="cell" style="grid-column: span 3">
-              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · ASP.NET + WPF + console (XAML compiles through dotnet)</span><span class="mdl sonnet">sonnet · high</span></span>
-              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · ASP.NET + WPF + console</span><span class="mdl sonnet">sonnet · high</span></span>
+            <div class="cell" style="grid-column: span 5">
+              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · every C# vertical (XAML + WinForms compile through dotnet)</span><span class="mdl sonnet">sonnet · high</span></span>
+              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · every C# vertical</span><span class="mdl sonnet">sonnet · high</span></span>
             </div>
             <div class="cell" style="grid-column: span 2">
               <span class="agent repair">ng-build-error-resolver<span class="role">build · Angular + Ionic (ionic wraps ng build)</span><span class="mdl sonnet">sonnet · high</span></span>
@@ -396,6 +408,7 @@
             </div>
             <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no compile loop</span></span></div>
             <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no compile loop</span></span></div>
+            <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no resolver seat</span></span></div>
           </div>
         </div>
 
@@ -434,7 +447,7 @@
   <section>
     <div class="sec-head"><span class="sec-num">02</span><h2>The areas each seat owns</h2></div>
     <p class="sec-sub">
-      The installed inventory, regrouped by the <b>seven domains</b> each vertical owns. Each domain
+      The installed inventory, regrouped by the <b>ten domains</b> each vertical owns. Each domain
       inherits a <b>language</b> tier, a <b>framework</b> tier, its own <b>tests</b> (owned by the
       implementer), and the plugins, MCPs and rules that serve it. Shared services at the end belong
       to no single seat.
@@ -481,7 +494,7 @@
         <div class="card-head">
           <span class="kicker">Domain 02 · TypeScript</span>
           <h3>Angular Web</h3>
-          <span class="seat">designed by <b>angular-solution-designer</b><br>built by <b>angular-implementer</b><br>verified by <b>angular-verifier</b></span>
+          <span class="seat">designed by <b>web-angular-solution-designer</b><br>built by <b>web-angular-implementer</b><br>verified by <b>web-angular-verifier</b></span>
         </div>
         <div class="row"><span class="rl">Language</span><div class="chips"><span class="chip lang">typescript</span></div></div>
         <div class="row"><span class="rl">Framework</span><div class="chips">
@@ -527,7 +540,7 @@
         <div class="card-head">
           <span class="kicker">Domain 04 · TypeScript</span>
           <h3>Ionic / Capacitor Mobile</h3>
-          <span class="seat">designed by <b>mobile-solution-designer</b><br>built by <b>mobile-implementer</b><br>verified by <b>mobile-verifier</b></span>
+          <span class="seat">designed by <b>ionic-angular-solution-designer</b><br>built by <b>ionic-angular-implementer</b><br>verified by <b>ionic-angular-verifier</b></span>
         </div>
         <div class="row"><span class="rl">Base</span><div class="chips">
           <span class="chip lang">typescript</span><span class="chip">angular-conventions</span>
@@ -618,6 +631,75 @@
         </div>
       </div>
 
+      <!-- Browser extension -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 08 · TypeScript</span>
+          <h3>Browser Extension · MV3</h3>
+          <span class="seat">designed by <b>browser-extension-solution-designer</b><br>built by <b>browser-extension-implementer</b><br>verified by <b>browser-extension-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">typescript</span><span class="chip lang">javascript</span>
+        </div></div>
+        <div class="row"><span class="rl">Platform</span><div class="chips">
+          <span class="chip">browser-extension · SW model + messaging + permissions</span>
+          <span class="chip">WXT toolkit · cross-browser</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">Vitest · fake chrome API</span><span class="chip test">Playwright persistent-context E2E</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">typescript-lsp</span><span class="chip">typescript-conventions rule</span>
+          <span class="chip mcp">chrome-devtools</span>
+        </div>
+      </div>
+
+      <!-- Windows service -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 09 · C#</span>
+          <h3>Windows Service · SCM</h3>
+          <span class="seat">designed by <b>dotnet-windows-service-solution-designer</b><br>built by <b>dotnet-windows-service-implementer</b><br>verified by <b>dotnet-windows-service-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Platform</span><div class="chips">
+          <span class="chip">dotnet-windows-service · SCM layer</span>
+          <span class="chip">dotnet-hosted-services · Generic Host</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · FakeTimeProvider, never real waits</span><span class="chip test">non-zero-exit fatal path</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">csharp-conventions rule</span>
+          <span class="chip">sc.exe install + recovery</span>
+        </div>
+      </div>
+
+      <!-- WinForms -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 10 · C#</span>
+          <h3>WinForms · Desktop LOB</h3>
+          <span class="seat">designed by <b>winforms-solution-designer</b><br>built by <b>winforms-implementer</b><br>verified by <b>winforms-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">dotnet-winforms · MVP + binding + disposal</span>
+          <span class="chip">4.8 maintenance + .NET 8 modern</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · presenters vs mocked view</span><span class="chip test">FlaUI smoke · critical path only</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">csharp-conventions rule</span>
+          <span class="chip">dotnet-migrate · upgrades</span>
+        </div>
+      </div>
+
       <!-- Shared services -->
       <div class="card" style="--card:var(--faint)">
         <div class="card-head">
@@ -677,7 +759,7 @@
 
   <footer>
     <span>envoydev/claude-stack &middot; agent roster + full stack inventory</span>
-    <span>7 domains &middot; 21 seats &middot; 4 cross-cutting &middot; 4 resolvers &middot; 4 analysis/support &middot; 33 total</span>
+    <span>10 domains &middot; 30 seats &middot; 4 cross-cutting &middot; 4 resolvers &middot; 4 analysis/support &middot; 42 total</span>
   </footer>
 </div>
 <script>
@@ -740,6 +822,7 @@ const house = {
     ["dotnet-error-handling","Errors / ASP.NET Core","Result pattern for expected failures + ProblemDetails (RFC 9457) + global IExceptionHandler (.NET 8+) + FluentValidation via endpoint filter. Original house skill (.NET 8 floor)."],
     ["dotnet-grpc","Backend / gRPC","gRPC lifecycle: .proto + Grpc.Tools codegen, Grpc.AspNetCore host, typed clients via IHttpClientFactory, four streaming modes, JWT/mTLS, interceptors, health, gRPC-Web. Original house skill (.NET 8 floor)."],
     ["dotnet-hosted-services","Backend / hosting","Hosted-service / worker conventions: the two host shapes, BackgroundService vs IHostedService vs IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services via IServiceScopeFactory, PeriodicTimer, graceful shutdown, and Channels-backed work - plus references/ for 24/7 hardening (HttpClient/socket exhaustion, Polly v8, rate limiting, ClientWebSocket reconnect), scheduling (Hangfire/Quartz/Coravel) + leader election, and deployment/signals (systemd/container/Kubernetes, worker observability). Original house skill (.NET 8 floor)."],
+    ["dotnet-windows-service","Backend / Windows Service","The SCM layer over the generic host: AddWindowsService and the dual-mode binary, SCM start/stop budgets, non-zero exit codes so recovery actions fire, the System32 working-directory trap, scripted sc.exe install with recovery actions, gMSA / least-privilege accounts, unquoted-path + ACL hardening - plus references/ for operations (publish, install, secrets ranked, diagnostics) and the maintained .NET Framework ServiceBase shape + migration path. Original house skill."],
     ["dotnet-messaging","Backend / messaging","Event-driven messaging: Wolverine (MIT default) / MassTransit, transactional outbox, choreography vs sagas, message contracts, RabbitMQ / Azure Service Bus. Original house skill (.NET 8 floor)."],
     ["dotnet-migrate","Migrations / .NET","Safe-migration workflow: EF Core schema, .NET version upgrades, NuGet updates - rollback plan + build/test verification per step. Original house skill (.NET 8 floor)."],
     ["dotnet-minimal-api","Backend / ASP.NET Core","Minimal API endpoint mechanics: feature-folder organization, MapGroup, TypedResults / Results<> unions, IEndpointFilter, parameter binding, metadata. Original house skill (.NET 8 floor)."],
@@ -1069,28 +1152,37 @@ const otherTools = [
   ["evidence-gatherer", "subagent", "Diagnosis / support", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gather-task runner a diagnoser dispatches: reproduces a failure, pulls a run log via gh, greps to the failing frames, or locates a symbol, then returns a compact quoted digest - keeping the raw log volume off the opus diagnoser. Never diagnoses or fixes. Pinned sonnet/low."],
   ["security-auditor", "subagent", "Security / audit", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only cross-stack security posture audit: sweeps auth, authorization, input/injection, secrets, config, and data exposure across ASP.NET/Angular/WPF/mobile/SQL, proves each finding against the code, and returns an OWASP/CWE punch-list routed to the domain implementers to fix and the verifier to confirm. Complements /security-review (diff/PR-scoped) and the security-guidance commit hook; finds and reports, never fixes. Pinned opus/xhigh."],
   ["integration-reviewer", "subagent", "Review / integration gate", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only cross-domain final gate: after every affected domain verifier signs off, checks the assembled feature as a whole - the frozen contract honored end to end and the current contract_version used everywhere, the full solution builds, unit/integration/E2E pass, DB migrations apply from a clean DB and from the previous version, the API matches every Angular/mobile/WPF consumer, auth and the error envelope match the contract, deploy order safe - then returns a commit-or-punch-list verdict. Independent of the Team Lead; the mandatory gate before a cross-domain commit that no single-stack verifier is. Pinned sonnet/xhigh - a verifier's pin for a verifier's job."],
-  // Per-domain specialist team (7 stacks x solution-designer/implementer/verifier), dispatched by the project-solve-cross-task skill (single-stack modes):
+  // Per-domain specialist team (10 stacks x solution-designer/implementer/verifier), dispatched by the project-solve-cross-task skill (single-stack modes):
   ["aspnet-solution-designer", "subagent", "ASP.NET / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only ASP.NET Core backend/API design pass: fixes architecture, plan, and test strategy for the C# stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the aspnet-implementer fan-out and the aspnet-verifier. Pinned opus/xhigh."],
   ["aspnet-implementer", "subagent", "ASP.NET / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from an aspnet-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["aspnet-verifier", "subagent", "ASP.NET / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every aspnet-implementer task has landed: verifies the assembled work against the designer plan and C# code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
-  ["angular-solution-designer", "subagent", "Angular / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only Angular web design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the angular-implementer fan-out and the angular-verifier. Pinned opus/xhigh."],
-  ["angular-implementer", "subagent", "Angular / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from an angular-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
-  ["angular-verifier", "subagent", "Angular / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every angular-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["web-angular-solution-designer", "subagent", "Angular / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only Angular web design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the web-angular-implementer fan-out and the web-angular-verifier. Pinned opus/xhigh."],
+  ["web-angular-implementer", "subagent", "Angular / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from an web-angular-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["web-angular-verifier", "subagent", "Angular / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every web-angular-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
   ["wpf-solution-designer", "subagent", "WPF / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only WPF desktop design pass: fixes architecture, plan, and test strategy for the C# stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the wpf-implementer fan-out and the wpf-verifier. Pinned opus/xhigh."],
   ["wpf-implementer", "subagent", "WPF / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a wpf-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["wpf-verifier", "subagent", "WPF / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every wpf-implementer task has landed: verifies the assembled work against the designer plan and C# code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
   ["console-solution-designer", "subagent", "Console / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only headless-.NET design pass (Generic Host worker, background service, bot, daemon, or one-shot CLI): settles the host and DI composition, the hosted-service lifecycle (stopping-token, graceful shutdown), and the external-gateway resilience seam, then decomposes the work into independent parallel tasks with clear contracts. Feeds the console-implementer fan-out and the console-verifier. Pinned opus/xhigh."],
   ["console-implementer", "subagent", "Console / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a console-solution-designer decomposition: writes the host/worker/handler code AND its tests (fake gateway, FakeTimeProvider) for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["console-verifier", "subagent", "Console / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every console-implementer task has landed: verifies the assembled headless-.NET work against the designer plan and C# quality (captive-dependency, stopping-token, host lifecycle, gateway resilience), reruns the build and tests, hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
-  ["mobile-solution-designer", "subagent", "Mobile / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only Ionic/Capacitor mobile design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the mobile-implementer fan-out and the mobile-verifier. Pinned opus/xhigh."],
-  ["mobile-implementer", "subagent", "Mobile / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a mobile-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
-  ["mobile-verifier", "subagent", "Mobile / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every mobile-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["ionic-angular-solution-designer", "subagent", "Mobile / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only Ionic/Capacitor mobile design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the ionic-angular-implementer fan-out and the ionic-angular-verifier. Pinned opus/xhigh."],
+  ["ionic-angular-implementer", "subagent", "Mobile / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a ionic-angular-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["ionic-angular-verifier", "subagent", "Mobile / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every ionic-angular-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
   ["data-solution-designer", "subagent", "Data / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only data and persistence (SQL) design pass: fixes architecture, plan, and test strategy for the SQL stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the data-implementer fan-out and the data-verifier. Pinned opus/xhigh."],
   ["data-implementer", "subagent", "Data / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a data-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["data-verifier", "subagent", "Data / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every data-implementer task has landed: verifies the assembled work against the designer plan and SQL code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
   ["devops-solution-designer", "subagent", "DevOps / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only DevOps design pass: settles the container build, the CI job graph, the deploy/release strategy, and the secret seam, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the devops-implementer fan-out and the devops-verifier. Pinned opus/xhigh."],
   ["devops-implementer", "subagent", "DevOps / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a devops-solution-designer decomposition: writes the Dockerfile/workflow/deploy files AND validates them locally (docker build, actionlint, dotnet build), inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
   ["devops-verifier", "subagent", "DevOps / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every devops-implementer task has landed: re-validates the assembled delivery work against the designer plan and devops quality (pinned reproducible builds, no leaked secrets, safe migration-in-deploy, non-root healthy containers), hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["browser-extension-solution-designer", "subagent", "Browser extension / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only MV3 browser-extension design pass: settles the service-worker/content-script/UI topology and storage tiers, the typed message contract, the permission surface, and the cross-browser strategy, then decomposes the work into independent parallel tasks with clear contracts. Feeds the browser-extension-implementer fan-out and the browser-extension-verifier. Pinned opus/xhigh."],
+  ["browser-extension-implementer", "subagent", "Browser extension / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a browser-extension-solution-designer decomposition: writes the service-worker handlers, content scripts, extension UI, and typed messages AND their Vitest fake-chrome tests, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["browser-extension-verifier", "subagent", "Browser extension / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every browser-extension-implementer task has landed: verifies the assembled extension against the designer plan and TypeScript quality (service-worker statelessness, message-contract adherence, permission creep, content-script isolation, CSP), reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["dotnet-windows-service-solution-designer", "subagent", "Windows Service / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only Windows-Service design pass: settles the SCM recovery topology (non-zero exit paths so recovery actions fire), start/stop budgets, BaseDirectory path anchoring, service identity and install surface, plus the Generic-Host composition, then decomposes the work into independent parallel tasks with clear contracts. Feeds the dotnet-windows-service-implementer fan-out and the dotnet-windows-service-verifier. Pinned opus/xhigh."],
+  ["dotnet-windows-service-implementer", "subagent", "Windows Service / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a dotnet-windows-service-solution-designer decomposition: writes the SCM-hosted worker code with its exit-code and path discipline AND its tests, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["dotnet-windows-service-verifier", "subagent", "Windows Service / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every dotnet-windows-service-implementer task has landed: verifies the assembled service against the designer plan and C# quality (clean-stop fatal paths, relative paths, budget breaches, identity/hardening drift, the worker traps), reruns the build and tests and runs the dual-mode binary as a console app, hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["winforms-solution-designer", "subagent", "WinForms / design", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only WinForms design pass: settles the code-behind line (MVP passive view, or the .NET 8+ MVVM binding engine, by runtime), DI-resolvable forms, the BindingSource + INotifyPropertyChanged binding design, the UI-thread and disposal topology, then decomposes the work into independent parallel tasks with clear contracts and single owners for the composition root and each form's Designer.cs. Feeds the winforms-implementer fan-out and the winforms-verifier. Pinned opus/xhigh."],
+  ["winforms-implementer", "subagent", "WinForms / build", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Builds ONE task from a winforms-solution-designer decomposition: writes the forms, presenters, binding wiring, and thin event-translating code-behind AND the xUnit presenter tests against a mocked view, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["winforms-verifier", "subagent", "WinForms / verify", "fetched into .claude/agents/", "https://github.com/envoydev/claude-stack", "Read-only gate once every winforms-implementer task has landed: verifies the assembled work against the designer plan and C# quality (the code-behind line, UI-thread blocking, binding pin-leaks, the disposal families, DPI consistency, virtual-mode discipline), reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
   ["security-guidance", "plugin (hooks)", "Security", "/plugin install security-guidance@claude-plugins-official", "https://github.com/anthropics/claude-plugins-official", "Security review for Claude-generated code: pattern-based warnings on edits, LLM diff review on Stop, and an agentic commit reviewer catching injection, XSS, SSRF, hardcoded secrets, and 25+ vulnerability classes. Hooks-based (no skills/commands); writes warning state under ~/.claude/security/."],
   ["csharp-lsp", "plugin (LSP)", "C# / diagnostics", "/plugin install csharp-lsp@claude-plugins-official", "https://github.com/anthropics/claude-plugins-official", "Roslyn language server: inline diagnostics after each edit without a full dotnet build round-trip. Complements serena (navigation)."],
   ["typescript-lsp", "plugin (LSP)", "TypeScript / diagnostics", "/plugin install typescript-lsp@claude-plugins-official", "https://github.com/anthropics/claude-plugins-official", "TypeScript language server: inline diagnostics on edit for Angular/TS work."],

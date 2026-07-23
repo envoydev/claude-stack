@@ -31,15 +31,16 @@ change made only inside a consuming project is throwaway (see Invariants).
   installed UNWIRED (opt-in per-run tool/skill/MCP stats via STACK_INSTRUMENT=1 + manual wiring).
   Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
   makes them selectable per install (a selection with no `hook` lines installs all four).
-- `stack/agents/` - the Claude-contract subagents, 33 total: the four build/test resolvers - .NET
+- `stack/agents/` - the Claude-contract subagents, 42 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
     `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `issue-diagnoser`, `security-auditor` - a read-only
     cross-stack security posture audit that routes an OWASP/CWE punch-list to the implementers, complementing
     `/security-review` - and `integration-reviewer`, the mandatory read-only cross-domain final gate that
     checks the assembled feature against the frozen contract before commit) - plus
-    21 per-domain seats, the same 3-agent vertical repeated across 7 stacks (ASP.NET, Angular, WPF,
-    console, mobile, data, DevOps - the three C# verticals split by surface: ASP.NET web/API, WPF desktop,
-    console the headless Generic-Host worker/bot/daemon/CLI): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
+    30 per-domain seats, the same 3-agent vertical repeated across 10 stacks (ASP.NET, web Angular, WPF, WinForms,
+    console, Windows Service, Ionic Angular, data, DevOps, browser extension - the five C# verticals split by surface: ASP.NET web/API,
+    WPF desktop, WinForms desktop LOB, console the headless Generic-Host worker/bot/daemon/CLI, dotnet-windows-service the SCM-hosted
+    worker; the three TypeScript verticals by runtime surface: Angular web, Ionic/Capacitor mobile, MV3 browser extension): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
     (builds one task, code + tests) → `<stack>-verifier` (gates the assembled build vs plan + quality,
     punch-list loop) - plus four read-only sonnet support seats: `evidence-gatherer` (sonnet/low - the two
     diagnosers dispatch it to reproduce and pull logs), `code-analyzer` (sonnet/low - the
@@ -56,10 +57,10 @@ change made only inside a consuming project is throwaway (see Invariants).
     entry-point orchestrator - it picks the execution mode, runs a single stack's vertical per its
     `references/domain-trio-protocol.md` (main-stack-agents-flow was folded into that reference),
     and for cross-domain work freezes the shared contract and drives the parallel
-    per-stack runs through the `integration-reviewer` final gate. All 33 carry
+    per-stack runs through the `integration-reviewer` final gate. All 42 carry
     frontmatter model/effort pins (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers
     `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Copied from
-    the run's clone into a project's `.claude/agents/`. The `cursor-stack` repo ships adapted twins of all 33 - a
+    the run's clone into a project's `.claude/agents/`. The `cursor-stack` repo ships adapted twins of all 42 - a
     protocol change to an agent here usually needs the same edit to its twin there (the deliberate
     divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
     per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
@@ -100,7 +101,7 @@ change made only inside a consuming project is throwaway (see Invariants).
   run against a project (manifests only, no restore/network; conclusions computed per run, the
   catalog ships only signal definitions). `README.md` - deliberately compact: what the repo is, technologies, the two install routes (plugin / script), headline counts (lint-checked), and the usage-analysis pointer - no per-surface inventories (those live in `docs/claude-stack.html`) and no deep operational docs (env vars, troubleshooting - the guided plugin flow covers prerequisites interactively; history has the old text).
 
-The **Cursor** delivery - installers, the 33 agent twins, `.mdc` rules, hooks,
+The **Cursor** delivery - installers, the 42 agent twins, `.mdc` rules, hooks,
 `AGENTS.template.md` - lives in the `cursor-stack` repo (its own CLAUDE.md documents the
 platform gaps and the twin-maintenance rule).
 
@@ -116,7 +117,7 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | MCP | `claude mcp add` → `<repo>/.mcp.json` |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
 | Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (3 wired + 1 copied-unwired instrumentation) |
-| Agents | `.claude/agents/` - the 33 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
+| Agents | `.claude/agents/` - the 42 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
 | Convention gate | seven path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
 | Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) |

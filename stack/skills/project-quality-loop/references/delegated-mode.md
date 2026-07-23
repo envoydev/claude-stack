@@ -8,7 +8,7 @@ For the whole pipeline: DISCOVERY, every pass's SCORE line and open set, STOP de
 
 ## INNER LOOP step RUN dispatches the domain verifier as a read-only auditor
 
-Every audit stage dispatches the matching domain verifier (aspnet-verifier / angular-verifier / ...). The code-quality stage instead has its verifier read `<docs-path>/architecture/ARCHITECTURE.md` and audit TARGET against it, so its findings cover both code quality AND architecture-conformance - code that violates the recorded structure (a cross-layer leak, a wrong-direction dependency, a rival pattern) is a finding.
+Every audit stage dispatches the matching domain verifier (aspnet-verifier / web-angular-verifier / ...). The code-quality stage instead has its verifier read `<docs-path>/architecture/ARCHITECTURE.md` and audit TARGET against it, so its findings cover both code quality AND architecture-conformance - code that violates the recorded structure (a cross-layer leak, a wrong-direction dependency, a rival pattern) is a finding.
 
 Every RUN dispatches the verifier at its **sonnet/xhigh pin** by default. An **opus/xhigh first-find** - escalating only the thorough first RUN of a stage to opus, re-verify RUNs staying on the pin - is an OPT-IN experiment, not the default: it may catch materially more real issues, but that is an unproven pin change, so per the repo's prove-don't-assert rule it stays OFF until a benchmark on a real target shows it pays, then it can be adopted. Do not silently ship it on.
 

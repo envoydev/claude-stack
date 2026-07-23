@@ -241,16 +241,16 @@ test('emitTable emits a perfectly aligned, fully labeled layer table', () => {
 
 // A suggested skill that is core to ANOTHER stack (in that stack's required closure) must
 // not be flagged `suggested` when that stack is unconfirmed - e.g. dotnet-wpf / database-
-// conventions / ionic leaking into an aspnet+angular install via a shared resolver or the
+// conventions / ionic leaking into an aspnet+web-angular install via a shared resolver or the
 // universal code-style-analyzer. General within-stack conditionals (owned by no stack) stay.
 const recommendations = require('../meta/recommendations.json');
 
 test('a suggested skill owned only by unconfirmed stacks is not flagged suggested', () => {
     const raw = {
         rules: ['csharp-conventions', 'dotnet-repair-agents', 'typescript-conventions', 'angular-conventions', 'angular-styling-conventions', 'angular-repair-agents'],
-        agents: ['aspnet-solution-designer', 'aspnet-implementer', 'aspnet-verifier', 'dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'angular-solution-designer', 'angular-implementer', 'angular-verifier', 'ng-build-error-resolver', 'angular-test-resolver', 'code-style-analyzer'],
+        agents: ['aspnet-solution-designer', 'aspnet-implementer', 'aspnet-verifier', 'dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'web-angular-solution-designer', 'web-angular-implementer', 'web-angular-verifier', 'ng-build-error-resolver', 'angular-test-resolver', 'code-style-analyzer'],
     };
-    const table = emitTable(graph, 'skills', { raw, recs: recommendations, stacks: ['aspnet', 'angular'] });
+    const table = emitTable(graph, 'skills', { raw, recs: recommendations, stacks: ['aspnet', 'web-angular'] });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
     // cross-stack cores are demoted to a plain addable row - present (full catalog) but not suggested
     for (const s of ['dotnet-wpf', 'database-conventions', 'ionic'])

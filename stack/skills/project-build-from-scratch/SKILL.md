@@ -43,7 +43,7 @@ Brief: 'Start a new Angular admin dashboard.'
 1. **DESIGN** in-session: three options - standalone + signals with feature folders; NgRx-backed modular; minimal-shell MVP - each with routing, state tier, folder shape, and the tradeoff that decides it.
 2. **THE PICK**: the user chooses option one.
 3. **SCAFFOLD**: `ng new admin`, structure per `angular-conventions`, wire lint/format config, a test setup, the core routing shell.
-4. **BUILD**: first slice (the auth shell) - dispatch angular-solution-designer, then the angular implementer(s), then angular-verifier; loop the punch-list. Repeat per slice to the first milestone.
+4. **BUILD**: first slice (the auth shell) - dispatch web-angular-solution-designer, then the angular implementer(s), then web-angular-verifier; loop the punch-list. Repeat per slice to the first milestone.
 5. **HANDOFF**: suggest the captures so the repo gets its map and style artifacts.
 
 ## Rules

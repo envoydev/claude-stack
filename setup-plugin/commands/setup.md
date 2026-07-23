@@ -36,8 +36,9 @@ Detect silently first - the OS (`darwin`/`linux` -> `claude-stack.sh`; Windows -
 
 Project mode - detect stacks by artifact and record which apply (this detection IS the recommendation input; decide from the project, not from a generic default):
 
-- `*.csproj` / `*.sln` -> .NET. Split by content: a `Microsoft.NET.Sdk.Web` project -> `aspnet`; `<UseWPF>true` -> `wpf`; otherwise `console`.
-- `angular.json` -> `angular`; `ionic.config.json` / `capacitor.config.*` -> `mobile`.
+- `*.csproj` / `*.sln` -> .NET. Split by content, per project: a `Microsoft.NET.Sdk.Web` project -> `aspnet`; `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) -> `dotnet-windows-service`; otherwise `console`.
+- `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`. An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report `web-angular` for the same app; report both only when the workspace holds a second, distinct Angular app with no Ionic shell.
+- a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
 - `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
 - `tsconfig.json` / `jsconfig.json` -> `typescript` (the language-level seed - conventions rule + LSP plugin; an Angular/mobile repo matches it too, harmlessly, their seeds already carry both).
 

@@ -33,9 +33,7 @@ Both register an `IHostedService` in the DI container; the host starts every reg
 
 ## Hosting as a Windows Service
 
-A worker that runs under the Windows Service Control Manager (SCM) is the same worker binary plus the `Microsoft.Extensions.Hosting.WindowsServices` package and one call - `builder.Services.AddWindowsService(o => o.ServiceName = "...")`. It is a third way into the one hosting model, not a different model: everything above - base type, the exception trap, scoping, shutdown - applies unchanged. The call is context-aware, installing the `WindowsServiceLifetime` only when the process is actually running under the SCM (`WindowsServiceHelpers.IsWindowsService()`), so the identical binary still runs as a plain console app for local debugging - no separate build. It also points the host content root at `AppContext.BaseDirectory` and wires the Event Log provider. The legacy `ServiceBase`/`OnStart`/`installutil` pattern is obsolete for new work.
-
-The SCM-specific hardening - resolving every path against `AppContext.BaseDirectory` (the SCM working directory is System32), exiting non-zero so a fault actually triggers SCM recovery, and least-privilege service accounts - is in `references/deployment-and-observability.md` (Service-manager integration).
+A worker that runs under the Windows Service Control Manager is the same worker binary - this one hosting model, unchanged. Everything SCM: `AddWindowsService` and the dual-mode binary, start/stop budgets, non-zero exits so recovery actions fire, the System32 working-directory trap, install/accounts/hardening, and the legacy `ServiceBase` maintenance shape - is the `dotnet-windows-service` skill; load it WITH this one whenever the worker targets the SCM.
 
 ## Which base type: IHostedService, BackgroundService, IHostedLifecycleService
 

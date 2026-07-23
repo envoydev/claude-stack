@@ -1,6 +1,6 @@
 # Execution Modes and Routing
 
-The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create an angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
+The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create a web-angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
 
 ## DELEGATED vs INLINE - dispatch capability
 Before the size/risk modes below, each orchestration skill (`project-solve-cross-task`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
@@ -78,13 +78,13 @@ The mode carries the effort; the seat is the same. Angular, three sizes:
 
 ```yaml
 angular_small:   # one component/file, no API/auth/state change
-  flow: single_chat or angular-implementer only
+  flow: single_chat or web-angular-implementer only
   model: { implementer: sonnet-medium }
 angular_medium:  # new page, local state or API service, tests, contract unchanged
-  flow: [angular-solution-designer, angular-implementer, angular-verifier]
+  flow: [web-angular-solution-designer, web-angular-implementer, web-angular-verifier]
   model: { designer: opus-high, implementer: sonnet-medium, verifier: sonnet-high }
 angular_large:   # multiple areas, auth-sensitive UI, complex state, or a cross-domain API change
-  flow: [angular-solution-designer, angular-implementer x N, angular-verifier]
+  flow: [web-angular-solution-designer, web-angular-implementer x N, web-angular-verifier]
   model: { designer: opus-xhigh, implementers: sonnet-medium, verifier: sonnet-xhigh }
 ```
 
@@ -96,11 +96,11 @@ Emit compact metadata, not repeated prompts:
 
 ```yaml
 task_id: ANG-042
-domain: angular
+domain: web-angular
 classification: medium
 risk_level: medium
 flow: domain_trio
-agents: [angular-solution-designer, angular-implementer, angular-verifier]
+agents: [web-angular-solution-designer, web-angular-implementer, web-angular-verifier]
 contract_version: none
 reason: [adds a routed page, form validation, needs tests, no backend contract change]
 ```

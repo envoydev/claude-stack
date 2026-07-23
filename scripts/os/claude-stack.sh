@@ -324,6 +324,7 @@ SKILLS=(
   "envoydev/claude-stack|dotnet-error-handling" # Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation
   "envoydev/claude-stack|dotnet-grpc"      # gRPC: .proto/codegen, ASP.NET Core host, 4 streaming modes, JWT/mTLS, interceptors, health
   "envoydev/claude-stack|dotnet-hosted-services" # worker/background-service host: BackgroundService, ExecuteAsync trap, scoped scope, PeriodicTimer, shutdown, Channels
+  "envoydev/claude-stack|dotnet-windows-service" # Windows Service SCM layer: AddWindowsService, budgets, non-zero-exit recovery, sc.exe install, gMSA/hardening, ServiceBase maintenance
   "envoydev/claude-stack|dotnet-messaging" # event-driven messaging: Wolverine (MIT)/MassTransit, outbox, sagas, RabbitMQ/Azure SB
   "envoydev/claude-stack|dotnet-migrate"   # safe migration workflow: EF schema, .NET upgrades, NuGet - rollback + verify per step
   "envoydev/claude-stack|dotnet-minimal-api" # minimal API endpoint mechanics: MapGroup, TypedResults, endpoint filters, binding
@@ -494,28 +495,37 @@ AGENTS=(
   "evidence-gatherer.md"             # diagnosis support (sonnet/low): read-only - a diagnoser dispatches it to reproduce/confirm and return a compact digest, keeping log volume off the opus seat
   "security-auditor.md"              # analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements /security-review
   "integration-reviewer.md"          # final gate (opus/xhigh): read-only cross-domain integration review - contract consistency, assembled build/test/migration, the commit gate no single-stack verifier is
-  # Per-domain specialist team (7 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
+  # Per-domain specialist team (10 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
   "aspnet-solution-designer.md"      # design phase (opus/xhigh): ASP.NET Core architecture + plan + test strategy, decomposes into parallel tasks
   "aspnet-implementer.md"            # build phase (sonnet/medium): builds one ASP.NET task - code + tests
   "aspnet-verifier.md"               # verify phase (sonnet/xhigh): gates the ASP.NET build vs plan + quality, punch-list back
-  "angular-solution-designer.md"     # design phase (opus/xhigh): Angular architecture + plan + test strategy, decomposes
-  "angular-implementer.md"           # build phase (sonnet/medium): builds one Angular task - code + tests
-  "angular-verifier.md"              # verify phase (sonnet/xhigh): gates the Angular build vs plan + quality
+  "web-angular-solution-designer.md"     # design phase (opus/xhigh): Angular architecture + plan + test strategy, decomposes
+  "web-angular-implementer.md"           # build phase (sonnet/medium): builds one Angular task - code + tests
+  "web-angular-verifier.md"              # verify phase (sonnet/xhigh): gates the Angular build vs plan + quality
   "wpf-solution-designer.md"         # design phase (opus/xhigh): WPF strict-MVVM architecture + plan + test strategy, decomposes
   "wpf-implementer.md"               # build phase (sonnet/medium): builds one WPF task - code + tests
   "wpf-verifier.md"                  # verify phase (sonnet/xhigh): gates the WPF build vs plan + quality
   "console-solution-designer.md"     # design phase (opus/xhigh): headless .NET (Generic Host worker/bot/daemon/CLI) architecture + plan + test strategy, decomposes
   "console-implementer.md"           # build phase (sonnet/medium): builds one console/worker task - code + tests
   "console-verifier.md"              # verify phase (sonnet/xhigh): gates the console/worker build vs plan + quality
-  "mobile-solution-designer.md"      # design phase (opus/xhigh): Ionic/Capacitor architecture + plan + test strategy, decomposes
-  "mobile-implementer.md"            # build phase (sonnet/medium): builds one mobile task - code + tests
-  "mobile-verifier.md"               # verify phase (sonnet/xhigh): gates the mobile build vs plan + quality
+  "ionic-angular-solution-designer.md"      # design phase (opus/xhigh): Ionic/Capacitor architecture + plan + test strategy, decomposes
+  "ionic-angular-implementer.md"            # build phase (sonnet/medium): builds one mobile task - code + tests
+  "ionic-angular-verifier.md"               # verify phase (sonnet/xhigh): gates the mobile build vs plan + quality
   "data-solution-designer.md"        # design phase (opus/xhigh): schema/data-model architecture + plan + test strategy, decomposes
   "data-implementer.md"              # build phase (sonnet/medium): builds one data task - SQL + migration tests
   "data-verifier.md"                 # verify phase (sonnet/xhigh): gates the data build vs plan + quality
   "devops-solution-designer.md"      # design phase (opus/xhigh): Docker/CI/CD/deploy architecture + plan + validation strategy, decomposes
   "devops-implementer.md"            # build phase (sonnet/medium): builds one devops task - Dockerfile/workflow/deploy + local validation
   "devops-verifier.md"               # verify phase (sonnet/xhigh): gates the devops build vs plan + quality
+  "browser-extension-solution-designer.md" # design phase (opus/xhigh): MV3 extension architecture (SW/content/UI topology, message contract, permissions) + plan + test strategy, decomposes
+  "browser-extension-implementer.md" # build phase (sonnet/medium): builds one extension task - code + tests
+  "browser-extension-verifier.md"    # verify phase (sonnet/xhigh): gates the extension build vs plan + quality
+  "dotnet-windows-service-solution-designer.md" # design phase (opus/xhigh): SCM recovery/budget/identity topology + plan + test strategy, decomposes
+  "dotnet-windows-service-implementer.md" # build phase (sonnet/medium): builds one Windows Service task - code + tests
+  "dotnet-windows-service-verifier.md" # verify phase (sonnet/xhigh): gates the Windows Service build vs plan + quality
+  "winforms-solution-designer.md"    # design phase (opus/xhigh): WinForms MVP seam / binding / disposal topology + plan + test strategy, decomposes
+  "winforms-implementer.md"          # build phase (sonnet/medium): builds one WinForms task - code + tests
+  "winforms-verifier.md"             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
 )
 
 # (6) Path-scoped rules (claude-code): copied into .claude/rules/ from the run's source clone (rules/)

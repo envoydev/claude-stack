@@ -1,6 +1,6 @@
 ---
 name: dotnet-winforms
-description: "WinForms conventions for maintenance and modernization - logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Do NOT load for WPF (-> dotnet-wpf), WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> dotnet-hosted-services."
+description: "WinForms conventions for maintenance and modernization - logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Do NOT load for WPF (-> dotnet-wpf), WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> dotnet-hosted-services + dotnet-windows-service."
 ---
 
 # WinForms conventions
@@ -23,7 +23,7 @@ observer, and memento orchestration -> `csharp-design-patterns`; test framework 
 mechanics -> `dotnet-testing`; the upgrade safety playbook (baseline, staged, rollback) ->
 `dotnet-migrate`; SDK-style project shape and packaging -> `dotnet-project-setup`; general
 managed-memory profiling -> `dotnet-diagnostics`; general perf and type design ->
-`dotnet-performance`; a paired Windows-Service half -> `dotnet-hosted-services`.
+`dotnet-performance`; a paired Windows-Service half -> `dotnet-hosted-services` + `dotnet-windows-service`.
 
 ## Logic out of code-behind - the one rule everything rests on
 

@@ -58,7 +58,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/angular-solution-designer.md",
+          "file": "stack/agents/web-angular-solution-designer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -70,7 +70,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/mobile-solution-designer.md",
+          "file": "stack/agents/ionic-angular-solution-designer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -82,11 +82,23 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
           "file": "stack/agents/aspnet-implementer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/angular-implementer.md",
+          "file": "stack/agents/web-angular-implementer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -98,7 +110,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/mobile-implementer.md",
+          "file": "stack/agents/ionic-angular-implementer.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -110,11 +122,23 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
           "file": "stack/agents/aspnet-verifier.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/angular-verifier.md",
+          "file": "stack/agents/web-angular-verifier.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -126,7 +150,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/mobile-verifier.md",
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -135,6 +159,18 @@
         },
         {
           "file": "stack/agents/devops-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -183,7 +219,7 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/angular-implementer.md",
+          "file": "stack/agents/web-angular-implementer.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -195,7 +231,7 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/mobile-implementer.md",
+          "file": "stack/agents/ionic-angular-implementer.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -207,11 +243,23 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
           "file": "stack/agents/aspnet-verifier.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/angular-verifier.md",
+          "file": "stack/agents/web-angular-verifier.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -223,7 +271,7 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/mobile-verifier.md",
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -232,6 +280,18 @@
         },
         {
           "file": "stack/agents/devops-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -264,7 +324,7 @@
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
-          "file": "stack/agents/angular-implementer.md",
+          "file": "stack/agents/web-angular-implementer.md",
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
@@ -276,7 +336,7 @@
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
-          "file": "stack/agents/mobile-implementer.md",
+          "file": "stack/agents/ionic-angular-implementer.md",
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
@@ -285,6 +345,18 @@
         },
         {
           "file": "stack/agents/devops-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
           "marker": "DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE"
         },
         {
@@ -317,7 +389,7 @@
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         },
         {
-          "file": "stack/agents/angular-verifier.md",
+          "file": "stack/agents/web-angular-verifier.md",
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         },
         {
@@ -329,7 +401,7 @@
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         },
         {
-          "file": "stack/agents/mobile-verifier.md",
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         },
         {
@@ -338,6 +410,18 @@
         },
         {
           "file": "stack/agents/devops-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
         }
       ]
@@ -371,7 +455,7 @@
           "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
         },
         {
-          "file": "stack/agents/angular-solution-designer.md",
+          "file": "stack/agents/web-angular-solution-designer.md",
           "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
         },
         {
@@ -383,7 +467,7 @@
           "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
         },
         {
-          "file": "stack/agents/mobile-solution-designer.md",
+          "file": "stack/agents/ionic-angular-solution-designer.md",
           "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
         },
         {
@@ -395,11 +479,23 @@
           "marker": "the ponytail 'ultra' discipline: build the smallest pipeline that fully meets the requirement"
         },
         {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+        },
+        {
           "file": "stack/agents/aspnet-implementer.md",
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
-          "file": "stack/agents/angular-implementer.md",
+          "file": "stack/agents/web-angular-implementer.md",
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
@@ -411,7 +507,7 @@
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
-          "file": "stack/agents/mobile-implementer.md",
+          "file": "stack/agents/ionic-angular-implementer.md",
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
@@ -420,6 +516,18 @@
         },
         {
           "file": "stack/agents/devops-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
           "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
         },
         {
@@ -443,7 +551,7 @@
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         },
         {
-          "file": "stack/agents/angular-verifier.md",
+          "file": "stack/agents/web-angular-verifier.md",
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         },
         {
@@ -455,7 +563,7 @@
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         },
         {
-          "file": "stack/agents/mobile-verifier.md",
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         },
         {
@@ -464,6 +572,18 @@
         },
         {
           "file": "stack/agents/devops-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "marker": "one focused pass for over-build the implementers ADDED past the plan"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "one focused pass for over-build the implementers ADDED past the plan"
         }
       ]
@@ -480,7 +600,7 @@
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         },
         {
-          "file": "stack/agents/angular-solution-designer.md",
+          "file": "stack/agents/web-angular-solution-designer.md",
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         },
         {
@@ -492,7 +612,7 @@
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         },
         {
-          "file": "stack/agents/mobile-solution-designer.md",
+          "file": "stack/agents/ionic-angular-solution-designer.md",
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         },
         {
@@ -501,6 +621,18 @@
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
           "marker": "an `implementer_model` - `haiku` for a mechanical / low-risk task (correctness obvious on the diff)"
         }
       ]
@@ -517,7 +649,7 @@
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
-          "file": "stack/agents/angular-solution-designer.md",
+          "file": "stack/agents/web-angular-solution-designer.md",
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
@@ -529,7 +661,7 @@
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
-          "file": "stack/agents/mobile-solution-designer.md",
+          "file": "stack/agents/ionic-angular-solution-designer.md",
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
@@ -541,11 +673,23 @@
           "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
         },
         {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Cross-domain runs freeze the shared contract before design: design against that contract_version"
+        },
+        {
           "file": "stack/agents/aspnet-implementer.md",
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         },
         {
-          "file": "stack/agents/angular-implementer.md",
+          "file": "stack/agents/web-angular-implementer.md",
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         },
         {
@@ -557,7 +701,7 @@
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         },
         {
-          "file": "stack/agents/mobile-implementer.md",
+          "file": "stack/agents/ionic-angular-implementer.md",
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         },
         {
@@ -567,13 +711,25 @@
         {
           "file": "stack/agents/devops-implementer.md",
           "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
         }
       ]
     },
     "report-lean": {
       "_note": "The identical Report-lean paragraph across the seat roster (code-analyzer carries a deliberate shorter variant).",
       "owner": {
-        "file": "stack/agents/angular-implementer.md",
+        "file": "stack/agents/web-angular-implementer.md",
         "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
       },
       "sites": [
@@ -582,7 +738,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/angular-verifier.md",
+          "file": "stack/agents/web-angular-verifier.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
@@ -642,11 +798,11 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/mobile-implementer.md",
+          "file": "stack/agents/ionic-angular-implementer.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/mobile-verifier.md",
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
@@ -658,7 +814,31 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
           "file": "stack/agents/wpf-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/dotnet-windows-service-verifier.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {

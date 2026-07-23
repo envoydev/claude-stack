@@ -31,10 +31,11 @@ An Ionic app is an Angular app in a native (Capacitor) shell: the framework rule
 ## Navigation
 - Route with the Angular router inside an `IonRouterOutlet`; lazy-load every feature route via `loadComponent` / `loadChildren`. Tabs use `IonTabs` with their own outlet.
 - Don't mix Ionic's imperative nav controllers with the Angular router in one app - pick the router and stay with it.
+- Don't add `withViewTransitions()` to the router: `IonRouterOutlet` owns the page-stack transitions, and the two animation systems fight - double or broken transitions.
 
 ## Ionic page lifecycle
 - Ionic caches pages in the DOM, so `ngOnInit` / `ngOnDestroy` fire only on create/pop, not on every revisit - route refresh-on-entry work onto `ionViewWillEnter`, deferred heavy work onto `ionViewDidEnter`. The full hook schedule and which hook owns which work are in `references/navigation-and-lifecycle.md`.
-- Control navigation with Angular route guards (`CanActivate` / `CanDeactivate`) - they replaced the old `ionViewCanEnter` / `ionViewCanLeave`.
+- Control navigation with Angular route guards (`CanActivate` / `CanDeactivate`) - they replaced the old `ionViewCanEnter` / `ionViewCanLeave`. Guards yes, route resolvers no for refresh-on-entry data: a cached page's revisit re-activates nothing, so a resolver never re-runs - that data belongs on `ionViewWillEnter`.
 
 ## Large lists
 - Ionic's own virtual-scroll component was removed in v7 - for long lists use Angular CDK virtual scroll (`CdkVirtualScrollViewport` with `*cdkVirtualFor`) inside `IonContent`: set `[scrollY]="false"` on the `IonContent` and add the ion-content-scroll-host class to the viewport so Ionic's pull-to-refresh and infinite scroll keep working. CDK handles fixed-height rows well; variable-height rows can jank.

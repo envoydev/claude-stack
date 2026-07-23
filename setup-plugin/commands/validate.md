@@ -47,9 +47,14 @@ list` (fail-soft without the CLI). Write it as one inventory JSON in `$TMP`
 
 The setup step-2 artifact scan:
 
-- `*.csproj` / `*.sln` -> .NET, split by content: `Microsoft.NET.Sdk.Web` -> `aspnet`;
-  `<UseWPF>true` -> `wpf`; otherwise `console`.
-- `angular.json` -> `angular`; `ionic.config.json` / `capacitor.config.*` -> `mobile`.
+- `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
+  `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
+  `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) ->
+  `dotnet-windows-service`; otherwise `console`.
+- `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`.
+  An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report
+  `web-angular` for the same app; both only when a second, distinct non-Ionic Angular app exists.
+- a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
 - `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
 - `tsconfig.json` / `jsconfig.json` -> `typescript` (language-level - keeps the TS rule/skill/LSP
   plugin owned in a plain TS/Node repo with no framework marker).

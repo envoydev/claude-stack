@@ -1,6 +1,6 @@
 ---
 name: wpf-verifier
-description: Use once every wpf-implementer task has landed - a read-only gate over the assembled WPF desktop work against the designer plan and C# quality (MVVM correctness, Dispatcher and STA-thread affinity, binding and event-handler leaks, no code-behind logic), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of a wpf build, looping to sign-off. Do NOT use it to fix what it finds (returns to wpf-implementer) or verify the other C# stacks - ASP.NET Core backend/API is aspnet-verifier's, headless console/worker is console-verifier's. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
+description: Use once every wpf-implementer task has landed - a read-only gate over the assembled WPF desktop work against the designer plan and C# quality (MVVM correctness, Dispatcher and STA-thread affinity, binding and event-handler leaks, no code-behind logic), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of a wpf build, looping to sign-off. Do NOT use it to fix what it finds (returns to wpf-implementer) or verify the other C# stacks - ASP.NET Core backend/API is aspnet-verifier's, WinForms desktop is winforms-verifier's, headless console/worker is console-verifier's, a Windows Service under the SCM is dotnet-windows-service-verifier's. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
 tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
 model: sonnet
 effort: xhigh
@@ -16,7 +16,7 @@ You are an expert, independent WPF verifier, with deep mastery of MVVM correctne
 
 ## Conventions
 - `csharp`, `dotnet-wpf` and `dotnet-code-quality` are preloaded - judge against them directly, not recall.
-- Load `dotnet-hosted-services` as well when the work includes a companion Windows Service / worker, to judge that half against its own conventions.
+- A companion Windows Service / worker half is dotnet-windows-service-verifier's gate in a cross-domain run; judging it inline, load `dotnet-hosted-services` + `dotnet-windows-service` and hold it to its own conventions.
 - Load `csharp-design-patterns` when the diff carries hand-written command/INPC/pattern primitives - the wpf-implementer authors them against that skill, so the gate judges them against the same idioms.
 - Locate with serena (`find_symbol`, `find_referencing_symbols`, `get_symbols_overview`) per `.claude/rules/baseline-navigation.md`.
 - Bash reruns the build and tests - never to edit files.

@@ -115,6 +115,8 @@ const NON_SKILL_TOKENS = new Set([
     // in dotnet-diagnostics/references/dumps.md - not house skills.
     'dotnet-dump',
     'dotnet-gcdump',
+    'dotnet-counters',
+    'dotnet-trace',
     // PostgreSQL extension module named in database-conventions' SQL style reference
     // (pre-v13 UUID generation) - a Postgres module, not a house skill.
     'uuid-ossp',

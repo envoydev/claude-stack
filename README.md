@@ -28,8 +28,8 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 72 | house conventions + workflow skills, `.claude/skills/` |
-| **Agents** | 33 | model/effort-pinned subagents, `.claude/agents/` |
+| **Skills** | 73 | house conventions + workflow skills, `.claude/skills/` |
+| **Agents** | 42 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 17 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 4 | deterministic guards (3 wired) + an opt-in usage instrument, `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |

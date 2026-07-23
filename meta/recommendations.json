@@ -70,11 +70,11 @@
         "csharp-lsp"
       ]
     },
-    "angular": {
+    "web-angular": {
       "agents": [
-        "angular-solution-designer",
-        "angular-implementer",
-        "angular-verifier",
+        "web-angular-solution-designer",
+        "web-angular-implementer",
+        "web-angular-verifier",
         "ng-build-error-resolver",
         "angular-test-resolver"
       ],
@@ -110,6 +110,22 @@
         "csharp-lsp"
       ]
     },
+    "winforms": {
+      "agents": [
+        "winforms-solution-designer",
+        "winforms-implementer",
+        "winforms-verifier",
+        "dotnet-build-error-resolver",
+        "dotnet-test-failure-resolver"
+      ],
+      "rules": [
+        "csharp-conventions",
+        "dotnet-repair-agents"
+      ],
+      "plugins": [
+        "csharp-lsp"
+      ]
+    },
     "console": {
       "agents": [
         "console-solution-designer",
@@ -126,11 +142,27 @@
         "csharp-lsp"
       ]
     },
-    "mobile": {
+    "dotnet-windows-service": {
       "agents": [
-        "mobile-solution-designer",
-        "mobile-implementer",
-        "mobile-verifier"
+        "dotnet-windows-service-solution-designer",
+        "dotnet-windows-service-implementer",
+        "dotnet-windows-service-verifier",
+        "dotnet-build-error-resolver",
+        "dotnet-test-failure-resolver"
+      ],
+      "rules": [
+        "csharp-conventions",
+        "dotnet-repair-agents"
+      ],
+      "plugins": [
+        "csharp-lsp"
+      ]
+    },
+    "ionic-angular": {
+      "agents": [
+        "ionic-angular-solution-designer",
+        "ionic-angular-implementer",
+        "ionic-angular-verifier"
       ],
       "rules": [
         "typescript-conventions",
@@ -164,6 +196,23 @@
       ],
       "rules": [
         "devops-conventions"
+      ]
+    },
+    "browser-extension": {
+      "agents": [
+        "browser-extension-solution-designer",
+        "browser-extension-implementer",
+        "browser-extension-verifier"
+      ],
+      "rules": [
+        "typescript-conventions",
+        "javascript-conventions"
+      ],
+      "plugins": [
+        "typescript-lsp"
+      ],
+      "mcps": [
+        "chrome-devtools"
       ]
     },
     "typescript": {
