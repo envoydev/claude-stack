@@ -744,7 +744,7 @@
       ]
     },
     "report-lean": {
-      "_note": "The identical Report-lean paragraph across the seat roster (code-analyzer carries a deliberate shorter variant).",
+      "_note": "The identical Report-lean paragraph across the seat roster (architecture-analyzer carries a deliberate shorter variant).",
       "owner": {
         "file": "stack/agents/web-angular-implementer.md",
         "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
@@ -859,7 +859,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/code-analyzer.md",
+          "file": "stack/agents/architecture-analyzer.md",
           "marker": "Report lean.** Dense and factual - every substantive item this section requires and nothing more"
         }
       ]

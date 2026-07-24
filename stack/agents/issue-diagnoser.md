@@ -1,7 +1,7 @@
 ---
 name: issue-diagnoser
 description: Use when something breaks at runtime on your own machine - a local crash, an exception or stack trace, or a broken UI - a read-only first pass that works from that evidence plus the code, reproduces the failure where it can, reads its signature (null-ref vs DI-resolution vs async-deadlock vs race vs disposed-lifecycle vs config-drift), isolates the root cause to a file and symbol, then lays out the fix plan as independent contracted tasks scoped to the stack for the domain implementers to build and the domain verifier to review. Best as the first delegation on a reported bug. Do NOT write the fix (the domain implementers build it), diagnose a red CI pipeline (that is ci-failure-diagnoser), or scope a new feature (that is the project-solve-cross-task scoping pass).
-tools: Read, Skill, Agent, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Agent, Bash, Grep, Glob
 model: opus
 effort: xhigh
 color: orange

@@ -27,7 +27,7 @@ Green baseline first - build + tests green, zero pending EF migrations, before a
 
 ### 2. GATHER - delegated
 - **context7** (load-bearing): the target's published breaking-change surface - the migration guide, deprecations-and-removals, the version delta - never from recall. Branch by stack per the playbooks: what the migration engine auto-applies (.NET Upgrade Assistant / `ng update` schematics) versus hand edits.
-- **code-analyzer (sonnet/low)** per affected area: where the codebase actually uses the changed/deprecated APIs - located usage digests, reads kept off this context. Mine the build's own signals first (the `[Obsolete]`/analyzer warnings, `ng update`/`ng lint` deprecation notices) - they are the framework's pre-computed removal map.
+- **architecture-analyzer (sonnet/low)** per affected area: where the codebase actually uses the changed/deprecated APIs - located usage digests, reads kept off this context. Mine the build's own signals first (the `[Obsolete]`/analyzer warnings, `ng update`/`ng lint` deprecation notices) - they are the framework's pre-computed removal map.
 
 ### 3. PLAN - in-session
 Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**

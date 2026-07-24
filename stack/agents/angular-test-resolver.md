@@ -1,7 +1,7 @@
 ---
 name: angular-test-resolver
 description: Use when an Angular app already builds but its spec suite is red, including Ionic/Capacitor apps - an autonomous red-to-green loop that runs the project's test command (`ng test` Karma/Jasmine or Jest, auto-detected), identifies each failure, decides whether the bug is in the component/service or the spec, fixes the correct side, and re-runs until green. Best in the implement phase once the build is clean - it pairs after ng-build-error-resolver, which hands off a green build; an app that will not build is that resolver's. Do NOT use to write new tests from scratch (that is TDD via superpowers) - it repairs an existing failing suite without gaming it.
-tools: Read, Edit, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: high
 color: orange

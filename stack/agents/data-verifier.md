@@ -1,7 +1,7 @@
 ---
 name: data-verifier
 description: Use once every data-implementer task has landed - a read-only gate over the assembled data and persistence (SQL) work against the designer plan and SQL quality (schema and migration integrity, query safety, indexing, and read-path efficiency), previews the idempotent migration script, reruns the migration and build steps plus the integration tests, and returns a per-task punch-list. Best as a data build's closing gate, looping to sign-off. Do NOT use it to fix what it finds (that returns to data-implementer), verify the application-layer EF Core query composition (missing Include, lazy load, tracking on reads - aspnet-verifier's, while you own the schema, indexes, migrations, and the SQL underneath), or gate any app stack - ASP.NET, Angular, WPF and mobile each own their verifier. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob
 model: sonnet
 effort: xhigh
 color: purple

@@ -1,7 +1,7 @@
 ---
 name: winforms-solution-designer
 description: Use when a WinForms desktop feature or change needs designing before code - a read-only pass settling the code-behind line (MVP passive view, or the .NET 8+ MVVM binding engine, picked by runtime), DI-resolvable forms and factory seams, the BindingSource + INotifyPropertyChanged binding design, the UI-thread and disposal topology, and the 4.8-vs-modern runtime split, then decomposing the work into independent parallel tasks with explicit contracts and single owners for the collision files (composition root, each form's Designer.cs, shared resx). Best as a winforms build's first step, feeding the winforms-implementer fan-out and winforms-verifier. Do NOT use to write code; the other C# stacks - WPF desktop XAML (wpf-solution-designer's), ASP.NET Core backend/API (aspnet-solution-designer's), headless console/worker (console-solution-designer's), and the SCM-hosted Windows Service (windows-service-solution-designer's) - are not this seat's, a pure SQL schema/index/migration change with no app code is data-solution-designer's, and a brand-new project from a spec is the project-build-from-scratch skill.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

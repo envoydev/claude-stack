@@ -1,7 +1,7 @@
 ---
 name: dotnet-build-error-resolver
 description: Use after code changes leave a .NET solution that does not compile - an autonomous build-fix loop that runs `dotnet build`, categorizes the compiler/restore errors (CS/NU/MSB), locates the real cause with serena/LSP, applies the minimal correct fix, and rebuilds until clean, then hands the green build to dotnet-test-failure-resolver. Best in the implement phase after /brainstorm -> /plan, or when the user says 'fix the .NET build' / 'make it compile'. Do NOT use to write new features or change behavior (only restores a green build, never intent), or to fix failing tests once it compiles (that is dotnet-test-failure-resolver).
-tools: Read, Edit, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: high
 color: orange

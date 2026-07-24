@@ -1,7 +1,7 @@
 ---
 name: browser-extension-verifier
 description: Use once every browser-extension-implementer task has landed - a read-only gate over the assembled browser-extension work against the designer plan and TypeScript quality (service-worker statelessness, typed message-contract adherence, permission creep vs the plan, storage tiers, content-script isolation and CSP, no any or ts-ignore), reruns the toolkit build and Vitest suite, drives chrome-devtools for the live service-worker and injection behavior a fake-chrome unit test misses, and returns a per-task punch-list. Do NOT use it to fix what it finds (returns to browser-extension-implementer) or to verify the other TypeScript stacks - Angular web is web-angular-verifier's, Ionic/Capacitor mobile is ionic-angular-verifier's. Best as the closing gate of an extension build, looping to sign-off. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__chrome-devtools__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__chrome-devtools__*
 model: sonnet
 effort: xhigh
 color: purple

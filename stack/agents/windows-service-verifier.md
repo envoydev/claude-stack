@@ -1,7 +1,7 @@
 ---
 name: windows-service-verifier
 description: Use once every windows-service-implementer task has landed - a read-only gate over the assembled Windows-Service work against the designer plan and C# quality (non-zero-exit recovery discipline, SCM start/stop budgets, BaseDirectory path anchoring, install script and identity hardening, plus the worker traps - captive dependencies, stopping-token observance, async correctness), reruns dotnet build/test, runs the dual-mode binary as a console app, and returns a per-task punch-list. Do NOT use it to fix what it finds (returns to windows-service-implementer) or verify another stack - a headless worker with no SCM target is console-verifier's, ASP.NET Core backend/API is aspnet-verifier's, WPF desktop is wpf-verifier's, WinForms desktop is winforms-verifier's. Best as the closing gate of a Windows-Service build, looping to sign-off. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob
 model: sonnet
 effort: xhigh
 color: purple

@@ -1,7 +1,7 @@
 ---
 name: data-solution-designer
 description: Use when a SQL persistence feature or change needs designing before code - schema and keys, indexing and query-plan shape, and migration strategy and ordering settled in a read-only pass, then decomposed into independent parallel tasks with explicit contracts. Best as a data build's first step, feeding the data-implementer fan-out and data-verifier. Do NOT use to write code (that is data-implementer), to design the app-side EF Core object model and DbContext seam (that is the owning app stack's designer - aspnet / console / wpf - this seat owns the database schema, DDL, indexes and migrations the app calls, not the ORM mapping), or to start a brand-new project from a spec (that is the project-build-from-scratch skill).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

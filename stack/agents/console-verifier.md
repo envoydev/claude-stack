@@ -1,7 +1,7 @@
 ---
 name: console-verifier
 description: Use once every console-implementer task has landed - a read-only gate over the assembled headless .NET work against the designer plan and C# quality (host lifecycle and graceful shutdown, captive-dependency and scope-per-work correctness, stopping-token observance, async/await correctness, gateway resilience), reruns dotnet build/test and returns a per-task punch-list of fixes. Best as the closing gate of a console build, looping to sign-off. Do NOT use it to fix what it finds (returns to console-implementer) or verify the other C# stacks - a Windows Service under the SCM is windows-service-verifier's, ASP.NET Core backend/API is aspnet-verifier's, WPF desktop is wpf-verifier's, WinForms desktop is winforms-verifier's. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob
 model: sonnet
 effort: xhigh
 color: purple

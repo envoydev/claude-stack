@@ -1,6 +1,6 @@
 # Hazards to hunt (detect the stack first)
 
-Reason over the digests for the stack-keyed traps a name hides - not the portable abstractions any generalist recites. code-analyzer surfaces the located facts; the capture names the hazard.
+Reason over the digests for the stack-keyed traps a name hides - not the portable abstractions any generalist recites. architecture-analyzer surfaces the located facts; the capture names the hazard.
 
 - **Cross-cutting.** A `Shared`/`Common`/`Core`/`Utils` grab-bag that has become a hub every module references. A dependency-direction inversion - an inner/lower layer acquiring a reference to an outer/higher one (Domain reaching Infrastructure). A cycle the static graph forbids that DI, reflection, or events smuggle back. Two modules silently sharing one transaction or consistency boundary.
 - **.NET (ASP.NET / WPF).** Project-reference direction - Domain or a core module referencing EF Core or Infrastructure. A captive dependency - a singleton capturing a scoped service or `DbContext`, invisible in the static graph, breaking only under load. A `DbContext` boundary crossed - one module's entities tracked by another's context, a cross-context transaction, a navigation reaching another aggregate. A boundary enforced by convention rather than an architecture test (an unguarded seam has usually already drifted). WPF adds a global Messenger/event-aggregator or App-level service locator hiding a module-to-module edge, and merged-`ResourceDictionary` cycles.

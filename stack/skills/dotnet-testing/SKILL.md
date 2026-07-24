@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage thresholds computed after exclusions, and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-web-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest."
+description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage mechanics (the exclusion catalog + after-exclusions semantics; the % bar itself is user-set via project-test-coverage-analyzer), and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-web-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest (angular-testing)."
 ---
 
 # .NET Testing Approach
@@ -13,16 +13,18 @@ This skill captures the **approach**, not a single library. The principles below
 
 The strategy keys off the *role* a unit plays, not a layer name - so it maps onto whatever architecture the project picked. `dotnet-web-backend` owns the load-exactly-one-architecture rule but mandates no specific one. In a layered (Clean / Onion) project the roles below are the layers; in a vertical-slice / modular project they are the parts of a feature folder (the domain types, the handler / endpoint logic, the infrastructure wiring) - test each part the same way regardless of where it physically lives.
 
-- **Domain / business rules** - pure unit tests, no substitutes. Cover entities, value objects, domain services, domain events, invariants, guard clauses, factory methods, and every branch of a business rule including exception paths. Target ~100%.
-- **Use cases / handlers / orchestration** (the application logic of a slice or layer) - unit tests with all ports and abstractions substituted. Cover success paths, validation failures, exception handling, and orchestration branches. Target 95%+.
+- **Domain / business rules** - pure unit tests, no substitutes. Cover entities, value objects, domain services, domain events, invariants, guard clauses, factory methods, and every branch of a business rule including exception paths - this is the code where an uncovered branch is never acceptable.
+- **Use cases / handlers / orchestration** (the application logic of a slice or layer) - unit tests with all ports and abstractions substituted. Cover success paths, validation failures, exception handling, and orchestration branches.
 - **Infrastructure / adapters** - test logic-bearing code only (mappers, parsers, serializers, policy classes, retry/backoff, non-trivial query logic). Use in-memory DB or Testcontainers when query logic is non-trivial (`references/testcontainers.md`). Do not write tests that only assert a substitute was configured.
 - **Integration / E2E** - defined per project in project CLAUDE.md. For an Aspire-orchestrated app the harness is `references/aspire-integration-testing.md`.
 - **Negative-security paths** - assert the deny paths, not just the happy path: an expired or tampered token returns 401, N failed logins trip 429, and one user reading another's resource id returns 404. Explicit negative-security tests belong in the integration suite, not just the auth unit tests.
 
 ## Coverage
 
-- Default threshold: 90% line + branch across logic assemblies. Project CLAUDE.md may override.
-- Coverage is computed after exclusions so the threshold reflects real logic coverage, not padding.
+- The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture
+  (asked at capture time, kept in its COVERAGE.md) - this skill sets no number.
+- What this skill owns is the mechanics: coverage is computed after exclusions so the number
+  reflects real logic coverage, not padding - the exclusion catalog below is that list for .NET.
 
 ## Standard exclusions (via `[ExcludeFromCodeCoverage]` or coverlet filters)
 

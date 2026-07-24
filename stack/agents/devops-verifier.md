@@ -1,7 +1,7 @@
 ---
 name: devops-verifier
 description: Use once every devops-implementer task has landed - a read-only gate over the assembled devops work (Dockerfiles, docker-compose, CI/CD workflows, deploy and release pipelines, env/secret templates, the Aspire AppHost) against the designer plan and devops quality (reproducible pinned builds, no leaked secrets, correct cache keys, safe migration-in-deploy, non-root healthy containers, real service-container tests), re-validates (actionlint, docker build, dotnet build), and returns a per-task punch-list. Best as a devops build's closing gate, looping to sign-off. Do NOT use it to fix what it finds (returns to devops-implementer) or to diagnose why a live CI run is red (that is ci-failure-diagnoser). Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review for a parallel sweep).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob
 model: sonnet
 effort: xhigh
 color: purple

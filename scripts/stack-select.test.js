@@ -457,7 +457,7 @@ const { findStackRedundant, findStackMissing } = require('./stack-select.js');
 test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/baseline', () => {
     const installed = {
         rules: ['baseline-navigation', 'csharp-conventions', 'wpf-conventions'],
-        agents: ['code-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
+        agents: ['architecture-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
         skills: ['csharp', 'dotnet-web-backend', 'dotnet-wpf'],
         mcps: ['serena', 'sentry'],
         plugins: ['csharp-lsp'],

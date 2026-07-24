@@ -2,12 +2,13 @@
   "always": {
     "agents": [
       "ci-failure-diagnoser",
-      "issue-diagnoser",
-      "integration-reviewer",
-      "security-auditor",
+      "architecture-analyzer",
       "evidence-gatherer",
-      "code-analyzer",
-      "related-project-analyzer"
+      "integration-reviewer",
+      "issue-diagnoser",
+      "related-project-analyzer",
+      "security-auditor",
+      "test-coverage-analyzer"
     ],
     "rules": [
       "baseline-docs-root",
@@ -103,6 +104,9 @@
       "mcps": [
         "angular-cli",
         "chrome-devtools"
+      ],
+      "skills": [
+        "angular-testing"
       ]
     },
     "wpf": {
@@ -214,6 +218,7 @@
         "ionic-angular-verifier"
       ],
       "skills": [
+        "angular-testing",
         "capacitor-release",
         "ionic-security"
       ],

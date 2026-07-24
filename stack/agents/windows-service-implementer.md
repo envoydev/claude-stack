@@ -1,7 +1,7 @@
 ---
 name: windows-service-implementer
 description: Use to build ONE task from a windows-service-solution-designer decomposition - a .NET C# implementer for SCM-hosted workers that writes the host wiring with AddWindowsService, the BackgroundService loops with their exit-code discipline, BaseDirectory-anchored paths, and the install-script pieces the task names - plus their xUnit, NSubstitute, and host-level integration tests (fake gateway, FakeTimeProvider), strictly to the contract. Several run in parallel, one task each. Best dispatched by the project-solve-cross-task orchestration after the designer splits the work. Do NOT use without a task + contract, to redesign, to verify the assembled build (that is windows-service-verifier's), or to build another stack - a headless worker/bot/CLI with no SCM target is console-implementer's, ASP.NET Core backend/API is aspnet-implementer's, WPF desktop is wpf-implementer's, WinForms desktop is winforms-implementer's, and schema DDL plus EF Core migrations are the data stack's data-implementer.
-tools: Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

@@ -1,7 +1,7 @@
 ---
 name: devops-solution-designer
 description: Use when a devops change needs designing before code - a Dockerfile, a docker-compose topology, a GitHub Actions CI/CD pipeline, a deploy or release workflow, an env/secret template, or the .NET Aspire AppHost. A read-only pass that settles the container build, the CI job graph, the deploy and release strategy, and the secret-handling seam against the repo's existing pipeline, then decomposes the work into independent parallel tasks with explicit contracts and a single owner for the shared seams (the compose file, the workflow file, the env template, the AppHost). Best as a devops build's first step, feeding the devops-implementer fan-out and devops-verifier. Do NOT use to write the files (that is devops-implementer), to diagnose why a live CI run is red (that is ci-failure-diagnoser, read-only, which routes its fix here), or to build application or schema code (the app and data stacks own those), and a brand-new project from a spec is the project-build-from-scratch skill.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__context7__*, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

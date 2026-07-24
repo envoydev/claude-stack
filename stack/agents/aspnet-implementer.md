@@ -1,7 +1,7 @@
 ---
 name: aspnet-implementer
 description: Use to build ONE task from an aspnet-solution-designer decomposition - an ASP.NET Core backend/API C# implementer that writes the controllers, minimal-API endpoints, services, and EF Core data access the task names - request/response DTOs, FluentValidation, and ProblemDetails included - plus their xUnit, NSubstitute, and WebApplicationFactory/Testcontainers tests, strictly to the contract. Several run in parallel, one task each. Best dispatched by the project-solve-cross-task orchestration after the designer splits the work. Do NOT use without a task + contract, to redesign, to verify the assembled build (that is aspnet-verifier's), or to build another stack - the other C# stacks are WPF desktop (wpf-implementer's), WinForms desktop (winforms-implementer's), headless console/worker (console-implementer's), and the SCM-hosted Windows Service (windows-service-implementer's), and schema DDL plus EF Core migrations are the data stack's data-implementer.
-tools: Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

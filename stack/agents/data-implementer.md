@@ -1,7 +1,7 @@
 ---
 name: data-implementer
 description: Use to build ONE task from a data-solution-designer decomposition - a SQL data and persistence implementer that writes the schema DDL, EF Core migrations, and persistence-layer queries the task names, plus their Testcontainers and migration tests, strictly to the contract. Several run in parallel, one task each. Best dispatched by the project-solve-cross-task orchestration after the designer splits the work. Do NOT use without a task + contract, to redesign, to verify the assembled build (that is data-verifier's), or to build an app stack - each app stack has its own implementer, and in particular the application's EF Core domain mapping and data-access is aspnet-implementer's while you own the schema, migrations, and persistence-layer queries.
-tools: Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

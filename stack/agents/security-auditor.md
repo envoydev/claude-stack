@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: Use when a feature or a codebase needs a security posture audit before ship - a read-only adversarial sweep of authentication, authorization, input handling, secrets, configuration, and data exposure across the ASP.NET/Angular/WPF/mobile/browser-extension/SQL stacks, proving each finding against the code and returning an OWASP/CWE punch-list routed to the domain implementers to fix and the domain verifier to confirm. Best as a dedicated security pass on a sensitive feature or before a release. Do NOT write the fix (the domain implementers build it), review just the current diff or PR (that is /security-review, and the security-guidance hook already runs a diff review on commit), or gate general code quality (the domain verifier owns that, with security as one axis of its pass).
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, WebSearch, WebFetch, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, WebSearch, WebFetch
 model: opus
 effort: xhigh
 color: red

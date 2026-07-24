@@ -1,7 +1,7 @@
 ---
 name: ng-build-error-resolver
 description: Use after frontend changes leave an Angular app that will not build, Ionic/Capacitor apps included - an autonomous fix loop that runs the app's production build (`ng build`, or the project's `npm run build`), triages the TypeScript (TS####), Angular template/compiler (NG####), and esbuild/bundler + budget errors, traces each to its real cause with serena/LSP, applies the minimal intent-preserving fix, and rebuilds until clean, then hands the green build to angular-test-resolver. Best in the implement phase after /brainstorm -> /plan, or when the user says 'fix the Angular build' / 'make it compile'. Do NOT use to add features or change behavior (it only restores a green build, never intent), for failing specs once it compiles (that is angular-test-resolver - there is no ng-test twin), or for native-shell build failures (Capacitor `cap sync`, Gradle, Xcode signing - those are capacitor-release / ci-failure-diagnoser).
-tools: Read, Edit, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: high
 color: orange

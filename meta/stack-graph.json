@@ -17,6 +17,10 @@
       "mcps": [],
       "plugins": []
     },
+    "angular-testing": {
+      "mcps": [],
+      "plugins": []
+    },
     "browser-extension": {
       "mcps": [],
       "plugins": []
@@ -333,6 +337,14 @@
         "superpowers"
       ]
     },
+    "architecture-analyzer": {
+      "skills": [],
+      "suggests": [],
+      "skillsSource": "none",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
     "aspnet-implementer": {
       "skills": [],
       "suggests": [
@@ -429,14 +441,6 @@
       "plugins": [
         "superpowers"
       ]
-    },
-    "code-analyzer": {
-      "skills": [],
-      "suggests": [],
-      "skillsSource": "none",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
     },
     "code-style-analyzer": {
       "skills": [],
@@ -616,6 +620,7 @@
     "integration-reviewer": {
       "skills": [],
       "suggests": [
+        "angular-testing",
         "database-conventions",
         "dotnet-code-quality",
         "dotnet-migrate",
@@ -643,6 +648,7 @@
     "ionic-angular-solution-designer": {
       "skills": [
         "angular-conventions",
+        "angular-testing",
         "ionic",
         "mobile",
         "project-solution-design"
@@ -657,6 +663,7 @@
       "skills": [
         "angular-conventions",
         "angular-styling",
+        "angular-testing",
         "ionic",
         "typescript"
       ],
@@ -728,6 +735,17 @@
         "superpowers"
       ]
     },
+    "test-coverage-analyzer": {
+      "skills": [],
+      "suggests": [
+        "angular-testing",
+        "dotnet-testing"
+      ],
+      "skillsSource": "body",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
     "web-angular-implementer": {
       "skills": [],
       "suggests": [
@@ -748,6 +766,7 @@
       "skills": [
         "angular-conventions",
         "angular-styling",
+        "angular-testing",
         "frontend",
         "project-solution-design"
       ],
@@ -761,6 +780,7 @@
       "skills": [
         "angular-conventions",
         "angular-styling",
+        "angular-testing",
         "typescript"
       ],
       "suggests": [],

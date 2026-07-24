@@ -1,7 +1,7 @@
 ---
 name: wpf-implementer
 description: Use to build ONE task from a wpf-solution-designer decomposition - a WPF desktop C# implementer that authors the MVVM views (XAML), viewmodels, bindings, and commands the task names - INotifyPropertyChanged included - plus their xUnit viewmodel tests, strictly to the contract; the XAML view is authored but proven only indirectly, the tests cover viewmodels only. Several run in parallel, one task each. Best dispatched by the project-solve-cross-task orchestration after the designer splits the work. Do NOT use without a task + contract, to redesign (that is wpf-solution-designer's), to verify the assembled build (that is wpf-verifier's), or to build another stack - the other C# stacks are ASP.NET Core backend/API (aspnet-implementer's), WinForms desktop (winforms-implementer's), headless console/worker (console-implementer's), and the SCM-hosted Windows Service (windows-service-implementer's), and a non-C# stack like an Angular / TypeScript web task is never this seat's.
-tools: Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

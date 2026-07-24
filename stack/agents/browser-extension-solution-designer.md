@@ -1,7 +1,7 @@
 ---
 name: browser-extension-solution-designer
 description: Use when a browser-extension (MV3) feature or change needs designing before code exists - a read-only pass that settles the service-worker/content-script/UI-surface topology and storage tiers, the typed message contract, the permission surface, and the cross-browser strategy, then decomposes the work into independent parallel tasks with explicit, collision-free contracts. Best as an extension build's first step, feeding the browser-extension-implementer fan-out and browser-extension-verifier. Do NOT use to write code (that is browser-extension-implementer), to design the other TypeScript stacks - Angular web is web-angular-solution-designer's, Ionic/Capacitor mobile is ionic-angular-solution-designer's - or Electron/VS Code extensions (Node-runtime work, not this stack), or to start a brand-new project from a spec, which is the project-build-from-scratch skill.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

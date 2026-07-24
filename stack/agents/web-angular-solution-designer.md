@@ -1,7 +1,7 @@
 ---
 name: web-angular-solution-designer
 description: Use when an Angular web feature or change needs designing before code exists - a read-only pass that settles the route and lazy-load topology against the bundle budget, the server-state-vs-client-state boundary, signal/OnPush and RxJS flows, and SSR/hydration, then decomposes the work into independent parallel tasks with explicit, collision-free contracts. Best as an angular build's first step, feeding the web-angular-implementer fan-out and web-angular-verifier. Do NOT use to write code (that is web-angular-implementer), to design the other TypeScript stacks - Ionic/Capacitor mobile is ionic-angular-solution-designer's, browser extensions are browser-extension-solution-designer's - or to start a brand-new project from a spec, which is the project-build-from-scratch skill.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan
@@ -9,6 +9,7 @@ skills:
   - frontend
   - angular-conventions
   - angular-styling
+  - angular-testing
   - project-solution-design
 ---
 

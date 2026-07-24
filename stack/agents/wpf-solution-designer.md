@@ -1,7 +1,7 @@
 ---
 name: wpf-solution-designer
 description: Use when a WPF desktop feature or change needs designing before code - a read-only pass settling the strict MVVM seam (DI-composed DataContext, navigation and dialog contracts, ViewModel testability), the binding and validation design, and the UI-thread marshaling boundary, then decomposing it into independent parallel tasks with explicit contracts. Best as a wpf build's first step, feeding the wpf-implementer fan-out and wpf-verifier. Do NOT use to write code; the other C# stacks - ASP.NET Core backend/API (aspnet-solution-designer's), WinForms desktop (winforms-solution-designer's - a different framework, no XAML), headless console/worker (console-solution-designer's), and the SCM-hosted Windows Service (windows-service-solution-designer's) - are not this seat's, a pure SQL schema/index/migration change with no app code is data-solution-designer's, and a brand-new project from an empty repo is the project-build-from-scratch skill.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

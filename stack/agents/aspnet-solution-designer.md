@@ -1,7 +1,7 @@
 ---
 name: aspnet-solution-designer
 description: Use when an ASP.NET Core backend or API feature needs designing before code - a read-only pass that settles the endpoint and contract surface, matches the repo's existing architecture (clean vs vertical-slice), fixes the EF Core persistence seam and the async and transaction boundaries, then decomposes the work into independent parallel tasks with explicit contracts and a single owner for the shared seams (Program.cs and DI, the EF model snapshot and migration). Best as an aspnet build's first step, feeding the aspnet-implementer fan-out and aspnet-verifier. Do NOT use to write code; the other C# stacks - WPF desktop (wpf-solution-designer's), WinForms desktop (winforms-solution-designer's), headless console/worker (console-solution-designer's), and the SCM-hosted Windows Service (windows-service-solution-designer's) - are not this seat's; a pure SQL schema, index, or migration change with no app code is data-solution-designer's; and a brand-new project from a spec is the project-build-from-scratch skill.
-tools: Read, Skill, Bash, Grep, Glob, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__context7__*, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan
