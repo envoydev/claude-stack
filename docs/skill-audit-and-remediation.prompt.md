@@ -19,7 +19,9 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 - Preserve intent. You improve how a skill is written, never what it does. Same inputs must yield the same behavior after your edits.
 - Anti-gaming over grade-chasing. A high number that was earned by padding, keyword stuffing, or fabricated examples is a failure, not a pass. Re-score honestly after every edit.
 - Treat the skill set as one codebase. Skills should reuse each other, not repeat each other. Content that appears in more than one skill (shared instructions, templates, rules, glossaries) is a duplication defect: factor it into a shared reference the skills point to, or have one skill delegate to another, so it lives in exactly one place.
+- Minimal cross-mentions - single responsibility. A skill mentions another skill, rule, or agent ONLY when the mention is load-bearing at runtime: a delegation or dispatch target invoked by name, a routing boundary (the case where the other artifact wins), or a preload the skill needs to execute. Any other cross-mention - ownership attribution, see-also, sync breadcrumbs - is a coupling defect: remove it. Where the same rule text must deliberately live in more than one artifact, each copy stays inline and self-contained and the sync is registered in `meta/shared-rules.json` at the repo root (one entry per multi-home rule: the canonical owner + every restatement site, each pinned by a marker phrase; the repo lint fails when a copy drifts) - never expressed as a prose mention. Create the registry if the repo lacks it, and any pass that adds, moves, or rewords multi-home text updates the registry in the same pass.
 - Generic by default. A skill names a technology, framework, or product only where its scope requires it: its own stack, a routing target it delegates to by name, or a clearly-marked illustrative example. An incidental tech mention in a generic skill is a defect - cite the line and score it under Dimension 3.
+- Single responsibility. A skill owns ONE job. A grab-bag skill bundling unrelated capabilities undertriggers every job it carries - its description cannot state one crisp what-plus-when - and cannot be excluded or reused per job. Score the defect under Dimension 1 and propose the split in the report; never split unilaterally, because a split changes the set's routing surface.
 - No conflicts, no cycles. Two skills must not give contradictory guidance for the same situation, and the cross-layer invocation graph must stay acyclic - a skill that dispatches an agent whose body invokes a skill that dispatches another agent is an unbounded context loop, not composition. Both are set-level defects invisible from any single file.
 - Reversibility. Snapshot each skill before editing so a regression can be undone.
 
@@ -32,6 +34,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 3. Record for each skill: directory name, `name` and `description` from frontmatter, body line count, resource inventory, and any explicit constraints the author wrote (trigger-only keywords, privacy rules, language rules, formatting rules). These constraints are load-bearing. Treat them as fixed.
 4. Build a duplication map across the whole set. Find content that repeats across two or more skills: identical or near-identical instruction blocks, shared output templates, the same rules restated, overlapping glossaries, or two skills whose scopes overlap enough that one should delegate to the other. Record each duplication as a cluster: the skills involved, the shared content, and whether the right fix is a shared reference or delegation. This map drives the reuse dimension in scoring and the shared-content extraction in remediation.
 5. Build an invocation and conflict map. Record each skill's outbound edges - the agents it dispatches, the skills it delegates to by name, whether it is manual-only (`disable-model-invocation`) - and chain them with the agents' own skill preloads and dispatch targets into one directed call graph. Any cycle, at any depth, is the highest-severity defect this phase can find. Note the structural walls that legitimately terminate a chain (a manual-only skill cannot re-fire by description-match; a dispatched agent without the Skill or Agent tool is terminal) so you do not report a loop an existing wall already breaks. Separately record contradictions: two skills prescribing incompatible behavior for the same trigger, file type, or task.
+6. Build a reference-resolution map. Resolve every artifact name each skill uses - the skills it delegates to, the agents it dispatches, the rules it cites (at their deployed paths), the reference files it loads - against the discovered catalogs. A dangling name (a typo, a renamed artifact's old name, a retired artifact) is a defect, not a style issue: the pointer silently no-ops at runtime, which is worse than no pointer. Record each for remediation and score it under Dimension 4.
 
 Do not edit anything in this phase.
 
@@ -102,6 +105,32 @@ Produce a baseline report (see Output contract) before any editing.
 
 ---
 
+## Phase 1b - External currency check (context7)
+
+Skill bodies and their references/ carry claims about the outside world - packages, version floors, API syntax in examples, deprecation statements. Training-data recall drifts, so these claims are verified against current
+documentation through the context7 MCP - never re-asserted from memory. This check changes no
+dimension weights (scores stay comparable across audit runs); like the other set-level defects,
+an unresolved DRIFTED finding blocks the artifact from A.
+
+1. **Inventory** while scoring Phase 1: collect every externally-verifiable claim - a named
+   package or library, a version floor, an API call inside a code example, a config or CLI
+   syntax block, a deprecation or 'X does not support Y' statement, a best-practice claim
+   attributed to a library's documentation. For references/, sample the files the body cites at load-bearing steps rather than sweeping every reference exhaustively.
+2. **Prioritize** what a release can invalidate: version-named claims, code examples that call
+   library APIs, deprecation/support statements. House judgment (strategy, conventions,
+   tradeoffs, forbidden patterns) has no external truth to check - skip it.
+3. **Verify, bounded**: group the claims by library; per library, one `resolve-library-id` plus
+   at most 2-3 `query-docs` calls covering the whole batch. Cap ~15 libraries per run - the long
+   tail rolls to the next audit and is listed as unchecked. context7 unreachable: mark the whole
+   check SKIPPED in the report and move on; never substitute recall for the lookup.
+4. **Verdict per claim**: CURRENT (docs agree) | DRIFTED (docs contradict - a MATERIAL finding)
+   | UNVERIFIABLE (docs silent - recorded, not a finding). Record the table (library, claim,
+   verdict, evidence line) in the baseline report.
+5. **Remediation routing** for DRIFTED: fix it in Phase 2 - and when the drifted content is
+   version-coupled detail (an API sample, a per-release config block), prefer REPLACING it with
+   the durable policy plus a fetch-at-use pointer (context7 at usage time) over updating the
+   number: judgment stays in the artifact, drifting facts are fetched live.
+
 ## Phase 2 - Remediation loop
 
 Work set-level defects first, before the per-skill loops. Break every invocation cycle structurally - remove the unsanctioned dispatch edge, or make the re-entrant skill manual-only - never with a prose depth counter; resolve every contradiction by deciding which skill owns the behavior and rewriting the loser to defer by name, or, where the repo does not decide the winner, leave both, flag it prominently, and mark both skills blocked. Then resolve cross-skill duplication, still at the set level - duplication fixes touch several skills at once, so doing them before the per-skill loops stops you from polishing a body you are about to delete. For each cluster in the duplication map:
@@ -150,7 +179,7 @@ After the loop, for each edited skill:
 2. Confirm the behavior-preservation prompts still produce matching outputs.
 3. Confirm no guarded rule was dropped. Diff against the snapshot to check.
 4. For any content moved to a shared reference, confirm every skill that used it now names the shared file and that the content lives in exactly one place.
-5. Confirm the reference layer is navigable: every reference the body cites exists, every reference file is cited somewhere, and names and hierarchy still match the workflow after the edits.
+5. Confirm the reference layer is navigable: every reference the body cites exists, every reference file is cited somewhere, every skill, agent, or rule the body names still resolves against the live catalogs, and names and hierarchy still match the workflow after the edits.
 6. Record the final grade with the same evidence-cited scoring as Phase 1.
 
 If any skill regressed on behavior or lost a guarded rule, restore it from the snapshot and report it as unresolved with the reason.

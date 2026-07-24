@@ -1,6 +1,6 @@
 # Execution Modes and Routing
 
-The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create an angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
+The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create a web-angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
 
 ## DELEGATED vs INLINE - dispatch capability
 Before the size/risk modes below, each orchestration skill (`project-solve-cross-task`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-quality-loop`) picks one dispatch mode at the start and holds it for the run. This is the shared policy those skills cite rather than restate:
@@ -9,6 +9,10 @@ Before the size/risk modes below, each orchestration skill (`project-solve-cross
 - **INLINE** - the same steps, done in-session, no dispatch. This is `project-solve-cross-task`'s default for single-stack work (agents are a per-step opt-in from there), and every skill's fallback when dispatch is unavailable (a Cursor session, a non-stack project with no domain agents, or a change too small to fan out).
 
 Dispatch is explicit-only, house-wide: never dispatch a seat the user did not choose. A dispatched seat runs on its frontmatter model/effort pin unless the user names a model; fan-out is capped at 3 implementers at once by default, more only on the user's ask. Detection keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. The size/risk modes below apply in either case; in INLINE they are done in-session.
+
+Detection is PER STACK, not per run: a per-stack install gives the session only the HOST repo's roster, so a cross-domain run started in one repo may find a sibling domain's seats undispatchable. That domain runs INLINE (design, build, self-verify in-session) while the domains with seats stay dispatched - name the split at the plan stop, keep the contract frozen either way, and the integration gate still reviews the assembled whole. When the user wants that domain's independent trio instead, offer the two real levers: run the flow from that repo, or install its trio here.
+
+**The approval gate file.** An implementer dispatch is mechanically gated (the `guard-unapproved-dispatch.js` hook): before the first implementer fans out, write `<docs-path>/flow/APPROVAL` with one first line - `APPROVED <plan/contract id> - "<the user's words, verbatim>"` on their explicit plan approval, or `AUTO - "<their words, verbatim>"` when they explicitly asked for a no-stops run. Stops are the default; AUTO is written only from the user's literal ask, never inferred from an ambiguous 'go' or from context. Re-write the stamp when the plan changes (a superseded contract_version does not carry approval forward), and delete the file when the run completes - a stale stamp must not authorize the next run. Designer and verifier dispatches need no stamp (the plan exists before approval; audits are read-only).
 
 ## Feature / change modes
 
@@ -20,8 +24,9 @@ Dispatch is explicit-only, house-wide: never dispatch a seat the user did not ch
 | `fanout_domain_trio` | domain designer -> up to 3 implementers at once (more on ask) -> domain verifier | large/risky work inside one domain | medium-high |
 | `cross_domain_light` | producer designer -> producer + consumer implement/verify -> integration-reviewer | 2+ domains, routine stable seam | high |
 | `full_cross_domain` | producer designer -> consumer designer validates the seam -> domain pipelines -> integration-reviewer | novel or risky seam: new public/versioned API, streaming or eventing, auth, migrations, deployment order, production-critical | highest |
+| `cross_without_domain_verifiers` | producer designer -> domain implementers gate on their own build + fast tests (NO domain verifiers) -> integration-reviewer as the SOLE independent gate | ONLY on the user's explicit cost opt-in - never routed to by the decision ladder. The skipped layer is where MATERIAL catches happen - measured twice: findings the integration gate did not re-find, and a same-task A/B where this mode SHIPPED a live-app ship-blocker (dead browser app, green unit suites, curl-level E2E blind to it) that the full mode caught and fixed. Tell the integration-reviewer it is the only independent gate and name the accepted risk at the mode stop | high (measured ~34% cheaper than the full run on the same task) |
 
-`domain_trio` and `fanout_domain_trio` run per `references/domain-trio-protocol.md` - the single-stack vertical's execution protocol; Read it the moment either mode is picked. cross_domain_light and full_cross_domain are the producer-first flow in the skill body.
+`domain_trio` and `fanout_domain_trio` run per `references/domain-trio-protocol.md` - the single-stack vertical's execution protocol; Read it the moment either mode is picked. cross_domain_light, full_cross_domain and cross_without_domain_verifiers are the producer-first flow in the skill body (the verifier-less mode differs only in the skipped domain-verifier seats and the integration brief).
 
 ## Decision ladder
 
@@ -78,13 +83,13 @@ The mode carries the effort; the seat is the same. Angular, three sizes:
 
 ```yaml
 angular_small:   # one component/file, no API/auth/state change
-  flow: single_chat or angular-implementer only
+  flow: single_chat or web-angular-implementer only
   model: { implementer: sonnet-medium }
 angular_medium:  # new page, local state or API service, tests, contract unchanged
-  flow: [angular-solution-designer, angular-implementer, angular-verifier]
+  flow: [web-angular-solution-designer, web-angular-implementer, web-angular-verifier]
   model: { designer: opus-high, implementer: sonnet-medium, verifier: sonnet-high }
 angular_large:   # multiple areas, auth-sensitive UI, complex state, or a cross-domain API change
-  flow: [angular-solution-designer, angular-implementer x N, angular-verifier]
+  flow: [web-angular-solution-designer, web-angular-implementer x N, web-angular-verifier]
   model: { designer: opus-xhigh, implementers: sonnet-medium, verifier: sonnet-xhigh }
 ```
 
@@ -96,11 +101,11 @@ Emit compact metadata, not repeated prompts:
 
 ```yaml
 task_id: ANG-042
-domain: angular
+domain: web-angular
 classification: medium
 risk_level: medium
 flow: domain_trio
-agents: [angular-solution-designer, angular-implementer, angular-verifier]
+agents: [web-angular-solution-designer, web-angular-implementer, web-angular-verifier]
 contract_version: none
 reason: [adds a routed page, form validation, needs tests, no backend contract change]
 ```

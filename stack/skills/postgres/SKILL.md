@@ -1,11 +1,11 @@
 ---
 name: postgres
-description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database-conventions hub: identifier folding and idempotent DDL, index-type selection (B-tree/GIN/GiST/BRIN/hash), JSONB and full-text indexing, SARGable predicate rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum/ANALYZE, work_mem), connection pooling modes, and array-batching/ON CONFLICT/COPY. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index/pooling decision. Not the cross-engine schema/transaction rules (-> database-conventions), the ORM side (-> dotnet-data-access), or another engine's SQL. Companions: database-conventions (cross-engine hub - load first), data-security (RLS/privileges), dotnet-data-access (the EF Core / ORM side)."
+description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database-conventions hub: identifier folding and idempotent DDL, index-type selection (B-tree/GIN/GiST/BRIN/hash), JSONB and full-text indexing, SARGable predicate rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum/ANALYZE, work_mem), connection pooling modes, and array-batching/ON CONFLICT/COPY. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index/pooling decision. Not the cross-engine schema/transaction rules (-> database-conventions), the ORM side (-> dotnet-data-access), or another engine's SQL. Companions: database-conventions (cross-engine hub - load first), database-security (RLS/privileges), dotnet-data-access (the EF Core / ORM side)."
 ---
 
 # postgres (engine specialist)
 
-The Postgres-specific layer. **Cross-engine conventions live in `database-conventions` - load that hub first and do not restate it here.** RLS basics and least-privilege logins live in `data-security`. The .NET/EF Core side lives in `dotnet-data-access`. This file is only what changes *because the engine is Postgres*.
+The Postgres-specific layer. **Cross-engine conventions live in `database-conventions` - load that hub first and do not restate it here.** RLS basics and least-privilege logins live in `database-security`. The .NET/EF Core side lives in `dotnet-data-access`. This file is only what changes *because the engine is Postgres*.
 
 ## Schema and types
 
@@ -101,4 +101,4 @@ analyze orders;
 
 ## RLS policy performance
 
-Only when RLS is the tenancy mechanism (policy *basics* are owned by `data-security`): make policy functions evaluate once per query instead of per row, and index the column every policy filters on - the patterns are in `references/rls-performance.md`.
+Only when RLS is the tenancy mechanism (policy *basics* are owned by `database-security`): make policy functions evaluate once per query instead of per row, and index the column every policy filters on - the patterns are in `references/rls-performance.md`.

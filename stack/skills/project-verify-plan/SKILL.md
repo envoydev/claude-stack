@@ -28,7 +28,7 @@ Load the plan's target stack skill FIRST, so you check against the right trap li
 
 ## Output
 
-A short punch-list, not a rewrite. One line per finding: `severity | the gap | the fix to the PLAN`. If the plan is sound, say so plainly and name what you checked. When the plan lives in a file (the docs root's `superpowers/plans/` - `project-solution-design` writes it there), stamp the verdict into it - one line, `Gated: passed | <N> gaps listed - <date>` - so a compacted or fresh session knows the audit already happened. Then it is safe to build against; if not, fix the plan first - that is the whole point of doing this before code.
+A short punch-list, not a rewrite. One line per finding: `severity | the gap | the fix to the PLAN`. If the plan is sound, say so plainly and name what you checked. When the plan lives in a file (`<docs-path>/superpowers/plans/` - `project-solution-design` writes it there), stamp the verdict into it - one line, `Gated: passed | <N> gaps listed - <date>` - so a compacted or fresh session knows the audit already happened. Then it is safe to build against; if not, fix the plan first - that is the whole point of doing this before code.
 
 ## Example
 

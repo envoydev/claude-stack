@@ -25,7 +25,7 @@ Use `Directory.Packages.props` (central package management) wherever the project
 
 ## Validation
 
-FluentValidation is the default validator. Reserve ASP.NET Core `ModelState` / data annotations for genuinely trivial DTOs where a `[Required]` says all there is to say. The validation-error shape, the `ProblemDetails` mapping, and the endpoint filter that runs the validator are owned by `dotnet-error-handling` - do not assemble an error body or a filter here; this skill only fixes the library choice.
+FluentValidation is the default validator. Reserve ASP.NET Core `ModelState` / data annotations for genuinely trivial DTOs where a `[Required]` says all there is to say. The validation-error shape, the `ProblemDetails` mapping, and the endpoint filter that runs the validator are owned by `dotnet-web-error-handling` - do not assemble an error body or a filter here; this skill only fixes the library choice.
 
 ## Resilience
 
@@ -160,4 +160,4 @@ Default a new HTTP surface to minimal APIs; the full minimal-vs-controllers deci
 - Broker messaging / outbox / sagas -> `dotnet-messaging`
 - Per-layer tests -> `dotnet-testing`
 
-Errors (`dotnet-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above. The full index of every .NET specialist skill is the `dotnet` router.
+Errors (`dotnet-web-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above. The full index of every .NET specialist skill is the `dotnet` router.

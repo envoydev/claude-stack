@@ -12,9 +12,7 @@ survives a compaction or a fresh session. It never designs, builds, or reviews a
 
 ## State - two layers, split by durability
 
-- **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`, docs root = `CLAUDE_DOCS_PATH`
-  from `.claude/settings.json` env, default `.claude/docs` - see the project CLAUDE.md docs-root
-  section) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
+- **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence. On any
   conflict with memory or the chat, the file wins.
 - **The serena cycle note** (`write_memory` named `<feature>__cycle`) is the working cursor:
@@ -40,7 +38,10 @@ END THE TURN and wait. The stop is the user's window to switch model or effort, 
 edit the plan file directly - and the cheap point to run the next step in a fresh session
 (`/clear`): resume needs only the plan file + cycle note, so the step starts at a few k of
 context instead of re-sending the finished steps' whole conversation with every call - in a long
-cycle that carried-forward context is the single biggest token cost. Proceed only on their
+cycle that carried-forward context is the single biggest token cost (measured: a fresh-session
+resume restarted at roughly a tenth of the carried context with zero re-work - stamped steps
+stayed done). On a long cycle, say so at the stop: name the fresh-session resume as the cheap
+next move instead of waiting for the user to think of it. Proceed only on their
 explicit word; silence is not a go.
 
 ## The steps
@@ -63,9 +64,13 @@ explicit word; silence is not a go.
    - *session*: run `project-implementer` - it marks each task `IN_PROGRESS` before code, ticks it
      `DONE` with evidence after its green gate, and keeps the plan's resume note current.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
-     fan-out per the shared policy `project-solve-cross-task` owns, the main session the only
+     fan-out per the shared policy `project-solve-cross-task` owns (write its approval gate file
+     first, quoting this step's user approval verbatim - the dispatch hook blocks an unstamped
+     implementer), the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
-     per task as reports land.
+     per task as reports land. Each seat's green gate stays fast - build + fast tests, never
+     integration replays or another minutes-long run; the slow full run
+     happens once, in this session, at the step-5 review / step-6 done-gate.
    *Stop* - and this stop chooses the reviewer for step 5: run `project-verify-code` in-session
    (default - no dispatch, stays in this context), dispatch the stack's `<stack>-verifier` seat for
    isolated eyes (on its frontmatter model unless you name one), or **skip** the review straight to step 6's done-gate. (For a broad parallel sweep you can still invoke `/code-review` yourself - it is not part of this flow.) The user can
@@ -81,6 +86,13 @@ explicit word; silence is not a go.
    (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table. Delete or archive the cycle note.
+   **Doc-drift awareness** - one line at most in the close report, the user decides, never
+   auto-run: when the landed change touched an architecture-critical surface (a schema/EF
+   migration, a new module or project, a moved boundary or dependency direction, a changed
+   cross-stack seam or eventing contract, a new external dependency), say so and name
+   `/project-architecture-analyzer` (update mode is diff-scoped and cheap); when substantial
+   code + tests landed and the coverage doc is absent or its stamp predates the change, name
+   `/project-test-coverage-analyzer` the same way.
 
 ## Do not
 

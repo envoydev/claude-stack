@@ -104,11 +104,11 @@ lanes:
     phase: implementing
     tasks: { backend-01: DONE, backend-02: BLOCKED_CONTRACT_CHANGE }
     verifier: not_started
-  angular:
+  web-angular:
     phase: paused_affected_by_contract_change
     tasks: {}
   wpf:    { phase: not_affected }
-  mobile: { phase: not_affected }
+  ionic-angular: { phase: not_affected }
   devops: { phase: needs_rework_due_to_migration_order }
 contract_changes:
   - { from: v1, to: v2, reason: partial unique index for soft delete }

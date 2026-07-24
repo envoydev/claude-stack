@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Build the stack dependency graph (scripts/stack-graph.json) from the same
+// Build the stack dependency graph (meta/stack-graph.json) from the same
 // sources the lint reads. Edges are directional and skills never pull skills:
 //   agent  -> skill (declared skills: frontmatter, else body backtick mentions)
 //   rule   -> skill / agent (body backtick mentions) + paths from frontmatter
@@ -13,7 +13,7 @@ const yaml = require('js-yaml');
 const lint = require('./lint-skills.js');
 
 const { ROOT, SKILLS_DIR, AGENTS_DIR, CLAUDE_RULES_DIR, CLAUDE_SH } = lint.paths;
-const GRAPH_FILE = path.join(ROOT, 'scripts', 'stack-graph.json');
+const GRAPH_FILE = path.join(ROOT, 'meta', 'stack-graph.json');
 
 function frontmatterBlock(text)
 {
@@ -234,7 +234,7 @@ if (require.main === module)
     }
     else if (readCommitted() !== out)
     {
-        console.error('stack-graph: committed scripts/stack-graph.json is stale - run `node scripts/stack-graph.js --write`');
+        console.error('stack-graph: committed meta/stack-graph.json is stale - run `node scripts/stack-graph.js --write`');
         process.exit(1);
     }
     else

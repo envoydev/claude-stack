@@ -27,58 +27,78 @@ change made only inside a consuming project is throwaway (see Invariants).
   consuming project's `CLAUDE.md` is filled in from; the working conventions ship separately in
   the `stack/rules/baseline-*.md` set. Content shipped to projects, not this repo's own file.
 - `stack/hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
-  `guard-read-whole-file.js` (PreToolUse `Read`), all wired; plus `instrument-tool-usage.js`,
+  `guard-read-whole-file.js` (PreToolUse `Read`) + `guard-unapproved-dispatch.js` (PreToolUse
+  `Task|Agent` - blocks an `*-implementer` dispatch without the `<docs-path>/flow/APPROVAL` gate
+  file the flows write on explicit user approval or an explicit AUTO waiver), all wired; plus
+  `instrument-tool-usage.js`,
   installed UNWIRED (opt-in per-run tool/skill/MCP stats via STACK_INSTRUMENT=1 + manual wiring).
   Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
-  makes them selectable per install (a selection with no `hook` lines installs all four).
-- `stack/agents/` - the Claude-contract subagents, 33 total: the four build/test resolvers - .NET
+  makes them selectable per install (a selection with no `hook` lines installs all five).
+- `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
-    `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `issue-diagnoser`, `security-auditor` - a read-only
+    `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` - a read-only
     cross-stack security posture audit that routes an OWASP/CWE punch-list to the implementers, complementing
     `/security-review` - and `integration-reviewer`, the mandatory read-only cross-domain final gate that
     checks the assembled feature against the frozen contract before commit) - plus
-    21 per-domain seats, the same 3-agent vertical repeated across 7 stacks (ASP.NET, Angular, WPF,
-    console, mobile, data, DevOps - the three C# verticals split by surface: ASP.NET web/API, WPF desktop,
-    console the headless Generic-Host worker/bot/daemon/CLI): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
+    30 per-domain seats, the same 3-agent vertical repeated across 10 stacks (ASP.NET, web Angular, WPF, WinForms,
+    console, Windows Service, Ionic Angular, data, DevOps, browser extension - the five C# verticals split by surface: ASP.NET web/API,
+    WPF desktop, WinForms desktop LOB, console the headless Generic-Host worker/bot/daemon/CLI, windows-service the SCM-hosted
+    worker; the three TypeScript verticals by runtime surface: Angular web, Ionic/Capacitor mobile, MV3 browser extension): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
     (builds one task, code + tests) → `<stack>-verifier` (gates the assembled build vs plan + quality,
-    punch-list loop) - plus four read-only sonnet support seats: `evidence-gatherer` (sonnet/low - the two
-    diagnosers dispatch it to reproduce and pull logs), `code-analyzer` (sonnet/low - the
+    punch-list loop) - plus five read-only sonnet support seats: `evidence-gatherer` (sonnet/low - the two
+    diagnosers dispatch it to reproduce and pull logs), `test-coverage-analyzer` (sonnet/medium - the read-only
+    per-surface coverage characterizer the `project-test-coverage-analyzer` skill fans out over the raw
+    instrumented output; the suite run itself stays in the main session), `architecture-analyzer` (sonnet/low - the
     `project-architecture-analyzer` capture fans it out to characterize modules) and `code-style-analyzer` (sonnet/medium - the read-only
     per-language style characterizer the `project-code-style-analyzer` skill fans out and merges into
-    `docs/PROJECT-CODE-STYLE.md` + the generated inject-code-style hook) and `related-project-analyzer` (sonnet/medium -
+    `<docs-path>/PROJECT-CODE-STYLE.md` + the generated inject-code-style hook) and `related-project-analyzer` (sonnet/medium -
     characterizes one sibling repo, the `project-related-context` skill fans it out and merges
-    `docs/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
+    `<docs-path>/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
     the architecture capture is deliberate-only (the `project-architecture-analyzer` skill - dispatches
-    `code-analyzer` per module, reasons in the main session, writes `docs/architecture/ARCHITECTURE.md` +
-    the pros/cons `docs/architecture/ASSESSMENT.md` + the generated always-on awareness rule
+    `architecture-analyzer` per module, reasons in the main session, writes `<docs-path>/architecture/ARCHITECTURE.md` +
+    the pros/cons `<docs-path>/architecture/ASSESSMENT.md` + the generated always-on awareness rule
     `baseline-project-architecture.md`; never in a build flow); the per-change fit
     verdict moved to the domain solution-designers. The `project-solve-cross-task` skill is the single
     entry-point orchestrator - it picks the execution mode, runs a single stack's vertical per its
     `references/domain-trio-protocol.md` (main-stack-agents-flow was folded into that reference),
     and for cross-domain work freezes the shared contract and drives the parallel
-    per-stack runs through the `integration-reviewer` final gate. All 33 carry
+    per-stack runs through the `integration-reviewer` final gate. All 43 carry
     frontmatter model/effort pins (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers
-    `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the four support seats `sonnet`). Copied from
-    the run's clone into a project's `.claude/agents/`. The `cursor-stack` repo ships adapted twins of all 33 - a
+    `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the five support seats `sonnet`). Copied from
+    the run's clone into a project's `.claude/agents/`. The `cursor-stack` repo ships adapted twins of all 43 - a
     protocol change to an agent here usually needs the same edit to its twin there (the deliberate
     divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
     per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
-- `stack/rules/` - fifteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Five
+- `stack/rules/` - eighteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
-    (code quality + definition of done), security, git + pre-commit, navigation - loaded every session and
+    (code quality + definition of done), security, git + pre-commit, navigation, docs-root (the
+    generated-docs root - `CLAUDE_DOCS_PATH` resolution, what lives under `<docs-path>`; the env var
+    is the ONLY lever, no CLAUDE.md restatement - the installers stamp the resolved value over the
+    rule's `__DOCS_ROOT__` placeholder on every install/update, and setup/configure re-stamp after
+    an env change) - loaded every session and
     subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
     the skill/agent usage policy + per-project MCP routing live in the GENERATED
     baseline-project-agent-capabilities.md, written by the `project-agent-capabilities` skill).
-    The other ten
+    The other twelve
     are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the two repair-loop
-    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the seven convention rules
-    (`typescript-conventions.md` / `angular-conventions.md` / `angular-styling-conventions.md` /
-    `csharp-conventions.md` / `wpf-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
+    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the nine convention rules
+    (`javascript-conventions.md` / `typescript-conventions.md` / `angular-conventions.md` /
+    `angular-styling-conventions.md` /
+    `csharp-conventions.md` / `wpf-conventions.md` / `winforms-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
     each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
     hard gate.
-- `setup-plugin/` - the claude-stack plugin: four guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare), `/claude-stack:configure` (adjust an existing install - add or drop) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`), their shared `references/` at the plugin root (`recommendations.json` - the seeds + the never-flag `general` list - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back.
+- `setup-plugin/` - the claude-stack plugin: four guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare), `/claude-stack:configure` (adjust an existing install - add or drop) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`), their data catalogs in repo `meta/` (`recommendations.json` - the seeds + the never-flag `general` list - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back.
+- `meta/` - the repo's own registries, never installed into a project: `shared-rules.json` pins
+  every deliberate multi-home rule (one canonical owner + its inline restatement sites, each copy
+  marker-pinned; no prose cross-mentions in the bodies) - the lint goes red when any copy's marker
+  breaks, so a multi-home edit syncs all copies mechanically; the generated `stack-graph.json`
+  (the dependency graph `stack-graph.js` builds and `stack-select.js` reads at guided-install
+  time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
+  catalogs (`recommendations.json`, `evidence.json`, `judgment.json`). Commands reach ALL of
+  these through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}` - the
+  installed plugin package is `setup-plugin/` only, so nothing in `meta/` exists inside it.
 - `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
   token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
   side of the flow instrumentation (`instrument-tool-usage.js` is the identity side - hooks never
@@ -86,7 +106,7 @@ change made only inside a consuming project is throwaway (see Invariants).
   run against a project (manifests only, no restore/network; conclusions computed per run, the
   catalog ships only signal definitions). `README.md` - deliberately compact: what the repo is, technologies, the two install routes (plugin / script), headline counts (lint-checked), and the usage-analysis pointer - no per-surface inventories (those live in `docs/claude-stack.html`) and no deep operational docs (env vars, troubleshooting - the guided plugin flow covers prerequisites interactively; history has the old text).
 
-The **Cursor** delivery - installers, the 33 agent twins, `.mdc` rules, hooks,
+The **Cursor** delivery - installers, the 43 agent twins, `.mdc` rules, hooks,
 `AGENTS.template.md` - lives in the `cursor-stack` repo (its own CLAUDE.md documents the
 platform gaps and the twin-maintenance rule).
 
@@ -101,10 +121,10 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
-| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (3 wired + 1 copied-unwired instrumentation) |
-| Agents | `.claude/agents/` - the 33 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
+| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (4 wired + 1 copied-unwired instrumentation) |
+| Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
-| Convention gate | seven path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
+| Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
 | Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins |
@@ -155,12 +175,12 @@ documented there.
   awareness rule (`.claude/rules/baseline-project-related-context.md`, written by the
   `/project-related-context` skill), not in memory.
 - **Two stores, split by durability** - the second hard rule (peer of the read-whole-file rule
-  below). The committed architecture docs - a lean `docs/architecture/ARCHITECTURE.md` core map plus the deep-dive
-  files under `docs/architecture/references/` it links to - are the DURABLE truth: every seat READS them at start
+  below). The committed architecture docs - a lean `<docs-path>/architecture/ARCHITECTURE.md` core map plus the deep-dive
+  files under `<docs-path>/architecture/references/` it links to - are the DURABLE truth: every seat READS them at start
   to orient (the structure, patterns, boundaries and packages already in place) instead of re-deriving
-  the project, and the `project-architecture-analyzer` skill owns them (plus a `docs/architecture/ASSESSMENT.md` pros/cons
-  doc), reasoning in the main session over `code-analyzer` module digests - refreshed deliberately via that
-  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `docs/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
+  the project, and the `project-architecture-analyzer` skill owns them (plus a `<docs-path>/architecture/ASSESSMENT.md` pros/cons
+  doc), reasoning in the main session over `architecture-analyzer` module digests - refreshed deliberately via that
+  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `<docs-path>/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
   per-project memory (`write_memory` / `read_memory` / `list_memories`, named
   `<feature>__<contract_version>__<seat>`, never the shared `memory` MCP) is the EPHEMERAL inter-agent
   comms bus - the transient per-feature handoff between seats: a diagnoser's task cards to the

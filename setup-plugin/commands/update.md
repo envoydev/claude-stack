@@ -67,7 +67,7 @@ Proceed with refresh + prune, or refresh only?
 
 ## 5. Selection and gates
 Selection = installed, minus the confirmed prune list, plus the new names of step-3 renames;
-write `raw.json`, run `stack-select.js --selection raw.json --graph stack-graph.json --emit
+write `raw.json`, run `stack-select.js --selection raw.json --emit
 selection.txt --check`. A `required:` line (a dependency the new release introduced) is auto-kept
 and reported. An `unknown:` line is an upstream retirement the compare missed - stack-select has
 already excluded it from the emitted selection; add the artifact to the prune list (an MCP simply

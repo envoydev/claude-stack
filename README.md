@@ -28,10 +28,10 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 67 | house conventions + workflow skills, `.claude/skills/` |
-| **Agents** | 33 | model/effort-pinned subagents, `.claude/agents/` |
-| **Rules** | 15 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 4 | deterministic guards (3 wired) + an opt-in usage instrument, `.claude/hooks/` |
+| **Skills** | 77 | house conventions + workflow skills, `.claude/skills/` |
+| **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
+| **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
+| **Hooks** | 5 | deterministic guards (4 wired) + an opt-in usage instrument, `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
 | **Plugins** | 7 | installed via the `claude` CLI |
 

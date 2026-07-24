@@ -23,7 +23,7 @@ touches - never dump the whole workspace or run every target.
   `nx affected -t test`, `nx affected -t lint`, against a base with `--base=main`. This is the biggest
   token and wall-clock win in a large monorepo - a change to one library tests only that library and
   its dependents, not every project.
-- The verifier and CI gate on `nx affected`, not `nx run-many` over everything. `nx affected --graph`
+- Verification and CI gate on `nx affected`, not `nx run-many` over everything. `nx affected --graph`
   shows exactly what a change touches before you run it.
 
 ## Serena vs Nx - route each question to the cheaper tool
@@ -44,8 +44,8 @@ or you pay for the wrong tool:
   rather than hand-authoring boilerplate - the generator wires `project.json`, the path mapping, and
   tags correctly and is far cheaper than emitting the files by hand.
 - Enforce module boundaries with tags: set `tags` on each project and turn on the
-  `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint. This is
-  the Nx analog of `dotnet-architecture-tests` - the boundary is a build-failing rule, not a convention.
+  `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
+  boundary is a build-failing rule, not a convention.
 
 ## The CLI is the lever; the Nx MCP is optional
 - Prefer teaching the CLI (this skill) over the Nx MCP server - `nx show` / `nx affected` output is

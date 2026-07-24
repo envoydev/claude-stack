@@ -23,6 +23,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 - Preserve intent. You improve how an agent is written, never what it does. The same delegated task must yield the same result after your edits.
 - Anti-gaming over grade-chasing. A high number earned by padding, keyword stuffing, over-granting tools, persona flattery, or fabricated references is a failure, not a pass. Re-score honestly after every edit.
 - Treat agents, skills, and rules as one system. An agent should not restate a procedure a skill owns or a process a rule defines, and two agents should not carry the same text. Shared content belongs in one place: a skill the agent invokes, a rule the agent cites, or a shared reference.
+- Minimal cross-mentions - single responsibility. An agent mentions a skill, rule, or another agent ONLY when the mention is load-bearing at runtime: a skill it invokes or preloads, a dispatch or handoff target, or a routing boundary naming the sibling seat that wins. Any other cross-mention - ownership attribution, see-also, sync breadcrumbs - is a coupling defect: remove it. Where the same rule text must deliberately live in more than one artifact, each copy stays inline and self-contained and the sync is registered in `meta/shared-rules.json` at the repo root (one entry per multi-home rule: the canonical owner + every restatement site, each pinned by a marker phrase; the repo lint fails when a copy drifts) - never expressed as a prose mention. Create the registry if the repo lacks it, and any pass that adds, moves, or rewords multi-home text updates the registry in the same pass.
 - Least privilege and bounded autonomy are features, not limitations. Do not loosen either to make an agent look more capable.
 - Generic by default. An agent names a technology, framework, or product only where its role requires it - a stack-scoped seat naming its own stack, a routing boundary naming the sibling that wins, or a load-bearing per-stack example that changes what the agent checks. An incidental tech mention in a role-generic passage is a defect - cite the line and score it under Dimension 3.
 - No conflicts, no cycles. An agent must not contradict a rule or skill it loads or the sibling seat it hands off to, and the cross-layer invocation graph must stay acyclic - a skill -> agent -> skill -> agent chain compounds context without bound. Both are system-level defects invisible from any single file.
@@ -38,6 +39,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 4. For each agent, read the full file and record: file name, `name` and `description` from frontmatter, the `tools` grant (or note that it inherits all tools if absent), `model` if set, body line count, and any explicit constraints the author wrote (stop conditions, safety rules, privacy rules, tool restrictions, output contract). These constraints are load-bearing. Treat them as fixed.
 5. Build a duplication map across the whole system. Find repeated content in four directions: agent to agent (identical instruction blocks, rules, templates restated across agents), agent to skill (an agent inlines a procedure a skill already owns), agent to rule (an agent restates a convention, workflow, or standard a rule file or CLAUDE.md already defines), and agent to reference (content that should live in a cited reference). Record each as a cluster: what repeats, where it lives now, and whether the fix is invoke-a-skill, cite-a-rule, delegate-to-an-agent, or a shared reference. Where several agents inline the same procedure and no skill owns it yet, flag it as a candidate for a new extracted skill.
 6. Build an invocation and conflict map. Record each agent's outbound edges - the skills it preloads or its body invokes, the agents its tool grant and body let it dispatch - and chain them with each skill's own dispatch targets into one directed call graph. Any cycle, at any depth, is the highest-severity defect this phase can find; note where a wall legitimately terminates a chain (no Agent tool = cannot dispatch, no Skill tool = cannot invoke, a manual-only skill cannot re-fire by description-match) so you do not report a loop an existing wall already breaks. Separately record cross-layer contradictions: an agent instruction that conflicts with a rule that auto-loads inside it, with a skill it preloads, or with the sibling seat it hands off to.
+7. Build a reference-resolution map. Resolve every outbound name each agent carries - frontmatter skill preloads, skills invoked in the body, rules cited by deployed path, sibling agents named in the description or a routing boundary - against the discovered catalogs. A dangling name (a typo, a renamed artifact's old name, a retired artifact) is a defect to record for remediation and score under Dimension 4: a preload that resolves to nothing silently no-ops, and a boundary naming a dead seat routes work into a void.
 
 Do not edit anything in this phase.
 
@@ -87,7 +89,7 @@ Scored against the duplication map from Phase 0. This is a system-level property
 - No procedure is reimplemented inline that a skill already owns. The agent invokes the skill by name and keeps only its own orchestration around it. This is the main reuse channel agents have, so it carries the most weight. (7)
 - No process, convention, or standard is restated that a rule file or CLAUDE.md already defines. The agent names the governing rule (for example 'follow `.claude/rules/testing.md` for test conventions') and adds only what is specific to its role. Rules define how the project behaves; agents should lean on that definition, not fork it into a private copy that will drift. (4)
 - No instruction block, rule set, or template is copy-pasted across agents. Shared content lives in one shared reference each agent cites, or one agent owns it and the others delegate. (5)
-- Reuse is named and self-contained. An agent that relies on a skill, rule, or shared reference names it explicitly, so the agent stays understandable and portable. Silent dependence is a defect, not reuse. (2)
+- Reuse is named and self-contained. An agent that relies on a skill, rule, or shared reference names it explicitly, so the agent stays understandable and portable. Silent dependence is a defect, not reuse - with one exception: a registry-synced multi-home rule (`meta/shared-rules.json`) keeps its copies inline WITHOUT naming the sibling artifacts. (2)
 - Reuse is proportionate. Small incidental overlaps stay local. Do not over-abstract a one-line rule into a shared file that couples agents for no real saving. (2)
 
 Floor for A: >= 17/20.
@@ -109,6 +111,32 @@ An agent implicated in an unresolved invocation cycle or cross-layer contradicti
 Produce a baseline report (see Output contract) before any editing.
 
 ---
+
+## Phase 1b - External currency check (context7)
+
+Agent descriptions and bodies carry claims about the outside world - pinned library defaults, tool names, framework behavior statements. Training-data recall drifts, so these claims are verified against current
+documentation through the context7 MCP - never re-asserted from memory. This check changes no
+dimension weights (scores stay comparable across audit runs); like the other set-level defects,
+an unresolved DRIFTED finding blocks the artifact from A.
+
+1. **Inventory** while scoring Phase 1: collect every externally-verifiable claim - a named
+   package or library, a version floor, an API call inside a code example, a config or CLI
+   syntax block, a deprecation or 'X does not support Y' statement, a best-practice claim
+   attributed to a library's documentation.
+2. **Prioritize** what a release can invalidate: version-named claims, code examples that call
+   library APIs, deprecation/support statements. House judgment (strategy, conventions,
+   tradeoffs, forbidden patterns) has no external truth to check - skip it.
+3. **Verify, bounded**: group the claims by library; per library, one `resolve-library-id` plus
+   at most 2-3 `query-docs` calls covering the whole batch. Cap ~15 libraries per run - the long
+   tail rolls to the next audit and is listed as unchecked. context7 unreachable: mark the whole
+   check SKIPPED in the report and move on; never substitute recall for the lookup.
+4. **Verdict per claim**: CURRENT (docs agree) | DRIFTED (docs contradict - a MATERIAL finding)
+   | UNVERIFIABLE (docs silent - recorded, not a finding). Record the table (library, claim,
+   verdict, evidence line) in the baseline report.
+5. **Remediation routing** for DRIFTED: fix it in Phase 2 - and when the drifted content is
+   version-coupled detail (an API sample, a per-release config block), prefer REPLACING it with
+   the durable policy plus a fetch-at-use pointer (context7 at usage time) over updating the
+   number: judgment stays in the artifact, drifting facts are fetched live.
 
 ## Phase 2 - Remediation loop
 

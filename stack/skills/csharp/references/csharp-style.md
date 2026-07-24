@@ -1,6 +1,6 @@
 # Modern C# code style (.NET 8 / 9 / 10, C# 12 / 13 / 14)
 
-The authoritative house style for modern C#: formatting, naming, and language-feature usage only. No architecture, no design patterns, no project structure - those stay in `SKILL.md` and route through the `dotnet` router. This is the general baseline; a project's own `.editorconfig` and its `docs/PROJECT-CODE-STYLE.md` are HIGHER priority - where a project diverges, the project wins and this document yields.
+The authoritative house style for modern C#: formatting, naming, and language-feature usage only. No architecture, no design patterns, no project structure - those stay in `SKILL.md` and route through the `dotnet` router. This is the general baseline; a project's own `.editorconfig` and its `<docs-path>/PROJECT-CODE-STYLE.md` are HIGHER priority - where a project diverges, the project wins and this document yields.
 
 Baseline: Microsoft/.NET runtime conventions with pragmatic senior-level overrides, aligned to the Roslyn analyzers and JetBrains Rider default inspections. Enforce via the canonical `.editorconfig` at the end of this document.
 
@@ -291,7 +291,7 @@ root = true
 indent_style = space
 indent_size = 4
 tab_width = 4
-end_of_line = crlf
+end_of_line = crlf   # repo-wide pick per section 1 - flip to lf where the repo standardizes on LF
 insert_final_newline = true
 trim_trailing_whitespace = true
 charset = utf-8

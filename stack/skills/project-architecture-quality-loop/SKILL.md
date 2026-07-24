@@ -14,13 +14,13 @@ Best run in Claude Code, where you can dispatch the analysis and build seats and
 ## Execution modes
 DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-solve-cross-task` owns. Pick the mode once, before ANALYZE, hold it for the run, and apply it to the loop:
 
-- **DELEGATED** (dispatch available) - the main session dispatches every seat - code-analyzer for the capture's gathering, then the domain designer / implementers / verifier for a substantial fix, or an implementer for a small one - never doing their work itself (the architecture reasoning itself runs in the main session, per the capture). This skill is manual (`disable-model-invocation`) and stays the orchestrator: a substantial fix runs the stack vertical by dispatching that stack's seats directly - the loop discipline is `project-solve-cross-task`'s `references/domain-trio-protocol.md`, never a re-entry into the full router (the loop already owns the scoping the router would re-derive).
+- **DELEGATED** (dispatch available) - the main session dispatches every seat - architecture-analyzer for the capture's gathering, then the domain designer / implementers / verifier for a substantial fix, or an implementer for a small one - never doing their work itself (the architecture reasoning itself runs in the main session, per the capture). This skill is manual (`disable-model-invocation`) and stays the orchestrator: a substantial fix runs the stack vertical by dispatching that stack's seats directly - the loop discipline is `project-solve-cross-task`'s `references/domain-trio-protocol.md`, never a re-entry into the full router (the loop already owns the scoping the router would re-derive).
 - **INLINE** (no dispatch: Cursor, a non-stack project, or a scope too small to fan out) - do the same steps in-session: map and assess the architecture yourself against the house architecture skills, then apply the fixable cons directly, smallest blast radius first.
 
 ## The loop
 
 ### 1. ANALYZE + ASSESS
-Run the `project-architecture-analyzer` capture over the target - its protocol owns the gather-and-reason mechanics. What this loop consumes is its output: `docs/architecture/ARCHITECTURE.md` (the structure map) and `docs/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural) - both paths resolve under the project's configured docs root (`CLAUDE_DOCS_PATH`, default `.claude/docs`). Read `docs/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not 'fix' a conscious choice.
+Run the `project-architecture-analyzer` capture over the target - its protocol owns the gather-and-reason mechanics. What this loop consumes is its output: `<docs-path>/architecture/ARCHITECTURE.md` (the structure map) and `<docs-path>/architecture/ASSESSMENT.md` (10 reasoned strengths + 10 reasoned weaknesses, each weakness carrying a remediation and a tier: small / substantial / structural). Read `<docs-path>/architecture/ASSESSMENT.md`: the weaknesses are this loop's work list, the tier on each is its routing key, and any weakness the summary marks a deliberate tradeoff is left alone - do not 'fix' a conscious choice.
 
 ### 2. TRIAGE + FIX by tier
 Take the open weaknesses in leverage order (the assessment's top-few first). Route each by its tier - and confirm the green baseline (build + tests) before you start, so a regression is visible. Hold every fix against the assessment's Strengths list: a remediation whose entry names a strength tension is applied the way the entry preserves the strength, and a fix that turns out mid-round to erode a listed strength stops - resolving a weakness by breaking a strength is a net loss, and a genuine strength-vs-weakness tradeoff is a structural-tier user decision, never an auto-fix:
@@ -32,10 +32,10 @@ Take the open weaknesses in leverage order (the assessment's top-few first). Rou
 Keep the build and tests green across the round: after each fix batch, re-run them, and a red routes to the matching resolver (dotnet-build-error-resolver / dotnet-test-failure-resolver / ng-build-error-resolver / angular-test-resolver) before the next weakness.
 
 ### 3. UPDATE DOCS
-Re-run the project-architecture-analyzer capture, so `docs/architecture/ARCHITECTURE.md` and `docs/architecture/ASSESSMENT.md` reconcile with what shipped - the resolved weaknesses drop off, the new boundaries and patterns land in the map, and any weakness the fix exposed is added. The assessment is regenerated, not hand-edited: the capture owns those docs.
+Re-run the project-architecture-analyzer capture, so `<docs-path>/architecture/ARCHITECTURE.md` and `<docs-path>/architecture/ASSESSMENT.md` reconcile with what shipped - the resolved weaknesses drop off, the new boundaries and patterns land in the map, and any weakness the fix exposed is added. The assessment is regenerated, not hand-edited: the capture owns those docs.
 
 ### 4. LOOP or STOP
-Re-read the reconciled `docs/architecture/ASSESSMENT.md` and decide, off the weakness set, not by eye:
+Re-read the reconciled `<docs-path>/architecture/ASSESSMENT.md` and decide, off the weakness set, not by eye:
 
 - **SATISFIED** - no fixable (small/substantial) weakness remains; only accepted tradeoffs and user-declined structural items are left.
 - **PLATEAU** - the fixable-weakness set equals the previous round's and none is now resolvable - stop rather than re-run identically.
@@ -46,7 +46,7 @@ Then emit the final report:
 - **Outcome** - SATISFIED / PLATEAU / CAPPED / BLOCKED, and on which round.
 - **Resolved** - each weakness fixed, its tier, and the change that closed it.
 - **Deferred** - structural items the user declined or has not decided, plus accepted tradeoffs left alone.
-- **Docs** - the reconciled `docs/architecture/ARCHITECTURE.md` + `docs/architecture/ASSESSMENT.md` state.
+- **Docs** - the reconciled `<docs-path>/architecture/ARCHITECTURE.md` + `<docs-path>/architecture/ASSESSMENT.md` state.
 - **Baseline** - build + tests green at stop (or the red that blocked it).
 
 ## Example
@@ -64,6 +64,6 @@ DELEGATED, one run over the Orders module:
 - The assessment's tier is the routing authority - do not silently upgrade a small con into a rewrite, or downgrade a structural one to sneak it past the approval gate.
 
 ## Rules
-- The main session is the only orchestrator. The build seats it dispatches - the domain designer / implementers / verifier / resolvers - carry no Agent tool, so the fan-out stays flat; a con needing analysis and a fix is separate dispatches from here, not one nested one. The capture's code-analyzer fan-out is also dispatched from here, flat - there is no dispatched architecture seat and no nesting.
+- The main session is the only orchestrator. The build seats it dispatches - the domain designer / implementers / verifier / resolvers - carry no Agent tool, so the fan-out stays flat; a con needing analysis and a fix is separate dispatches from here, not one nested one. The capture's architecture-analyzer fan-out is also dispatched from here, flat - there is no dispatched architecture seat and no nesting.
 - Substantial and structural changes are gated on user approval before building; small localized fixes proceed. Architecture changes are consequential - confirm before reshaping the structure.
 - Keep this skill orchestration only. The architecture judgement lives in the project-architecture-analyzer capture and the house architecture skills it loads; the build knowledge lives in the domain seats. For a pure code-quality polish reach for `project-quality-loop`; for a single feature build reach for `project-solve-cross-task`.

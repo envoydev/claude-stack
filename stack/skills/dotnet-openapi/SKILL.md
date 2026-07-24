@@ -43,7 +43,7 @@ if (app.Environment.IsDevelopment())
 A document is only as good as the type information it can see, and most thin specs are thin because the endpoints hide their types.
 
 - Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the `dotnet-minimal-api` default, so it usually comes for free.
-- Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails` (owned by `dotnet-error-handling`); the metadata here just advertises which statuses appear.
+- Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails` (owned by `dotnet-web-error-handling`); the metadata here just advertises which statuses appear.
 - Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in the project file and write XML doc comments (`<summary>`, `<param>`, `<returns>`) so operation summaries and parameter descriptions land in the spec. The XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
 
 ## Shape the document with transformers

@@ -47,9 +47,14 @@ list` (fail-soft without the CLI). Write it as one inventory JSON in `$TMP`
 
 The setup step-2 artifact scan:
 
-- `*.csproj` / `*.sln` -> .NET, split by content: `Microsoft.NET.Sdk.Web` -> `aspnet`;
-  `<UseWPF>true` -> `wpf`; otherwise `console`.
-- `angular.json` -> `angular`; `ionic.config.json` / `capacitor.config.*` -> `mobile`.
+- `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
+  `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
+  `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) ->
+  `windows-service`; otherwise `console`.
+- `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`.
+  An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report
+  `web-angular` for the same app; both only when a second, distinct non-Ionic Angular app exists.
+- a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
 - `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
 - `tsconfig.json` / `jsconfig.json` -> `typescript` (language-level - keeps the TS rule/skill/LSP
   plugin owned in a plain TS/Node repo with no framework marker).
@@ -64,18 +69,18 @@ the evidence scan (with the judgment catalog), the evidence gaps, and the judgme
 
 ```
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
-  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/redundant.out"
 node "$TMP/repo/scripts/stack-select.js" --missing   --installed "$TMP/installed.json" \
-  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/missing.out"
-node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/setup-plugin/references/evidence.json" \
-  --judgment "$TMP/repo/setup-plugin/references/judgment.json" --out "$TMP/found.json"
+node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" \
+  --judgment "$TMP/repo/meta/judgment.json" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.json" \
-  --catalog "$TMP/repo/setup-plugin/references/evidence.json" --installed "$TMP/installed.json" \
-  --recs "$TMP/repo/setup-plugin/references/recommendations.json" --graph "$TMP/repo/scripts/stack-graph.json" \
+  --catalog "$TMP/repo/meta/evidence.json" --installed "$TMP/installed.json" \
+  --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/evidence.out"
-node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/setup-plugin/references/judgment.json" \
+node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/meta/judgment.json" \
   --installed "$TMP/installed.json" > "$TMP/judgment.out"
 ```
 
@@ -88,7 +93,7 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 (found.json) = step 9's precomputed candidates - carried there, never acted on in the walk.
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 and the curated `general` set in recommendations.json (cross-stack skills a narrow seat happens to
-preload - GoF patterns, dotnet-migrate) - you present its output, you do not re-derive it.
+preload - e.g. dotnet-data-access) - you present its output, you do not re-derive it.
 
 ## The walk - steps 3-8, one layer at a time
 
@@ -158,7 +163,7 @@ Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four
    the item's surviving half - present them as-is, adding the project-doc side where one exists.
    A version conflict the catalog misses may still be proposed by hand with the full citation
    (the pin next to the item's conflicting guidance) - and is worth an entry in
-   `references/judgment.json` upstream. No project docs -> the prose-conventions path
+   `meta/judgment.json` upstream. No project docs -> the prose-conventions path
    is skipped (say so); path 1 and the precomputed rows still run - they read code and manifests,
    not conventions.
 3. **Corroborated need - the uninstalled mirror of gate 1.** An uninstalled skill whose domain the

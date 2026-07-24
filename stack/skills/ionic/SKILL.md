@@ -5,7 +5,7 @@ description: "Ionic / Capacitor mobile + hybrid app conventions - house rules fo
 
 # Ionic / Capacitor Conventions
 
-An Ionic app is an Angular app in a native (Capacitor) shell: the framework rules live in `angular-conventions` and the language baseline in `typescript` - load both. This skill is the Ionic/Capacitor-specific layer of house policy. In-app navigation and the page lifecycle are owned here in `references/navigation-and-lifecycle.md`; broader Ionic UI mechanics (component APIs, theming) are fetched live via context7 or the Ionic docs, not vendored. Per-plugin install/config is fetched live (context7 or the plugin's README); the durable plugin-sourcing and typed-service-wrapping guidance is here in this skill. Cutting a release - the build, signing, store submission, OTA, and release CI - is `capacitor-release`. Security-hardening the native surface - Keychain/Keystore secret storage, permission least-privilege, cleartext and WebView lockdown, deep-link input trust - is `mobile-security`. Version floors, the per-major deltas that bite, and the Ionic + Capacitor upgrade paths live in `references/versions.md`.
+An Ionic app is an Angular app in a native (Capacitor) shell: the framework rules live in `angular-conventions` and the language baseline in `typescript` - load both. This skill is the Ionic/Capacitor-specific layer of house policy. In-app navigation and the page lifecycle are owned here in `references/navigation-and-lifecycle.md`; broader Ionic UI mechanics (component APIs, theming) are fetched live via context7 or the Ionic docs, not vendored. Per-plugin install/config is fetched live (context7 or the plugin's README); the durable plugin-sourcing and typed-service-wrapping guidance is here in this skill. Cutting a release - the build, signing, store submission, OTA, and release CI - is `capacitor-release`. Security-hardening the native surface - Keychain/Keystore secret storage, permission least-privilege, cleartext and WebView lockdown, deep-link input trust - is `ionic-security`. Version floors, the per-major deltas that bite, and the Ionic + Capacitor upgrade paths live in `references/versions.md`.
 
 ## Components and structure
 - Standalone components + signals, OnPush, new control flow - same as `angular-conventions`. Ionic components (`IonContent`, `IonList`, ...) are standalone imports, not a shared module.
@@ -18,7 +18,7 @@ An Ionic app is an Angular app in a native (Capacitor) shell: the framework rule
 
 ## Form controls - the modern syntax
 - Label and validation live on the control, not slotted into `IonItem`: `IonInput` / `IonTextarea` / `IonSelect` carry `label`, `labelPlacement`, `fill` (`outline` / `solid`), `helperText`, `errorText`, and `counter` directly. Ionic 8 removed the legacy `IonItem`-wrapped form pattern and the `legacy` property - never author it or paste it from an old sample.
-- The control's `label` (or an `[aria-label]` when it is visually labelled elsewhere) IS its accessible name - a field with neither fails the verifier's a11y gate. Build forms with typed reactive `FormGroup`s and surface validation through one shared `errorText` path, not a per-field `@if` error wall. That holds even where `angular-conventions` prefers Signal Forms (v21+): Ionic's controls are documented and tested against the reactive-forms path, so Signal Forms waits on Ionic surfaces until Ionic documents support - the same treat-as-unsupported stance as zoneless below.
+- The control's `label` (or an `[aria-label]` when it is visually labelled elsewhere) IS its accessible name - a field with neither fails the a11y gate. Build forms with typed reactive `FormGroup`s and surface validation through one shared `errorText` path, not a per-field `@if` error wall. That holds even where `angular-conventions` prefers Signal Forms (v21+): Ionic's controls are documented and tested against the reactive-forms path, so Signal Forms waits on Ionic surfaces until Ionic documents support - the same treat-as-unsupported stance as zoneless below.
 
 ## Overlays - modal, popover, toast, alert, action-sheet, loading
 - Prefer the inline component with `[isOpen]` bound to a signal and `(didDismiss)` handled over the imperative `*Controller` - overlay state stays in the component and tears down cleanly. Reach for the controller only for a genuinely fire-and-forget prompt.
@@ -31,10 +31,11 @@ An Ionic app is an Angular app in a native (Capacitor) shell: the framework rule
 ## Navigation
 - Route with the Angular router inside an `IonRouterOutlet`; lazy-load every feature route via `loadComponent` / `loadChildren`. Tabs use `IonTabs` with their own outlet.
 - Don't mix Ionic's imperative nav controllers with the Angular router in one app - pick the router and stay with it.
+- Don't add `withViewTransitions()` to the router: `IonRouterOutlet` owns the page-stack transitions, and the two animation systems fight - double or broken transitions.
 
 ## Ionic page lifecycle
 - Ionic caches pages in the DOM, so `ngOnInit` / `ngOnDestroy` fire only on create/pop, not on every revisit - route refresh-on-entry work onto `ionViewWillEnter`, deferred heavy work onto `ionViewDidEnter`. The full hook schedule and which hook owns which work are in `references/navigation-and-lifecycle.md`.
-- Control navigation with Angular route guards (`CanActivate` / `CanDeactivate`) - they replaced the old `ionViewCanEnter` / `ionViewCanLeave`.
+- Control navigation with Angular route guards (`CanActivate` / `CanDeactivate`) - they replaced the old `ionViewCanEnter` / `ionViewCanLeave`. Guards yes, route resolvers no for refresh-on-entry data: a cached page's revisit re-activates nothing, so a resolver never re-runs - that data belongs on `ionViewWillEnter`.
 
 ## Large lists
 - Ionic's own virtual-scroll component was removed in v7 - for long lists use Angular CDK virtual scroll (`CdkVirtualScrollViewport` with `*cdkVirtualFor`) inside `IonContent`: set `[scrollY]="false"` on the `IonContent` and add the ion-content-scroll-host class to the viewport so Ionic's pull-to-refresh and infinite scroll keep working. CDK handles fixed-height rows well; variable-height rows can jank.
@@ -104,7 +105,7 @@ Before adopting any third-party plugin: confirm its latest major matches your Ca
 - The cross-cutting native features nearly every production app hits - push notifications, deep links / universal links, offline-first sync - are each built as one of these services; their house shapes (token lifecycle, URL-to-route mapping, queue-and-drain) live in `references/native-features.md`.
 
 ## Testing the native seams
-- Unit-test the wrapping service, not the device: with the plugin mocked (the runner's spy - `jest.fn()` or `jasmine.createSpyObj`, per `angular-conventions`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
+- Unit-test the wrapping service, not the device: with the plugin mocked (the runner's spy - `jest.fn()` or `jasmine.createSpyObj`, per `angular-testing`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
 - Do not try to drive real native plugin behavior in a jsdom unit test - the bridge is not there, so a test that 'exercises' the native path is only exercising your mock. Keep those tests honest about that boundary.
 - Reserve appium-mcp (opt-in, heavy - needs Xcode/Android SDK + Java) for true device/E2E smoke of the few native-critical flows (push tap -> route, deep-link cold start, an offline-then-reconnect drain). Smoke the handful that would silently break in production, not the whole surface.
 

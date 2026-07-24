@@ -1,0 +1,56 @@
+---
+name: project-runtime-failure-signatures
+description: Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method. NOT for a CI or build/test-gate failure (the resolvers and ci-failure-diagnoser own those) or a production incident - local-runtime evidence only. Keywords NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, IndexOutOfRangeException, 401, 403, config drift.
+---
+
+# Failure Signatures - what the crash means and where the cause actually lives
+
+Every runtime failure has a signature, and the signature names where to look - which is almost never the line in the top frame. This is the single-chat form of the diagnoser seat's failure catalogue: match the evidence to a signature, then isolate at the place the signature points, not the place it threw. It pairs with the `superpowers:systematic-debugging` method - that skill runs the disciplined hypothesis-and-test loop; this one tells you which hypothesis the signature warrants. Read the evidence first and quote the exact frame, then match.
+
+## The signatures - and where each isolates
+
+- **Null-reference / undefined access** (`NullReferenceException`, `Cannot read properties of undefined/null`). The frame names the dereference, but the cause is usually one hop up: a dependency never assigned, or a value read across an async gap before its `await` resolved (an `@Input` touched in the constructor before `ngOnInit`, a field read before the task that sets it finished). Isolate by walking the assignment of the null symbol, not the line that dereferenced it.
+- **DI / composition-root failure** (`Unable to resolve service for type`, a startup `InvalidOperationException`, Angular `NG0201`). The injection site is innocent - the registration is missing, mis-scoped, or a captive dependency (a singleton capturing a scoped service). Isolate at the composition root (the container setup / module providers), never the consuming class.
+- **Async deadlock / sync-over-async** (a hang, not a crash). `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` blocking a captured synchronization context (the classic WPF / WinForms UI-thread and ASP.NET-request deadlock), or a `TaskCompletionSource` never completed. Isolate to the sync-over-async boundary, not the innermost `await`.
+- **Race / shared mutable state** (reproduces under load or a specific ordering, passes in isolation). A `static` or singleton mutated concurrently, an un-awaited fire-and-forget, subscriptions firing out of order. Isolate by naming the shared cell and its competing writers, not by re-running until green.
+- **Disposed / lifecycle** (`ObjectDisposedException`, `Cannot access a disposed context`). A `DbContext` or `HttpClient` captured past its scope, a subscription or timer firing after teardown, a handler outliving its view. Isolate to the lifetime boundary that ended early, not the use site.
+- **Database contention / exhaustion** (a query that deadlocks, times out, or violates a constraint under concurrency but is fine in isolation). A deadlock victim (SQL Server error 1205, Postgres 'deadlock detected') from two transactions taking locks in opposite order; connection-pool exhaustion (a timeout acquiring a pooled connection - usually a leaked or un-disposed connection or `DbContext`, or sync-over-async starving the pool); or a unique / foreign-key violation surfacing a lost race. Isolate to the competing transactions and their lock order, or the connection that was never returned - not the statement that happened to lose.
+- **Config / environment drift** (a value read as null or wrong, no crash at the read). A missing user secret / env var / `appsettings` key, a connection string pointing at the wrong database, a WPF binding silently no-op'ing (the `System.Windows.Data` error in the Output window). Isolate by proving the value the code actually received, not the value it expected.
+- **Boundary / off-by-one** (`IndexOutOfRangeException`, `ArgumentOutOfRangeException`, an empty-sequence `.First()` / `.Single()`). A fencepost in a slice or loop, an empty collection assumed non-empty. Isolate to the boundary input that triggers it, and keep it as the regression case the fix must cover.
+- **HTTP error with a clean response** (a returned status, no stack trace). Triage by the status class - it names the failing layer before you open a trace: 401 authentication, 403 authorization / policy, 400 / 422 validation, 404 routing / binding, 405 verb, an antiforgery or CORS-preflight rejection. Isolate at the layer the status names, not the handler body.
+
+## Execution modes
+
+This catalogue is single-sourced: the runtime-failure-diagnoser seat preloads this same file, so
+the inline and seated forms never drift. Loaded in the MAIN session, run the triage HERE. The
+read-only evidence-gatherer fan-out is YOUR call, made from the evidence's shape - decide it,
+do not wait to be asked:
+
+- **Dispatch gatherers** (parallel, one per source) when any of these holds: the evidence spans
+  two or more independent sources (a server log AND a DB state AND a repro run); a log or trace
+  runs to hundreds of lines, so reading it here would flood the context the diagnosis needs; the
+  repro is a matrix (several inputs/orderings for an intermittent failure); or proving a fact
+  means running the app while the reasoning continues here.
+- **Stay inline** when the evidence is one pasted stack trace, a short log excerpt, or already
+  in the chat - a gatherer would cost more than it saves.
+
+Example: 'the list endpoint 500s on some months, prod DB snapshot and ops log attached' - three
+gatherers at once: one windows the ops log to the failing requests, one inspects the suspect DB
+rows, one curls the month matrix against a local run. Their digests come back; the signature
+match, the judgment, and the fix-route gate stay in this session. Do NOT dispatch the diagnoser
+seat from this skill - the catalogue is already in context, so the seat would only duplicate it;
+the seat exists for the orchestrated issue flow and direct @agent- calls, where it runs this
+same file in an isolated context with the same gatherer fan-out.
+Loaded INSIDE the seat, this section is already satisfied - the seat is the dispatched form.
+
+## How to use it
+
+Match the evidence to one signature, form the fewest hypotheses it warrants, and confirm each against located code before you touch anything - root cause before symptom, never a plausible guess. State the match in three lines - the quoted evidence, the signature, the isolation point (and the hypothesis it warrants) - then run the loop:
+
+```text
+Evidence:  'ObjectDisposedException: Cannot access a disposed context instance' in OrderSyncJob.ExecuteAsync
+Signature: disposed / lifecycle - a DbContext captured past its scope.
+Isolate:   the lifetime boundary - the scoped DbContext resolved once and stored on the singleton job - not the query line that threw.
+```
+
+Once the cause is proven, load the stack's house skill for the fix convention - your project's convention rules auto-attach it on a matching file touch. If the signature stays ambiguous after two passes, report the surviving hypotheses and what would decide between them rather than guessing.

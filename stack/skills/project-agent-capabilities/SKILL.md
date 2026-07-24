@@ -67,7 +67,7 @@ The house routing map the MCP rows are stamped from (only for servers actually p
 - `sentry` - production error monitoring; pull the reported issue / event detail before diagnosing a production error, never from the stack trace alone.
 - an issue-tracker connector - tracker read-write; ticket skills write the content, the connector files it - confirm before filing.
 
-The usage-policy section is the house skill/agent policy's ONE home - it retired the fetched baseline-agents-skills rule, so it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
+The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
 
 ### 3. REPORT
 Confirm the rule (created/refreshed) and the counts per section (orchestration skills / seats / MCP servers / plugins). Flag anything odd worth the user's eye: a slash-only skill whose seats are not installed, an MCP registered but its native deps known-heavy (`chrome-devtools`, `appium-mcp`), a seat family with no matching convention rule. The rule is a committed file - it ships with the repo.

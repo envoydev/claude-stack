@@ -1,11 +1,11 @@
 ---
 name: angular-styling
-description: "Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace. Companions: angular-conventions, angular-material. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
+description: "Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Targets Angular 17+. Load when writing or editing CSS or SCSS in an Angular workspace - in an Ionic app load it WITH ionic and see the shadow-DOM section here, because ion-* components ignore the usual escape hatches. Companions: angular-conventions, angular-material, ionic. Do NOT load for React, Vue, Svelte, plain non-Angular CSS, or Material theme token work which belongs to angular-material."
 ---
 
 # Angular styling
 
-This is the general CSS layer for an Angular app - the rules for how stylesheets are scoped, where they live, and which modern CSS to reach for. It holds whether or not the app uses Material. The framework itself (signals, change detection, templates, `NgOptimizedImage`, the `@angular/animations` stance) is `angular-conventions`; load it alongside. Anything Material-specific - the `mat.theme` API, the `--mat-sys-*` system tokens, density, and styling Material components - is owned by `angular-material` and is not restated here. This file is opinion, not reference: it states the choices the team has settled on. For any CSS feature's exact browser support, check MDN or web.dev rather than memory. **Above these general conventions, a project's own config (its stylelint/Prettier setup, `.editorconfig`) and its `docs/PROJECT-CODE-STYLE.md` are higher priority: where a project diverges, follow the project.**
+This is the general CSS layer for an Angular app - the rules for how stylesheets are scoped, where they live, and which modern CSS to reach for. It holds whether or not the app uses Material. The framework itself (signals, change detection, templates, `NgOptimizedImage`, the `@angular/animations` stance) is `angular-conventions`; load it alongside. Anything Material-specific - the `mat.theme` API, the `--mat-sys-*` system tokens, density, and styling Material components - is owned by `angular-material` and is not restated here. This file is opinion, not reference: it states the choices the team has settled on. For any CSS feature's exact browser support, check MDN or web.dev rather than memory. **Above these general conventions, a project's own config (its stylelint/Prettier setup, `.editorconfig`) and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority: where a project diverges, follow the project.**
 
 Floor is Angular 17+. Reach forward to v20/v21 idioms but adopt only what the installed version ships, and flag a forward API with a version tag.
 
@@ -37,6 +37,13 @@ app-order-card { --card-padding: 0.5rem; }
 3. **`ViewEncapsulation.None` on a small leaf** whose entire job is to emit global styles (a typography or print stylesheet host). Its selectors go global, so scope them under a single root class to avoid collisions. Use this last and only for a component that is meant to be global.
 
 If a third-party component gives you none of these, a global rule scoped under a wrapper class is the honest fallback - not `::ng-deep`.
+
+## Ionic surfaces are real shadow DOM - the ways out change
+
+`ion-*` components are web components with genuine shadow DOM, not Angular's emulated encapsulation, so on them the model above inverts:
+
+- Way out #2 - a global rule targeting a class inside the component - **silently does nothing**: real shadow DOM blocks inbound global styles, and nothing errors. Style an Ionic component only through what it publishes: its CSS custom properties (per-component ones like `--background`, and the `--ion-*` theme variables) and its `::part()` selectors - both cross the shadow boundary by design. Which parts and variables a component exposes is its Ionic docs page; fetch it live rather than guessing.
+- Keep the app's own token system for your own components, but know that `ion-*` components read only Ionic's variables - route theme values into `--ion-*` tokens or they never reach the UI kit. Dark mode on Ionic surfaces is the Ionic dark palette and its ion-palette-dark class strategy, owned by the `ionic` skill - not a hand-rolled `[data-theme]` re-bind.
 
 ## Design tokens as CSS custom properties
 

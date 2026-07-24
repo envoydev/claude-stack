@@ -2,12 +2,11 @@
 // The deterministic brain of the setup skill: expand a raw skills/agents/rules
 // selection into a dependency-complete install set (computeClosure), and check
 // a curated prerequisite map against a detected environment (evaluatePrereqs).
-// Reads the committed stack-graph.json (Component A); emits an installer
+// Reads the committed meta/stack-graph.json (Component A); emits an installer
 // selection file for claude-stack.sh --selection (Component B).
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
@@ -124,6 +123,35 @@ function evaluatePrereqs(selection, env, options)
     return { blockers, warnings, ok: blockers.length === 0 };
 }
 
+// Cross-platform "is this command on PATH": walk PATH with fs directly instead of
+// shelling out - a `command -v` probe under `shell: '/bin/bash'` spawns nothing on
+// native Windows, so every binary read as missing there (all-false rows on Windows
+// are the signature of that bug, not of an empty machine). On win32 each PATHEXT
+// extension is tried, plus the bare name (a Git-Bash shim without an extension
+// still counts as installed); elsewhere the bare name must be an executable file.
+function onPath(bin)
+{
+    const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+    const exts = process.platform === 'win32'
+        ? [...(process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean), '']
+        : [''];
+    for (const dir of dirs)
+    {
+        for (const ext of exts)
+        {
+            const candidate = path.join(dir, bin + ext);
+            try
+            {
+                if (!fs.statSync(candidate).isFile()) continue;
+                fs.accessSync(candidate, fs.constants.X_OK);
+                return true;
+            }
+            catch { /* not here - keep walking */ }
+        }
+    }
+    return false;
+}
+
 // Impure - probe the current machine. bins: is the command on PATH; envs: is
 // the variable set and non-empty. Kept thin; the pure evaluator is the tested
 // part. Extend the probe lists as the prereq map grows.
@@ -132,11 +160,7 @@ function detectEnvironment()
     const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'chrome', 'appium', 'brew'];
     const ENVS = ['SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
     const bins = {};
-    for (const b of BINS)
-    {
-        try { execFileSync('command', ['-v', b], { stdio: 'ignore', shell: '/bin/bash' }); bins[b] = true; }
-        catch { bins[b] = false; }
-    }
+    for (const b of BINS) bins[b] = onPath(b);
     const envs = {};
     for (const e of ENVS) envs[e] = typeof process.env[e] === 'string' && process.env[e].trim() !== '';
     return { bins, envs };
@@ -354,7 +378,7 @@ function emitTable(graph, layer, opts)
     return [line(header), rule, ...rows.map(line), rule, footer].join('\n') + '\n';
 }
 
-// The judgment catalog's installed-set half (setup-plugin/references/judgment.json):
+// The judgment catalog's installed-set half (meta/judgment.json):
 // overlap pairs surfaced only when EVERY item of the pair is installed - each side's unique
 // gap rides the line so the keep decision hinges on it - and dormant lines for installed
 // occasion-bound items, the cadence text as the citation. The scan owns the catalog's third
@@ -493,7 +517,17 @@ function main(argv)
         try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
         catch (e) { console.error(`stack-select: cannot read ${flag} ${file}: ${e.code || e.message}`); process.exit(1); }
     };
-    const graphPath = arg('--graph') || path.join(__dirname, 'stack-graph.json');
+    // Advisory inputs (--found evidence labels, --dropped orphan offers) degrade to a loud
+    // stderr warning instead of killing the run: the guided walk must still get its table
+    // when the evidence scan was skipped/failed or no drop has happened yet - a dead table
+    // render is what makes the model improvise the prose summary the walks ban.
+    const readJsonSoft = (flag, file) =>
+    {
+        if (!file) return null;
+        try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+        catch (e) { console.error(`stack-select: warning - cannot read ${flag} ${file} (${e.code || e.message}); continuing without it`); return null; }
+    };
+    const graphPath = arg('--graph') || path.join(__dirname, '..', 'meta', 'stack-graph.json');
     let graph;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read graph ${graphPath}: ${e.code || e.message}`); process.exit(1); }
@@ -590,10 +624,8 @@ function main(argv)
     const droppedFile = arg('--dropped');
     if (droppedFile)
     {
-        let dropped;
-        try { dropped = JSON.parse(fs.readFileSync(droppedFile, 'utf8')); }
-        catch (e) { console.error(`stack-select: cannot read dropped ${droppedFile}: ${e.code || e.message}`); process.exit(1); }
-        if (!tableMode) for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
+        const dropped = readJsonSoft('--dropped', droppedFile);
+        if (dropped && !tableMode) for (const o of findOrphans(graph, raw, dropped)) console.log(`orphan: ${o.category} ${o.name} - ${o.why} (dropped); nothing kept still needs it`);
     }
 
     const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
@@ -601,10 +633,10 @@ function main(argv)
     {
         const recs = readJson('--recs', arg('--recs'));
         const installed = readJson('--installed', arg('--installed'));
-        const droppedForTable = readJson('--dropped', arg('--dropped'));
+        const droppedForTable = readJsonSoft('--dropped', arg('--dropped'));
         const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
         const stacks = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
-        const foundFile = readJson('--found', arg('--found'));
+        const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
         const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence });
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
@@ -630,6 +662,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, onPath, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

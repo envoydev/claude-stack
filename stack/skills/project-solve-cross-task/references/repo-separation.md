@@ -17,7 +17,7 @@ Shared planning / ticket / contract doc
        aspnet-solution-designer  -> aspnet-implementer(s)  -> aspnet-verifier
      -> Backend PR
   -> Frontend repo flow:
-       angular-solution-designer -> angular-implementer(s) -> angular-verifier
+       web-angular-solution-designer -> web-angular-implementer(s) -> web-angular-verifier
      -> Frontend PR
   -> integration-reviewer checks both PRs against Contract v1/v2
 ```

@@ -19,10 +19,7 @@ The .NET process must *receive* `SIGTERM` (.NET maps it to graceful host shutdow
 ## Service-manager integration
 
 - **systemd.** Add `Microsoft.Extensions.Hosting.Systemd` and call `builder.Services.AddSystemd()` (no-ops when not under systemd). Use `Type=notify` in the unit so the host signals readiness (`READY=1`) and `STOPPING=1` via sd_notify; logs map to journald priorities, so `journalctl -p 3` filters errors. Set the unit to restart on failure.
-- **Windows Service.** The `AddWindowsService` wiring is in the main skill under *Hosting as a Windows Service*; the SCM-specific hardening lives here:
-  - **Resolve every path against `AppContext.BaseDirectory`, never the current directory.** Under the SCM the process working directory is `C:\Windows\System32`, so `Directory.GetCurrentDirectory()` and every relative path silently resolve there - config not found, logs written to System32, `UnauthorizedAccessException`. `AddWindowsService` fixes the *host* content root, but your own file I/O does not inherit it; anchor it on `AppContext.BaseDirectory` (or `IHostEnvironment.ContentRootPath`).
-  - **A clean host stop hides a fault from the SCM.** On the .NET 8 floor a fatal worker under `StopHost` shuts the host down cleanly - exit code 0 - so the SCM sees no failure and applies none of its recovery actions; the faulted process just stays stopped, looking healthy. For SCM-driven restart, end the process with a non-zero code (`Environment.Exit(nonZero)`) and configure matching recovery (`sc.exe failure`, typically restart/restart/take-no-action to avoid an infinite loop). The .NET 11+ change in the main skill's *Newer versions* makes the host task itself throw - revisit any `Environment.Exit` workaround on upgrade.
-  - **Run under a least-privilege account.** Prefer `LocalService` (no network credentials) or `NetworkService` (network under the machine identity) over `LocalSystem`, whose near-full machine privilege should be reserved for work that genuinely needs it. Tightest is a dedicated local account granted only the 'Log on as a service' right.
+- **Windows Service.** The whole SCM layer - `AddWindowsService`, the System32 working-directory trap, non-zero exits for recovery, install scripts, service accounts and hardening - is the `dotnet-windows-service` skill; load it when the worker targets the SCM.
 
 ## Containers
 

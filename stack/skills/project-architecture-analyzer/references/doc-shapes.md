@@ -1,8 +1,8 @@
 # The two architecture docs - required shape
 
-## docs/architecture/ARCHITECTURE.md - the structure map
+## <docs-path>/architecture/ARCHITECTURE.md - the structure map
 
-The durable, whole-project architecture record - the orientation a solution-designer reads to keep new work consistent with the structure that already exists. Keep it LEAN: it carries the CORE map only, and deep-dive detail spills to `docs/architecture/references/<topic>.md` topic files that the main file links from a short index (the same hub-and-spoke shape as a skill's `SKILL.md` plus its `references/`). The five core sections, in order, each concise:
+The durable, whole-project architecture record - the orientation a solution-designer reads to keep new work consistent with the structure that already exists. Keep it LEAN: it carries the CORE map only, and deep-dive detail spills to `<docs-path>/architecture/references/<topic>.md` topic files that the main file links from a short index (the same hub-and-spoke shape as a skill's `SKILL.md` plus its `references/`). The five core sections, in order, each concise:
 
 1. **Framework and packages** - the runtime and target framework version, the language version, and the load-bearing packages (ORM, DI, messaging, auth, UI) with their role and major version. The dependencies that shape the architecture, not a lockfile echo.
 2. **Architecture logic** - the architecture style (clean / vertical-slice / modular-monolith / layered / MVVM ...) and the layering, as ONE Mermaid `flowchart TD` block (15 nodes max, short labels; an arrow is a proven reference - `A --> B` means A references B) plus one prose line for the rules the arrows cannot say (what an inner layer may not reference - 'Domain references nothing; nothing references Api'). Mermaid because it costs the same tokens as an edge list, GitHub renders it, and agents parse it reliably; structure that will not fit 15 nodes spills to a `references/` topic file, never into a bigger diagram.
@@ -12,7 +12,7 @@ The durable, whole-project architecture record - the orientation a solution-desi
 
 Format discipline - every seat reads this map at orientation, so its weight is paid on every dispatch: keep the core file within ~150 lines and spill the rest to `references/`. Anchors are `file:symbol` throughout (the entry points in section 3, the pattern homes in section 4, the guarded seams in section 5) - the map doubles as the navigation index, so a seat jumps to the anchor via serena instead of re-deriving where things live. Tables and lists for anything enumerable; prose only for reasoning structure cannot carry (why a boundary exists, an accepted tradeoff). Never ASCII-art box diagrams - the same graph costs about double the tokens and models misread 2D text layout. A `references/` deep-dive may carry a Mermaid sequence diagram for ONE key runtime flow the static map cannot show (events, messaging) or an ER diagram for a bounded context's schema ownership - authored per the `docs-as-code` skill; the core map stays flowchart + tables only.
 
-## docs/architecture/ASSESSMENT.md - the reasoned evaluation
+## <docs-path>/architecture/ASSESSMENT.md - the reasoned evaluation
 
 The companion to the neutral map: a candid judgement of the architecture as it stands, so its weaknesses are visible and improvable rather than silently inherited. The `project-architecture-quality-loop` skill reads this to drive fixes, keyed by the tier assigned. The shape:
 

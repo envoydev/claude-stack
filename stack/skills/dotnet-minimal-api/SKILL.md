@@ -1,11 +1,11 @@
 ---
 name: dotnet-minimal-api
-description: "ASP.NET Core minimal API mechanics - how an endpoint is shaped and wired, not what surrounds it: feature-grouped registration via extension methods and MapGroup, TypedResults and Results<> outcome unions, IEndpointFilter for per-endpoint cross-cutting, parameter binding (AsParameters, explicit From-attributes, custom BindAsync/TryParse), endpoint metadata, and hardened IFormFile uploads. Floors at .NET 8 / C# 12; later additions are flagged optional. Load before writing or editing minimal API endpoints - MapGet, MapPost, MapGroup, endpoint filters. Companions: dotnet-web-backend (pipeline-wide concerns), dotnet-error-handling, dotnet-openapi, dotnet-authentication. Do NOT load for MVC or API controllers, gRPC, SignalR, or non-HTTP code."
+description: "ASP.NET Core minimal API mechanics - how an endpoint is shaped and wired, not what surrounds it: feature-grouped registration via extension methods and MapGroup, TypedResults and Results<> outcome unions, IEndpointFilter for per-endpoint cross-cutting, parameter binding (AsParameters, explicit From-attributes, custom BindAsync/TryParse), endpoint metadata, and hardened IFormFile uploads. Floors at .NET 8 / C# 12; later additions are flagged optional. Load before writing or editing minimal API endpoints - MapGet, MapPost, MapGroup, endpoint filters. Companions: dotnet-web-backend (pipeline-wide concerns), dotnet-web-error-handling, dotnet-openapi, dotnet-authentication. Do NOT load for MVC or API controllers, gRPC, SignalR, or non-HTTP code."
 ---
 
 # ASP.NET Core minimal API - endpoint mechanics
 
-This skill owns the shape of a minimal API endpoint: where it is registered, what it returns, how parameters bind, and how a cross-cutting concern hangs off it. It stops at the endpoint boundary. The pipeline-wide concerns - OpenAPI document generation, validation library choice, resilience, observability, response caching - live in `dotnet-web-backend`. The failure-to-`ProblemDetails` contract is `dotnet-error-handling`. The docs UI is `dotnet-openapi`. Auth configuration is `dotnet-authentication`. The controller-based counterpart - the same HTTP service sliced into classes - is `dotnet-mvc-controllers`. Floor is .NET 8 / C# 12; anything newer is marked optional.
+This skill owns the shape of a minimal API endpoint: where it is registered, what it returns, how parameters bind, and how a cross-cutting concern hangs off it. It stops at the endpoint boundary. The pipeline-wide concerns - OpenAPI document generation, validation library choice, resilience, observability, response caching - live in `dotnet-web-backend`. The failure-to-`ProblemDetails` contract is `dotnet-web-error-handling`. The docs UI is `dotnet-openapi`. Auth configuration is `dotnet-authentication`. The controller-based counterpart - the same HTTP service sliced into classes - is `dotnet-mvc-controllers`. Floor is .NET 8 / C# 12; anything newer is marked optional.
 
 ## Where endpoints live
 
@@ -86,7 +86,7 @@ public class ValidationFilter<TRequest> : IEndpointFilter
 
 Reach for a filter over middleware when the concern is per-endpoint rather than per-request; middleware sees the raw pipeline and runs for everything, a filter runs only where it is attached and sees model-bound arguments. Attach it on the group (`.AddEndpointFilter<ValidationFilter<TRequest>>()`) when it applies to every route, or on a single endpoint when it does not.
 
-Validation is the canonical filter: it runs before the handler and returns `TypedResults.ValidationProblem(...)` on failure. The error envelope, the global exception handler, and the `ProblemDetails` shape are owned by `dotnet-error-handling` - do not assemble an error body here. The validator library choice is `dotnet-web-backend`. Authorization rides on `.RequireAuthorization("policy")`, but the policies and scheme are configured per `dotnet-authentication`.
+Validation is the canonical filter: it runs before the handler and returns `TypedResults.ValidationProblem(...)` on failure. The error envelope, the global exception handler, and the `ProblemDetails` shape are owned by `dotnet-web-error-handling` - do not assemble an error body here. The validator library choice is `dotnet-web-backend`. Authorization rides on `.RequireAuthorization("policy")`, but the policies and scheme are configured per `dotnet-authentication`.
 
 ## Parameter binding
 
@@ -116,11 +116,11 @@ Bind an upload with `IFormFile` (or `IFormFileCollection` for several). For a la
 - **Do not trust the filename.** A supplied name like `../../etc/passwd` is a path-traversal attempt. Save under a server-generated name (`Guid.NewGuid()`), store the original separately if you need it for display, and never use it to build a path.
 - **Keep antiforgery on.** An upload is a form post, so `UseAntiforgery()` applies. Only `.DisableAntiforgery()` on an endpoint that is genuinely not cookie/CSRF-exposed (for instance a bearer-token API), and know why before you do.
 
-The error/`ProblemDetails` shape for a rejected upload stays in `dotnet-error-handling`; auth posture in `dotnet-authentication`.
+The error/`ProblemDetails` shape for a rejected upload stays in `dotnet-web-error-handling`; auth posture in `dotnet-authentication`.
 
 ## Anti-patterns
 
-- A `try`/`catch`, an EF Core query, or any business logic inside the route lambda. Move the logic to a handler or service and let the global exception handler own the failure path - per `dotnet-error-handling`.
+- A `try`/`catch`, an EF Core query, or any business logic inside the route lambda. Move the logic to a handler or service and let the global exception handler own the failure path - per `dotnet-web-error-handling`.
 - A domain entity or EF model serialized straight to the client, or a mutable request `class` where a `record` belongs.
 - Re-implementing validation, the error envelope, the OpenAPI document, or auth here - each is owned by a companion skill. This skill stops at the endpoint.
 

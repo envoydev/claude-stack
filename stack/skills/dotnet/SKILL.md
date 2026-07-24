@@ -46,7 +46,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | write minimal-API endpoint mechanics - `MapGroup`, `TypedResults`/`Results<>`, `IEndpointFilter`, parameter binding, file uploads | `dotnet-minimal-api` |
 | write controller-based Web API mechanics - `[ApiController]`, attribute routing, `ActionResult<T>`, the automatic-400 filter, action filters, binding sources | `dotnet-mvc-controllers` |
 | generate the OpenAPI document (Swashbuckle vs .NET 9 built-in, transformers, security schemes) or serve Scalar/Swagger UI | `dotnet-openapi` |
-| map Result-to-HTTP, return RFC 9457 `ProblemDetails`, add a global `IExceptionHandler`, or validate via a FluentValidation endpoint filter | `dotnet-error-handling` |
+| map Result-to-HTTP, return RFC 9457 `ProblemDetails`, add a global `IExceptionHandler`, or validate via a FluentValidation endpoint filter | `dotnet-web-error-handling` |
 | add authentication / authorization - JWT bearer, cookies, OIDC, ASP.NET Identity, policy-based authz, API keys | `dotnet-authentication` |
 | build a gRPC service or client - `.proto` codegen, streaming modes, interceptors, status mapping, gRPC-Web | `dotnet-grpc` |
 | push real-time updates to connected clients - SignalR hubs, strongly-typed `Hub<T>`, `IHubContext`, groups/presence, reconnection, Redis/Azure backplane scale-out | `dotnet-realtime` |

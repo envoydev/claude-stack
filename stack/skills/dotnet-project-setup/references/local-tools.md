@@ -20,8 +20,8 @@ dotnet tool install dotnet-ef     # adds an entry, pinned to the installed versi
       "rollForward": false
     },
     "csharpier": {
-      "version": "0.30.3",
-      "commands": ["dotnet-csharpier"],
+      "version": "1.3.0",
+      "commands": ["csharpier"],
       "rollForward": false
     },
     "dotnet-reportgenerator-globaltool": {
@@ -41,8 +41,8 @@ Two fields carry the reproducibility guarantee:
 ## The tools here
 
 - **dotnet-ef** - EF Core migrations (`dotnet ef migrations add`, `dotnet ef database update`). The migration workflow around it - preview, rollback, re-verify - is `dotnet-migrate`.
-- **csharpier** - the formatter (`dotnet csharpier .`, `dotnet csharpier --check .` in CI). Its config and how formatting is enforced as a build gate live in `dotnet-code-quality`.
-- **reportgenerator** - turns coverage output into a report (`dotnet reportgenerator -reports:**/coverage.cobertura.xml -targetdir:coverage`). What coverage to collect and the thresholds live in `dotnet-testing`.
+- **csharpier** - the formatter (`dotnet csharpier format .`, `dotnet csharpier check .` in CI). Its config and how formatting is enforced as a build gate live in `dotnet-code-quality`.
+- **reportgenerator** - turns coverage output into a report (`dotnet reportgenerator -reports:**/coverage.cobertura.xml -targetdir:coverage`). Coverage collection mechanics and the exclusion catalog live in `dotnet-testing`; the % bar itself is user-set via the `project-test-coverage-analyzer` capture.
 
 ## Restore before use - locally and in CI
 
@@ -54,7 +54,7 @@ A freshly cloned repo has the manifest but not the tools; `dotnet tool restore` 
   with:
     global-json-file: global.json   # the same SDK the tools were pinned against
 - run: dotnet tool restore
-- run: dotnet csharpier --check .
+- run: dotnet csharpier check .
 ```
 
 The wider workflow - jobs, caching, gates - is `devops`.

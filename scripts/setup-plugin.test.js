@@ -43,9 +43,9 @@ test('no tracked plugin file leaks an email address', () => {
 });
 
 const { computeClosure } = require('./stack-select.js');
-const graph = require('./stack-graph.json');
+const graph = require('../meta/stack-graph.json');
 
-const RECS = path.join(PLUGIN_DIR, 'references', 'recommendations.json');
+const RECS = path.join(ROOT, 'meta', 'recommendations.json');
 
 test('every recommendation name resolves in the dependency graph', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
@@ -120,7 +120,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     // closure via the shared dotnet-build-error-resolver / dotnet-test-failure-resolver
     // (both part of aspnet's own seed, mentioning dotnet-wpf for mixed-solution build
     // errors) - a separate, pre-existing edge this always-roster trim does not touch.
-    for (const cross of ['angular-security', 'mobile', 'mobile-security'])
+    for (const cross of ['angular-security', 'mobile', 'ionic-security'])
     {
         assert.ok(!closed.skills.includes(cross), `aspnet setup must not pull ${cross}`);
     }

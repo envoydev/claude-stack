@@ -48,7 +48,9 @@ Scope boundary: when this prompt runs alongside the dedicated CLAUDE.md audit pr
 - Every line must change behavior. A rule that does not change what Claude does is not neutral, it is a tax on every session and a distraction from the rules that matter. Deleting it is a fix, not a loss.
 - Right mechanism over better prose. Before improving a rule, ask whether it should be a rule at all. Polishing a rule that should have been a hook, a skill, or a permissions entry is wasted work and leaves the real defect in place.
 - Treat the instruction layer as one system. Rules, CLAUDE.md tiers, skills, and agents must not restate each other, and must not contradict each other.
+- Minimal cross-mentions - single responsibility. A rule mentions a skill, agent, or another rule ONLY when the mention is load-bearing at runtime: the skill its glob attaches, a routing target, or a boundary naming where its scope ends. Any other cross-mention - ownership attribution, see-also, sync breadcrumbs - is a coupling defect: remove it. Where the same rule text must deliberately live in more than one artifact, each copy stays inline and self-contained and the sync is registered in `meta/shared-rules.json` at the repo root (one entry per multi-home rule: the canonical owner + every restatement site, each pinned by a marker phrase; the repo lint fails when a copy drifts) - never expressed as a prose mention. Create the registry if the repo lacks it, and any pass that adds, moves, or rewords multi-home text updates the registry in the same pass.
 - Generic by default. A rule names a technology, framework, or product only where its scope requires it - a path-scoped convention rule naming its file family's stack is required; in an always-on rule a tech name must be load-bearing (the tool the rule exists to govern). An incidental mention is a defect - cite the line and score it under Dimension 3.
+- Single responsibility per file. A rule file owns ONE concern - or one deliberately grouped set with a single exclusion boundary, where the grouping exists precisely so a consumer can exclude the whole file at once. Unrelated concerns fused into one file, so that neither can be excluded or found independently, is a split defect: score it under Dimension 2's organization item and propose the split in the report.
 - Reversibility. Snapshot every file before editing so a regression can be undone.
 
 ---
@@ -56,7 +58,7 @@ Scope boundary: when this prompt runs alongside the dedicated CLAUDE.md audit pr
 ## Phase 0 - Discovery
 
 1. Read every CLAUDE.md in `CLAUDE_MD_PATHS` and every `.md` file under `RULES_ROOT`, recursively. Follow `@path` imports to their targets and read those too, up to four hops, since imported content is part of the always-on payload and must be scored as such. Note symlinked rule files and where they point.
-2. Read the skill catalog from `SKILLS_ROOT` and the agent catalog from `AGENTS_ROOT`: for each, capture name, description, and a one-line summary. You need these to detect rules that restate a skill or agent, and to validate that anything you point a rule at actually exists.
+2. Read the skill catalog from `SKILLS_ROOT` and the agent catalog from `AGENTS_ROOT`: for each, capture name, description, and a one-line summary. You need these to detect rules that restate a skill or agent, and to validate that anything you point a rule at actually exists. Validate the EXISTING pointers with the same catalogs: every skill, agent, hook, or sibling rule a rule file already names must resolve - a dangling name (a typo, a renamed or retired artifact's old name) is a defect to record for remediation and score under Dimension 4.
 3. Inventory the existing enforcement layer: hooks and settings (`permissions.deny`, `permissions.allow`, and similar). You need this to detect prose rules that duplicate an enforcement mechanism already in place, and to know what already exists before proposing a new hook.
 4. For each rule file record: path, tier (managed / user / project / local), `paths` frontmatter if present, line count, whether it loads unconditionally, and any explicit constraints the author wrote (security, compliance, privacy, tool restrictions). Constraints are load-bearing. Treat them as fixed.
 5. Build a duplication map across the whole system. Find repeated content in four directions: rule to rule, rule to CLAUDE.md (or between CLAUDE.md tiers), rule to skill or agent (a rule restates a procedure a skill or agent already owns), and rule to repo docs (a rule restates README, AGENTS.md, or a style guide that could be imported or simply referenced). Record each as a cluster: what repeats, where it lives now, and the correct single home.
@@ -128,6 +130,32 @@ A file reaches A / 9 only when the total is >= 90 and every dimension clears its
 Produce a baseline report (see Output contract) before any editing.
 
 ---
+
+## Phase 1b - External currency check (context7)
+
+Rules are thin, but their glob lists and the few framework claims they carry (file shapes, tool names) are still claims about the outside world. Training-data recall drifts, so these claims are verified against current
+documentation through the context7 MCP - never re-asserted from memory. This check changes no
+dimension weights (scores stay comparable across audit runs); like the other set-level defects,
+an unresolved DRIFTED finding blocks the artifact from A.
+
+1. **Inventory** while scoring Phase 1: collect every externally-verifiable claim - a named
+   package or library, a version floor, an API call inside a code example, a config or CLI
+   syntax block, a deprecation or 'X does not support Y' statement, a best-practice claim
+   attributed to a library's documentation. Expect few claims per rule; an empty inventory is a valid result - record it and skip the lookups.
+2. **Prioritize** what a release can invalidate: version-named claims, code examples that call
+   library APIs, deprecation/support statements. House judgment (strategy, conventions,
+   tradeoffs, forbidden patterns) has no external truth to check - skip it.
+3. **Verify, bounded**: group the claims by library; per library, one `resolve-library-id` plus
+   at most 2-3 `query-docs` calls covering the whole batch. Cap ~15 libraries per run - the long
+   tail rolls to the next audit and is listed as unchecked. context7 unreachable: mark the whole
+   check SKIPPED in the report and move on; never substitute recall for the lookup.
+4. **Verdict per claim**: CURRENT (docs agree) | DRIFTED (docs contradict - a MATERIAL finding)
+   | UNVERIFIABLE (docs silent - recorded, not a finding). Record the table (library, claim,
+   verdict, evidence line) in the baseline report.
+5. **Remediation routing** for DRIFTED: fix it in Phase 2 - and when the drifted content is
+   version-coupled detail (an API sample, a per-release config block), prefer REPLACING it with
+   the durable policy plus a fetch-at-use pointer (context7 at usage time) over updating the
+   number: judgment stays in the artifact, drifting facts are fetched live.
 
 ## Phase 2 - Remediation loop
 

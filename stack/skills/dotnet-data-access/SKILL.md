@@ -33,7 +33,7 @@ Out of scope, by design: raw SQL / index / planner tuning -> `postgres` or `sqli
 
 - Project to a DTO instead of materializing entities - fetches only the needed columns, skips tracking, and sidesteps explosion.
 - Separate read and write stores (CQRS-lite): read stores return denormalized projections with no tracking; write stores take commands and return minimal data (the new id, or void).
-- Every read method takes a required `limit` / `Take` - never return unbounded. Keyset pagination for large sets (the SQL + supporting index is a `postgres` / `sqlite` concern); offset paging otherwise with a separate count.
+- Every read method takes a required `limit` / `Take` - never return unbounded. Keyset pagination for large sets (the SQL + supporting index is `database-conventions`'s, with engine deltas in `postgres` / `sqlite`); offset paging otherwise with a separate count.
 - Do not build generic repositories (`IRepository<T>.GetAll()`) - they can't enforce limits, can't optimize a query, and hide N+1. Use purpose-built stores with named, intentful methods.
 
 ## Bulk operations

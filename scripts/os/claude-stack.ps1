@@ -303,7 +303,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (67).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (77).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -312,8 +312,10 @@ $Skills = @(
   'envoydev/claude-stack|project-quality-loop'             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
   'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the project-architecture-analyzer capture writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
   'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
-  'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches code-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + ASSESSMENT.md + the generated awareness rule baseline-project-architecture.md; manual /-only
-  'envoydev/claude-stack|project-version-upgrade'        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + code-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
+  'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + ASSESSMENT.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  'envoydev/claude-stack|project-test-coverage-analyzer' # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
+  'envoydev/claude-stack|project-test-coverage-loop'     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
+  'envoydev/claude-stack|project-version-upgrade'        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
   'envoydev/claude-stack|project-agent-capabilities'           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only
   'envoydev/claude-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/PROJECT-RELATED-CONTEXT.md; manual /-only
   'envoydev/claude-stack|project-build-from-scratch' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
@@ -323,13 +325,20 @@ $Skills = @(
   'envoydev/claude-stack|project-implementer'              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate
   'envoydev/claude-stack|project-solution-design'  # single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds project-verify-plan
   'envoydev/claude-stack|project-solve-task'       # gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: project-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction
-  'envoydev/claude-stack|project-failure-signatures' # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
-  'envoydev/claude-stack|project-ci-failure-signatures'        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-failure-signatures
+  'envoydev/claude-stack|project-runtime-failure-signatures' # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
+  'envoydev/claude-stack|project-ci-failure-signatures'        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures
+  'envoydev/claude-stack|project-stack-usage-analyzer' # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
   'envoydev/claude-stack|devops'           # DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost
   'envoydev/claude-stack|database-conventions' # cross-engine DB conventions + per-engine skill routing
-  'envoydev/claude-stack|data-security'    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
+  'envoydev/claude-stack|database-security'    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
   'envoydev/claude-stack|typescript'       # framework-agnostic TS/JS baseline (strict typing, modules, async, JS+JSDoc)
+  'envoydev/claude-stack|javascript'       # base JS-family language layer: ESM modules, async discipline, two failure channels, modern-feature adoption, untrusted input, naming; typescript stacks on it
+  'envoydev/claude-stack|typescript-testing' # plain TS/JS testing hub: runner routing (Vitest default), role-keyed strategy, seam stubs over module mocks, exclusion catalog - practices only, the % bar is user-set via project-test-coverage-analyzer
+  'envoydev/claude-stack|npm'                 # professional npm: lockfile+ci discipline, supply-chain baseline (ignore-scripts/cooldown/allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns
+  'envoydev/claude-stack|browser-extension'    # MV3 browser extensions: ephemeral service worker + storage tiers, typed cross-context messaging, isolated vs MAIN world, least-privilege permissions, CSP-safe UI, WXT tooling, store review + monetization
+  'envoydev/claude-stack|webpack'             # webpack 5 library builds: transpile/type-check split (swc + fork-ts-checker + tsc declarations), externals from package.json, tree-shaking preconditions, ESM output state, resolution traps, config factory + cache pitfalls
   'envoydev/claude-stack|angular-conventions' # Angular 17+/TS house conventions (signals, OnPush, a11y)
+  'envoydev/claude-stack|angular-testing'  # Angular testing hub: TestBed/harness patterns, runner routing, exclusion catalog - practices only, the % bar is user-set via project-test-coverage-analyzer
   'envoydev/claude-stack|angular-material'   # Angular Material + CDK: selective imports, M3 theming, CDK primitives, harnesses
   'envoydev/claude-stack|angular-styling'    # Angular CSS/styling: ViewEncapsulation, :host, ::ng-deep ways-out, design tokens, responsive, a11y styling
   'envoydev/claude-stack|angular-security'   # Angular/web frontend security: XSS/DomSanitizer bypass, CSP, CSRF, no-secrets-in-bundle, token storage, SSR/TransferState
@@ -337,7 +346,7 @@ $Skills = @(
   'envoydev/claude-stack|mobile'           # Ionic/Capacitor router/index over the Angular (angular-conventions) + TypeScript baselines
   'envoydev/claude-stack|ionic'            # house Ionic/Capacitor conventions: UI, nav, lifecycle, permissions, plugin sourcing + wrapping
   'envoydev/claude-stack|capacitor-release' # Ionic/Capacitor release pipeline: cap sync/build, iOS+Android signing, store submission, OTA, versioning, CI, symbols
-  'envoydev/claude-stack|mobile-security'  # Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening
+  'envoydev/claude-stack|ionic-security'   # Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening
   'envoydev/claude-stack|csharp'           # C# house conventions - style, naming, async, logging, DI
   'envoydev/claude-stack|csharp-design-patterns' # all 23 GoF patterns with modern .NET 8+ forms
   'envoydev/claude-stack|dotnet'           # router mapping .NET work areas to specialist skills
@@ -347,9 +356,10 @@ $Skills = @(
   'envoydev/claude-stack|dotnet-code-quality' # C# quality enforcement: CSharpier formatter ownership, SDK analyzers + AnalysisLevel, .editorconfig severity, TreatWarningsAsErrors (+ legacy batch promotion), Roslynator, CI gate
   'envoydev/claude-stack|dotnet-console-apps' # console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli/Cocona) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService
   'envoydev/claude-stack|dotnet-cryptography' # System.Security.Cryptography: SHA-2, AES-GCM, RSA/ECDSA, PBKDF2/Argon2id, constant-time compare
-  'envoydev/claude-stack|dotnet-error-handling' # Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation
+  'envoydev/claude-stack|dotnet-web-error-handling' # Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation
   'envoydev/claude-stack|dotnet-grpc'      # gRPC: .proto/codegen, ASP.NET Core host, 4 streaming modes, JWT/mTLS, interceptors, health
   'envoydev/claude-stack|dotnet-hosted-services' # worker/background-service host: BackgroundService, ExecuteAsync trap, scoped scope, PeriodicTimer, shutdown, Channels
+  'envoydev/claude-stack|dotnet-windows-service' # Windows Service SCM layer: AddWindowsService, budgets, non-zero-exit recovery, sc.exe install, gMSA/hardening, ServiceBase maintenance
   'envoydev/claude-stack|dotnet-messaging' # event-driven messaging: Wolverine (MIT)/MassTransit, outbox, sagas, RabbitMQ/Azure SB
   'envoydev/claude-stack|dotnet-migrate'   # safe migration workflow: EF schema, .NET upgrades, NuGet - rollback + verify per step
   'envoydev/claude-stack|dotnet-minimal-api' # minimal API endpoint mechanics: MapGroup, TypedResults, endpoint filters, binding
@@ -495,6 +505,7 @@ $Hooks = @(
   'guard-protected-force-push.js::Bash::'         # block force-push to main/master/develop
   'guard-catastrophic-rm.js::Bash::'              # block recursive rm of /, ~, $HOME, or a bare *
   'guard-read-whole-file.js::Read::'              # block whole-file Read of a >100-line source file - locate via serena first
+  'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   'instrument-tool-usage.js::'                    # fetched, NOT wired (empty matcher): opt-in tool-usage stats - wire PreToolUse '.*' + STACK_INSTRUMENT=1 for a measured run (see README)
 )
 
@@ -522,36 +533,46 @@ $Agents = @(
   'dotnet-test-failure-resolver.md'  # implement phase (sonnet/high): dotnet test -> red->green repair loop, anti-reward-hacking, capped
   'ng-build-error-resolver.md'       # implement phase (sonnet/high): ng build -> minimal fix loop (serena/LSP), capped
   'angular-test-resolver.md'         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
-  'code-analyzer.md'                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the project-architecture-analyzer skill fans it out, also independently callable
+  'architecture-analyzer.md'                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the architecture + test-coverage captures fan it out, also independently callable
+  'test-coverage-analyzer.md'             # analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the project-test-coverage-analyzer skill fans it out over the raw results; never runs the suite
   'code-style-analyzer.md'                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
   'related-project-analyzer.md'           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/PROJECT-RELATED-CONTEXT.md
   'ci-failure-diagnoser.md'          # analysis phase (opus/high): read-only CI red-run diagnosis via gh - categorize, local repro, route
-  'issue-diagnoser.md'               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
+  'runtime-failure-diagnoser.md'               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
   'evidence-gatherer.md'             # diagnosis support (sonnet/low): read-only - a diagnoser dispatches it to reproduce/confirm and return a compact digest, keeping log volume off the opus seat
   'security-auditor.md'              # analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements /security-review
   'integration-reviewer.md'          # final gate (opus/xhigh): read-only cross-domain integration review - contract consistency, assembled build/test/migration, the commit gate no single-stack verifier is
-  # Per-domain specialist team (7 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
+  # Per-domain specialist team (10 stacks x designer/implementer/verifier) + architect analysis agents above; model/effort pinned in frontmatter
   'aspnet-solution-designer.md'      # design phase (opus/xhigh): ASP.NET Core architecture + plan + test strategy, decomposes into parallel tasks
   'aspnet-implementer.md'            # build phase (sonnet/medium): builds one ASP.NET task - code + tests
   'aspnet-verifier.md'               # verify phase (sonnet/xhigh): gates the ASP.NET build vs plan + quality, punch-list back
-  'angular-solution-designer.md'     # design phase (opus/xhigh): Angular architecture + plan + test strategy, decomposes
-  'angular-implementer.md'           # build phase (sonnet/medium): builds one Angular task - code + tests
-  'angular-verifier.md'              # verify phase (sonnet/xhigh): gates the Angular build vs plan + quality
+  'web-angular-solution-designer.md'     # design phase (opus/xhigh): Angular architecture + plan + test strategy, decomposes
+  'web-angular-implementer.md'           # build phase (sonnet/medium): builds one Angular task - code + tests
+  'web-angular-verifier.md'              # verify phase (sonnet/xhigh): gates the Angular build vs plan + quality
   'wpf-solution-designer.md'         # design phase (opus/xhigh): WPF strict-MVVM architecture + plan + test strategy, decomposes
   'wpf-implementer.md'               # build phase (sonnet/medium): builds one WPF task - code + tests
   'wpf-verifier.md'                  # verify phase (sonnet/xhigh): gates the WPF build vs plan + quality
   'console-solution-designer.md'     # design phase (opus/xhigh): headless .NET (Generic Host worker/bot/daemon/CLI) architecture + plan + test strategy, decomposes
   'console-implementer.md'           # build phase (sonnet/medium): builds one console/worker task - code + tests
   'console-verifier.md'              # verify phase (sonnet/xhigh): gates the console/worker build vs plan + quality
-  'mobile-solution-designer.md'      # design phase (opus/xhigh): Ionic/Capacitor architecture + plan + test strategy, decomposes
-  'mobile-implementer.md'            # build phase (sonnet/medium): builds one mobile task - code + tests
-  'mobile-verifier.md'               # verify phase (sonnet/xhigh): gates the mobile build vs plan + quality
+  'ionic-angular-solution-designer.md'      # design phase (opus/xhigh): Ionic/Capacitor architecture + plan + test strategy, decomposes
+  'ionic-angular-implementer.md'            # build phase (sonnet/medium): builds one mobile task - code + tests
+  'ionic-angular-verifier.md'               # verify phase (sonnet/xhigh): gates the mobile build vs plan + quality
   'data-solution-designer.md'        # design phase (opus/xhigh): schema/data-model architecture + plan + test strategy, decomposes
   'data-implementer.md'              # build phase (sonnet/medium): builds one data task - SQL + migration tests
   'data-verifier.md'                 # verify phase (sonnet/xhigh): gates the data build vs plan + quality
   'devops-solution-designer.md'      # design phase (opus/xhigh): Docker/CI/CD/deploy architecture + plan + validation strategy, decomposes
   'devops-implementer.md'            # build phase (sonnet/medium): builds one devops task - Dockerfile/workflow/deploy + local validation
   'devops-verifier.md'               # verify phase (sonnet/xhigh): gates the devops build vs plan + quality
+  'browser-extension-solution-designer.md' # design phase (opus/xhigh): MV3 extension architecture (SW/content/UI topology, message contract, permissions) + plan + test strategy, decomposes
+  'browser-extension-implementer.md' # build phase (sonnet/medium): builds one extension task - code + tests
+  'browser-extension-verifier.md'    # verify phase (sonnet/xhigh): gates the extension build vs plan + quality
+  'windows-service-solution-designer.md' # design phase (opus/xhigh): SCM recovery/budget/identity topology + plan + test strategy, decomposes
+  'windows-service-implementer.md' # build phase (sonnet/medium): builds one Windows Service task - code + tests
+  'windows-service-verifier.md' # verify phase (sonnet/xhigh): gates the Windows Service build vs plan + quality
+  'winforms-solution-designer.md'    # design phase (opus/xhigh): WinForms MVP seam / binding / disposal topology + plan + test strategy, decomposes
+  'winforms-implementer.md'          # build phase (sonnet/medium): builds one WinForms task - code + tests
+  'winforms-verifier.md'             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
 )
 
 # (6) Path-scoped rules (claude-code): fetched into .claude/rules/ on BOTH actions - lazy-load on
@@ -568,8 +589,10 @@ $ClaudeRules = @(
   'baseline-security.md'
   'baseline-git.md'
   'baseline-navigation.md'
+  'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_DOCS_PATH)
   # Path-scoped routing
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
+  'javascript-conventions.md'  # JS-family conventions, path-scoped js/jsx/mjs/cjs
   'dotnet-repair-agents.md'   # .NET repair-loop routing, path-scoped cs/csproj/sln/xaml
   'angular-repair-agents.md'  # Angular repair-loop routing, path-scoped
   # Convention rules (soft, glob auto-attach) - each points ONE file family at its house-style skill; replaced the require-convention-skill hard gate.
@@ -578,6 +601,7 @@ $ClaudeRules = @(
   'angular-styling-conventions.md' # scss/css -> angular-styling (Angular/Ionic projects only)
   'csharp-conventions.md'     # c#: .cs -> csharp (backend, desktop, console)
   'wpf-conventions.md'        # wpf: .xaml -> dotnet-wpf
+  'winforms-conventions.md'   # winforms: .Designer.cs -> dotnet-winforms
   'sql-conventions.md'        # sql: .sql -> database-conventions
   'devops-conventions.md'     # rest (devops): Dockerfile/compose/workflow -> devops
 )
@@ -878,6 +902,28 @@ function Get-Rules {
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping rules'; return }
   Copy-FromStackSrc -SubDir 'stack/rules' -Label 'rule' -DestDir (Join-Path $root '.claude/rules') -Files $ClaudeRules
+  Set-DocsRootStamp $root
+}
+
+function Set-DocsRootStamp {
+  # Replace __DOCS_ROOT__ in the copied baseline-docs-root.md with the CURRENT env value
+  # (settings.json, else the default) - runs on install AND update, so the stamp always tracks the env.
+  param([string]$root)
+  $rule = Join-Path $root '.claude/rules/baseline-docs-root.md'
+  if (-not (Test-Path $rule)) { return }
+  $val = '.claude/docs'
+  $settings = Join-Path $root '.claude/settings.json'
+  if (Test-Path $settings) {
+    try {
+      $data = Get-Content $settings -Raw | ConvertFrom-Json
+      if ($data.env -and $data.env.PSObject.Properties['CLAUDE_DOCS_PATH'] -and $data.env.CLAUDE_DOCS_PATH) {
+        $val = $data.env.CLAUDE_DOCS_PATH
+      }
+    } catch { Log '  !! docs-root stamp: settings.json unreadable - stamping the default' }
+  }
+  try {
+    (Get-Content $rule -Raw).Replace('__DOCS_ROOT__', $val) | Set-Content $rule -NoNewline -Encoding utf8
+  } catch { Log '  !! docs-root stamp failed - the rule keeps the env-wins fallback' }
 }
 
 function New-ClaudeMd {
@@ -1014,7 +1060,7 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -NotePropertyValue '40'
     $changed = $true
   }
-  # generated-docs root: the authoritative value the CLAUDE.md docs-root section points at.
+  # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
   # Forward slashes DELIBERATELY, also on Windows - the value is consumed by Node hooks and the
   # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
   if (-not $data.env.PSObject.Properties['CLAUDE_DOCS_PATH']) {

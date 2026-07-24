@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Deterministic evidence scan (Component A of the evidence layer): read the project's
 // package manifests and catalog-named files, match them against the signal definitions in
-// setup-plugin/references/evidence.json, and emit the `found` map the selection engine and
+// meta/evidence.json, and emit the `found` map the selection engine and
 // the guided commands consume. Text over checked-in files only - no restore, no network.
 // The conclusions are computed per run; the catalog ships only signal DEFINITIONS.
 'use strict';
