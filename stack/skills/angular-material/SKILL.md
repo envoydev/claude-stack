@@ -93,5 +93,5 @@ await select.clickOptions({ text: 'Berlin' });
 expect(await select.getValueText()).toBe('Berlin');
 ```
 
-Harnesses (`MatSelectHarness`, `MatInputHarness`, `MatButtonHarness`, ...) are maintained by the Angular team and expose a stable, intent-level API - open the select, click the option, read the value - independent of the internal markup. Query the harness; never assert against `.mat-mdc-*` classes or the component's private DOM, because those tests shatter on the next Material release. The broader testing discipline (TestBed setup, fixtures, async handling) lives in `angular-conventions`; this is only the Material-specific harness rule.
+Harnesses (`MatSelectHarness`, `MatInputHarness`, `MatButtonHarness`, ...) are maintained by the Angular team and expose a stable, intent-level API - open the select, click the option, read the value - independent of the internal markup. Query the harness; never assert against `.mat-mdc-*` classes or the component's private DOM, because those tests shatter on the next Material release. The broader testing discipline (TestBed setup, fixtures, async handling) lives in `angular-testing`; this is only the Material-specific harness rule.
 

@@ -262,6 +262,9 @@
         "browser-extension-implementer",
         "browser-extension-verifier"
       ],
+      "skills": [
+        "typescript-testing"
+      ],
       "rules": [
         "typescript-conventions",
         "javascript-conventions"
@@ -274,6 +277,9 @@
       ]
     },
     "typescript": {
+      "skills": [
+        "typescript-testing"
+      ],
       "rules": [
         "typescript-conventions",
         "javascript-conventions"

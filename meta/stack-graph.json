@@ -317,6 +317,10 @@
       "mcps": [],
       "plugins": []
     },
+    "typescript-testing": {
+      "mcps": [],
+      "plugins": []
+    },
     "webpack": {
       "mcps": [],
       "plugins": []
@@ -408,7 +412,8 @@
     "browser-extension-solution-designer": {
       "skills": [
         "browser-extension",
-        "project-solution-design"
+        "project-solution-design",
+        "typescript-testing"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -420,7 +425,8 @@
       "skills": [
         "browser-extension",
         "javascript",
-        "typescript"
+        "typescript",
+        "typescript-testing"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -536,7 +542,8 @@
     "data-verifier": {
       "skills": [
         "database-conventions",
-        "dotnet-migrate"
+        "dotnet-migrate",
+        "dotnet-testing"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -626,7 +633,8 @@
         "dotnet-migrate",
         "dotnet-testing",
         "dotnet-web-backend",
-        "project-solve-cross-task"
+        "project-solve-cross-task",
+        "typescript-testing"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -739,7 +747,8 @@
       "skills": [],
       "suggests": [
         "angular-testing",
-        "dotnet-testing"
+        "dotnet-testing",
+        "typescript-testing"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -1095,7 +1104,8 @@
         "**/Directory.Build.props",
         "**/Directory.Packages.props",
         "**/*.targets",
-        "**/nuget.config"
+        "**/nuget.config",
+        "**/NuGet.Config"
       ]
     },
     "javascript-conventions": {

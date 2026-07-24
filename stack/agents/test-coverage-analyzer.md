@@ -21,7 +21,8 @@ return raw structured data, not prose for a human.
   the suite location, and the recorded requirement + exclusion list. Work ONLY that surface.
 - Parse the machine-readable output the tooling produced (cobertura XML, lcov.info,
   coverage-summary.json) - numbers come from THIS run's files, never estimated.
-- Load the surface's house testing skill (`dotnet-testing` / `angular-testing`) to judge the
+- Load the surface's house testing skill (`dotnet-testing` / `angular-testing` /
+  `typescript-testing`) to judge the
   suite against house practice and to apply the exclusion catalog's semantics.
 - Locate uncovered code with serena per `.claude/rules/baseline-navigation.md`; `Read` located
   ranges. **Hard cap: 2 locating passes per hot spot** - still unclear after 2, record it

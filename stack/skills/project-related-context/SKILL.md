@@ -41,6 +41,7 @@ related_projects:
     relation: consumes | provides-to | peer | depends-on | embeds
     first_read: [<docs-path-from-sibling-root-to-read-before-working-a-seam>]
     seam:     <the shared surface a change here can break there - API, package, schema>
+    captured: <branch>@<short-sha>, <date>
 ```
 3. **Per sibling** - a short evidence note under its own heading: what grounds the relation and seam (the located files, both sides), plus any uncertainty or UNVERIFIED marker carried over verbatim. Keep each note lean - orientation, not an audit.
 
@@ -57,7 +58,8 @@ related_projects:
 ```
 
 Each entry carries its own `captured: <branch>@<short-sha>, <date>` - entries are upserted at
-different times, so provenance is PER ENTRY here, not doc-wide. It matters most for a relationship
+different times, so provenance is PER ENTRY here; the doc-wide stamp from point 1 only records
+the LAST run, never stands in for an entry's own. It matters most for a relationship
 born on a feature branch (the seam code exists only there): on any other branch that entry is a
 claim from elsewhere - verify the seam exists before relying on it. Re-running the capture for
 that sibling after the branch merges refreshes the entry with the base branch's stamp.

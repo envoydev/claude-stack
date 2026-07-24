@@ -105,7 +105,7 @@ Before adopting any third-party plugin: confirm its latest major matches your Ca
 - The cross-cutting native features nearly every production app hits - push notifications, deep links / universal links, offline-first sync - are each built as one of these services; their house shapes (token lifecycle, URL-to-route mapping, queue-and-drain) live in `references/native-features.md`.
 
 ## Testing the native seams
-- Unit-test the wrapping service, not the device: with the plugin mocked (the runner's spy - `jest.fn()` or `jasmine.createSpyObj`, per `angular-conventions`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
+- Unit-test the wrapping service, not the device: with the plugin mocked (the runner's spy - `jest.fn()` or `jasmine.createSpyObj`, per `angular-testing`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
 - Do not try to drive real native plugin behavior in a jsdom unit test - the bridge is not there, so a test that 'exercises' the native path is only exercising your mock. Keep those tests honest about that boundary.
 - Reserve appium-mcp (opt-in, heavy - needs Xcode/Android SDK + Java) for true device/E2E smoke of the few native-critical flows (push tap -> route, deep-link cold start, an offline-then-reconnect drain). Smoke the handful that would silently break in production, not the whole surface.
 

@@ -28,7 +28,7 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 76 | house conventions + workflow skills, `.claude/skills/` |
+| **Skills** | 77 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 5 | deterministic guards (4 wired) + an opt-in usage instrument, `.claude/hooks/` |

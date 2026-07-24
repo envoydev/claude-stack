@@ -863,6 +863,374 @@
           "marker": "Report lean.** Dense and factual - every substantive item this section requires and nothing more"
         }
       ]
+    },
+    "testing-coverage-bar": {
+      "_note": "The user-owned coverage % bar - each testing hub disclaims the number and points at the project-test-coverage-analyzer capture; verbatim in all three hubs because any may install alone.",
+      "owner": {
+        "file": "stack/skills/dotnet-testing/SKILL.md",
+        "marker": "The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture"
+        },
+        {
+          "file": "stack/skills/typescript-testing/SKILL.md",
+          "marker": "The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture"
+        }
+      ]
+    },
+    "testing-runner-detect": {
+      "_note": "The detect-never-install runner rule shared by the TS-side testing hubs.",
+      "owner": {
+        "file": "stack/skills/angular-testing/SKILL.md",
+        "marker": "Detect, never install or migrate a runner inside a task; a migration is its own user-approved change"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/typescript-testing/SKILL.md",
+          "marker": "Detect, never install or migrate a runner inside a task; a migration is its own user-approved change"
+        }
+      ]
+    },
+    "testing-suite-audit-lenses": {
+      "_note": "The false-confidence lens catalog owned by dotnet-testing references/suite-audit.md; the two TS-side hubs restate the lens list when pointing at it.",
+      "owner": {
+        "file": "stack/skills/dotnet-testing/SKILL.md",
+        "marker": "assertion-free / always-true, coverage-touching, tautological, missing-await, swallowed-exception, disabled assertions"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "assertion-free / always-true, coverage-touching, tautological, missing-await, swallowed-exception, disabled assertions"
+        },
+        {
+          "file": "stack/skills/typescript-testing/SKILL.md",
+          "marker": "assertion-free / always-true, coverage-touching, tautological, missing-await, swallowed-exception, disabled assertions"
+        }
+      ]
+    },
+    "capture-doc-stamp": {
+      "_note": "The capture-doc lifecycle stamp format - the docs-root rule owns reader semantics; each capture skill restates the format it writes.",
+      "owner": {
+        "file": "stack/rules/baseline-docs-root.md",
+        "marker": "Captured: <branch>@<short-sha>, <date>"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+          "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
+        },
+        {
+          "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
+          "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
+        },
+        {
+          "file": "stack/skills/project-code-style-analyzer/SKILL.md",
+          "marker": "Captured: <branch>@<short-sha>, <date>"
+        },
+        {
+          "file": "stack/skills/project-related-context/SKILL.md",
+          "marker": "Captured: <branch>@<short-sha>, <date>"
+        }
+      ]
+    },
+    "implementer-anchors": {
+      "_note": "The task-card anchors consumption rule - verbatim across all 10 implementers (each installs per stack).",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+        }
+      ]
+    },
+    "implementer-reward-hacking-refusal": {
+      "_note": "The don't-game-it reward-hacking refusal line across all 10 implementers; wording varies slightly per stack (devops deliberately localized), the refusal phrase is the pin.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "reward-hacking refusals"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "reward-hacking refusals"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "reward-hacking refusals"
+        }
+      ]
+    },
+    "designer-clear-brief": {
+      "_note": "The clear-brief / NEEDS_CONTEXT bounce rule across all 10 designers.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "returned as NEEDS_CONTEXT for the orchestrator to clarify with the user, never guessed"
+        }
+      ]
+    },
+    "designer-anchors-stamp": {
+      "_note": "The anchors-stamping rule (producer side of implementer-anchors) across all 10 designers.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "Stamp each task card with `anchors`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Stamp each task card with `anchors`"
+        }
+      ]
+    },
+    "designer-method-orient": {
+      "_note": "The design-method pointer + architecture-docs drift flag across all 10 designers.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "Flag in your report where the work forces the architecture docs to change"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Flag in your report where the work forces the architecture docs to change"
+        }
+      ]
+    },
+    "designer-acceptance-criterion": {
+      "_note": "The acceptance-criterion definition inside the decomposition step across all 10 designers.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "which the implementer builds toward and the verifier gates against"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "which the implementer builds toward and the verifier gates against"
+        }
+      ]
+    },
+    "flow-doc-drift-awareness": {
+      "_note": "The close-out doc-drift awareness rule (suggest the right capture, one line, user decides, never auto-run) in both solve flows; trigger lists are flow-specific by design.",
+      "owner": {
+        "file": "stack/skills/project-solve-task/SKILL.md",
+        "marker": "Doc-drift awareness"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-solve-cross-task/SKILL.md",
+          "marker": "doc-drift awareness"
+        }
+      ]
+    },
+    "dotnet10-executeasync-thread": {
+      "_note": "The .NET 10 ExecuteAsync-on-background-thread fact - hosted-services owns the full note, windows-service carries the surface-specific one-liner.",
+      "owner": {
+        "file": "stack/skills/dotnet-hosted-services/SKILL.md",
+        "marker": "The classic `await Task.Yield()` at the top of `ExecuteAsync` is no longer needed"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-windows-service/SKILL.md",
+          "marker": "the pre-first-`await` startup-blocking trap (and its `Task.Yield()` workaround) is gone"
+        }
+      ]
     }
   }
 }

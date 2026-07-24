@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage mechanics (the exclusion catalog + after-exclusions semantics; the % bar itself is user-set via project-test-coverage-analyzer), and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-web-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest (angular-testing)."
+description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage mechanics (the exclusion catalog + after-exclusions semantics; the % bar itself is user-set via project-test-coverage-analyzer), and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-web-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest (angular-testing) or plain TS/JS suites (typescript-testing)."
 ---
 
 # .NET Testing Approach
@@ -85,7 +85,7 @@ Common rules regardless of library:
 
 Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
 
-### Coverage
+### Coverage collection
 
 - **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
 - Reports via `ReportGenerator` for HTML / Cobertura / OpenCover formats.

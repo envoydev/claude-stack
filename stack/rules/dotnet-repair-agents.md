@@ -1,5 +1,5 @@
 ---
-paths: ["**/*.cs", "**/*.csproj", "**/*.sln", "**/*.slnx", "**/*.xaml", "**/Directory.Build.props", "**/Directory.Packages.props", "**/*.targets", "**/nuget.config"]
+paths: ["**/*.cs", "**/*.csproj", "**/*.sln", "**/*.slnx", "**/*.xaml", "**/Directory.Build.props", "**/Directory.Packages.props", "**/*.targets", "**/nuget.config", "**/NuGet.Config"]
 ---
 
 <!-- Fires on every .NET file touch by design: build state has no glob, and this soft router

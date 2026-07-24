@@ -24,7 +24,7 @@ Build MV3-only: Chrome stopped running MV2 for ordinary users mid-2025 and the W
 
 ## Tooling and UI
 
-Default toolkit: **WXT** (Vite-based, cross-browser Chrome/Firefox/Safari/Edge from one codebase, generated manifest, content-script HMR) - the alternatives and when they win, plus testing (Vitest + fake chrome API; Playwright persistent-context E2E) and CI publishing: `references/tooling-and-testing.md`. Keep business logic in framework-free TS modules decoupled from `chrome.*` - that is what makes it unit-testable.
+Default toolkit: **WXT** (Vite-based, cross-browser Chrome/Firefox/Safari/Edge from one codebase, generated manifest, content-script HMR) - the alternatives and when they win, plus testing (Vitest + fake chrome API; Playwright persistent-context E2E) and CI publishing: `references/tooling-and-testing.md`. Keep business logic in framework-free TS modules decoupled from `chrome.*` - that is what makes it unit-testable; the general TS/JS testing practices for that unit layer (role-keyed strategy, seam stubbing, exclusion catalog) are `typescript-testing`'s.
 
 UI frameworks work in popup/options/side panel with one hard constraint: extension-page CSP forbids `unsafe-eval`, so **no runtime template compilation** - Vue runtime-only build with precompiled SFCs (never the full build), Angular AOT (never JIT), Svelte/React precompile anyway (verify nothing emits `Function` constructors). Keep popup bundles small - a full framework runtime inside a content script is a smell.
 

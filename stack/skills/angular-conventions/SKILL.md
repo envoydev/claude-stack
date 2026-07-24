@@ -82,7 +82,7 @@ Server-render, then hydrate so the client reuses the server-painted DOM instead 
 ## HTTP, routing, and forms
 - Keep endpoint URLs in one config service or environment file, never scattered as string literals.
 - Cross-cutting HTTP concerns - auth headers, retry, error normalization - live in functional interceptors registered with `withInterceptors`, not in each call site.
-- For new forms on v21+, prefer Signal Forms (`form()` from `@angular/forms/signals`) - signal-driven, model-based, and type-safe end to end - and never type or default a field as `null`. Below v21, and for existing reactive code, typed reactive forms (`FormGroup<T>`) remain the default; template-driven forms are only for trivial throwaway inputs.
+- For new forms on v22+, prefer Signal Forms (`form()` from `@angular/forms/signals`, stable there) - signal-driven, model-based, and type-safe end to end - and never type or default a field as `null`; on v21 it is experimental, so version-tag any use (`references/v21.md`). Below that, and for existing reactive code, typed reactive forms (`FormGroup<T>`) remain the default; template-driven forms are only for trivial throwaway inputs.
 - Lazy-load feature routes with `loadComponent` for standalone targets, falling back to `loadChildren` only where legacy modules remain.
 - Bind route params and `data` straight into component `input()`s with `withComponentInputBinding()` instead of injecting `ActivatedRoute` and reading snapshots.
 - Resolve a route's critical data ahead of activation with a thin `resolve` guard that delegates to a service, so the component renders without a request waterfall. Not in an Ionic app: cached pages do not re-activate on revisit, so a resolver never re-runs and ships stale data - refresh-on-entry belongs on `ionViewWillEnter` there (the `ionic` skill's ground).
@@ -107,15 +107,8 @@ These are gates for the web/PWA target - a Capacitor binary loads its bundle fro
 - Clear Lighthouse 90+ on Performance, Accessibility, Best Practices, and SEO before any production release.
 
 ## Testing
-- Drive component tests through the CDK component-test harnesses rather than raw DOM queries - a harness keeps passing across internal template churn that would shatter a brittle selector.
-- Assert observable behavior: signal and state transitions and what actually renders, never a private method or an implementation detail.
-- Cover comparison and boundary logic - date/overdue thresholds, sort direction, off-by-one ranges - with a regression test that pins the *direction*, not just that a list renders: a task due yesterday is overdue and one due tomorrow is not, the newest sorts first, the last partial page returns its remainder. An inverted comparison (`>` for `<`) passes every 'renders the list' test and only a directional assertion catches it.
-- Build fixtures with factory or object-mother helpers so the same literal is not copy-pasted across specs.
-- Mock collaborators with the workspace's runner - `jasmine.createSpyObj` under Karma, `jest.fn()` under Jest - and do not mix the two.
-- Bake automated accessibility checks into component specs with `axe-core` and `jest-axe`.
-- Vitest is the runner to reach for in new suites - Karma is deprecated and Vitest is the CLI default (via the `@angular/build:unit-test` builder, jsdom or happy-dom, browser mode through Playwright when a real DOM is needed). Existing Karma or Jest suites keep working, so do not force a rewrite.
-- Test signals by reading them directly and flushing effects with `TestBed.tick()`; wire inputs and outputs through `inputBinding()` / `outputBinding()` / `twoWayBinding()` on `createComponent` rather than reaching into the instance. Under zoneless, an error thrown in an event listener surfaces to the error handler instead of being swallowed, so expect some previously-silent tests to start failing honestly.
-- E2E: select by role, label, or test-id, never a CSS class, and never a fixed `waitForTimeout` - lean on auto-waiting web-first assertions and `waitForResponse`. Set trace retain-on-failure, retries only in CI, and keep Page Objects assertion-free with locators as lazy getters.
+- Test practice is `angular-testing`'s - runner routing, per-role strategy, component harnesses, signals testing, fixtures, timing, the exclusion catalog. Load it before writing, changing, or reviewing tests; this skill keeps only the convention below.
+- Bake automated accessibility checks into component specs with `axe-core` and `jest-axe` - a11y is a convention gate here, not just a test technique.
 
 ## Banned patterns
 - No `setTimeout` poked in to coax change detection into noticing a change - it only 'works' because zone.js patches timers to trigger a render, so it papers over a broken signal/input flow and silently stops working under zoneless. Fix the flow instead.

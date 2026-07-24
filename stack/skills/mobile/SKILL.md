@@ -18,6 +18,7 @@ Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, 
 | build / sign / submit a release, wire OTA + the release CI pipeline | `capacitor-release` |
 | harden or security-review an Ionic/Capacitor feature - secret storage, deep-link input, native permissions, cleartext + WebView hardening | `ionic-security` |
 | write the Angular framework code underneath | `angular-conventions` |
+| write or review the unit-test layer (the native seams' testing stays in `ionic`) | `angular-testing` |
 | write the TypeScript / JavaScript baseline | `typescript` |
 | build plain (non-mobile) web frontend | `frontend` |
 

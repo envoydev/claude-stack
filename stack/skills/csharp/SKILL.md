@@ -9,7 +9,7 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 
 **Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework / C# 7.3 delta is `references/net-framework-48.md`. This file keeps the house rules those style docs do not cover - structure limits, member and constructor ordering, forbidden patterns, XML doc, and the runtime behavior below - and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
 
-**Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
+**Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
 
 On a .NET Framework 4.8 (net48) codebase the C# 7.3 language ceiling, the polyfill packages, and the SynchronizationContext async caveat differ from this floor - those deltas are in `references/net-framework-48.md`.
 
@@ -117,7 +117,7 @@ Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `Arra
 - No `TODO` without an associated ticket reference.
 - No reflection in business or hot-path code; use source generators or compile-time alternatives. No object-mapping libraries (AutoMapper / Mapster / ExpressMapper) - write explicit mapping methods (compile-time checked, debuggable, refactor-safe). Reflection is acceptable only in serialization, the DI container, ORM / EF, test infrastructure, or one-time bootstrap - never for DTO / domain mapping. When you must reach a private member (serializer, test helper), use `UnsafeAccessorAttribute` (.NET 8), not `System.Reflection`.
 
-When a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself follows `dotnet-project-setup`: use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
+- When a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself follows `dotnet-project-setup`: use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
 - No `dynamic` - use `object` + pattern matching or a typed interface.
 - No top-level statements outside `Program.cs`.
 
