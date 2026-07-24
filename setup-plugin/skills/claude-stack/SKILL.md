@@ -20,6 +20,9 @@ the flow yourself:
   project's frameworks do not use (WPF artifacts in a web-only repo, the data vertical with no SQL)
   AND add the detected stacks' artifacts that are missing -> `/claude-stack:validate` (project mode
   only).
+- The install just finished and the ask is 'what now?' (session reload, gitignore lines, serena
+  setup, which captures in which order) -> not a command: walk them through
+  `${CLAUDE_PLUGIN_ROOT}/references/post-install.md`.
 
 Answer with the command plus one line naming the state you found (for example: 'no `.claude/skills`
 here - run `/claude-stack:setup`'). When more than one reading is plausible, ask the user which
