@@ -36,7 +36,7 @@ change made only inside a consuming project is throwaway (see Invariants).
   makes them selectable per install (a selection with no `hook` lines installs all five).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
-    `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `issue-diagnoser`, `security-auditor` - a read-only
+    `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` - a read-only
     cross-stack security posture audit that routes an OWASP/CWE punch-list to the implementers, complementing
     `/security-review` - and `integration-reviewer`, the mandatory read-only cross-domain final gate that
     checks the assembled feature against the frozen contract before commit) - plus

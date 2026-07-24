@@ -243,12 +243,6 @@
       "mcps": [],
       "plugins": []
     },
-    "project-failure-signatures": {
-      "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
-    },
     "project-implementer": {
       "mcps": [],
       "plugins": [
@@ -262,6 +256,12 @@
     "project-related-context": {
       "mcps": [],
       "plugins": []
+    },
+    "project-runtime-failure-signatures": {
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
     },
     "project-solution-design": {
       "mcps": [],
@@ -675,18 +675,6 @@
         "superpowers"
       ]
     },
-    "issue-diagnoser": {
-      "skills": [
-        "project-failure-signatures"
-      ],
-      "suggests": [],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
-    },
     "ng-build-error-resolver": {
       "skills": [],
       "suggests": [
@@ -708,6 +696,18 @@
       "agents": [],
       "mcps": [],
       "plugins": []
+    },
+    "runtime-failure-diagnoser": {
+      "skills": [
+        "project-runtime-failure-signatures"
+      ],
+      "suggests": [],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
     },
     "security-auditor": {
       "skills": [],

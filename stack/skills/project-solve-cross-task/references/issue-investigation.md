@@ -5,7 +5,7 @@ Bugs, CI failures, incidents, runtime errors, flaky tests, and unclear behavior 
 ```text
 Issue / failure report
   -> triage
-  -> issue-diagnoser or ci-failure-diagnoser
+  -> runtime-failure-diagnoser or ci-failure-diagnoser
   -> parallel evidence-gatherer agents
   -> diagnosis report
   -> fix decision gate: stop | resolver loop | single-domain fix | cross-domain fix
@@ -23,13 +23,13 @@ investigation twice (measured: a three-file fix spent most of its turns re-estab
 card could have carried).
 ```
 
-issue-diagnoser is the bug-side equivalent of a solution designer - it plans and routes the fix once it has evidence; it does not write the fix.
+runtime-failure-diagnoser is the bug-side equivalent of a solution designer - it plans and routes the fix once it has evidence; it does not write the fix.
 
 ## Issue-flow seats
 
 | Seat | Responsibility | Writes code |
 |---|---|---|
-| issue-diagnoser | reproduce/isolate root cause from logs, errors, screenshots, code paths; produce diagnosis + fix plan | no |
+| runtime-failure-diagnoser | reproduce/isolate root cause from logs, errors, screenshots, code paths; produce diagnosis + fix plan | no |
 | ci-failure-diagnoser | read failing CI/build/test output; identify the broken domain and fix route | no |
 | evidence-gatherer | cheap read-only helper for repro, log extraction, stack traces, code refs, recent diffs, env facts | no |
 | repair resolvers | bounded red-to-green loops for compile/test failures | yes |
@@ -89,9 +89,9 @@ If risky/cross-domain:  contract/fix plan -> affected domain pipelines -> integr
 
 ```text
 Build failure:  ci-failure-diagnoser -> dotnet-build-error-resolver or ng-build-error-resolver -> re-run build -> domain verifier
-Test failure:   issue-diagnoser/ci-failure-diagnoser -> dotnet-test-failure-resolver or angular-test-resolver -> re-run focused tests -> domain verifier
-Runtime bug, single domain:  issue-diagnoser -> domain implementer -> domain verifier   (the diagnosis replaces the designer step for a small proven bug - do not over-plan; a provably-trivial one-liner takes direct_fix, main session applies it, no separate implementer/verifier)
-Runtime bug, multi domain:   issue-diagnoser (+ parallel evidence-gatherers) -> contract/fix plan -> per-domain implementer+verifier -> integration-reviewer
+Test failure:   runtime-failure-diagnoser/ci-failure-diagnoser -> dotnet-test-failure-resolver or angular-test-resolver -> re-run focused tests -> domain verifier
+Runtime bug, single domain:  runtime-failure-diagnoser -> domain implementer -> domain verifier   (the diagnosis replaces the designer step for a small proven bug - do not over-plan; a provably-trivial one-liner takes direct_fix, main session applies it, no separate implementer/verifier)
+Runtime bug, multi domain:   runtime-failure-diagnoser (+ parallel evidence-gatherers) -> contract/fix plan -> per-domain implementer+verifier -> integration-reviewer
 Security issue:  security-auditor -> OWASP/CWE punch-list -> affected domain implementers -> affected domain verifiers -> security re-check -> integration-reviewer if cross-domain
 ```
 
@@ -101,7 +101,7 @@ If a fix changes a shared contract, the issue flow uses the same BLOCKED_CONTRAC
 
 | Mode | Use when | Flow |
 |---|---|---|
-| `investigation_only` | root cause / report only | issue-diagnoser -> evidence-gatherer(s) -> report |
+| `investigation_only` | root cause / report only | runtime-failure-diagnoser -> evidence-gatherer(s) -> report |
 | `direct_fix` | root cause is a diagnoser-localized, provably-trivial one-liner (flipped operator, off-by-one, constant, guard), no contract/security/data/migration surface | diagnose -> main session applies the fix + one focused test (no separate implementer or verifier seat) |
 | `investigation_safe_fix` | root cause likely local, fix allowed if obvious | diagnose -> implementer/resolver -> verifier |
 | `ci_repair_loop` | a build/test failure is the whole issue | ci-failure-diagnoser -> resolver -> verifier |
@@ -135,7 +135,7 @@ source: { type: user_report | CI | log | screenshot | production_alert | test_fa
 reproduction: { known_steps:, expected:, actual: }
 constraints: { can_modify_code:, require_user_approval_before_fix:, max_repair_iterations: }
 affected_domains_guess: [data | backend | web-angular | wpf | ionic-angular | devops]
-allowed_agents: [issue-diagnoser, evidence-gatherer, ci-failure-diagnoser, domain implementers if fix approved]
+allowed_agents: [runtime-failure-diagnoser, evidence-gatherer, ci-failure-diagnoser, domain implementers if fix approved]
 stop_conditions: [diagnosis DIAGNOSED and fix not approved, diagnosis NOT_REPRODUCED, repair_iterations exceeded]
 required_output: [diagnosis_report, evidence_list, fix_route, tests_or_repro_commands]
 ```
@@ -144,7 +144,7 @@ required_output: [diagnosis_report, evidence_list, fix_route, tests_or_repro_com
 
 ```text
 Do not code before root cause is known. Do not let evidence-gatherers write code.
-Do not let issue-diagnoser implement the fix. Do not run full feature planning for a
+Do not let runtime-failure-diagnoser implement the fix. Do not run full feature planning for a
 tiny proven bug. Do not treat a test snapshot as truth without checking product behavior.
 Do not silence or delete a failing test to make CI green. Do not change a shared
 contract without a Contract Change Request. Do not keep all lanes running when one

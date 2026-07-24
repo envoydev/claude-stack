@@ -207,7 +207,7 @@
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/issue-diagnoser.md",
+          "file": "stack/agents/runtime-failure-diagnoser.md",
           "marker": "Memory handoff: serena memory is local to this project, addressed by name"
         },
         {
@@ -312,7 +312,7 @@
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/issue-diagnoser.md",
+          "file": "stack/agents/runtime-failure-diagnoser.md",
           "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
         },
         {
@@ -451,7 +451,7 @@
       },
       "sites": [
         {
-          "file": "stack/agents/issue-diagnoser.md",
+          "file": "stack/agents/runtime-failure-diagnoser.md",
           "marker": "DIAGNOSED, NOT_REPRODUCED, NEEDS_MORE_EVIDENCE, LIKELY_FLAKE, or INCONCLUSIVE"
         },
         {
@@ -811,7 +811,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/issue-diagnoser.md",
+          "file": "stack/agents/runtime-failure-diagnoser.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {

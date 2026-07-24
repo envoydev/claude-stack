@@ -1,5 +1,5 @@
 ---
-name: project-failure-signatures
+name: project-runtime-failure-signatures
 description: Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the systematic-debugging method. NOT for a CI or build/test-gate failure (the resolvers and ci-failure-diagnoser own those) or a production incident - local-runtime evidence only. Keywords NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, IndexOutOfRangeException, 401, 403, config drift.
 ---
 
@@ -18,6 +18,17 @@ Every runtime failure has a signature, and the signature names where to look - w
 - **Config / environment drift** (a value read as null or wrong, no crash at the read). A missing user secret / env var / `appsettings` key, a connection string pointing at the wrong database, a WPF binding silently no-op'ing (the `System.Windows.Data` error in the Output window). Isolate by proving the value the code actually received, not the value it expected.
 - **Boundary / off-by-one** (`IndexOutOfRangeException`, `ArgumentOutOfRangeException`, an empty-sequence `.First()` / `.Single()`). A fencepost in a slice or loop, an empty collection assumed non-empty. Isolate to the boundary input that triggers it, and keep it as the regression case the fix must cover.
 - **HTTP error with a clean response** (a returned status, no stack trace). Triage by the status class - it names the failing layer before you open a trace: 401 authentication, 403 authorization / policy, 400 / 422 validation, 404 routing / binding, 405 verb, an antiforgery or CORS-preflight rejection. Isolate at the layer the status names, not the handler body.
+
+## Execution modes
+
+This catalogue runs wherever it is loaded - it is single-sourced: the runtime-failure-diagnoser seat
+preloads this same file, so the inline and dispatched forms never drift. In the MAIN session,
+inline is the default; on the user's explicit ask ('use the diagnoser',
+'@agent-runtime-failure-diagnoser'), dispatch the seat instead - the same catalogue with an isolated
+context, fanning out the read-only evidence-gatherer when the evidence spans sources (long logs,
+a repro matrix). Worth OFFERING when that volume would drown the chat, never dispatched unasked;
+the diagnosis returns as a report and the fix-route decision stays at the main session's gate.
+Loaded INSIDE the seat, this section is already satisfied - the seat is the dispatched form.
 
 ## How to use it
 

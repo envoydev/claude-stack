@@ -1,11 +1,11 @@
 ---
 name: project-ci-failure-signatures
-description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat. Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is project-failure-signatures), not authoring CI/CD (that is devops).
+description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat. Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is project-runtime-failure-signatures), not authoring CI/CD (that is devops).
 ---
 
 # CI Triage - turn a red pipeline into a verdict and a route
 
-A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the ci-failure-diagnoser seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of `project-failure-signatures` (a crash on your own machine) and runs on the `superpowers:systematic-debugging` method.
+A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the ci-failure-diagnoser seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of `project-runtime-failure-signatures` (a crash on your own machine) and runs on the `superpowers:systematic-debugging` method.
 
 ## First: pull the right log, read the right line
 
@@ -21,6 +21,17 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 - **Signing / release** (mobile). An expired distribution cert or provisioning profile, a rotated store API key, a non-incrementing build number, a keystore-secret decode failure, or native built off a stale bundle because the sync step was skipped (`capacitor-release` owns these). Pipeline config, not app code.
 - **Workflow-config drift.** The YAML itself - a renamed job, a broken `needs:` or matrix leg, a wrong working-directory, a bumped action. A red check whose log shows the tool never ran is config; it routes back to you, never to a code fix.
 - **Infra flake** (name the non-determinism, never bare 'flaky'). Test-ordering or shared static state (passes isolated, fails in the full parallel run); real-clock or real-network timing (a real HTTP call, a real timer that needed fake time, an implicit wait); or infra (`exit 137` = OOM/SIGKILL, `exit 143` = SIGTERM/timeout, disk-full, a container-pull blip). Proof is a re-run with no code change passing (`gh run rerun --failed`).
+
+## Execution modes
+
+This catalogue runs wherever it is loaded - it is single-sourced: the ci-failure-diagnoser seat
+preloads this same file, so the inline and dispatched forms never drift. In the MAIN session,
+inline triage is the default; on the user's explicit ask ('use the diagnoser',
+'@agent-ci-failure-diagnoser'), dispatch the seat instead - the same signatures with an isolated
+context, pulling log volume through the read-only evidence-gatherer. Worth OFFERING when the run
+has many failing jobs or the logs are huge, never dispatched unasked; the verdict-and-route below
+is identical in both forms. Loaded INSIDE the seat, this section is already satisfied - the seat
+is the dispatched form.
 
 ## Route it
 

@@ -5,7 +5,7 @@
       "architecture-analyzer",
       "evidence-gatherer",
       "integration-reviewer",
-      "issue-diagnoser",
+      "runtime-failure-diagnoser",
       "related-project-analyzer",
       "security-auditor",
       "test-coverage-analyzer"

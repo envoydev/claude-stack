@@ -24,7 +24,7 @@ API + SPA project pair; treat them as ratios, not prices.
 | One task you want to READ and gate before it builds, or will resume across sessions | `/project-solve-task` |
 | A feature you want routed to the right execution shape (may fan out) | `/project-solve-cross-task` |
 | Anything touching two domains or a wire contract (API + SPA, shared DTO, migration a consumer feels) | `/project-solve-cross-task` - the contract + integration gate is the point |
-| A runtime crash or broken screen | neither - `/project-failure-signatures` first, fix after diagnosis |
+| A runtime crash or broken screen | neither - `/project-runtime-failure-signatures` first, fix after diagnosis |
 
 ---
 
