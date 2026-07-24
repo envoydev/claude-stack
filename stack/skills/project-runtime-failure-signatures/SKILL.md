@@ -21,13 +21,26 @@ Every runtime failure has a signature, and the signature names where to look - w
 
 ## Execution modes
 
-This catalogue runs wherever it is loaded - it is single-sourced: the runtime-failure-diagnoser seat
-preloads this same file, so the inline and dispatched forms never drift. In the MAIN session,
-inline is the default; on the user's explicit ask ('use the diagnoser',
-'@agent-runtime-failure-diagnoser'), dispatch the seat instead - the same catalogue with an isolated
-context, fanning out the read-only evidence-gatherer when the evidence spans sources (long logs,
-a repro matrix). Worth OFFERING when that volume would drown the chat, never dispatched unasked;
-the diagnosis returns as a report and the fix-route decision stays at the main session's gate.
+This catalogue is single-sourced: the runtime-failure-diagnoser seat preloads this same file, so
+the inline and seated forms never drift. Loaded in the MAIN session, run the triage HERE. The
+read-only evidence-gatherer fan-out is YOUR call, made from the evidence's shape - decide it,
+do not wait to be asked:
+
+- **Dispatch gatherers** (parallel, one per source) when any of these holds: the evidence spans
+  two or more independent sources (a server log AND a DB state AND a repro run); a log or trace
+  runs to hundreds of lines, so reading it here would flood the context the diagnosis needs; the
+  repro is a matrix (several inputs/orderings for an intermittent failure); or proving a fact
+  means running the app while the reasoning continues here.
+- **Stay inline** when the evidence is one pasted stack trace, a short log excerpt, or already
+  in the chat - a gatherer would cost more than it saves.
+
+Example: 'the list endpoint 500s on some months, prod DB snapshot and ops log attached' - three
+gatherers at once: one windows the ops log to the failing requests, one inspects the suspect DB
+rows, one curls the month matrix against a local run. Their digests come back; the signature
+match, the judgment, and the fix-route gate stay in this session. Do NOT dispatch the diagnoser
+seat from this skill - the catalogue is already in context, so the seat would only duplicate it;
+the seat exists for the orchestrated issue flow and direct @agent- calls, where it runs this
+same file in an isolated context with the same gatherer fan-out.
 Loaded INSIDE the seat, this section is already satisfied - the seat is the dispatched form.
 
 ## How to use it

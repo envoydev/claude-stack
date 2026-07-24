@@ -24,13 +24,24 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 
 ## Execution modes
 
-This catalogue runs wherever it is loaded - it is single-sourced: the ci-failure-diagnoser seat
-preloads this same file, so the inline and dispatched forms never drift. In the MAIN session,
-inline triage is the default; on the user's explicit ask ('use the diagnoser',
-'@agent-ci-failure-diagnoser'), dispatch the seat instead - the same signatures with an isolated
-context, pulling log volume through the read-only evidence-gatherer. Worth OFFERING when the run
-has many failing jobs or the logs are huge, never dispatched unasked; the verdict-and-route below
-is identical in both forms. Loaded INSIDE the seat, this section is already satisfied - the seat
+This catalogue is single-sourced: the ci-failure-diagnoser seat preloads this same file, so the
+inline and seated forms never drift. Loaded in the MAIN session, run the triage HERE. The
+read-only evidence-gatherer fan-out is YOUR call, made from the run's shape - decide it, do not
+wait to be asked:
+
+- **Dispatch gatherers** (parallel, one per failing job) when any of these holds: more than one
+  job or matrix leg is red; the failed step's log is huge, or `--log-failed` came back empty so
+  the full step log must be walked; the triage needs a comparison (first bad run vs last good)
+  or a local repro attempt alongside the log read.
+- **Stay inline** when one job failed and its failed-step log is short - pull it and read it
+  here; a gatherer would cost more than it saves.
+
+Example: a matrix run with three red legs - three gatherers at once, one per leg, each returning
+the first real error line plus its step context. The digests come back; the code-vs-environment
+call and the route stay in this session. Do NOT dispatch the diagnoser seat from this skill -
+the signatures are already in context, so the seat would only duplicate them; the seat exists
+for the orchestrated issue flow and direct @agent- calls, where it runs this same file in an
+isolated context with the same gatherer fan-out. Loaded INSIDE the seat, this section is already satisfied - the seat
 is the dispatched form.
 
 ## Route it
