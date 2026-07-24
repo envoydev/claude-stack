@@ -71,7 +71,7 @@ test('project-agent-capabilities documents every MCP without pulling a single ed
 
 test('the hook catalog carries the installer HOOKS block basenames', () => {
     assert.deepStrictEqual(graph.catalog.hooks,
-        ['guard-catastrophic-rm', 'guard-protected-force-push', 'guard-read-whole-file', 'instrument-tool-usage'],
+        ['guard-catastrophic-rm', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-unapproved-dispatch', 'instrument-tool-usage'],
         'catalog.hooks mirrors HOOKS=( ... ) sans .js, sorted');
 });
 

@@ -27,7 +27,8 @@
     "hooks": [
       "guard-protected-force-push",
       "guard-catastrophic-rm",
-      "guard-read-whole-file"
+      "guard-read-whole-file",
+      "guard-unapproved-dispatch"
     ],
     "skills": [
       "project-agent-capabilities",

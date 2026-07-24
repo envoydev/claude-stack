@@ -246,7 +246,7 @@
     <div class="stat"><b>75</b><span>house skills</span></div>
     <div class="stat"><b>8</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
-    <div class="stat"><b>4</b><span>hooks</span></div>
+    <div class="stat"><b>5</b><span>hooks</span></div>
     <div class="stat"><b>18</b><span>rules</span></div>
     <div class="stat"><b>10</b><span>domains</span></div>
   </div>
@@ -722,7 +722,7 @@
         </div></div>
         <div class="serve">
           <span class="chip">guard-read-whole-file</span><span class="chip">guard-protected-force-push</span>
-          <span class="chip">guard-catastrophic-rm</span><span class="chip">instrument-tool-usage</span>
+          <span class="chip">guard-catastrophic-rm</span><span class="chip">guard-unapproved-dispatch</span><span class="chip">instrument-tool-usage</span>
         </div>
       </div>
 
@@ -743,7 +743,7 @@
       <div><strong id="c-house">52</strong> house</div>
       <div><strong id="c-plugins">7</strong> plugins</div>
       <div><strong id="c-mcp">7</strong> MCP</div>
-      <div><strong id="c-hooks">4</strong> hooks</div>
+      <div><strong id="c-hooks">5</strong> hooks</div>
     </div>
 
     <div class="controls">
@@ -1232,6 +1232,7 @@ const hooks = [
   ["guard-protected-force-push", "Bash", "Blocks a force-push to main / master / develop. Deterministic, fires ~never in normal work."],
   ["guard-catastrophic-rm", "Bash", "Blocks a recursive rm of /, ~, $HOME, or a bare *. Deterministic, fires ~never in normal work."],
   ["guard-read-whole-file", "Read", "Blocks a whole-file Read of a >100-line source / template file (.ts/.tsx/.js/.jsx/.mjs/.cjs/.cs/.go/.razor/.cshtml/.xaml/.html) with no offset/limit - locate via serena first, then read the range. Targeted reads, small files, and non-source files pass."],
+  ["guard-unapproved-dispatch", "Task|Agent", "Blocks a `*-implementer` subagent dispatch unless the docs-root flow/APPROVAL gate file opens with APPROVED or AUTO - the mechanical form of the fan-out approval gate: the flows write the stamp quoting the user's explicit approval (or explicit no-stops waiver), so an ambiguous 'go' can no longer fan out implementers. Designers, verifiers, resolvers, and support seats pass ungated."],
   ["instrument-tool-usage", "(fetched, not wired)", "Opt-in tool-usage instrumentation for measured stats: once wired (PreToolUse matcher '.*' in settings.json) and enabled (STACK_INSTRUMENT=1), logs every tool call - built-ins + Skill + mcp__* - as one JSONL row (ts/session/tool/non-sensitive detail) to .claude/tool-usage.<session>.jsonl, so a run's skill/MCP usage can be tallied exactly. Never blocks; inert without the env; UNWIRED by default because a '.*' hook costs a node spawn per tool call."],
 ];
 

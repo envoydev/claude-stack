@@ -503,6 +503,7 @@ $Hooks = @(
   'guard-protected-force-push.js::Bash::'         # block force-push to main/master/develop
   'guard-catastrophic-rm.js::Bash::'              # block recursive rm of /, ~, $HOME, or a bare *
   'guard-read-whole-file.js::Read::'              # block whole-file Read of a >100-line source file - locate via serena first
+  'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   'instrument-tool-usage.js::'                    # fetched, NOT wired (empty matcher): opt-in tool-usage stats - wire PreToolUse '.*' + STACK_INSTRUMENT=1 for a measured run (see README)
 )
 

@@ -88,7 +88,7 @@ The full release catalog in one table - the generator `project-*` skills and eve
 
 ## 6. Hooks
 
-Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = the three always-on guards; `instrument-tool-usage` is the opt-in extra (installed unwired - it only runs when a project wires it deliberately). The installer wires the selected hooks into `.claude/settings.json` on install.
+Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = the four always-on guards; `instrument-tool-usage` is the opt-in extra (installed unwired - it only runs when a project wires it deliberately). The installer wires the selected hooks into `.claude/settings.json` on install.
 
 ## 7. MCPs
 

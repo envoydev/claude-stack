@@ -61,7 +61,9 @@ explicit word; silence is not a go.
    - *session*: run `project-implementer` - it marks each task `IN_PROGRESS` before code, ticks it
      `DONE` with evidence after its green gate, and keeps the plan's resume note current.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
-     fan-out per the shared policy `project-solve-cross-task` owns, the main session the only
+     fan-out per the shared policy `project-solve-cross-task` owns (write its approval gate file
+     first, quoting this step's user approval verbatim - the dispatch hook blocks an unstamped
+     implementer), the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
      per task as reports land. Each seat's green gate stays fast - build + fast tests, never
      integration replays or another minutes-long run; the slow full run

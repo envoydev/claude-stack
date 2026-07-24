@@ -31,7 +31,7 @@ The stack is built for this house's verticals:
 | **Skills** | 75 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 42 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 4 | deterministic guards (3 wired) + an opt-in usage instrument, `.claude/hooks/` |
+| **Hooks** | 5 | deterministic guards (4 wired) + an opt-in usage instrument, `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
 | **Plugins** | 7 | installed via the `claude` CLI |
 

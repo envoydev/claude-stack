@@ -10,6 +10,10 @@ Before the size/risk modes below, each orchestration skill (`project-solve-cross
 
 Dispatch is explicit-only, house-wide: never dispatch a seat the user did not choose. A dispatched seat runs on its frontmatter model/effort pin unless the user names a model; fan-out is capped at 3 implementers at once by default, more only on the user's ask. Detection keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. The size/risk modes below apply in either case; in INLINE they are done in-session.
 
+Detection is PER STACK, not per run: a per-stack install gives the session only the HOST repo's roster, so a cross-domain run started in one repo may find a sibling domain's seats undispatchable. That domain runs INLINE (design, build, self-verify in-session) while the domains with seats stay dispatched - name the split at the plan stop, keep the contract frozen either way, and the integration gate still reviews the assembled whole. When the user wants that domain's independent trio instead, offer the two real levers: run the flow from that repo, or install its trio here.
+
+**The approval gate file.** An implementer dispatch is mechanically gated (the `guard-unapproved-dispatch.js` hook): before the first implementer fans out, write `<docs-path>/flow/APPROVAL` with one first line - `APPROVED <plan/contract id> - "<the user's words, verbatim>"` on their explicit plan approval, or `AUTO - "<their words, verbatim>"` when they explicitly asked for a no-stops run. Stops are the default; AUTO is written only from the user's literal ask, never inferred from an ambiguous 'go' or from context. Re-write the stamp when the plan changes (a superseded contract_version does not carry approval forward), and delete the file when the run completes - a stale stamp must not authorize the next run. Designer and verifier dispatches need no stamp (the plan exists before approval; audits are read-only).
+
 ## Feature / change modes
 
 | Mode | Flow | Use when | Token profile |

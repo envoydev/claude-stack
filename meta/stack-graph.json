@@ -1180,6 +1180,7 @@
       "guard-catastrophic-rm",
       "guard-protected-force-push",
       "guard-read-whole-file",
+      "guard-unapproved-dispatch",
       "instrument-tool-usage"
     ]
   }
