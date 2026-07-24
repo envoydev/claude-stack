@@ -89,6 +89,8 @@ When you build each dispatch brief, keep it lean and capability-wired: each seat
 4. Both domain verifiers sign off -> dispatch integration-reviewer; it probes the seam (content type, empty-result shape, auth on the new route) and signs off.
 5. Commit - authorized by the integration gate, not the domain sign-offs - and close out the ledger.
 
+At close-out (any mode), add **doc-drift awareness** - one line at most, the user decides, never auto-run: a landed change that touched an architecture-critical surface (a schema/EF migration, a new module, a moved boundary, a new or revised seam - anything the contract protocol versioned this run - or a new external dependency) gets `/project-architecture-analyzer` named in the close report (update mode is diff-scoped and cheap); substantial new code + tests with an absent or pre-change-stamped coverage doc gets `/project-test-coverage-analyzer` the same way.
+
 ## The seam is law
 
 No seat may silently change the recorded interface. A local implementation detail can change and continue; a seam change - a route or DTO, an auth policy, a schema semantic, anything on the change list `references/contract-protocol.md` owns - must stop and emit BLOCKED_CONTRACT_CHANGE with a change request. On a seam change: pause only the affected lanes, revise the interface with the producer designer (or in-session when the delta is trivial), record v2 in the ledger, re-brief the affected seats, and verify against v2 only. Full protocol in `references/contract-protocol.md`.

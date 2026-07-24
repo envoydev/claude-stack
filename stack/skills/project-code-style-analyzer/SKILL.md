@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at edit time. Three artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place, rewrites the hook only if it is invalid or outdated, and leaves the wiring alone:
 
-1. `<docs-path>/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged.
+1. `<docs-path>/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. It opens with the `Captured: <branch>@<short-sha>, <date>` lifecycle stamp (`+dirty` on an uncommitted tree) - the docs-root rule (`.claude/rules/baseline-docs-root.md`) owns what readers make of it.
 2. `.claude/hooks/inject-code-style.js` - a generated PreToolUse hook that injects that doc into context once per session, on the first edit of a file whose extension the analysis actually observed - so the style is in front of whoever writes code without anyone remembering to open a doc. The hook resolves the docs root itself at runtime from the same `CLAUDE_DOCS_PATH` env value - no per-root generation differences.
 3. The `.claude/settings.json` wiring for that hook (idempotent - added once, kept thereafter).
 
@@ -17,8 +17,8 @@ The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL 
 ## Execution modes
 DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-solve-cross-task` owns. Pick once, hold for the run:
 
-- **DELEGATED** (dispatch available) - fan out code-style-analyzer per language as below; you merge and write.
-- **INLINE** (no dispatch: Cursor, or a single-language repo too small to fan out) - do the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.
+- **FIRST capture** (no existing doc, or no `Captured:` stamp) - DELEGATED: fan out code-style-analyzer per language as below; you merge and write. INLINE only when no dispatch exists (Cursor, or a single-language repo too small to fan out): the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.
+- **UPDATE** (doc + stamp exist) - INLINE in this session: `git diff --name-only <stamp-sha>..HEAD` names the changed files, and only the language families those files belong to get re-verified (config re-read, idioms spot-checked) - the other languages' sections stand. Escalate back to per-language dispatch when the drift spans most languages, the stamp's sha is unreachable or `+dirty`, or the USER explicitly asks for agents - their ask always wins.
 
 ## The run
 

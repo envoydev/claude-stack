@@ -86,6 +86,13 @@ explicit word; silence is not a go.
    (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table. Delete or archive the cycle note.
+   **Doc-drift awareness** - one line at most in the close report, the user decides, never
+   auto-run: when the landed change touched an architecture-critical surface (a schema/EF
+   migration, a new module or project, a moved boundary or dependency direction, a changed
+   cross-stack seam or eventing contract, a new external dependency), say so and name
+   `/project-architecture-analyzer` (update mode is diff-scoped and cheap); when substantial
+   code + tests landed and the coverage doc is absent or its stamp predates the change, name
+   `/project-test-coverage-analyzer` the same way.
 
 ## Do not
 

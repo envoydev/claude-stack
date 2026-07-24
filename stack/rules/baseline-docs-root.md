@@ -25,3 +25,16 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
 - Superpowers (when installed) writes its implementation plans and design specs under this same
   root - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never its own
   default location.
+
+## Generated-doc lifecycle (every capture doc under this root)
+
+- Capture docs open with `Captured: <branch>@<short-sha>, <date>` (`+dirty` = the tree held
+  uncommitted work). Machine-local docs do NOT switch with git branches - the stamp says which
+  code a doc describes.
+- Reading one: a stamp from another branch, or `+dirty`, means approximate at best - verify
+  against the code before relying on it; never treat it as ground truth for HEAD.
+- Refreshing one: the owning capture skill fans out agents on a FIRST capture and runs an UPDATE
+  in-session, scoped to the drift since the stamp - escalating to agents on big drift, an
+  unreachable or dirty stamp, or the user's explicit ask.
+- Nothing re-captures automatically: build flows may SUGGEST the right capture at close when
+  something critical landed; the user decides.
