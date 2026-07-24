@@ -95,7 +95,7 @@ No seat may silently change the recorded interface. A local implementation detai
 
 ## Progress ledger
 
-Keep a durable ledger - a short file, not just in-context notes - so a mid-run compaction resumes without re-deriving what landed: the recorded interface and its version, each lane's phase and task statuses, the change history, and the final-gate status. Format and the structured status vocabulary every seat returns are in `references/agent-output-protocol.md`.
+Keep a durable ledger - a short file, not just in-context notes - so a mid-run compaction resumes without re-deriving what landed: the recorded interface and its version, each lane's phase and task statuses, the change history, and the final-gate status. Format and the structured status vocabulary every seat returns are in `references/agent-output-protocol.md`. The ledger also makes phase boundaries cheap restart points: on a large run, recommend resuming the next phase in a fresh session - measured, the orchestrator restarts at roughly a tenth of its carried context with nothing lost, and carried-forward context is the run's single biggest token cost.
 
 ## Policies - the shared home every seat references
 

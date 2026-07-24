@@ -17,6 +17,10 @@ The strict rule:
 Diagnose before coding.
 Evidence-gatherers may run in parallel (read-only).
 Implementers do not start until the diagnosis is proven or the fix route is explicitly approved.
+When the fix dispatches, the task card embeds the diagnosis report VERBATIM - root cause, files,
+evidence, fix plan - never a pointer to it: a fix seat that re-derives the diagnosis pays for the
+investigation twice (measured: a three-file fix spent most of its turns re-establishing what the
+card could have carried).
 ```
 
 issue-diagnoser is the bug-side equivalent of a solution designer - it plans and routes the fix once it has evidence; it does not write the fix.

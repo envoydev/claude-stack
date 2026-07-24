@@ -24,8 +24,9 @@ Detection is PER STACK, not per run: a per-stack install gives the session only 
 | `fanout_domain_trio` | domain designer -> up to 3 implementers at once (more on ask) -> domain verifier | large/risky work inside one domain | medium-high |
 | `cross_domain_light` | producer designer -> producer + consumer implement/verify -> integration-reviewer | 2+ domains, routine stable seam | high |
 | `full_cross_domain` | producer designer -> consumer designer validates the seam -> domain pipelines -> integration-reviewer | novel or risky seam: new public/versioned API, streaming or eventing, auth, migrations, deployment order, production-critical | highest |
+| `cross_domain_budget` | producer designer -> domain implementers gate on their own build + fast tests (NO domain verifiers) -> integration-reviewer as the SOLE independent gate | ONLY on the user's explicit cost opt-in - never routed to by the decision ladder. The verifier seats are where MATERIAL catches happen (measured: findings the integration gate did not re-find), so tell the integration-reviewer it is the only independent gate and name the accepted risk at the mode stop | high (saves the domain-verifier seats, ~15-25% of a large run) |
 
-`domain_trio` and `fanout_domain_trio` run per `references/domain-trio-protocol.md` - the single-stack vertical's execution protocol; Read it the moment either mode is picked. cross_domain_light and full_cross_domain are the producer-first flow in the skill body.
+`domain_trio` and `fanout_domain_trio` run per `references/domain-trio-protocol.md` - the single-stack vertical's execution protocol; Read it the moment either mode is picked. cross_domain_light, full_cross_domain and cross_domain_budget are the producer-first flow in the skill body (budget differs only in the skipped domain-verifier seats and the integration brief).
 
 ## Decision ladder
 
