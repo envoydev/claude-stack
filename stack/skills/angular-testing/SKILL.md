@@ -9,6 +9,11 @@ Practices and tooling for Angular tests. This skill sets NO coverage percentage 
 the user's, owned and recorded by the `project-test-coverage-analyzer` capture; what lives here
 is how to write tests worth counting and which code coverage cannot meaningfully claim.
 
+Ionic/Capacitor apps share everything here; their extra layer - testing the native seams (the
+plugin's typed wrapper mocked, the web-fallback and permission-denied paths asserted, the honest
+jsdom boundary) - lives in the `ionic` skill's 'Testing the native seams' section, and real-device
+E2E is the appium MCP's job, not a unit suite's.
+
 ## Runner routing
 
 Use whichever the workspace already runs - `angular.json` / `package.json` name it (Karma/Jasmine
