@@ -35,8 +35,11 @@ silence.
 
 ## 3. The tables - fixed shapes, one per area
 
-Every table ends with a `total: N` line. Read everything from disk at render time - never from
-memory or a prior run's output.
+Collect first, render second: finish EVERY read for an area before its table starts, then emit
+the whole table as one uninterrupted block - a table never spans tool calls and no prose
+interleaves its rows (fragments render as broken, misaligned pieces). Every table ends with a
+`total: N` line. Read everything from disk at render time - never from memory or a prior run's
+output.
 
 **Skills** - the directory names under `.claude/skills/` (global: the account skills dir):
 
@@ -136,4 +139,5 @@ this command's output IS the tables.
 - Never download the source, compute an upstream delta, or name what an update would bring -
   that is `configure`'s opening. Never write or delete anything, including `$TMP`.
 - Never render a chosen area without its banner, merge areas into one table, or reorder them.
+- Never emit a table in fragments - all reads done, then the block in one piece.
 - Never paste file bodies (a doc's stamp line is the exception) - tables only.

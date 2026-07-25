@@ -103,8 +103,7 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "angular-cli",
-    "chrome-devtools"
+    "angular-cli"
    ],
    "skills": [
     "angular-testing"
@@ -241,7 +240,6 @@
    ],
    "mcps": [
     "angular-cli",
-    "chrome-devtools",
     "appium-mcp"
    ]
   },
