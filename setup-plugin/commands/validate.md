@@ -38,7 +38,7 @@ Eleven user-facing steps; the machinery between them runs silently. One banner l
 Confirm the install (project mode, above), then **inventory the installed set from disk** - never
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
-`baseline-project-*.md` awareness rules; hooks = `.claude/hooks/*.js` EXCLUDING the generated
+`baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
 `inject-code-style.js`; mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin
 list` (fail-soft without the CLI). Write it as one inventory JSON in `$TMP`
 (`{rules,agents,skills,hooks,mcps,plugins}` arrays) - the `--installed` input for the walk.
@@ -94,6 +94,12 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 and the curated `general` set in recommendations.json (cross-stack skills a narrow seat happens to
 preload - e.g. dotnet-data-access) - you present its output, you do not re-derive it.
+
+One addition of your own: run the snapshot's `$TMP/repo/meta/migrations.json` detects against the
+project (retired GENERATED artifacts - e.g. the legacy inject-code-style hook - which the
+stack-ownership model cannot flag because generated output belongs to no stack). Each detected
+entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; removing one also
+applies its `unwire_settings_hook` edit and puts its `then` follow-up in the report.
 
 ## The walk - steps 3-8, one layer at a time
 

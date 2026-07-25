@@ -16,6 +16,7 @@
 //   node scripts/analyze-usage.js <session.jsonl> --hook-log <f>   # join a tool-usage.*.jsonl ledger
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
+//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_DOCS_PATH is non-default
 //
 // The headline health signal is ctx/msg (avg context re-sent per API call = input +
 // cache-write + cache-read over msgs): high tool-result volume means noisy tools, but a
@@ -72,10 +73,29 @@ function mergeTally(a, b) {
 function readJsonl(file, onObj) {
   return new Promise((resolve, reject) => {
     const rl = readline.createInterface({ input: fs.createReadStream(file) });
-    rl.on('line', (l) => { try { onObj(JSON.parse(l)); } catch { /* skip broken line */ } });
+    rl.on('line', (l) => { try { onObj(JSON.parse(l), l); } catch { /* skip broken line */ } });
     rl.on('close', resolve);
     rl.on('error', reject);
   });
+}
+
+// ---------- generated-docs consumption ----------
+// The capture skills' whole value claim is that seats READ these docs instead of
+// re-deriving the project - so consumption is a first-class signal, not a grep afterthought.
+// Style delivery is counted via stable marker phrases: the generated project-code-style
+// rule's heading (current mechanism - see the skill's code-style-rule template) and the
+// retired inject-code-style hook's injected preamble (legacy sessions).
+
+const STYLE_RULE_MARKER = 'the project-code-style-analyzer skill owns this rule';
+const STYLE_INJECT_MARKER = 'maintained by the project-code-style-analyzer';
+const docsPrefixes = ['/.claude/docs/'];
+
+function docRelPath(filePath) {
+  for (const p of docsPrefixes) {
+    const i = filePath.indexOf(p);
+    if (i >= 0) return filePath.slice(i + p.length);
+  }
+  return null;
 }
 
 // ---------- transcript analysis (main session or one subagent) ----------
@@ -90,6 +110,9 @@ async function analyzeTranscript(file, window) {
     skillAttribution: {},        // skill slug -> { msgs, output }
     mcp: {},                     // server -> { calls, resultChars, errors, tools: {tool: n} }
     agentDispatches: [],         // Agent/Task tool_use in THIS transcript: {id, desc, subagentType}
+    docTouches: {},              // <docs-root>-relative path -> { reads, writes }
+    styleRuleAttaches: 0,        // generated project-code-style rule attachments seen in this transcript
+    styleInjections: 0,          // legacy inject-code-style hook firings seen in this transcript
     userPrompts: 0,
     compactions: 0,
     apiErrors: 0,
@@ -103,11 +126,13 @@ async function analyzeTranscript(file, window) {
   let prevCtx = null;
   let pending = [];               // tool results since the previous counted assistant msg
 
-  await readJsonl(file, (o) => {
+  await readJsonl(file, (o, raw) => {
     if (window && o.timestamp) {
       const ts = Date.parse(o.timestamp);
       if ((window.from != null && ts < window.from) || (window.to != null && ts > window.to)) return;
     }
+    if (raw.includes(STYLE_RULE_MARKER)) s.styleRuleAttaches++;
+    if (raw.includes(STYLE_INJECT_MARKER)) s.styleInjections++;
     if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
     if (o.isCompactSummary || o.compactMetadata) s.compactions++;
     if (o.isApiErrorMessage) s.apiErrors++;
@@ -141,6 +166,14 @@ async function analyzeTranscript(file, window) {
         seenToolUse.add(c.id);
         const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0 });
         t.calls += 1;
+        if (c.input && typeof c.input.file_path === 'string') {
+          const rel = docRelPath(c.input.file_path);
+          if (rel) {
+            const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
+            if (c.name === 'Read') d.reads += 1;
+            else if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(c.name)) d.writes += 1;
+          }
+        }
         const info = { name: c.name };
         if (c.name === 'Skill' && c.input && c.input.skill) {
           info.skill = c.input.skill;
@@ -301,6 +334,31 @@ function printReport(main, agents, hookLog, window) {
     }
   }
 
+  const docRows = {};
+  let inject = main.styleInjections;
+  let attach = main.styleRuleAttaches;
+  for (const [rel, d] of Object.entries(main.docTouches)) {
+    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0 });
+    r.main += d.reads; r.writes += d.writes;
+  }
+  for (const a of agents) {
+    inject += a.stats.styleInjections;
+    attach += a.stats.styleRuleAttaches;
+    for (const [rel, d] of Object.entries(a.stats.docTouches)) {
+      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0 });
+      r.agents += d.reads; r.writes += d.writes;
+    }
+  }
+  if (Object.keys(docRows).length || inject || attach) {
+    console.log('\nGENERATED DOCS (capture-doc consumption; reads = orientation happening, writes = capture/loop maintenance)');
+    console.log(`  ${pad('doc', 44)} ${rpad('main-reads', 10)} ${rpad('agent-reads', 11)} ${rpad('writes', 6)}`);
+    for (const [rel, r] of Object.entries(docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents))) {
+      console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}`);
+    }
+    if (attach) console.log(`  ${pad('(style rule attached on file touch)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${attach}`);
+    if (inject) console.log(`  ${pad('(style injected by legacy hook)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${inject}`);
+  }
+
   const mcpServers = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [server, m] of Object.entries(src.mcp)) {
@@ -354,10 +412,12 @@ function printReport(main, agents, hookLog, window) {
 async function main() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
-  const flagValIdx = new Set(['--hook-log', '--from', '--to'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
+  const flagValIdx = new Set(['--hook-log', '--from', '--to', '--docs-root'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   const asJson = args.includes('--json');
   const hookFile = flagVal('--hook-log');
+  const docsRoot = flagVal('--docs-root');
+  if (docsRoot) docsPrefixes.push(docsRoot.endsWith('/') ? docsRoot : docsRoot + '/');
   const fromStr = flagVal('--from'), toStr = flagVal('--to');
   const window = fromStr || toStr
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }

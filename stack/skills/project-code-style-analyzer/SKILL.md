@@ -1,16 +1,15 @@
 ---
 name: project-code-style-analyzer
-description: "The deliberate project code-style capture: fan out code-style-analyzer agents (one per detected language), merge their reports into <docs-path>/PROJECT-CODE-STYLE.md, and generate + wire the inject-code-style hook that surfaces that doc at edit time, filtered to the exact file extensions the agents observed. Re-run to refresh: the same analysis, but the doc reconciles in place and the hook is rewritten only if invalid or outdated. Manual, /-only. Triggers on 'capture the project code style' or 'set up the code-style doc and hook'. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "The deliberate project code-style capture: fan out code-style-analyzer agents (one per detected language), merge their reports into <docs-path>/PROJECT-CODE-STYLE.md, and generate the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. Re-run to refresh: the same analysis, the doc reconciles in place, the rule regenerates from the fresh reports. Manual, /-only. Triggers on 'capture the project code style' or 'set up the code-style doc and rule'. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
 disable-model-invocation: true
 ---
 
-# Project Code Style Analyzer - Capture, Merge, Inject (Deliberate)
+# Project Code Style Analyzer - Capture, Merge, Attach (Deliberate)
 
-You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at edit time. Three artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place, rewrites the hook only if it is invalid or outdated, and leaves the wiring alone:
+You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at write time. Two artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place and regenerates the rule from the fresh reports:
 
 1. `<docs-path>/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. It opens with the `Captured: <branch>@<short-sha>, <date>` lifecycle stamp (`+dirty` on an uncommitted tree) - the docs-root rule (`.claude/rules/baseline-docs-root.md`) owns what readers make of it.
-2. `.claude/hooks/inject-code-style.js` - a generated PreToolUse hook that injects that doc into context once per session, on the first edit of a file whose extension the analysis actually observed - so the style is in front of whoever writes code without anyone remembering to open a doc. The hook resolves the docs root itself at runtime from the same `CLAUDE_DOCS_PATH` env value - no per-root generation differences.
-3. The `.claude/settings.json` wiring for that hook (idempotent - added once, kept thereafter).
+2. `.claude/rules/project-code-style.md` - a generated path-scoped rule carrying the condensed style core, its `paths:` globs built from the exact extensions the analysis observed. The rules channel delivers it mechanically wherever a matching file is touched - main session and dispatched subagents alike (a PreToolUse hook's injected context never reaches subagent tool calls, which is why this is a rule and not a hook). The full doc stays the deep reference; the rule is the always-delivered essence.
 
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
 
@@ -39,33 +38,22 @@ Consolidate the reports into one doc - apply the `markdown-style` skill so it re
 
 Re-run: reconcile the existing doc against the fresh reports - correct what drifted, add what is new, drop what is gone.
 
-### 4. HOOK - rewrite the injector only when invalid or outdated
-Build the extension union from the agents' **Language + extensions** sections ONLY - never pad it from assumption (a WPF repo gets `cs|xaml`, an Angular repo `ts|html|scss`, an ASP.NET repo `cs` - plus whatever else was genuinely observed, e.g. `sql`). Then decide, don't blindly overwrite:
+### 4. RULE - regenerate .claude/rules/project-code-style.md
+Build the extension union from the agents' **Language + extensions** sections ONLY - never pad it from assumption (a WPF repo gets `cs|xaml`, an Angular repo `ts|html|scss`, an ASP.NET repo `cs` - plus whatever else was genuinely observed, e.g. `sql`). Then generate from `references/code-style-rule.template.md`:
 
-1. **Check the existing `.claude/hooks/inject-code-style.js`** (missing counts as invalid). It is CURRENT when all three hold:
-   - valid: `node --check` passes;
-   - same template generation: its `template-version:` line matches `references/inject-code-style.template.js`;
-   - same filter: the extension alternation in its `/\.( ... )$/` test equals the fresh union (order-insensitive).
-   All three hold -> leave the hook untouched, report 'hook current', skip to WIRE.
-2. **Invalid or outdated** (any check fails) -> regenerate: copy the template over it, replacing the `__EXTENSIONS__` placeholder with the pipe-joined fresh union (e.g. `cs|xaml`). The template's docs-root line (`const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';`) resolves the SAME `CLAUDE_DOCS_PATH` the docs were written under (the installer seeds it into `.claude/settings.json` env; the fallback is the default root) - nothing to bake, on any root. Never hand-edit anything else in the copy or patch it in place - the template is the only source.
-3. **Verify what you (re)generated before trusting it:** `node --check`, then drive it once - pipe a fake PreToolUse JSON (`{"session_id":"test","cwd":"<project-root>","tool_input":{"file_path":"x.<ext>"}}`) through it and confirm it emits the `additionalContext` JSON; pipe a non-matching extension and confirm silence. Delete the test's temp marker (`$TMPDIR/claude-codestyle-*.marker`).
+1. `__PATH_GLOBS__` -> one `  - "**/*.<ext>"` line per observed extension. Derived, not designed.
+2. `__STYLE_CORE__` -> the condensed essence of the merge: each language's Enforced + Idioms as tight bullets (keep 'uncertain'/'inconsistent' markers), plus the cross-cutting idioms. Aim small - this text is injected into every session that touches matching code; detail beyond what a writer needs on the spot belongs in the doc, not the rule.
+3. `__DOC_PATH__` -> the SAME resolved docs root the doc was just written under, baked as a literal (a rule is static text - it cannot resolve env at load; the next capture re-bakes it if the root moved).
 
-This generated hook is per-project output, deliberately NOT in the stack installer's HOOKS manifest - the installer fetches only named files and prunes nothing in `.claude/hooks/`, so `stack update` never touches it.
+Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
 
-### 5. WIRE - .claude/settings.json, idempotently
-Read the project's `.claude/settings.json` (create `{}` if absent), and ensure `hooks.PreToolUse` contains an entry whose command references `inject-code-style.js`; if missing, append:
+This generated rule is per-project output, deliberately NOT in the stack's RULES set - the installer fetches only named files and never prunes `.claude/rules/`, so `stack update` never touches it (same lifecycle as the generated `baseline-project-*.md` awareness rules).
 
-```json
-{
-  "matcher": "Edit|Write|MultiEdit",
-  "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/inject-code-style.js\"" }]
-}
-```
-
-Parse, check, append, rewrite - never regex-edit JSON, and never remove or reorder the entries the stack installer wired. Already present (a re-run): leave it untouched.
+### 5. RETIRE - remove the legacy hook, if present
+Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.json` PreToolUse entry. The rule replaces it (one home per piece - both together would double-inject in main sessions). If the hook file exists: delete it, then parse `.claude/settings.json`, remove the PreToolUse entry whose command references `inject-code-style.js`, and rewrite - never regex-edit JSON, never touch the entries the stack installer wired. Nothing to retire on a clean project: skip silently.
 
 ### 6. REPORT
-Confirm the three artifacts (doc created/refreshed + sections touched; hook generated / rewritten-as-outdated / left current, with the extension union; wiring added/already present). Then briefly: the languages detected, the notable idioms a linter cannot enforce, and any divergence from the house skills worth attention. State where each landed - machine-local under the default layout (`.claude/*` is gitignored), shipped with the repo only when the project set a committed docs root. No re-paste of the doc body - point to the file.
+Confirm the artifacts (doc created/refreshed + sections touched; rule regenerated, with the extension union; legacy hook retired / none found). Then briefly: the languages detected, the notable idioms a linter cannot enforce, and any divergence from the house skills worth attention. State where each landed - machine-local under the default layout (`.claude/*` is gitignored), shipped with the repo only when the project set a committed docs root. No re-paste of the doc body - point to the file.
 
 ## Don't game it
-The doc records the style the code actually follows, not an aspiration - the agents' rules bind the merge too: every idiom names observed code, splits stay 'inconsistent', absent conventions stay absent. The hook filter is derived, not designed - extensions come from the reports, and the verify step in HOOK runs against the real generated file, not the template.
+The doc records the style the code actually follows, not an aspiration - the agents' rules bind the merge too: every idiom names observed code, splits stay 'inconsistent', absent conventions stay absent. The rule's globs and core are derived, not designed - extensions and idioms come from the reports, and the verify step in RULE runs against the real generated file, not the template.

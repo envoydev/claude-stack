@@ -50,8 +50,8 @@ comparable banner by banner; the content varies, the skeleton never does.
 - **Inventory the installed set** from disk - never from memory or assumption: skills = the
   directory names under `.claude/skills/` (or the account's `skills/`); agents =
   `.claude/agents/*.md`; rules = `.claude/rules/*.md` (exclude the GENERATED
-  `baseline-project-*.md` awareness rules - they are written by capture skills, never installed);
-  hooks = `.claude/hooks/*.js` (exclude the GENERATED `inject-code-style.js` - same reason);
+  `baseline-project-*.md` awareness rules and `project-code-style.md` - they are written by capture skills, never installed);
+  hooks = `.claude/hooks/*.js` (exclude the GENERATED legacy `inject-code-style.js` - same reason);
   mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` (fail-soft
   without the CLI). Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog

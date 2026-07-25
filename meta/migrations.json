@@ -1,0 +1,14 @@
+{
+  "_comment": "Retirements of GENERATED per-project artifacts - the cleanup the upstream file compare can never name, because generated output was never a stack-shipped file. The update command applies these (with the same one-gate consent as its prune list) and validate flags them; detection is existence-based, never version math, so a leftover is caught no matter how old the install. Paths resolve against the install root (the project's .claude/ parent, or the account dir in global mode); a path that does not exist simply does not detect. Every entry names why the artifact is redundant and what regenerates its replacement.",
+  "migrations": [
+    {
+      "id": "inject-code-style-hook-to-rule",
+      "since": "0.2.2",
+      "detect": { "file_exists": ".claude/hooks/inject-code-style.js" },
+      "remove": [".claude/hooks/inject-code-style.js"],
+      "unwire_settings_hook": "inject-code-style.js",
+      "why": "style delivery moved to the generated path-scoped project-code-style rule - the hook's injected context never reached subagent tool calls",
+      "then": "re-run /project-code-style-analyzer so the replacement rule gets generated"
+    }
+  ]
+}

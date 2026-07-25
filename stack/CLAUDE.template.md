@@ -36,7 +36,7 @@ rules in the same directory attach on a matching file touch - their own `paths:`
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - run /project-agent-capabilities after install or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
 | `.claude/rules/baseline-project-related-context.md` (GENERATED - run /project-related-context with the sibling paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| inject-code-style hook (GENERATED - run /project-code-style-analyzer; a hook + doc, not a rule) | the project's actual code style - `<docs-path>/PROJECT-CODE-STYLE.md` surfaced at edit time, filtered to the observed file types |
+| `.claude/rules/project-code-style.md` (GENERATED - run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
 
 <!-- Authoring outline - write these sections into the project-specific top of this file
 (each section lean; interleave as reads best - the project intro usually comes first, above
