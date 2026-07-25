@@ -1,12 +1,12 @@
 ---
 name: claude-stack
-description: "Route to the right claude-stack action when unsure which fits - inspects the install state and answers with the exact command to run: /claude-stack:setup (fresh install from scratch), /claude-stack:update (no-questions refresh + prune of upstream removals), /claude-stack:configure (adjust an existing install - add or drop), /claude-stack:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts). Trigger by invoking /claude-stack."
+description: "Route to the right claude-stack action when unsure which fits - inspects the install state and answers with the exact command to run: /claude-stack:setup (fresh install from scratch), /claude-stack:update (no-questions refresh + prune of upstream removals), /claude-stack:configure (adjust an existing install - add or drop), /claude-stack:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /claude-stack:status (read-only per-area tables of what is installed). Trigger by invoking /claude-stack."
 disable-model-invocation: true
 ---
 
 # /claude-stack - the router
 
-Route by install state, then hand the user the ONE command to run. The four actions are
+Route by install state, then hand the user the ONE command to run. The five actions are
 manual-only commands - the user stays at the wheel, so you answer with the command, never run
 the flow yourself:
 
@@ -20,6 +20,8 @@ the flow yourself:
   project's frameworks do not use (WPF artifacts in a web-only repo, the data vertical with no SQL)
   AND add the detected stacks' artifacts that are missing -> `/claude-stack:validate` (project mode
   only).
+- The ask is to SEE what is installed - inventory, versions, capture dates, 'what do I have?' -
+  with nothing to change -> `/claude-stack:status` (read-only tables, per area or all).
 - The install just finished and the ask is 'what now?' (session reload, gitignore lines, serena
   setup, which captures in which order) -> not a command: walk them through
   `${CLAUDE_PLUGIN_ROOT}/references/post-install.md`.

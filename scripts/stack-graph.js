@@ -92,6 +92,19 @@ function hookCatalog()
 // baseline into an install (the skill inventories what IS installed; it calls nothing).
 const DOC_MENTION_SKILLS = new Set(['project-agent-capabilities']);
 
+// Rule body mentions that are NOT dependencies: conditional loads ('in an Ionic
+// workspace also load `ionic`') and routing-away prose ('EF logic routes through
+// `csharp` instead'). A rule's hard skill edges are the skills it exists to attach;
+// these mentions describe when to reach elsewhere, so promoting them blocks valid
+// selections (a plain Angular install must not require the ionic skill).
+const RULE_MENTION_EXCLUDES = {
+    'angular-conventions': new Set(['ionic']),
+    'sql-conventions': new Set(['csharp', 'dotnet-data-access']),
+    // the dependency is one-way by design: typescript stacks on javascript, never the
+    // reverse - a plain-JS install must not be forced to carry the type layer
+    'javascript-conventions': new Set(['typescript']),
+};
+
 function categorize(tokens, cat)
 {
     const pick = set => [...tokens].filter(t => set.has(t)).sort();
@@ -205,7 +218,9 @@ function buildStackGraph()
             }
 
             const c = categorize(backtickedTokens(bodyAfterFrontmatter(text)), cat);
-            graph.rules[name] = { skills: c.skills, agents: c.agents, mcps: c.mcps, plugins: c.plugins, paths };
+            const excl = RULE_MENTION_EXCLUDES[name];
+            const skills = excl ? c.skills.filter(t => !excl.has(t)) : c.skills;
+            graph.rules[name] = { skills, agents: c.agents, mcps: c.mcps, plugins: c.plugins, paths };
         }
     }
 

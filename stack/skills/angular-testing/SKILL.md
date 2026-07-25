@@ -1,6 +1,6 @@
 ---
 name: angular-testing
-description: "Angular testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): TestBed + component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing (whichever the workspace already runs - Karma/Jasmine, Jest, or Vitest - detect, never install), HttpTestingController, fakeAsync vs real-async timing, and the Angular exclusion catalog. Ionic/Capacitor apps share it. Load before writing, modifying, or reviewing Angular tests, auditing suite quality, or configuring Angular coverage - do not rely on recall. Do NOT load for .NET (dotnet-testing) or plain TS/JS outside a framework harness (typescript-testing)."
+description: "Angular testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): TestBed + component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing (whichever the workspace already runs - Karma/Jasmine, Jest, or Vitest - detect, never install), HttpTestingController, fakeAsync vs real-async timing, and the Angular exclusion catalog. Ionic/Capacitor apps share it. Load before writing, modifying, or reviewing Angular tests, auditing suite quality, or configuring Angular coverage - do not rely on recall. Do NOT load for .NET (dotnet-testing) or plain TS/JS outside a framework harness (ts-js-testing)."
 ---
 
 # Angular Testing

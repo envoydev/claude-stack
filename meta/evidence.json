@@ -121,7 +121,12 @@
     "Cocona",
     "Telegram.Bot",
     "Discord.Net",
-    "SlackNet"
+    "SlackNet",
+    "DSharpPlus",
+    "CryptoExchange.Net",
+    "Binance.Net",
+    "Bybit.Net",
+    "Kucoin.Net"
    ]
   },
   "dotnet-minimal-api": {
