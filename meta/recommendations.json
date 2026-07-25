@@ -3,10 +3,10 @@
   "agents": [
    "ci-failure-diagnoser",
    "architecture-analyzer",
+   "code-style-analyzer",
    "evidence-gatherer",
    "integration-reviewer",
    "runtime-failure-diagnoser",
-   "related-project-analyzer",
    "security-auditor",
    "test-coverage-analyzer"
   ],
@@ -38,7 +38,6 @@
    "project-code-style-analyzer",
    "project-implementer",
    "project-quality-loop",
-   "project-related-context",
    "project-solve-cross-task",
    "project-solve-task",
    "project-test-coverage-analyzer",
@@ -53,7 +52,11 @@
    "dotnet-hosted-services",
    "dotnet-data-access",
    "frontend",
+   "project-related-context",
    "project-stack-usage-analyzer"
+  ],
+  "agents": [
+   "related-project-analyzer"
   ]
  },
  "stacks": {

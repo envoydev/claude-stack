@@ -19,7 +19,7 @@ Both are generated files; a re-run refreshes both in place. The rule's name is d
 DELEGATED vs INLINE - the shared policy `project-solve-cross-task` owns. Pick once, hold for the run:
 
 - **DELEGATED** (dispatch available) - fan out related-project-analyzer per sibling as below; you merge and write.
-- **INLINE** (no dispatch: Cursor) - do the same characterization in-session, one sibling at a time, honoring the agent's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes, UNVERIFIED over fabrication; a URL sibling is shallow-cloned to scratch and removed after) - then continue at MERGE identically.
+- **INLINE** (no dispatch: Cursor - or the related-project-analyzer seat is absent, which this opt-in capture must tolerate: it ships outside the always-installed baseline, so a project can carry the skill without the seat) - do the same characterization in-session, one sibling at a time, honoring the agent's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes, UNVERIFIED over fabrication; a URL sibling is shallow-cloned to scratch and removed after) - then continue at MERGE identically.
 
 ## The run
 

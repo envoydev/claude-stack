@@ -126,7 +126,8 @@ as the docs-root rule states) plus serena's local memory:
 stamps per entry - show the newest); `file updated` is the file's mtime date. A `Captured:`
 stamp older than the file mtime is normal (loops edit docs without re-capturing) - render
 both, judge nothing. Rows are fixed - a capture never run shows `no`, so the user sees what is
-MISSING as clearly as what exists.
+MISSING as clearly as what exists. One row is conditional, not a gap: PROJECT-RELATED-CONTEXT.md
+applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
 
 ## 4. Close
 

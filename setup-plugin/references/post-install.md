@@ -60,9 +60,10 @@ shuffle it:
    orient. Runs after serena setup, because the capture navigates by symbol.
 2. `/project-code-style-analyzer` - captures how the codebase really writes each language and
    generates the path-scoped project-code-style rule.
-3. `/project-related-context <name - path> ...` - sibling-repo awareness, args only (local paths
-   or git URLs, e.g. `frontend - ../client`); it never scans on its own. Skip in a standalone
-   repo.
+3. `/project-related-context <name - path> ...` - OPTIONAL, only when this project has sibling
+   repos: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`);
+   it never scans on its own. A standalone repo skips it and installs neither the skill nor the
+   `related-project-analyzer` seat - both are opt-in adds via `/claude-stack:configure`.
 4. `/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
    inventory including anything the captures above added.
 

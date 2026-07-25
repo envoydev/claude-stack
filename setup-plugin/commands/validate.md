@@ -92,8 +92,11 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 `overlap:` / `dormant:` lines (judgment.out) + the scan's `judgment.versionConflicts` rows
 (found.json) = step 9's precomputed candidates - carried there, never acted on in the walk.
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
-and the curated `general` set in recommendations.json (cross-stack skills a narrow seat happens to
-preload - e.g. dotnet-data-access) - you present its output, you do not re-derive it.
+and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
+narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
+applicability no manifest can prove, e.g. the `project-related-context` / `related-project-analyzer`
+pair, which apply only where the project has sibling repos) - you present its output, you do not
+re-derive it.
 
 One addition of your own: run the snapshot's `$TMP/repo/meta/migrations.json` detects against the
 project (retired GENERATED artifacts - e.g. the legacy inject-code-style hook - which the
