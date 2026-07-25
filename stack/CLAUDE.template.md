@@ -7,8 +7,9 @@
 1. Write the project top from the authoring outline in the comment below - replace the H1 title
    with the project's own name, put the intro above ## Rules - then delete that comment.
 2. Trim the ## Rules table to what the installer actually laid down.
-3. Run the four captures that write the rows marked GENERATED: /project-agent-capabilities,
-   /project-architecture-analyzer, /project-code-style-analyzer, /project-related-context.
+3. Run the captures that write the rows marked GENERATED: /project-agent-capabilities,
+   /project-architecture-analyzer, /project-code-style-analyzer - plus /project-related-context
+   ONLY when this project has sibling repos (a standalone repo drops that row instead).
 If the repo's canonical agent instructions already live in an AGENTS.md (for other agent
 tooling), keep this file thin and import it with @AGENTS.md instead of filling the same
 content twice - but never @import anything under .claude/rules/: those files auto-load,
@@ -35,7 +36,7 @@ rules in the same directory attach on a matching file touch - their own `paths:`
 | `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_DOCS_PATH` env) and what lives under it |
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - run /project-agent-capabilities after install or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
-| `.claude/rules/baseline-project-related-context.md` (GENERATED - run /project-related-context with the sibling paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; run /project-related-context with their paths/URLs, else delete this row) | sibling-repo awareness - name / location / relation / seam per sibling |
 | `.claude/rules/project-code-style.md` (GENERATED - run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
 
 <!-- Authoring outline - write these sections into the project-specific top of this file

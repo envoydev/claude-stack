@@ -52,7 +52,7 @@ test('every recommendation name resolves in the dependency graph', () => {
     const agentKeys = new Set(Object.keys(graph.agents));
     const ruleKeys = new Set(Object.keys(graph.rules));
     const skillKeys = new Set(Object.keys(graph.skills));
-    const seeds = [recs.always, ...Object.values(recs.stacks)];
+    const seeds = [recs.always, recs.general, ...Object.values(recs.stacks)];
     for (const seed of seeds)
     {
         for (const a of seed.agents || []) assert.ok(agentKeys.has(a), `recommendation agent '${a}' not in graph`);
@@ -92,6 +92,45 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
     // repair-rule stacks pulled it, so a mobile/data/devops-only install shipped without
     // the skill that drives its own trio.
     assert.ok((recs.always.skills || []).includes('project-solve-cross-task'), 'always seeds the orchestrator');
+});
+
+// A capture skill fans out its own read-only seat, and the graph cannot express that edge
+// (skills carry only mcp/plugin edges by design) - so the pairing lives in the seeds and nothing
+// but this test keeps it honest. A seeded capture skill without its seat installs a flow that
+// has no one to dispatch (how code-style-analyzer went unseeded).
+test('every always-seeded capture skill seeds the seat it fans out', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const PAIRS = {
+        'project-architecture-analyzer': 'architecture-analyzer',
+        'project-code-style-analyzer': 'code-style-analyzer',
+        'project-test-coverage-analyzer': 'test-coverage-analyzer',
+        'project-related-context': 'related-project-analyzer',
+    };
+    for (const [skill, seat] of Object.entries(PAIRS))
+    {
+        for (const bucket of ['always', 'general'])
+        {
+            if (!((recs[bucket] || {}).skills || []).includes(skill)) continue;
+            assert.ok(((recs[bucket] || {}).agents || []).includes(seat), `${bucket} seeds ${skill} without ${seat}`);
+        }
+    }
+});
+
+// Sibling repos are a property of the PROJECT, not of a stack or of the baseline - a standalone
+// repo has none, and no manifest signal can prove otherwise. So the related-context pair is
+// opt-in: it sits in `general` (addable in any walk, never flagged redundant, never reported
+// missing) instead of `always`, which would install it for everyone and have validate re-add it.
+test('the related-context capture is optional, never an always-baseline seed', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    assert.ok(!(recs.always.skills || []).includes('project-related-context'), 'always must not seed the skill');
+    assert.ok(!(recs.always.agents || []).includes('related-project-analyzer'), 'always must not seed the seat');
+    assert.ok((recs.general.skills || []).includes('project-related-context'), 'general carries the skill');
+    assert.ok((recs.general.agents || []).includes('related-project-analyzer'), 'general carries the seat');
+    for (const sel of Object.values(recs.stacks))
+    {
+        assert.ok(!(sel.skills || []).includes('project-related-context'), 'no stack seeds the skill');
+        assert.ok(!(sel.agents || []).includes('related-project-analyzer'), 'no stack seeds the seat');
+    }
 });
 
 test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {
