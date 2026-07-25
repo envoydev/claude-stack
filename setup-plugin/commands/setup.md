@@ -131,7 +131,7 @@ Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install 
 
 2. **The capture sequence** - the deliberate captures that turn a fresh install into an oriented one, in dependency order. List each ONLY when its skill is installed; a missing one gets a single line ('project-code-style-analyzer not installed - add via `/claude-stack:configure`') instead of a dead command:
    1. `/project-architecture-analyzer` - writes the durable architecture docs every seat reads to orient.
-   2. `/project-code-style-analyzer` - captures the project's real code style and generates the inject-code-style hook.
+   2. `/project-code-style-analyzer` - captures the project's real code style and generates the path-scoped project-code-style rule.
    3. `/project-related-context <sibling> ...` - sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`, `backend - ../server`); it never scans on its own.
    4. `/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory including anything the captures above added.
 

@@ -51,7 +51,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     instrumented output; the suite run itself stays in the main session), `architecture-analyzer` (sonnet/low - the
     `project-architecture-analyzer` capture fans it out to characterize modules) and `code-style-analyzer` (sonnet/medium - the read-only
     per-language style characterizer the `project-code-style-analyzer` skill fans out and merges into
-    `<docs-path>/PROJECT-CODE-STYLE.md` + the generated inject-code-style hook) and `related-project-analyzer` (sonnet/medium -
+    `<docs-path>/PROJECT-CODE-STYLE.md` + the generated path-scoped project-code-style rule) and `related-project-analyzer` (sonnet/medium -
     characterizes one sibling repo, the `project-related-context` skill fans it out and merges
     `<docs-path>/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
     the architecture capture is deliberate-only (the `project-architecture-analyzer` skill - dispatches
@@ -96,7 +96,9 @@ change made only inside a consuming project is throwaway (see Invariants).
   breaks, so a multi-home edit syncs all copies mechanically; the generated `stack-graph.json`
   (the dependency graph `stack-graph.js` builds and `stack-select.js` reads at guided-install
   time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
-  catalogs (`recommendations.json`, `evidence.json`, `judgment.json`). Commands reach ALL of
+  catalogs (`recommendations.json`, `evidence.json`, `judgment.json`, and `migrations.json` -
+  existence-detected retirements of GENERATED per-project artifacts, applied by update / flagged
+  by validate, since the upstream file compare can never name generated output). Commands reach ALL of
   these through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}` - the
   installed plugin package is `setup-plugin/` only, so nothing in `meta/` exists inside it.
 - `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
@@ -180,7 +182,7 @@ documented there.
   to orient (the structure, patterns, boundaries and packages already in place) instead of re-deriving
   the project, and the `project-architecture-analyzer` skill owns them (plus a `<docs-path>/architecture/ASSESSMENT.md` pros/cons
   doc), reasoning in the main session over `architecture-analyzer` module digests - refreshed deliberately via that
-  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `<docs-path>/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the inject-code-style hook that surfaces the doc at edit time, filtered to the observed extensions). serena's
+  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `<docs-path>/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the path-scoped `project-code-style.md` rule that attaches the style core on any matching file touch - main session and subagents; replaced the inject-code-style hook, whose injected context never reached subagent tool calls). serena's
   per-project memory (`write_memory` / `read_memory` / `list_memories`, named
   `<feature>__<contract_version>__<seat>`, never the shared `memory` MCP) is the EPHEMERAL inter-agent
   comms bus - the transient per-feature handoff between seats: a diagnoser's task cards to the

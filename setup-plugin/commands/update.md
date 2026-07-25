@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release AND prune what the stack itself deleted or renamed upstream since the stamped install. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - user-authored artifacts and the generated baseline-project-*.md rules never appear in that diff, so they can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release AND prune what the stack itself deleted or renamed upstream since the stamped install. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -27,8 +27,8 @@ mode (the account's skills). Nothing installed in either place -> stop and route
 
 ## 2. Inventory the installed set
 Build the CURRENT selection from disk exactly as the sibling `configure` command's step 1 does -
-skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md`),
-hooks (`.claude/hooks/*.js`, excluding the GENERATED `inject-code-style.js`), mcps from
+skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md` and `project-code-style.md`),
+hooks (`.claude/hooks/*.js`, excluding the GENERATED legacy `inject-code-style.js`), mcps from
 `<repo>/.mcp.json`, plugins fail-soft - never from memory or assumption.
 
 ## 3. Compute the delta since the stamp
@@ -54,8 +54,15 @@ compare the `configure` command's step 1 runs, and split by status:
   trusted complete: refresh-only mode, and route the reconcile to `configure` - never prune from
   a possibly-partial diff.
 
+Then read the snapshot's `$TMP/repo/meta/migrations.json` - the retirements of GENERATED
+per-project artifacts the file compare can never name. For each entry, run its `detect` against
+the install root (project mode: the `.claude/` parent; global mode: the account dir); a detected
+entry joins the prune list labeled `(migration: <why>)`, together with its `unwire_settings_hook`
+edit and its `then` follow-up for the report. Not detected -> silently skip.
+
 ## 4. Confirm once
-Show the version delta, the refresh counts by category, and the NAMED prune list. Ask one
+Show the version delta, the refresh counts by category, and the NAMED prune list (migrations
+included, with their why). Ask one
 question: proceed with refresh + prune, or refresh only. Nothing is ever deleted silently; a 'no'
 means refresh-only. For example:
 
@@ -83,7 +90,10 @@ refresh must not flatten deliberate local model/effort pin edits.
 
 ## 7. Prune
 Delete each item on the confirmed list, showing every command before running it. A deleted hook
-also loses its `.claude/settings.json` wiring in the same pass - show that edit too. Then re-run
+also loses its `.claude/settings.json` wiring in the same pass - show that edit too (a migration
+entry's `unwire_settings_hook` names exactly which entry goes; parse-edit-rewrite, never regex,
+never touching other wiring). A migration's `then` line goes in the step-9 report as a next step -
+run nothing on the user's behalf. Then re-run
 `/project-agent-capabilities` (when installed) so the generated awareness rule reflects the new
 inventory.
 
@@ -104,9 +114,9 @@ a successful run, after refresh-only, after a blocker, and after a user 'no'. Th
 project tree holds only installed artifacts.
 
 ## Do not
-- Never delete anything the upstream diff did not name - user-authored skills/agents/rules/hooks
-  and the generated `baseline-project-*.md` rules never appear in it; if a candidate is not in
-  the diff, it stays.
+- Never delete anything the upstream diff or the migrations catalog did not name - user-authored
+  skills/agents/rules/hooks and the generated `baseline-project-*.md` / `project-code-style.md` rules appear in neither;
+  if a candidate is in neither list, it stays.
 - Never install additions and never remove an MCP or plugin the diff did not retire - adopting or
   dropping by choice is the sibling `configure` command.
 - Never skip the step-4 confirm before deletions, never run past a blocker, and never leave
