@@ -1,5 +1,5 @@
 ---
-name: typescript-testing
+name: ts-js-testing
 description: "Plain TypeScript/JavaScript testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): runner routing (Vitest the house default, Jest where the workspace signals it, node:test the zero-dependency floor - detect, never install), a test strategy keyed off role (pure module / boundary seam / DOM-adjacent / Node-runtime / published types), fake timers vs real async, the mock-masking smoke spec, and the TS/JS exclusion catalog. Covers libraries, Node CLIs/tooling, framework-free web code, and the browser-extension unit layer (the chrome.* seam and extension E2E live in browser-extension). Load before writing, modifying, or reviewing TS/JS tests outside a framework harness, auditing suite quality, or configuring coverage - do not rely on recall. Do NOT load for Angular/Ionic (angular-testing) or .NET (dotnet-testing)."
 ---
 

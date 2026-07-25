@@ -313,11 +313,11 @@
       "mcps": [],
       "plugins": []
     },
-    "typescript": {
+    "ts-js-testing": {
       "mcps": [],
       "plugins": []
     },
-    "typescript-testing": {
+    "typescript": {
       "mcps": [],
       "plugins": []
     },
@@ -413,7 +413,7 @@
       "skills": [
         "browser-extension",
         "project-solution-design",
-        "typescript-testing"
+        "ts-js-testing"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -425,8 +425,8 @@
       "skills": [
         "browser-extension",
         "javascript",
-        "typescript",
-        "typescript-testing"
+        "ts-js-testing",
+        "typescript"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",
@@ -634,7 +634,7 @@
         "dotnet-testing",
         "dotnet-web-backend",
         "project-solve-cross-task",
-        "typescript-testing"
+        "ts-js-testing"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -748,7 +748,7 @@
       "suggests": [
         "angular-testing",
         "dotnet-testing",
-        "typescript-testing"
+        "ts-js-testing"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -937,7 +937,6 @@
     "angular-conventions": {
       "skills": [
         "angular-conventions",
-        "ionic",
         "typescript"
       ],
       "agents": [],
@@ -1110,8 +1109,7 @@
     },
     "javascript-conventions": {
       "skills": [
-        "javascript",
-        "typescript"
+        "javascript"
       ],
       "agents": [],
       "mcps": [],
@@ -1137,9 +1135,7 @@
     },
     "sql-conventions": {
       "skills": [
-        "csharp",
-        "database-conventions",
-        "dotnet-data-access"
+        "database-conventions"
       ],
       "agents": [],
       "mcps": [],

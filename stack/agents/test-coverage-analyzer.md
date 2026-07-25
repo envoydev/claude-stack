@@ -22,7 +22,7 @@ return raw structured data, not prose for a human.
 - Parse the machine-readable output the tooling produced (cobertura XML, lcov.info,
   coverage-summary.json) - numbers come from THIS run's files, never estimated.
 - Load the surface's house testing skill (`dotnet-testing` / `angular-testing` /
-  `typescript-testing`) to judge the
+  `ts-js-testing`) to judge the
   suite against house practice and to apply the exclusion catalog's semantics.
 - Locate uncovered code with serena per `.claude/rules/baseline-navigation.md`; `Read` located
   ranges. **Hard cap: 2 locating passes per hot spot** - still unclear after 2, record it

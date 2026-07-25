@@ -21,7 +21,7 @@ Index mapping a web-frontend work area to the skill to load. It routes rather th
 | build UI with Angular Material (`@angular/material`) + CDK components | `angular-material` |
 | write or edit CSS / SCSS in an Angular app - scoping, ViewEncapsulation, design tokens, responsive, a11y styling | `angular-styling` |
 | harden or review an Angular feature - XSS, sanitization, CSP, CSRF, auth-token storage, SSR/TransferState leaks | `angular-security` |
-| write, change, or review tests - Angular suites, or plain-TS/JS code outside a framework harness | `angular-testing` / `typescript-testing` |
+| write, change, or review tests - Angular suites, or plain-TS/JS code outside a framework harness | `angular-testing` / `ts-js-testing` |
 | build an Ionic / Capacitor mobile or hybrid app | `mobile` |
 | look up current framework / library API docs | the context7 MCP |
 
