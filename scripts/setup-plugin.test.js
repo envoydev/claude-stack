@@ -17,7 +17,7 @@ test('marketplace.json is valid and points at the setup-plugin subdir', () => {
     assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
 });
 
-test('plugin.json is valid, the four commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the five commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'claude-stack');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -25,8 +25,8 @@ test('plugin.json is valid, the four commands are listed, and the router skill e
     // Plugin COMMANDS display namespaced-only (/claude-stack:setup); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /claude-stack, no /claude-stack:claude-stack stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md']);
-    for (const name of ['setup', 'update', 'configure', 'validate'])
+    assert.deepStrictEqual(pj.commands, ['./commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
+    for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /claude-stack:${name} command exists`);
     }
@@ -127,7 +127,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
-for (const name of ['setup', 'update', 'configure', 'validate'])
+for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
 {
     test(`the ${name} command exists with valid manual-only frontmatter`, () => {
         const cmd = path.join(PLUGIN_DIR, 'commands', `${name}.md`);
