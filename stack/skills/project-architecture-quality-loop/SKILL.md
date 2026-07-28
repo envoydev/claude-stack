@@ -59,6 +59,7 @@ DELEGATED, one run over the Orders module:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds.** Architecture changes are expensive and consequential; do not loop indefinitely chasing the last debatable con.
+- **Each round boundary is a fresh-session resume point** - the pruned `<docs-path>/architecture/ASSESSMENT.md` is the handoff. On a long run prefer resuming a new session from it over one accumulating chat: measured, carried-forward conversation (not tool output) dominates session cost.
 - Never weaken a test or delete an assertion to make a con look resolved - that is a new weakness, not a fix.
 - Make the smallest change that resolves each weakness; a rewrite that introduces new coupling makes the loop diverge.
 - The assessment's tier is the routing authority - do not silently upgrade a small con into a rewrite, or downgrade a structural one to sneak it past the approval gate.

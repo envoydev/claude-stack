@@ -31,14 +31,15 @@ The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Record the
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl>` - full report, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --json` - machine dump, once per matching session.
 
-When the instrumentation hook was wired for the run (`STACK_INSTRUMENT=1` writes a ledger, default `.claude/tool-usage.<session>.jsonl`, or wherever `STACK_INSTRUMENT_LOG` pointed), add `--hook-log <that file>` - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report.
+Then look for the instrumentation ledgers - do not wait to be pointed at them: `CLAUDE_STACK_INSTRUMENT=1` writes one per session/agent id under `<docs-path>/tools-usage/<sid>.jsonl` (or wherever `CLAUDE_STACK_INSTRUMENT_LOG` pointed). For each audited session, check that folder for the session's own id and its dispatched agents' ids; on a hit add `--hook-log <ledger>` - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report.
 
 ### 4. WRITE - one folder per session
 Everything for a session lands in `<docs-path>/claude-stack-usage-report/<session-id>/`:
 
 - `report-usage.md` - the report, EXACTLY the sections below.
 - The `--json` dump(s).
-- A copy of the session `.jsonl`, its `subagents/` folder when present, and any hook ledger - the complete raw data, co-located so another agent can analyze it without hunting.
+- A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting.
+- The session's instrumentation ledgers, MOVED (not copied) from `<docs-path>/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. The move is deliberate: an audited run's ledgers live with its bundle, and the collection folder drains as runs get audited instead of accumulating forever; a session not audited this run keeps its ledger in place.
 
 Raw transcripts carry full conversation content - code, file contents, possibly secrets. Under the default machine-local docs root that stays on this machine; when the project set a COMMITTED docs root, get explicit consent before copying raw transcripts there, and without it copy only the report and the `--json` dumps.
 
@@ -66,4 +67,4 @@ Then append the full-report analyzer outputs verbatim at the end of the doc (the
 The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the committed-root consent rule above.
 
 ## Don't game it
-Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with `.claude/hooks/instrument-tool-usage.js` wired and `STACK_INSTRUMENT=1` would add the `--hook-log` join next time; do not block on it.
+Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with `.claude/hooks/instrument-tool-usage.js` wired and `CLAUDE_STACK_INSTRUMENT=1` would add the `--hook-log` join next time; do not block on it.

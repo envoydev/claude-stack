@@ -464,7 +464,7 @@ HOOKS=(
   "guard-catastrophic-rm.js::Bash::"              # block recursive rm of /, ~, $HOME, or a bare *
   "guard-read-whole-file.js::Read::"              # block whole-file Read of a >100-line source file - locate via serena first
   "guard-unapproved-dispatch.js::Task|Agent::"    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
-  "instrument-tool-usage.js::"                    # fetched, NOT wired (empty matcher): opt-in tool-usage stats - wire PreToolUse '.*' + STACK_INSTRUMENT=1 for a measured run (see README)
+  "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
@@ -912,6 +912,9 @@ for line in sys.stdin.read().splitlines():
     if not matcher:
         continue
     cmd = "$CLAUDE_PROJECT_DIR/.claude/hooks/" + file + ((" " + args) if args else "")
+    if file == "instrument-tool-usage.js":
+        # env-gated: the sh test costs ~nothing when off; node spawns only under CLAUDE_STACK_INSTRUMENT=1
+        cmd = '[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] || ' + cmd
     specs.append((matcher, cmd))
 try:
     data = json.load(open(path))
@@ -945,6 +948,9 @@ if "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env:
 # Forward slashes on every OS (Node hooks and the model resolve them fine on Windows).
 if "CLAUDE_DOCS_PATH" not in env:
     env["CLAUDE_DOCS_PATH"] = ".claude/docs"; changed = True
+# instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
+if "CLAUDE_STACK_INSTRUMENT" not in env:
+    env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
 if changed:
     json.dump(data, open(path, "w"), indent=2); open(path, "a").write("\n")
     print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default ensured")

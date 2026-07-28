@@ -49,6 +49,7 @@ INLINE, one round over a two-surface workspace:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds** - each round re-runs the instrumented capture; do not loop chasing the last decimal.
+- **Each round boundary is a fresh-session resume point** - the reconciled `<docs-path>/test-coverage/COVERAGE.md` is the handoff. On a long run prefer resuming a new session from it over one accumulating chat: measured, carried-forward conversation (not tool output) dominates session cost.
 - The percentage is the proxy, pinned behavior is the goal: never pad with assertion-free tests, never weaken or delete an existing test, never widen exclusions or lower the requirement to reach SATISFIED - those two belong to the user, recorded in the doc.
 - A testability refactor stays behavior-preserving - the existing suite is green before and after - and the tier on each weak point is the routing authority: no silent upgrade of a small gap into a rewrite, no downgrade of a structural one past its approval gate.
 

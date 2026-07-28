@@ -52,6 +52,10 @@
     {
      "file": "stack/hooks/guard-unapproved-dispatch.js",
      "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+    },
+    {
+     "file": "stack/hooks/instrument-tool-usage.js",
+     "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
     }
    ]
   },
@@ -1250,6 +1254,23 @@
     {
      "file": "stack/skills/project-build-from-scratch/references/domain-trio-protocol.md",
      "marker": "The main session is the only orchestrator for the whole vertical"
+    }
+   ]
+  },
+  "fresh-session-at-boundaries": {
+   "_note": "The long-run session-cost guidance: a loop's round/stage boundary is a fresh-session resume point with the reconciled doc as the handoff, because measured session analysis shows carried-forward conversation (not tool output) dominates cost. Restated in each loop.",
+   "owner": {
+    "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+    "marker": "fresh-session resume point"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "fresh-session resume point"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/SKILL.md",
+     "marker": "fresh-session resume point"
     }
    ]
   },

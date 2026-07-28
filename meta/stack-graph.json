@@ -1013,7 +1013,9 @@
       "paths": []
     },
     "baseline-git": {
-      "skills": [],
+      "skills": [
+        "project-verify-code"
+      ],
       "agents": [],
       "mcps": [],
       "plugins": [],

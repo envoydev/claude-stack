@@ -210,9 +210,9 @@ Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's c
 `superpowers` and `ponytail` arrive via the skills and agents that cite them); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
-## 9. Environment - the two stack env values (when picked)
+## 9. Environment - the three stack env values (when picked)
 
-The install carries two project-level environment values in the scope's settings.json
+The install carries three project-level environment values in the scope's settings.json
 (`.claude/settings.json`, or the account file for a global install). The installer seeds them
 only when ABSENT, so this step is the one place they are changed deliberately:
 
@@ -221,9 +221,13 @@ only when ABSENT, so this step is the one place they are changed deliberately:
   `autoCompactEnabled: false` settings key, with the pct override deleted rather than left dead.
 - `CLAUDE_DOCS_PATH` - the generated-docs root (house default `.claude/docs`, machine-local). A
   committed forward-slash path (e.g. `docs`) shares the captured docs with the team.
+- `CLAUDE_STACK_INSTRUMENT` - the tool-usage instrumentation switch (house default `0`, off - the
+  wired hook then costs a shell test per call and records nothing). `1` logs every tool call as one
+  JSONL row to `<docs-path>/tools-usage/<session>.jsonl` for the usage analyzer's `--hook-log` join - a
+  per-run measurement switch, flipped back to `0` after the audited run, not a leave-on flag.
 
 Show the CURRENT values read from the file - never assume the defaults - then one keep-or-change
-consent covering both. On a docs-root change, say plainly: existing generated docs do NOT move -
+consent covering all three. On a docs-root change, say plainly: existing generated docs do NOT move -
 they stay under the old root until moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>`: it rewrites the 'This install's root:'
 line in `.claude/rules/baseline-docs-root.md` from the settings.json value just written, so the

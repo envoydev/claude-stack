@@ -31,7 +31,7 @@ The stack is built for this house's verticals:
 | **Skills** | 77 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 5 | deterministic guards (4 wired) + an opt-in usage instrument, `.claude/hooks/` |
+| **Hooks** | 5 | deterministic guards + an env-gated usage instrument (off by default), `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
 | **Plugins** | 7 | installed via the `claude` CLI |
 
@@ -107,9 +107,10 @@ Each run stamps the installed source commit into `claude-stack.stamp`;
 
 ## Token & tool usage analysis
 
-The one piece of the stack worth naming here: the installed (unwired) hook
-`.claude/hooks/instrument-tool-usage.js` records per-run tool / skill / MCP usage when you opt in
-(`STACK_INSTRUMENT=1` + wiring it in `.claude/settings.json`), and
+The one piece of the stack worth naming here: the installed hook
+`.claude/hooks/instrument-tool-usage.js` records per-run tool / skill / MCP usage - wired by
+default behind an env gate, so it costs nothing until you flip `CLAUDE_STACK_INSTRUMENT` from `"0"` to
+`"1"` in `.claude/settings.json` env (flip it back after the measured run), and
 [`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus
 its dispatched subagents) into a token/consumption report - join the two with `--hook-log` to see
 what fired and what it cost.
