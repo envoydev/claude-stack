@@ -31,7 +31,7 @@ Re-run the capture: `<docs-path>/test-coverage/COVERAGE.md` and the raw results 
 When `<docs-path>/architecture/ASSESSMENT.md` exists, prune it too: a weakness there that a fix this round demonstrably resolved (a testability refactor that closed a listed con, a coverage gap the assessment named) is deleted. Delete-only: everything else stays, including the Captured stamp, no new entries (surfacing architecture weaknesses is the architecture capture's job), and anything short of a clean match waits for the next deliberate capture.
 
 ### 4. LOOP or STOP
-Decide off the reconciled doc, not by eye:
+Decide off the reconciled numbers the step-3 capture just produced - they are already in this context: re-read `<docs-path>/test-coverage/COVERAGE.md` only after a compaction or when the in-context picture is genuinely stale, never as a per-round habit. Decide off the numbers, not by eye:
 
 - **SATISFIED** - every measured surface meets the requirement, and only user-declined structural items or recorded overrides remain.
 - **PLATEAU** - the weak-point set equals the previous round's and none is now resolvable - stop rather than re-run identically.

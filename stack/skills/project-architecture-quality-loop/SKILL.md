@@ -35,7 +35,7 @@ Keep the build and tests green across the round: after each fix batch, re-run th
 Prune `<docs-path>/architecture/ASSESSMENT.md` yourself: delete each weakness this round resolved (its fix landed and build + tests are green), and add any weakness a fix exposed - reasoned, with a remediation and tier, shaped like the capture writes them. Everything else stays: strengths, accepted tradeoffs, declined structural items, and the Captured stamp (it marks the last capture and the stop-time reconcile diffs from it - never advance it by hand). No capture re-run per round: the loop already knows which weaknesses it closed, and a full re-analysis to learn that is waste - a brand-new weakness only fresh analysis would surface waits for the next deliberate capture.
 
 ### 4. LOOP or STOP
-Re-read the pruned `<docs-path>/architecture/ASSESSMENT.md` and decide, off the weakness set, not by eye:
+Decide off the weakness set you just pruned - it is already in this context: re-read `<docs-path>/architecture/ASSESSMENT.md` only after a compaction or when the in-context copy is genuinely stale, never as a per-round habit (the doc grows across rounds, so each needless re-read costs more than the last - measured at 21 reads / 33.5k tokens in one session). Decide off the set, not by eye:
 
 - **SATISFIED** - no fixable (small/substantial) weakness remains; only accepted tradeoffs and user-declined structural items are left.
 - **PLATEAU** - the fixable-weakness set equals the previous round's and none is now resolvable - stop rather than re-run identically.
