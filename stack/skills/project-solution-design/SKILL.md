@@ -1,15 +1,15 @@
 ---
 name: project-solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow with its own verifier and fan-out (that is project-solve-cross-task) - this keeps the whole design in your context by default so you check each step, and dispatches the designer seat only if you ask.
+description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow with its own verifier and fan-out (that is project-solve-cross-task) - in-session it keeps the whole design in your context so you check each step; the run-start ask (or your named mode) decides the designer seat.
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
 
 The design carries the quality: a build handles the traps its plan named and ships the ones it missed. This is the single-chat form of the solution-designer seat - it works out where a feature belongs in the code you already have and breaks it into an ordered plan, all in the current context so you can inspect and correct each step instead of reading a dispatched agent's final report. It plans; it does not write the code (that is the build step under the stack skill) and it does not audit its own plan (that is `project-verify-plan`).
 
-## Design mode - inline by default
+## Design mode - this chat or the designer seat
 
-Default: design inline in this chat, the method below, so you inspect each step. On an explicit agents request, dispatch the `<stack>-solution-designer` seat instead - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. Only one designer runs, there is no fan-out here. Dispatch nothing you were not asked to.
+Design inline in this chat, the method below, so you inspect each step. On an agents request, dispatch the `<stack>-solution-designer` seat instead - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. Only one designer runs, there is no fan-out here. Dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before designing - this chat, or the designer seat? - and hold the answer; a mode the run already picked is inherited, never re-asked.
 
 ## When not
 

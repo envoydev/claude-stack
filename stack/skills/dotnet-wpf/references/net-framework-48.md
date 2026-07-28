@@ -36,9 +36,8 @@ unconditionally, and that library ports to .NET 8/9 unchanged.
 
 - The sync-over-async deadlock is live: WPF's `DispatcherSynchronizationContext` runs continuations only
   on the UI thread, so blocking it (`.Result` / `.Wait()`) while awaiting deadlocks. The mechanism and
-  the library `ConfigureAwait(false)` rule are `csharp`'s `references/net-framework-48.md` and
-  `dotnet-hosted-services`' `references/concurrency.md`; a plain `await` in view-model code correctly
-  resumes on the UI thread. Use `DispatcherTimer` only for UI-thread ticks and a background timer (then
+  the library `ConfigureAwait(false)` rule are `csharp`'s `references/net-framework-48.md` and its
+  `references/concurrency.md`; a plain `await` in view-model code correctly resumes on the UI thread. Use `DispatcherTimer` only for UI-thread ticks and a background timer (then
   marshal via `Dispatcher.InvokeAsync`) for polling.
 - Wire the app-level handlers in `App`: `Application.DispatcherUnhandledException` (UI thread; set
   `Handled` to keep running), `AppDomain.CurrentDomain.UnhandledException` (any thread, log-only, the

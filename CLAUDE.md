@@ -219,7 +219,7 @@ documented there.
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.
   Cross-cutting guidance → the always-on `baseline-*.md` set (fleet-updatable): interaction,
   quality-gates, security, git, navigation - each with an `.mdc` twin in `cursor-stack` that a
-  content change must be mirrored to. The base template (`templates/CLAUDE.template.md`)
+  content change must be mirrored to. The base template (`stack/CLAUDE.template.md`)
   carries only per-project structure + platform routing, never the baseline conventions. Never state one
   trigger twice.
 - **Prove a behavioral change, don't assert it.** A change to a model / effort pin, a routing rule, or a

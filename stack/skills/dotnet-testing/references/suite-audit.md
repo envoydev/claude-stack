@@ -21,4 +21,4 @@ Coverage proves a line *ran*; it does not prove a test would *fail* if that line
 
 - **Scope it** - run on critical / high-risk projects, never blindly across the whole solution. It is expensive and amplifies flaky or slow suites, so keep it off the fast PR path and stabilize the suite first.
 - Install as a local tool (`dotnet new tool-manifest`; `dotnet tool install dotnet-stryker`) for local-and-CI parity, then `dotnet stryker` on the target project.
-- Read the mutation score as a *test-quality* signal interpreted with judgment, not a vanity metric. It complements line/branch coverage (the skill's §Coverage) and the risk hotspots in `dotnet-code-quality` (its `references/crap-analysis.md`) - all three answer different questions.
+- Read the mutation score as a *test-quality* signal interpreted with judgment, not a vanity metric. It complements line/branch coverage (the skill's §Coverage) and the risk hotspots in `dotnet-code-quality` (its `references/crap-analysis.md`, when installed) - all three answer different questions.

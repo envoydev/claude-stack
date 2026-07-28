@@ -158,7 +158,7 @@ switch (shape)
 - Fully supported. `Task`/`Task<T>`/`ValueTask` all available (`ValueTask` via `System.Threading.Tasks.Extensions` NuGet on older Framework).
 - NOT available: `IAsyncEnumerable<T>` / `await foreach` (C# 8 + needs `Microsoft.Bcl.AsyncInterfaces` to even compile, awkward on Framework - avoid; add `System.Linq.Async` for LINQ over async streams if you must).
 - **`ConfigureAwait(false)` on every library `await` is load-bearing here, not an optimization.** Unlike ASP.NET Core (no `SynchronizationContext`), classic ASP.NET (`AspNetSynchronizationContext`), WPF, and WinForms each install a real single-threaded context - it is your defense against the sync-over-async deadlock a blocking caller imposes.
-- Do not block with `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` from a context-bound thread - it deadlocks far more readily than on .NET Core. The fix is always async-all-the-way, never a blocking bridge; the `SemaphoreSlim`/cancellation mechanics are `dotnet-hosted-services`' `references/concurrency.md`.
+- Do not block with `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` from a context-bound thread - it deadlocks far more readily than on .NET Core. The fix is always async-all-the-way, never a blocking bridge; the `SemaphoreSlim`/cancellation mechanics are this skill's `references/concurrency.md`.
 - In app-level code (a classic-ASP.NET controller, a UI event handler) keep the default so the continuation resumes on the context that owns `HttpContext.Current`, culture, and the UI thread. `async void` stays for event handlers only.
 
 ```csharp

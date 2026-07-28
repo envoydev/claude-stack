@@ -1,6 +1,6 @@
 ---
 name: angular-testing
-description: "Angular testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): TestBed + component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing (whichever the workspace already runs - Karma/Jasmine, Jest, or Vitest - detect, never install), HttpTestingController, fakeAsync vs real-async timing, and the Angular exclusion catalog. Ionic/Capacitor apps share it. Load before writing, modifying, or reviewing Angular tests, auditing suite quality, or configuring Angular coverage - do not rely on recall. Do NOT load for .NET (dotnet-testing) or plain TS/JS outside a framework harness (ts-js-testing)."
+description: "Angular testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): TestBed + component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing (whichever the workspace already runs - Karma/Jasmine, Jest, or Vitest - detect, never install), HttpTestingController, fakeAsync vs real-async timing, and the Angular exclusion catalog. Ionic/Capacitor apps share it. Load before writing, modifying, or reviewing Angular tests, auditing suite quality, running mutation testing, or configuring Angular coverage - do not rely on recall. Do NOT load for .NET (dotnet-testing) or plain TS/JS outside a framework harness (ts-js-testing)."
 ---
 
 # Angular Testing
@@ -93,8 +93,9 @@ traffic; no assertion-free or coverage-padding specs, no `expect(true)`.
 - Build fixtures with factory or object-mother helpers so the same literal is not copy-pasted
   across specs.
 
-When reviewing an existing suite, hunt the same false-confidence catalog as the .NET side
-(`dotnet-testing` `references/suite-audit.md` - the lenses are language-neutral):
+When reviewing an existing suite (or running mutation testing), load this skill's own
+`references/suite-audit.md` - the false-confidence catalog, the assertion-depth and mock-usage
+passes, and StrykerJS mutation testing. The catalog:
 assertion-free / always-true, coverage-touching, tautological, missing-await,
 swallowed-exception, disabled assertions.
 
