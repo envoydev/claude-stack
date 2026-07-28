@@ -14,9 +14,9 @@ You drive the deliberate capture of a project's ACTUAL code style and make it se
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
 
 ## Execution modes
-DELEGATED vs INLINE - and why detection keys on dispatch capability, not file presence - is the shared policy `project-solve-cross-task` owns. Pick once, hold for the run:
+DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before a first capture's fan-out - characterize via code-style-analyzer seats (recommend it: the seats absorb the reads), or in-session? - unless a calling flow already picked the run's mode, which is inherited, never re-asked. Pick once, hold for the run:
 
-- **FIRST capture** (no existing doc, or no `Captured:` stamp) - DELEGATED: fan out code-style-analyzer per language as below; you merge and write. INLINE only when no dispatch exists (Cursor, or a single-language repo too small to fan out): the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.
+- **FIRST capture** (no existing doc, or no `Captured:` stamp) - DELEGATED (the user chose seats): fan out code-style-analyzer per language as below; you merge and write. INLINE (chosen - or forced, no question asked: no dispatch (Cursor), or a single-language repo too small to fan out): the same characterization in-session, one language at a time, honoring the agent's own rules (config first, located code second, 2 locating passes per language, divergence flagged) - then continue at MERGE identically.
 - **UPDATE** (doc + stamp exist) - INLINE in this session: `git diff --name-only <stamp-sha>..HEAD` names the changed files, and only the language families those files belong to get re-verified (config re-read, idioms spot-checked) - the other languages' sections stand. Escalate back to per-language dispatch when the drift spans most languages, the stamp's sha is unreachable or `+dirty`, or the USER explicitly asks for agents - their ask always wins.
 
 ## The run
@@ -47,7 +47,7 @@ Build the extension union from the agents' **Language + extensions** sections ON
 
 Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
 
-This generated rule is per-project output, deliberately NOT in the stack's RULES set - the installer fetches only named files and never prunes `.claude/rules/`, so `stack update` never touches it (same lifecycle as the generated `baseline-project-*.md` awareness rules).
+This generated rule is per-project output, deliberately NOT in the stack's RULES set - the installer fetches only named files and never prunes `.claude/rules/`, so `stack update` never touches it.
 
 ### 5. RETIRE - remove the legacy hook, if present
 Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.json` PreToolUse entry. The rule replaces it (one home per piece - both together would double-inject in main sessions). If the hook file exists: delete it, then parse `.claude/settings.json`, remove the PreToolUse entry whose command references `inject-code-style.js`, and rewrite - never regex-edit JSON, never touch the entries the stack installer wired. Nothing to retire on a clean project: skip silently.

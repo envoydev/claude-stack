@@ -102,6 +102,7 @@ values embedded in a registration - show `${VAR}` literally as written.
 | scope | project |
 | CLAUDE_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_AUTOCOMPACT_PCT_OVERRIDE | not set |
+| CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
 
 Stamp from `claude-stack.stamp` (`no stamp - source never resolved at install time` when
 absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and

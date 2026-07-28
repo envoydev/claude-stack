@@ -1,6 +1,6 @@
 ---
 name: ts-js-testing
-description: "Plain TypeScript/JavaScript testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): runner routing (Vitest the house default, Jest where the workspace signals it, node:test the zero-dependency floor - detect, never install), a test strategy keyed off role (pure module / boundary seam / DOM-adjacent / Node-runtime / published types), fake timers vs real async, the mock-masking smoke spec, and the TS/JS exclusion catalog. Covers libraries, Node CLIs/tooling, framework-free web code, and the browser-extension unit layer (the chrome.* seam and extension E2E live in browser-extension). Load before writing, modifying, or reviewing TS/JS tests outside a framework harness, auditing suite quality, or configuring coverage - do not rely on recall. Do NOT load for Angular/Ionic (angular-testing) or .NET (dotnet-testing)."
+description: "Plain TypeScript/JavaScript testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): runner routing (Vitest the house default, Jest where the workspace signals it, node:test the zero-dependency floor - detect, never install), a test strategy keyed off role (pure module / boundary seam / DOM-adjacent / Node-runtime / published types), fake timers vs real async, the mock-masking smoke spec, and the TS/JS exclusion catalog. Covers libraries, Node CLIs/tooling, framework-free web code, and the browser-extension unit layer (the chrome.* seam and extension E2E live in browser-extension). Load before writing, modifying, or reviewing TS/JS tests outside a framework harness, auditing suite quality, running mutation testing, or configuring coverage - do not rely on recall. Do NOT load for Angular/Ionic (angular-testing) or .NET (dotnet-testing)."
 ---
 
 # TypeScript Testing
@@ -16,7 +16,7 @@ the published-type-surface section is the only TS-only part; a checked-JS projec
 `tsc --noEmit` in CI the same way. Framework surfaces have their own hubs: Angular (and Ionic)
 suites are `angular-testing`'s, .NET is `dotnet-testing`'s. Browser extensions share everything here for their chrome-free logic; the
 extension-specific seams - the mocked `chrome.*` API and Playwright persistent-context E2E - live
-in the `browser-extension` skill's `references/tooling-and-testing.md`.
+in the `browser-extension` skill's `references/tooling-and-testing.md` (that skill installs in extension projects).
 
 ## Runner routing
 
@@ -95,7 +95,8 @@ test('the real wiring boots and answers', async () => {
 
 Every spec asserts observable behavior - return values, thrown errors, emitted events, written
 files, HTTP traffic; no assertion-free or coverage-padding specs, no `expect(true)`. When
-reviewing an existing suite, hunt the same false-confidence catalog as the .NET side
-(`dotnet-testing` `references/suite-audit.md` - the lenses are language-neutral):
+reviewing an existing suite (or running mutation testing), load this skill's own
+`references/suite-audit.md` - the false-confidence catalog, the assertion-depth and mock-usage
+passes, and StrykerJS mutation testing. The catalog:
 assertion-free / always-true, coverage-touching, tautological, missing-await,
 swallowed-exception, disabled assertions.

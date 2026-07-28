@@ -31,7 +31,8 @@ change made only inside a consuming project is throwaway (see Invariants).
   `Task|Agent` - blocks an `*-implementer` dispatch without the `<docs-path>/flow/APPROVAL` gate
   file the flows write on explicit user approval or an explicit AUTO waiver), all wired; plus
   `instrument-tool-usage.js`,
-  installed UNWIRED (opt-in per-run tool/skill/MCP stats via STACK_INSTRUMENT=1 + manual wiring).
+  wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
+  settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
   Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
   makes them selectable per install (a selection with no `hook` lines installs all five).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
@@ -123,7 +124,7 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
-| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (4 wired + 1 copied-unwired instrumentation) |
+| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all five; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
 | Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
@@ -219,7 +220,7 @@ documented there.
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.
   Cross-cutting guidance → the always-on `baseline-*.md` set (fleet-updatable): interaction,
   quality-gates, security, git, navigation - each with an `.mdc` twin in `cursor-stack` that a
-  content change must be mirrored to. The base template (`templates/CLAUDE.template.md`)
+  content change must be mirrored to. The base template (`stack/CLAUDE.template.md`)
   carries only per-project structure + platform routing, never the baseline conventions. Never state one
   trigger twice.
 - **Prove a behavioral change, don't assert it.** A change to a model / effort pin, a routing rule, or a

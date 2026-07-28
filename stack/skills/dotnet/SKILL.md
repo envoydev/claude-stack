@@ -9,7 +9,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 
 **Companion, not optional:** load `csharp` whenever you write or refactor any C# - naming, layout, modern syntax, async, dispose, exceptions/Result, logging, DI lifetimes. Every row below is *in addition to* the C# baseline, never instead of it.
 
-**Required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front.
+**Required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is absent means the area is absent here, not a broken pointer.
 
 **The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
 
@@ -18,7 +18,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | You are about to... | Load |
 |---|---|
 | write or refactor any C# (naming, async, dispose, exceptions/Result, logging, DI lifetimes, modern syntax) | `csharp` (always) |
-| add a `Channel<>`, `lock`, `SemaphoreSlim`, `Interlocked`, `Thread`, or other synchronization / producer-consumer code | `dotnet-hosted-services` (its `references/concurrency.md`) |
+| add a `Channel<>`, `lock`, `SemaphoreSlim`, `Interlocked`, `Thread`, or other synchronization / producer-consumer code | `csharp` (its `references/concurrency.md`); a hosted worker's loop is `dotnet-hosted-services` |
 | define a type where allocation or memory layout matters (struct vs class, `readonly struct`, pooling, `Span`) | `dotnet-performance` (its `references/type-design.md`) |
 | (de)serialize JSON, reuse `JsonSerializerOptions`, or add a `JsonSerializerContext`, or pick a wire format (Protobuf/MessagePack) | `dotnet-performance` (its `references/serialization.md`) |
 | author a Roslyn `IIncrementalGenerator`, or consume `[GeneratedRegex]` / `[LoggerMessage]` / `[JsonSerializable]` | `dotnet-source-generators` |
@@ -130,10 +130,10 @@ Maintaining or hardening a .NET Framework 4.8 codebase - the deltas from the mod
 | test classic ASP.NET on net48 - in-memory OWIN TestServer, HttpContextBase over sealed HttpContext.Current | `dotnet-testing` (its `references/net-framework-48.md`) |
 | build or maintain a WPF app on net48 - CommunityToolkit.Mvvm source-generator constraints, Generic Host composition, app-level exception handlers | `dotnet-wpf` (its `references/net-framework-48.md`) |
 
-The async deadlock angle (why `ConfigureAwait(false)` is load-bearing here) is in `dotnet-hosted-services`' `references/concurrency.md`.
+The async deadlock angle (why `ConfigureAwait(false)` is load-bearing here) is in `csharp`'s `references/net-framework-48.md`.
 
 ## Notes
 
 - **Every target is house-owned.** This router points only to skills authored in this repo - hubs that carry a `references/` folder (`dotnet-architecture`, `dotnet-data-access`, `dotnet-project-setup`, `dotnet-performance`, `dotnet-diagnostics`) and the leaf specialists. Some rows route into a hub's reference file rather than a standalone skill - load the named skill and open that reference; nothing here installs from a third-party kit.
 - **Hubs vs leaves.** `csharp` is the C# baseline hub, `dotnet-web-backend` the web hub, `database-conventions` the data hub, `dotnet-testing` the test hub - a leaf specialist points UP to its hub, the hub points DOWN to its deep specialists, and this router indexes them all. Load the web hub before a web specialist; load the data hub before EF/SQL specialists.
-- **Out of this router's scope.** Web front-end work routes through `frontend` (and `mobile` for Ionic/Capacitor), not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `/code-review`, context7 library docs, git - lives in the project's `CLAUDE.md`.
+- **Out of this router's scope.** Web front-end work routes through `frontend` (and `mobile` for Ionic/Capacitor), not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `project-verify-code`, context7 library docs, git - lives in the project's `CLAUDE.md`.

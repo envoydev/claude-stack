@@ -506,7 +506,7 @@ $Hooks = @(
   'guard-catastrophic-rm.js::Bash::'              # block recursive rm of /, ~, $HOME, or a bare *
   'guard-read-whole-file.js::Read::'              # block whole-file Read of a >100-line source file - locate via serena first
   'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
-  'instrument-tool-usage.js::'                    # fetched, NOT wired (empty matcher): opt-in tool-usage stats - wire PreToolUse '.*' + STACK_INSTRUMENT=1 for a measured run (see README)
+  'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
@@ -1030,6 +1030,10 @@ function Set-HookSettings {
     # Single-quoted segments keep $CLAUDE_PROJECT_DIR literal (Claude Code substitutes it at runtime).
     $cmd = 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/' + $file + '"'
     if ($argStr) { $cmd = $cmd + ' ' + $argStr }
+    if ($file -eq 'instrument-tool-usage.js') {
+      # env-gated: the sh test costs ~nothing when off; node spawns only under CLAUDE_STACK_INSTRUMENT=1
+      $cmd = '[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] || ' + $cmd
+    }
     if ($have -contains $cmd) { continue }
     $block = [pscustomobject]@{ matcher = $matcher; hooks = @([pscustomobject]@{ type = 'command'; command = $cmd }) }
     $pre += $block
@@ -1065,6 +1069,11 @@ function Set-HookSettings {
   # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
   if (-not $data.env.PSObject.Properties['CLAUDE_DOCS_PATH']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'
+    $changed = $true
+  }
+  # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_INSTRUMENT']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
     $changed = $true
   }
   if ($changed) {

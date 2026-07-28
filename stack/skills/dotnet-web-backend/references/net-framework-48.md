@@ -12,7 +12,7 @@ sharper per-area deltas route out below.
   `.GetAwaiter().GetResult()`) on the request thread deadlocks - the continuation is queued to the
   context the blocked thread holds. This is the defining 4.8 web footgun; it is safe on ASP.NET Core
   only because Core has no context. The mechanism and the library-code `ConfigureAwait(false)` rule are
-  `csharp`'s `references/net-framework-48.md` and `dotnet-hosted-services`' `references/concurrency.md`.
+  `csharp`'s `references/net-framework-48.md` and its `references/concurrency.md`.
 - **Set `<httpRuntime targetFramework="4.8" />` in web.config.** Without it ASP.NET runs in 4.0 quirks
   mode where async/await behavior is undefined - the number-one silent async bug on the full framework.
 - Go async all the way: MVC 5 actions return `Task<ActionResult>`, Web API 2 `Task<IHttpActionResult>`.

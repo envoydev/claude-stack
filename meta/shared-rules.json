@@ -52,6 +52,10 @@
     {
      "file": "stack/hooks/guard-unapproved-dispatch.js",
      "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+    },
+    {
+     "file": "stack/hooks/instrument-tool-usage.js",
+     "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
     }
    ]
   },
@@ -383,6 +387,10 @@
     {
      "file": "stack/agents/angular-test-resolver.md",
      "marker": "Lead with a status - DONE"
+    },
+    {
+     "file": "stack/agents/integration-reviewer.md",
+     "marker": "seat statuses read DONE / DONE_WITH_CONCERNS"
     }
    ]
   },
@@ -732,6 +740,10 @@
     {
      "file": "stack/agents/winforms-implementer.md",
      "marker": "a shared-seam change stops as BLOCKED_CONTRACT_CHANGE with a Contract Change Request"
+    },
+    {
+     "file": "stack/agents/integration-reviewer.md",
+     "marker": "a lane signed off against a superseded version fails the gate"
     }
    ]
   },
@@ -887,7 +899,7 @@
    ]
   },
   "testing-suite-audit-lenses": {
-   "_note": "The false-confidence lens catalog owned by dotnet-testing references/suite-audit.md; the two TS-side hubs restate the lens list when pointing at it.",
+   "_note": "The false-confidence lens catalog owned by dotnet-testing references/suite-audit.md; the two TS-side hubs restate the lens list alongside their own vendored suite-audit copies (testing-suite-audit-method).",
    "owner": {
     "file": "stack/skills/dotnet-testing/SKILL.md",
     "marker": "assertion-free / always-true, coverage-touching, tautological, missing-await, swallowed-exception, disabled assertions"
@@ -1221,6 +1233,186 @@
     {
      "file": "stack/skills/dotnet-windows-service/SKILL.md",
      "marker": "the pre-first-`await` startup-blocking trap (and its `Task.Yield()` workaround) is gone"
+    }
+   ]
+  },
+  "domain-trio-protocol-vendored": {
+   "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, because any of them may be installed without project-solve-cross-task. An edit to the owner file is a copy of the whole file over each site.",
+   "owner": {
+    "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
+    "marker": "The main session is the only orchestrator for the whole vertical"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-architecture-quality-loop/references/domain-trio-protocol.md",
+     "marker": "The main session is the only orchestrator for the whole vertical"
+    },
+    {
+     "file": "stack/skills/project-test-coverage-loop/references/domain-trio-protocol.md",
+     "marker": "The main session is the only orchestrator for the whole vertical"
+    },
+    {
+     "file": "stack/skills/project-build-from-scratch/references/domain-trio-protocol.md",
+     "marker": "The main session is the only orchestrator for the whole vertical"
+    }
+   ]
+  },
+  "fresh-session-at-boundaries": {
+   "_note": "The long-run session-cost guidance: a loop's round/stage boundary is a fresh-session resume point with the reconciled doc as the handoff, because measured session analysis shows carried-forward conversation (not tool output) dominates cost. Restated in each loop.",
+   "owner": {
+    "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+    "marker": "fresh-session resume point"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "fresh-session resume point"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/SKILL.md",
+     "marker": "fresh-session resume point"
+    }
+   ]
+  },
+  "plan-review-stop": {
+   "_note": "The plan-gate + plan-review-stop protocol (verify-plan four passes in-session, present the gated plan and end the turn, build only on the user's word, waivable only by explicit review words recorded as plan_review: waived) - stated in the solve-cross-task body and restated in domain-trio-protocol.md step 1 (whose vendored copies are pinned by domain-trio-protocol-vendored).",
+   "owner": {
+    "file": "stack/skills/project-solve-cross-task/SKILL.md",
+    "marker": "plan_review: waived"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
+     "marker": "plan_review: waived"
+    }
+   ]
+  },
+  "generated-rule-lifecycle": {
+   "_note": "The generated-rule survival invariant: a per-project GENERATED rule is never listed in the installer's fetch manifest (a fetch would overwrite the capture) and nothing prunes .claude/rules/, so it survives stack update. Three generating skills restate it.",
+   "owner": {
+    "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+    "marker": "the installer's manifest must not list this rule"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-code-style-analyzer/SKILL.md",
+     "marker": "deliberately NOT in the stack's RULES set"
+    },
+    {
+     "file": "stack/skills/project-related-context/SKILL.md",
+     "marker": "deliberately NOT in the stack installer's fetch manifest"
+    }
+   ]
+  },
+  "mode-ask-at-start": {
+   "_note": "The session-or-agents run-start question: when dispatch is available every entry-point orchestration skill and capture asks ONE question up front, holds the answer for the run, inherits inside a composed flow, and skips the ask where INLINE is forced. Canonical in execution-modes.md; each asking skill carries the sentence.",
+   "owner": {
+    "file": "stack/skills/project-solve-cross-task/references/execution-modes.md",
+    "marker": "The mode is the user's run-start pick, house-wide"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-solve-cross-task/SKILL.md",
+     "marker": "ask ONE question at the scoping verdict"
+    },
+    {
+     "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+     "marker": "ask ONE question before ANALYZE"
+    },
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "ask ONE question before ANALYZE"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/SKILL.md",
+     "marker": "ask ONE question before DISCOVERY"
+    },
+    {
+     "file": "stack/skills/project-build-from-scratch/SKILL.md",
+     "marker": "ask ONE question before the first slice"
+    },
+    {
+     "file": "stack/skills/project-implementer/SKILL.md",
+     "marker": "ask ONE question before building"
+    },
+    {
+     "file": "stack/skills/project-solution-design/SKILL.md",
+     "marker": "ask ONE question before designing"
+    },
+    {
+     "file": "stack/skills/project-verify-plan/SKILL.md",
+     "marker": "ask ONE question before auditing"
+    },
+    {
+     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "marker": "ask ONE question before gathering"
+    },
+    {
+     "file": "stack/skills/project-code-style-analyzer/SKILL.md",
+     "marker": "ask ONE question before a first capture's fan-out"
+    },
+    {
+     "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
+     "marker": "ask ONE question before the fan-out"
+    },
+    {
+     "file": "stack/skills/project-related-context/SKILL.md",
+     "marker": "ask ONE question before the fan-out"
+    }
+   ]
+  },
+  "testing-suite-audit-method": {
+   "_note": "The full suite-audit method (lens catalog, assertion-depth + mock-usage passes, mutation testing) - the .NET original plus the TS adaptation vendored into both TS-side hubs, because neither installs alongside dotnet-testing. The two TS copies are verbatim twins of each other; a method change edits the .NET owner and both TS copies in the same sitting.",
+   "owner": {
+    "file": "stack/skills/dotnet-testing/references/suite-audit.md",
+    "marker": "Coverage proves a line *ran*; it does not prove a test would *fail*"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/ts-js-testing/references/suite-audit.md",
+     "marker": "Coverage proves a line *ran*; it does not prove a test would *fail*"
+    },
+    {
+     "file": "stack/skills/angular-testing/references/suite-audit.md",
+     "marker": "Coverage proves a line *ran*; it does not prove a test would *fail*"
+    }
+   ]
+  },
+  "issue-leveling-ladder": {
+   "_note": "The P0-P3 priority ladder (P0 outage/data-loss now, P1 blocks release/core flow no workaround, P2 recoverable/workaround, P3 cosmetic) - canonical in issue-investigation.md, restated inline in runtime-failure-diagnoser so leveling survives when project-solve-cross-task is not installed.",
+   "owner": {
+    "file": "stack/skills/project-solve-cross-task/references/issue-investigation.md",
+    "marker": "data-loss or outage happening now"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/runtime-failure-diagnoser.md",
+     "marker": "P0 data-loss or outage happening now"
+    }
+   ]
+  },
+  "approval-gate-stamp": {
+   "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site so the stamp format survives when project-solve-cross-task is not installed.",
+   "owner": {
+    "file": "stack/skills/project-solve-cross-task/references/execution-modes.md",
+    "marker": "flow/APPROVAL"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-implementer/SKILL.md",
+     "marker": "flow/APPROVAL"
+    },
+    {
+     "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+     "marker": "flow/APPROVAL"
+    },
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "flow/APPROVAL"
+    },
+    {
+     "file": "stack/skills/project-build-from-scratch/SKILL.md",
+     "marker": "flow/APPROVAL"
     }
    ]
   }

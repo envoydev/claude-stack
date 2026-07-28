@@ -89,7 +89,7 @@ Snapshot / Verify assertions - approving serialized output instead of hand-writt
 
 - **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
 - Reports via `ReportGenerator` for HTML / Cobertura / OpenCover formats.
-- Pair with `dotnet-code-quality`'s `references/crap-analysis.md` for CRAP-score risk hotspots.
+- Pair with `dotnet-code-quality`'s `references/crap-analysis.md` (when installed) for CRAP-score risk hotspots.
 
 ## Test project conventions
 
@@ -123,6 +123,8 @@ Snapshot / Verify assertions - approving serialized output instead of hand-writt
 The rules above are for *writing* tests; reviewing an existing suite is its own lens - a test that passes can still prove nothing. When asked 'are these tests any good?' (or to run mutation testing), load `references/suite-audit.md`: the false-confidence catalog to scan first (assertion-free / always-true, coverage-touching, tautological, missing-await, swallowed-exception, disabled assertions), the assertion-depth and mock-usage passes, and Stryker.NET mutation testing.
 
 ## Routing (cross-skill)
+
+A row whose skill is absent means the area is absent here, not a broken pointer.
 
 - Performance microbenchmarks -> `dotnet-diagnostics` (its `references/microbenchmarking.md`); crash / hang dump capture -> `dotnet-diagnostics` (its `references/dumps.md`).
 - Reward-hacking / coverage-gaming check before 'done' -> `dotnet-code-quality`; CRAP-score risk hotspots -> its `references/crap-analysis.md` (paired at §Coverage above).

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// instrument-tool-usage.js - OPT-IN PreToolUse instrumentation (NOT wired by default).
+// instrument-tool-usage.js - env-gated PreToolUse instrumentation (wired by default, OFF by default).
 //
 // Why: the orchestrator cannot see which Skill / MCP a dispatched subagent loaded or
 // called - only that subagent's aggregate token/tool_use totals. That makes a real run's
@@ -10,20 +10,21 @@
 // plus `Skill` and `mcp__*` - as one JSONL line so a run can be tallied exactly. It NEVER blocks
 // a call - it observes and exits 0.
 //
-// The installer FETCHES this file but deliberately does NOT wire it (its HOOKS entry has an
-// empty matcher) - a wired '.*' hook costs a node spawn on every tool call, so the wiring is
-// opt-in per run. Inert unless STACK_INSTRUMENT is set. To enable for a benchmark / audit run,
-// see README.md ('Optional: tool-usage instrumentation'):
-//   1. add a PreToolUse hook wired to it in .claude/settings.json with matcher ".*" (all tools; use "Skill|mcp__.*" to scope to skills/MCP only)
-//   2. run with STACK_INSTRUMENT=1 (optionally STACK_INSTRUMENT_LOG=<path>)
+// The installer wires this on matcher '.*' behind a shell gate - `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` -
+// so when the switch is off the per-call cost is a shell test, never a node spawn. The switch is
+// `CLAUDE_STACK_INSTRUMENT` in .claude/settings.json env, seeded "0": flip it to "1" for a measured
+// benchmark / audit run (optionally CLAUDE_STACK_INSTRUMENT_LOG=<path>), back to "0" after. The env check
+// below is the belt for a gate-less manual wiring: only the literal value 1 (or true) records.
 //
 // Output: one JSONL row per matched call at
-//   $STACK_INSTRUMENT_LOG  (default: <project>/.claude/tool-usage.<session>.jsonl)
+//   $CLAUDE_STACK_INSTRUMENT_LOG  (default: <docs-path>/tools-usage/<session-or-agent-id>.jsonl,
+//   the docs root resolved from CLAUDE_DOCS_PATH like every generated artifact)
 // Coverage note: PreToolUse fires for the session's tool calls; where the running Claude
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
 
-if (!process.env.STACK_INSTRUMENT) process.exit(0); // opt-in: default no-op, zero overhead
+const sw = String(process.env.CLAUDE_STACK_INSTRUMENT || '').toLowerCase();
+if (sw !== '1' && sw !== 'true') process.exit(0); // off unless explicitly switched on ("0"/"false"/unset = no-op)
 
 let raw = '';
 process.stdin.on('data', (d) => (raw += d));
@@ -53,10 +54,12 @@ process.stdin.on('end', () => {
       cwd: ev.cwd || null,
     };
     const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
-    const sid = String(ev.session_id || 'session').slice(0, 12);
+    // one ledger per session/agent id - the filename matches the transcript's id for the --hook-log join
+    const sid = String(ev.session_id || 'session').replace(/[^A-Za-z0-9._-]/g, '');
+    const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
     const out =
-      process.env.STACK_INSTRUMENT_LOG ||
-      path.join(dir, '.claude', `tool-usage.${sid}.jsonl`);
+      process.env.CLAUDE_STACK_INSTRUMENT_LOG ||
+      path.join(dir, docsRoot, 'tools-usage', `${sid}.jsonl`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.appendFileSync(out, JSON.stringify(rec) + '\n');
   } catch {
