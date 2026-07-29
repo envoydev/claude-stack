@@ -6,7 +6,8 @@
      re-include a file when its parent dir is wholesale-ignored via '.claude/'). Then:
 1. Write the project top from the authoring outline in the comment below - replace the H1 title
    with the project's own name, put the intro above ## Rules - then delete that comment.
-2. Trim the ## Rules table to what the installer actually laid down.
+2. Trim the ## Rules table to what the installer actually laid down - and drop any GENERATED
+   row whose capture skill this install skipped (its /command will not resolve).
 3. Run the captures that write the rows marked GENERATED: /project-agent-capabilities,
    /project-architecture-analyzer, /project-code-style-analyzer - plus /project-related-context
    ONLY when this project has sibling repos (a standalone repo drops that row instead).
@@ -56,7 +57,8 @@ Stack - what it is built with:
 
 6. Stack - languages, frameworks, key libraries, test stack + coverage gate, the LSP plugin
    for the primary language(s). MCP routing is NOT hand-filled here - it lives in the generated
-   .claude/rules/baseline-project-agent-capabilities.md (run /project-agent-capabilities).
+   .claude/rules/baseline-project-agent-capabilities.md (run /project-agent-capabilities; if that
+   skill was not installed, a lean hand-filled routing list here is the fallback).
 7. Commands - copy-pasteable build / test / run / migrate / publish, with any environment quirks.
 8. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
    permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
