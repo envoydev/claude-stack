@@ -18,7 +18,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 - Ground every claim in the actual file. Quote the specific line or block you are judging. No score, deduction, or fix without cited evidence from the file.
 - Preserve intent. You improve how a skill is written, never what it does. Same inputs must yield the same behavior after your edits.
 - Anti-gaming over grade-chasing. A high number that was earned by padding, keyword stuffing, or fabricated examples is a failure, not a pass. Re-score honestly after every edit.
-- Treat the skill set as one codebase. Skills should reuse each other, not repeat each other. Content that appears in more than one skill (shared instructions, templates, rules, glossaries) is a duplication defect: factor it into a shared reference the skills point to, or have one skill delegate to another, so it lives in exactly one place.
+- Treat the skill set as one codebase - but installs are selective: any other skill may be absent from a given deployment, so an install-time-optional artifact can never be a load-bearing dependency. A skill NEVER loads a file from another skill's folder - its operative references live under its own `references/`, vendored or adapted (a cross-skill file path is a self-containment defect even while it happens to resolve: the content silently vanishes for every project that installs the subset). Content that must appear in more than one skill is managed duplication, not a pointer - each copy self-contained and registered (next principle). Delegation by name to a sibling skill is fine only where it is conditional-by-design - a routing boundary that degrades gracefully when the target is absent - never for content the skill needs in order to execute.
 - Minimal cross-mentions - single responsibility. A skill mentions another skill, rule, or agent ONLY when the mention is load-bearing at runtime: a delegation or dispatch target invoked by name, a routing boundary (the case where the other artifact wins), or a preload the skill needs to execute. Any other cross-mention - ownership attribution, see-also, sync breadcrumbs - is a coupling defect: remove it. Where the same rule text must deliberately live in more than one artifact, each copy stays inline and self-contained and the sync is registered in `meta/shared-rules.json` at the repo root (one entry per multi-home rule: the canonical owner + every restatement site, each pinned by a marker phrase; the repo lint fails when a copy drifts) - never expressed as a prose mention. Create the registry if the repo lacks it, and any pass that adds, moves, or rewords multi-home text updates the registry in the same pass.
 - Generic by default. A skill names a technology, framework, or product only where its scope requires it: its own stack, a routing target it delegates to by name, or a clearly-marked illustrative example. An incidental tech mention in a generic skill is a defect - cite the line and score it under Dimension 3.
 - Single responsibility. A skill owns ONE job. A grab-bag skill bundling unrelated capabilities undertriggers every job it carries - its description cannot state one crisp what-plus-when - and cannot be excluded or reused per job. Score the defect under Dimension 1 and propose the split in the report; never split unilaterally, because a split changes the set's routing surface.
@@ -32,9 +32,9 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 1. Recursively find every `SKILL.md` under `SKILLS_ROOT`. Each one is a skill.
 2. For each skill, read the full `SKILL.md` and enumerate bundled resources (`references/`, `scripts/`, `assets/`). Read reference files that the body points to. Note script names and what they do, but you do not need to read long scripts line by line.
 3. Record for each skill: directory name, `name` and `description` from frontmatter, body line count, resource inventory, and any explicit constraints the author wrote (trigger-only keywords, privacy rules, language rules, formatting rules). These constraints are load-bearing. Treat them as fixed.
-4. Build a duplication map across the whole set. Find content that repeats across two or more skills: identical or near-identical instruction blocks, shared output templates, the same rules restated, overlapping glossaries, or two skills whose scopes overlap enough that one should delegate to the other. Record each duplication as a cluster: the skills involved, the shared content, and whether the right fix is a shared reference or delegation. This map drives the reuse dimension in scoring and the shared-content extraction in remediation.
+4. Build a duplication map across the whole set. Find content that repeats across two or more skills: identical or near-identical instruction blocks, shared output templates, the same rules restated, overlapping glossaries, or two skills whose scopes overlap enough that one should delegate to the other. Record each duplication as a cluster: the skills involved, the shared content, and whether the right fix is a registered self-contained restatement in each skill (managed duplication, `meta/shared-rules.json`), ownership by the narrower skill with conditional delegation from the others, or leaving it local. This map drives the reuse dimension in scoring and the duplication resolution in remediation.
 5. Build an invocation and conflict map. Record each skill's outbound edges - the agents it dispatches, the skills it delegates to by name, whether it is manual-only (`disable-model-invocation`) - and chain them with the agents' own skill preloads and dispatch targets into one directed call graph. Any cycle, at any depth, is the highest-severity defect this phase can find. Note the structural walls that legitimately terminate a chain (a manual-only skill cannot re-fire by description-match; a dispatched agent without the Skill or Agent tool is terminal) so you do not report a loop an existing wall already breaks. Separately record contradictions: two skills prescribing incompatible behavior for the same trigger, file type, or task.
-6. Build a reference-resolution map. Resolve every artifact name each skill uses - the skills it delegates to, the agents it dispatches, the rules it cites (at their deployed paths), the reference files it loads - against the discovered catalogs. A dangling name (a typo, a renamed artifact's old name, a retired artifact) is a defect, not a style issue: the pointer silently no-ops at runtime, which is worse than no pointer. Record each for remediation and score it under Dimension 4.
+6. Build a reference-resolution map. Resolve every artifact name each skill uses - the skills it delegates to, the agents it dispatches, the rules it cites (at their deployed paths), the reference files it loads - against the discovered catalogs. A dangling name (a typo, a renamed artifact's old name, a retired artifact) is a defect, not a style issue: the pointer silently no-ops at runtime, which is worse than no pointer. A reference path that resolves inside ANOTHER skill's folder is a self-containment defect even when it currently resolves - record it alongside the dangling names. Record each for remediation and score it under Dimension 4.
 
 Do not edit anything in this phase.
 
@@ -80,10 +80,10 @@ Floor for A: >= 17/20.
 
 Scored against the duplication map from Phase 0. This is a set-level property: a skill loses points here for content it duplicates from other skills, even if the skill reads well on its own.
 
-- No instruction block, template, rule set, or glossary is copy-pasted across skills. Genuinely shared content lives in one shared reference that each skill cites. (8)
-- Skills with overlapping scope compose rather than reimplement: the narrower skill owns the logic and the broader one delegates to it by name, instead of both carrying their own copy. (5)
-- Shared references are cited cleanly, and the sharing does not stop each skill from being understood and packaged on its own. A skill that silently depends on a file it never names is a defect, not reuse. (4)
-- Reuse is proportionate. Small incidental overlaps (a one-line rule, a stock phrase) stay local. Do not over-abstract trivial snippets into a shared file that couples skills for no real saving. (3)
+- No instruction block, template, rule set, or glossary is copy-pasted across skills unmanaged. Content deliberately living in more than one skill is registered multi-home text: each copy self-contained, marker-pinned in `meta/shared-rules.json`; the unregistered copy is the defect. (8)
+- Skills with overlapping scope compose rather than reimplement: the narrower skill owns the logic and the broader one delegates to it by name - conditional-by-design, still behaving sensibly when the target is not installed - instead of both carrying an unmanaged copy. (5)
+- Self-containment holds: no skill loads a file from another skill's folder, and each skill can be understood and packaged on its own. A skill that silently depends on a file it never names - or on a file another skill owns - is a defect, not reuse. (4)
+- Reuse is proportionate. Small incidental overlaps (a one-line rule, a stock phrase) stay local. Do not over-abstract trivial snippets into registered multi-home text that couples skills for no real saving. (3)
 
 Floor for A: >= 17/20.
 
@@ -136,8 +136,8 @@ an unresolved DRIFTED finding blocks the artifact from A.
 Work set-level defects first, before the per-skill loops. Break every invocation cycle structurally - remove the unsanctioned dispatch edge, or make the re-entrant skill manual-only - never with a prose depth counter; resolve every contradiction by deciding which skill owns the behavior and rewriting the loser to defer by name, or, where the repo does not decide the winner, leave both, flag it prominently, and mark both skills blocked. Then resolve cross-skill duplication, still at the set level - duplication fixes touch several skills at once, so doing them before the per-skill loops stops you from polishing a body you are about to delete. For each cluster in the duplication map:
 
 - Snapshot every skill in the cluster.
-- Move the shared content into one home: a shared reference file that each skill cites, or the narrower skill, which the others then delegate to by name.
-- Replace the copies with a short pointer to that home. Confirm each affected skill still reads and behaves the same.
+- Resolve the cluster without breaking self-containment: keep a self-contained copy in every skill that operationally needs the content and register the set in `meta/shared-rules.json` (owner + sites, marker-pinned), or give the narrower skill ownership and have the others delegate by name where that delegation is conditional-by-design. Never a cross-skill file pointer.
+- Align the copies (or replace them with the delegation) and confirm each affected skill still reads and behaves the same.
 - Re-score every skill in the cluster on Dimension 4 (and any dimension the edit touched).
 
 Then, for each skill still scoring below A / 9, run this bounded loop:
@@ -148,7 +148,7 @@ Then, for each skill still scoring below A / 9, run this bounded loop:
    - Vague description: rewrite it to state what plus when, add real trigger phrases, add a when-not-to-use clause for the near-misses you can identify from the skill's own scope.
    - Bloated body: move optional or heavy detail into `references/`, collapse restated rules, delete filler. Deleting weak content raises the token score; do not replace it with different filler.
    - Disorganized references: reorganize the reference layer into one topic per file with descriptive names and a hierarchy that mirrors the workflow, add tables of contents to long files, and move each citation in the body to the step that actually uses it.
-   - Duplicated content that survived the set-level pass: extract it to a shared reference or delegate to the owning skill, then point to it. Do not re-solve the same duplication in two places.
+   - Duplicated content that survived the set-level pass: resolve it the set-level way - register the self-contained copies or delegate to the owning skill - never with a cross-skill file pointer. Do not re-solve the same duplication in two places.
    - Rigid rule wall: attach the reason to each rule, or fold redundant rules together. Keep safety and privacy rules verbatim.
    - Missing examples or output template: add one concrete, correct example drawn from the skill's real domain.
 4. Re-score the skill from scratch against the rubric with fresh eyes. Do not carry forward the previous score.
@@ -178,7 +178,7 @@ After the loop, for each edited skill:
 1. Re-read the full edited `SKILL.md` and any moved reference files end to end. Confirm the frontmatter is still valid and `name` and directory are unchanged.
 2. Confirm the behavior-preservation prompts still produce matching outputs.
 3. Confirm no guarded rule was dropped. Diff against the snapshot to check.
-4. For any content moved to a shared reference, confirm every skill that used it now names the shared file and that the content lives in exactly one place.
+4. For any multi-home content, confirm every copy is self-contained, its `meta/shared-rules.json` entry pins each site by marker, and no skill loads a file outside its own folder.
 5. Confirm the reference layer is navigable: every reference the body cites exists, every reference file is cited somewhere, every skill, agent, or rule the body names still resolves against the live catalogs, and names and hierarchy still match the workflow after the edits.
 6. Record the final grade with the same evidence-cited scoring as Phase 1.
 
@@ -203,8 +203,8 @@ Produce a single report with:
 
 1. Summary table: one row per skill with columns `skill`, `baseline grade`, `final grade`, `iterations`, `status` (`raised to A`, `already A`, `blocked: <reason>`).
 2. Per skill, a short block containing: baseline score by dimension with the top 2-3 cited deductions; what changed, as a terse list of edits; final score by dimension; any blocker and why a guard prevented an A.
-3. Duplication map: each cluster found, the skills involved, and how it was resolved (shared reference or delegation), or why it was left local.
+3. Duplication map: each cluster found, the skills involved, and how it was resolved (registered restatement or delegation), or why it was left local.
 4. Invocation and conflict map: every cycle found and how it was broken, every contradiction and its resolution (or why it is unresolved and the skills are blocked), and any genericity flags with cited lines.
-5. If `WRITE` is true, the list of files edited, moved, or created, including any shared reference files, and the snapshot location for rollback.
+5. If `WRITE` is true, the list of files edited, moved, or created, including any `meta/shared-rules.json` entries added or updated, and the snapshot location for rollback.
 
 Keep the report dense. No preamble, no restating this prompt back, no filler.
