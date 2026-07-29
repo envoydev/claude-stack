@@ -6,11 +6,13 @@ First, read `<docs-path>/architecture/ARCHITECTURE.md` if it exists - the record
 
 Look for:
 - **Architecture conformance** (against ARCHITECTURE.md): logic in the wrong layer, a controller doing persistence, a domain model reaching into the UI; a dependency pointing the wrong way (a core depending on a detail) or a cycle between modules; a second architecture pattern bolted onto the one the map records - match the recorded structure, never introduce a rival even if it is better.
-- Bugs: off-by-one errors, null and boundary mishandling, swallowed exceptions, the wrong operator, an unhandled async rejection.
+- Bugs: off-by-one errors, null and boundary mishandling, swallowed exceptions, the wrong operator, an unhandled async rejection. Report a bug only with a constructible trigger - the concrete input, state, or sequence that makes it misbehave; a smell you cannot trigger is not a bug finding.
 - Dead code, unreachable branches, and conditions that can never be true or never false.
 - Needless complexity - a nested conditional ladder that flattens to a guard clause, a hand-rolled loop that is one built-in call, a re-implementation of something the standard library already does.
 - Resource and lifetime issues: leaks, unclosed handles, mutation of shared state, a missing dispose or unsubscribe.
 - God objects, files, or functions that have accreted unrelated concerns; magic numbers and copy-pasted blocks that should be a named constant or a single function; duplicated structure that should be one abstraction - but do not abstract a coincidence into a wrong shared shape.
+
+Naming and comment findings are owned by the later stages - do not flag them here, even when you spot them. A choice recorded in CLAUDE.md or the architecture docs is a decision, not a finding - judge the code against what the project deliberately chose, never against a convention it deliberately does not use.
 
 Severity: a real bug, a dependency cycle, or a cross-layer leak is a BLOCKER; an awkward-but-correct expression or a single misplaced helper is MINOR. Make the smallest change that resolves each finding - move code to its correct home, extract the constant - without rewriting a working module wholesale; a fix that introduces new findings is divergence, not progress.
 
