@@ -36,7 +36,7 @@ These are extraction and faithfulness traps - where a smell hides and how a dige
 
 ## Method (bounded)
 1. Restate the one area: the module/topic, and what the caller wants characterized.
-2. `get_symbols_overview` the area; locate its public surface and entry points with serena.
+2. `get_symbols_overview` the area (on C# pass `depth: 2` - the default depth stops at the namespace, hiding every type and member); locate its public surface and entry points with serena.
 3. Walk the edges one level out - `find_referencing_symbols` for inbound callers, the imports/registrations for outbound - and confirm each from a usage, not a name.
 4. Name the patterns present and the located smells. **Hard cap: 2 locating passes over the area.** If it is still unclear after 2, report what is characterized, what is uncertain, and what would settle it - never guess to fill the gap.
 

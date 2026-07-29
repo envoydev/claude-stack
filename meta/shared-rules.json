@@ -1415,6 +1415,19 @@
      "marker": "flow/APPROVAL"
     }
    ]
+  },
+  "serena-csharp-overview-depth": {
+   "_note": "get_symbols_overview's language-specific depth default resolves to 0 for C#, whose top-level symbol is the namespace - so the default hides every type/member; depth 2 is the C# floor (measured 2026-07-29, serena-agent 1.6.1). Owned by the navigation baseline; restated at architecture-analyzer's operative overview step because its module digest silently degrades without it.",
+   "owner": {
+    "file": "stack/rules/baseline-navigation.md",
+    "marker": "C# pass `depth: 2`"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/architecture-analyzer.md",
+     "marker": "C# pass `depth: 2`"
+    }
+   ]
   }
  }
 }

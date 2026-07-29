@@ -47,6 +47,7 @@ Template mode: when the audited file is a template that installers copy into tar
 - Every line must change behavior or route the reader. CLAUDE.md lines are paid on every session; a line that neither changes what Claude does nor points to a governing document is a tax.
 - Facts must be true. Build commands, paths, and architecture claims in CLAUDE.md are executed and trusted every session; verify them against the repository itself. A wrong command in CLAUDE.md is worse than a missing one.
 - Hub over encyclopedia. When content grows, the fix is routing (rules, skills, hooks) plus a clear map, not a longer file.
+- Installs are selective: any rule, skill, or agent CLAUDE.md points at may be excluded from a given install, so an install-time-optional artifact can never be a load-bearing dependency - a pointer to one must read as routing that degrades gracefully when the target is absent, and behavior CLAUDE.md itself must guarantee stays in CLAUDE.md.
 - Generic by default. In template mode this is the placeholder discipline already scored (no baked-in stack facts); in a filled file, a technology is named only where the project actually uses it or a shipped tool requires it. A decorative tech mention is a defect - cite the line and score it under Dimension 3.
 - Reversibility. Snapshot every file before editing so a regression can be undone.
 
