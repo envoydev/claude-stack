@@ -23,14 +23,17 @@ if (!/\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/.test(path)) {
 if ((input.offset ?? 0) > 1) {
   process.exit(0);
 }
-// Small files are cheap to read whole.
+// Small files are cheap to read whole. 200, not 100: measured across four real
+// sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
+// serena detour (error round trip + overview + body pull) costs about what the
+// whole-file read would - the guard only pays above 200 lines.
 let lineCount = 0;
 try {
   lineCount = fs.readFileSync(path, 'utf8').split('\n').length;
 } catch {
   process.exit(0); // missing/unreadable - let Read surface its own error
 }
-const THRESHOLD = 100;
+const THRESHOLD = 200;
 if (lineCount <= THRESHOLD) {
   process.exit(0);
 }
@@ -44,7 +47,8 @@ process.stderr.write(
     `Per CLAUDE.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
     `A limit that covers the whole file is still a whole-file Read.\n` +
     `Locate first with serena: get_symbols_overview('${path}') then find_symbol(...),\n` +
-    `then Read with offset+limit on the returned range (or find_symbol with include_body=true).\n` +
+    `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
+    `for a large body fetch it without the body first, then Read the range you need).\n` +
     `If you genuinely need the whole file, Read it in explicit ranges.`,
 );
 process.exit(2);

@@ -643,7 +643,10 @@
     },
     "ionic-angular-implementer": {
       "skills": [
-        "ionic"
+        "angular-conventions",
+        "angular-styling",
+        "ionic",
+        "typescript"
       ],
       "suggests": [],
       "skillsSource": "frontmatter",

@@ -9,7 +9,7 @@ The design carries the quality: a build handles the traps its plan named and shi
 
 ## Design mode - this chat or the designer seat
 
-Design inline in this chat, the method below, so you inspect each step. On an agents request, dispatch the `<stack>-solution-designer` seat instead - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. Only one designer runs, there is no fan-out here. Dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before designing - this chat, or the designer seat? - and hold the answer; a mode the run already picked is inherited, never re-asked.
+Design inline in this chat, the method below, so you inspect each step. On an agents request, dispatch the `<stack>-solution-designer` seat instead - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. Only one designer runs, there is no fan-out here. Dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before designing, via AskUserQuestion - this chat, or the designer seat? - and hold the answer; a mode the run already picked is inherited, never re-asked.
 
 ## When not
 

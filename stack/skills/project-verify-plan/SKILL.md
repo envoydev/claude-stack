@@ -9,7 +9,7 @@ A plan built perfectly is still wrong if the plan was wrong - the design carries
 
 ## Audit mode - this chat or the verifier seat
 
-Audit inline in this chat, the four passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat to run the same four passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing - this chat, or the verifier seat? - and hold the answer; a mode the run already picked is inherited, never re-asked.
+Audit inline in this chat, the four passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat to run the same four passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion - this chat, or the verifier seat? - and hold the answer; a mode the run already picked is inherited, never re-asked.
 
 ## When to use / not
 

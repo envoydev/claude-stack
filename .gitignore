@@ -28,6 +28,7 @@ REPORT.md
 # local research input (contains private project names) - never commit
 best-practice/
 docs/session-to-analize/
+docs/session-investigation/
 
 # examples: worked reference projects - track clean source, exclude build caches,
 # stack state, and grader-only harness artifacts. (node_modules/.claude/.serena/.mcp.json/
