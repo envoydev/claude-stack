@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 You audit what claude-stack skill runs in this project actually cost: find the session transcripts, run the stack's offline analyzer over them, and write one report per session with the raw data next to it, so a later agent can re-analyze without re-collecting.
 
+Run the audit from a FRESH session that names the target session id(s) - never from the tail of the session being audited. The work is offline (a node script plus report writing) and needs none of the audited chat's context; measured, an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from ~20k.
+
 **Inputs.** SKILLS - the skill names to hunt in the transcripts. Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit. Two run modes, opposite expectations: a single-chat skill (the `project-solution-design` / `project-implementer` / `project-verify-plan` trio) runs in-session and dispatches NOTHING - its cost is all main-context, so the interesting numbers are tool-result sizes and cache behavior. A dispatch-mode run (`project-solve-cross-task`, an agents build mode, a capture fan-out, a DELEGATED quality loop) is the reverse: subagents are EXPECTED, and the interesting split is main-session vs per-seat cost - the analyzer reads the session's `subagents/` files and emits both.
 
 ## The run
@@ -50,9 +52,9 @@ Raw transcripts carry full conversation content - code, file contents, possibly 
 **## Per skill run** (one subsection per SKILLS entry found)
 - Tokens: input / output / cache-read / cache-write, split by model if several; grand total.
 - Tool calls: count per tool (Read, Edit, Write, Bash, Grep, Glob, serena tools, any MCP).
-- Top 10 most expensive tool RESULTS by ~tokens, each as: tool | target (file path or command only, never file contents) | ~tokens.
+- Top 10 most expensive tool RESULTS by ~tokens, each as: tool | target (file path or command only, never file contents) | ~tokens - from the analyzer output where it emits per-result rows; where it does not, measure from the transcript directly (paths and sizes only) and say so.
 - Context-growth spikes the analyzer flags, and what caused each.
-- Skills/plugins that attributed output (the analyzer's attribution columns) - did the run load anything unexpected, or fail to load something it should have?
+- Skills/plugins that attributed output (the analyzer's attribution columns) - did the run load anything unexpected, or fail to load something it should have? The analyzer prints main and subagent attribution SPLIT, with the seat types carrying each sub stamp: a seat type foreign to the skill (a domain verifier under an installer command) is stamp bleed from an adjacent run - a dispatched seat inherits whatever skill was last active - so report it as bleed and never charge it to the skill (measured: 223 verifier msgs / 31.3M cache-read once landed on a plugin-update command that dispatches nothing).
 - Subagent dispatches, mode-aware. Single-chat skill: should dispatch nothing - any subagent cost is a finding, not a footnote. Dispatch-mode skill: the per-seat breakdown from the analyzer's subagent rows - one line per dispatched agent (seat, model, tokens in/out/cache, tool calls, duration) plus the main-vs-seats share - and flag the anomalies: a seat that idles on a wait, re-dispatches, or costs more than the work it returned.
 
 **## Waste analysis** - the specific places token use was disproportionate, each with evidence: whole-file Reads where a symbol lookup would do, the same file read more than once, oversized Bash/test output pulled into context, overlong prose in reports/summaries. Rank by tokens wasted.

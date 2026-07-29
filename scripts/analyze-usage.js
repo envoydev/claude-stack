@@ -119,6 +119,7 @@ async function analyzeTranscript(file, window) {
     firstTs: null,
     lastTs: null,
     spikes: [],                  // top context jumps: {ts, delta, ctx, causes}
+    toolCallTs: [],              // one timestamp per tool_use - lets the hook-log join count only in-window calls
   };
   const msgReg = new Map();       // message.id -> {model, skill, u:{in,cc,cr,out}} folded max per field
   const seenToolUse = new Set();  // tool_use id dedup across duplicated assistant lines
@@ -164,6 +165,7 @@ async function analyzeTranscript(file, window) {
       if (Array.isArray(m.content)) for (const c of m.content) {
         if (c.type !== 'tool_use' || seenToolUse.has(c.id)) continue;
         seenToolUse.add(c.id);
+        if (o.timestamp) s.toolCallTs.push(o.timestamp);
         const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0 });
         t.calls += 1;
         if (c.input && typeof c.input.file_path === 'string') {
@@ -242,7 +244,11 @@ function summarizeCauses(pending) {
 // ---------- subagents (the session's <id>/subagents/ directory) ----------
 
 async function analyzeSubagents(sessionFile, window) {
-  const dir = path.join(sessionFile.replace(/\.jsonl$/, ''), 'subagents');
+  // Native layout: <sid>.jsonl + <sid>/subagents/. Audit bundles (what the
+  // project-stack-usage-analyzer skill archives) put subagents/ as a SIBLING of the
+  // transcript - without the fallback a bundle re-analysis silently drops every seat.
+  let dir = path.join(sessionFile.replace(/\.jsonl$/, ''), 'subagents');
+  if (!fs.existsSync(dir)) dir = path.join(path.dirname(sessionFile), 'subagents');
   if (!fs.existsSync(dir)) return [];
   const out = [];
   for (const f of fs.readdirSync(dir)) {
@@ -259,15 +265,16 @@ async function analyzeSubagents(sessionFile, window) {
 // ---------- hook-log join ----------
 
 async function analyzeHookLog(file) {
-  const byTool = {}; let rows = 0;
+  const byTool = {}; let rows = 0; let firstTs = null; let lastTs = null;
   await readJsonl(file, (o) => {
     if (!o.tool) return;
     rows++;
+    if (o.ts) { if (!firstTs || o.ts < firstTs) firstTs = o.ts; if (!lastTs || o.ts > lastTs) lastTs = o.ts; }
     const t = byTool[o.tool] || (byTool[o.tool] = { calls: 0, details: {} });
     t.calls += 1;
     if (o.detail) t.details[o.detail] = (t.details[o.detail] || 0) + 1;
   });
-  return { rows, byTool };
+  return { rows, byTool, firstTs, lastTs };
 }
 
 // ---------- report ----------
@@ -322,15 +329,33 @@ function printReport(main, agents, hookLog, window) {
   const skills = new Set([...Object.keys(main.skillInvocations), ...Object.keys(main.skillAttribution)]);
   for (const a of agents) for (const k of [...Object.keys(a.stats.skillInvocations), ...Object.keys(a.stats.skillAttribution)]) skills.add(k);
   if (skills.size) {
+    // Main and subagent attribution are printed SPLIT, never summed: a dispatched seat
+    // inherits whatever skill stamp was last active in the main session, so a seat type
+    // foreign to the skill (a verifier charged to an installer command) means the stamp
+    // bled from an adjacent run - measured in a real session, where 223 verifier msgs
+    // landed on a plugin-update command that dispatches nothing.
     console.log('\nSKILLS (calls = Skill tool invocations; attributed = API msgs stamped while the skill was active - the real cost signal)');
+    console.log('  (sub rows list the seat types carrying the stamp - a seat type foreign to the skill = stamp bleed from an adjacent run, do not charge it)');
     console.log(`  ${pad('skill', 44)} ${rpad('calls', 5)} ${rpad('result', 9)} ${rpad('attr msgs', 9)} ${rpad('attr out', 9)} ${rpad('attr cache-rd', 13)}`);
     for (const k of [...skills].sort()) {
-      const inv = { calls: 0, injectedChars: 0 }, attr = { msgs: 0, output: 0, cacheRead: 0 };
+      const inv = { calls: 0, injectedChars: 0 };
       for (const src of [main, ...agents.map((a) => a.stats)]) {
         if (src.skillInvocations[k]) { inv.calls += src.skillInvocations[k].calls; inv.injectedChars += src.skillInvocations[k].injectedChars; }
-        if (src.skillAttribution[k]) { attr.msgs += src.skillAttribution[k].msgs; attr.output += src.skillAttribution[k].output; attr.cacheRead += src.skillAttribution[k].cacheRead || 0; }
       }
-      console.log(`  ${pad(k, 44)} ${rpad(inv.calls, 5)} ${rpad('~' + fmt(approxTok(inv.injectedChars)), 9)} ${rpad(attr.msgs, 9)} ${rpad(fmt(attr.output), 9)} ${rpad(fmt(attr.cacheRead), 13)}`);
+      const mAttr = main.skillAttribution[k] || { msgs: 0, output: 0, cacheRead: 0 };
+      const sub = { msgs: 0, output: 0, cacheRead: 0, types: {} };
+      for (const a of agents) {
+        const sa = a.stats.skillAttribution[k];
+        if (!sa) continue;
+        sub.msgs += sa.msgs; sub.output += sa.output; sub.cacheRead += sa.cacheRead || 0;
+        const ty = a.meta.agentType || '(unknown)';
+        sub.types[ty] = (sub.types[ty] || 0) + 1;
+      }
+      console.log(`  ${pad(k, 44)} ${rpad(inv.calls, 5)} ${rpad('~' + fmt(approxTok(inv.injectedChars)), 9)} ${rpad(mAttr.msgs, 9)} ${rpad(fmt(mAttr.output), 9)} ${rpad(fmt(mAttr.cacheRead), 13)}`);
+      if (sub.msgs) {
+        const seats = Object.entries(sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
+        console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(sub.msgs, 9)} ${rpad(fmt(sub.output), 9)} ${rpad(fmt(sub.cacheRead), 13)}`);
+      }
     }
   }
 
@@ -403,7 +428,22 @@ function printReport(main, agents, hookLog, window) {
       console.log(`  ${pad(tool, 28)} ${rpad(t.calls, 5)}  ${top}`);
     }
     const trTools = Object.values(tools).reduce((n, t) => n + t.calls, 0);
-    console.log(`  cross-check: transcript saw ${trTools} tool calls vs ${hookLog.rows} hook rows (gap = unwired scope or subagent non-propagation)`);
+    // Compare only calls inside the ledger's own window: a ledger wired mid-session
+    // (instrumentation installed during the run) legitimately misses everything before
+    // its first row - measured at 67 of an 80-row "gap" in a real install session.
+    if (hookLog.firstTs && hookLog.lastTs) {
+      const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
+      const inWin = allTs.filter((ts) => ts >= hookLog.firstTs && ts <= hookLog.lastTs).length;
+      const sessSpan = main.firstTs && main.lastTs ? Date.parse(main.lastTs) - Date.parse(main.firstTs) : 0;
+      const covSpan = Math.max(0, Math.min(Date.parse(main.lastTs || hookLog.lastTs), Date.parse(hookLog.lastTs)) - Math.max(Date.parse(main.firstTs || hookLog.firstTs), Date.parse(hookLog.firstTs)));
+      const pct = sessSpan > 0 ? Math.round((100 * covSpan) / sessSpan) : 100;
+      console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${pct}% of the session`);
+      console.log(`  cross-check: ${inWin} in-window transcript tool calls vs ${hookLog.rows} ledger rows (${trTools} calls in the whole session)`);
+      const outside = trTools - inWin;
+      if (outside > 0) console.log(`  ${outside} call${outside === 1 ? '' : 's'} outside the ledger window (ledger wired mid-session or stopped early) - expected, not a propagation gap`);
+    } else {
+      console.log(`  cross-check: transcript saw ${trTools} tool calls vs ${hookLog.rows} hook rows (ledger rows carry no timestamps, so window coverage is unavailable)`);
+    }
   }
 }
 
