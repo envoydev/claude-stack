@@ -1,6 +1,6 @@
 ---
 name: project-stack-usage-analyzer
-description: "Token/tool usage audit of claude-stack skill runs in THIS project: finds the Claude Code session transcripts, runs the stack's analyze-usage.js over each matching session, and writes a per-session report (tokens by model, tool-call counts, top tool results by size, waste analysis, protocol check, verdict) plus the raw data for a follow-up agent. Manual, /-only. Triggers on 'analyze the stack usage', 'usage report for the skill runs', 'how many tokens did the flow burn'. NOT for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices."
+description: "Token/tool usage audit of claude-stack skill runs in THIS project: finds EVERY session transcript with a stack-skill run (or the SESSIONS named), runs the stack's analyze-usage.js over each, and writes a per-session report (tokens, tool calls, waste, protocol check, verdict) plus the raw data for a follow-up agent - and a cross-session SUMMARY.md when several sessions are audited. Manual, /-only. Triggers on 'analyze the stack usage', 'usage report for the skill runs', 'audit all sessions for this project', 'how many tokens did the flow burn'. NOT for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices."
 disable-model-invocation: true
 ---
 
@@ -10,12 +10,14 @@ You audit what claude-stack skill runs in this project actually cost: find the s
 
 Run the audit from a FRESH session that names the target session id(s) - never from the tail of the session being audited. The work is offline (a node script plus report writing) and needs none of the audited chat's context; measured, an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from ~20k.
 
-**Inputs.** SKILLS - the skill names to hunt in the transcripts. Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit. Two run modes, opposite expectations: a single-chat skill (the `project-solution-design` / `project-implementer` / `project-verify-plan` trio) runs in-session and dispatches NOTHING - its cost is all main-context, so the interesting numbers are tool-result sizes and cache behavior. A dispatch-mode run (`project-solve-cross-task`, an agents build mode, a capture fan-out, a DELEGATED quality loop) is the reverse: subagents are EXPECTED, and the interesting split is main-session vs per-seat cost - the analyzer reads the session's `subagents/` files and emits both.
+**Inputs.** SESSIONS - which of this project's sessions to audit. An invocation that names the scope (session ids, 'the last 3', a since-date, 'all') IS the answer - never re-ask. Otherwise resolve the candidates first (step 1's grep), then ask ONE question via AskUserQuestion, each option carrying its real count: **All matching (recommended)** - every transcript with a stack-skill run, N unaudited; **Today's sessions** - the matching transcripts started today, N; **Current session only** - the session this audit runs in (note: it pays the accumulated context the fresh-session rule above exists to avoid); a custom scope arrives via the built-in Other. Hold the answer for the run. SKILLS - the skill names to hunt in the transcripts. Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit. Two run modes, opposite expectations: a single-chat skill (the `project-solution-design` / `project-implementer` / `project-verify-plan` trio) runs in-session and dispatches NOTHING - its cost is all main-context, so the interesting numbers are tool-result sizes and cache behavior. A dispatch-mode run (`project-solve-cross-task`, an agents build mode, a capture fan-out, a DELEGATED quality loop) is the reverse: subagents are EXPECTED, and the interesting split is main-session vs per-seat cost - the analyzer reads the session's `subagents/` files and emits both.
 
 ## The run
 
 ### 1. FIND the transcripts
 Claude Code writes one JSONL per session under `~/.claude/projects/<encoded-project-path>/` - the folder whose name is this project's absolute path with slashes replaced by dashes. Grep the `*.jsonl` files there for each SKILLS name (on the DETECT default: for the invocation markers of any installed stack skill) and list which session file(s) contain which skill RUN - invocation markers only, never bare mentions. A `<session-id>/subagents/` folder next to a session file belongs to that session - note it (for the default trio, its existence is already a finding; see the report shape).
+
+With the matches listed, resolve SESSIONS - the run-start ask above, with the counts this grep just produced, unless the invocation already named the scope. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. One bound keeps repeated sweeps sane: a session whose bundle already exists under `<docs-path>/claude-stack-usage-report/<session-id>/` was audited by a prior run - skip it, list it as previously-audited, and re-audit only on an explicit ask.
 
 ### 2. GET the analyzer
 It ships in the stack's source repo, not in this project. One snapshot, the house way - the release archive first, clone fallback:
@@ -26,13 +28,14 @@ curl -fsSL https://github.com/envoydev/claude-stack/releases/latest/download/cla
   || git clone --depth 1 -b main https://github.com/envoydev/claude-stack "$TMP/repo"
 ```
 
-The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
+The tool is `scripts/analyze-usage.js` inside the extracted snapshot - `<snapshot>` = `$TMP` when the archive extracted, `$TMP/repo` when the clone ran. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
 
 ### 3. RUN it
 - `node <snapshot>/scripts/analyze-usage.js <projects-dir>` - one-line rollup, to confirm which sessions matter.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl>` - full report, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --json` - machine dump, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --report-md > report-usage.md` - the report SKELETON: machine-written tables plus the FILL IN judgment sections. Add `--hook-log` here too when the ledger exists (below).
+- Non-default docs root (`CLAUDE_DOCS_PATH` set): add `--docs-root <that root>` to every per-session call - the analyzer's Generated-docs table watches only `.claude/docs/` by default, so a custom root silently drops every doc touch.
 
 Then look for the instrumentation ledgers - do not wait to be pointed at them: `CLAUDE_STACK_INSTRUMENT=1` writes one per session/agent id under `<docs-path>/tools-usage/<sid>.jsonl` (or wherever `CLAUDE_STACK_INSTRUMENT_LOG` pointed). For each audited session, check that folder for the session's own id and its dispatched agents' ids; on a hit add `--hook-log <ledger>` - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report.
 
@@ -46,14 +49,13 @@ Everything for a session lands in `<docs-path>/claude-stack-usage-report/<sessio
 
 Raw transcripts carry full conversation content - code, file contents, possibly secrets. Under the default machine-local docs root that stays on this machine; when the project set a COMMITTED docs root, get explicit consent before copying raw transcripts there, and without it copy only the report and the `--json` dumps.
 
-`report-usage.md` sections, in order (Environment and the data tables arrive machine-written in the skeleton; you author the judgment content):
+`report-usage.md` = the skeleton plus your judgment. The machine sections (Environment, Tokens, Subagent dispatches, Skills, Generated docs, MCP, Tools, Context spikes, Hook-log join - whichever the run emits) stay as printed; you add the Environment rows only you know, insert ONE authored section - `## Per skill run` - between the machine tables and Waste analysis, and fill the skeleton's three FILL IN sections. Content per authored piece:
 
-**## Environment** - Claude Code version, model(s) used, OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, wall-clock duration per run.
+**## Environment** - append the rows the analyzer cannot know: Claude Code version, OS, project stack(s), analyzer snapshot revision, which session file covers which skill run. Models and wall-clock arrive machine-written - leave them.
 
 **## Per skill run** (one subsection per SKILLS entry found)
-- Tokens: input / output / cache-read / cache-write, split by model if several; grand total.
-- Tool calls: count per tool (Read, Edit, Write, Bash, Grep, Glob, serena tools, any MCP).
-- Top 10 most expensive tool RESULTS by ~tokens, each as: tool | target (file path or command only, never file contents) | ~tokens - from the analyzer output where it emits per-result rows; where it does not, measure from the transcript directly (paths and sizes only) and say so.
+- Tokens and tool-call counts: cite the Tokens/Tools table rows - never restate the numbers in prose (that restating is where the 5 wrong claims came from).
+- Top 10 most expensive tool RESULTS by ~tokens, each as: tool | target (file path or command only, never file contents) | ~tokens - measured from the transcript (the analyzer aggregates per TOOL, not per result); label them as transcript measurements.
 - Context-growth spikes the analyzer flags, and what caused each.
 - Skills/plugins that attributed output (the analyzer's attribution columns) - did the run load anything unexpected, or fail to load something it should have? The analyzer prints main and subagent attribution SPLIT, with the seat types carrying each sub stamp: a seat type foreign to the skill (a domain verifier under an installer command) is stamp bleed from an adjacent run - a dispatched seat inherits whatever skill was last active - so report it as bleed and never charge it to the skill (measured: 223 verifier msgs / 31.3M cache-read once landed on a plugin-update command that dispatches nothing).
 - Subagent dispatches, mode-aware. Single-chat skill: should dispatch nothing - any subagent cost is a finding, not a footnote. Dispatch-mode skill: the per-seat breakdown from the analyzer's subagent rows - one line per dispatched agent (seat, model, tokens in/out/cache, tool calls, duration) plus the main-vs-seats share - and flag the anomalies: a seat that idles on a wait, re-dispatches, or costs more than the work it returned.
@@ -64,7 +66,17 @@ Raw transcripts carry full conversation content - code, file contents, possibly 
 
 **## Verdict** - one table: skill | worked as intended (y/n) | biggest strength | biggest waste source | one concrete suggestion.
 
-Then append the full-report analyzer outputs verbatim at the end of the doc (they contain only counts, tool names, and paths - no code), and `rm -rf "$TMP"`.
+Then append the full-report analyzer outputs verbatim at the end of the doc (they contain only counts, tool names, and paths - no code).
+
+### 5. SUMMARIZE - the project-wide picture
+
+When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/claude-stack-usage-report/`, write `<docs-path>/claude-stack-usage-report/SUMMARY.md` - replaced whole each run, never an append log:
+
+- The analyzer's directory rollup table verbatim (`node <snapshot>/scripts/analyze-usage.js <projects-dir>`) - the machine-written per-session totals.
+- One line per audited session: id, start date, headline verdict, bundle path.
+- A short cross-session judgment, cited from the bundles: the ctx/msg trend across sessions, waste patterns that recur in more than one session (a one-off is the session's finding; a repeat is the stack's), and per-skill cost across sessions where the same skill ran several times.
+
+Then `rm -rf "$TMP"`.
 
 ## Privacy rule
 The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the committed-root consent rule above.
