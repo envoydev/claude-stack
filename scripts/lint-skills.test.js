@@ -46,6 +46,27 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     assert.ok(findings.some(f => f.includes('content signal without a label')));
 });
 
+test('lintPreloadClaims flags body-claimed preloads missing from frontmatter skills:', () => {
+    const { lintPreloadClaims } = require('./lint-skills.js');
+    const skillDirs = new Set(['typescript', 'angular-conventions', 'ionic', 'angular-styling']);
+
+    // the measured regression shape: body claims four, frontmatter carries one
+    const lying = '---\nname: x\nskills:\n  - ionic\n---\n\n- `typescript`, `angular-conventions`, `ionic`, and `angular-styling` are preloaded in frontmatter - the source of truth, not recall.\n';
+    const findings = lintPreloadClaims('x.md', lying, skillDirs);
+    assert.strictEqual(findings.length, 3);
+    assert.ok(findings.every(f => f.includes('preloaded in frontmatter')));
+    assert.ok(findings.some(f => f.includes('`typescript`')));
+    assert.ok(!findings.some(f => f.includes('`ionic`')), 'the declared skill is not flagged');
+
+    // honest file: all named skills declared -> clean
+    const honest = lying.replace('skills:\n  - ionic', 'skills:\n  - typescript\n  - angular-conventions\n  - ionic\n  - angular-styling');
+    assert.deepStrictEqual(lintPreloadClaims('x.md', honest, skillDirs), []);
+
+    // a non-skill backticked token on the claim line is ignored; no claim line -> clean
+    const noClaim = '---\nname: x\nskills:\n  - ionic\n---\n\n- Load `typescript` before the first edit.\n';
+    assert.deepStrictEqual(lintPreloadClaims('x.md', noClaim, skillDirs), []);
+});
+
 test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gaps, bad thresholds', () => {
     const { lintJudgmentCatalog } = require('./lint-skills.js');
     const rosters = {

@@ -403,6 +403,47 @@ function lintSharedRules(registry, readFile)
 // Extract the stack HTML's view of the inventory: house skill names,
 // third-party repo skill names, plugin names (from plugin-URL skill rows and
 // "/plugin install X@" install cells), and MCP server names.
+// An agent body claiming skills are 'preloaded in frontmatter' must have every
+// skill it names on that line in the frontmatter skills: block. The exact
+// measured regression: a body claimed four preloads, the frontmatter carried
+// one, and 56 of 58 production dispatches built without conventions loaded.
+function lintPreloadClaims(agentFile, text, skillDirs)
+{
+    const findings = [];
+    const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    let declared = [];
+    try
+    {
+        const meta = fm ? yaml.load(fm[1]) : null;
+        if (meta && Array.isArray(meta.skills))
+        {
+            declared = meta.skills;
+        }
+    }
+    catch
+    {
+        // broken agent frontmatter is check 18's finding, not this one's
+    }
+
+    for (const bodyLine of text.split('\n'))
+    {
+        if (!/preloaded in frontmatter/i.test(bodyLine))
+        {
+            continue;
+        }
+
+        for (const m of bodyLine.matchAll(/`([a-z][a-z0-9-]*)`/g))
+        {
+            if (skillDirs.has(m[1]) && !declared.includes(m[1]))
+            {
+                findings.push(`agents/${agentFile} claims \`${m[1]}\` is preloaded in frontmatter but the skills: block does not list it`);
+            }
+        }
+    }
+
+    return findings;
+}
+
 function parseStackHtml()
 {
     const html = fs.readFileSync(STACK_HTML, 'utf8');
@@ -966,6 +1007,21 @@ function main()
         }
     }
 
+    // 13b. Preload claims must match the frontmatter skills: block (see
+    //      lintPreloadClaims for the measured regression this guards).
+    if (fs.existsSync(AGENTS_DIR))
+    {
+        const skillDirSet = new Set(dirs);
+        for (const agentFile of fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')))
+        {
+            const text = fs.readFileSync(path.join(AGENTS_DIR, agentFile), 'utf8');
+            for (const finding of lintPreloadClaims(agentFile, text, skillDirSet))
+            {
+                flag(finding);
+            }
+        }
+    }
+
     // 14. House dotnet-* skills are original work, not vendored copies. Guard
     //     against the CONTRADICTORY 'Vendored from <kit>' inventory label
     //     reappearing on a dotnet-* SKILL.md (or its references) or the stack
@@ -1279,6 +1335,7 @@ module.exports = {
     lintEvidenceCatalog,
     lintJudgmentCatalog,
     lintSharedRules,
+    lintPreloadClaims,
     NON_SKILL_TOKENS,
 };
 

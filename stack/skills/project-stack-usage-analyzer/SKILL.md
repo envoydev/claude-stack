@@ -32,20 +32,21 @@ The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Record the
 - `node <snapshot>/scripts/analyze-usage.js <projects-dir>` - one-line rollup, to confirm which sessions matter.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl>` - full report, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --json` - machine dump, once per matching session.
+- `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --report-md > report-usage.md` - the report SKELETON: machine-written tables plus the FILL IN judgment sections. Add `--hook-log` here too when the ledger exists (below).
 
 Then look for the instrumentation ledgers - do not wait to be pointed at them: `CLAUDE_STACK_INSTRUMENT=1` writes one per session/agent id under `<docs-path>/tools-usage/<sid>.jsonl` (or wherever `CLAUDE_STACK_INSTRUMENT_LOG` pointed). For each audited session, check that folder for the session's own id and its dispatched agents' ids; on a hit add `--hook-log <ledger>` - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report.
 
 ### 4. WRITE - one folder per session
 Everything for a session lands in `<docs-path>/claude-stack-usage-report/<session-id>/`:
 
-- `report-usage.md` - the report, EXACTLY the sections below.
+- `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted - measured: 5 wrong claims across 4 hand-written reports, each a prose restatement of tool output), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).
 - A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting.
 - The session's instrumentation ledgers, MOVED (not copied) from `<docs-path>/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. The move is deliberate: an audited run's ledgers live with its bundle, and the collection folder drains as runs get audited instead of accumulating forever; a session not audited this run keeps its ledger in place.
 
 Raw transcripts carry full conversation content - code, file contents, possibly secrets. Under the default machine-local docs root that stays on this machine; when the project set a COMMITTED docs root, get explicit consent before copying raw transcripts there, and without it copy only the report and the `--json` dumps.
 
-`report-usage.md` sections, in order:
+`report-usage.md` sections, in order (Environment and the data tables arrive machine-written in the skeleton; you author the judgment content):
 
 **## Environment** - Claude Code version, model(s) used, OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, wall-clock duration per run.
 
