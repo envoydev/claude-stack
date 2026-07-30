@@ -54,7 +54,7 @@ test('lintPreloadClaims flags body-claimed preloads missing from frontmatter ski
     const lying = '---\nname: x\nskills:\n  - ionic\n---\n\n- `typescript`, `angular-conventions`, `ionic`, and `angular-styling` are preloaded in frontmatter - the source of truth, not recall.\n';
     const findings = lintPreloadClaims('x.md', lying, skillDirs);
     assert.strictEqual(findings.length, 3);
-    assert.ok(findings.every(f => f.includes('preloaded in frontmatter')));
+    assert.ok(findings.every(f => f.includes('is preloaded but the frontmatter')));
     assert.ok(findings.some(f => f.includes('`typescript`')));
     assert.ok(!findings.some(f => f.includes('`ionic`')), 'the declared skill is not flagged');
 
@@ -65,6 +65,18 @@ test('lintPreloadClaims flags body-claimed preloads missing from frontmatter ski
     // a non-skill backticked token on the claim line is ignored; no claim line -> clean
     const noClaim = '---\nname: x\nskills:\n  - ionic\n---\n\n- Load `typescript` before the first edit.\n';
     assert.deepStrictEqual(lintPreloadClaims('x.md', noClaim, skillDirs), []);
+
+    // shape A without 'in frontmatter' is still a claim; on-demand loads AFTER the keyword are not
+    const bare = '---\nname: x\nskills:\n  - ionic\n---\n\n- `typescript` and `ionic` are preloaded - judge against them directly. Load `angular-styling` on demand.\n';
+    const bareFindings = lintPreloadClaims('x.md', bare, skillDirs);
+    assert.strictEqual(bareFindings.length, 1);
+    assert.ok(bareFindings[0].includes('`typescript`'));
+
+    // shape B ('the preloaded `x` skill') is a claim; namespaced frontmatter entries count as declared
+    const shapeB = '---\nname: x\nskills:\n  - superpowers:ionic\n---\n\n- The method is the preloaded `ionic` skill. Also per the preloaded `typescript` hub.\n';
+    const bFindings = lintPreloadClaims('x.md', shapeB, skillDirs);
+    assert.strictEqual(bFindings.length, 1);
+    assert.ok(bFindings[0].includes('`typescript`'));
 });
 
 test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gaps, bad thresholds', () => {

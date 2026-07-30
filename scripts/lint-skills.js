@@ -403,10 +403,14 @@ function lintSharedRules(registry, readFile)
 // Extract the stack HTML's view of the inventory: house skill names,
 // third-party repo skill names, plugin names (from plugin-URL skill rows and
 // "/plugin install X@" install cells), and MCP server names.
-// An agent body claiming skills are 'preloaded in frontmatter' must have every
-// skill it names on that line in the frontmatter skills: block. The exact
-// measured regression: a body claimed four preloads, the frontmatter carried
-// one, and 56 of 58 production dispatches built without conventions loaded.
+// An agent body claiming a skill is preloaded must have that skill in the
+// frontmatter skills: block. The measured regression: a body claimed four
+// preloads, the frontmatter carried one, and 56 of 58 production dispatches
+// built without conventions loaded. Two claim shapes are checked; 'Load X on
+// demand' text AFTER the claim keyword on the same line is deliberately not
+// scanned - it is the opposite of a preload claim:
+//   A. '`x`, `y` are preloaded ...' - the skills named BEFORE the keyword
+//   B. 'the preloaded `x` skill/hub/recipe' - the skill right after it
 function lintPreloadClaims(agentFile, text, skillDirs)
 {
     const findings = [];
@@ -417,7 +421,8 @@ function lintPreloadClaims(agentFile, text, skillDirs)
         const meta = fm ? yaml.load(fm[1]) : null;
         if (meta && Array.isArray(meta.skills))
         {
-            declared = meta.skills;
+            // frontmatter entries may be plugin-namespaced ('superpowers:x')
+            declared = meta.skills.map(s => String(s).split(':').pop());
         }
     }
     catch
@@ -425,19 +430,32 @@ function lintPreloadClaims(agentFile, text, skillDirs)
         // broken agent frontmatter is check 18's finding, not this one's
     }
 
+    const claimed = (token) =>
+    {
+        if (skillDirs.has(token) && !declared.includes(token))
+        {
+            findings.push(`agents/${agentFile} claims \`${token}\` is preloaded but the frontmatter skills: block does not list it`);
+        }
+    };
+
     for (const bodyLine of text.split('\n'))
     {
-        if (!/preloaded in frontmatter/i.test(bodyLine))
+        const keyword = bodyLine.match(/\b(?:are|is)\s+preloaded\b/i);
+        if (keyword)
         {
-            continue;
+            // scope to the claim's own sentence - an earlier sentence on the same
+            // line ('Load the domain router (`dotnet`, ...) ...') is not a claim
+            const before = bodyLine.slice(0, keyword.index);
+            const claimSeg = before.slice(before.lastIndexOf('. ') + 1);
+            for (const m of claimSeg.matchAll(/`([a-z][a-z0-9-]*)`/g))
+            {
+                claimed(m[1]);
+            }
         }
 
-        for (const m of bodyLine.matchAll(/`([a-z][a-z0-9-]*)`/g))
+        for (const m of bodyLine.matchAll(/\bpreloaded\s+`([a-z][a-z0-9-]*)`/gi))
         {
-            if (skillDirs.has(m[1]) && !declared.includes(m[1]))
-            {
-                findings.push(`agents/${agentFile} claims \`${m[1]}\` is preloaded in frontmatter but the skills: block does not list it`);
-            }
+            claimed(m[1]);
         }
     }
 
