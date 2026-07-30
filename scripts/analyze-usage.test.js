@@ -62,6 +62,22 @@ test('--from/--to windows the accounting to the run inside a long session', () =
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('--report-md emits the machine-written skeleton with tables and fill-in sections', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = writeFixture(dir);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.ok(md.startsWith('# Stack usage report - session `session`'));
+  // machine-written numbers: deduped msgs and the skill attribution row
+  assert.ok(md.includes('| main session | 16 | 100 | 8.0k | 90 | 3 |'), 'tokens table row present');
+  assert.ok(md.includes('| csharp | 0 | ~0 | 1 | 30 | 2.0k |'), 'skills attribution row present');
+  assert.ok(md.includes('| Read | 1 | ~100 | 0 |'), 'tools table row present');
+  // judgment surface is fill-in only
+  assert.ok(md.includes('## Waste analysis - FILL IN'));
+  assert.ok(md.includes('## Protocol check - FILL IN'));
+  assert.ok(md.includes('## Verdict - FILL IN'));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('a flag value before the target is not mistaken for the target', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const file = writeFixture(dir);

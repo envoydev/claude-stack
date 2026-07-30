@@ -285,20 +285,8 @@ function tallyRow(label, t) {
 
 const CTX_WARN = 120000; // avg ctx/msg above this = the conversation, not the tools, is the cost
 
-function printReport(main, agents, hookLog, window) {
-  const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
-  console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})`);
-  if (window) console.log(`windowed: ${window.fromStr || 'start'} → ${window.toStr || 'end'} (subagents dispatched outside the window are excluded)`);
-  console.log(`user prompts ${main.userPrompts} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors}`);
-
-  console.log('\nTOKENS (deduped per API message; ctx/msg = avg context re-sent per call)');
-  console.log(`  ${pad('scope / model', 22)} ${rpad('input', 8)} ${rpad('cache-write', 11)} ${rpad('cache-read', 11)} ${rpad('output', 8)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)}`);
-  console.log(tallyRow('main session', main.total));
-  for (const [m, t] of Object.entries(main.byModel)) console.log(tallyRow('  ' + m, t));
-  if (ctxOf(main.total) > CTX_WARN) {
-    console.log(`  ! avg context/msg ${fmt(ctxOf(main.total))} - the cost driver is carried-forward conversation, not tool output:`);
-    console.log(`    run pipeline steps in fresh sessions that resume from the plan file instead of one long chat.`);
-  }
+// One aggregation, two renderers (text + markdown) - the numbers can never diverge by printer.
+function computeAggregates(main, agents) {
   const agentTotal = newTally();
   const byType = {};
   for (const a of agents) {
@@ -310,54 +298,26 @@ function printReport(main, agents, hookLog, window) {
     if (a.meta.description && g.descs.length < 2) g.descs.push(a.meta.description);
     if (a.stats.firstTs && a.stats.lastTs) g.wall += new Date(a.stats.lastTs) - new Date(a.stats.firstTs);
   }
-  if (agents.length) {
-    console.log(tallyRow(`subagents (${agents.length})`, agentTotal));
-    const grand = newTally(); mergeTally(grand, main.total); mergeTally(grand, agentTotal);
-    console.log(tallyRow('TOTAL', grand));
-  }
+  const grand = newTally(); mergeTally(grand, main.total); mergeTally(grand, agentTotal);
 
-  if (agents.length) {
-    console.log('\nSUBAGENTS (exact per-dispatch cost, grouped by agent type)');
-    console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('wall', 7)}  top tools`);
-    for (const [type, g] of Object.entries(byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
-      const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
-      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}`);
-      if (g.descs.length) console.log(`  ${pad('', 28)} e.g. ${g.descs.map((d) => JSON.stringify(d.slice(0, 40))).join(', ')}`);
+  const skillSet = new Set([...Object.keys(main.skillInvocations), ...Object.keys(main.skillAttribution)]);
+  for (const a of agents) for (const k of [...Object.keys(a.stats.skillInvocations), ...Object.keys(a.stats.skillAttribution)]) skillSet.add(k);
+  const skillRows = [...skillSet].sort().map((k) => {
+    const inv = { calls: 0, injectedChars: 0 };
+    for (const src of [main, ...agents.map((a) => a.stats)]) {
+      if (src.skillInvocations[k]) { inv.calls += src.skillInvocations[k].calls; inv.injectedChars += src.skillInvocations[k].injectedChars; }
     }
-  }
-
-  const skills = new Set([...Object.keys(main.skillInvocations), ...Object.keys(main.skillAttribution)]);
-  for (const a of agents) for (const k of [...Object.keys(a.stats.skillInvocations), ...Object.keys(a.stats.skillAttribution)]) skills.add(k);
-  if (skills.size) {
-    // Main and subagent attribution are printed SPLIT, never summed: a dispatched seat
-    // inherits whatever skill stamp was last active in the main session, so a seat type
-    // foreign to the skill (a verifier charged to an installer command) means the stamp
-    // bled from an adjacent run - measured in a real session, where 223 verifier msgs
-    // landed on a plugin-update command that dispatches nothing.
-    console.log('\nSKILLS (calls = Skill tool invocations; attributed = API msgs stamped while the skill was active - the real cost signal)');
-    console.log('  (sub rows list the seat types carrying the stamp - a seat type foreign to the skill = stamp bleed from an adjacent run, do not charge it)');
-    console.log(`  ${pad('skill', 44)} ${rpad('calls', 5)} ${rpad('result', 9)} ${rpad('attr msgs', 9)} ${rpad('attr out', 9)} ${rpad('attr cache-rd', 13)}`);
-    for (const k of [...skills].sort()) {
-      const inv = { calls: 0, injectedChars: 0 };
-      for (const src of [main, ...agents.map((a) => a.stats)]) {
-        if (src.skillInvocations[k]) { inv.calls += src.skillInvocations[k].calls; inv.injectedChars += src.skillInvocations[k].injectedChars; }
-      }
-      const mAttr = main.skillAttribution[k] || { msgs: 0, output: 0, cacheRead: 0 };
-      const sub = { msgs: 0, output: 0, cacheRead: 0, types: {} };
-      for (const a of agents) {
-        const sa = a.stats.skillAttribution[k];
-        if (!sa) continue;
-        sub.msgs += sa.msgs; sub.output += sa.output; sub.cacheRead += sa.cacheRead || 0;
-        const ty = a.meta.agentType || '(unknown)';
-        sub.types[ty] = (sub.types[ty] || 0) + 1;
-      }
-      console.log(`  ${pad(k, 44)} ${rpad(inv.calls, 5)} ${rpad('~' + fmt(approxTok(inv.injectedChars)), 9)} ${rpad(mAttr.msgs, 9)} ${rpad(fmt(mAttr.output), 9)} ${rpad(fmt(mAttr.cacheRead), 13)}`);
-      if (sub.msgs) {
-        const seats = Object.entries(sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
-        console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(sub.msgs, 9)} ${rpad(fmt(sub.output), 9)} ${rpad(fmt(sub.cacheRead), 13)}`);
-      }
+    const mAttr = main.skillAttribution[k] || { msgs: 0, output: 0, cacheRead: 0 };
+    const sub = { msgs: 0, output: 0, cacheRead: 0, types: {} };
+    for (const a of agents) {
+      const sa = a.stats.skillAttribution[k];
+      if (!sa) continue;
+      sub.msgs += sa.msgs; sub.output += sa.output; sub.cacheRead += sa.cacheRead || 0;
+      const ty = a.meta.agentType || '(unknown)';
+      sub.types[ty] = (sub.types[ty] || 0) + 1;
     }
-  }
+    return { skill: k, inv, mAttr, sub };
+  });
 
   const docRows = {};
   let inject = main.styleInjections;
@@ -374,15 +334,6 @@ function printReport(main, agents, hookLog, window) {
       r.agents += d.reads; r.writes += d.writes;
     }
   }
-  if (Object.keys(docRows).length || inject || attach) {
-    console.log('\nGENERATED DOCS (capture-doc consumption; reads = orientation happening, writes = capture/loop maintenance)');
-    console.log(`  ${pad('doc', 44)} ${rpad('main-reads', 10)} ${rpad('agent-reads', 11)} ${rpad('writes', 6)}`);
-    for (const [rel, r] of Object.entries(docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents))) {
-      console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}`);
-    }
-    if (attach) console.log(`  ${pad('(style rule attached on file touch)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${attach}`);
-    if (inject) console.log(`  ${pad('(style injected by legacy hook)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${inject}`);
-  }
 
   const mcpServers = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
@@ -390,14 +341,6 @@ function printReport(main, agents, hookLog, window) {
       const e = mcpServers[server] || (mcpServers[server] = { calls: 0, resultChars: 0, errors: 0, tools: {} });
       e.calls += m.calls; e.resultChars += m.resultChars; e.errors += m.errors;
       for (const [t, n] of Object.entries(m.tools)) e.tools[t] = (e.tools[t] || 0) + n;
-    }
-  }
-  if (Object.keys(mcpServers).length) {
-    console.log('\nMCP (main + subagents; results measured in chars, shown as ~tokens)');
-    console.log(`  ${pad('server', 18)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)}  top tools`);
-    for (const [server, m] of Object.entries(mcpServers).sort((a, b) => b[1].calls - a[1].calls)) {
-      const top = Object.entries(m.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
-      console.log(`  ${pad(server, 18)} ${rpad(m.calls, 5)} ${rpad('~' + fmt(approxTok(m.resultChars)), 9)} ${rpad(m.errors, 6)}  ${top}`);
     }
   }
 
@@ -408,9 +351,94 @@ function printReport(main, agents, hookLog, window) {
       e.calls += t.calls; e.resultChars += t.resultChars; e.errors += t.errors;
     }
   }
+
+  return { agentTotal, grand, byType, skillRows, docRows, inject, attach, mcpServers, tools };
+}
+
+function hookJoinStats(main, agents, hookLog, tools) {
+  const trTools = Object.values(tools).reduce((n, t) => n + t.calls, 0);
+  if (!hookLog.firstTs || !hookLog.lastTs) return { trTools, coverage: null };
+  // Compare only calls inside the ledger's own window: a ledger wired mid-session
+  // (instrumentation installed during the run) legitimately misses everything before
+  // its first row - measured at 67 of an 80-row "gap" in a real install session.
+  const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
+  const inWin = allTs.filter((ts) => ts >= hookLog.firstTs && ts <= hookLog.lastTs).length;
+  const sessSpan = main.firstTs && main.lastTs ? Date.parse(main.lastTs) - Date.parse(main.firstTs) : 0;
+  const covSpan = Math.max(0, Math.min(Date.parse(main.lastTs || hookLog.lastTs), Date.parse(hookLog.lastTs)) - Math.max(Date.parse(main.firstTs || hookLog.firstTs), Date.parse(hookLog.firstTs)));
+  const pct = sessSpan > 0 ? Math.round((100 * covSpan) / sessSpan) : 100;
+  return { trTools, coverage: { inWin, pct, outside: trTools - inWin } };
+}
+
+function printReport(main, agents, hookLog, window) {
+  const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
+  console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})`);
+  if (window) console.log(`windowed: ${window.fromStr || 'start'} → ${window.toStr || 'end'} (subagents dispatched outside the window are excluded)`);
+  console.log(`user prompts ${main.userPrompts} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors}`);
+  const agg = computeAggregates(main, agents);
+
+  console.log('\nTOKENS (deduped per API message; ctx/msg = avg context re-sent per call)');
+  console.log(`  ${pad('scope / model', 22)} ${rpad('input', 8)} ${rpad('cache-write', 11)} ${rpad('cache-read', 11)} ${rpad('output', 8)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)}`);
+  console.log(tallyRow('main session', main.total));
+  for (const [m, t] of Object.entries(main.byModel)) console.log(tallyRow('  ' + m, t));
+  if (ctxOf(main.total) > CTX_WARN) {
+    console.log(`  ! avg context/msg ${fmt(ctxOf(main.total))} - the cost driver is carried-forward conversation, not tool output:`);
+    console.log(`    run pipeline steps in fresh sessions that resume from the plan file instead of one long chat.`);
+  }
+  if (agents.length) {
+    console.log(tallyRow(`subagents (${agents.length})`, agg.agentTotal));
+    console.log(tallyRow('TOTAL', agg.grand));
+  }
+
+  if (agents.length) {
+    console.log('\nSUBAGENTS (exact per-dispatch cost, grouped by agent type)');
+    console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('wall', 7)}  top tools`);
+    for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
+      const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
+      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}`);
+      if (g.descs.length) console.log(`  ${pad('', 28)} e.g. ${g.descs.map((d) => JSON.stringify(d.slice(0, 40))).join(', ')}`);
+    }
+  }
+
+  if (agg.skillRows.length) {
+    // Main and subagent attribution are printed SPLIT, never summed: a dispatched seat
+    // inherits whatever skill stamp was last active in the main session, so a seat type
+    // foreign to the skill (a verifier charged to an installer command) means the stamp
+    // bled from an adjacent run - measured in a real session, where 223 verifier msgs
+    // landed on a plugin-update command that dispatches nothing.
+    console.log('\nSKILLS (calls = Skill tool invocations; attributed = API msgs stamped while the skill was active - the real cost signal)');
+    console.log('  (sub rows list the seat types carrying the stamp - a seat type foreign to the skill = stamp bleed from an adjacent run, do not charge it)');
+    console.log(`  ${pad('skill', 44)} ${rpad('calls', 5)} ${rpad('result', 9)} ${rpad('attr msgs', 9)} ${rpad('attr out', 9)} ${rpad('attr cache-rd', 13)}`);
+    for (const r of agg.skillRows) {
+      console.log(`  ${pad(r.skill, 44)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(r.mAttr.msgs, 9)} ${rpad(fmt(r.mAttr.output), 9)} ${rpad(fmt(r.mAttr.cacheRead), 13)}`);
+      if (r.sub.msgs) {
+        const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
+        console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(r.sub.msgs, 9)} ${rpad(fmt(r.sub.output), 9)} ${rpad(fmt(r.sub.cacheRead), 13)}`);
+      }
+    }
+  }
+
+  if (Object.keys(agg.docRows).length || agg.inject || agg.attach) {
+    console.log('\nGENERATED DOCS (capture-doc consumption; reads = orientation happening, writes = capture/loop maintenance)');
+    console.log(`  ${pad('doc', 44)} ${rpad('main-reads', 10)} ${rpad('agent-reads', 11)} ${rpad('writes', 6)}`);
+    for (const [rel, r] of Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents))) {
+      console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}`);
+    }
+    if (agg.attach) console.log(`  ${pad('(style rule attached on file touch)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${agg.attach}`);
+    if (agg.inject) console.log(`  ${pad('(style injected by legacy hook)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${agg.inject}`);
+  }
+
+  if (Object.keys(agg.mcpServers).length) {
+    console.log('\nMCP (main + subagents; results measured in chars, shown as ~tokens)');
+    console.log(`  ${pad('server', 18)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)}  top tools`);
+    for (const [server, m] of Object.entries(agg.mcpServers).sort((a, b) => b[1].calls - a[1].calls)) {
+      const top = Object.entries(m.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
+      console.log(`  ${pad(server, 18)} ${rpad(m.calls, 5)} ${rpad('~' + fmt(approxTok(m.resultChars)), 9)} ${rpad(m.errors, 6)}  ${top}`);
+    }
+  }
+
   console.log('\nTOOLS (main + subagents; result volume = what lands back in context)');
   console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)}`);
-  for (const [name, t] of Object.entries(tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
+  for (const [name, t] of Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
     console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)}`);
   }
 
@@ -427,24 +455,129 @@ function printReport(main, agents, hookLog, window) {
       const top = Object.entries(t.details).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d, n]) => `${d}×${n}`).join(', ');
       console.log(`  ${pad(tool, 28)} ${rpad(t.calls, 5)}  ${top}`);
     }
-    const trTools = Object.values(tools).reduce((n, t) => n + t.calls, 0);
-    // Compare only calls inside the ledger's own window: a ledger wired mid-session
-    // (instrumentation installed during the run) legitimately misses everything before
-    // its first row - measured at 67 of an 80-row "gap" in a real install session.
-    if (hookLog.firstTs && hookLog.lastTs) {
-      const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
-      const inWin = allTs.filter((ts) => ts >= hookLog.firstTs && ts <= hookLog.lastTs).length;
-      const sessSpan = main.firstTs && main.lastTs ? Date.parse(main.lastTs) - Date.parse(main.firstTs) : 0;
-      const covSpan = Math.max(0, Math.min(Date.parse(main.lastTs || hookLog.lastTs), Date.parse(hookLog.lastTs)) - Math.max(Date.parse(main.firstTs || hookLog.firstTs), Date.parse(hookLog.firstTs)));
-      const pct = sessSpan > 0 ? Math.round((100 * covSpan) / sessSpan) : 100;
-      console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${pct}% of the session`);
-      console.log(`  cross-check: ${inWin} in-window transcript tool calls vs ${hookLog.rows} ledger rows (${trTools} calls in the whole session)`);
-      const outside = trTools - inWin;
-      if (outside > 0) console.log(`  ${outside} call${outside === 1 ? '' : 's'} outside the ledger window (ledger wired mid-session or stopped early) - expected, not a propagation gap`);
+    const j = hookJoinStats(main, agents, hookLog, agg.tools);
+    if (j.coverage) {
+      console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
+      console.log(`  cross-check: ${j.coverage.inWin} in-window transcript tool calls vs ${hookLog.rows} ledger rows (${j.trTools} calls in the whole session)`);
+      if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (ledger wired mid-session or stopped early) - expected, not a propagation gap`);
     } else {
-      console.log(`  cross-check: transcript saw ${trTools} tool calls vs ${hookLog.rows} hook rows (ledger rows carry no timestamps, so window coverage is unavailable)`);
+      console.log(`  cross-check: transcript saw ${j.trTools} tool calls vs ${hookLog.rows} hook rows (ledger rows carry no timestamps, so window coverage is unavailable)`);
     }
   }
+}
+
+// ---------- markdown report skeleton ----------
+// --report-md emits the per-session report SKELETON: every table is machine-written,
+// so a report author cannot misquote the numbers (measured: 5 wrong claims across 4
+// hand-written session reports, each a prose restatement of tool output). The FILL IN
+// sections at the end are the only judgment surface.
+function printMarkdown(main, agents, hookLog, window) {
+  const agg = computeAggregates(main, agents);
+  const out = [];
+  const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
+  const mdTally = (label, t) => `| ${label} | ${fmt(t.input)} | ${fmt(t.cacheCreate)} | ${fmt(t.cacheRead)} | ${fmt(t.output)} | ${t.msgs} | ${fmt(ctxOf(t))} |`;
+
+  out.push(`# Stack usage report - session \`${path.basename(main.file, '.jsonl')}\``, '');
+  out.push('Generated by `analyze-usage.js --report-md` - every number in the tables below is the');
+  out.push("analyzer's own output. Fill ONLY the marked judgment sections; a claim there must cite a");
+  out.push('table row above, or a transcript measurement labeled as such.', '');
+  if (window) out.push(`> Windowed: ${window.fromStr || 'start'} → ${window.toStr || 'end'} (subagents dispatched outside the window are excluded)`, '');
+
+  out.push('## Environment', '');
+  out.push('| | |', '|---|---|');
+  out.push(`| Session window | ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)}) |`);
+  out.push(`| Volume | ${main.userPrompts} user prompts · ${main.total.msgs} API messages · ${main.compactions} compactions · ${main.apiErrors} API errors |`);
+  out.push(`| Models (main) | ${Object.entries(main.byModel).map(([m, t]) => `\`${m}\` ×${t.msgs}`).join(', ') || '-'} |`);
+  out.push(`| Subagent transcripts | ${agents.length} |`);
+  out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`, '');
+
+  out.push('## Tokens (deduped per API message; ctx/msg = avg context re-sent per call)', '');
+  out.push('| scope | input | cache-write | cache-read | output | msgs | ctx/msg |', '|---|---|---|---|---|---|---|');
+  out.push(mdTally('main session', main.total));
+  for (const [m, t] of Object.entries(main.byModel)) out.push(mdTally(`- ${m}`, t));
+  if (agents.length) { out.push(mdTally(`subagents (${agents.length})`, agg.agentTotal)); out.push(mdTally('**TOTAL**', agg.grand)); }
+  out.push('');
+  if (ctxOf(main.total) > CTX_WARN) {
+    out.push(`> ! avg context/msg ${fmt(ctxOf(main.total))} - the cost driver is carried-forward conversation, not tool output: run pipeline steps in fresh sessions that resume from the plan file instead of one long chat.`, '');
+  }
+
+  if (agents.length) {
+    out.push('## Subagent dispatches (exact per-dispatch cost, grouped by agent type)', '');
+    out.push('| agent type | n | output | cache-read | msgs | wall | top tools |', '|---|---|---|---|---|---|---|');
+    for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
+      const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
+      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)} | ${top} |`);
+    }
+    out.push('');
+  }
+
+  if (agg.skillRows.length) {
+    out.push('## Skills (attribution split main vs sub)', '');
+    out.push('A `sub:` row names the seat types carrying the stamp - a seat type foreign to the skill is');
+    out.push('stamp bleed from an adjacent run: report it as bleed, never charge it to the skill.', '');
+    out.push('| skill | calls | result | attr msgs | attr out | attr cache-rd |', '|---|---|---|---|---|---|');
+    for (const r of agg.skillRows) {
+      out.push(`| ${r.skill} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${r.mAttr.msgs} | ${fmt(r.mAttr.output)} | ${fmt(r.mAttr.cacheRead)} |`);
+      if (r.sub.msgs) {
+        const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
+        out.push(`| - sub: ${seats} | | | ${r.sub.msgs} | ${fmt(r.sub.output)} | ${fmt(r.sub.cacheRead)} |`);
+      }
+    }
+    out.push('');
+  }
+
+  const docEntries = Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents));
+  if (docEntries.length || agg.inject || agg.attach) {
+    out.push('## Generated docs (reads = orientation happening, writes = capture/loop maintenance)', '');
+    out.push('| doc | main-reads | agent-reads | writes |', '|---|---|---|---|');
+    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} |`);
+    if (agg.attach) out.push(`| (style rule attached on file touch) | - | - | ×${agg.attach} |`);
+    if (agg.inject) out.push(`| (style injected by legacy hook) | - | - | ×${agg.inject} |`);
+    out.push('');
+  }
+
+  const mcpEntries = Object.entries(agg.mcpServers).sort((a, b) => b[1].calls - a[1].calls);
+  if (mcpEntries.length) {
+    out.push('## MCP (main + subagents)', '');
+    out.push('| server | calls | results | errors | top tools |', '|---|---|---|---|---|');
+    for (const [server, m] of mcpEntries) {
+      const top = Object.entries(m.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
+      out.push(`| ${server} | ${m.calls} | ~${fmt(approxTok(m.resultChars))} | ${m.errors} | ${top} |`);
+    }
+    out.push('');
+  }
+
+  out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
+  out.push('| tool | calls | results | errors |', '|---|---|---|---|');
+  for (const [name, t] of Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
+    out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} |`);
+  }
+  out.push('');
+
+  if (main.spikes.length) {
+    out.push('## Context spikes (main session)', '');
+    out.push('| Δ | to ctx | when | after |', '|---|---|---|---|');
+    for (const sp of main.spikes) out.push(`| +${fmt(sp.delta)} | ${fmt(sp.ctx)} | ${sp.ts || '?'} | ${sp.causes || '(prompt/attachment only)'} |`);
+    out.push('');
+  }
+
+  if (hookLog) {
+    const j = hookJoinStats(main, agents, hookLog, agg.tools);
+    out.push('## Hook-log join (identity ledger; tokens come from the transcript)', '');
+    if (j.coverage) {
+      out.push(`- Coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session.`);
+      out.push(`- Cross-check: ${j.coverage.inWin} in-window transcript tool calls vs ${hookLog.rows} ledger rows (${j.trTools} calls in the whole session).`);
+      if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (ledger wired mid-session or stopped early) - expected, not a propagation gap.`);
+    } else {
+      out.push(`- ${j.trTools} transcript tool calls vs ${hookLog.rows} ledger rows (ledger rows carry no timestamps, so window coverage is unavailable).`);
+    }
+    out.push('');
+  }
+
+  out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
+  out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
+  out.push('## Verdict - FILL IN', '', '| skill | worked as intended | biggest strength | biggest waste source | one concrete suggestion |', '|---|---|---|---|---|', '');
+  console.log(out.join('\n'));
 }
 
 // ---------- entry ----------
@@ -455,6 +588,7 @@ async function main() {
   const flagValIdx = new Set(['--hook-log', '--from', '--to', '--docs-root'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   const asJson = args.includes('--json');
+  const asMd = args.includes('--report-md');
   const hookFile = flagVal('--hook-log');
   const docsRoot = flagVal('--docs-root');
   if (docsRoot) docsPrefixes.push(docsRoot.endsWith('/') ? docsRoot : docsRoot + '/');
@@ -463,7 +597,7 @@ async function main() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--json]');
+    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--json] [--report-md]');
     process.exit(1);
   }
 
@@ -492,6 +626,10 @@ async function main() {
   const hookLog = hookFile ? await analyzeHookLog(hookFile) : null;
   if (asJson) {
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, main: mainStats, agents, hookLog } : { main: mainStats, agents, hookLog }, null, 2));
+    return;
+  }
+  if (asMd) {
+    printMarkdown(mainStats, agents, hookLog, window);
     return;
   }
   printReport(mainStats, agents, hookLog, window);
