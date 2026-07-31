@@ -34,7 +34,13 @@ cycle note 'csv-export__cycle': step 4 BUILD - resume at task 2, mode session
 ## The stop contract
 
 At each stop: report one line of result, the artifact path, and what the next step will be - then
-END THE TURN and wait. The stop is the user's window to switch model or effort, paste context, or
+END THE TURN and wait. A stop that carries a decision (the approve+mode gate, the reviewer pick,
+any conflict the step surfaced - a plan step colliding with a house rule) MUST go through the
+AskUserQuestion tool - concrete options, the recommendation marked, free text always available
+via Other. This is not a preference: in one session every solve-task stop rendered as prose while
+the tool worked for every other skill's ask (measured: 0 of 8 stops used it, 2 of 2 non-solve-task
+asks did) - a decision buried in prose gets skimmed past; a question with options gets answered.
+Plain-text options are only the fallback where the harness has no such tool. The stop is the user's window to switch model or effort, paste context, or
 edit the plan file directly - and the cheap point to run the next step in a fresh session
 (`/clear`): resume needs only the plan file + cycle note, so the step starts at a few k of
 context instead of re-sending the finished steps' whole conversation with every call - in a long
@@ -50,16 +56,18 @@ explicit word; silence is not a go.
    file, not the chat, is the artifact. *Stop.*
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
    found. Gaps route back to step 1 on the user's word. *Stop.*
-3. **APPROVE** - present the gated plan and ask two things in one gate: approval to build, and the
-   build mode - **session** (default: the build runs in this chat) or **agents** (each task
-   dispatched to its stack's `<stack>-implementer` seat, up to 3 at once, each on its frontmatter
-   model unless you name one). The gate accepts only an answer that NAMES the mode: a bare 'go',
-   'yes', or 'approved' names none and approves nothing - re-present the two modes and end the
-   turn again, never default one in. (When the ask itself already named the mode, the stop needs
-   only the approval word - restate the mode you are stamping.) Stamp
+3. **APPROVE** - present the gated plan, then put the gate through the stop contract's decision
+   mechanism as ONE question whose options each NAME the mode: 'Approve - build in this session
+   (recommended)', 'Approve - dispatch the agent seats' (each task to its stack's
+   `<stack>-implementer`, up to 3 at once, frontmatter models unless the user names one), 'Not
+   yet - changes needed'. Approval and mode arrive as one answer by construction - the bare 'go'
+   that names no mode cannot happen; a typed Other answer that omits the mode is re-asked, never
+   defaulted. (When the invocation already named the mode, the question carries only approve /
+   not-yet - restate the mode you are stamping.) Stamp
    `Approved: <date> - mode <session|agents>`
-   into the plan file. Nothing builds without this stamp. Agents mode exists only where subagent
-   dispatch is available; otherwise session is the only mode - say so rather than pretending.
+   into the plan file, quoting the selected answer as the user's approval words. Nothing builds
+   without this stamp. Agents mode exists only where subagent dispatch is available; otherwise
+   offer session only and say so rather than pretending.
 4. **BUILD** - per the approved mode:
    - *session*: run `project-implementer` - it marks each task `IN_PROGRESS` before code, ticks it
      `DONE` with evidence after its green gate, and keeps the plan's resume note current.
@@ -71,10 +79,12 @@ explicit word; silence is not a go.
      per task as reports land. Each seat's green gate stays fast - build + fast tests, never
      integration replays or another minutes-long run; the slow full run
      happens once, in this session, at the step-5 review / step-6 done-gate.
-   *Stop* - and this stop chooses the reviewer for step 5: run `project-verify-code` in-session
-   (default - no dispatch, stays in this context), dispatch the stack's `<stack>-verifier` seat for
-   isolated eyes (on its frontmatter model unless you name one), or **skip** the review straight to step 6's done-gate. (For a broad parallel sweep you can still invoke `/code-review` yourself - it is not part of this flow.) The user can
-   inspect the diff themselves here first.
+   *Stop* - and this stop chooses the reviewer for step 5, through the same decision mechanism:
+   'project-verify-code in-session (recommended)' - no dispatch, stays in this context; 'the
+   stack's `<stack>-verifier` seat' - isolated eyes, frontmatter model unless the user names one;
+   or 'skip' - straight to step 6's done-gate. (For a broad parallel sweep the user can still
+   invoke `/code-review` themselves - it is not part of this flow.) The user can inspect the diff
+   themselves here first.
 5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`, an honest
    record, not a silent gap) - run the reviewer chosen at the step-4 stop over the assembled diff,
    pointed at the plan file so it reviews against the plan, not in isolation. The review protocol -

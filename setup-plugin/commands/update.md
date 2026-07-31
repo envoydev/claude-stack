@@ -28,8 +28,10 @@ mode (the account's skills). Nothing installed in either place -> stop and route
 ## 2. Inventory the installed set
 Build the CURRENT selection from disk exactly as the sibling `configure` command's step 1 does -
 skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md` and `project-code-style.md`),
-hooks (`.claude/hooks/*.js`, excluding the GENERATED legacy `inject-code-style.js`), mcps from
-`<repo>/.mcp.json`, plugins fail-soft - never from memory or assumption.
+hooks (`.claude/hooks/*.js`, excluding the GENERATED legacy `inject-code-style.js`; bare basenames - the catalog has no suffix), mcps from
+`<repo>/.mcp.json`, plugins fail-soft and filtered to entries enabled for THIS project (the
+listing is machine-global; an unfiltered read re-submits a sibling repo's plugin to this
+project's refresh - measured) - never from memory or assumption.
 
 ## 3. Compute the delta since the stamp
 Read the stamp (`.claude/claude-stack.stamp`, or the account's) and the snapshot's
@@ -94,8 +96,10 @@ also loses its `.claude/settings.json` wiring in the same pass - show that edit 
 entry's `unwire_settings_hook` names exactly which entry goes; parse-edit-rewrite, never regex,
 never touching other wiring). A migration's `then` line goes in the step-9 report as a next step -
 run nothing on the user's behalf. Then re-run
-`/project-agent-capabilities` (when installed) so the generated awareness rule reflects the new
-inventory.
+`/project-agent-capabilities` (when installed) whenever the release refreshed ANY installed skill
+or agent file - never gated on roster adds/drops: the generated rule stamps each skill's first
+sentence, which drifts with content-only updates (measured: a 'roster unchanged, rule still
+accurate' skip left 7 of 10 stamped sentences stale and the user caught it manually).
 
 ## 8. Reconcile the project's CLAUDE.md (project mode)
 Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling

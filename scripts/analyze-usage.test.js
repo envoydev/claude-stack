@@ -46,7 +46,37 @@ test('full report: dedups per message.id, measures results, attributes skill cac
   assert.strictEqual(main.total.cacheRead, 8000);
   assert.strictEqual(main.toolCalls.Read.calls, 1);
   assert.strictEqual(main.toolCalls.Read.resultChars, 400);
-  assert.deepStrictEqual(main.skillAttribution.csharp, { msgs: 1, output: 30, cacheRead: 2000 });
+  // m3 carries no stamp: sticky carry-forward attributes it to the last active skill and
+  // counts it separately as carried (the stamp drops at task-notifications mid-run - measured)
+  assert.deepStrictEqual(main.skillAttribution.csharp, { msgs: 2, output: 40, cacheRead: 7000, carriedMsgs: 1 });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('compaction pairs count once; guard denials bucket as hookBlocks, not errors; workflows/ nests are scanned', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file,
+    line({ type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 100, 5), content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'Big.cs' } }] } }) +
+    line({ type: 'user', timestamp: '2026-07-15T07:00:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'Blocked: whole-file Read of Big.cs (300 lines) - locate the symbol first.' }] } }) +
+    // one real compaction emits BOTH markers - must count once
+    line({ type: 'system', timestamp: '2026-07-15T07:01:00.000Z', compactMetadata: { trigger: 'auto' } }) +
+    line({ type: 'user', timestamp: '2026-07-15T07:01:00.001Z', isCompactSummary: true, message: { content: 'summary' } }) +
+    line({ type: 'assistant', timestamp: '2026-07-15T07:02:00.000Z', message: { id: 'm2', model: 'claude-sonnet-5', usage: usage(1, 0, 100, 5), content: [{ type: 'tool_use', id: 't2', name: 'Read', input: { file_path: 'x.txt' } }] } }) +
+    line({ type: 'user', timestamp: '2026-07-15T07:02:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't2', is_error: true, content: 'File does not exist.' }] } }),
+  );
+  const wfDir = path.join(dir, 'subagents', 'workflows', 'wf_1');
+  fs.mkdirSync(wfDir, { recursive: true });
+  fs.writeFileSync(path.join(wfDir, 'agent-w1.jsonl'),
+    line({ type: 'assistant', timestamp: '2026-07-15T07:03:00.000Z', message: { id: 'w1', model: 'claude-sonnet-5', usage: usage(1, 0, 50, 7), content: [] } }),
+  );
+  const { main, agents } = run([file]);
+  assert.strictEqual(main.compactions, 1, 'dual-marker compaction counts once');
+  assert.strictEqual(main.toolCalls.Read.hookBlocks, 1, 'guard denial bucketed');
+  assert.strictEqual(main.toolCalls.Read.errors, 1, 'real error still counted');
+  assert.strictEqual(agents.length, 1, 'nested workflow transcript found');
+  assert.strictEqual(agents[0].meta.agentType, 'workflow-subagent');
+  assert.strictEqual(agents[0].group, 'workflows/wf_1');
+  assert.strictEqual(agents[0].stats.total.output, 7);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -69,8 +99,8 @@ test('--report-md emits the machine-written skeleton with tables and fill-in sec
   assert.ok(md.startsWith('# Stack usage report - session `session`'));
   // machine-written numbers: deduped msgs and the skill attribution row
   assert.ok(md.includes('| main session | 16 | 100 | 8.0k | 90 | 3 |'), 'tokens table row present');
-  assert.ok(md.includes('| csharp | 0 | ~0 | 1 | 30 | 2.0k |'), 'skills attribution row present');
-  assert.ok(md.includes('| Read | 1 | ~100 | 0 |'), 'tools table row present');
+  assert.ok(md.includes('| csharp |  | 0 | ~0 | 2 (1 carried) | 40 | 7.0k |'), 'skills attribution row present (sticky carry labeled)');
+  assert.ok(md.includes('| Read | 1 | ~100 | 0 |  |'), 'tools table row present');
   // judgment surface is fill-in only
   assert.ok(md.includes('## Waste analysis - FILL IN'));
   assert.ok(md.includes('## Protocol check - FILL IN'));

@@ -8,7 +8,7 @@ What makes CLAUDE.md distinct: it is the entry point of the whole instruction la
 
 This is a portable prompt. It makes no assumptions about which CLAUDE.md files, rules, skills, or agents exist and is meant to be pointed at any Claude Code repository, including ones you did not write. Discover every catalog from the roots below.
 
-You operate autonomously. Do not ask for confirmation between phases. Stop only on the objective conditions defined below.
+You operate autonomously. Do not ask for confirmation between phases. Stop only on the objective conditions defined below. When a stop or finding genuinely needs the user's answer - a proposed split, a conflict with no repo-decided winner, a blocker only they can waive - put the question through the AskUserQuestion tool with concrete options and a marked recommendation, never a prose question buried in a report.
 
 ## Mechanism facts you must operate on
 
@@ -47,6 +47,7 @@ Template mode: when the audited file is a template that installers copy into tar
 - Every line must change behavior or route the reader. CLAUDE.md lines are paid on every session; a line that neither changes what Claude does nor points to a governing document is a tax.
 - Facts must be true. Build commands, paths, and architecture claims in CLAUDE.md are executed and trusted every session; verify them against the repository itself. A wrong command in CLAUDE.md is worse than a missing one.
 - Hub over encyclopedia. When content grows, the fix is routing (rules, skills, hooks) plus a clear map, not a longer file.
+- Forcing shape over advisory prose. Measured across 33 real sessions: advisory prose in the instruction layer was skipped under load while mechanisms (hooks, gate files, required report fields, tool-call steps) held every time - so a CLAUDE.md line that mandates behavior nothing observable enforces is a candidate for conversion to a mechanism or a routed rule, not for stronger wording.
 - Installs are selective: any rule, skill, or agent CLAUDE.md points at may be excluded from a given install, so an install-time-optional artifact can never be a load-bearing dependency - a pointer to one must read as routing that degrades gracefully when the target is absent, and behavior CLAUDE.md itself must guarantee stays in CLAUDE.md.
 - Generic by default. In template mode this is the placeholder discipline already scored (no baked-in stack facts); in a filled file, a technology is named only where the project actually uses it or a shipped tool requires it. A decorative tech mention is a defect - cite the line and score it under Dimension 3.
 - Reversibility. Snapshot every file before editing so a regression can be undone.

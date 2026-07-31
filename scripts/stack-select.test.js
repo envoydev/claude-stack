@@ -126,12 +126,15 @@ test('phase-1 hard prereqs are blockers when the binary is absent', () => {
     assert.strictEqual(r.ok, false);
 });
 
-test('a selected sentry mcp without its token is a blocker; with it, clean', () => {
+test('a selected sentry mcp without its token warns, never blocks; with it, clean', () => {
+    // warning by design: registration is secret-free, only runtime auth needs the token -
+    // as a blocker it cost ~90min/7 aborted runs and invited ad hoc bypasses (audit 2026-07-31)
     const sel = { skills: [], mcps: ['sentry'], plugins: [] };
     const missing = evaluatePrereqs(sel, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: {} }, {});
-    assert.ok(missing.blockers.some(b => /Sentry/i.test(b.need)), 'sentry token blocker');
+    assert.ok(!missing.blockers.some(b => /Sentry/i.test(b.need)), 'sentry token must not block');
+    assert.ok(missing.warnings.some(b => /Sentry/i.test(b.need)), 'sentry token warns');
     const present = evaluatePrereqs(sel, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: { SENTRY_ACCESS_TOKEN: true } }, {});
-    assert.ok(!present.blockers.some(b => /Sentry/i.test(b.need)), 'sentry token satisfied');
+    assert.ok(!present.warnings.some(b => /Sentry/i.test(b.need)), 'sentry token satisfied');
 });
 
 test('a .NET skill without the dotnet SDK is a blocker', () => {

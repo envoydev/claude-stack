@@ -1413,6 +1413,10 @@
     {
      "file": "stack/skills/project-build-from-scratch/SKILL.md",
      "marker": "flow/APPROVAL"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/SKILL.md",
+     "marker": "flow/APPROVAL"
     }
    ]
   },
@@ -1447,6 +1451,96 @@
     {
      "file": "scripts/os/claude-stack.ps1",
      "marker": "releases/latest/download/claude-stack"
+    }
+   ]
+  },
+  "rubric-dispatch-carveout-implementer": {
+   "_note": "The implementers' quality-loop findings-plan carve-out (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
+   "owner": {
+    "file": "stack/agents/aspnet-implementer.md",
+    "marker": "findings-plan, the plan is the contract"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/browser-extension-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/console-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/data-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/devops-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/ionic-angular-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/web-angular-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/windows-service-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/winforms-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    },
+    {
+     "file": "stack/agents/wpf-implementer.md",
+     "marker": "findings-plan, the plan is the contract"
+    }
+   ]
+  },
+  "rubric-dispatch-carveout-verifier": {
+   "_note": "The verifiers' quality-loop stage-rubric carve-out (rubric is the audit spec; skip plan diff, build+test rerun, and the memory-handoff WRITE unless the brief asks - read-only orientation stays fine) - identical in all 10 verifier seats for the same selective-install reason.",
+   "owner": {
+    "file": "stack/agents/aspnet-verifier.md",
+    "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/browser-extension-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/console-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/data-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/devops-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/ionic-angular-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/web-angular-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/windows-service-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/winforms-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+    },
+    {
+     "file": "stack/agents/wpf-verifier.md",
+     "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
     }
    ]
   }

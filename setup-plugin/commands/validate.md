@@ -39,8 +39,10 @@ Confirm the install (project mode, above), then **inventory the installed set fr
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
 `baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
-`inject-code-style.js`; mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin
-list` (fail-soft without the CLI). Write it as one inventory JSON in `$TMP`
+`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin
+list` filtered to the entries enabled for THIS project (project scope at this path, or user
+scope) - the listing is machine-global, and an unfiltered read proposes sibling repos' plugins as
+REDUNDANT here (measured near-miss uninstall); fail-soft without the CLI. Write it as one inventory JSON in `$TMP`
 (`{rules,agents,skills,hooks,mcps,plugins}` arrays) - the `--installed` input for the walk.
 
 ## 2. Detect the project's stacks - and show the evidence
