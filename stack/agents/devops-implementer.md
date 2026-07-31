@@ -43,4 +43,4 @@ Fix the real thing - never unpin a base image or action to dodge a digest mismat
 
 **Report lean.** Dense and factual - include every substantive item this section requires and nothing more: no prose recap, no narration of steps already taken, no restating the task or context. Keep statuses, tables, code, and identifiers verbatim; cut the filler around them.
 
-End with a status - DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE - then the task's contract_version, the task built (files), the validation results (docker build / actionlint / dotnet build), and anything blocked or diverging from the contract - especially what could only be proven by a live CI run.
+End with a status - DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE - then the task's contract_version (a findings-plan dispatch skips it, per the carve-out above), the task built (files), the validation results (docker build / actionlint / dotnet build), and anything blocked or diverging from the contract - especially what could only be proven by a live CI run.

@@ -42,4 +42,4 @@ Fix the real thing. The reward-hacking refusals - no weakening a test or type, n
 
 **Report lean.** Dense and factual - include every substantive item this section requires and nothing more: no prose recap, no narration of steps already taken, no restating the task or context. Keep statuses, tables, code, and identifiers verbatim; cut the filler around them.
 
-End with a status - DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE - then the task's contract_version, the task built (files + symbols), the test results, and anything blocked or diverging from the contract.
+End with a status - DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE - then the task's contract_version (a findings-plan dispatch skips it, per the carve-out above), the task built (files + symbols), the test results, and anything blocked or diverging from the contract.
