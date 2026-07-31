@@ -358,7 +358,8 @@
         "dotnet-mvc-controllers",
         "dotnet-testing",
         "dotnet-web-backend",
-        "dotnet-web-error-handling"
+        "dotnet-web-error-handling",
+        "project-quality-loop"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -471,7 +472,8 @@
         "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
-        "dotnet-testing"
+        "dotnet-testing",
+        "project-quality-loop"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -518,6 +520,7 @@
         "dotnet-migrate",
         "dotnet-testing",
         "postgres",
+        "project-quality-loop",
         "sqlite"
       ],
       "skillsSource": "body",
@@ -765,6 +768,7 @@
         "angular-material",
         "angular-styling",
         "frontend",
+        "project-quality-loop",
         "typescript"
       ],
       "skillsSource": "body",
@@ -896,7 +900,8 @@
         "dotnet-hosted-services",
         "dotnet-testing",
         "dotnet-windows-service",
-        "dotnet-wpf"
+        "dotnet-wpf",
+        "project-quality-loop"
       ],
       "skillsSource": "body",
       "agents": [],

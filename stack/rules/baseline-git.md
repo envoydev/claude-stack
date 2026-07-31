@@ -34,4 +34,9 @@ review `project-verify-code` - model-invocable, so the gate holds in autonomous 
 findings in place) - plus any diff gates named in the project's
 `CLAUDE.md` - then satisfy the Definition-of-done gate. Findings caught here land in the same
 commit; found later they become fixup noise or shipped defects. Skip for typos / one-line /
-formatting-only diffs.
+formatting-only diffs - and for a diff the active quality-loop's own dispatched re-verify plus
+final gate just cleared (an equivalent-or-stronger check already ran; a self-granted skip on any
+other reasoning is not this exemption). The formatter half is never skipped: one unformatted
+commit is a red CI run and a fixup commit (measured). A quality-loop stage-boundary commit may
+exceed the one-logical-change size guidance when its stages share touched files - name the stages
+in the commit body rather than splitting an unverifiable diff.

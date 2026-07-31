@@ -18,3 +18,9 @@ satisfy `superpowers:verification-before-completion` - build + relevant tests ru
 gate honestly - fix the cause, never suppress a warning, weaken a test, or stub code to go green.
 Report what changed and what deliberately did not. Cannot run it? Say so, never silently skip.
 Partial work: state complete vs not vs why, then ask continue / redirect / stop.
+Background work: a polling wait or a 'what is running' answer keys on a specific PID, marker
+file, or output sentinel - never a bare process-name grep (`pgrep -f 'dotnet test'` matches a
+sibling project's run; measured: one session nearly wrote a false coverage collapse and another
+told the user nothing was running while its own orphaned waiter was live). Task lists track
+created tasks only, never background shells - check the shell's own PID and listening ports
+before claiming nothing runs.

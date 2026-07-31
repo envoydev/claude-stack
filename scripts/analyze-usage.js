@@ -115,17 +115,27 @@ async function analyzeTranscript(file, window) {
     styleInjections: 0,          // legacy inject-code-style hook firings seen in this transcript
     userPrompts: 0,
     compactions: 0,
+    commandInvocations: {},      // slash-command name -> count (from <command-name> markers)
     apiErrors: 0,
     firstTs: null,
     lastTs: null,
     spikes: [],                  // top context jumps: {ts, delta, ctx, causes}
     toolCallTs: [],              // one timestamp per tool_use - lets the hook-log join count only in-window calls
   };
-  const msgReg = new Map();       // message.id -> {model, skill, u:{in,cc,cr,out}} folded max per field
+  const msgReg = new Map();       // message.id -> {model, skill, carried, u:{in,cc,cr,out}} folded max per field
   const seenToolUse = new Set();  // tool_use id dedup across duplicated assistant lines
   const toolById = new Map();     // tool_use id -> { name, skill }
   let prevCtx = null;
   let pending = [];               // tool results since the previous counted assistant msg
+  // One real compaction emits TWO lines (a system compactMetadata + a user isCompactSummary,
+  // ms apart) - counting both doubled the number in four audited bundles. Count boundaries;
+  // fall back to summaries only for a transcript that carries no boundary lines at all.
+  let compactMeta = 0, compactSummary = 0;
+  // attributionSkill drops to undefined at an async task-notification and never recovers for
+  // the rest of a run (measured: ~2h of one skill's session unattributed). Carry the last
+  // stamp forward - reset at a compaction or a new slash command - and count carried msgs
+  // separately so the report can say how much attribution is inferred vs stamped.
+  let lastSkill = null;
 
   await readJsonl(file, (o, raw) => {
     if (window && o.timestamp) {
@@ -135,17 +145,24 @@ async function analyzeTranscript(file, window) {
     if (raw.includes(STYLE_RULE_MARKER)) s.styleRuleAttaches++;
     if (raw.includes(STYLE_INJECT_MARKER)) s.styleInjections++;
     if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
-    if (o.isCompactSummary || o.compactMetadata) s.compactions++;
+    if (o.compactMetadata) { compactMeta++; lastSkill = null; }
+    if (o.isCompactSummary) compactSummary++;
     if (o.isApiErrorMessage) s.apiErrors++;
+    const cmd = raw.includes('<command-name>') && raw.match(/<command-name>\/?([A-Za-z0-9_:-]+)<\/command-name>/);
+    if (cmd) {
+      s.commandInvocations[cmd[1]] = (s.commandInvocations[cmd[1]] || 0) + 1;
+      lastSkill = null; // a new slash command ends the previous skill's carry-forward
+    }
 
     if (o.type === 'assistant' && o.message) {
       const m = o.message;
       // usage: fold as max per field per message.id (duplicate lines repeat identical
       // usage in main sessions but progressive streaming snapshots in subagent files)
       if (m.usage && m.id && m.model !== '<synthetic>') {
+        if (o.attributionSkill) lastSkill = o.attributionSkill;
         let r = msgReg.get(m.id);
         if (!r) {
-          r = { model: m.model, skill: o.attributionSkill || null, u: { in: 0, cc: 0, cr: 0, out: 0 } };
+          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, u: { in: 0, cc: 0, cr: 0, out: 0 } };
           msgReg.set(m.id, r);
           // context size is fixed at message start, so first sighting is exact for spikes
           const ctx = (m.usage.input_tokens || 0) + (m.usage.cache_read_input_tokens || 0) + (m.usage.cache_creation_input_tokens || 0);
@@ -160,7 +177,7 @@ async function analyzeTranscript(file, window) {
         r.u.cc = Math.max(r.u.cc, m.usage.cache_creation_input_tokens || 0);
         r.u.cr = Math.max(r.u.cr, m.usage.cache_read_input_tokens || 0);
         r.u.out = Math.max(r.u.out, m.usage.output_tokens || 0);
-        if (o.attributionSkill && !r.skill) r.skill = o.attributionSkill;
+        if (o.attributionSkill && (!r.skill || r.carried)) { r.skill = o.attributionSkill; r.carried = false; }
       }
       if (Array.isArray(m.content)) for (const c of m.content) {
         if (c.type !== 'tool_use' || seenToolUse.has(c.id)) continue;
@@ -202,12 +219,21 @@ async function analyzeTranscript(file, window) {
       for (const c of content) {
         if (c.type !== 'tool_result') continue;
         hasResult = true;
-        const chars = typeof c.content === 'string' ? c.content.length : JSON.stringify(c.content || '').length;
+        const text = typeof c.content === 'string' ? c.content : JSON.stringify(c.content || '');
+        const chars = text.length;
         const info = toolById.get(c.tool_use_id);
         pending.push({ name: info ? info.name : '?', chars });
         if (!info) continue;
         const t = s.toolCalls[info.name];
-        if (t) { t.resultChars += chars; if (c.is_error) t.errors += 1; }
+        // A PreToolUse guard denial is the gate WORKING, not a tool failure - bucketing them
+        // as errors made reports call a working gate 'the session's weak point' (measured in
+        // three bundles: 124/132, 14/14 and 15/15 'Read errors' were all guard blocks).
+        const isHookBlock = c.is_error && (text.includes('Blocked: whole-file Read') || text.includes('Blocked: dispatch of'));
+        if (t) {
+          t.resultChars += chars;
+          if (isHookBlock) t.hookBlocks = (t.hookBlocks || 0) + 1;
+          else if (c.is_error) t.errors += 1;
+        }
         if (info.skill) s.skillInvocations[info.skill].injectedChars += chars;
         if (info.name.startsWith('mcp__')) {
           const mc = s.mcp[info.name.split('__')[1] || '?'];
@@ -224,10 +250,12 @@ async function analyzeTranscript(file, window) {
     addUsage(s.total, u);
     addUsage(s.byModel[r.model] || (s.byModel[r.model] = newTally()), u);
     if (r.skill) {
-      const a = s.skillAttribution[r.skill] || (s.skillAttribution[r.skill] = { msgs: 0, output: 0, cacheRead: 0 });
+      const a = s.skillAttribution[r.skill] || (s.skillAttribution[r.skill] = { msgs: 0, output: 0, cacheRead: 0, carriedMsgs: 0 });
       a.msgs += 1; a.output += r.u.out; a.cacheRead += r.u.cr;
+      if (r.carried) a.carriedMsgs = (a.carriedMsgs || 0) + 1;
     }
   }
+  s.compactions = compactMeta > 0 ? compactMeta : compactSummary;
   return s;
 }
 
@@ -247,18 +275,32 @@ async function analyzeSubagents(sessionFile, window) {
   // Native layout: <sid>.jsonl + <sid>/subagents/. Audit bundles (what the
   // project-stack-usage-analyzer skill archives) put subagents/ as a SIBLING of the
   // transcript - without the fallback a bundle re-analysis silently drops every seat.
+  // Workflow-tool fan-outs nest under subagents/workflows/<wf-id>/agent-*.jsonl - a flat
+  // scan silently dropped 703 transcripts (~35% of output) across two audited bundles,
+  // so recurse (bounded) and tag each nested entry with its group.
   let dir = path.join(sessionFile.replace(/\.jsonl$/, ''), 'subagents');
   if (!fs.existsSync(dir)) dir = path.join(path.dirname(sessionFile), 'subagents');
   if (!fs.existsSync(dir)) return [];
   const out = [];
-  for (const f of fs.readdirSync(dir)) {
-    if (!f.endsWith('.jsonl')) continue;
-    let meta = {};
-    try { meta = JSON.parse(fs.readFileSync(path.join(dir, f.replace(/\.jsonl$/, '.meta.json')), 'utf8')); } catch { /* meta optional */ }
-    const t = await analyzeTranscript(path.join(dir, f), window);
-    if (window && t.total.msgs === 0) continue; // dispatched entirely outside the window
-    out.push({ id: f.replace(/^agent-|\.jsonl$/g, ''), meta, stats: t });
-  }
+  const walk = async (d, group, depth) => {
+    for (const f of fs.readdirSync(d)) {
+      const full = path.join(d, f);
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (st.isDirectory()) {
+        if (depth < 2) await walk(full, group ? `${group}/${f}` : f, depth + 1);
+        continue;
+      }
+      if (!f.endsWith('.jsonl')) continue;
+      let meta = {};
+      try { meta = JSON.parse(fs.readFileSync(path.join(d, f.replace(/\.jsonl$/, '.meta.json')), 'utf8')); } catch { /* meta optional */ }
+      if (group && !meta.agentType) meta.agentType = 'workflow-subagent';
+      const t = await analyzeTranscript(full, window);
+      if (window && t.total.msgs === 0) continue; // dispatched entirely outside the window
+      out.push({ id: f.replace(/^agent-|\.jsonl$/g, ''), group: group || null, meta, stats: t });
+    }
+  };
+  await walk(dir, null, 0);
   return out;
 }
 
@@ -307,7 +349,7 @@ function computeAggregates(main, agents) {
     for (const src of [main, ...agents.map((a) => a.stats)]) {
       if (src.skillInvocations[k]) { inv.calls += src.skillInvocations[k].calls; inv.injectedChars += src.skillInvocations[k].injectedChars; }
     }
-    const mAttr = main.skillAttribution[k] || { msgs: 0, output: 0, cacheRead: 0 };
+    const mAttr = main.skillAttribution[k] || { msgs: 0, output: 0, cacheRead: 0, carriedMsgs: 0 };
     const sub = { msgs: 0, output: 0, cacheRead: 0, types: {} };
     for (const a of agents) {
       const sa = a.stats.skillAttribution[k];
@@ -316,8 +358,17 @@ function computeAggregates(main, agents) {
       const ty = a.meta.agentType || '(unknown)';
       sub.types[ty] = (sub.types[ty] || 0) + 1;
     }
-    return { skill: k, inv, mAttr, sub };
+    return { skill: k, cmd: main.commandInvocations[k] || 0, inv, mAttr, sub };
   });
+  // Seats whose transcripts carry no skill stamp are real dispatch cost the SKILLS rows
+  // cannot show - name them so an undercount reads as coverage, never as fewer dispatches.
+  const unattributed = { n: 0, types: {} };
+  for (const a of agents) {
+    if (Object.keys(a.stats.skillAttribution).length) continue;
+    unattributed.n += 1;
+    const ty = a.meta.agentType || '(unknown)';
+    unattributed.types[ty] = (unattributed.types[ty] || 0) + 1;
+  }
 
   const docRows = {};
   let inject = main.styleInjections;
@@ -347,12 +398,12 @@ function computeAggregates(main, agents) {
   const tools = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [name, t] of Object.entries(src.toolCalls)) {
-      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0 });
-      e.calls += t.calls; e.resultChars += t.resultChars; e.errors += t.errors;
+      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0 });
+      e.calls += t.calls; e.resultChars += t.resultChars; e.errors += t.errors; e.hookBlocks += t.hookBlocks || 0;
     }
   }
 
-  return { agentTotal, grand, byType, skillRows, docRows, inject, attach, mcpServers, tools };
+  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools };
 }
 
 function hookJoinStats(main, agents, hookLog, tools) {
@@ -405,15 +456,20 @@ function printReport(main, agents, hookLog, window) {
     // foreign to the skill (a verifier charged to an installer command) means the stamp
     // bled from an adjacent run - measured in a real session, where 223 verifier msgs
     // landed on a plugin-update command that dispatches nothing.
-    console.log('\nSKILLS (calls = Skill tool invocations; attributed = API msgs stamped while the skill was active - the real cost signal)');
+    console.log('\nSKILLS (cmd = slash invocations; calls = Skill tool invocations; attributed = API msgs stamped while the skill was active - the real cost signal)');
     console.log('  (sub rows list the seat types carrying the stamp - a seat type foreign to the skill = stamp bleed from an adjacent run, do not charge it)');
-    console.log(`  ${pad('skill', 44)} ${rpad('calls', 5)} ${rpad('result', 9)} ${rpad('attr msgs', 9)} ${rpad('attr out', 9)} ${rpad('attr cache-rd', 13)}`);
+    console.log(`  ${pad('skill', 44)} ${rpad('cmd', 4)} ${rpad('calls', 5)} ${rpad('result', 9)} ${rpad('attr msgs', 9)} ${rpad('attr out', 9)} ${rpad('attr cache-rd', 13)}`);
     for (const r of agg.skillRows) {
-      console.log(`  ${pad(r.skill, 44)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(r.mAttr.msgs, 9)} ${rpad(fmt(r.mAttr.output), 9)} ${rpad(fmt(r.mAttr.cacheRead), 13)}`);
+      const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried)` : '';
+      console.log(`  ${pad(r.skill, 44)} ${rpad(r.cmd || '', 4)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(r.mAttr.msgs + carried, 9)} ${rpad(fmt(r.mAttr.output), 9)} ${rpad(fmt(r.mAttr.cacheRead), 13)}`);
       if (r.sub.msgs) {
         const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
-        console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(r.sub.msgs, 9)} ${rpad(fmt(r.sub.output), 9)} ${rpad(fmt(r.sub.cacheRead), 13)}`);
+        console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 4)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(r.sub.msgs, 9)} ${rpad(fmt(r.sub.output), 9)} ${rpad(fmt(r.sub.cacheRead), 13)}`);
       }
+    }
+    if (agg.unattributed.n) {
+      const types = Object.entries(agg.unattributed.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
+      console.log(`  (${agg.unattributed.n} dispatched seat${agg.unattributed.n === 1 ? '' : 's'} carry no skill stamp and are uncosted above: ${types} - attribution coverage, not fewer dispatches)`);
     }
   }
 
@@ -436,10 +492,10 @@ function printReport(main, agents, hookLog, window) {
     }
   }
 
-  console.log('\nTOOLS (main + subagents; result volume = what lands back in context)');
-  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)}`);
+  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; hook-blk = guard denials, the gate working - not tool failures)');
+  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('hook-blk', 8)}`);
   for (const [name, t] of Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
-    console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)}`);
+    console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.hookBlocks || '', 8)}`);
   }
 
   if (main.spikes.length) {
@@ -514,14 +570,21 @@ function printMarkdown(main, agents, hookLog, window) {
   if (agg.skillRows.length) {
     out.push('## Skills (attribution split main vs sub)', '');
     out.push('A `sub:` row names the seat types carrying the stamp - a seat type foreign to the skill is');
-    out.push('stamp bleed from an adjacent run: report it as bleed, never charge it to the skill.', '');
-    out.push('| skill | calls | result | attr msgs | attr out | attr cache-rd |', '|---|---|---|---|---|---|');
+    out.push('stamp bleed from an adjacent run: report it as bleed, never charge it to the skill.');
+    out.push('`cmd` = slash invocations counted from command markers; `(N carried)` = msgs attributed by');
+    out.push('carry-forward after the stamp dropped at a task-notification - inferred, not stamped.', '');
+    out.push('| skill | cmd | calls | result | attr msgs | attr out | attr cache-rd |', '|---|---|---|---|---|---|---|');
     for (const r of agg.skillRows) {
-      out.push(`| ${r.skill} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${r.mAttr.msgs} | ${fmt(r.mAttr.output)} | ${fmt(r.mAttr.cacheRead)} |`);
+      const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried)` : '';
+      out.push(`| ${r.skill} | ${r.cmd || ''} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${r.mAttr.msgs}${carried} | ${fmt(r.mAttr.output)} | ${fmt(r.mAttr.cacheRead)} |`);
       if (r.sub.msgs) {
         const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
-        out.push(`| - sub: ${seats} | | | ${r.sub.msgs} | ${fmt(r.sub.output)} | ${fmt(r.sub.cacheRead)} |`);
+        out.push(`| - sub: ${seats} | | | | ${r.sub.msgs} | ${fmt(r.sub.output)} | ${fmt(r.sub.cacheRead)} |`);
       }
+    }
+    if (agg.unattributed.n) {
+      const types = Object.entries(agg.unattributed.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
+      out.push('', `> ${agg.unattributed.n} dispatched seat${agg.unattributed.n === 1 ? '' : 's'} carry no skill stamp and are uncosted in the rows above: ${types} - attribution coverage, not fewer dispatches (cross-check the Subagent dispatches table).`);
     }
     out.push('');
   }
@@ -548,9 +611,10 @@ function printMarkdown(main, agents, hookLog, window) {
   }
 
   out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
-  out.push('| tool | calls | results | errors |', '|---|---|---|---|');
+  out.push('`hook-blk` = PreToolUse guard denials - the gate working, never a tool failure.', '');
+  out.push('| tool | calls | results | errors | hook-blk |', '|---|---|---|---|---|');
   for (const [name, t] of Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
-    out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} |`);
+    out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.hookBlocks || ''} |`);
   }
   out.push('');
 

@@ -51,9 +51,14 @@ comparable banner by banner; the content varies, the skeleton never does.
   directory names under `.claude/skills/` (or the account's `skills/`); agents =
   `.claude/agents/*.md`; rules = `.claude/rules/*.md` (exclude the GENERATED
   `baseline-project-*.md` awareness rules and `project-code-style.md` - they are written by capture skills, never installed);
-  hooks = `.claude/hooks/*.js` (exclude the GENERATED legacy `inject-code-style.js` - same reason);
-  mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` (fail-soft
-  without the CLI). Show the inventory grouped by category, with counts. In project mode, also
+  hooks = `.claude/hooks/*.js` basenames WITHOUT the `.js` suffix - the graph catalog stores bare
+  names, and `stack-select.js` also strips a stray suffix (exclude the GENERATED legacy
+  `inject-code-style.js` - same reason);
+  mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` filtered to the
+  entries enabled for THIS project (project scope at this path, or user scope) - the listing is
+  machine-global, so an unfiltered read folds sibling repos' plugins into this project's selection
+  (measured: two near-miss removals/updates of a sibling's plugin); fail-soft
+  without the CLI. Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
   "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - so the walk's
   tables can label what the project provably uses (`--found`); skip it in global mode (no
@@ -104,7 +109,7 @@ no-questions path for plain refreshes).
 
 ## 2. Choose the areas
 
-One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, MCPs, plugins, environment (default: all). Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> MCPs -> plugins -> environment; every skipped layer keeps its installed set untouched and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
+One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, MCPs, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing): 'Rules + Agents + Skills', 'Hooks', 'MCPs + Plugins', 'Environment' - all selected by default, each option's description naming the areas it covers. Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> MCPs -> plugins -> environment; every skipped layer keeps its installed set untouched and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
 
 ## The walk - steps 3-8, one layer at a time
 

@@ -8,7 +8,8 @@ Look for:
 - Missing rationale where a non-obvious decision, a workaround, or an external constraint would baffle the next reader.
 - Stale TODO and FIXME markers, and commented-out code - remove them or convert to a tracked note.
 - Public API surface left undocumented where the codebase documents its public surface.
+- Checkable factual claims - a named symbol, a count, a claimed invariant or guarantee - verified against the code, never judged on prose plausibility alone (measured: one audit's only BLOCKER was a false security invariant in a doc comment that read perfectly plausibly).
 
-Severity: a comment that actively misleads is MAJOR; a redundant restatement is MINOR. Prefer deleting a bad comment to rewriting it, unless the why is genuinely worth capturing - then write the why, not the what.
+Severity: a comment that actively misleads is MAJOR - a false safety or security invariant is BLOCKER; a redundant restatement is MINOR. Prefer deleting a bad comment to rewriting it, unless the why is genuinely worth capturing - then write the why, not the what.
 
 Bar: zero findings at every severity.

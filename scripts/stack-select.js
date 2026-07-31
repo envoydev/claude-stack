@@ -68,7 +68,10 @@ const HARD_PREREQS = [
 // Phase 2 - only checked when 'when' matches the closed selection / options.
 // severity: 'blocker' (a kept item will not work) or 'warning' (soft/optional).
 const SCOPED_PREREQS = [
-    { when: { mcp: 'sentry' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'blocker', need: 'Sentry token', how: 'export SENTRY_ACCESS_TOKEN=...' },
+    // warning, not blocker: registration is secret-free (the header keeps ${SENTRY_ACCESS_TOKEN}
+    // literal, expanded at launch) - only runtime auth needs the token. Measured: as a blocker it
+    // cost ~90min/7 aborted runs in one session and invited ad hoc bypasses in three more.
+    { when: { mcp: 'sentry' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'export SENTRY_ACCESS_TOKEN=...' },
     { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls' },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
@@ -607,6 +610,9 @@ function main(argv)
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
+    // Hooks are cataloged by bare name; an inventory built from `.claude/hooks/*.js` filenames
+    // arrives suffixed and would misclassify every hook as unknown (measured) - normalize here.
+    if (Array.isArray(raw.hooks)) raw.hooks = raw.hooks.map(h => String(h).replace(/\.js$/, ''));
     const unknown = findUnknownNames(graph, raw);
     const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
     for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (retired upstream, renamed, or a typo); excluded from the selection`);
