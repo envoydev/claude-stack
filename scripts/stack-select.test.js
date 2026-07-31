@@ -12,12 +12,16 @@ test('an agent pulls its declared skills and plugins; body mentions only suggest
         assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-solution-designer's frontmatter`);
     }
     assert.match(c.reasons['dotnet'], /aspnet-solution-designer/);
-    // aspnet-implementer declares no skills: frontmatter - its body's conditional
-    // loads are suggestions, so the closure locks nothing for it (plugins stay hard).
+    // aspnet-implementer preloads csharp via skills: frontmatter (the conventions load
+    // mechanized after a prose-only load was skipped in production); its remaining
+    // conditional loads stay suggestions, and a body-sourced agent still locks nothing.
     const impl = computeClosure(graph, { agents: ['aspnet-implementer'] });
-    assert.deepStrictEqual(impl.skills, [], 'a body-sourced agent locks no skills');
-    assert.ok(graph.agents['aspnet-implementer'].suggests.includes('csharp'), 'the conditional loads live in suggests');
+    assert.ok(impl.skills.includes('csharp'), 'the frontmatter conventions preload is a hard edge');
+    assert.ok(graph.agents['aspnet-implementer'].suggests.includes('dotnet-web-backend'), 'conditional loads live in suggests');
+    assert.ok(!graph.agents['aspnet-implementer'].suggests.includes('csharp'), 'a declared skill never doubles as a suggestion');
     assert.ok(impl.plugins.includes('ponytail'), 'aspnet-implementer still pulls the ponytail plugin');
+    const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
+    assert.deepStrictEqual(resolver.skills, [], 'a body-sourced agent locks no skills');
 });
 
 test('a rule pulls its skills', () => {

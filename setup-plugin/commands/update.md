@@ -48,8 +48,13 @@ compare the `configure` command's step 1 runs, and split by status:
   path joins the prune list AND the selection carries over to the new name in step 5 - a rename
   is the same item continuing under a new name, never an adoption choice. Say what was followed
   (`web-conventions -> typescript-conventions`).
-- **added items not installed** -> an FYI list for the report; never auto-install - route the user
-  to `configure` to adopt them.
+- **added items not installed** -> split by the dependency graph BEFORE reporting: run
+  `stack-select.js` over the carried selection (the same closure step 5 emits) and any new item
+  the closure pulls is listed as **auto-carried** with its dependent named ('angular-testing -
+  new dependency of web-angular-solution-designer'), because the installer WILL install it; only
+  items the closure does NOT pull go on the FYI list - never auto-install those, route the user
+  to `configure` to adopt them. (Measured: a preview listed a skill FYI-only and the apply then
+  installed it as a new hard dependency - the preview must run the closure the apply runs.)
 - **No stamp, or the compare unreachable** -> refresh-only mode: say pruning needs a stamped,
   reachable baseline, and continue WITHOUT deletions - never guess a prune list.
 - **The compare says `TRUNCATED`** (the API caps at 300 files) -> the removal list cannot be
