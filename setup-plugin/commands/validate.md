@@ -142,7 +142,9 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   its pulled agents/skills already appear as MISSING in their own later layers; the apply step
   re-closes the union, so you never double-add.
 - **Hooks** are leaf - REDUNDANT never appears (hooks are always-baseline or deliberate); MISSING
-  only if a baseline guard was removed.
+  only if a baseline hook is absent - a removed guard, or the env-gated `instrument-tool-usage`
+  on an install predating its catalog entry (measured: a v0.1.23-era install upgraded to
+  v0.2.17 had no guided route to the instrument hook until this entry existed).
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
 
 ## 9. Judgment review - corroborated non-use, convention conflicts, corroborated need

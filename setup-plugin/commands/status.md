@@ -75,7 +75,7 @@ otherwise, `user-authored` when clearly neither.
 | hook | wired | matcher |
 |---|---|---|
 | guard-catastrophic-rm.js | yes | Bash |
-| instrument-tool-usage.js | no (opt-in) | - |
+| instrument-tool-usage.js | yes (env-gated, off) | .* |
 
 **MCPs** - server entries from the repo's `.mcp.json` (project mode; global: say `MCPs are
 per-project - none at global scope`):

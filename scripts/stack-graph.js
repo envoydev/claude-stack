@@ -180,14 +180,18 @@ function buildStackGraph()
         const plugins = [...new Set([...fmPlugins, ...c.plugins])].sort();
         // A skill mentioned only in the BODY is a conditional load ('load X when the
         // failure touches Y') - an OPTION, not a requirement. Hard skill edges come
-        // solely from the declared skills: frontmatter (a preload must exist on disk);
-        // a body-sourced agent's mentions land in suggests: pre-selected in the guided
-        // walk, never locked. Frontmatter agents keep their body mentions ignored, as
-        // always - promoting those would balloon every install with cross-stack noise
-        // from the cross-cutting seats' routing examples.
+        // solely from the declared skills: frontmatter (a preload must exist on disk).
+        // Body mentions land in suggests either way - unselected advisory rows in the
+        // guided walk, never locked: a frontmatter agent's conditional loads ('plus
+        // `postgres` when...') stay visible as suggestions instead of vanishing the
+        // moment a seat gains a preload. The cross-stack-noise concern that once kept
+        // frontmatter agents' bodies ignored sits in the cross-cutting seats, and those
+        // are body-sourced - unaffected by this.
         if (source !== 'frontmatter' && c.skills.length) source = 'body';
         const skills = source === 'frontmatter' ? declared : [];
-        const suggests = source === 'body' ? c.skills : [];
+        const suggests = source === 'frontmatter'
+            ? c.skills.filter(s => !declared.includes(s))
+            : (source === 'body' ? c.skills : []);
 
         graph.agents[name] = {
             skills: [...skills].sort(),

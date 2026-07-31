@@ -29,7 +29,8 @@
    "guard-protected-force-push",
    "guard-catastrophic-rm",
    "guard-read-whole-file",
-   "guard-unapproved-dispatch"
+   "guard-unapproved-dispatch",
+   "instrument-tool-usage"
   ],
   "skills": [
    "project-agent-capabilities",
