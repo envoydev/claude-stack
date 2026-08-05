@@ -45,7 +45,7 @@ if (input.limit != null && input.limit < lineCount) {
 }
 process.stderr.write(
   `Blocked: whole-file Read of ${path} (${lineCount} lines).\n` +
-    `Per CLAUDE.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
+    `Per baseline-navigation.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
     `A limit that covers the whole file is still a whole-file Read - and so is\n` +
     `offset 1 with limit = the file's line count (measured: that exact retry got\n` +
     `blocked twice in a row). Read HALF the file or less per range.\n` +

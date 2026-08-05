@@ -1140,7 +1140,9 @@
       "skills": [
         "project-verify-code"
       ],
-      "agents": [],
+      "agents": [
+        "integration-reviewer"
+      ],
       "mcps": [],
       "plugins": [],
       "paths": []

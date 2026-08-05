@@ -69,7 +69,7 @@ process.stderr.write(
     : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
     `The checkpoint (baseline-git.md) runs BEFORE a non-trivial commit: the formatter, then\n` +
     `the house review project-verify-code - plus /security-review when the diff touches\n` +
-    `auth/crypto/secrets/data-access paths (baseline-security.md). When those pass, write\n` +
+    `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
     `${gate}\n` +
     `with one first line - VERIFIED <what was reviewed, one phrase> - then retry the commit.\n` +
     `If the user EXPLICITLY waived the gate this conversation, write WAIVED - "<their words,\n` +

@@ -30,7 +30,7 @@ rules in the same directory attach on a matching file touch - their own `paths:`
 In GENERATED rows, `user-run` marks a slash-only capture (`disable-model-invocation`): only the user
 can invoke it - a model Skill call is refused, so name the command to the user rather than running it.
 
-| Baseline rule | What it governs |
+| Rule | What it governs |
 |---|---|
 | `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
 | `.claude/rules/baseline-quality-gates.md` | code-quality bars and the done-claim verification gate |
@@ -38,7 +38,7 @@ can invoke it - a model Skill call is refused, so name the command to the user r
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline, the pre-commit checkpoint |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline |
 | `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_DOCS_PATH` env), what lives under it, the capture-doc lifecycle |
-| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
 | `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs, else delete this row) | sibling-repo awareness - name / location / relation / seam per sibling |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
