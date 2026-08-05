@@ -496,7 +496,7 @@ if ($Context7 -eq 'local') {
 }
 $Context7Entry = 'context7|' + $Ctx7Spec
 $AngularCliEntry = 'angular-cli|-- ' + $Npx + ' -y @angular/cli mcp'
-$PlaywrightEntry = 'playwright|-- ' + $Npx + " -y @playwright/mcp$PwPin " + '--user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/screenshots'
+$PlaywrightEntry = 'playwright|-- ' + $Npx + " -y @playwright/mcp$PwPin " + '--user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/output'
 $SerenaEntry     = 'serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent' + $SerenaPin + ' serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd'
 $SentryEntry     = 'sentry|@HTTP@'
 
@@ -1441,7 +1441,7 @@ Write-Host '  .serena          serena per-project state: registry, cache, langua
 Write-Host '  .claude/*        Claude Code project config + local state (settings.local.json, hooks) - ignore the contents...'
 Write-Host '  !.claude/CLAUDE.md   ...but TRACK the project instructions: they live at .claude/CLAUDE.md and must be committed (git can only re-include a file if the parent dir is not wholesale-ignored, hence .claude/* not .claude/)'
 Write-Host '  .slopwatch       dotnet-slopwatch output'
-Write-Host '  .playwright      playwright MCP user-data-dir + screenshots'
+Write-Host '  .playwright      playwright MCP user-data-dir + output (screenshots, traces)'
 Write-Host '  .mcp.json        generated MCP server config (machine-local)'
 Write-Host ''
 Write-Host "The generated-docs root is CLAUDE_DOCS_PATH in .claude\settings.json env (seeded '.claude/docs') -"
