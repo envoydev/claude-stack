@@ -10,7 +10,8 @@
    row whose capture skill this install skipped (its /command will not resolve).
 3. Run the captures that write the rows marked GENERATED: /project-agent-capabilities,
    /project-architecture-analyzer, /project-code-style-analyzer - plus /project-related-context
-   ONLY when this project has sibling repos (a standalone repo drops that row instead).
+   ONLY when this project has sibling repos (a standalone repo drops that row instead). All but
+   /project-architecture-analyzer are slash-only: the user types them - a model Skill call is refused.
 If the repo's canonical agent instructions already live in an AGENTS.md (for other agent
 tooling), keep this file thin and import it with @AGENTS.md instead of filling the same
 content twice - but never @import anything under .claude/rules/: those files auto-load,
@@ -26,19 +27,21 @@ so an unfilled template pays nothing for this block.) -->
 The always-on baseline set in `.claude/rules/` - one concern per file, all loaded every session;
 this table maps where each behavior rule lives (the detail is in the rules, not here). Path-scoped
 rules in the same directory attach on a matching file touch - their own `paths:` frontmatter says when.
+In GENERATED rows, `user-run` marks a slash-only capture (`disable-model-invocation`): only the user
+can invoke it - a model Skill call is refused, so name the command to the user rather than running it.
 
 | Baseline rule | What it governs |
 |---|---|
-| `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, planning/execution thresholds |
+| `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
 | `.claude/rules/baseline-quality-gates.md` | code-quality bars and the done-claim verification gate |
 | `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline, the pre-commit checkpoint |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline |
-| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_DOCS_PATH` env) and what lives under it |
-| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - run /project-agent-capabilities after install or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_DOCS_PATH` env), what lives under it, the capture-doc lifecycle |
+| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install or a trim) | the usage policy plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
-| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; run /project-related-context with their paths/URLs, else delete this row) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/project-code-style.md` (GENERATED - run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
+| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs, else delete this row) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/project-code-style.md` (GENERATED - user-run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
 
 <!-- Authoring outline - write these sections into the project-specific top of this file
 (each section lean; interleave as reads best - the project intro usually comes first, above
@@ -57,8 +60,8 @@ Stack - what it is built with:
 
 6. Stack - languages, frameworks, key libraries, test stack + coverage gate, the LSP plugin
    for the primary language(s). MCP routing is NOT hand-filled here - it lives in the generated
-   .claude/rules/baseline-project-agent-capabilities.md (run /project-agent-capabilities; if that
-   skill was not installed, a lean hand-filled routing list here is the fallback).
+   .claude/rules/baseline-project-agent-capabilities.md (user-run /project-agent-capabilities; if
+   that skill was not installed, a lean hand-filled routing list here is the fallback).
 7. Commands - copy-pasteable build / test / run / migrate / publish, with any environment quirks.
 8. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
    permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /

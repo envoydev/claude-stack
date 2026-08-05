@@ -6,7 +6,7 @@ __PATH_GLOBS__
 
 This is how THIS codebase actually writes code. Follow it for the code you are about to
 write; where it and a house convention skill disagree, this project's own style wins.
-Do not hand-edit - re-run `/project-code-style-analyzer` to refresh.
+Do not hand-edit - the user refreshes it by re-running `/project-code-style-analyzer`.
 
 __STYLE_CORE__
 

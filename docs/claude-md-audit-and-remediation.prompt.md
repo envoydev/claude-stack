@@ -23,6 +23,8 @@ These are load-bearing. Do not reason from skill intuitions.
 - Block-level HTML comments are stripped before injection, so maintainer notes in comments cost nothing.
 - If the repo has an `AGENTS.md` for other tools, CLAUDE.md should `@import` it rather than restate it - that is the one place import-instead-of-copy is exactly right, because AGENTS.md does not load on its own.
 - Project-root CLAUDE.md is re-read from disk after compaction; conversation-only instructions are not. Facts that must survive long sessions belong in the file.
+- A required user action is reliably collected only through the AskUserQuestion tool: where CLAUDE.md prescribes pausing on the user (an approval, a choice, an input), the instruction must name the tool-shaped ask with options - a prose 'ask the user' line measured as skipped in live runs.
+- `disable-model-invocation: true` on a skill blocks a model Skill call and an agent preload. A CLAUDE.md instruction for the model to run such a skill silently fails (the harness refuses the call) - phrase it as the USER's step, and check every 'run /X' line against the skill's frontmatter.
 
 If observed reality in the repo or current docs contradicts any of these, prefer the observed reality and say so in the report.
 

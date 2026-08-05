@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+'use strict';
+// stamp-compare.js - the stamp-vs-snapshot delta the guided commands report.
+//
+// Reads the install's claude-stack.stamp (the commit + version the install was
+// copied from) and the snapshot's RELEASE-SOURCE (or the clone's git HEAD),
+// asks the GitHub compare API what changed between them, and prints a compact
+// line contract the update/configure commands consume verbatim - so the model
+// never parses raw API JSON and the compare logic has ONE home:
+//
+//   version: 0.2.17 -> 0.2.19        (or 'version: unknown' when either side lacks one)
+//   base: <sha> head: <sha>
+//   TRUNCATED - ...                  (only when the API capped at 300 files)
+//   <status>\t<path>[\t<- <old-path>]   filtered to stack-owned paths
+//
+// Exit codes the caller branches on: 0 = compare done; 2 = no stamp (prints
+// 'no-stamp'); 3 = compare unreachable (prints 'compare-unreachable'). Both
+// non-zero paths are refresh-only signals, never errors that stop an update.
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+const STACK_PATHS = /^(stack|skills|agents|rules|hooks|templates)\//;
+
+function arg(name)
+{
+    const i = process.argv.indexOf(name);
+    return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+function readStampFile(file)
+{
+    try
+    {
+        const text = fs.readFileSync(file, 'utf8');
+        const pick = key => (text.match(new RegExp(`^${key}: (.+)$`, 'm')) || [])[1];
+        return { sha: pick('sha'), version: pick('version') };
+    }
+    catch { return { sha: undefined, version: undefined }; }
+}
+
+function snapshotHead(dir)
+{
+    const rs = readStampFile(path.join(dir, 'RELEASE-SOURCE'));
+    if (rs.sha) return rs;
+    // A clone fallback has no RELEASE-SOURCE - its git HEAD is the same truth.
+    try { return { sha: execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
+    catch { return { sha: undefined, version: undefined }; }
+}
+
+async function compareFiles(repo, base, head)
+{
+    const fixture = arg('--fixture');   // test injection - the saved compare API JSON
+    if (fixture) return JSON.parse(fs.readFileSync(fixture, 'utf8'));
+    const res = await fetch(`https://api.github.com/repos/${repo}/compare/${base}...${head}`,
+        { headers: { accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(20000) });
+    if (!res.ok) throw new Error(`compare API ${res.status}`);
+    return res.json();
+}
+
+async function main()
+{
+    const stampFile = arg('--stamp') || '.claude/claude-stack.stamp';
+    const snapshot = arg('--snapshot');
+    if (!snapshot) { console.error('usage: stamp-compare.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--repo <owner/name>] [--fixture <compare.json>]'); process.exit(2); }
+    const repo = arg('--repo') || 'envoydev/claude-stack';
+
+    const stamp = readStampFile(stampFile);
+    const head = snapshotHead(snapshot);
+    console.log(`version: ${stamp.version && head.version ? `${stamp.version} -> ${head.version}` : 'unknown'}`);
+    console.log(`base: ${stamp.sha || 'unknown'} head: ${head.sha || 'unknown'}`);
+    if (!stamp.sha) { console.log('no-stamp'); process.exit(2); }
+    if (stamp.sha === head.sha) return;   // same revision - an empty diff, not a failure
+
+    let files;
+    try { files = (await compareFiles(repo, stamp.sha, head.sha)).files || []; }
+    catch (e) { console.log('compare-unreachable'); console.error(`stamp-compare: ${e.message}`); process.exit(3); }
+
+    if (files.length >= 300) console.log('TRUNCATED - the compare API caps at 300 files; this list may be incomplete');
+    for (const f of files)
+        if (STACK_PATHS.test(f.filename) || (f.previous_filename && STACK_PATHS.test(f.previous_filename)))
+            console.log(f.status + '\t' + f.filename + (f.previous_filename ? '\t<- ' + f.previous_filename : ''));
+}
+
+main().catch(e => { console.log('compare-unreachable'); console.error(`stamp-compare: ${e.message}`); process.exit(3); });

@@ -1543,6 +1543,65 @@
      "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
     }
    ]
+  },
+  "assessment-coverage-carve-out": {
+   "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to project-test-coverage-analyzer's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shapes.md; restated at the AGGREGATE reasoning step and in the skill description because a live run flagged coverage as a weakness with the reference-only statement.",
+   "owner": {
+    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "marker": "Test-suite weaknesses are OUT OF SCOPE"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "marker": "Coverage never enters the weakness list"
+    },
+    {
+     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "marker": "the assessment keeps only structural testability blockers, never coverage gaps"
+    }
+   ]
+  },
+  "capabilities-refresh-user-run": {
+   "_note": "The guided commands' /project-agent-capabilities follow-through: the skill is manual-only (disable-model-invocation blocks a Skill call - measured live in an update run), so every command NAMES it in its report as the user's next step and never invokes it. One statement per command because each runs standalone.",
+   "owner": {
+    "file": "setup-plugin/commands/update.md",
+    "marker": "Never invoke it from this run - the skill is manual-only"
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/validate.md",
+     "marker": "a Skill call from this run is blocked; never attempt it"
+    },
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "the line is addressed to the user, never acted on"
+    }
+   ]
+  },
+  "blocking-ask-tool-shape": {
+   "_note": "A flow-pausing user ask (pick/approval/input) is collected through AskUserQuestion - concrete options, recommendation marked - never a prose question (prose asks measured skipped in live runs). Canonical in the interaction baseline; each other site is a site-specific binding of the same policy, not a verbatim copy.",
+   "owner": {
+    "file": "stack/rules/baseline-interaction.md",
+    "marker": "goes through the AskUserQuestion tool: concrete options, the recommended one marked"
+   },
+   "sites": [
+    {
+     "file": "stack/rules/baseline-quality-gates.md",
+     "marker": "put continue / redirect / stop through the AskUserQuestion tool"
+    },
+    {
+     "file": "stack/rules/baseline-navigation.md",
+     "marker": "put the matches through AskUserQuestion"
+    },
+    {
+     "file": "stack/rules/dotnet-repair-agents.md",
+     "marker": "offer the resolver through AskUserQuestion"
+    },
+    {
+     "file": "stack/rules/angular-repair-agents.md",
+     "marker": "offer the resolver through AskUserQuestion"
+    }
+   ]
   }
  }
 }

@@ -53,7 +53,14 @@ Named flags (any order, each optional with a default):
   --keep-pins              keep local model/effort frontmatter edits on installed agents/skills across
                            the refresh (an update resets them to upstream otherwise)
   --selection <file>       install ONLY the skills/plugins/mcps/agents/rules/hooks named in <file> (one 'category name' per line); a selection with no 'hook' lines installs all hooks
-  --print-plan             with --selection, print the resolved per-category install set and exit (dry run)
+  --installed-only         update only: derive the selection from what is already installed (skills/
+                           agents/rules/hooks on disk, mcps from .mcp.json; generated project-owned
+                           files excluded) and refresh exactly that - never adds, never removes.
+                           Closed through stack-select.js when it is reachable next to this script,
+                           so a dependency a new release introduced still installs. Plugins are
+                           machine-level and skipped - refresh them via 'claude plugin update' or
+                           the guided commands
+  --print-plan             with --selection or --installed-only, print the resolved per-category install set and exit (dry run)
   --skills-only            run only the skill install/update step, then exit (testability; skips
                            prerequisites/plugins/mcps/hooks/agents/rules)
   --source <dir>           install FROM an existing claude-stack checkout instead of cloning one.
@@ -102,6 +109,7 @@ INSTALL_GITHUB_CLI=false
 KEEP_PINS=false
 CONTEXT7_MODE="remote"
 SELECTION=""
+INSTALLED_ONLY=false
 PRINT_PLAN=false
 SKILLS_ONLY=false
 SOURCE_DIR=""
@@ -120,11 +128,12 @@ while [ $# -gt 0 ]; do
     --keep-pins)  KEEP_PINS=true;                              shift ;;
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
     --selection=*) SELECTION="${1#*=}";                          shift ;;
+    --installed-only) INSTALLED_ONLY=true;                       shift ;;
     --print-plan)  PRINT_PLAN=true;                              shift ;;
     --skills-only) SKILLS_ONLY=true;                              shift ;;
     --source)      _flag_val "$1" "${2:-}"; SOURCE_DIR="$2";      shift 2 ;;
     --source=*)    SOURCE_DIR="${1#*=}";                          shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins, --selection, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
   esac
 done
 
@@ -147,6 +156,12 @@ esac
 case "$CONTEXT7_MODE" in local|remote) ;;
   *) usage >&2; echo "error: --context7 must be 'local' or 'remote' (got '$CONTEXT7_MODE')" >&2; exit 1 ;;
 esac
+# --installed-only refreshes an EXISTING install from disk - meaningless on a first install, and
+# --selection is the explicit alternative to deriving one; the two cannot both decide the set.
+if [ "$INSTALLED_ONLY" = true ]; then
+  [ "$ACTION" = "update" ] || { usage >&2; echo "error: --installed-only is an update flag (got action '$ACTION')" >&2; exit 1; }
+  [ -z "$SELECTION" ] || { usage >&2; echo "error: --installed-only and --selection are mutually exclusive - one source of the set" >&2; exit 1; }
+fi
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
 # Run-outcome tracking for the honest end-of-run summary.
@@ -566,6 +581,59 @@ CLAUDE_RULES=(
   "devops-conventions.md"     # rest (devops): Dockerfile/compose/workflow -> devops
 )
 
+# --- --installed-only: derive the selection from the install target -------
+# The update fast path: refresh exactly what is on disk, adding nothing. The
+# file-based layers come from the target dirs (generated project-owned files
+# excluded - the captures rewrite those, not the stack), mcps from the
+# project's .mcp.json (global mode has no file to read - MCP refresh is skipped
+# there); plugins are machine-level and left to 'claude plugin update' or the
+# guided commands. The derived set is closed through stack-select.js when it is
+# reachable next to this script (a checkout or an extracted snapshot), so a
+# dependency a NEW release introduced still installs; a bare curl-piped run has
+# no graph and refreshes the disk set as-is. User-authored files are safe by
+# construction: the manifest filter below only ever intersects with stack
+# items, so a name the manifests do not carry is never installed or removed.
+if [ "$INSTALLED_ONLY" = true ]; then
+  _IO_TMP="$(mktemp -d)"
+  SELECTION="$_IO_TMP/selection.txt"
+  case "$CLAUDE_SCOPE" in user) _io_claude="$CONFIG_DIR" ;; *) _io_claude="$PWD/.claude" ;; esac
+  {
+    for d in "$_io_claude"/skills/*/; do [ -f "${d}SKILL.md" ] && printf 'skill %s\n' "$(basename "$d")" || true; done
+    for f in "$_io_claude"/agents/*.md; do [ -f "$f" ] && printf 'agent %s\n' "$(basename "${f%.md}")" || true; done
+    for f in "$_io_claude"/rules/*.md; do
+      [ -f "$f" ] || continue; _io_b="$(basename "${f%.md}")"
+      case "$_io_b" in baseline-project-*|project-code-style) continue ;; esac
+      printf 'rule %s\n' "$_io_b"
+    done
+    for f in "$_io_claude"/hooks/*.js; do
+      [ -f "$f" ] || continue; _io_b="$(basename "${f%.js}")"
+      case "$_io_b" in inject-code-style) continue ;; esac
+      printf 'hook %s\n' "$_io_b"
+    done
+    if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
+      node -e 'for(const n of Object.keys((JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mcpServers)||{}))console.log("mcp "+n)' "$PWD/.mcp.json" 2>/dev/null || true
+    fi
+  } > "$SELECTION"
+  grep -q . "$SELECTION" || { echo "error: --installed-only found nothing installed under $_io_claude - run '$0 install' (or the /claude-stack:setup command) first" >&2; exit 1; }
+  # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
+  # would otherwise install all of them.
+  grep -q '^hook ' "$SELECTION" || HOOKS=()
+  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  _io_sel_js="$_io_script_dir/../stack-select.js"
+  _io_graph="$_io_script_dir/../../meta/stack-graph.json"
+  if command -v node >/dev/null 2>&1 && [ -f "$_io_sel_js" ] && [ -f "$_io_graph" ]; then
+    node -e 'const fs=require("fs");const cat={skill:"skills",plugin:"plugins",mcp:"mcps",agent:"agents",rule:"rules",hook:"hooks"};const sel={skills:[],plugins:[],mcps:[],agents:[],rules:[],hooks:[]};for(const l of fs.readFileSync(process.argv[1],"utf8").split("\n")){const m=l.trim().match(/^(\S+)\s+(.+)$/);if(m&&cat[m[1]])sel[cat[m[1]]].push(m[2]);}fs.writeFileSync(process.argv[2],JSON.stringify(sel))' "$SELECTION" "$_IO_TMP/raw.json"
+    if node "$_io_sel_js" --selection "$_IO_TMP/raw.json" --graph "$_io_graph" --emit "$_IO_TMP/closed.txt" > "$_IO_TMP/closure.log" 2>&1; then
+      SELECTION="$_IO_TMP/closed.txt"
+      while IFS= read -r _io_l; do log "installed-only: $_io_l"; done < "$_IO_TMP/closure.log"
+    else
+      log "installed-only: closure failed - refreshing the disk set as-is ($(head -1 "$_IO_TMP/closure.log" 2>/dev/null))"
+    fi
+  else
+    log "installed-only: stack-select.js not reachable next to this script - refreshing the disk set as-is (new upstream dependencies are not auto-carried; run from a checkout or use the /claude-stack:update command)"
+  fi
+fi
+
 # --- Selection subset filter (Component B) --------------------------------
 # With --selection <file>, keep only the SKILLS / PLUGINS / MCPS / AGENTS /
 # CLAUDE_RULES entries whose name appears in the file (one 'category name' per
@@ -634,6 +702,7 @@ STACK_SRC_ROOT=""       # the temp dir an owned fetch lives in (the EXIT trap's 
 
 _cleanup_stack_src() {
   if $STACK_SRC_OWNED && [ -n "$STACK_SRC_ROOT" ]; then rm -rf "$STACK_SRC_ROOT"; fi
+  [ -n "${_IO_TMP:-}" ] && rm -rf "$_IO_TMP"
   return 0
 }
 trap _cleanup_stack_src EXIT
@@ -1162,9 +1231,9 @@ fi
 
 log "next steps:"
 log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + docs/PROJECT-RELATED-CONTEXT.md"
+log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + PROJECT-RELATED-CONTEXT.md under the docs root"
 log "  - run /project-agent-capabilities once - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
-log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (docs/PROJECT-CODE-STYLE.md + the inject-code-style hook)"
+log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 if [ "$CONTEXT7_MODE" = "remote" ]; then

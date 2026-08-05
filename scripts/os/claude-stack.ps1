@@ -43,8 +43,15 @@
   Install ONLY the skills/plugins/mcps/agents/rules/hooks named in <file> (one 'category name' per
   line); a selection with no 'hook' lines installs all hooks.
 
+.PARAMETER InstalledOnly
+  Update only: derive the selection from what is already installed (skills/agents/rules/hooks on
+  disk, mcps from .mcp.json; generated project-owned files excluded) and refresh exactly that -
+  never adds, never removes. Closed through stack-select.js when it is reachable next to this
+  script, so a dependency a new release introduced still installs. Plugins are machine-level and
+  skipped - refresh them via 'claude plugin update' or the guided commands.
+
 .PARAMETER PrintPlan
-  With -Selection, print the resolved per-category install set and exit (dry run).
+  With -Selection or -InstalledOnly, print the resolved per-category install set and exit (dry run).
 
 .PARAMETER SkillsOnly
   Run only the skill install/update step, then exit (testability; skips prerequisites/plugins/mcps/
@@ -105,7 +112,10 @@ param(
   # Optional: install ONLY the skills/plugins/mcps/agents/rules named in <file> (one 'category name'
   # per line; hooks always install). e.g.: .\claude-stack.ps1 install -Selection selection.txt
   [string]$Selection = '',
-  # Optional: with -Selection, print the resolved per-category install set and exit (dry run).
+  # Optional (update only): derive the selection from what is already installed and refresh exactly
+  # that - never adds, never removes. e.g.: .\claude-stack.ps1 update -InstalledOnly -KeepPins
+  [switch]$InstalledOnly,
+  # Optional: with -Selection or -InstalledOnly, print the resolved per-category install set and exit (dry run).
   [switch]$PrintPlan,
   # Optional: run only the skill install/update step, then exit (testability; skips prerequisites/
   # plugins/mcps/hooks/agents/rules). e.g.: .\claude-stack.ps1 install -SkillsOnly -Scope project
@@ -125,6 +135,13 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction Sile
 if ($Space -and $Space -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
   Write-Host "space name '$Space' must start alphanumeric and contain only [A-Za-z0-9._-]" -ForegroundColor Red
   exit 1
+}
+
+# -InstalledOnly refreshes an EXISTING install from disk - meaningless on a first install, and
+# -Selection is the explicit alternative to deriving one; the two cannot both decide the set.
+if ($InstalledOnly) {
+  if ($Action -ne 'update') { Write-Host "-InstalledOnly is an update flag (got action '$Action')" -ForegroundColor Red; exit 1 }
+  if ($Selection) { Write-Host '-InstalledOnly and -Selection are mutually exclusive - one source of the set' -ForegroundColor Red; exit 1 }
 }
 
 function Log([string]$Message) { Write-Host "==> $Message" -ForegroundColor Blue }
@@ -606,6 +623,69 @@ $ClaudeRules = @(
   'devops-conventions.md'     # rest (devops): Dockerfile/compose/workflow -> devops
 )
 
+# --- -InstalledOnly: derive the selection from the install target ---------
+# The update fast path, twin of claude-stack.sh --installed-only: refresh
+# exactly what is on disk, adding nothing. File-based layers from the target
+# dirs (generated project-owned files excluded), mcps from the project's
+# .mcp.json; plugins are machine-level and skipped. Closed through
+# stack-select.js when it is reachable next to this script, so a dependency a
+# NEW release introduced still installs. User-authored files are safe by
+# construction: the manifest filter below only ever intersects with stack items.
+$script:InstalledOnlyTmp = ''
+if ($InstalledOnly) {
+  $script:InstalledOnlyTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('claude-stack-io-' + [System.IO.Path]::GetRandomFileName())
+  New-Item -ItemType Directory -Path $script:InstalledOnlyTmp -Force | Out-Null
+  $ioClaude = if ($ClaudeScope -eq 'user') { $ConfigDir } else { Join-Path (Get-Location).Path '.claude' }
+  $ioLines = @()
+  foreach ($d in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'skills') -Directory -ErrorAction SilentlyContinue)) {
+    if (Test-Path (Join-Path $d.FullName 'SKILL.md')) { $ioLines += "skill $($d.Name)" }
+  }
+  foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'agents') -Filter '*.md' -File -ErrorAction SilentlyContinue)) {
+    $ioLines += "agent $($f.BaseName)"
+  }
+  foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'rules') -Filter '*.md' -File -ErrorAction SilentlyContinue)) {
+    if ($f.BaseName -like 'baseline-project-*' -or $f.BaseName -eq 'project-code-style') { continue }   # generated, project-owned
+    $ioLines += "rule $($f.BaseName)"
+  }
+  foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -ErrorAction SilentlyContinue)) {
+    if ($f.BaseName -eq 'inject-code-style') { continue }                                               # legacy generated
+    $ioLines += "hook $($f.BaseName)"
+  }
+  $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
+  if ($ClaudeScope -eq 'project' -and (Test-Path $ioMcpJson)) {
+    try {
+      foreach ($n in @((Get-Content -Raw $ioMcpJson | ConvertFrom-Json).mcpServers.PSObject.Properties.Name)) { $ioLines += "mcp $n" }
+    } catch {}
+  }
+  if (-not $ioLines) {
+    Write-Host "error: -InstalledOnly found nothing installed under $ioClaude - run install (or the /claude-stack:setup command) first" -ForegroundColor Red
+    exit 1
+  }
+  # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
+  # would otherwise install all of them.
+  if (-not ($ioLines | Where-Object { $_.StartsWith('hook ') })) { $Hooks = @() }
+  $Selection = Join-Path $script:InstalledOnlyTmp 'selection.txt'
+  Set-Content -LiteralPath $Selection -Value $ioLines
+  $ioSelJs = Join-Path $PSScriptRoot '..\stack-select.js'
+  $ioGraph = Join-Path $PSScriptRoot '..\..\meta\stack-graph.json'
+  if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $ioSelJs) -and (Test-Path $ioGraph)) {
+    $ioRawFile = Join-Path $script:InstalledOnlyTmp 'raw.json'
+    # node builds raw.json from the selection lines (same one-liner as the sh twin) - JSON arrays
+    # survive intact, where ConvertTo-Json would unwrap a single-element array.
+    & node -e 'const fs=require("fs");const cat={skill:"skills",plugin:"plugins",mcp:"mcps",agent:"agents",rule:"rules",hook:"hooks"};const sel={skills:[],plugins:[],mcps:[],agents:[],rules:[],hooks:[]};for(const l of fs.readFileSync(process.argv[1],"utf8").split("\n")){const m=l.trim().match(/^(\S+)\s+(.+)$/);if(m&&cat[m[1]])sel[cat[m[1]]].push(m[2]);}fs.writeFileSync(process.argv[2],JSON.stringify(sel))' $Selection $ioRawFile
+    $ioClosed = Join-Path $script:InstalledOnlyTmp 'closed.txt'
+    $ioOut = & node $ioSelJs --selection $ioRawFile --graph $ioGraph --emit $ioClosed 2>&1
+    if ($LASTEXITCODE -eq 0 -and (Test-Path $ioClosed)) {
+      $Selection = $ioClosed
+      foreach ($l in @($ioOut)) { Log "installed-only: $l" }
+    } else {
+      Log "installed-only: closure failed - refreshing the disk set as-is ($(@($ioOut)[0]))"
+    }
+  } else {
+    Log 'installed-only: stack-select.js not reachable next to this script - refreshing the disk set as-is (new upstream dependencies are not auto-carried; run from a checkout or use the /claude-stack:update command)'
+  }
+}
+
 # --- Selection subset filter (Component B twin of claude-stack.sh) --------
 # With -Selection <file>, keep only the entries whose name appears in the file
 # (one 'category name' per line; '#' comments and blank lines ignored). Hooks
@@ -791,6 +871,10 @@ function Remove-StackSrc {
     Remove-Item -LiteralPath $script:StackSrcRoot -Recurse -Force -ErrorAction SilentlyContinue
     $script:StackSrc = ''
     $script:StackSrcRoot = ''
+  }
+  if ($script:InstalledOnlyTmp) {
+    Remove-Item -LiteralPath $script:InstalledOnlyTmp -Recurse -Force -ErrorAction SilentlyContinue
+    $script:InstalledOnlyTmp = ''
   }
 }
 
@@ -1341,9 +1425,9 @@ if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed abo
 
 Log 'next steps:'
 Log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + docs/PROJECT-RELATED-CONTEXT.md"
+Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + PROJECT-RELATED-CONTEXT.md under the docs root"
 Log "  - run /project-agent-capabilities once - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
-Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (docs/PROJECT-CODE-STYLE.md + the inject-code-style hook)"
+Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 if ($Context7 -eq 'remote') { Log "  - context7 is remote; add CONTEXT7_API_KEY to $ConfigDir\settings.json 'env' for higher rate limits (or re-run with -Context7 local)" }

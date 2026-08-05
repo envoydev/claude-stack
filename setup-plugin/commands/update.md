@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release AND prune what the stack itself deleted or renamed upstream since the stamped install. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only derives the selection from disk and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -7,126 +7,143 @@ disable-model-invocation: true
 
 You are refreshing an existing install to the newest release, unchanged in shape: the same
 items, new content - plus removing the artifacts the STACK removed upstream, which a plain
-refresh leaves orphaned forever. No selection questions; the one gate is the deletion confirm.
-`stack-select.js` still closes and prerequisite-checks the refreshed selection; you orchestrate.
+refresh leaves orphaned forever. The deterministic work lives in scripts, not in this chat:
+the installer's `--installed-only` derives the selection from disk and closes its dependencies
+itself, and `stamp-compare.js` computes the upstream delta - you orchestrate and report.
+Measured before this split, a model-driven walk grew the session ~40k tokens; keep the fast
+path near 10k by never reading files or output the steps below do not name.
 
 **ONE release archive is the entire download** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
 it: download + extract once into `$TMP/repo`, use every tool from that snapshot, hand it back
-with `--source` in step 6, and remove `$TMP` on every exit path in step 10. The protocol's
-'Narrate, don't trace' section governs every tool call: quiet machinery, no pasted output, one
-narration line between steps.
+with `--source` in the install step, and remove `$TMP` on EVERY exit path (fast, slow, blocker,
+or a user 'no'). The protocol's 'Narrate, don't trace' section governs every tool call: quiet
+machinery, no pasted output, one narration line between steps.
 
-## 1. Preconditions - find the install
-Exactly as the sibling `configure` command's step 1 (`${CLAUDE_PLUGIN_ROOT}/commands/configure.md` -
-read it for any step cited below, command bodies do not co-load): project mode (populated `.claude/`) or global
-mode (the account's skills). Nothing installed in either place -> stop and route to the sibling
-`/claude-stack:setup` command. The user names items to add or drop -> that is the sibling
-`configure` command, not this one. OS: `darwin`/`linux` -> the sh installer; Windows -> the ps1
-(via `pwsh`).
+## 1. Preconditions
+Project mode: cwd has a populated `.claude/` (skills/agents/rules/hooks present). Global mode:
+the account dir holds them instead. Nothing installed in either place -> stop and route to the
+sibling `/claude-stack:setup` command. The user names items to add or drop -> that is the
+sibling `/claude-stack:configure` command, not this one. OS: `darwin`/`linux` -> the sh
+installer; Windows -> the ps1 (via `pwsh`).
 
-## 2. Inventory the installed set
-Build the CURRENT selection from disk exactly as the sibling `configure` command's step 1 does -
-skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED `baseline-project-*.md` and `project-code-style.md`),
-hooks (`.claude/hooks/*.js`, excluding the GENERATED legacy `inject-code-style.js`; bare basenames - the catalog has no suffix), mcps from
-`<repo>/.mcp.json`, plugins fail-soft and filtered to entries enabled for THIS project (the
-listing is machine-global; an unfiltered read re-submits a sibling repo's plugin to this
-project's refresh - measured) - never from memory or assumption.
+## 2. Compute the delta since the stamp
+One script call from the snapshot:
 
-## 3. Compute the delta since the stamp
-Read the stamp (`.claude/claude-stack.stamp`, or the account's) and the snapshot's
-`RELEASE-SOURCE`; lead with the version delta (`0.1.0 -> 0.2.0`). Then the same status-emitting
-compare the `configure` command's step 1 runs, and split by status:
+```bash
+node "$TMP/repo/scripts/stamp-compare.js" --snapshot "$TMP/repo" --stamp .claude/claude-stack.stamp
+```
 
-- **modified / added files under an installed item** -> covered by the refresh; count them.
-- **removed** -> the prune list, mapped to installed artifacts: `stack/skills/<name>/...` gone
-  entirely from `$TMP/repo/stack/skills/` -> `.claude/skills/<name>`; `stack/agents/<f>.md` ->
-  `.claude/agents/<f>.md`; `stack/rules/<f>.md` -> `.claude/rules/<f>.md`; `stack/hooks/<f>` -> `.claude/hooks/<f>` plus its
-  `.claude/settings.json` wiring. A path still present in the snapshot is a move WITHIN the item,
-  not a removal - the refresh handles it; prune only what the snapshot no longer has.
-- **renamed** (`new-path <- old-path`) of an INSTALLED item -> BOTH halves, automatically: the old
-  path joins the prune list AND the selection carries over to the new name in step 5 - a rename
-  is the same item continuing under a new name, never an adoption choice. Say what was followed
-  (`web-conventions -> typescript-conventions`).
-- **added items not installed** -> split by the dependency graph BEFORE reporting: run
-  `stack-select.js` over the carried selection (the same closure step 5 emits) and any new item
-  the closure pulls is listed as **auto-carried** with its dependent named ('angular-testing -
-  new dependency of web-angular-solution-designer'), because the installer WILL install it; only
-  items the closure does NOT pull go on the FYI list - never auto-install those, route the user
-  to `configure` to adopt them. (Measured: a preview listed a skill FYI-only and the apply then
-  installed it as a new hard dependency - the preview must run the closure the apply runs.)
-- **No stamp, or the compare unreachable** -> refresh-only mode: say pruning needs a stamped,
-  reachable baseline, and continue WITHOUT deletions - never guess a prune list.
-- **The compare says `TRUNCATED`** (the API caps at 300 files) -> the removal list cannot be
-  trusted complete: refresh-only mode, and route the reconcile to `configure` - never prune from
-  a possibly-partial diff.
+(Global mode: the account dir's stamp. A fork install passes `--repo <owner/name>`.) It prints
+the version delta, then `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with
+`<- old-path`) filtered to stack-owned paths; the diff is what has been RELEASED since the
+stamp - work still on `develop` is invisible by design, never diff against it. Lead your
+narration with the version delta.
 
 Then read the snapshot's `$TMP/repo/meta/migrations.json` - the retirements of GENERATED
-per-project artifacts the file compare can never name. For each entry, run its `detect` against
-the install root (project mode: the `.claude/` parent; global mode: the account dir); a detected
-entry joins the prune list labeled `(migration: <why>)`, together with its `unwire_settings_hook`
-edit and its `then` follow-up for the report. Not detected -> silently skip.
+per-project artifacts a file compare can never name. For each entry, run its `detect` against
+the install root (project mode: the `.claude/` parent; global mode: the account dir); a
+detected entry joins the prune list labeled `(migration: <why>)`, together with its
+`unwire_settings_hook` edit and its `then` follow-up for the report. Not detected -> silently
+skip.
 
-## 4. Confirm once
+**Build the prune list** from the compare's `removed` lines (a `stack/...` path gone entirely
+maps to its installed artifact; a path still present in the snapshot is a move WITHIN the item,
+not a removal), the `renamed` lines of installed items (both halves, automatically: old name
+pruned, new name joins the refresh - a rename is the same item continuing, never an adoption
+choice), and the detected migrations. Three outputs decide the path:
+
+- **Prune list EMPTY** -> step 3, the fast path. This includes `no-stamp` (exit 2 - no baseline,
+  pruning impossible, refreshing unaffected), `compare-unreachable` (exit 3 - same), and a
+  `TRUNCATED` first line (the removal list cannot be trusted complete - never prune from a
+  possibly-partial diff; route the reconcile to `configure` in the report). Say which applied.
+- **Prune list NON-EMPTY** -> step 4, the pruning path.
+
+## 3. Fast path - refresh in place (the common case)
+Run the installer; it derives the selection from disk itself, closes new dependencies through
+`stack-select.js`, and logs any `installed-only: required:` additions:
+
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins`
+
+Scope/space mirror how the install was laid down; `--keep-pins` is the default here - a fast
+refresh must not flatten deliberate local model/effort pin edits. Then:
+
+- The compare showed `stack/CLAUDE.template.md` modified -> reconcile the project's CLAUDE.md
+  additively (step 6). Otherwise skip it without reading either file.
+- Report per step 7 - version delta, refreshed counts from the installer's log tail, the
+  `required:` additions it named, and FYI `added` items from the compare (mapped to item names;
+  never install them - route adoption to `configure`).
+- Clean up `$TMP` and stop. Steps 4-5 never run on this path.
+
+## 4. Pruning path - confirm once, then refresh + prune
+Inventory the CURRENT selection from disk exactly as the sibling `configure` command's step 1
+(`${CLAUDE_PLUGIN_ROOT}/commands/configure.md` - read it only on THIS path; command bodies do
+not co-load): skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED
+`baseline-project-*.md` and `project-code-style.md`), hooks (bare basenames, excluding the
+GENERATED legacy `inject-code-style.js`), mcps from `<repo>/.mcp.json`, plugins fail-soft and
+filtered to entries enabled for THIS project (the listing is machine-global; an unfiltered read
+re-submits a sibling repo's plugin to this project's refresh - measured) - never from memory.
+
 Show the version delta, the refresh counts by category, and the NAMED prune list (migrations
-included, with their why). Ask one
-question: proceed with refresh + prune, or refresh only. Nothing is ever deleted silently; a 'no'
-means refresh-only. For example:
+included, with their why). Ask ONE question through AskUserQuestion: proceed with refresh +
+prune (recommended), or refresh only. Nothing is ever deleted silently; 'refresh only' means
+step 3's installer run instead, then the report. For example:
 
 ```
 claude-stack 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
 prune: .claude/rules/web-conventions.md (renamed upstream; typescript-conventions.md carried over)
-Proceed with refresh + prune, or refresh only?
 ```
 
-## 5. Selection and gates
-Selection = installed, minus the confirmed prune list, plus the new names of step-3 renames;
-write `raw.json`, run `stack-select.js --selection raw.json --emit
-selection.txt --check`. A `required:` line (a dependency the new release introduced) is auto-kept
-and reported. An `unknown:` line is an upstream retirement the compare missed - stack-select has
-already excluded it from the emitted selection; add the artifact to the prune list (an MCP simply
-drops out of the regenerated `.mcp.json`; name it in the report). Blockers stop the run with
-their fixes - never update past one; warnings are listed and passed.
+On 'proceed': selection = installed, minus the confirmed prune list, plus the new names of
+renames; write `raw.json`, run `stack-select.js --selection raw.json --emit selection.txt
+--check`. A `required:` line (a dependency the new release introduced) is auto-kept and
+reported. An `unknown:` line is an upstream retirement the compare missed - already excluded
+from the emitted selection; add it to the prune list (an MCP simply drops out of the
+regenerated `.mcp.json`; name it in the report). Blockers stop the run with their fixes -
+never update past one; warnings are listed and passed. Then run the installer as in step 3 but
+with `--selection selection.txt` / `-Selection selection.txt` in place of the installed-only
+flag.
 
-## 6. Run the update
-From the snapshot, handing it back so the run lands the revision step 3 previewed:
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection selection.txt [--space <name>] --keep-pins`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection selection.txt [-Space <name>] -KeepPins`
-Scope/space mirror how the install was laid down. `--keep-pins` is the default here - a fast
-refresh must not flatten deliberate local model/effort pin edits.
-
-## 7. Prune
+## 5. Prune
 Delete each item on the confirmed list, showing every command before running it. A deleted hook
-also loses its `.claude/settings.json` wiring in the same pass - show that edit too (a migration
-entry's `unwire_settings_hook` names exactly which entry goes; parse-edit-rewrite, never regex,
-never touching other wiring). A migration's `then` line goes in the step-9 report as a next step -
-run nothing on the user's behalf. Then re-run
-`/project-agent-capabilities` (when installed) whenever the release refreshed ANY installed skill
-or agent file - never gated on roster adds/drops: the generated rule stamps each skill's first
-sentence, which drifts with content-only updates (measured: a 'roster unchanged, rule still
-accurate' skip left 7 of 10 stamped sentences stale and the user caught it manually).
+also loses its `.claude/settings.json` wiring in the same pass - show that edit too (a
+migration entry's `unwire_settings_hook` names exactly which entry goes; parse-edit-rewrite,
+never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
+as a next step - run nothing on the user's behalf.
 
-## 8. Reconcile the project's CLAUDE.md (project mode)
+## 6. Reconcile the project's CLAUDE.md (project mode)
 Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` command's step 11: add sections the template gained, update the rules table for what
-this run pruned, never overwrite the project's own prose, show changes before writing. Skip in
-global mode.
+`configure` command's step 11: add sections the template gained, update the rules table for
+what this run pruned, never overwrite the project's own prose, show changes before writing.
+Skip in global mode - and on the fast path, skip unless the compare showed the template
+changed.
 
-## 9. Post-check
+## 7. Post-check
 Report the version delta, refreshed / pruned counts by category (naming the pruned items), the
 FYI additions routed to `configure`, and the MCP-restart reminder. The run rewrote
-`claude-stack.stamp` - the next update or configure diffs from here.
+`claude-stack.stamp` - the next update or configure diffs from here. When the release refreshed
+ANY installed skill or agent file, name `/project-agent-capabilities` (when installed) as the
+USER's next step - never gated on roster adds/drops: the generated rule stamps each skill's
+first sentence, which drifts with content-only updates (measured: a 'roster unchanged, rule
+still accurate' skip left 7 of 10 stamped sentences stale and the user caught it manually).
+Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
+Skill call is blocked (measured: an update run tried and the harness refused it); the report
+line is the mechanism.
 
-## 10. Clean up the temp dir - ALWAYS
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`, on EVERY exit path: after
-a successful run, after refresh-only, after a blocker, and after a user 'no'. Then confirm the
-project tree holds only installed artifacts.
+## 8. Clean up the temp dir - ALWAYS
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`, on EVERY exit path:
+after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
+user 'no'. Then confirm the project tree holds only installed artifacts.
 
 ## Do not
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated `baseline-project-*.md` / `project-code-style.md` rules appear in neither;
-  if a candidate is in neither list, it stays.
-- Never install additions and never remove an MCP or plugin the diff did not retire - adopting or
-  dropping by choice is the sibling `configure` command.
+  skills/agents/rules/hooks and the generated `baseline-project-*.md` / `project-code-style.md`
+  rules appear in neither; if a candidate is in neither list, it stays.
+- Never install additions and never remove an MCP or plugin the diff did not retire - adopting
+  or dropping by choice is the sibling `configure` command.
 - Never skip the step-4 confirm before deletions, never run past a blocker, and never leave
   `$TMP` behind. Do not commit anything on the user's behalf.
+- Never re-derive in chat what a script already computed: no re-listing installed items on the
+  fast path, no reading the compare's raw API JSON, no paging installer output beyond its
+  summary tail.

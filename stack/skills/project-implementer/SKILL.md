@@ -23,7 +23,7 @@ In-chat: build in this chat, the protocol below. On an agents answer, dispatch e
 ## When the plan meets reality
 
 - **A task proves wrong mid-build** (the seam isn't where the plan said, a trap the audit missed): stop the task, name the delta, and re-enter `project-solution-design` on that slice - never silently redesign while implementing. The plan is the contract; reality wins, but through a revision, not a drift.
-- **Scope beyond the plan** (a bug discovered nearby, a refactor itch): flag it and ask - it enters the plan explicitly or waits. Never rides along.
+- **Scope beyond the plan** (a bug discovered nearby, a refactor itch): flag it and put the call through AskUserQuestion - add it to the plan vs leave it for later (plain-text options where the harness lacks the tool). Never rides along.
 - **A shared contract surfaces** (a DTO both sides compile against, a schema semantic): stop - that is `project-solve-cross-task` territory, the same BLOCKED_CONTRACT_CHANGE discipline the dispatched seats follow.
 
 ## Finish - the in-session verifier
