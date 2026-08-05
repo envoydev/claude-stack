@@ -67,6 +67,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // the CLAUDE.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
+    // the commit-gate hook, referenced by name from baseline-git.md and project-verify-code - a hook, not a skill.
+    'guard-ungated-commit',
     // npm flags, npmrc keys, and package names in the npm skill - tool identifiers, not skills.
     'ignore-scripts',
     'min-release-age',

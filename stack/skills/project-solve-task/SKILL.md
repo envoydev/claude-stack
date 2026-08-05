@@ -21,7 +21,8 @@ survives a compaction or a fresh session. It never designs, builds, or reviews a
   stale when compaction hits. Local and disposable - everything essential is in the plan file.
 
 **On invocation, resume before starting:** `list_memories` -> `read_memory` the feature's cycle
-note, and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
+note (or an equivalent direct read of `.serena/memories/` - the note's content is the contract,
+not the tool route), and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
 step whose stamp says it already passed. A cycle mid-build looks like:
 
 ```
@@ -50,8 +51,12 @@ the cheap point to run the next step in a fresh session (`/clear`): resume needs
 file + cycle note, so the step starts at a few k of context instead of re-sending the finished
 steps' whole conversation with every call - in a long cycle that carried-forward context is the
 single biggest token cost (measured: a fresh-session resume restarted at roughly a tenth of the
-carried context with zero re-work - stamped steps stayed done). On a long cycle, offer that
-resume as an option instead of waiting for the user to think of it. The selected answer is the
+carried context with zero re-work - stamped steps stayed done). On a long cycle this is a step,
+not an offer to remember: once the cycle has crossed roughly 150k ctx per message, spans hours,
+or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
+ask until it is taken or the cycle closes (measured twice: seven stops passed with the option
+never surfaced while context grew 5x to 427k; an overnight tail ran at 361k ctx per message,
+25.3M cache-read for 71 messages, with the clause never invoked). The selected answer is the
 go; silence is not, and a stop that only narrates is not a stop.
 
 ## The steps

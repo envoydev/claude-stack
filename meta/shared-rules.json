@@ -1602,6 +1602,92 @@
      "marker": "offer the resolver through AskUserQuestion"
     }
    ]
+  },
+  "loop-close-commit-ask": {
+   "_note": "The loop close-out commit decision goes through AskUserQuestion (commit now / hold), never a prose 'your call' bullet - verbatim in both tiered loops because either installs alone.",
+   "owner": {
+    "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+    "marker": "never a prose 'your call' bullet"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "never a prose 'your call' bullet"
+    }
+   ]
+  },
+  "loop-round-receipt": {
+   "_note": "The round verdict line carries the fresh-session ask's receipt, sourced only from the AskUserQuestion answer; measured parentheticals are per-loop by design.",
+   "owner": {
+    "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+    "marker": "next: fresh-session | continue"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "next: fresh-session | continue"
+    }
+   ]
+  },
+  "capture-doc-batched-write": {
+   "_note": "Capture docs reconcile in one write / one batched edit pass per doc, never a per-claim edit stream; measured numbers are per-capture by design.",
+   "owner": {
+    "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+    "marker": "never a per-claim edit stream"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
+     "marker": "never a per-claim edit stream"
+    }
+   ]
+  },
+  "small-tier-dispatch-consent": {
+   "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. project-quality-loop's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
+   "owner": {
+    "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+    "marker": "APPROVED small-tier"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "APPROVED small-tier"
+    }
+   ]
+  },
+  "commit-gate-receipt": {
+   "_note": "The pre-commit checkpoint receipt: <docs-path>/flow/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". baseline-git canonical (lifecycle incl. clearing); verify-code writes it as the checkpoint reviewer; baseline-security binds the security-review pass; the hook enforces.",
+   "owner": {
+    "file": "stack/rules/baseline-git.md",
+    "marker": "VERIFIED <what was reviewed, one phrase>"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-verify-code/SKILL.md",
+     "marker": "VERIFIED <what was reviewed, one phrase>"
+    },
+    {
+     "file": "stack/rules/baseline-security.md",
+     "marker": "receipt (baseline-git) is written `VERIFIED`"
+    },
+    {
+     "file": "stack/hooks/guard-ungated-commit.js",
+     "marker": "VERIFIED <what was reviewed, one phrase>"
+    }
+   ]
+  },
+  "commit-gate-trivial-bar": {
+   "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); baseline-git states the same numbers, so a threshold change re-syncs the rule.",
+   "owner": {
+    "file": "stack/hooks/guard-ungated-commit.js",
+    "marker": "<= 2 files and <= 15 changed lines"
+   },
+   "sites": [
+    {
+     "file": "stack/rules/baseline-git.md",
+     "marker": "at most 2 files and 15 changed lines"
+    }
+   ]
   }
  }
 }

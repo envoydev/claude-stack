@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate: block a force-push or deletion of a protected branch (main / master /
 // develop). This is the one git rule in CLAUDE.md that is a deterministic,
 // catastrophic, irreversible event - so it is enforced by a hook, not left to

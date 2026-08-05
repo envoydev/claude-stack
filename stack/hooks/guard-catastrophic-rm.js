@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate: block a recursive `rm` of a catastrophic, unrecoverable target.
 // The filesystem has no reflog, so this is the rm analog of the protected-branch
 // force-push guard (guard-protected-force-push.js) - a deterministic, catastrophic,

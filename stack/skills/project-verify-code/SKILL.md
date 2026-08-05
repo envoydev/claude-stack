@@ -37,6 +37,8 @@ Load the stack's house skill FIRST (the one your convention rules auto-attach fo
 
 A ranked punch-list, most severe first - one line per finding: `severity | the defect (file:symbol) | the fix`. Quote the build/test output you ran and the live-probe result - the live-probe line is REQUIRED either way: the quoted probe output, or `live-probe: NOT RUN - <reason>` stated plainly; an Output section with neither is an incomplete review, and not-run is never a pass (measured: one review reported 'sound after one fix' with build+tests quoted and no live-probe line - the app could not boot its HTTP wiring). If the code is sound, say so plainly and name what you checked and ran. Every finding keyed to a file + symbol so a fix lands exactly there. Nothing you could not verify is reported as unverified - unverified is never a pass. Hand the list back; this skill does not apply fixes.
 
+When the review is the pre-commit checkpoint (a commit is the next act) and the verdict is sound - or sound after fixes that landed and re-verified - write the gate receipt `<docs-path>/flow/COMMIT-GATE` with first line `VERIFIED <what was reviewed, one phrase>` (on auth/crypto/secrets/payment/data-access diffs only after the `/security-review` pass baseline-security requires). The `guard-ungated-commit` hook blocks a non-trivial commit without it. A punch-list with unresolved BLOCKER/MATERIAL findings writes no receipt.
+
 ## Example
 
 Reviewing the records-list export build (the `project-implementer` example - three tasks: a query projection, a streamed export endpoint, an integration test) inline:
