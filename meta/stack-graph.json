@@ -1182,7 +1182,8 @@
     },
     "csharp-conventions": {
       "skills": [
-        "csharp"
+        "csharp",
+        "dotnet-testing"
       ],
       "agents": [],
       "mcps": [],
@@ -1333,6 +1334,7 @@
       "guard-protected-force-push",
       "guard-read-whole-file",
       "guard-unapproved-dispatch",
+      "guard-ungated-commit",
       "instrument-tool-usage"
     ]
   }

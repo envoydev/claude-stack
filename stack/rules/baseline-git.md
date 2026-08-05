@@ -40,3 +40,12 @@ other reasoning is not this exemption). The formatter half is never skipped: one
 commit is a red CI run and a fixup commit (measured). A quality-loop stage-boundary commit may
 exceed the one-logical-change size guidance when its stages share touched files - name the stages
 in the commit body rather than splitting an unverifiable diff.
+
+The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, first line
+`VERIFIED <what was reviewed, one phrase>` when the gates passed (the quality-loop re-verify
+exemption counts as VERIFIED - name the loop), or `WAIVED - "<the user's words, verbatim>"` only
+on their explicit waiver - 'commit it' is an instruction to commit, never a waiver of the review.
+The `guard-ungated-commit` hook blocks a non-trivial `git commit` without a fresh receipt
+(measured: 8 ungated commit events across 6 audited sessions rode on prose alone, including one
+where this rule was read into context the same session). Clear the file once the commit lands -
+a leftover receipt is the stale-stamp failure the hook's 2h age cap exists for.

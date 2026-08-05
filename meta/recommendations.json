@@ -30,6 +30,7 @@
    "guard-catastrophic-rm",
    "guard-read-whole-file",
    "guard-unapproved-dispatch",
+   "guard-ungated-commit",
    "instrument-tool-usage"
   ],
   "skills": [

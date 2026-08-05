@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate (matcher: Task|Agent): the approval gate for implementer fan-out.
 // An *-implementer dispatch is the expensive, hard-to-reverse step of a build flow -
 // it runs only after the user's explicit approval (or an explicit 'run without stops'

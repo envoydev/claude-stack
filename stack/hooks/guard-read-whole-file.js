@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate (matcher: Read): enforce baseline-navigation.md's hard rule - "Read is for
 // code you've ALREADY located, never to find a symbol." Blocks a whole-file Read
 // of a large source file so navigation goes through serena (get_symbols_overview
@@ -45,7 +46,9 @@ if (input.limit != null && input.limit < lineCount) {
 process.stderr.write(
   `Blocked: whole-file Read of ${path} (${lineCount} lines).\n` +
     `Per CLAUDE.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
-    `A limit that covers the whole file is still a whole-file Read.\n` +
+    `A limit that covers the whole file is still a whole-file Read - and so is\n` +
+    `offset 1 with limit = the file's line count (measured: that exact retry got\n` +
+    `blocked twice in a row). Read HALF the file or less per range.\n` +
     `Locate first with serena: get_symbols_overview('${path}') then find_symbol(...),\n` +
     `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
     `for a large body fetch it without the body first, then Read the range you need).\n` +

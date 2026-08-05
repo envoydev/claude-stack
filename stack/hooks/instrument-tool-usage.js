@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+// installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // instrument-tool-usage.js - env-gated PreToolUse instrumentation (wired by default, OFF by default).
 //
 // Why: the orchestrator cannot see which Skill / MCP a dispatched subagent loaded or

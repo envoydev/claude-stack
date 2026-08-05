@@ -13,6 +13,12 @@ itself, and `stamp-compare.js` computes the upstream delta - you orchestrate and
 Measured before this split, a model-driven walk grew the session ~40k tokens; keep the fast
 path near 10k by never reading files or output the steps below do not name.
 
+**This run needs NO conversation context.** When invoked inside a session already carrying real
+work, say so in one line and put the choice through AskUserQuestion - run here anyway vs run in
+a fresh session (recommended) - before anything downloads: the fast path itself is ~10k tokens,
+but at a long tail every one of its messages re-sends the whole session (measured: the same
+update cost 7.9M cache-read at a 518k-token tail, ~790x its own budget).
+
 **ONE release archive is the entire download** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
 it: download + extract once into `$TMP/repo`, use every tool from that snapshot, hand it back

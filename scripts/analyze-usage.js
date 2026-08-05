@@ -334,11 +334,18 @@ function computeAggregates(main, agents) {
   for (const a of agents) {
     mergeTally(agentTotal, a.stats.total);
     const type = a.meta.agentType || '(unknown)';
-    const g = byType[type] || (byType[type] = { n: 0, tally: newTally(), tools: {}, descs: [], wall: 0 });
+    const g = byType[type] || (byType[type] = { n: 0, tally: newTally(), tools: {}, descs: [], wall: 0, seatMs: 0, firstTs: null, lastTs: null });
     g.n += 1; mergeTally(g.tally, a.stats.total);
     for (const [name, t] of Object.entries(a.stats.toolCalls)) g.tools[name] = (g.tools[name] || 0) + t.calls;
     if (a.meta.description && g.descs.length < 2) g.descs.push(a.meta.description);
-    if (a.stats.firstTs && a.stats.lastTs) g.wall += new Date(a.stats.lastTs) - new Date(a.stats.firstTs);
+    if (a.stats.firstTs && a.stats.lastTs) {
+      // wall = the group's real parallel span (min first -> max last), NOT the sum of seat
+      // durations - the summed form overstated a 10-seat parallel fan-out 3x (measured).
+      g.seatMs += new Date(a.stats.lastTs) - new Date(a.stats.firstTs);
+      if (!g.firstTs || a.stats.firstTs < g.firstTs) g.firstTs = a.stats.firstTs;
+      if (!g.lastTs || a.stats.lastTs > g.lastTs) g.lastTs = a.stats.lastTs;
+      g.wall = new Date(g.lastTs) - new Date(g.firstTs);
+    }
   }
   const grand = newTally(); mergeTally(grand, main.total); mergeTally(grand, agentTotal);
 
@@ -417,7 +424,11 @@ function hookJoinStats(main, agents, hookLog, tools) {
   const sessSpan = main.firstTs && main.lastTs ? Date.parse(main.lastTs) - Date.parse(main.firstTs) : 0;
   const covSpan = Math.max(0, Math.min(Date.parse(main.lastTs || hookLog.lastTs), Date.parse(hookLog.lastTs)) - Math.max(Date.parse(main.firstTs || hookLog.firstTs), Date.parse(hookLog.firstTs)));
   const pct = sessSpan > 0 ? Math.round((100 * covSpan) / sessSpan) : 100;
-  return { trTools, coverage: { inWin, pct, outside: trTools - inWin } };
+  // A quiet tail (zero calls after the ledger's last row) and a real coverage gap read the
+  // same in percentages - count the tail's calls so the report can tell them apart
+  // (measured: an idle 38%-of-session tail with 0 tool calls was reported as unlogged activity).
+  const tailCalls = allTs.filter((ts) => ts > hookLog.lastTs).length;
+  return { trTools, coverage: { inWin, pct, outside: trTools - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows) } };
 }
 
 function printReport(main, agents, hookLog, window) {
@@ -445,7 +456,7 @@ function printReport(main, agents, hookLog, window) {
     console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('wall', 7)}  top tools`);
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
-      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}`);
+      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 && g.seatMs > g.wall ? ` (seat-time ${dur(g.seatMs)})` : ''}`);
       if (g.descs.length) console.log(`  ${pad('', 28)} e.g. ${g.descs.map((d) => JSON.stringify(d.slice(0, 40))).join(', ')}`);
     }
   }
@@ -494,8 +505,14 @@ function printReport(main, agents, hookLog, window) {
 
   console.log('\nTOOLS (main + subagents; result volume = what lands back in context; hook-blk = guard denials, the gate working - not tool failures)');
   console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('hook-blk', 8)}`);
-  for (const [name, t] of Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
-    console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.hookBlocks || '', 8)}`);
+  {
+    // Top 15 by result volume, PLUS any dropped row carrying errors or hook blocks - a
+    // 100%-error tool must never vanish on low volume (measured: 2/2-error browser_click did).
+    const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
+    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
+    for (const [name, t] of shown) {
+      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.hookBlocks || '', 8)}`);
+    }
   }
 
   if (main.spikes.length) {
@@ -515,7 +532,8 @@ function printReport(main, agents, hookLog, window) {
     if (j.coverage) {
       console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
       console.log(`  cross-check: ${j.coverage.inWin} in-window transcript tool calls vs ${hookLog.rows} ledger rows (${j.trTools} calls in the whole session)`);
-      if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (ledger wired mid-session or stopped early) - expected, not a propagation gap`);
+      if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - a ledger wired mid-session legitimately misses the head`);
+      if (j.coverage.unmatched > 0) console.log(`  ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap`);
     } else {
       console.log(`  cross-check: transcript saw ${j.trTools} tool calls vs ${hookLog.rows} hook rows (ledger rows carry no timestamps, so window coverage is unavailable)`);
     }
@@ -562,7 +580,7 @@ function printMarkdown(main, agents, hookLog, window) {
     out.push('| agent type | n | output | cache-read | msgs | wall | top tools |', '|---|---|---|---|---|---|---|');
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
-      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)} | ${top} |`);
+      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)}${g.n > 1 && g.seatMs > g.wall ? ` (seat-time ${dur(g.seatMs)})` : ''} | ${top} |`);
     }
     out.push('');
   }
@@ -613,8 +631,12 @@ function printMarkdown(main, agents, hookLog, window) {
   out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
   out.push('`hook-blk` = PreToolUse guard denials - the gate working, never a tool failure.', '');
   out.push('| tool | calls | results | errors | hook-blk |', '|---|---|---|---|---|');
-  for (const [name, t] of Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars).slice(0, 15)) {
-    out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.hookBlocks || ''} |`);
+  {
+    const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
+    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
+    for (const [name, t] of shown) {
+      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.hookBlocks || ''} |`);
+    }
   }
   out.push('');
 
@@ -631,7 +653,8 @@ function printMarkdown(main, agents, hookLog, window) {
     if (j.coverage) {
       out.push(`- Coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session.`);
       out.push(`- Cross-check: ${j.coverage.inWin} in-window transcript tool calls vs ${hookLog.rows} ledger rows (${j.trTools} calls in the whole session).`);
-      if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (ledger wired mid-session or stopped early) - expected, not a propagation gap.`);
+      if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - a ledger wired mid-session legitimately misses the head.`);
+      if (j.coverage.unmatched > 0) out.push(`- ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap.`);
     } else {
       out.push(`- ${j.trTools} transcript tool calls vs ${hookLog.rows} ledger rows (ledger rows carry no timestamps, so window coverage is unavailable).`);
     }

@@ -246,7 +246,7 @@
     <div class="stat"><b>77</b><span>house skills</span></div>
     <div class="stat"><b>8</b><span>MCP servers</span></div>
     <div class="stat"><b>7</b><span>plugins</span></div>
-    <div class="stat"><b>5</b><span>hooks</span></div>
+    <div class="stat"><b>6</b><span>hooks</span></div>
     <div class="stat"><b>18</b><span>rules</span></div>
     <div class="stat"><b>10</b><span>domains</span></div>
   </div>
@@ -723,7 +723,7 @@
         </div></div>
         <div class="serve">
           <span class="chip">guard-read-whole-file</span><span class="chip">guard-protected-force-push</span>
-          <span class="chip">guard-catastrophic-rm</span><span class="chip">guard-unapproved-dispatch</span><span class="chip">instrument-tool-usage</span>
+          <span class="chip">guard-catastrophic-rm</span><span class="chip">guard-unapproved-dispatch</span><span class="chip">guard-ungated-commit</span><span class="chip">instrument-tool-usage</span>
         </div>
       </div>
 
@@ -744,7 +744,7 @@
       <div><strong id="c-house">52</strong> house</div>
       <div><strong id="c-plugins">7</strong> plugins</div>
       <div><strong id="c-mcp">7</strong> MCP</div>
-      <div><strong id="c-hooks">5</strong> hooks</div>
+      <div><strong id="c-hooks">6</strong> hooks</div>
     </div>
 
     <div class="controls">
@@ -1237,6 +1237,7 @@ const hooks = [
   ["guard-catastrophic-rm", "Bash", "Blocks a recursive rm of /, ~, $HOME, or a bare *. Deterministic, fires ~never in normal work."],
   ["guard-read-whole-file", "Read", "Blocks a whole-file Read of a >100-line source / template file (.ts/.tsx/.js/.jsx/.mjs/.cjs/.cs/.go/.razor/.cshtml/.xaml/.html) with no offset/limit - locate via serena first, then read the range. Targeted reads, small files, and non-source files pass."],
   ["guard-unapproved-dispatch", "Task|Agent", "Blocks a `*-implementer` subagent dispatch unless the docs-root flow/APPROVAL gate file opens with APPROVED or AUTO - the mechanical form of the fan-out approval gate: the flows write the stamp quoting the user's explicit approval (or explicit no-stops waiver), so an ambiguous 'go' can no longer fan out implementers. Designers, verifiers, resolvers, and support seats pass ungated."],
+  ["guard-ungated-commit", "Bash", "Blocks a non-trivial `git commit` unless the docs-root flow/COMMIT-GATE receipt opens with VERIFIED or WAIVED - the mechanical form of the pre-commit checkpoint: the gate step (project-verify-code, plus /security-review on auth/crypto/data-access diffs) writes the receipt when its checks pass, or records the user's explicit waiver verbatim. Trivial diffs (<=2 files, <=15 changed lines) pass ungated; receipts older than 2h are treated as absent."],
   ["instrument-tool-usage", "(wired, env-gated off)", "Env-gated tool-usage instrumentation for measured stats: wired on PreToolUse '.*' behind a shell gate, so nothing runs until CLAUDE_STACK_INSTRUMENT flips from 0 to 1 in settings env; then it logs every tool call - built-ins + Skill + mcp__* - as one JSONL row (ts/session/tool/non-sensitive detail) to <docs-path>/tools-usage/<session>.jsonl, so a run's skill/MCP usage can be tallied exactly. Never blocks; the off-path costs a shell test, never a node spawn."],
 ];
 
