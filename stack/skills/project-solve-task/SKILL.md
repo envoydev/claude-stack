@@ -33,22 +33,26 @@ cycle note 'csv-export__cycle': step 4 BUILD - resume at task 2, mode session
 
 ## The stop contract
 
-At each stop: report one line of result, the artifact path, and what the next step will be - then
-END THE TURN and wait. A stop that carries a decision (the approve+mode gate, the reviewer pick,
-any conflict the step surfaced - a plan step colliding with a house rule) MUST go through the
-AskUserQuestion tool - concrete options, the recommendation marked, free text always available
-via Other. This is not a preference: in one session every solve-task stop rendered as prose while
-the tool worked for every other skill's ask (measured: 0 of 8 stops used it, 2 of 2 non-solve-task
-asks did) - a decision buried in prose gets skimmed past; a question with options gets answered.
-Plain-text options are only the fallback where the harness has no such tool. The stop is the user's window to switch model or effort, paste context, or
-edit the plan file directly - and the cheap point to run the next step in a fresh session
-(`/clear`): resume needs only the plan file + cycle note, so the step starts at a few k of
-context instead of re-sending the finished steps' whole conversation with every call - in a long
-cycle that carried-forward context is the single biggest token cost (measured: a fresh-session
-resume restarted at roughly a tenth of the carried context with zero re-work - stamped steps
-stayed done). On a long cycle, say so at the stop: name the fresh-session resume as the cheap
-next move instead of waiting for the user to think of it. Proceed only on their
-explicit word; silence is not a go.
+A stop IS one AskUserQuestion call: report one line of result and the artifact path, then put
+the next move through the AskUserQuestion tool - EVERY stop, the plain step-done ones included.
+There is no non-decision stop: 'what happens next' is itself the decision. The options are
+concrete - the next step (named), the route-back where the step surfaced gaps or findings, the
+fresh-session resume on a long cycle (below), any conflict's real resolutions - the
+recommendation marked per that stop's own rule, free text always available via the built-in
+Other. This is not a preference: a contract that asked the tool only for 'decision-carrying'
+stops let live runs classify every plain stop out of the mandate and stall in prose until the
+user typed (measured: 0 of 8 stops used it while 2 of 2 other skills' asks did; recurred after a
+fix scoped to decision stops) - a question with options gets answered, a prose 'how shall I
+proceed' gets skimmed. Where the harness has no such tool, list the same options in plain text
+and END THE TURN. The question never closes the user's window: they can interrupt it to switch
+model or effort, paste context, or edit the plan file directly, then answer - and the stop is
+the cheap point to run the next step in a fresh session (`/clear`): resume needs only the plan
+file + cycle note, so the step starts at a few k of context instead of re-sending the finished
+steps' whole conversation with every call - in a long cycle that carried-forward context is the
+single biggest token cost (measured: a fresh-session resume restarted at roughly a tenth of the
+carried context with zero re-work - stamped steps stayed done). On a long cycle, offer that
+resume as an option instead of waiting for the user to think of it. The selected answer is the
+go; silence is not, and a stop that only narrates is not a stop.
 
 ## The steps
 
@@ -57,10 +61,14 @@ explicit word; silence is not a go.
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
    found. Gaps route back to step 1 on the user's word. *Stop.*
 3. **APPROVE** - present the gated plan, then put the gate through the stop contract's decision
-   mechanism as ONE question whose options each NAME the mode: 'Approve - build in this session
-   (recommended)', 'Approve - dispatch the agent seats' (each task to its stack's
+   mechanism as ONE question whose options each NAME the mode: 'Approve - build in this session',
+   'Approve - dispatch the agent seats' (each task to its stack's
    `<stack>-implementer`, up to 3 at once, frontmatter models unless the user names one), 'Not
-   yet - changes needed'. Approval and mode arrive as one answer by construction - the bare 'go'
+   yet - changes needed'. Mark recommended the mode that fits THIS plan, with the reason in the
+   option's description - session when the tasks are few, serial, or one stack's; the seats when
+   the plan holds independent tasks that can build in parallel (the measured multi-slice
+   exception: built inline, such a plan cost a multiple of its dispatched build) - a fixed
+   default is not a recommendation. Approval and mode arrive as one answer by construction - the bare 'go'
    that names no mode cannot happen; a typed Other answer that omits the mode is re-asked, never
    defaulted. (When the invocation already named the mode, the question carries only approve /
    not-yet - restate the mode you are stamping.) Stamp
@@ -80,9 +88,12 @@ explicit word; silence is not a go.
      integration replays or another minutes-long run; the slow full run
      happens once, in this session, at the step-5 review / step-6 done-gate.
    *Stop* - and this stop chooses the reviewer for step 5, through the same decision mechanism:
-   'project-verify-code in-session (recommended)' - no dispatch, stays in this context; 'the
+   'project-verify-code in-session' - no dispatch, stays in this context; 'the
    stack's `<stack>-verifier` seat' - isolated eyes, frontmatter model unless the user names one;
-   or 'skip' - straight to step 6's done-gate. (For a broad parallel sweep the user can still
+   or 'skip' - straight to step 6's done-gate. Mark recommended what fits the assembled diff,
+   reason stated: in-session for a routine diff; the verifier seat when the diff is large, trips
+   a risk trigger (auth, migration, concurrency, security, a big refactor), or was built in this
+   session and deserves eyes that did not write it; skip is never the recommendation. (For a broad parallel sweep the user can still
    invoke `/code-review` themselves - it is not part of this flow.) The user can inspect the diff
    themselves here first.
 5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`, an honest
@@ -109,6 +120,8 @@ explicit word; silence is not a go.
 - Never pass a stop without the user's explicit word, and never approve the plan yourself - the
   APPROVE stamp records the user's decision, not yours; an answer that names no build mode
   approves nothing.
+- Never end a stop's turn without its AskUserQuestion (or the plain-text fallback's option
+  list) - a turn that narrates the result and waits offers the user nothing to answer.
 - Never dispatch a seat the user did not choose at a stop - dispatch is explicit-only house-wide.
 - Never keep cycle state only in chat: a stamp or tick that is not in the plan file does not
   exist. The serena note is a cursor, never the truth.

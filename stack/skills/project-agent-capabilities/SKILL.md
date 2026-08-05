@@ -61,7 +61,7 @@ The house routing map the MCP rows are stamped from (only for servers actually p
 - `serena` - default symbol navigator + symbol-level editor; `find_symbol` / `find_referencing_symbols` before any whole-file Read; also holds the per-project handoff memory (`.serena/memories/`).
 - `context7` - up-to-date docs for any API you don't own; resolve + query before writing against a third-party or version-sensitive surface, never from recall.
 - `memory` - cross-project recall only; search when this project's context is thin, store significant cross-project outcomes at task end.
-- `playwright` - drive a browser for visual checks / large HTML reports - don't text-read them.
+- `playwright` - drive a browser for visual checks / large HTML reports - don't text-read them. Screenshots: omit `filename` (auto-names land in the registered output dir, `.playwright/screenshots/`), or prefix an explicit name with `.playwright/screenshots/` - the server resolves explicit filenames against the repo ROOT, so a bare name litters the repo.
 - `angular-cli` - the framework CLI's own docs / commands.
 - `chrome-devtools` / `appium-mcp` - browser / native-mobile debug, only for those targets.
 - `sentry` - production error monitoring; pull the reported issue / event detail before diagnosing a production error, never from the stack trace alone.

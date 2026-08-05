@@ -250,8 +250,10 @@ remove. Emit + prereq-check it, then:
   showing the command first: the skill directory / agent file / rule file; a hook loses BOTH its
   `.claude/hooks/` file and its `.claude/settings.json` wiring; `claude mcp remove <name>`;
   `claude plugin uninstall <name>`.
-- Then re-run `/project-agent-capabilities` (when installed) so the generated awareness rule
-  reflects the reconciled inventory. The run rewrites `claude-stack.stamp` to the snapshot revision.
+- Then name `/project-agent-capabilities` (when installed) in the post-check report as the
+  USER's next step, so the generated awareness rule reflects the reconciled inventory - the
+  skill is manual-only (`disable-model-invocation`), a Skill call from this run is blocked;
+  never attempt it. The run rewrites `claude-stack.stamp` to the snapshot revision.
 
 ## 11. Post-check
 

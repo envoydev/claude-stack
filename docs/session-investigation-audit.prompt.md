@@ -38,6 +38,8 @@ Bundles come from more than one capture generation; inventory each one instead o
 - Mechanisms over prose. When a fix is warranted, prefer a structural one - a hook, a rule, a tool-mediated ask, a contract shape an orchestrator can parse - over adding advisory prose (measured: prose guidance was ignored in a material fraction of audited runs; mechanisms held).
 - Privacy wall. Bundles contain private project names and absolute paths. Everything quoting them stays inside `AUDIT_DIR`. Anything that lands in a tracked stack file is genericized to 'a consuming project'.
 - User friction is the highest-signal evidence. A user correction, a repeated ask, a mid-task redirect, or a pasted complaint marks the exact spot where the stack under-delivered - locate and read every one.
+- A needed user action with no tool-shaped ask is a finding. At any stop or decision point where the flow needed the user to act, the contract is an AskUserQuestion call with concrete options - a turn that narrates and waits in prose is the defect; check the transcript's stop points for the tool call before crediting a stop as held.
+- A Skill call against a manual-only skill is a finding with a stack home. `disable-model-invocation: true` makes the harness refuse the call; the defect lives in the artifact whose text instructed the invocation (a command, skill, agent, or rule) - the fix shape is naming the skill to the user as their next step, never the call.
 
 ---
 

@@ -65,6 +65,8 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
+    // the CLAUDE.template.md rules table's slash-only-capture notation - a marker, not a skill.
+    'user-run',
     // npm flags, npmrc keys, and package names in the npm skill - tool identifiers, not skills.
     'ignore-scripts',
     'min-release-age',

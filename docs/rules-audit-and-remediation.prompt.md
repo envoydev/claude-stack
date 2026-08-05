@@ -24,6 +24,8 @@ These are load-bearing. Several of them invalidate fixes that would be correct f
 - Target under 200 lines per CLAUDE.md file. Longer files consume more context and reduce adherence.
 - Block-level HTML comments are stripped before injection, so maintainer notes in comments cost nothing.
 - If a repo already has an `AGENTS.md` for other tools, CLAUDE.md should import it rather than restate it.
+- A required user action is reliably collected only through the AskUserQuestion tool. A rule that pauses the flow on the user - an approval, a pick, an input - must mandate the tool-shaped ask (concrete options, a marked recommendation), not a prose 'ask the user' line: prose asks measured as skipped in live runs while tool-shaped asks held.
+- `disable-model-invocation: true` on a skill blocks a model Skill call and an agent preload. A rule that instructs the model to run such a skill instructs the impossible (measured live: the harness refused the call) - the valid shape tells the USER to run it. Check every 'run /X' instruction against that skill's frontmatter.
 
 If any of these mechanics appear to have changed in the repo you are auditing or in current docs, prefer the observed reality and say so in the report rather than forcing the rule set to match a stale model.
 

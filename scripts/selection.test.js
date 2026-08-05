@@ -105,3 +105,78 @@ test('ps1: selection filters each category (pwsh required)', { skip: hasPwsh ? f
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
+
+// --- --installed-only / -InstalledOnly (the update fast path's derive) ------
+// A sandbox .claude tree exercises the whole contract: disk items kept,
+// user-authored and generated files never enter the set, no-hooks-on-disk
+// stays no hooks (the no-hook-lines special case must not fire), and the flag
+// is update-only and exclusive with an explicit selection.
+
+function makeInstallSandbox({ hooks = true } = {})
+{
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'io-'));
+    const c = p => fs.mkdirSync(path.join(root, p), { recursive: true });
+    c('.claude/skills/csharp'); c('.claude/skills/my-own-skill');
+    c('.claude/agents'); c('.claude/rules'); c('.claude/hooks');
+    fs.writeFileSync(path.join(root, '.claude/skills/csharp/SKILL.md'), 'x');
+    fs.writeFileSync(path.join(root, '.claude/skills/my-own-skill/SKILL.md'), 'x');
+    fs.writeFileSync(path.join(root, '.claude/rules/csharp-conventions.md'), 'x');
+    fs.writeFileSync(path.join(root, '.claude/rules/baseline-project-architecture.md'), 'x');  // generated - excluded
+    if (hooks) fs.writeFileSync(path.join(root, '.claude/hooks/guard-catastrophic-rm.js'), 'x');
+    fs.writeFileSync(path.join(root, '.claude/hooks/inject-code-style.js'), 'x');              // legacy generated - excluded
+    fs.writeFileSync(path.join(root, '.mcp.json'), '{"mcpServers":{"serena":{}}}');
+    return root;
+}
+
+function runInstalledOnly(root, extraArgs = [])
+{
+    return execFileSync('bash', [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan', ...extraArgs],
+        { encoding: 'utf8', cwd: root });
+}
+
+test('sh: --installed-only derives the plan from disk, excluding user-authored and generated files', () => {
+    const root = makeInstallSandbox();
+    try
+    {
+        const out = runInstalledOnly(root);
+        const skills = planLine(out, 'skills');
+        assert.ok(skills.includes('csharp'), 'installed stack skill kept');
+        assert.ok(!skills.includes('my-own-skill'), 'user-authored skill never enters the set');
+        assert.ok(planLine(out, 'rules').includes('csharp-conventions'));
+        assert.ok(!planLine(out, 'rules').includes('baseline-project-architecture'), 'generated rule excluded');
+        assert.deepStrictEqual(planLine(out, 'hooks'), ['guard-catastrophic-rm'], 'legacy generated hook excluded');
+        assert.ok(planLine(out, 'mcps').includes('serena'), 'mcp read from .mcp.json');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('sh: --installed-only with no hooks on disk installs no hooks (special case defeated)', () => {
+    const root = makeInstallSandbox({ hooks: false });
+    try
+    {
+        assert.deepStrictEqual(planLine(runInstalledOnly(root), 'hooks'), []);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('sh: --installed-only rejects install action and an explicit --selection', () => {
+    const r1 = spawnSync('bash', [SH, 'install', '--installed-only'], { encoding: 'utf8' });
+    assert.notStrictEqual(r1.status, 0);
+    assert.match(r1.stderr, /update flag/);
+    const r2 = spawnSync('bash', [SH, 'update', '--installed-only', '--selection', 'x.txt'], { encoding: 'utf8' });
+    assert.notStrictEqual(r2.status, 0);
+    assert.match(r2.stderr, /mutually exclusive/);
+});
+
+test('ps1: -InstalledOnly derives the same plan as the sh twin (pwsh required)', { skip: hasPwsh ? false : 'pwsh not installed - ps1 behavioral test skipped' }, () => {
+    const root = makeInstallSandbox();
+    try
+    {
+        const sh = runInstalledOnly(root);
+        const ps = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'update', '-Scope', 'project', '-InstalledOnly', '-PrintPlan'],
+            { encoding: 'utf8', cwd: root });
+        for (const cat of ['skills', 'plugins', 'mcps', 'agents', 'rules', 'hooks'])
+            assert.deepStrictEqual(planLine(ps, cat), planLine(sh, cat), `twin parity on ${cat}`);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

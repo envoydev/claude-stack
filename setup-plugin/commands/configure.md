@@ -69,28 +69,25 @@ comparable banner by banner; the content varies, the skeleton never does.
   they choose:
 
 ```bash
-SHA=$(sed -n 's/^sha: //p' .claude/claude-stack.stamp)
-NEW=$(sed -n 's/^sha: //p' "$TMP/repo/RELEASE-SOURCE")   # the snapshot's commit (an archive has no git history to diff locally)
-curl -fsSL "https://api.github.com/repos/envoydev/claude-stack/compare/$SHA...$NEW" |
-  node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const F=(JSON.parse(d).files||[]);if(F.length>=300)console.log("TRUNCATED - the compare API caps at 300 files; this list may be incomplete");const P=/^(stack|skills|agents|rules|hooks|templates)\//;for(const f of F)if(P.test(f.filename)||(f.previous_filename&&P.test(f.previous_filename)))console.log(f.status+"\t"+f.filename+(f.previous_filename?"\t<- "+f.previous_filename:""))})'
+node "$TMP/repo/scripts/stamp-compare.js" --snapshot "$TMP/repo" --stamp .claude/claude-stack.stamp
 ```
 
-Each line is `status<TAB>path` (`modified`/`added`/`removed`, and `renamed` with `<- old-path`).
-Summarise by category, naming the items - that is the honest answer to 'what does updating get
-me'. When the stamp and `RELEASE-SOURCE` both carry a `version:`, lead with the delta
-(`0.1.0 -> 0.2.0` - the plugin/marketplace version; equal versions with differing shas just means
-no release bumped it). (When the fallback cloned instead of downloading, `RELEASE-SOURCE` does
-not exist - use `git -C "$TMP/repo" rev-parse HEAD` for `NEW`; the compare API works the same.)
-The diff is what has been RELEASED since the stamp (merges to `main`, the release branch) - work
-still on `develop` is invisible here by design, so never diff against or mention `develop`. Two
-cases to handle, neither an error:
+(A fork install passes `--repo <owner/name>`; the script reads the snapshot's `RELEASE-SOURCE`,
+falling back to the clone's git HEAD.) It prints the version delta first (`version: 0.1.0 ->
+0.2.0` - the plugin/marketplace version; `unknown` when either side lacks one), then
+`status<TAB>path` lines (`modified`/`added`/`removed`, and `renamed` with `<- old-path`)
+filtered to stack-owned paths. Summarise by category, naming the items - that is the honest
+answer to 'what does updating get me'. The diff is what has been RELEASED since the stamp
+(merges to `main`, the release branch) - work still on `develop` is invisible here by design,
+so never diff against or mention `develop`. Two signal lines to handle, neither an error:
 
-- **No stamp** - an install predating stamping, or one whose source never resolved. Say the
-  baseline is unknown, so an update's effect cannot be previewed; the update itself is unaffected
-  and will write a stamp.
-- **The compare fails** - the commit is gone (history rewritten, or a fork/`STACK_SKILLS_REPO`
-  source that never had it), or the API is unreachable. Report that the baseline is unreachable
-  and move on; never guess a diff, and never treat this as a reason to skip the update.
+- **`no-stamp`** (exit 2) - an install predating stamping, or one whose source never resolved.
+  Say the baseline is unknown, so an update's effect cannot be previewed; the update itself is
+  unaffected and will write a stamp.
+- **`compare-unreachable`** (exit 3) - the commit is gone (history rewritten, or a
+  fork/`STACK_SKILLS_REPO` source that never had it), or the API is unreachable. Report that the
+  baseline is unreachable and move on; never guess a diff, and never treat this as a reason to
+  skip the update.
 
 A `TRUNCATED` first line means the preview may be missing files - say so alongside the summary.
 
@@ -274,8 +271,10 @@ orphans) with its command shown before running it: delete the skill directory / 
 rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
 (show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP;
 `claude plugin uninstall <name>` for a plugin; 'removals: none' when nothing was dropped;
-(3) the follow-through line - re-run `/project-agent-capabilities` (when installed) so the
-generated awareness rule reflects the new inventory, and any environment writes from step 9.
+(3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
+installed) so the generated awareness rule reflects the new inventory (the skill is manual-only,
+`disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
+user, never acted on), and any environment writes from step 9.
 
 ## 12. CLAUDE.md - the user's call (project mode)
 
