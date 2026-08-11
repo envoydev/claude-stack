@@ -403,43 +403,43 @@
    "sites": [
     {
      "file": "stack/agents/aspnet-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/web-angular-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/wpf-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/console-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/ionic-angular-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/data-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/devops-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/browser-extension-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/windows-service-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/winforms-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     }
    ]
   },
@@ -944,44 +944,44 @@
    "_note": "The task-card anchors consumption rule - verbatim across all 10 implementers (each installs per stack).",
    "owner": {
     "file": "stack/agents/aspnet-implementer.md",
-    "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+    "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
    },
    "sites": [
     {
      "file": "stack/agents/web-angular-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/wpf-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/winforms-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/console-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/windows-service-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/ionic-angular-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/data-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/devops-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/browser-extension-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     }
    ]
   },

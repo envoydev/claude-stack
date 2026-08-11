@@ -10,6 +10,7 @@ description: "House baseline - quality gates: code quality and the done-claim ga
 - Unit tests for new code; integration tests for DB / external service.
 - Keep it simple: no speculative abstractions; touch only what the task requires.
 - Inline comments explain *why*, not *what*.
+- Throwaway probe/scratch code (a diagnostic dump, a hypothesis check) is written OUTSIDE the tracked tree - the harness scratchpad or an untracked temp dir - never into the project's source or test folders (measured: a probe class heredoc-landed in the tracked test tree). And an interrupted compound write (heredoc, chained command) may have already executed before the interrupt - existence-check the target instead of trusting the rejection.
 
 ## Definition of done
 

@@ -82,7 +82,9 @@ the first cycle's reviewer).
 1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
    file, not the chat, is the artifact. *Stop.*
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
-   found. Gaps route back to step 1 on the user's word. *Stop.*
+   found. Gaps route back to step 1 on the user's word. A user who declines the audit gets the
+   same honest ledger as step 5: stamp `Gated: skipped by user - <their words>` and continue -
+   never leave the field blank or fake a pass. *Stop.*
 3. **APPROVE** - present the gated plan, then put the gate through the stop contract's decision
    mechanism as ONE question whose options each NAME the mode: 'Approve - build in this session',
    'Approve - dispatch the agent seats' (each task to its stack's
