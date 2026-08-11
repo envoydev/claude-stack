@@ -15,6 +15,8 @@ Producer before consumer across domains. Sequential inside one domain.
 Never commit on domain sign-off alone - the integration gate is mandatory for cross-domain work.
 ```
 
+**Chained runs.** When THIS session already ran an orchestration cycle (a prior plan approval, APPROVAL stamp, or cycle/run ledger from this same session is in context), the run-start ask's recommended option is the fresh-session hand-off - the finished cycle's carried context compounds into every dispatch and re-send (measured: chained orchestrations grew one session's per-message context ~19x); proceed in-session only on the user's explicit pick.
+
 ## Two routing families
 
 Decide the family from the ask first, because they start differently:

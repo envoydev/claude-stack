@@ -2,7 +2,9 @@
   "generatedBy": "stack-graph",
   "skills": {
     "angular-conventions": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "angular-material": {
@@ -34,7 +36,9 @@
       "plugins": []
     },
     "csharp": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "csharp-design-patterns": {
@@ -42,7 +46,9 @@
       "plugins": []
     },
     "database-conventions": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "database-security": {
@@ -54,7 +60,9 @@
       "plugins": []
     },
     "devops": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "docs-as-code": {
@@ -166,11 +174,15 @@
       "plugins": []
     },
     "dotnet-winforms": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "dotnet-wpf": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "explain-code-tutor": {
@@ -194,7 +206,9 @@
       "plugins": []
     },
     "javascript": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "markdown-style": {
@@ -351,16 +365,18 @@
     },
     "aspnet-implementer": {
       "skills": [
-        "csharp"
-      ],
-      "suggests": [
+        "csharp",
         "dotnet-data-access",
-        "dotnet-minimal-api",
-        "dotnet-mvc-controllers",
         "dotnet-testing",
         "dotnet-web-backend",
-        "dotnet-web-error-handling",
-        "project-quality-loop"
+        "dotnet-web-error-handling"
+      ],
+      "suggests": [
+        "dotnet-minimal-api",
+        "dotnet-mvc-controllers",
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -407,13 +423,15 @@
     },
     "browser-extension-implementer": {
       "skills": [
-        "browser-extension"
+        "browser-extension",
+        "javascript",
+        "typescript"
       ],
       "suggests": [
         "frontend",
-        "javascript",
+        "project-architecture-quality-loop",
         "project-quality-loop",
-        "typescript"
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -489,15 +507,17 @@
     },
     "console-implementer": {
       "skills": [
-        "csharp"
+        "csharp",
+        "dotnet-hosted-services",
+        "dotnet-testing"
       ],
       "suggests": [
         "dotnet-console-apps",
-        "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
-        "dotnet-testing",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -553,14 +573,16 @@
     "data-implementer": {
       "skills": [
         "csharp",
-        "database-conventions"
-      ],
-      "suggests": [
+        "database-conventions",
         "dotnet-data-access",
         "dotnet-migrate",
-        "dotnet-testing",
+        "dotnet-testing"
+      ],
+      "suggests": [
         "postgres",
+        "project-architecture-quality-loop",
         "project-quality-loop",
+        "project-test-coverage-loop",
         "sqlite"
       ],
       "skillsSource": "frontmatter",
@@ -611,7 +633,9 @@
       "suggests": [
         "dotnet-aspire",
         "dotnet-migrate",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -708,11 +732,14 @@
         "angular-conventions",
         "angular-styling",
         "ionic",
+        "javascript",
         "typescript"
       ],
       "suggests": [
         "capacitor-release",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -743,6 +770,7 @@
         "angular-styling",
         "angular-testing",
         "ionic",
+        "javascript",
         "typescript"
       ],
       "suggests": [
@@ -835,13 +863,16 @@
     "web-angular-implementer": {
       "skills": [
         "angular-conventions",
+        "javascript",
         "typescript"
       ],
       "suggests": [
         "angular-material",
         "angular-styling",
         "frontend",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -871,6 +902,7 @@
         "angular-conventions",
         "angular-styling",
         "angular-testing",
+        "javascript",
         "typescript"
       ],
       "suggests": [
@@ -886,15 +918,17 @@
     },
     "windows-service-implementer": {
       "skills": [
+        "csharp",
+        "dotnet-hosted-services",
+        "dotnet-testing",
         "dotnet-windows-service"
       ],
       "suggests": [
-        "csharp",
-        "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
-        "dotnet-testing",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -946,12 +980,14 @@
     },
     "winforms-implementer": {
       "skills": [
+        "csharp",
+        "dotnet-testing",
         "dotnet-winforms"
       ],
       "suggests": [
-        "csharp",
-        "dotnet-testing",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -1001,15 +1037,17 @@
     },
     "wpf-implementer": {
       "skills": [
-        "csharp"
+        "csharp",
+        "csharp-design-patterns",
+        "dotnet-testing",
+        "dotnet-wpf"
       ],
       "suggests": [
-        "csharp-design-patterns",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "dotnet-windows-service",
-        "dotnet-wpf",
-        "project-quality-loop"
+        "project-architecture-quality-loop",
+        "project-quality-loop",
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],

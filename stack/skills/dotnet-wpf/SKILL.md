@@ -5,6 +5,8 @@ description: "WPF conventions - strict MVVM with a one-way View-knows-ViewModel 
 
 # WPF conventions
 
+For any WPF or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources (the routing lesson from a sibling leaf: the MCP sat live and unused because the routing line lived only in a router skill this leaf never loads).
+
 WPF is a retained-mode XAML UI on the data-binding engine. The whole discipline below exists to keep
 view concerns (visuals, the visual tree, the dispatcher) on one side of a line and application state
 on the other, so the state side stays a plain testable C# object. Floor is .NET 8 / C# 12.

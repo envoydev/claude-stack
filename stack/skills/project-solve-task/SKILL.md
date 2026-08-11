@@ -23,7 +23,10 @@ survives a compaction or a fresh session. It never designs, builds, or reviews a
 **On invocation, resume before starting:** `list_memories` -> `read_memory` the feature's cycle
 note (or an equivalent direct read of `.serena/memories/` - the note's content is the contract,
 not the tool route), and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
-step whose stamp says it already passed. A cycle mid-build looks like:
+step whose stamp says it already passed. A NEW cycle starting after a finished one in this same
+session recommends the fresh-session hand-off in its first ask - the finished cycle's carried
+context compounds into every later call (measured: chained orchestrations grew one session's
+per-message context ~19x). A cycle mid-build looks like:
 
 ```
 plan .claude/docs/superpowers/plans/csv-export.md:
@@ -54,17 +57,39 @@ single biggest token cost (measured: a fresh-session resume restarted at roughly
 carried context with zero re-work - stamped steps stayed done). On a long cycle this is a step,
 not an offer to remember: once the cycle has crossed roughly 150k ctx per message, spans hours,
 or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
-ask until it is taken or the cycle closes (measured twice: seven stops passed with the option
-never surfaced while context grew 5x to 427k; an overnight tail ran at 361k ctx per message,
-25.3M cache-read for 71 messages, with the clause never invoked). The selected answer is the
-go; silence is not, and a stop that only narrates is not a stop.
+ask until it is taken or the cycle closes. This is a CONSTRUCTION check, not a memory: before
+emitting any stop's AskUserQuestion, ask 'has this cycle crossed the trigger?' - if yes and the
+option list has no fresh-session entry, the question is malformed, rebuild it (measured across
+eight audited sessions: the remembered form fired in zero of 40+ qualifying stops - one session
+crossed the trigger at its FIRST approve gate and never offered it through 15 more - while the
+same sessions' other option rules held; only a per-ask check survives a long cycle). The
+selected answer is the go; silence is not, and a stop that only narrates is not a stop.
+
+**Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
+recommended without asking me'), do not silently self-authorize past the stops - the contract
+has a receipted path: write `<docs-path>/flow/APPROVAL` with first line
+`AUTO - "<their words, verbatim>"` (the same file-backed waiver `project-solve-cross-task`
+uses), say in one line that stops are waived under it, and proceed taking each stop's
+recommended option; the pre-commit checkpoint and its receipt still apply. The AUTO stamp lives until step 6's
+close deletes it - step 4's delete-when-fan-out-completes applies to per-plan APPROVED stamps,
+and a step-5 punch-list re-dispatch under AUTO rides the still-live waiver. Measured twice: with
+no waiver path, zero-ask runs improvised the override invisibly - one wrote 'take the
+recommended option at every stop, do not ask' into a scratch note as its only record.
 
 ## The steps
+
+Each step that names a skill INVOKES it via the Skill tool - and re-invokes it for every new
+cycle in the same chat, even when an earlier cycle already loaded it: 'it is still in context'
+runs the step off stale framing and freezes cost attribution on the wrong skill (measured: a
+second and third cycle ran all six steps with zero fresh invocations - 1h42m of work stamped to
+the first cycle's reviewer).
 
 1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
    file, not the chat, is the artifact. *Stop.*
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
-   found. Gaps route back to step 1 on the user's word. *Stop.*
+   found. Gaps route back to step 1 on the user's word. A user who declines the audit gets the
+   same honest ledger as step 5: stamp `Gated: skipped by user - <their words>` and continue -
+   never leave the field blank or fake a pass. *Stop.*
 3. **APPROVE** - present the gated plan, then put the gate through the stop contract's decision
    mechanism as ONE question whose options each NAME the mode: 'Approve - build in this session',
    'Approve - dispatch the agent seats' (each task to its stack's
@@ -87,9 +112,17 @@ go; silence is not, and a stop that only narrates is not a stop.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
      fan-out per the shared policy `project-solve-cross-task` owns (write its approval gate file
      first, quoting this step's user approval verbatim - the dispatch hook blocks an unstamped
-     implementer), the main session the only
+     implementer; DELETE that gate file when the fan-out completes, before the step-5 stop - a
+     stamp left live can silently authorize an unrelated later dispatch for up to 8h, and the
+     clause lived only in a reference file no session ever read), the main session the only
      orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
-     per task as reports land. Each seat's green gate stays fast - build + fast tests, never
+     per task as reports land. MINT the run's contract version - `<the plan's Approved: date>-<plan
+     slug>` - and put it in EVERY dispatch prompt verbatim, with the seat's memory-handoff line
+     spelled out: `write_memory('<feature>__<contract_version>__<seat>__<task>', ...)` (measured
+     across four sessions: with no minted version, concurrently-dispatched seats invented 3-5
+     incompatible naming schemes per batch, one later read failed on a guessed name, and the
+     naming rule's home file was never loaded by any seat). Each seat's green gate stays fast -
+     build + fast tests, never
      integration replays or another minutes-long run; the slow full run
      happens once, in this session, at the step-5 review / step-6 done-gate.
    *Stop* - and this stop chooses the reviewer for step 5, through the same decision mechanism:
@@ -102,16 +135,39 @@ go; silence is not, and a stop that only narrates is not a stop.
    invoke `/code-review` themselves - it is not part of this flow.) The user can inspect the diff
    themselves here first.
 5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`, an honest
-   record, not a silent gap) - run the reviewer chosen at the step-4 stop over the assembled diff,
-   pointed at the plan file so it reviews against the plan, not in isolation. The review protocol -
+   record, not a silent gap) - INVOKE the reviewer chosen at the step-4 stop: in-session means a
+   Skill tool call on `project-verify-code`, the seat means an Agent dispatch - recording the
+   choice and reviewing from memory of an earlier load is not running it (measured twice: a
+   chosen reviewer was never invoked, and one COMMIT-GATE receipt cited a pass with no matching
+   invocation anywhere in the session - the receipt may only name a review that actually ran).
+   Point it at the plan file so it reviews against the plan, not in isolation. The review protocol -
    build + tests rerun, plan conformance, stack traps, the live-run probe, the wire-contract trace -
    is `project-verify-code`'s (the inline default, twin of the verifier seat); the `<stack>-verifier`
    seat runs the same protocol dispatched.
-   Deviations and findings become a punch list routed back to step 4. Stamp the verdict. *Stop.*
+   Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the
+   SAME reviewer again before anything is stamped `Completed`: a punch-list fix is unreviewed code
+   (measured: a cycle stamped Completed with its fix delta unreviewed sat 1h42m until the user
+   asked what was left). Stamp the verdict. *Stop.*
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
    (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
-   per-task evidence table. Delete or archive the cycle note.
+   per-task evidence table. Delete or archive the cycle note, and in an agents-mode run purge the
+   run's minted seat notes too - `mcp__serena__delete_memory` each `<feature>__<contract_version>__*`
+   note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
+   this run's deletes trail its writes (measured corpus-wide: 28 write_memory, 0 delete_memory). *Stop* - and this stop is where the
+   close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
+   item, a cross-repo follow-up) goes into the ask's options - commit now / hold / whatever the
+   real fork is; only a cycle with nothing pending ends on the report alone (measured: this was
+   the one step without the Stop tag, and prose closes here cost a 31-minute stall, a 12-hour
+   ungated corridor, and a green reviewed diff that died uncommitted at a /clear).
+   New scope arriving in-chat after `Completed:` is a NEW cycle - re-enter step 1, or say
+   plainly that the work is running ungated and why; never build it on a casual 'yes, add it'
+   (measured: every user-caught defect in two audited sessions lived in post-close ad hoc scope
+   the gates never saw). When the change affects a sibling repo's client, the handoff is a
+   FILE (a task doc in the sibling's convention or a serena note), never chat-only prose -
+   verify the sibling's actual source before writing what it must do (measured: a chat-only
+   handoff was regenerated twice at full context; a speculative one shipped a wrong claim the
+   user's follow-up exposed).
    **Doc-drift awareness** - one line at most in the close report, the user decides, never
    auto-run: when the landed change touched an architecture-critical surface (a schema/EF
    migration, a new module or project, a moved boundary or dependency direction, a changed

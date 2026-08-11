@@ -5,6 +5,8 @@ description: C# conventions (.NET 8 / C# 12 floor) - style/structure (file layou
 
 # C# Conventions
 
+For any BCL or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources (measured in a sibling leaf: ~5.2k tokens grep-ing minified bundles for an answer the live MCP held; the routing line lived only in a router skill this leaf never loads).
+
 C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces, 120-char line limit, file-scoped namespaces) and `EnforceCodeStyleInBuild=true`.
 
 **Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework / C# 7.3 delta is `references/net-framework-48.md`. This file keeps the house rules those style docs do not cover - structure limits, member and constructor ordering, forbidden patterns, XML doc, and the runtime behavior below - and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**

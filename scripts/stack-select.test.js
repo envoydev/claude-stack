@@ -12,12 +12,16 @@ test('an agent pulls its declared skills and plugins; body mentions only suggest
         assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-solution-designer's frontmatter`);
     }
     assert.match(c.reasons['dotnet'], /aspnet-solution-designer/);
-    // aspnet-implementer preloads csharp via skills: frontmatter (the conventions load
-    // mechanized after a prose-only load was skipped in production); its remaining
-    // conditional loads stay suggestions, and a body-sourced agent still locks nothing.
+    // aspnet-implementer preloads its operative stack skills via skills: frontmatter (the
+    // prose-instructed loads fired in 0 of 5 seats in one measured session while every
+    // frontmatter preload landed); only per-task surface picks stay suggestions, and a
+    // body-sourced agent still locks nothing.
     const impl = computeClosure(graph, { agents: ['aspnet-implementer'] });
-    assert.ok(impl.skills.includes('csharp'), 'the frontmatter conventions preload is a hard edge');
-    assert.ok(graph.agents['aspnet-implementer'].suggests.includes('dotnet-web-backend'), 'conditional loads live in suggests');
+    for (const s of ['csharp', 'dotnet-web-backend', 'dotnet-web-error-handling', 'dotnet-data-access', 'dotnet-testing'])
+    {
+        assert.ok(impl.skills.includes(s), `the frontmatter preload '${s}' is a hard edge`);
+    }
+    assert.ok(graph.agents['aspnet-implementer'].suggests.includes('dotnet-minimal-api'), 'per-task surface picks live in suggests');
     assert.ok(!graph.agents['aspnet-implementer'].suggests.includes('csharp'), 'a declared skill never doubles as a suggestion');
     assert.ok(impl.plugins.includes('ponytail'), 'aspnet-implementer still pulls the ponytail plugin');
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });

@@ -403,43 +403,43 @@
    "sites": [
     {
      "file": "stack/agents/aspnet-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/web-angular-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/wpf-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/console-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/ionic-angular-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/data-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/devops-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/browser-extension-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/windows-service-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     },
     {
      "file": "stack/agents/winforms-verifier.md",
-     "marker": "End with exactly this output contract: `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`"
+     "marker": "End with exactly this output contract - literal `status:` and `contract_version:` lines"
     }
    ]
   },
@@ -944,44 +944,44 @@
    "_note": "The task-card anchors consumption rule - verbatim across all 10 implementers (each installs per stack).",
    "owner": {
     "file": "stack/agents/aspnet-implementer.md",
-    "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+    "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
    },
    "sites": [
     {
      "file": "stack/agents/web-angular-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/wpf-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/winforms-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/console-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/windows-service-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/ionic-angular-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/data-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/devops-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     },
     {
      "file": "stack/agents/browser-extension-implementer.md",
-     "marker": "go straight to them with `find_symbol`, re-navigating only for what they don't cover"
+     "marker": "go straight to them with `mcp__serena__find_symbol`, re-navigating only for what they don't cover"
     }
    ]
   },
@@ -1455,47 +1455,47 @@
    ]
   },
   "rubric-dispatch-carveout-implementer": {
-   "_note": "The implementers' quality-loop findings-plan carve-out (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
+   "_note": "The implementers' loop findings-plan carve-out (any loop brief without a contract_version) (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
    "owner": {
     "file": "stack/agents/aspnet-implementer.md",
-    "marker": "findings-plan, the plan is the contract"
+    "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
    },
    "sites": [
     {
      "file": "stack/agents/browser-extension-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/console-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/data-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/devops-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/ionic-angular-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/web-angular-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/windows-service-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/winforms-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/wpf-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     }
    ]
   },
@@ -1686,6 +1686,81 @@
     {
      "file": "stack/rules/baseline-git.md",
      "marker": "at most 2 files and 15 changed lines"
+    }
+   ]
+  },
+  "commit-gate-authorized-line": {
+   "_note": "The receipt's consent line: authorized: \"<the user's words asking for THIS commit, verbatim>\" - review is not consent. baseline-git canonical; verify-code writes it; the hook presence-checks it (file and atomic paths) and teaches it in stderr.",
+   "owner": {
+    "file": "stack/rules/baseline-git.md",
+    "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-verify-code/SKILL.md",
+     "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
+    },
+    {
+     "file": "stack/hooks/guard-ungated-commit.js",
+     "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
+    }
+   ]
+  },
+  "commit-gate-atomic-tolerance": {
+   "_note": "DECISION: the hook tolerates the legacy atomic write+commit shape for adoption compat (blocking it would reject the corpus's dominant conforming pattern); the rule teaches own-call receipts as the discipline and names the tolerance so the prose is not hollow. A future hook tightening must update both copies.",
+   "owner": {
+    "file": "stack/hooks/guard-ungated-commit.js",
+    "marker": "Blocking\n// it would reject the receipt discipline this gate exists to enforce"
+   },
+   "sites": [
+    {
+     "file": "stack/rules/baseline-git.md",
+     "marker": "tolerates the\nlegacy atomic write+commit shape for adoption compat - do not rely on it"
+    }
+   ]
+  },
+  "implementer-checked-notes-opener": {
+   "_note": "The implementer report opener that makes a skipped START memory read visible; 10 identical copies. The carve-out names its findings-plan reading ('none' on a sanctioned skip).",
+   "owner": {
+    "file": "stack/agents/aspnet-implementer.md",
+    "marker": "Open your report with `checked prior notes: <names|none>`"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/data-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/console-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/windows-service-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/winforms-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/wpf-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/web-angular-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/ionic-angular-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/browser-extension-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/devops-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
     }
    ]
   }
