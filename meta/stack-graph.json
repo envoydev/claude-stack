@@ -36,7 +36,9 @@
       "plugins": []
     },
     "csharp": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "csharp-design-patterns": {
@@ -44,7 +46,9 @@
       "plugins": []
     },
     "database-conventions": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "database-security": {
@@ -56,7 +60,9 @@
       "plugins": []
     },
     "devops": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "docs-as-code": {
@@ -168,11 +174,15 @@
       "plugins": []
     },
     "dotnet-winforms": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "dotnet-wpf": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "explain-code-tutor": {
@@ -196,7 +206,9 @@
       "plugins": []
     },
     "javascript": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "markdown-style": {
@@ -411,15 +423,15 @@
     },
     "browser-extension-implementer": {
       "skills": [
-        "browser-extension"
+        "browser-extension",
+        "javascript",
+        "typescript"
       ],
       "suggests": [
         "frontend",
-        "javascript",
         "project-architecture-quality-loop",
         "project-quality-loop",
-        "project-test-coverage-loop",
-        "typescript"
+        "project-test-coverage-loop"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -495,14 +507,14 @@
     },
     "console-implementer": {
       "skills": [
-        "csharp"
+        "csharp",
+        "dotnet-hosted-services",
+        "dotnet-testing"
       ],
       "suggests": [
         "dotnet-console-apps",
-        "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
-        "dotnet-testing",
         "project-architecture-quality-loop",
         "project-quality-loop",
         "project-test-coverage-loop"
@@ -906,14 +918,14 @@
     },
     "windows-service-implementer": {
       "skills": [
+        "csharp",
+        "dotnet-hosted-services",
+        "dotnet-testing",
         "dotnet-windows-service"
       ],
       "suggests": [
-        "csharp",
-        "dotnet-hosted-services",
         "dotnet-messaging",
         "dotnet-realtime",
-        "dotnet-testing",
         "project-architecture-quality-loop",
         "project-quality-loop",
         "project-test-coverage-loop"
@@ -968,11 +980,11 @@
     },
     "winforms-implementer": {
       "skills": [
+        "csharp",
+        "dotnet-testing",
         "dotnet-winforms"
       ],
       "suggests": [
-        "csharp",
-        "dotnet-testing",
         "project-architecture-quality-loop",
         "project-quality-loop",
         "project-test-coverage-loop"
@@ -1025,14 +1037,14 @@
     },
     "wpf-implementer": {
       "skills": [
-        "csharp"
+        "csharp",
+        "csharp-design-patterns",
+        "dotnet-testing",
+        "dotnet-wpf"
       ],
       "suggests": [
-        "csharp-design-patterns",
         "dotnet-hosted-services",
-        "dotnet-testing",
         "dotnet-windows-service",
-        "dotnet-wpf",
         "project-architecture-quality-loop",
         "project-quality-loop",
         "project-test-coverage-loop"

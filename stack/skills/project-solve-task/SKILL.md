@@ -23,7 +23,10 @@ survives a compaction or a fresh session. It never designs, builds, or reviews a
 **On invocation, resume before starting:** `list_memories` -> `read_memory` the feature's cycle
 note (or an equivalent direct read of `.serena/memories/` - the note's content is the contract,
 not the tool route), and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
-step whose stamp says it already passed. A cycle mid-build looks like:
+step whose stamp says it already passed. A NEW cycle starting after a finished one in this same
+session recommends the fresh-session hand-off in its first ask - the finished cycle's carried
+context compounds into every later call (measured: chained orchestrations grew one session's
+per-message context ~19x). A cycle mid-build looks like:
 
 ```
 plan .claude/docs/superpowers/plans/csv-export.md:
@@ -67,7 +70,9 @@ recommended without asking me'), do not silently self-authorize past the stops -
 has a receipted path: write `<docs-path>/flow/APPROVAL` with first line
 `AUTO - "<their words, verbatim>"` (the same file-backed waiver `project-solve-cross-task`
 uses), say in one line that stops are waived under it, and proceed taking each stop's
-recommended option; the pre-commit checkpoint and its receipt still apply. Measured twice: with
+recommended option; the pre-commit checkpoint and its receipt still apply. The AUTO stamp lives until step 6's
+close deletes it - step 4's delete-when-fan-out-completes applies to per-plan APPROVED stamps,
+and a step-5 punch-list re-dispatch under AUTO rides the still-live waiver. Measured twice: with
 no waiver path, zero-ask runs improvised the override invisibly - one wrote 'take the
 recommended option at every stop, do not ask' into a scratch note as its only record.
 
@@ -114,7 +119,7 @@ the first cycle's reviewer).
      per task as reports land. MINT the run's contract version - `<the plan's Approved: date>-<plan
      slug>` - and put it in EVERY dispatch prompt verbatim, with the seat's memory-handoff line
      spelled out: `write_memory('<feature>__<contract_version>__<seat>__<task>', ...)` (measured
-     across four sessions: with no minted version, concurrently-dispatched seats invented 3-6
+     across four sessions: with no minted version, concurrently-dispatched seats invented 3-5
      incompatible naming schemes per batch, one later read failed on a guessed name, and the
      naming rule's home file was never loaded by any seat). Each seat's green gate stays fast -
      build + fast tests, never
@@ -146,7 +151,10 @@ the first cycle's reviewer).
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
    (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
-   per-task evidence table. Delete or archive the cycle note. *Stop* - and this stop is where the
+   per-task evidence table. Delete or archive the cycle note, and in an agents-mode run purge the
+   run's minted seat notes too - `mcp__serena__delete_memory` each `<feature>__<contract_version>__*`
+   note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
+   this run's deletes trail its writes (measured corpus-wide: 28 write_memory, 0 delete_memory). *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
    item, a cross-repo follow-up) goes into the ask's options - commit now / hold / whatever the
    real fork is; only a cycle with nothing pending ends on the report alone (measured: this was

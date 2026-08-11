@@ -5,6 +5,8 @@ description: "DevOps reference for the .NET/Angular house, by the delivery surfa
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
+For any action, image, or tool flag not pinned down here, resolve it with the `context7` MCP rather than memory (the routing lesson from a sibling leaf: the MCP sat live and unused because the routing line lived only in a router skill this leaf never loads).
+
 The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with `dotnet-aspire` (orchestration), `dotnet-migrate` (migration mechanics), and `dotnet-security` / `database-security` (secret handling; the crypto primitives are `dotnet-cryptography`). The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 
 ## Docker - reproducible, minimal, non-root

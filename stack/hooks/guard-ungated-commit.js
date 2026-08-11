@@ -31,8 +31,14 @@ if (!commitMatch) process.exit(0);
 // written (with a VERIFIED/WAIVED line in the same command text) before git runs. Blocking
 // it would reject the receipt discipline this gate exists to enforce (measured: the
 // write+commit+clear-in-one-call shape is the corpus's dominant conforming pattern).
-if (command.includes('COMMIT-GATE') && /\b(VERIFIED|WAIVED)\b/.test(command)
-  && /(>>?|\btee\b|\bcat\b|\bprintf\b)/.test(command.slice(0, commitMatch.index))) process.exit(0);
+// All matches are bound to the PRE-commit segment (a commit message merely mentioning
+// COMMIT-GATE VERIFIED is not a receipt), and a VERIFIED receipt needs its authorized:
+// line here too - same contract as the file path below.
+const preCommit = command.slice(0, commitMatch.index);
+if (preCommit.includes('COMMIT-GATE')
+  && /(>>?|\btee\b|\bcat\b|\bprintf\b)/.test(preCommit)
+  && (/\bWAIVED\b/.test(preCommit)
+    || (/\bVERIFIED\b/.test(preCommit) && /authorized:/.test(preCommit)))) process.exit(0);
 let root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 // Resolve the repo the commit actually runs in: a `cd <sibling> && git commit` or a
 // `git -C <sibling> commit` executes in a DIFFERENT repo than this hook's default root,
@@ -67,28 +73,38 @@ const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const gate = path.join(root, docsRoot, 'flow', 'COMMIT-GATE');
 const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right before the commit; re-stamping is one Write
 let first = '';
+let second = '';
 let stale = false;
 try {
   const age = Date.now() - fs.statSync(gate).mtimeMs;
   if (age > MAX_RECEIPT_AGE_MS) {
     stale = true;
   } else {
-    first = fs.readFileSync(gate, 'utf8').split('\n')[0].trim();
+    const lines = fs.readFileSync(gate, 'utf8').split('\n');
+    first = (lines[0] || '').trim();
+    second = (lines[1] || '').trim();
   }
 } catch {
   // absent or unreadable - no gate receipt
 }
-if (/^(VERIFIED|WAIVED)\b/.test(first)) process.exit(0);
+// WAIVED carries the user's words on its own line; VERIFIED needs the authorized: second
+// line - a review receipt alone is not consent (measured: a self-written VERIFIED receipt
+// once cleared a commit no user had requested).
+if (/^WAIVED\b/.test(first)) process.exit(0);
+const noAuth = /^VERIFIED\b/.test(first) && !/^authorized:/.test(second);
+if (/^VERIFIED\b/.test(first) && !noAuth) process.exit(0);
 process.stderr.write(
   (stale
     ? `Blocked: git commit - the gate receipt at ${gate} is older than 2h and is treated as absent (a stale receipt from an earlier round is not this diff's review).\n`
-    : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
+    : noAuth
+      ? `Blocked: git commit - the gate receipt at ${gate} has a VERIFIED first line but no 'authorized:' second line; the review ran, but nothing records the user asking for THIS commit. Append the second line and retry.\n`
+      : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
     `The checkpoint (baseline-git.md) runs BEFORE a non-trivial commit: the formatter, then\n` +
     `the house review project-verify-code - plus /security-review when the diff touches\n` +
     `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
     `${gate}\n` +
     `with one first line - VERIFIED <what was reviewed, one phrase> - and a second line\n` +
-    `authorized: "<the user's words consenting to THIS commit, verbatim>" (a receipt proves\n` +
+    `authorized: "<the user's words asking for THIS commit, verbatim>" (a receipt proves\n` +
     `the review ran, the authorized line proves the user asked for the commit - measured: a\n` +
     `self-written VERIFIED receipt once passed this gate on a commit no user requested).\n` +
     `Then retry the commit. If the user EXPLICITLY waived the gate this conversation, write\n` +

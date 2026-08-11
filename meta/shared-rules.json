@@ -1688,6 +1688,81 @@
      "marker": "at most 2 files and 15 changed lines"
     }
    ]
+  },
+  "commit-gate-authorized-line": {
+   "_note": "The receipt's consent line: authorized: \"<the user's words asking for THIS commit, verbatim>\" - review is not consent. baseline-git canonical; verify-code writes it; the hook presence-checks it (file and atomic paths) and teaches it in stderr.",
+   "owner": {
+    "file": "stack/rules/baseline-git.md",
+    "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-verify-code/SKILL.md",
+     "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
+    },
+    {
+     "file": "stack/hooks/guard-ungated-commit.js",
+     "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
+    }
+   ]
+  },
+  "commit-gate-atomic-tolerance": {
+   "_note": "DECISION: the hook tolerates the legacy atomic write+commit shape for adoption compat (blocking it would reject the corpus's dominant conforming pattern); the rule teaches own-call receipts as the discipline and names the tolerance so the prose is not hollow. A future hook tightening must update both copies.",
+   "owner": {
+    "file": "stack/hooks/guard-ungated-commit.js",
+    "marker": "Blocking\n// it would reject the receipt discipline this gate exists to enforce"
+   },
+   "sites": [
+    {
+     "file": "stack/rules/baseline-git.md",
+     "marker": "tolerates the\nlegacy atomic write+commit shape for adoption compat - do not rely on it"
+    }
+   ]
+  },
+  "implementer-checked-notes-opener": {
+   "_note": "The implementer report opener that makes a skipped START memory read visible; 10 identical copies. The carve-out names its findings-plan reading ('none' on a sanctioned skip).",
+   "owner": {
+    "file": "stack/agents/aspnet-implementer.md",
+    "marker": "Open your report with `checked prior notes: <names|none>`"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/data-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/console-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/windows-service-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/winforms-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/wpf-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/web-angular-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/ionic-angular-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/browser-extension-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    },
+    {
+     "file": "stack/agents/devops-implementer.md",
+     "marker": "Open your report with `checked prior notes: <names|none>`"
+    }
+   ]
   }
  }
 }
