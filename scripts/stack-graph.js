@@ -83,7 +83,8 @@ function hookCatalog()
         if (e) hooks.push(e[1]);
     }
 
-    return hooks.sort();
+    // dedupe: one hook wired on two tools (two matcher entries) is still one catalog hook
+    return [...new Set(hooks)].sort();
 }
 
 // Skills whose backticked MCP/plugin mentions are SUBJECT MATTER, not dependencies.

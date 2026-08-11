@@ -1455,47 +1455,47 @@
    ]
   },
   "rubric-dispatch-carveout-implementer": {
-   "_note": "The implementers' quality-loop findings-plan carve-out (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
+   "_note": "The implementers' loop findings-plan carve-out (any loop brief without a contract_version) (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
    "owner": {
     "file": "stack/agents/aspnet-implementer.md",
-    "marker": "findings-plan, the plan is the contract"
+    "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
    },
    "sites": [
     {
      "file": "stack/agents/browser-extension-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/console-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/data-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/devops-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/ionic-angular-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/web-angular-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/windows-service-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/winforms-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     },
     {
      "file": "stack/agents/wpf-implementer.md",
-     "marker": "findings-plan, the plan is the contract"
+     "marker": "loop findings-plan - `project-quality-loop`, `project-architecture-quality-loop`, `project-test-coverage-loop`"
     }
    ]
   },

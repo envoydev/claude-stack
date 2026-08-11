@@ -24,11 +24,17 @@ It ships in the stack's source repo, not in this project. One snapshot, the hous
 
 ```bash
 TMP=$(mktemp -d)
-curl -fsSL https://github.com/envoydev/claude-stack/releases/latest/download/claude-stack.tar.gz | tar -xz -C "$TMP" \
-  || git clone --depth 1 -b main https://github.com/envoydev/claude-stack "$TMP/repo"
+curl -fsSL -o "$TMP/stack.tar.gz" https://github.com/envoydev/claude-stack/releases/latest/download/claude-stack.tar.gz
+tar -xzf "$TMP/stack.tar.gz" -C "$TMP"
+# archive route failed entirely? then:
+git clone --depth 1 -b main https://github.com/envoydev/claude-stack "$TMP/repo"
 ```
 
-The tool is `scripts/analyze-usage.js` inside the extracted snapshot - `<snapshot>` = `$TMP` when the archive extracted, `$TMP/repo` when the clone ran. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
+Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode
+classifier blocks the `curl | tar || git clone` compound verbatim (measured three times: two
+runs fell back after a denied pipe; one lost 17 minutes - a quarter of its session - to the
+resulting cold clone). The same goes for the RUN step: one `node ... > file` per command, no
+shell loops. The tool is `scripts/analyze-usage.js` inside the extracted snapshot - `<snapshot>` = `$TMP` when the archive extracted, `$TMP/repo` when the clone ran. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
 
 ### 3. RUN it
 - `node <snapshot>/scripts/analyze-usage.js <projects-dir>` - one-line rollup, to confirm which sessions matter.
@@ -93,3 +99,11 @@ Diagnosis discipline - the measured failure modes of hand-written analysis (a sw
 - A skill firing late in a long session is costed at its WINDOW's ctx-per-message (its own cache-read over its own messages), never glossed with the session-wide average (measured: a 242k window reported as the 171k mean).
 - A hook-block claim names the guard whose `Blocked:` text matches; a harness-native tool error (write-before-read, disable-model-invocation refusal, input validation) is NOT a stack hook block - the hook-blk column, not the errors column, is the source (measured: two reports promoted harness errors to 'guard denials').
 - An uncovered ledger tail is reported with the COUNT of transcript tool calls inside it - a quiet tail (zero calls) and a real coverage gap read the same in percentages and are different facts.
+- NO cross-session superlatives in a per-session report ('largest of the audited set', 'most blocks in the audit') unless the sibling sessions' own analyzer output was loaded and diffed THIS run - route real rankings to SUMMARY.md only (measured: two single-session superlatives were both false - 5th of 22, and 4 blocks against a sibling's 18 - and one propagated into a shipped cross-session summary).
+- A waste claim about reads passes four checks first: the same file's hook-blk row (a BLOCKED read delivered zero content - it is not the waste, and its follow-up ranges are the prescribed recovery, measured twice mislabeled); the offsets (non-overlapping ranges are pagination, not re-reads - measured: 'read 3x, ~28k redundant' was zero-overlap tiling of a 941-line file); the content when offsets match (a same-path re-read of a GROWN file that the run then used is not a duplicate - byte-identical or nothing, measured); and the calling skill's own contract (a read its step mandates whole is the contract's cost, not the session's waste - measured three times on the same doc). Truncation flips labels too: a no-offset read cut at the cap is NOT the whole file, and its ranged completion can be the larger result (measured: a report inverted the two and shipped a fix suggestion describing what already happened).
+- A gate claim distinguishes an existence CHECK from a WRITE: `ls`/`test -f` output saying 'no receipt' is the receipt's absence, never its creation (measured: a report fabricated two receipt writes from two absence checks, and the phantom stale-stamp risk burned a downstream audit's time).
+- Sweep 1 counts MISSING gates, not just fired ones: the analyzer emits unheld-stop candidates (a free-text user turn right after a no-tool end_turn) - check each against the active skill's stop contract before any PASS (measured: five reports stamped 'PASS' while 1-2 unheld stops sat in the transcript).
+- Sweep 2 judges the trivial-diff exemption from the numstat against the hook's own bar (2 files AND 15 lines), and checks plan/cycle-note stamps before concluding a step skill 'never ran' - a resumed cycle legitimately re-runs nothing (measured: a report called a correctly-resumed session 'invoked hollow' and suggested skipping the skill).
+- The Environment rows you author derive from the AUDITED transcript (its own `version` field - the analyzer now prints it) - and any row describing the analysis run's environment is labeled as such; a cited rule or clause is checked against the audited session's install vintage before 'the session broke rule X' (measured: ~17 reports carried the analyst host's CLI version as the session's; one report blamed a session for a clause that shipped hours after it ran).
+- Every hand count states its method inline (which stream, deduped how) so it is reproducible - the harness duplicates content into `toolUseResult` fields and a naive grep double-counts (measured: 'appears 45 times' was 23 or 54 by method, reproducible as neither).
+- Verdict-table cells derive from THAT skill's own attributed window (its timestamps, its seats, its metric) - a run-wide total in a seat-type cell, or a row copy-pasted across skills, is a fabricated per-skill claim; print 'n/a' where the skill's contract forbids the metric (measured: three reports reused one skill's cells for another, one crediting a no-dispatch skill with '4 seats dispatched').

@@ -477,7 +477,8 @@ MCPS=(
 HOOKS=(
   "guard-protected-force-push.js::Bash::"         # block force-push to main/master/develop
   "guard-catastrophic-rm.js::Bash::"              # block recursive rm of /, ~, $HOME, or a bare *
-  "guard-read-whole-file.js::Read::"              # block whole-file Read of a >100-line source file - locate via serena first
+  "guard-read-whole-file.js::Read::"              # block whole-file Read of a >200-line source file - locate via serena first; caps cumulative half-split reconstruction
+  "guard-read-whole-file.js::Bash::"              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
   "guard-unapproved-dispatch.js::Task|Agent::"    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   "guard-ungated-commit.js::Bash::"               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED)
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
@@ -664,7 +665,8 @@ if [ "$PRINT_PLAN" = true ]; then
   printf 'plan mcps:';    for e in ${MCPS[@]+"${MCPS[@]}"};                 do printf ' %s' "${e%%|*}";                done; printf '\n'
   printf 'plan agents:';  for e in ${AGENTS[@]+"${AGENTS[@]}"};             do n="${e%%::*}"; printf ' %s' "${n%.md}"; done; printf '\n'
   printf 'plan rules:';   for e in ${CLAUDE_RULES[@]+"${CLAUDE_RULES[@]}"}; do n="${e%%::*}"; printf ' %s' "${n%.md}"; done; printf '\n'
-  printf 'plan hooks:';   for e in ${HOOKS[@]+"${HOOKS[@]}"};               do n="${e%%::*}"; printf ' %s' "${n%.js}"; done; printf '\n'
+  # dedupe display: one hook wired on two tools is still one hook in the plan
+  printf 'plan hooks:';   _seen=""; for e in ${HOOKS[@]+"${HOOKS[@]}"};     do n="${e%%::*}"; case " $_seen " in *" $n "*) continue ;; esac; _seen="$_seen $n"; printf ' %s' "${n%.js}"; done; printf '\n'
   exit 0
 fi
 

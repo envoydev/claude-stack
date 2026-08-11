@@ -136,6 +136,19 @@ async function analyzeTranscript(file, window) {
   // stamp forward - reset at a compaction or a new slash command - and count carried msgs
   // separately so the report can say how much attribution is inferred vs stamped.
   let lastSkill = null;
+  // A skill invoked within a few messages of another skill's own invocation is that skill's
+  // in-protocol reference load (a reviewer loading the house style skill), not a new phase.
+  // Without this the stamp switches to the companion and the parent's whole run is
+  // misattributed (measured: a review that caught 2 MATERIAL findings shipped in a report
+  // as '1 msg - not a review pass of substance').
+  const companionOf = {};          // skill -> the parent skill it was loaded in service of
+  let activeInvoke = null;         // { skill, msgs } - last non-companion Skill call + msgs since
+  let lastToolName = null;         // attributes isMeta skill-body injections to spike causes
+  let prevAssistantNoTool = null;  // ts of an end_turn assistant msg with no tool_use
+  s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
+  s.unheldStopCandidates = [];     // { stopTs, userTs } - free-text user turn right after a
+                                   // no-tool end_turn: candidate unheld gate for the report's
+                                   // protocol sweep (measured: 5 reports stamped PASS over these)
 
   await readJsonl(file, (o, raw) => {
     if (window && o.timestamp) {
@@ -145,13 +158,25 @@ async function analyzeTranscript(file, window) {
     if (raw.includes(STYLE_RULE_MARKER)) s.styleRuleAttaches++;
     if (raw.includes(STYLE_INJECT_MARKER)) s.styleInjections++;
     if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
+    if (!s.ccVersion && o.version) s.ccVersion = o.version;
     if (o.compactMetadata) { compactMeta++; lastSkill = null; }
     if (o.isCompactSummary) compactSummary++;
     if (o.isApiErrorMessage) s.apiErrors++;
-    const cmd = raw.includes('<command-name>') && raw.match(/<command-name>\/?([A-Za-z0-9_:-]+)<\/command-name>/);
-    if (cmd) {
-      s.commandInvocations[cmd[1]] = (s.commandInvocations[cmd[1]] || 0) + 1;
-      lastSkill = null; // a new slash command ends the previous skill's carry-forward
+    // Count slash commands only from the session's OWN user turns - the old whole-line scan
+    // also matched markers quoted inside tool_result payloads (measured: a foreign session's
+    // /exit surfaced as this session's own invocation in two bundles), and a non-global
+    // match dropped every marker after the first on a line.
+    if (o.type === 'user' && o.message && raw.includes('<command-name>')) {
+      const own = typeof o.message.content === 'string' ? o.message.content
+        : Array.isArray(o.message.content) ? o.message.content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n') : '';
+      for (const m of own.matchAll(/<command-name>\/?([A-Za-z0-9_:-]+)<\/command-name>/g)) {
+        s.commandInvocations[m[1]] = (s.commandInvocations[m[1]] || 0) + 1;
+        lastSkill = null; // a new slash command ends the previous skill's carry-forward
+        // A mid-file /clear starts a new working window: raw first->last spans across it
+        // read as a multi-day session at ~6% ledger coverage when the real work window was
+        // ~89 min at ~96% (measured) - record the boundary so printers can show both.
+        if (m[1] === 'clear' && o.timestamp) s.clearTs = o.timestamp;
+      }
     }
 
     if (o.type === 'assistant' && o.message) {
@@ -164,6 +189,7 @@ async function analyzeTranscript(file, window) {
         if (!r) {
           r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, u: { in: 0, cc: 0, cr: 0, out: 0 } };
           msgReg.set(m.id, r);
+          if (activeInvoke) activeInvoke.msgs += 1;
           // context size is fixed at message start, so first sighting is exact for spikes
           const ctx = (m.usage.input_tokens || 0) + (m.usage.cache_read_input_tokens || 0) + (m.usage.cache_creation_input_tokens || 0);
           if (prevCtx != null && ctx - prevCtx > 0) {
@@ -198,6 +224,11 @@ async function analyzeTranscript(file, window) {
           info.skill = c.input.skill;
           const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0 });
           sk.calls += 1;
+          if (activeInvoke && activeInvoke.skill !== c.input.skill && activeInvoke.msgs <= 5) {
+            if (!companionOf[c.input.skill]) companionOf[c.input.skill] = activeInvoke.skill;
+          } else {
+            activeInvoke = { skill: c.input.skill, msgs: 0 };
+          }
         } else if (c.name.startsWith('mcp__')) {
           const server = c.name.split('__')[1] || '?';
           const mc = s.mcp[server] || (s.mcp[server] = { calls: 0, resultChars: 0, errors: 0, tools: {} });
@@ -207,14 +238,49 @@ async function analyzeTranscript(file, window) {
         } else if ((c.name === 'Agent' || c.name === 'Task') && c.input) {
           s.agentDispatches.push({ id: c.id, desc: c.input.description || null, subagentType: c.input.subagent_type || null });
         }
+        if (c.name === 'Bash' && c.input && typeof c.input.command === 'string') {
+          const cmdStr = c.input.command;
+          // Deterministic counters the report's protocol sweeps previously had no number for
+          // (measured: '0 git commits' shipped against 3 commits + a PR merge; occurrence
+          // counting, not per-call, since one Bash call can carry two commits).
+          s.gitCommits += (cmdStr.match(/\bgit\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
+          s.prMerges += (cmdStr.match(/\bgh\s+pr\s+merge\b/g) || []).length;
+          // Doc traffic routed through Bash (heredocs, printf >, rm -f) is real doc I/O the
+          // Write/Edit-only counter missed - a receipt written+cleared via Bash showed
+          // writes:0, and batched python doc writes showed writes:0 across 3 rewrites (measured).
+          for (const pm of cmdStr.matchAll(/(?:^|[\s"'`=(])((?:[^\s"'`;|&)]*\/)?\.claude\/docs\/[^\s"'`;|&)]+)/g)) {
+            const rel = pm[1].slice(pm[1].indexOf('.claude/docs/') + '.claude/docs/'.length);
+            if (!rel) continue;
+            const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
+            if (/(>>?\s*[^|&\s]|\brm\s+(-\w+\s+)*|\btee\b|open\([^)]*['"]w['"])/.test(cmdStr)) d.bashWrites = (d.bashWrites || 0) + 1;
+            else d.bashReads = (d.bashReads || 0) + 1;
+          }
+        }
         toolById.set(c.id, info);
+        lastToolName = c.name;
       }
+      const hasToolUse = Array.isArray(m.content) && m.content.some((c) => c.type === 'tool_use');
+      if (hasToolUse) prevAssistantNoTool = null;
+      else if (m.stop_reason === 'end_turn') prevAssistantNoTool = o.timestamp || prevAssistantNoTool;
     }
 
     if (o.type === 'user' && o.message) {
       const content = o.message.content;
-      if (typeof content === 'string') { if (!o.isMeta) s.userPrompts++; return; }
+      if (typeof content === 'string') {
+        if (!o.isMeta) {
+          s.userPrompts++;
+          if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+        }
+        return;
+      }
       if (!Array.isArray(content)) return;
+      // A Skill call's tool_result is a tiny stub; the skill BODY lands as an isMeta text
+      // injection right after it. Without this a spike's cause line credited the ~18-token
+      // stub while the ~4k-token body drove the jump (measured: cause off by 2 orders).
+      if (o.isMeta && lastToolName === 'Skill') {
+        const bodyChars = content.filter((c) => c.type === 'text').reduce((n, c) => n + (c.text || '').length, 0);
+        if (bodyChars > 500) pending.push({ name: 'skill-body', chars: bodyChars });
+      }
       let hasResult = false;
       for (const c of content) {
         if (c.type !== 'tool_result') continue;
@@ -240,21 +306,37 @@ async function analyzeTranscript(file, window) {
           if (mc) { mc.resultChars += chars; if (c.is_error) mc.errors += 1; }
         }
       }
-      if (!hasResult && !o.isMeta && content.some((c) => c.type === 'text')) s.userPrompts++;
+      if (!hasResult && !o.isMeta && content.some((c) => c.type === 'text')) {
+        s.userPrompts++;
+        if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+      }
     }
   });
 
-  // finalize the folded per-message usage into the tallies
+  // finalize the folded per-message usage into the tallies; companion skills fold into
+  // their parent (resolved transitively) so a nested reference load never steals the run
+  const resolveParent = (k) => { const seen = new Set(); while (companionOf[k] && !seen.has(k)) { seen.add(k); k = companionOf[k]; } return k; };
+  const carryRun = {};
   for (const r of msgReg.values()) {
     const u = { input_tokens: r.u.in, cache_creation_input_tokens: r.u.cc, cache_read_input_tokens: r.u.cr, output_tokens: r.u.out };
     addUsage(s.total, u);
     addUsage(s.byModel[r.model] || (s.byModel[r.model] = newTally()), u);
     if (r.skill) {
-      const a = s.skillAttribution[r.skill] || (s.skillAttribution[r.skill] = { msgs: 0, output: 0, cacheRead: 0, carriedMsgs: 0 });
+      const eff = resolveParent(r.skill);
+      const a = s.skillAttribution[eff] || (s.skillAttribution[eff] = { msgs: 0, output: 0, cacheRead: 0, carriedMsgs: 0 });
       a.msgs += 1; a.output += r.u.out; a.cacheRead += r.u.cr;
-      if (r.carried) a.carriedMsgs = (a.carriedMsgs || 0) + 1;
+      if (eff !== r.skill) a.companionMsgs = (a.companionMsgs || 0) + 1;
+      if (r.carried) {
+        a.carriedMsgs = (a.carriedMsgs || 0) + 1;
+        carryRun[eff] = (carryRun[eff] || 0) + 1;
+        // A long unbroken carry is a stale stamp absorbing later phases, not the named
+        // skill's cost (measured: one stamp froze across 2 full cycles / 1h42m) - surface
+        // it so reports flag instead of charging it.
+        if (carryRun[eff] > (a.maxCarryRun || 0)) a.maxCarryRun = carryRun[eff];
+      } else carryRun[eff] = 0;
     }
   }
+  s.companionOf = companionOf;
   s.compactions = compactMeta > 0 ? compactMeta : compactSummary;
   return s;
 }
@@ -381,15 +463,15 @@ function computeAggregates(main, agents) {
   let inject = main.styleInjections;
   let attach = main.styleRuleAttaches;
   for (const [rel, d] of Object.entries(main.docTouches)) {
-    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0 });
-    r.main += d.reads; r.writes += d.writes;
+    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0 });
+    r.main += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0;
   }
   for (const a of agents) {
     inject += a.stats.styleInjections;
     attach += a.stats.styleRuleAttaches;
     for (const [rel, d] of Object.entries(a.stats.docTouches)) {
-      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0 });
-      r.agents += d.reads; r.writes += d.writes;
+      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0 });
+      r.agents += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0;
     }
   }
 
@@ -421,8 +503,12 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // its first row - measured at 67 of an 80-row "gap" in a real install session.
   const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
   const inWin = allTs.filter((ts) => ts >= hookLog.firstTs && ts <= hookLog.lastTs).length;
-  const sessSpan = main.firstTs && main.lastTs ? Date.parse(main.lastTs) - Date.parse(main.firstTs) : 0;
-  const covSpan = Math.max(0, Math.min(Date.parse(main.lastTs || hookLog.lastTs), Date.parse(hookLog.lastTs)) - Math.max(Date.parse(main.firstTs || hookLog.firstTs), Date.parse(hookLog.firstTs)));
+  // Anchor coverage to the ACTIVE window (after a mid-file /clear) - the raw span counted a
+  // dead 23h50m gap as uncovered session time, reporting ~6% coverage for a ~96%-covered
+  // 89-minute work window (measured).
+  const sessStart = main.clearTs && main.clearTs > main.firstTs ? main.clearTs : main.firstTs;
+  const sessSpan = sessStart && main.lastTs ? Date.parse(main.lastTs) - Date.parse(sessStart) : 0;
+  const covSpan = Math.max(0, Math.min(Date.parse(main.lastTs || hookLog.lastTs), Date.parse(hookLog.lastTs)) - Math.max(Date.parse(sessStart || hookLog.firstTs), Date.parse(hookLog.firstTs)));
   const pct = sessSpan > 0 ? Math.round((100 * covSpan) / sessSpan) : 100;
   // A quiet tail (zero calls after the ledger's last row) and a real coverage gap read the
   // same in percentages - count the tail's calls so the report can tell them apart
@@ -433,9 +519,15 @@ function hookJoinStats(main, agents, hookLog, tools) {
 
 function printReport(main, agents, hookLog, window) {
   const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
-  console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})`);
+  console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.ccVersion ? `  Claude Code ${main.ccVersion}` : ''}`);
+  if (main.clearTs && main.clearTs > main.firstTs) {
+    console.log(`  active window since last /clear: ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims`);
+  }
   if (window) console.log(`windowed: ${window.fromStr || 'start'} → ${window.toStr || 'end'} (subagents dispatched outside the window are excluded)`);
-  console.log(`user prompts ${main.userPrompts} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors}`);
+  console.log(`user prompts ${main.userPrompts} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors} · git commits ${main.gitCommits || 0}${main.prMerges ? ` (+${main.prMerges} pr-merge)` : ''}`);
+  if (main.unheldStopCandidates && main.unheldStopCandidates.length) {
+    console.log(`  ${main.unheldStopCandidates.length} unheld-stop candidate${main.unheldStopCandidates.length === 1 ? '' : 's'} (free-text user turn right after a no-tool end_turn - check each against the active skill's stop contract): ${main.unheldStopCandidates.slice(0, 5).map((c) => c.stopTs).join(', ')}`);
+  }
   const agg = computeAggregates(main, agents);
 
   console.log('\nTOKENS (deduped per API message; ctx/msg = avg context re-sent per call)');
@@ -456,7 +548,10 @@ function printReport(main, agents, hookLog, window) {
     console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('wall', 7)}  top tools`);
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
-      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 && g.seatMs > g.wall ? ` (seat-time ${dur(g.seatMs)})` : ''}`);
+      // seat-time is printed for EVERY multi-dispatch group: when seats overlap it shows the
+      // parallelism win, when they don't it stops the outer span being read as per-seat cost
+      // (measured: a 1h17m span over ~22m of actual seat activity framed as 'most expensive pair').
+      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)})` : ''}`);
       if (g.descs.length) console.log(`  ${pad('', 28)} e.g. ${g.descs.map((d) => JSON.stringify(d.slice(0, 40))).join(', ')}`);
     }
   }
@@ -471,8 +566,9 @@ function printReport(main, agents, hookLog, window) {
     console.log('  (sub rows list the seat types carrying the stamp - a seat type foreign to the skill = stamp bleed from an adjacent run, do not charge it)');
     console.log(`  ${pad('skill', 44)} ${rpad('cmd', 4)} ${rpad('calls', 5)} ${rpad('result', 9)} ${rpad('attr msgs', 9)} ${rpad('attr out', 9)} ${rpad('attr cache-rd', 13)}`);
     for (const r of agg.skillRows) {
-      const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried)` : '';
-      console.log(`  ${pad(r.skill, 44)} ${rpad(r.cmd || '', 4)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(r.mAttr.msgs + carried, 9)} ${rpad(fmt(r.mAttr.output), 9)} ${rpad(fmt(r.mAttr.cacheRead), 13)}`);
+      const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried${r.mAttr.maxCarryRun >= 30 ? ', carry likely stale - a frozen stamp absorbing later phases' : ''})` : '';
+      const comp = r.mAttr.companionMsgs ? ` (+${r.mAttr.companionMsgs} via companion loads)` : '';
+      console.log(`  ${pad(r.skill, 44)} ${rpad(r.cmd || '', 4)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(r.mAttr.msgs + carried + comp, 9)} ${rpad(fmt(r.mAttr.output), 9)} ${rpad(fmt(r.mAttr.cacheRead), 13)}`);
       if (r.sub.msgs) {
         const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
         console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 4)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(r.sub.msgs, 9)} ${rpad(fmt(r.sub.output), 9)} ${rpad(fmt(r.sub.cacheRead), 13)}`);
@@ -488,7 +584,8 @@ function printReport(main, agents, hookLog, window) {
     console.log('\nGENERATED DOCS (capture-doc consumption; reads = orientation happening, writes = capture/loop maintenance)');
     console.log(`  ${pad('doc', 44)} ${rpad('main-reads', 10)} ${rpad('agent-reads', 11)} ${rpad('writes', 6)}`);
     for (const [rel, r] of Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents))) {
-      console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}`);
+      const bash = (r.bashReads || r.bashWrites) ? `  (+${r.bashReads || 0}r/${r.bashWrites || 0}w via Bash)` : '';
+      console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}${bash}`);
     }
     if (agg.attach) console.log(`  ${pad('(style rule attached on file touch)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${agg.attach}`);
     if (agg.inject) console.log(`  ${pad('(style injected by legacy hook)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${agg.inject}`);
@@ -560,7 +657,15 @@ function printMarkdown(main, agents, hookLog, window) {
   out.push('## Environment', '');
   out.push('| | |', '|---|---|');
   out.push(`| Session window | ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)}) |`);
+  if (main.clearTs && main.clearTs > main.firstTs) {
+    out.push(`| Active window (since last /clear) | ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims |`);
+  }
+  if (main.ccVersion) out.push(`| Claude Code (this session's transcript) | ${main.ccVersion} |`);
   out.push(`| Volume | ${main.userPrompts} user prompts · ${main.total.msgs} API messages · ${main.compactions} compactions · ${main.apiErrors} API errors |`);
+  out.push(`| Git commits (Bash occurrence count) | ${main.gitCommits || 0}${main.prMerges ? ` (+${main.prMerges} pr-merge)` : ''} |`);
+  if (main.unheldStopCandidates && main.unheldStopCandidates.length) {
+    out.push(`| Unheld-stop candidates | ${main.unheldStopCandidates.length} (free-text user turn right after a no-tool end_turn; check each against the active skill's stop contract): ${main.unheldStopCandidates.slice(0, 5).map((c) => c.stopTs).join(', ')} |`);
+  }
   out.push(`| Models (main) | ${Object.entries(main.byModel).map(([m, t]) => `\`${m}\` ×${t.msgs}`).join(', ') || '-'} |`);
   out.push(`| Subagent transcripts | ${agents.length} |`);
   out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`, '');
@@ -580,7 +685,7 @@ function printMarkdown(main, agents, hookLog, window) {
     out.push('| agent type | n | output | cache-read | msgs | wall | top tools |', '|---|---|---|---|---|---|---|');
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
-      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)}${g.n > 1 && g.seatMs > g.wall ? ` (seat-time ${dur(g.seatMs)})` : ''} | ${top} |`);
+      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)})` : ''} | ${top} |`);
     }
     out.push('');
   }
@@ -590,11 +695,15 @@ function printMarkdown(main, agents, hookLog, window) {
     out.push('A `sub:` row names the seat types carrying the stamp - a seat type foreign to the skill is');
     out.push('stamp bleed from an adjacent run: report it as bleed, never charge it to the skill.');
     out.push('`cmd` = slash invocations counted from command markers; `(N carried)` = msgs attributed by');
-    out.push('carry-forward after the stamp dropped at a task-notification - inferred, not stamped.', '');
+    out.push('carry-forward after the stamp dropped at a task-notification - inferred, not stamped.');
+    out.push('`(+N via companion loads)` = msgs a nested in-protocol reference load would have stolen,');
+    out.push('folded back into the invoking skill; `carry likely stale` = an unbroken 30+-msg carry run -');
+    out.push("a frozen stamp absorbing later phases, flag it, don't charge it.", '');
     out.push('| skill | cmd | calls | result | attr msgs | attr out | attr cache-rd |', '|---|---|---|---|---|---|---|');
     for (const r of agg.skillRows) {
-      const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried)` : '';
-      out.push(`| ${r.skill} | ${r.cmd || ''} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${r.mAttr.msgs}${carried} | ${fmt(r.mAttr.output)} | ${fmt(r.mAttr.cacheRead)} |`);
+      const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried${r.mAttr.maxCarryRun >= 30 ? ', carry likely stale' : ''})` : '';
+      const comp = r.mAttr.companionMsgs ? ` (+${r.mAttr.companionMsgs} via companion loads)` : '';
+      out.push(`| ${r.skill} | ${r.cmd || ''} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${r.mAttr.msgs}${carried}${comp} | ${fmt(r.mAttr.output)} | ${fmt(r.mAttr.cacheRead)} |`);
       if (r.sub.msgs) {
         const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
         out.push(`| - sub: ${seats} | | | | ${r.sub.msgs} | ${fmt(r.sub.output)} | ${fmt(r.sub.cacheRead)} |`);
@@ -610,10 +719,10 @@ function printMarkdown(main, agents, hookLog, window) {
   const docEntries = Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents));
   if (docEntries.length || agg.inject || agg.attach) {
     out.push('## Generated docs (reads = orientation happening, writes = capture/loop maintenance)', '');
-    out.push('| doc | main-reads | agent-reads | writes |', '|---|---|---|---|');
-    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} |`);
-    if (agg.attach) out.push(`| (style rule attached on file touch) | - | - | ×${agg.attach} |`);
-    if (agg.inject) out.push(`| (style injected by legacy hook) | - | - | ×${agg.inject} |`);
+    out.push('| doc | main-reads | agent-reads | writes | via Bash (r/w) |', '|---|---|---|---|---|');
+    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} | ${(r.bashReads || r.bashWrites) ? `${r.bashReads || 0}/${r.bashWrites || 0}` : ''} |`);
+    if (agg.attach) out.push(`| (style rule attached on file touch) | - | - | ×${agg.attach} | |`);
+    if (agg.inject) out.push(`| (style injected by legacy hook) | - | - | ×${agg.inject} | |`);
     out.push('');
   }
 

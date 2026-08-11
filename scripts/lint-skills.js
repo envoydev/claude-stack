@@ -919,7 +919,9 @@ function main()
     const skillCount = primary.active.size;
     const pluginCount = pluginsClaudeSh.active.size;
     const mcpCount = mcpsPrimary.active.size;
-    const claudeHookCount = parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').length;
+    // Count unique hook FILES, not matcher entries - one hook wired on two tools
+    // (guard-read-whole-file on Read + Bash) is still one hook.
+    const claudeHookCount = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.split('::')[0])).size;
     const claudeAgentCount = parseStringArray(CLAUDE_SH, '"', 'AGENTS=(').length;
     const claudeRuleCount = parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=(').length;
 
@@ -927,7 +929,7 @@ function main()
     //      c-hooks count must match the installer HOOKS=() array (names stripped of
     //      their .js, both directions; count tied to the array size - same rigor as
     //      the README hook count above).
-    const installerHooks = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.replace(/\.js$/, '')));
+    const installerHooks = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.split('::')[0].replace(/\.js$/, '')));
     for (const name of installerHooks)
     {
         if (!html.hooks.has(name))

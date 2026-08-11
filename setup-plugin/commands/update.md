@@ -80,6 +80,13 @@ refresh must not flatten deliberate local model/effort pin edits. Then:
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
   `required:` additions it named, and FYI `added` items from the compare (mapped to item names;
   never install them - route adoption to `configure`).
+- EXCEPTION to FYI-only: when an `added` item is a `guard-*` ENFORCEMENT hook, a prose bullet
+  is not enough - put adoption through AskUserQuestion (adopt now / skip for now, adopt
+  recommended), and on 'adopt now' copy the hook from `$TMP/repo/stack/hooks/` into
+  `.claude/hooks/` and wire its matcher entries into settings.json exactly as the installer's
+  hook step does (measured: the v0.2.20 commit gate reached zero of three consuming projects -
+  every update surfaced it as an FYI the user exited past, while the same updates refreshed the
+  rule text the hook exists to enforce, leaving the discipline prose-only for a week).
 - Clean up `$TMP` and stop. Steps 4-5 never run on this path.
 
 ## 4. Pruning path - confirm once, then refresh + prune

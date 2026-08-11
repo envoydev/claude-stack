@@ -48,7 +48,7 @@ test('full report: dedups per message.id, measures results, attributes skill cac
   assert.strictEqual(main.toolCalls.Read.resultChars, 400);
   // m3 carries no stamp: sticky carry-forward attributes it to the last active skill and
   // counts it separately as carried (the stamp drops at task-notifications mid-run - measured)
-  assert.deepStrictEqual(main.skillAttribution.csharp, { msgs: 2, output: 40, cacheRead: 7000, carriedMsgs: 1 });
+  assert.deepStrictEqual(main.skillAttribution.csharp, { msgs: 2, output: 40, cacheRead: 7000, carriedMsgs: 1, maxCarryRun: 1 });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

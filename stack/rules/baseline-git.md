@@ -37,19 +37,31 @@ commit; found later they become fixup noise or shipped defects. Skip for typos /
 formatting-only diffs - and for a diff an equivalent-or-stronger check just cleared: the active
 quality-loop's own dispatched re-verify plus final gate, or the cross-task flow's domain-verifier
 sign-offs plus the `integration-reviewer` final gate (a self-granted skip on any other reasoning
-is not this exemption). The formatter half is never skipped: one unformatted
+is not this exemption). The formatter half is never skipped, and it must be FRESH: a formatter
+run from earlier in the session does not cover files edited since - re-run it after the last
+edit, before the commit (measured: one file edited during review and committed on a stale
+'I ran it earlier' broke CI's format check and cost a fixup commit). One unformatted
 commit is a red CI run and a fixup commit (measured). A quality-loop stage-boundary commit may
 exceed the one-logical-change size guidance when its stages share touched files - name the stages
 in the commit body rather than splitting an unverifiable diff.
 
 The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, first line
 `VERIFIED <what was reviewed, one phrase>` when the gates passed (the quality-loop and
-cross-task gate exemptions count as VERIFIED - name the loop or gate), or `WAIVED - "<the user's
-words, verbatim>"` only
+cross-task gate exemptions count as VERIFIED - name the loop or gate), second line
+`authorized: "<the user's words asking for THIS commit, verbatim>"` - the VERIFIED line proves
+the review ran, the authorized line proves the user asked (measured: a self-written VERIFIED
+receipt once cleared a commit no user had requested); or `WAIVED - "<the user's words,
+verbatim>"` only
 on their explicit waiver - 'commit it' is an instruction to commit, never a waiver of the review.
-The `guard-ungated-commit` hook blocks a non-trivial `git commit` without a fresh receipt
+Write the receipt as its OWN tool call, before the call that runs `git commit` - the enforcing
+hook checks the file at commit time, so a receipt written inside the same compound command is
+invisible to a stricter gate and unauditable in the ledger. The `guard-ungated-commit` hook
+blocks a non-trivial `git commit` without a fresh receipt
 (measured: 8 ungated commit events across 6 audited sessions rode on prose alone). The hook
 judges 'trivial' mechanically - at most 2 files and 15 changed lines - so a prose-exempt diff
 above that bar (a formatting-only sweep) still writes `VERIFIED` naming the exemption; never
 split a real change into small commits to slip under it. Clear the file once the commit lands -
-a leftover receipt is the stale-stamp failure the hook's 2h age cap exists for.
+after the LAST commit when one receipt covers a reviewed batch (measured: a batch receipt left
+uncleared after 4 commits) - a leftover receipt is the stale-stamp failure the hook's 2h age
+cap exists for. A commit in a SIBLING repo gets its own receipt in THAT repo's docs root,
+written and cleared the same way.
