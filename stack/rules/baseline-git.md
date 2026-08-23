@@ -6,6 +6,7 @@ description: House baseline - git, pull requests, and the pre-commit checkpoint.
 
 - Conventional Commits - or the ticket-id header shape below; the two are the only valid headers. Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
 - Do NOT commit or push until the user explicitly says to - not when a task looks finished, not proactively because it seems done. Show the diff and let them review; commit only on their explicit word, and push only when they ask.
+- The scope shown at a commit ask is derived FRESH at ask time - `git add -N . && git diff HEAD --stat` (then `git reset -q`) so untracked files count - never an earlier turn's stat (measured twice: an ask cited a stale stat while the uncommitted set had grown); the same ask names anything still owed on the diff (a gate not yet run, a review skipped) rather than leaving it to a private receipt.
 - Never mention yourself: no AI/assistant attribution in commits, branches, or PR text (deliberate override of the platform default).
 - One logical change per PR, under 400 LOC. Body: what / why / how to test. Link the ticket; screenshots if UI.
 - Squash or rebase, no merge commits on feature branches; prefer `--force-with-lease`. Non-trivial git (rebase, cherry-pick, recovery): know the undo before you run it.
@@ -37,7 +38,11 @@ commit; found later they become fixup noise or shipped defects. Skip for typos /
 formatting-only diffs - and for a diff an equivalent-or-stronger check just cleared: the active
 quality-loop's own dispatched re-verify plus final gate, or the cross-task flow's domain-verifier
 sign-offs plus the `integration-reviewer` final gate (a self-granted skip on any other reasoning
-is not this exemption). The formatter half is never skipped, and it must be FRESH: a formatter
+is not this exemption). The review half may also run as a DISPATCHED domain-verifier pass over
+exactly this diff - the right call when the session's carried context is already heavy, since the
+seat reviews from a clean context - and its sign-off satisfies the checkpoint the same way. Either
+way the review is a real invocation THIS session: a receipt claiming 'project-verify-code inline'
+with no Skill call in the transcript is a replay from memory, not the gate (measured twice). The formatter half is never skipped, and it must be FRESH: a formatter
 run from earlier in the session does not cover files edited since - re-run it after the last
 edit, before the commit (measured: one file edited during review and committed on a stale
 'I ran it earlier' broke CI's format check and cost a fixup commit). One unformatted

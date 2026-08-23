@@ -1763,6 +1763,52 @@
      "marker": "Open your report with `checked prior notes: <names|none>`"
     }
    ]
+  },
+  "started-infra-close-ask": {
+   "_note": "Work that started or seeded infrastructure (Docker/compose, integration-test databases and their data, dev servers, watchers) never ends with it silently running: the close names exactly what is still up and puts tear-down-vs-keep through AskUserQuestion (batched into the flow's existing close ask; teardown recommended; never touching what the run did not start). Canonical in the quality-gates done bar; restated at the close/report step of every flow that runs builds or suites.",
+   "owner": {
+    "file": "stack/rules/baseline-quality-gates.md",
+    "marker": "put tear-down-vs-keep through AskUserQuestion"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
+     "marker": "a `Leftovers:` line - what the instrumented runs started"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/SKILL.md",
+     "marker": "Leftovers - what the pipeline's gate and audit runs started"
+    },
+    {
+     "file": "stack/skills/project-test-coverage-loop/SKILL.md",
+     "marker": "tear-down-vs-keep through the same AskUserQuestion call"
+    },
+    {
+     "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+     "marker": "tear-down-vs-keep through the same AskUserQuestion call"
+    },
+    {
+     "file": "stack/skills/project-solve-cross-task/SKILL.md",
+     "marker": "names what this run started to build, test, or verify"
+    }
+   ]
+  },
+  "generated-docs-root-placement": {
+   "_note": "Every assistant-created doc lands under <docs-path>, sibling-repo docs (the orientation doc + cross-repo plans/change requests/issue notes/run recipes) in related-context/, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
+   "owner": {
+    "file": "stack/rules/baseline-docs-root.md",
+    "marker": "only on the user's asked-first approval"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-agent-capabilities/SKILL.md",
+     "marker": "takes the user's approval, asked"
+    },
+    {
+     "file": "stack/skills/project-related-context/SKILL.md",
+     "marker": "takes the user's explicit approval first"
+    }
+   ]
   }
  }
 }

@@ -4,11 +4,17 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
 
 # Generated docs root
 
-- Any doc a skill or agent generates lives under ONE root: the architecture map (`architecture/`),
-  `PROJECT-CODE-STYLE.md`, `PROJECT-RELATED-CONTEXT.md`, the quality-loop prompts (`loops/`),
-  superpowers plans + specs, ADRs with no existing home (`decisions/`), the instrumentation
-  ledgers (`tools-usage/`), and any other generated artifact. A first-class repo doc with a conventional home (the top-level `README.md`, an existing
-  ADR home) stays where it belongs.
+- EVERY doc file the assistant creates lives under ONE root: the architecture map (`architecture/`),
+  `PROJECT-CODE-STYLE.md`, the related-projects folder (`related-context/` - the orientation doc
+  `related-context/PROJECT-RELATED-CONTEXT.md` plus every doc about or for a sibling repo:
+  cross-repo plans, change requests, issue notes, run recipes), the quality-loop prompts
+  (`loops/`), superpowers plans + specs, ADRs with no existing home (`decisions/`), the
+  instrumentation ledgers (`tools-usage/`), and any other generated artifact.
+- Creating a doc OUTSIDE this root - a committed `docs/`, the repo root, a sibling repo - happens
+  only on the user's asked-first approval of that exact location (AskUserQuestion, per the
+  interaction baseline); never silently, however conventional or cross-repo-visible the spot
+  looks. Editing an EXISTING first-class repo doc where it already lives (the top-level
+  `README.md`, an established ADR home) is not a generated doc and needs no ask.
 - Resolve the root ONCE per session, before the first generated-doc read or write: the
   `CLAUDE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`. Wherever an
   instruction names a doc as `<docs-path>/<name>` - or as legacy shorthand `docs/<name>` - it means

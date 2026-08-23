@@ -15,6 +15,10 @@ Loaded from `dotnet-testing` when reviewing test quality ('are these tests any g
 
 Beyond the catalog: judge **assertion depth** (do the tests verify different facets of correctness, or restate one shallow check), and run a **mock-usage audit** - trace each substitute setup through the production path for that test's inputs and classify it *used* (reached), *unreachable* (a guard/throw/branch skips it), *unused* (production never calls it on any input), or *redundant* (the same setup duplicated across tests instead of shared). Delete unreachable and unused setups; share redundant ones. Mocking stable framework types (`ILogger`, `IOptions<T>`) is usually over-mocking - prefer the real instance.
 
+## Red-check before you trust a finding
+
+A catalog hit above is a CLAIM about what a test does or does not guard - prove it before rewriting or deleting: temporarily break the behavior the test's name promises (invert the guard, flip the return, comment the call) and run the test. Still green = the finding is real, the test never guarded that behavior - fix the test, re-run against the same break, and require RED before restoring the code. Goes red = a false positive - the test guards it through a path the audit missed; leave it. (Measured across one 21-finding round: every fix proven this way, and the red-check caught roughly 1 seat false positive in 20 - an audit that skips it rewrites working tests.) Deletion follows the same rule: a test leaves as vacuous only after the break-run showed it green.
+
 ## Mutation testing - do the tests catch faults
 
 Coverage proves a line *ran*; it does not prove a test would *fail* if that line were wrong. Mutation testing closes that gap: **Stryker.NET** mutates the production code (flips a `>` to `>=`, a `+` to `-`, removes a statement) and reruns the tests - a mutant the suite kills is a fault the tests would catch, a *surviving* mutant is a real blind spot a high coverage number hid.

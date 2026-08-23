@@ -118,7 +118,7 @@ as the docs-root rule states) plus serena's local memory:
 | architecture/ASSESSMENT.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/BRANCH-DELTA.md | no | - | - |
 | PROJECT-CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
-| PROJECT-RELATED-CONTEXT.md | no | - | - |
+| related-context/PROJECT-RELATED-CONTEXT.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
 | .serena/memories/ | yes | 4 notes | 2026-07-25 |
@@ -127,7 +127,7 @@ as the docs-root rule states) plus serena's local memory:
 stamps per entry - show the newest); `file updated` is the file's mtime date. A `Captured:`
 stamp older than the file mtime is normal (loops edit docs without re-capturing) - render
 both, judge nothing. Rows are fixed - a capture never run shows `no`, so the user sees what is
-MISSING as clearly as what exists. One row is conditional, not a gap: PROJECT-RELATED-CONTEXT.md
+MISSING as clearly as what exists. One row is conditional, not a gap: related-context/PROJECT-RELATED-CONTEXT.md
 applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
 
 ## 4. Close

@@ -16,7 +16,7 @@ Best run in Claude Code, where you can edit files and re-read them across passes
   <<<TARGET
   {{PASTE CODE, OR NAME A PATH/GLOB}}
   TARGET>>>
-- BAR - default: zero findings at every severity - BLOCKER, MAJOR, AND MINOR all fixed. Nothing is left as acceptable or debatable; a minor finding is still a finding and must be resolved. A file may set its own bar inside it - that wins for that file.
+- BAR - default: zero findings at every severity - BLOCKER, MAJOR, AND MINOR all fixed. Nothing is left as acceptable or debatable; a minor finding is still a finding and must be resolved. REAL findings only: a candidate that fails the findings gate (RULES) is not a finding - it is not recorded, not counted against this bar, and its absence is not a gap; the bar is zero real findings. A file may set its own bar inside it - that wins for that file.
 - MAX_PASSES - per file, default 5.
 
 ## EXECUTION MODES
@@ -47,7 +47,7 @@ After the last file: re-run the GREEN BASELINE (build + tests) as a final gate. 
 Repeat until you STOP (in DELEGATED mode, RUN and FIX are the two dispatched steps - `references/delegated-mode.md`; everything else stays in the main session):
 
 Pass N:
-1. RUN - apply F to TARGET in its current state. Produce its full result (findings, or gate result - see CHECK). A pass-2+ audit RUN may scope to the files changed since the recorded pass sha (`git diff --name-only`) plus the files carrying open findings - an unchanged file's prior verdict stands; log the scope in the SCORE line.
+1. RUN - apply F to TARGET in its current state. Produce its full result (findings, or gate result - see CHECK). A pass-2+ audit RUN may scope to the files changed since the recorded pass sha (`git diff --name-only`) plus the files carrying open findings - an unchanged file's prior verdict stands; log the scope in the SCORE line. When a DELEGATED stage partitions TARGET into slices, one auditor ALWAYS takes the cumulative diff against the green-baseline sha as its slice (the diff-lens seat) - stated here, not only in the reference, because a resumed session re-reads this file and not necessarily `references/delegated-mode.md` (measured: one resume dropped the diff-lens seat with the rule sitting unread).
 2. SCORE - print one line: `F | Pass N - BLOCKER: x, MAJOR: y, MINOR: z, DECIDED: d`, then the open-finding set on the next line: `open: [...]`, one entry per unresolved finding keyed by (severity, file:line-or-symbol, 3-6 word description), sorted. Identity is the (severity, file:line-or-symbol) pair; the description is a human label, so re-wording it alone does not make a finding new. That printed set is the single identity of this pass's findings - the STOP conditions are read off it across passes, never off an eyeball judgment. For a gate-based file (see CHECK), print the gate result instead: `F | Pass N - gate: <command> -> pass/fail`, with the command output standing in for the open set.
 3. CHECK - decide if F's bar is met (BAR is defined once, in INPUTS - do not restate or soften it here):
    - Findings-based file (an audit) -> met only when BAR is met; with the default bar, you may not declare it met while any finding of any severity remains open.
@@ -80,12 +80,15 @@ open: [(MAJOR, OrderSvc.cs:14, abbreviation in public type), (MINOR, OrderQuerie
 
 ## RULES (these keep autonomous self-judgment honest)
 - Decide, do not ask. Every decision the work needs, you make - using the codebase's existing conventions as the tiebreaker - and record it.
+- The findings gate - a candidate is a finding only when all four are answered explicitly: what breaks (the concrete wrong outcome - 'it differs from a preference, another codebase, or a reference doc' is not an answer); who notices, and when (named, with the trigger); is it actually new (behavior already recorded as a known limit or a prior decision is a re-measurement, not a discovery); has the project already decided it (a choice recorded in CLAUDE.md or the architecture docs is a **Deliberate tradeoff** - never re-raise it). A gate-passing defect is **Must fix**: it enters the open set. A true-but-not-actionable observation is **Worth knowing**: note it in the pass output, never in the open set - and never 'fix' it.
+- Do not invent a finding to demonstrate diligence, and do not omit one to keep a pass short. `open: []` on pass 1 is a valid, expected result on healthy code - a stage that finds nothing is SATISFIED on pass 1, and reporting it is a success, not a weak audit. Equally, twenty real findings means the open set lists all twenty: PLATEAU and OSCILLATION are read off set identity across passes, so a truncated set silently breaks the stop conditions.
 - 'Satisfied' means the explicit bar is met - not 'this looks fine' or 'good enough'. Show the score; it is the proof.
 - List every remaining item before you stop a file. Never declare a file done with hidden open items.
 - Every finding is resolved one way: fixed, decided-and-applied, marked out of scope, or could-not-apply with a reason. Nothing is silently dropped.
 - Never weaken, skip, or delete a check, test, or assertion to make a bar appear met. If a fix would break a test, that is a finding, not a fix. The final gate's anti-gaming sweep checks the cumulative diff for exactly this.
 - Make the smallest change that resolves each item. Avoid rewrites that introduce new findings - they make the loop diverge instead of converge.
 - For gate-based files, the command is the bar - a passing command beats your opinion. Self-judgment is only the fallback for things no command can check, like naming or design quality.
+- An enumerable finding class - one a grep or glob can list exhaustively (a banned API, a naming pattern, a suppression marker) - pairs the model audit with the deterministic scan and reconciles the two lists; a model-only sweep misses members (measured: five auditors together missed 6 of a class's 81 instances that a one-line grep listed).
 - The main session is the only orchestrator - never instruct a subagent to dispatch another; the auditors and implementers this loop dispatches (domain verifiers, implementers, resolvers) carry no Agent tool. A stage needing a verdict and a fix is two dispatches from here, not one nested one.
 
 ## OUTPUT
@@ -97,6 +100,8 @@ Final report (whole pipeline):
 - Remaining findings per file, if any.
 - DECISIONS log: every judgment call across all files, each with the precedent it followed (or an explicit note that none existed) - reviewable after the fact.
 - OUT OF SCOPE / COULD-NOT-APPLY: anything deliberately left, with reasons.
+- Leftovers - what the pipeline's gate and audit runs started and still have up (containers, seeded test data, background processes), or `none`; anything listed gets tear-down-vs-keep through AskUserQuestion batched with the close, teardown recommended - never touching what the run did not start.
+- `memories purged: <names|none>` - DELEGATED runs purge the serena hand-off notes fold-first at close (the rule and receipt shape: `references/delegated-mode.md`).
 - Overall summary of changes.
 
 ## NOTE ON CONVERGENCE

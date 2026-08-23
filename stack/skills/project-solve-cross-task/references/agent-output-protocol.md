@@ -16,6 +16,8 @@ BLOCKED_CONTRACT_CHANGE  - the frozen contract cannot be met; emit a Contract Ch
 
 Designers add PLAN_READY; verifiers use their own verdict set (below). BLOCKED_CONTRACT_CHANGE is the one that pauses lanes - see `references/contract-protocol.md`.
 
+A BLOCKED status names WHAT is blocked, and both sides check the grain: a seat emits BLOCKED only for the sub-part the dependency actually gates, finishing the rest of its task first; the orchestrator receiving BLOCKED checks whether it covers the whole task or one sub-part before pausing anything wider than the blocked slice (measured: one whole lane paused on a status whose blocker gated a single follow-up step).
+
 ## Designer output
 
 ```yaml

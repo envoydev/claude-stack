@@ -8,7 +8,18 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 part of the pre-commit checkpoint: the `COMMIT-GATE` receipt (baseline-git) is written `VERIFIED`
 only after it ran - an auth-path diff committed on the code review alone shipped unreviewed to a
 shared branch (measured).
-- Never log PII, tokens, passwords, or full payment data.
+- Three honesty rules on that path. A skip on 'the diff is test-only' is a claim - verify it from
+the diff's own file list and name the carve-out in the close ('security review: skipped - test-only
+diff: <paths>'), never a silent unilateral call (measured: stated unilaterally twice in one session).
+An inline review is a substantive checklist pass with per-category findings named - a one-line 'no
+issues' nod over a secrets-adjacent diff is not a review (measured both ways: the nod, and the
+checklist pass that caught real findings). And when the user overrides a security recommendation,
+proceed - their call - but the close and any receipt record the override with the risk named and
+their words quoted, so the decision is auditable (measured: an override shipped with no recorded-risk
+trail).
+- Never log PII, tokens, passwords, or full payment data - and a change that WIDENS logging (a
+default flipped verbose, a redaction removed, a new sink) is itself security-relevant work riding
+the review path above (measured: a logging-default flip shipped unredacted tokens).
 - Hardcoded secret found: stop, flag, redact as `<redacted>`, recommend rotation + git-history removal. Never propagate the value into any tool.
 - `permissions.deny` blocks reading secret files (`.env*`, key/cert globs) but not arbitrary subprocesses - never read or echo a secret's value by any route.
 
