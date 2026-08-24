@@ -345,6 +345,8 @@
       "skills": [],
       "suggests": [
         "angular-conventions",
+        "angular-testing",
+        "dotnet-testing",
         "ionic",
         "typescript"
       ],
@@ -812,8 +814,7 @@
       "suggests": [
         "dotnet",
         "frontend",
-        "mobile",
-        "project-solve-cross-task"
+        "mobile"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -1373,6 +1374,7 @@
       "guard-catastrophic-rm",
       "guard-protected-force-push",
       "guard-read-whole-file",
+      "guard-stop-contract",
       "guard-unapproved-dispatch",
       "guard-ungated-commit",
       "instrument-tool-usage"

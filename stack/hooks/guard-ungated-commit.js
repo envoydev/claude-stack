@@ -91,13 +91,18 @@ try {
 // line - a review receipt alone is not consent (measured: a self-written VERIFIED receipt
 // once cleared a commit no user had requested).
 if (/^WAIVED\b/.test(first)) process.exit(0);
-const noAuth = /^VERIFIED\b/.test(first) && !/^authorized:/.test(second);
+// The authorized: line must carry the user's actual quoted words - the label alone is not
+// consent. A two-stage receipt's draft placeholder ('authorized: PENDING - append...') matches
+// the bare prefix, so the prefix check silently accepted a receipt that records no consent
+// (measured: a PENDING draft sat gate-passing for ~2 minutes before the real words landed).
+const authReal = /^authorized:/.test(second) && /["'“‘]/.test(second) && !/\bPENDING\b/i.test(second);
+const noAuth = /^VERIFIED\b/.test(first) && !authReal;
 if (/^VERIFIED\b/.test(first) && !noAuth) process.exit(0);
 process.stderr.write(
   (stale
     ? `Blocked: git commit - the gate receipt at ${gate} is older than 2h and is treated as absent (a stale receipt from an earlier round is not this diff's review).\n`
     : noAuth
-      ? `Blocked: git commit - the gate receipt at ${gate} has a VERIFIED first line but no 'authorized:' second line; the review ran, but nothing records the user asking for THIS commit. Append the second line and retry.\n`
+      ? `Blocked: git commit - the gate receipt at ${gate} has a VERIFIED first line but its 'authorized:' second line is missing, a PENDING placeholder, or carries no quoted words; the review ran, but nothing records the user asking for THIS commit. Append authorized: "<their words, verbatim>" and retry.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
     `The checkpoint (baseline-git.md) runs BEFORE a non-trivial commit: the formatter, then\n` +
     `the house review project-verify-code - plus /security-review when the diff touches\n` +

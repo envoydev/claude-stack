@@ -8,8 +8,10 @@ depends on the one before it.
 Everything the install delivered binds at session start, not mid-session: MCP servers connect at
 launch (`.mcp.json` is read then), skills and agents are inventoried then, the always-on rules and
 `settings.json` (env values, hooks, permissions) inject then. Exit Claude Code and start it again
-from the project root. First launch after an install may prompt to trust the project's plugins and
-MCP servers - accept for this project. Until the reload, the stack is on disk but not in play.
+from the project root. `/reload-plugins` is NOT a substitute here - measured, it did not bind a
+freshly installed LSP plugin's tool server (a session ran 64 failed nav calls after that advice);
+only the full restart does. First launch after an install may prompt to trust the project's plugins
+and MCP servers - accept for this project. Until the reload, the stack is on disk but not in play.
 
 ## 2. Git hygiene - keep the machine-local artifacts out of the repo
 

@@ -16,4 +16,6 @@ Naming and comment findings are owned by the later stages - do not flag them her
 
 Severity: a real bug, a dependency cycle, or a cross-layer leak is a BLOCKER; an awkward-but-correct expression or a single misplaced helper is MINOR. Make the smallest change that resolves each finding - move code to its correct home, extract the constant - without rewriting a working module wholesale; a fix that introduces new findings is divergence, not progress.
 
-Bar: zero findings at every severity.
+A deviation from a preference is not a finding unless you can name what it breaks - a wrong finding costs more than a missed one.
+
+Bar: zero findings at every severity - real findings only: a candidate with nothing nameable it breaks is not a finding (not recorded, not counted against this bar), `open: []` on pass 1 is a valid, complete result, and every real finding is listed, never trimmed.

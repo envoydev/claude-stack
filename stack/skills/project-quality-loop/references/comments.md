@@ -12,4 +12,6 @@ Look for:
 
 Severity: a comment that actively misleads is MAJOR - a false safety or security invariant is BLOCKER; a redundant restatement is MINOR. Prefer deleting a bad comment to rewriting it, unless the why is genuinely worth capturing - then write the why, not the what.
 
-Bar: zero findings at every severity.
+A deviation from a preference is not a finding unless you can name what it breaks - a wrong finding costs more than a missed one.
+
+Bar: zero findings at every severity - real findings only: a candidate with nothing nameable it breaks is not a finding (not recorded, not counted against this bar), `open: []` on pass 1 is a valid, complete result, and every real finding is listed, never trimmed.

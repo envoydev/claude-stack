@@ -57,7 +57,10 @@ single biggest token cost (measured: a fresh-session resume restarted at roughly
 carried context with zero re-work - stamped steps stayed done). On a long cycle this is a step,
 not an offer to remember: once the cycle has crossed roughly 150k ctx per message, spans hours,
 or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
-ask until it is taken or the cycle closes. This is a CONSTRUCTION check, not a memory: before
+ask until it is taken or the cycle closes. And HONOR the answer: when the user picks it, the
+turn ends with a short ack plus the paste-ready resume block - no 'one more step', no new work
+in this chat (measured: a tool-held 'Fresh session' answer was ignored and the run continued
+1h51m to 490k ctx). This is a CONSTRUCTION check, not a memory: before
 emitting any stop's AskUserQuestion, ask 'has this cycle crossed the trigger?' - if yes and the
 option list has no fresh-session entry, the question is malformed, rebuild it (measured across
 eight audited sessions: the remembered form fired in zero of 40+ qualifying stops - one session

@@ -32,11 +32,15 @@ change made only inside a consuming project is throwaway (see Invariants).
   file the flows write on explicit user approval or an explicit AUTO waiver) +
   `guard-ungated-commit.js` (PreToolUse `Bash` - blocks a non-trivial `git commit` without the
   `<docs-path>/flow/COMMIT-GATE` receipt the pre-commit checkpoint writes on VERIFIED gates or an
-  explicit user waiver; trivial diffs pass), all wired; plus `instrument-tool-usage.js`,
+  explicit user waiver; trivial diffs pass) +
+  `guard-stop-contract.js` (dual-wired: a `Stop` hook that blocks a turn ending on a
+  decision-shaped question in prose - the blocking-ask mandate mechanized - and a PreToolUse
+  `AskUserQuestion` gate that denies an option list with no fresh-session entry once the session
+  context passes ~150k), all wired; plus `instrument-tool-usage.js`,
   wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
   settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
   Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
-  makes them selectable per install (a selection with no `hook` lines installs all six).
+  makes them selectable per install (a selection with no `hook` lines installs all seven).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
     `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` - a read-only
@@ -56,7 +60,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     per-language style characterizer the `project-code-style-analyzer` skill fans out and merges into
     `<docs-path>/PROJECT-CODE-STYLE.md` + the generated path-scoped project-code-style rule) and `related-project-analyzer` (sonnet/medium -
     characterizes one sibling repo, the `project-related-context` skill fans it out and merges
-    `<docs-path>/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
+    `<docs-path>/related-context/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
     the architecture capture is deliberate-only (the `project-architecture-analyzer` skill - dispatches
     `architecture-analyzer` per module, reasons in the main session, writes `<docs-path>/architecture/ARCHITECTURE.md` +
     the pros/cons `<docs-path>/architecture/ASSESSMENT.md` + the generated always-on awareness rule
@@ -126,7 +130,7 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
-| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all six; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
+| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all seven; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
 | Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |

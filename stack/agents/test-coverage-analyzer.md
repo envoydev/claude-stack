@@ -57,6 +57,10 @@ Return exactly this shape (Markdown headings, so the skill can aggregate mechani
 4. **Weak-point candidates** - each with the tier you'd argue (small / substantial / structural),
    the evidence, and a simplify-testing suggestion; the dispatching session owns the final tier.
 5. **Suite-quality smells** - assertion-free or padding specs, exclusion drift, per the house
-   testing skill's audit lens - each naming the spec file.
+   testing skill's audit lens - each naming the spec file. A smell is a CANDIDATE, static-read
+   only: you are read-only and cannot run the red-check (break the behavior, confirm the spec
+   stays green), so label each `red-check pending` - the dispatching session proves it before
+   any rewrite or delete (measured: ~1 in 20 such candidates was a false positive that
+   red-checking caught before a working test was rewritten).
 6. **Unmeasured / uncertain** - what would not parse or stayed unclear inside the locating cap,
    and what would settle it.

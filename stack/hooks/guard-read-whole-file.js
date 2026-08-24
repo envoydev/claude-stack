@@ -26,6 +26,20 @@ const THRESHOLD = 200;
 const lineCountOf = (p) => {
   try { return fs.readFileSync(p, 'utf8').split('\n').length; } catch { return 0; }
 };
+// Resolve a possibly-relative path the way the session sees it. The hook subprocess's own
+// cwd is NOT the Bash tool's persisted cwd (a prior `cd` in another call moves it), so a bare
+// relative path must be anchored - same anchor the sibling hooks use (measured: 10 relative
+// `cat -n` dumps after a `cd` all resolved ENOENT -> lineCount 0 -> the guard silently passed
+// ~20k tokens of whole-file dumps; reproduced: the same payload blocks from the project root).
+const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].filter(Boolean);
+const resolveLineCount = (p) => {
+  if (pathMod.isAbsolute(p)) return { lc: lineCountOf(p), resolved: true };
+  for (const d of anchorDirs) {
+    const abs = pathMod.join(d, p);
+    if (fs.existsSync(abs)) return { lc: lineCountOf(abs), resolved: true };
+  }
+  return { lc: 0, resolved: false };
+};
 const serenaHint = (p) =>
   `Locate first with serena: get_symbols_overview('${p}') then find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
@@ -46,7 +60,18 @@ if (payload.tool_name === 'Bash') {
     if (!m) continue;
     const f = m[1].replace(/^["']|["']$/g, '');
     if (!GATED_EXT.test(f)) continue;
-    const lc = lineCountOf(f);
+    const { lc, resolved } = resolveLineCount(f);
+    if (!resolved) {
+      // A dump-shaped command on a gated file whose size we cannot check fails CLOSED -
+      // an unresolvable relative path was exactly how whole-file dumps slipped past this
+      // matcher. Re-run with an absolute path (or read the located range via serena).
+      process.stderr.write(
+        `Blocked: cannot size ${f} (relative path did not resolve against the project root or session cwd).\n` +
+        `A whole-file cat/sed of a source file must be size-checked - use an absolute path,\n` +
+        `or locate the symbol first:\n` + serenaHint(f),
+      );
+      process.exit(2);
+    }
     if (lc > THRESHOLD) {
       process.stderr.write(
         `Blocked: whole-file dump of ${f} (${lc} lines) via Bash.\n` +

@@ -94,6 +94,7 @@ const NON_SKILL_TOKENS = new Set([
     'order-list',     // Angular selector example in angular-conventions
     'axe-core',       // a11y testing package in angular-conventions, not a skill
     'jest-axe',       // a11y testing package in angular-conventions, not a skill
+    'vitest-axe',     // its Vitest twin, same runner-conditional a11y line
     // old Angular Material button directive selectors named in angular-material's
     // v20 migration note (matButton replaced them) - code identifiers, not skills.
     'mat-button',
