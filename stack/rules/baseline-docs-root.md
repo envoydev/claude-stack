@@ -41,7 +41,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   against the code before relying on it; never treat it as ground truth for HEAD.
 - Refreshing one: the owning capture skill fans out agents on a FIRST capture (per the run's
   session-or-agents pick) and runs an UPDATE in-session, scoped to the drift since the stamp -
-  escalating to agents on big drift, an unreachable or dirty stamp, or the user's explicit ask. A doc that updates differently
+  escalating to agents on big drift, an unreachable stamp, a dirty one the run cannot prove
+  unchanged, or the user's explicit ask. A doc that updates differently
   (per-entry upserts, always-re-measure) follows its owning skill's own mode rules.
 - Nothing re-captures automatically: build flows may SUGGEST the right capture at close when
   something critical landed; the user decides.

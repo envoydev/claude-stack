@@ -37,7 +37,7 @@ These are extraction and faithfulness traps - where a smell hides and how a dige
 
 ## Method (bounded)
 1. Restate the one area: the module/topic, and what the caller wants characterized.
-2. `mcp__serena__get_symbols_overview` the area, ONE FILE at a time - the tool takes a file path, never a directory: list the directory first (Glob/ls), then overview the files that matter (measured: 7 directory-path calls failed across 3 capture seats in one session, 24 in another - the satellite nav rule alone does not stop the first batch). On C# pass `depth: 2` - the default depth stops at the namespace, hiding every type and member. Locate the public surface and entry points with serena.
+2. `mcp__serena__get_symbols_overview` the area, ONE FILE at a time - the tool takes a file path, never a directory: list the directory first (Glob - this seat carries no Bash), then overview the files that matter (measured: 7 directory-path calls failed across 3 capture seats in one session, 24 in another - the satellite nav rule alone does not stop the first batch). On C# pass `depth: 2` - the default depth stops at the namespace, hiding every type and member. Locate the public surface and entry points with serena.
 3. Walk the edges one level out - `mcp__serena__find_referencing_symbols` for inbound callers, the imports/registrations for outbound - and confirm each from a usage, not a name.
 4. Name the patterns present and the located smells. **Hard cap: 2 locating passes over the area.** If it is still unclear after 2, report what is characterized, what is uncertain, and what would settle it - never guess to fill the gap.
 

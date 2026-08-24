@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/IClock, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router, not here.
+description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/IClock, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router, not here."
 ---
 
 # C# Conventions
@@ -118,10 +118,10 @@ Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `Arra
 - No commented-out code - delete it.
 - No `TODO` without an associated ticket reference.
 - No reflection in business or hot-path code; use source generators or compile-time alternatives. No object-mapping libraries (AutoMapper / Mapster / ExpressMapper) - write explicit mapping methods (compile-time checked, debuggable, refactor-safe). Reflection is acceptable only in serialization, the DI container, ORM / EF, test infrastructure, or one-time bootstrap - never for DTO / domain mapping. When you must reach a private member (serializer, test helper), use `UnsafeAccessorAttribute` (.NET 8), not `System.Reflection`.
-
-- When a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself follows `dotnet-project-setup`: use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
 - No `dynamic` - use `object` + pattern matching or a typed interface.
 - No top-level statements outside `Program.cs`.
+
+Routing note: when a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself follows `dotnet-project-setup`: use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
 
 ## Documentation
 - Every public API surface has XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
@@ -175,9 +175,9 @@ The async baseline - async all the way with no `.Result` / `.Wait()` / `.GetAwai
 - Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via `dotnet` to `dotnet-web-error-handling`; don't shape HTTP errors in business code.
 
 ## Logging
-- Structured logging via `ILogger<T>`. Use templates with named placeholders: `_logger.LogInformation('Order {OrderId} placed for {UserId}', orderId, userId)`. Never use string interpolation in log calls.
+- Structured logging via `ILogger<T>`. Use templates with named placeholders: `_logger.LogInformation("Order {OrderId} placed for {UserId}", orderId, userId)`. Never use string interpolation in log calls.
 - Log levels: `Trace` (diagnostic noise), `Debug` (dev), `Information` (business events), `Warning` (recoverable issue), `Error` (operation failed), `Critical` (system unusable).
-- Log exceptions with the exception object as the first arg: `_logger.LogError(ex, 'Failed to {Action}', actionName)`. Never `.ToString()` an exception into the message.
+- Log exceptions with the exception object as the first arg: `_logger.LogError(ex, "Failed to {Action}", actionName)`. Never `.ToString()` an exception into the message.
 - Never log: passwords, tokens, secrets, full payment data, PII beyond what is operationally needed. For healthcare and e-commerce projects, treat full identifiers as PII.
 - One log statement per logical event. Avoid log spam in tight loops.
 

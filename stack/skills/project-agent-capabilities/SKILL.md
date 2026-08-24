@@ -11,7 +11,7 @@ Every project trims the stack differently - skills commented out of the manifest
 ## The run - inventory, then generate
 
 ### 1. INVENTORY - read what is actually on disk
-- **Skills**: Glob `.claude/skills/*/SKILL.md`, read each frontmatter - collect `name`, the first sentence of `description`, and whether `disable-model-invocation: true` (those are the slash-only orchestration skills; the rest self-trigger and need no listing).
+- **Skills**: Glob `.claude/skills/*/SKILL.md`, read each frontmatter - collect `name`, the first sentence of `description`, and whether `disable-model-invocation: true` (those are the slash-only orchestration skills; the rest self-trigger and need no listing - one deliberate exception: `project-architecture-analyzer` carries no flag so the architecture loop can invoke it, yet it is still an orchestration skill - list it with that set, marked model-invocable-by-design).
 - **Seats**: Glob `.claude/agents/*.md` - collect the names (the dispatch surface; their own descriptions say when each applies).
 - **MCP servers**: read `.mcp.json` - the registered server names.
 - **Plugins**: best-effort `claude plugin list` via Bash; if the CLI is absent, omit the plugins line rather than guess.

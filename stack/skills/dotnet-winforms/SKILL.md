@@ -83,9 +83,9 @@ and applies unchanged. The WinForms-specific points:
 - **Report progress with `IProgress<T>` / `Progress<T>`** - `Progress<T>` captures the creating
   thread's `SynchronizationContext` and raises its callback there, so a worker reports from any
   thread and the UI update lands safely. Pair it with a `CancellationToken` for cancellation.
-- **Marshal back with `Control.Invoke` / `BeginInvoke`.** On modern .NET prefer the async
+- **Marshal back with `Control.Invoke` / `BeginInvoke`.** From .NET 9 prefer the async
   `Control.InvokeAsync`, which removes a class of deadlocks (see **references/modern-net.md**); it does
-  not exist on 4.8.
+  not exist on .NET 8 or 4.8 - there, `Invoke`/`BeginInvoke` stay the marshaling primitives.
 - **`BackgroundWorker` is legacy** - supported, but no longer the recommended model and it only
   offloads CPU work, not I/O. New code uses `await` for I/O and an awaited `Task.Run` for CPU-bound
   work, marshaling UI updates through `IProgress<T>` or `InvokeAsync`.
