@@ -1773,7 +1773,7 @@
    ]
   },
   "started-infra-close-ask": {
-   "_note": "Work that started or seeded infrastructure (Docker/compose, integration-test databases and their data, dev servers, watchers) never ends with it silently running: the close names exactly what is still up and puts tear-down-vs-keep through AskUserQuestion (batched into the flow's existing close ask; teardown recommended; never touching what the run did not start). Canonical in the quality-gates done bar; restated at the close/report step of every flow that runs builds or suites.",
+   "_note": "Work that started or seeded infrastructure (Docker/compose, integration-test databases and their data, dev servers, watchers) never ends with it silently running: the close names exactly what is still up and puts tear-down-vs-keep through AskUserQuestion (batched into the flow's existing close ask; teardown recommended; never touching what the run did not start). Canonical in the quality-gates done bar; restated at the close/report step of every flow that runs builds or suites. The same close also DELETES the run-only generated files (scratch scripts, temp fixtures/sandboxes, coverage and log dumps) with no ask - canonical in the quality-gates baseline.",
    "owner": {
     "file": "stack/rules/baseline-quality-gates.md",
     "marker": "put tear-down-vs-keep through AskUserQuestion"

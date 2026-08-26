@@ -32,3 +32,11 @@ emulator, a background watcher - never outlives the work silently. At close, lis
 is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's existing
 close ask where one fires), teardown recommended for the disposable. Never stop or wipe what
 you did not start - the ask covers only what this run brought up.
+Generated files are the same contract with a different default: anything the run wrote only to
+build, test or verify - a scratch script, a temp fixture or sandbox directory, a coverage or log
+dump, a downloaded sample - is DELETED as soon as the check that needed it passes, no ask (it is
+working state, not output; the ask covers only what is still running). Three exceptions survive:
+the user asked for the file, a later step still needs it, or it is a real deliverable (a report
+under `<docs-path>`, a committed fixture) - name those in the close. Never delete a file this run
+did not create, and never leave the repo dirtier than you found it: `git status` at the close
+shows only the intended change.
