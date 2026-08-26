@@ -36,11 +36,15 @@ change made only inside a consuming project is throwaway (see Invariants).
   `guard-stop-contract.js` (dual-wired: a `Stop` hook that blocks a turn ending on a
   decision-shaped question in prose - the blocking-ask mandate mechanized - and a PreToolUse
   `AskUserQuestion` gate that denies an option list with no fresh-session entry once the session
-  context passes ~150k), all wired; plus `instrument-tool-usage.js`,
+  context passes ~150k) +
+  `guard-answer-length.js` (dual-wired: a `UserPromptSubmit` hook that appends the answer budget -
+  3 sentences plus points, ~900 chars of prose, code/tables exempt - to every turn's context, and a
+  `Stop` hook that blocks an answer past the 1800-char prose cap when the user's own message asked
+  for no depth; the short-answer contract mechanized after it failed as prose), all wired; plus `instrument-tool-usage.js`,
   wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
   settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
   Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
-  makes them selectable per install (a selection with no `hook` lines installs all seven).
+  makes them selectable per install (a selection with no `hook` lines installs all eight).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
     `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` - a read-only
@@ -130,7 +134,7 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
-| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all seven; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
+| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all eight; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
 | Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |

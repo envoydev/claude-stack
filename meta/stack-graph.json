@@ -1371,6 +1371,7 @@
       "typescript-lsp"
     ],
     "hooks": [
+      "guard-answer-length",
       "guard-catastrophic-rm",
       "guard-protected-force-push",
       "guard-read-whole-file",

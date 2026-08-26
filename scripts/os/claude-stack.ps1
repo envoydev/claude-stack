@@ -527,6 +527,8 @@ $Hooks = @(
   'guard-ungated-commit.js::Bash::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED)
   'guard-stop-contract.js::AskUserQuestion::'     # deny an AskUserQuestion missing the fresh-session option past ~150k ctx/msg (the stop contracts' construction check, mechanized - prose fired ~0 of 50+)
   'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h)
+  'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
+  'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 
