@@ -2189,12 +2189,16 @@
    ]
   },
   "loop-stage-findings-gate-line": {
-   "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the three audit stage prompts.",
+   "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the four audit stage prompts.",
    "owner": {
     "file": "stack/skills/project-quality-loop/references/code-quality.md",
     "marker": "a wrong finding costs more than a missed one"
    },
    "sites": [
+    {
+     "file": "stack/skills/project-quality-loop/references/structure.md",
+     "marker": "a wrong finding costs more than a missed one"
+    },
     {
      "file": "stack/skills/project-quality-loop/references/naming.md",
      "marker": "a wrong finding costs more than a missed one"
@@ -2206,12 +2210,16 @@
    ]
   },
   "loop-stage-bar-line": {
-   "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the three audit stage prompts.",
+   "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the four audit stage prompts.",
    "owner": {
     "file": "stack/skills/project-quality-loop/references/code-quality.md",
     "marker": "Bar: zero findings at every severity - real findings only"
    },
    "sites": [
+    {
+     "file": "stack/skills/project-quality-loop/references/structure.md",
+     "marker": "Bar: zero findings at every severity - real findings only"
+    },
     {
      "file": "stack/skills/project-quality-loop/references/naming.md",
      "marker": "Bar: zero findings at every severity - real findings only"
