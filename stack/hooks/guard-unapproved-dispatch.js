@@ -42,8 +42,15 @@ const MAX_STAMP_AGE_MS = 8 * 60 * 60 * 1000; // 8h - re-stamping is one Write; s
 let first = '';
 let stale = false;
 try {
-  const age = Date.now() - fs.statSync(gate).mtimeMs;
-  if (age > MAX_STAMP_AGE_MS) {
+  const stampMs = fs.statSync(gate).mtimeMs;
+  const age = Date.now() - stampMs;
+  // A stamp written BEFORE this session started belongs to another session's decision, and the
+  // age cap alone let one through: five implementer dispatches ran on a stamp a different,
+  // already-closed session wrote 2h52m earlier - inside 8h, so the gate saw consent that this
+  // run never gave (measured). The stamp is the dispatching session's own or it is not consent.
+  let sessionStartMs = 0;
+  try { sessionStartMs = fs.statSync(String(payload.transcript_path || '')).birthtimeMs || 0; } catch { sessionStartMs = 0; }
+  if (age > MAX_STAMP_AGE_MS || (sessionStartMs && stampMs < sessionStartMs)) {
     stale = true;
   } else {
     first = fs.readFileSync(gate, 'utf8').split('\n')[0].trim();
@@ -56,7 +63,7 @@ if (isImplementer) {
   if (approved) process.exit(0);
   process.stderr.write(
     (stale
-      ? `Blocked: dispatch of ${seat} - the approval stamp at ${gate} is older than 8h and is treated as absent (a stale stamp from an earlier flow is not consent for this run).\n`
+      ? `Blocked: dispatch of ${seat} - the approval stamp at ${gate} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
       : `Blocked: dispatch of ${seat} without an approval gate.\n`) +
       `Implementer fan-out runs only on the user's explicit approval, or their explicit 'run\n` +
       `without stops' waiver - never on an inferred or ambiguous go-ahead.\n` +

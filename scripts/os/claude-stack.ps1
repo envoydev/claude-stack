@@ -527,6 +527,7 @@ $Hooks = @(
   'guard-ungated-commit.js::Bash::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED)
   'guard-stop-contract.js::AskUserQuestion::'     # deny an AskUserQuestion missing the fresh-session option past ~150k ctx/msg (the stop contracts' construction check, mechanized - prose fired ~0 of 50+)
   'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h)
+  'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past ~150k ctx - route it through an AskUserQuestion fresh-session choice
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
@@ -1151,6 +1152,18 @@ function Set-HookSettings {
     if ($deny -notcontains $rule) { $deny += $rule; $changed = $true }
   }
   $data.permissions.deny = $deny
+  # permissions.allow: the two gate-stamp writes the hooks REQUIRE. Without them the auto-mode
+  # classifier can refuse the write on both routes (Write tool AND Bash printf) - measured in one
+  # project across 5 sessions, where DELEGATED mode then degraded silently to inline fixes for a
+  # whole 12-stage run. Narrow by design: two exact paths under the resolved docs root, nothing else.
+  if (-not $data.permissions.PSObject.Properties['allow']) { $data.permissions | Add-Member -NotePropertyName allow -NotePropertyValue @() }
+  $docsRoot = '.claude/docs'
+  if ($data.PSObject.Properties['env'] -and $data.env.PSObject.Properties['CLAUDE_DOCS_PATH'] -and $data.env.CLAUDE_DOCS_PATH) { $docsRoot = $data.env.CLAUDE_DOCS_PATH }
+  $allow = @($data.permissions.allow)
+  foreach ($rule in @("Write($docsRoot/flow/APPROVAL)", "Write($docsRoot/flow/COMMIT-GATE)")) {
+    if ($allow -notcontains $rule) { $allow += $rule; $changed = $true }
+  }
+  $data.permissions.allow = $allow
   # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register (never enableAllProjectMcpServers).
   if (-not $data.PSObject.Properties['enabledMcpjsonServers']) { $data | Add-Member -NotePropertyName enabledMcpjsonServers -NotePropertyValue @() }
   $enabled = @($data.enabledMcpjsonServers)

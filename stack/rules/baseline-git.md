@@ -60,9 +60,11 @@ verbatim>"` only
 on their explicit waiver - 'commit it' is an instruction to commit, never a waiver of the review.
 Write the receipt as its OWN tool call, before the call that runs `git commit` - the enforcing
 hook checks the file at commit time, so a receipt written inside the same compound command is
-invisible to a stricter gate and unauditable in the ledger. The shipped hook tolerates the
-legacy atomic write+commit shape for adoption compat - do not rely on it; the own-call receipt
-is the discipline. The `guard-ungated-commit` hook
+invisible to a stricter gate and unauditable in the ledger. The shipped hook still ACCEPTS the atomic
+write+commit shape (blocking it would reject the receipt discipline itself), so nothing stops you
+mechanically - which is exactly why the rule is the binding one: 9 of 13 commits in one audited
+session took the atomic shape and two of those left the receipt uncleared. Own-call receipt, then
+the commit, then clear it. The `guard-ungated-commit` hook
 blocks a non-trivial `git commit` without a fresh receipt
 (measured: 8 ungated commit events across 6 audited sessions rode on prose alone). The hook
 judges 'trivial' mechanically - at most 2 files and 15 changed lines - so a prose-exempt diff

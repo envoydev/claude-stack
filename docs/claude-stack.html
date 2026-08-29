@@ -723,7 +723,7 @@
         </div></div>
         <div class="serve">
           <span class="chip">guard-read-whole-file</span><span class="chip">guard-protected-force-push</span>
-          <span class="chip">guard-catastrophic-rm</span><span class="chip">guard-unapproved-dispatch</span><span class="chip">guard-ungated-commit</span><span class="chip">guard-stop-contract</span><span class="chip">guard-answer-length</span><span class="chip">instrument-tool-usage</span>
+          <span class="chip">guard-catastrophic-rm</span><span class="chip">guard-unapproved-dispatch</span><span class="chip">guard-ungated-commit</span><span class="chip">guard-stop-contract</span><span class="chip">guard-answer-length</span><span class="chip">guard-fresh-session-start</span><span class="chip">instrument-tool-usage</span>
         </div>
       </div>
 
@@ -744,7 +744,7 @@
       <div><strong id="c-house">52</strong> house</div>
       <div><strong id="c-plugins">7</strong> plugins</div>
       <div><strong id="c-mcp">7</strong> MCP</div>
-      <div><strong id="c-hooks">8</strong> hooks</div>
+      <div><strong id="c-hooks">9</strong> hooks</div>
     </div>
 
     <div class="controls">
@@ -1240,6 +1240,7 @@ const hooks = [
   ["guard-ungated-commit", "Bash", "Blocks a non-trivial `git commit` unless the docs-root flow/COMMIT-GATE receipt opens with VERIFIED or WAIVED - the mechanical form of the pre-commit checkpoint: the gate step (project-verify-code, plus /security-review on auth/crypto/data-access diffs) writes the receipt when its checks pass, or records the user's explicit waiver verbatim. Trivial diffs (<=2 files, <=15 changed lines) pass ungated; receipts older than 2h are treated as absent."],
   ["guard-stop-contract", "Stop + AskUserQuestion", "Two wirings, one stop contract. As a Stop hook: blocks a turn that ends on a decision-shaped question in PROSE ('say the word', 'want me to X?') - the blocking-ask mandate mechanized; the model re-emits the decision as an AskUserQuestion call (measured: ~25 sessions stalled 13min-37h on prose asks, one credential decision died at /exit). As a PreToolUse AskUserQuestion gate: past ~150k context per message, denies an option list with no fresh-session/resume entry - the stop contracts' construction check, which fired in ~0 of 50+ qualifying asks as prose. Fail-open on anything unparseable."],
   ["guard-answer-length", "UserPromptSubmit + Stop", "The short-answer contract mechanized. As a UserPromptSubmit hook: appends the answer budget (at most 3 sentences plus points, ~900 characters of prose; code, tables and command output exempt) to every turn's context, where it is read last - immediately before the answer is written, instead of sitting mid-list in an always-on rule. As a Stop hook: blocks an answer whose prose passes the 1800-character hard cap when nothing in the user's own message asked for depth ('in detail', 'walk me through', 'write a plan' lift the cap, in any language - the Ukrainian/Russian stems are matched too; 'explain' does not), and the model re-answers at budget. One block per turn; fail-open on anything unparseable."],
+  ["guard-fresh-session-start", "Skill", "Blocks a DELIBERATE orchestration run - a capture, a quality/architecture/coverage loop, a solve flow - when the session already carries another finished run's history past ~150k tokens per message, and routes the choice through AskUserQuestion (fresh session, recommended, versus continuing here with the cost stated). The rule existed as prose in the generated capabilities rule and lost four times in audited sessions, once in a run that named the fresh-session need in its own text and continued anyway to 380k per message where the same step cost 134k run fresh. Only orchestration entry points are gated; every other Skill call passes, as does any session under the threshold. Fail-open on anything unparseable."],
   ["instrument-tool-usage", "(wired, env-gated off)", "Env-gated tool-usage instrumentation for measured stats: wired on PreToolUse '.*' behind a shell gate, so nothing runs until CLAUDE_STACK_INSTRUMENT flips from 0 to 1 in settings env; then it logs every tool call - built-ins + Skill + mcp__* - as one JSONL row (ts/session/tool/non-sensitive detail) to <docs-path>/tools-usage/<session>.jsonl, so a run's skill/MCP usage can be tallied exactly. Never blocks; the off-path costs a shell test, never a node spawn."],
 ];
 

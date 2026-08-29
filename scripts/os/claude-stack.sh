@@ -483,6 +483,7 @@ HOOKS=(
   "guard-ungated-commit.js::Bash::"               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED)
   "guard-stop-contract.js::AskUserQuestion::"     # deny an AskUserQuestion missing the fresh-session option past ~150k ctx/msg (the stop contracts' construction check, mechanized - prose fired ~0 of 50+)
   "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h)
+  "guard-fresh-session-start.js::Skill::"        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past ~150k ctx - route it through an AskUserQuestion fresh-session choice
   "guard-answer-length.js::@UserPromptSubmit::"   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   "guard-answer-length.js::@Stop::"               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
@@ -1017,6 +1018,15 @@ deny = data.setdefault("permissions", {}).setdefault("deny", [])
 for rule in deny_specs:
     if rule not in deny:
         deny.append(rule); changed = True
+# permissions.allow: the two gate-stamp writes the hooks REQUIRE. Without them the auto-mode
+# classifier can refuse the write on both routes (Write tool AND Bash printf) - measured in one
+# project across 5 sessions, where DELEGATED mode then degraded silently to inline fixes for a
+# whole 12-stage run. Narrow by design: two exact paths under the resolved docs root, nothing else.
+docs = (data.get("env") or {}).get("CLAUDE_DOCS_PATH") or ".claude/docs"
+allow = data.setdefault("permissions", {}).setdefault("allow", [])
+for rule in (f"Write({docs}/flow/APPROVAL)", f"Write({docs}/flow/COMMIT-GATE)"):
+    if rule not in allow:
+        allow.append(rule); changed = True
 # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register, so no per-launch
 # trust prompt - never blanket enableAllProjectMcpServers. Union-merged; an unlisted name is a harmless no-op.
 enabled = data.setdefault("enabledMcpjsonServers", [])

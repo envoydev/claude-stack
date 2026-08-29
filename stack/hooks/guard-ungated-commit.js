@@ -24,8 +24,17 @@ try {
   process.exit(0); // unparseable stdin - don't block
 }
 const command = String((payload.tool_input || {}).command || '');
+// A heredoc body is DATA, not shell: a plan document, a commit-message draft or a receipt that
+// merely describes `git commit` is inert text. Matching it blocked a 47KB plan write and cost a
+// full re-author of the same document (~19.8k output + 24.4k cache-write, ~3 minutes), and a
+// second session lost a plan-doc write the same way. Blank the payload spans before matching,
+// keeping the character count so commitMatch.index still points into the real command.
+const scanned = command.replace(
+  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+  (m) => m.replace(/[^\n]/g, ' '),
+);
 // A real `git commit` subcommand (allowing -C/-c/global flags between), not e.g. `git log --grep commit`.
-const commitMatch = command.match(/\bgit(\s+-[cC]?\s*\S+|\s+--\S+)*\s+commit\b/);
+const commitMatch = scanned.match(/\bgit(\s+-[cC]?\s*\S+|\s+--\S+)*\s+commit\b/);
 if (!commitMatch) process.exit(0);
 // An atomic write-receipt-then-commit command carries its own receipt: the gate file is
 // written (with a VERIFIED/WAIVED line in the same command text) before git runs. Blocking

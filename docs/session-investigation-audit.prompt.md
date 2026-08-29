@@ -6,7 +6,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 
 ## Parameters
 
-- `SESSIONS_ROOT`: path to the investigation folder (default: `./docs/session-investigation`). Each subdirectory named by a session id is one bundle.
+- `SESSIONS_ROOT`: path to the investigation folder (default: `./docs/session-investigation`). Each subdirectory named by a session id is one bundle; a collection swept from several projects nests one project level above those, so enumerate `<SESSIONS_ROOT>/*/<session-id>/` too and carry the project name into every finding's evidence.
 - `SESSIONS`: which bundles to audit (default: all). A list of session ids scopes the run.
 - `AUDIT_DIR`: where the audit output lands (default: `<SESSIONS_ROOT>/AUDIT`). It lives inside `SESSIONS_ROOT` deliberately - the folder is gitignored, so private session data never reaches a tracked file.
 - `APPLY`: whether to apply the resulting stack fixes (default: `ask` - the Phase 3 AskUserQuestion decides; `false` is report-only).
@@ -17,7 +17,7 @@ Bundles come from more than one capture generation; inventory each one instead o
 
 | File | What it is | Trust |
 |---|---|---|
-| `session.jsonl` | The full main-session transcript | Ground truth |
+| `session.jsonl` / `<session-id>.jsonl` | The full main-session transcript (either name, depending on the capture generation) | Ground truth |
 | `subagents/agent-*.jsonl` (+ `.meta.json`) | One transcript per dispatched seat; meta names the agent type | Ground truth |
 | `tool-usage-<sid>.jsonl` | The instrumentation hook's tool ledger | Deterministic, but check its coverage window - it can start mid-session |
 | `analyzer.json` / `usage.json` | `scripts/analyze-usage.js` JSON aggregate | Deterministic derivation |

@@ -19,6 +19,9 @@ try {
   process.exit(0); // unparseable stdin - don't block
 }
 const GATED_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/;
+// Same extensions, unanchored - a sweep command names its files inside a glob or a loop body,
+// never as the string's own tail, so the anchored form above can never match a command line.
+const GATED_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)\b/i;
 // Small files are cheap to read whole. 200, not 100: measured across four real
 // sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
 // serena detour costs about what the whole-file read would - the guard only pays above 200.
@@ -53,12 +56,37 @@ if (payload.tool_name === 'Bash') {
   if (!/\bcat\b|\bsed\b/.test(command)) process.exit(0);
   // Per pipeline segment: a bare `cat <gated file>` (or sed -n '1,$p') with no limiting
   // filter after it is a whole-file dump; `cat f | head -40` / grep / wc are targeted.
+  // Three shapes dumped whole source trees straight past the single-file check above
+  // (measured in 5 sessions, 16-23 .cs files each, ~20k tokens a sweep): a shell loop whose
+  // cat argument is the loop VARIABLE, a find -exec whose argument is the literal {}, and a
+  // multi-file `cat a.cs b.cs` where only the first argument was ever size-checked. None of
+  // them can be size-checked per file, and all three are the sweep this gate exists to stop.
+  const sweep = /\bfor\s+\w+\s+in\b[^\n]*\bdo\b[^\n]*\bcat\b/i.test(command)
+    ? 'a shell loop over a file list'
+    : /\bfind\b[^\n]*-exec\s+cat\b/i.test(command)
+      ? 'find -exec cat'
+      : /\|\s*xargs\s+(?:-\w+\s+)*cat\b/i.test(command)
+        ? 'xargs cat'
+        : null;
+  if (sweep && GATED_EXT_ANY.test(command)) {
+    process.stderr.write(
+      `Blocked: whole-file sweep of source files via ${sweep}.\n` +
+      `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
+      `variable or a find placeholder. Per baseline-navigation.md, locate what you need first\n` +
+      `(serena find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
+      `ranges that matter. If you genuinely need one whole small file, cat it by name.`,
+    );
+    process.exit(2);
+  }
   for (const seg of command.split(/&&|\|\||;|\n/)) {
     if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut)\b/.test(seg)) continue;
-    const m = seg.match(/\bcat\s+(?:-\w+\s+)*("[^"]+"|'[^']+'|[^\s;&|<>]+)/) ||
-      seg.match(/\bsed\s+-n\s+["']1,\$p["']\s+("[^"]+"|'[^']+'|[^\s;&|<>]+)/);
-    if (!m) continue;
-    const f = m[1].replace(/^["']|["']$/g, '');
+    const catAll = seg.match(/\bcat\s+((?:(?:-\w+|"[^"]+"|'[^']+'|[^\s;&|<>]+)\s*)+)/);
+    const files = catAll
+      ? catAll[1].trim().split(/\s+/).filter((t) => !t.startsWith('-')).map((t) => t.replace(/^["']|["']$/g, ''))
+      : [];
+    const sedM = seg.match(/\bsed\s+-n\s+["']1,\$p["']\s+("[^"]+"|'[^']+'|[^\s;&|<>]+)/);
+    if (sedM) files.push(sedM[1].replace(/^["']|["']$/g, ''));
+    for (const f of files) {
     if (!GATED_EXT.test(f)) continue;
     const { lc, resolved } = resolveLineCount(f);
     if (!resolved) {
@@ -79,6 +107,7 @@ if (payload.tool_name === 'Bash') {
         `whole-file read the Read gate blocks - routed through the shell.\n` + serenaHint(f),
       );
       process.exit(2);
+    }
     }
   }
   process.exit(0);
