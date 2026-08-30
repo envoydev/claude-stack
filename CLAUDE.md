@@ -241,7 +241,7 @@ documented there.
   plugin set - any claim the flow got cheaper or still catches the same bugs - ships only with evidence:
   run the affected build + tests yourself and read the code (never a run's self-report), measure the cost /
   token delta when the claim is about cost, and commit that evidence (a benchmark note or branch) BEFORE any
-  reset. An earlier reset destroyed an unverified 'green' claim - so evidence lands first.
+  reset. An earlier reset destroyed an unverified 'green' claim - so evidence lands first. A claim about the outside world - a package, a version, an API shape, a CLI flag - is verified through context7 in the same sitting and the evidence cited; the build passing says nothing about whether the API is still the current one (measured: two audits found drifted version-coupled claims in shipped artifacts, both compiling fine).
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
   option with a reason.
 

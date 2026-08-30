@@ -43,10 +43,33 @@ test('guard-read-whole-file: targeted reads and doc prose stay silent', () => {
   assert.equal(bash('guard-read-whole-file.js', heredoc(`Step 1: cat ${BIG} to check the patterns`)), 0, 'heredoc prose');
 });
 
+// The commit gate reads the repo's real diff (a trivial one is exempt by design), so these cases
+// need their own dirty repo - keying off this checkout's state made the test pass or fail with it.
+function scratchRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-repo-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 'test');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
+  git('add', '-A'); git('commit', '-qm', 'seed');
+  // a non-trivial diff: past the hook's 2-file / 15-line trivial bar
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(dir, f), Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'));
+  return dir;
+}
+
 test('guard-ungated-commit: the receipt must target the gate file, not merely name it', () => {
-  assert.equal(bash('guard-ungated-commit.js', 'echo "note: VERIFIED review authorized: go" > notes.txt && git commit -am wip'), 2,
+  const dir = scratchRepo();
+  const inRepo = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+    cwd: dir,
+  }).status;
+  assert.equal(inRepo('git commit -am wip'), 2, 'a non-trivial commit with no receipt is blocked');
+  assert.equal(inRepo('echo "note: VERIFIED review authorized: go" > notes.txt && git commit -am wip'), 2,
     'prose naming the receipt words in an unrelated file must not satisfy the gate');
-  assert.equal(bash('guard-ungated-commit.js', heredoc('Step 9: run git commit -F - here')), 0,
+  assert.equal(inRepo(heredoc('Step 9: run git commit -F - here')), 0,
     'a plan document describing a commit is data, not a commit');
 });
 
