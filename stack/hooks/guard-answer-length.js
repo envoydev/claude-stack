@@ -58,7 +58,19 @@ function lastMessages() {
       continue; // partial first line of the tail window
     }
     if (!o || !o.message) continue;
-    if (o.type === 'assistant' && Array.isArray(o.message.content)) assistant = o;
+    // One logical assistant turn is written as SEVERAL jsonl rows sharing one message.id (a
+    // thinking row, then the text row). Keeping only the last row read the wall of text as an
+    // empty fragment and passed it silently - the same defect measured six times in the stop
+    // contract's own transcript reader, which is why both now merge by id.
+    if (o.type === 'assistant' && Array.isArray(o.message.content)) {
+      const id = o.message.id;
+      if (assistant && id && assistant.message.id === id) {
+        assistant.message.content = assistant.message.content.concat(o.message.content);
+        if (o.message.usage) assistant.message.usage = o.message.usage;
+      } else {
+        assistant = { ...o, message: { ...o.message, content: o.message.content.slice() } };
+      }
+    }
     if (o.type === 'user') {
       const c = o.message.content;
       // A tool_result arrives as a user message - only a real typed turn counts.

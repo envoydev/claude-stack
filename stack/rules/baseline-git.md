@@ -32,8 +32,9 @@ PROJ-142
 On any non-trivial diff, before committing or presenting: run the formatter, then the house
 review `project-verify-code` - model-invocable, so the gate holds in autonomous flows too
 (`/code-review` is a user-run parallel sweep, not this gate; `/simplify` applies its quality
-findings in place) - plus any diff gates named in the project's
-`CLAUDE.md` - then satisfy the Definition-of-done gate. Findings caught here land in the same
+findings in place) - plus `/security-review` when the diff touches auth, crypto, secrets,
+payment or data-access paths (`baseline-security.md` owns that call), plus any diff gates named
+in the project's `CLAUDE.md` - then satisfy the Definition-of-done gate. Findings caught here land in the same
 commit; found later they become fixup noise or shipped defects. Skip for typos / one-line /
 formatting-only diffs - and for a diff an equivalent-or-stronger check just cleared: the active
 quality-loop's own dispatched re-verify plus final gate, or the cross-task flow's domain-verifier

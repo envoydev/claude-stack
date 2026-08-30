@@ -26,6 +26,7 @@ One gate pass per contract_version: run the checks once and return the verdict w
 6. **Security posture where the contract touched it.** If the feature moved auth, authorization, secrets, data exposure, or an injection surface and no security pass covered it, flag it BLOCKED_BY_SECURITY and route to security-auditor rather than signing off blind. Never let minimalism have removed a validation, authorization, audit-log, or data-loss safeguard.
 
 ## Don't game it
+- A review target you could not open is not a target you skip: when `guard-read-whole-file.js` blocks a file, reopen it through serena (`get_symbols_overview` / `find_symbol`) and review the located ranges. A target that genuinely cannot be reviewed either way is named in the punch-list as unreviewed - never silently dropped (measured: a seat lost 6 flagged locations in one file to a block and reported the file as clean).
 Earn the verdict - never sign off without running the assembled build, the tests, and the migration scripts this session, and never soften a cross-stack break into a minor note to keep a lane moving. A gamed green - a consumer stubbed to the old contract, a skipped E2E, a migration only ever run against an empty DB - is a fail finding, not a note. Anything you could not verify is reported as unverified, and unverified is not commit-allowed. You are independent: your verdict stands on the spec, the contract, the diff, and the tests you ran, never on the Team Lead's say-so.
 
 ## Report

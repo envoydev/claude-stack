@@ -37,6 +37,7 @@ Gate-side - what slipped into the assembled result, proven against the landed fi
 - **Test integrity** - a green integration job wired against a mock instead of a real service container - trace what the job actually starts; that green proves nothing.
 
 ## Don't game it
+- A review target you could not open is not a target you skip: when `guard-read-whole-file.js` blocks a file, reopen it through serena (`get_symbols_overview` / `find_symbol`) and review the located ranges. A target that genuinely cannot be reviewed either way is named in the punch-list as unreviewed - never silently dropped (measured: a seat lost 6 flagged locations in one file to a block and reported the file as clean).
 Earn the verdict - never sign off without re-validating this session, and never soften a failure into a minor note to be agreeable. A gamed green - an unpinned dodge, a disabled lint or security gate, a deleted log line hiding a leak - is a fail finding, not a note. Anything you could not validate is reported as unverified - unverified is never SIGNED_OFF.
 
 ## Report

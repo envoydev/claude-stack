@@ -44,8 +44,14 @@ if (!commitMatch) process.exit(0);
 // COMMIT-GATE VERIFIED is not a receipt), and a VERIFIED receipt needs its authorized:
 // line here too - same contract as the file path below.
 const preCommit = command.slice(0, commitMatch.index);
+// The receipt must be WRITTEN, not merely mentioned: requiring the words anywhere in the
+// pre-commit text let a single `echo "... VERIFIED ... authorized: ..." > notes.txt` satisfy the
+// gate on a real dirty tree (reproduced). The redirect/tee/printf has to target a path that ends
+// in flow/COMMIT-GATE for the atomic shape to count as its own receipt.
+const writesGate = /(?:>>?|\btee\s+(?:-a\s+)?|\bprintf\b[^>]*>>?)\s*["']?(\S*flow\/COMMIT-GATE)\b/.test(preCommit)
+  || /\bcat\s*>>?\s*["']?(\S*flow\/COMMIT-GATE)\b/.test(preCommit);
 if (preCommit.includes('COMMIT-GATE')
-  && /(>>?|\btee\b|\bcat\b|\bprintf\b)/.test(preCommit)
+  && writesGate
   && (/\bWAIVED\b/.test(preCommit)
     || (/\bVERIFIED\b/.test(preCommit) && /authorized:/.test(preCommit)))) process.exit(0);
 let root = process.env.CLAUDE_PROJECT_DIR || process.cwd();

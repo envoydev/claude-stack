@@ -52,8 +52,41 @@ const input = payload.tool_input || {};
 
 // ---- Bash matcher: a whole-file dump via cat/sed is the Read block routed around ----
 if (payload.tool_name === 'Bash') {
-  const command = String(input.command || '');
-  if (!/\bcat\b|\bsed\b/.test(command)) process.exit(0);
+  // A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES a dangerous
+  // command is inert text, and matching it blocks a document write for its own prose (reproduced).
+  // Blank the payload spans, keeping the character count so any index into the command still holds.
+  const stripHeredocs = (c) => c.replace(
+    /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+    (m) => m.replace(/[^\n]/g, ' '),
+  );
+  const command = stripHeredocs(String(input.command || ''));
+  // Only `cat`/`sed` were gated, so the same whole-file dump walked through under any other verb:
+  // `head -n 100000`, `tail -n +1`, `less`, `awk '1'`, `python3 -c "print(open(f).read())"` all
+  // passed (reproduced x5 against a 1371-line file).
+  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(/.test(command)) process.exit(0);
+  // A whole-file read through a language runtime is the same dump with a different spelling.
+  const runtimeDump = /\b(python3?|node|perl|ruby)\b[^\n]*\b(open\([^)]*\)\s*\.read\(|readFileSync|File\.read)/.test(command);
+  if (runtimeDump && GATED_EXT_ANY.test(command)) {
+    process.stderr.write(
+      'Blocked: whole-file read of a source file through a language runtime.\n' +
+      'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
+      'differently. Locate the symbol first (serena find_symbol / get_symbols_overview), then read\n' +
+      'only the range you need.',
+    );
+    process.exit(2);
+  }
+  // A dump verb whose output is unbounded is a dump: `head -n <huge>` and `tail -n +1` both print
+  // the whole file, while a bounded `head -40` is the targeted read this gate exists to encourage.
+  const unbounded = /\bhead\s+-n\s*(\d{5,})\b/.test(command) || /\btail\s+-n\s*\+\s*1\b/.test(command)
+    || /\b(less|more)\s+\S/.test(command) || /\bawk\s+(['"])1\1\s+\S/.test(command);
+  if (unbounded && GATED_EXT_ANY.test(command)) {
+    process.stderr.write(
+      'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
+      'Per baseline-navigation.md, read the located range - serena find_symbol, or a bounded\n' +
+      'sed -n \'<start>,<end>p\' once you know where to look.',
+    );
+    process.exit(2);
+  }
   // Per pipeline segment: a bare `cat <gated file>` (or sed -n '1,$p') with no limiting
   // filter after it is a whole-file dump; `cat f | head -40` / grep / wc are targeted.
   // Three shapes dumped whole source trees straight past the single-file check above

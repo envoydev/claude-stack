@@ -41,6 +41,7 @@ The SCM and long-running-host traps, checked on every pass:
 - **The worker traps** - a scoped service captured by the singleton worker, an ignored stopping token, `async void` beyond a caught handler, sync-over-async on a callback, a persistent gateway with no backoff, a redelivering source handled non-idempotently.
 
 ## Don't game it
+- A review target you could not open is not a target you skip: when `guard-read-whole-file.js` blocks a file, reopen it through serena (`get_symbols_overview` / `find_symbol`) and review the located ranges. A target that genuinely cannot be reviewed either way is named in the punch-list as unreviewed - never silently dropped (measured: a seat lost 6 flagged locations in one file to a block and reported the file as clean).
 Earn the verdict - never sign off without running the build and tests this session, and never soften a failure into a minor note to be agreeable. A gamed green (a weakened test, a suppressed warning, stubbed code, a real-delay timing hack) is a fail finding, not a note. Anything you could not verify is reported as unverified - unverified is never SIGNED_OFF.
 
 ## Report

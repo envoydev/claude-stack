@@ -1018,15 +1018,14 @@ deny = data.setdefault("permissions", {}).setdefault("deny", [])
 for rule in deny_specs:
     if rule not in deny:
         deny.append(rule); changed = True
-# permissions.allow: the two gate-stamp writes the hooks REQUIRE. Without them the auto-mode
-# classifier can refuse the write on both routes (Write tool AND Bash printf) - measured in one
-# project across 5 sessions, where DELEGATED mode then degraded silently to inline fixes for a
-# whole 12-stage run. Narrow by design: two exact paths under the resolved docs root, nothing else.
-docs = (data.get("env") or {}).get("CLAUDE_DOCS_PATH") or ".claude/docs"
-allow = data.setdefault("permissions", {}).setdefault("allow", [])
-for rule in (f"Write({docs}/flow/APPROVAL)", f"Write({docs}/flow/COMMIT-GATE)"):
-    if rule not in allow:
-        allow.append(rule); changed = True
+# NO permissions.allow seed for the gate stamps, deliberately. The hooks require a write to
+# <docs-root>/flow/APPROVAL and /COMMIT-GATE, and under the default docs root those sit inside
+# `.claude/` - a PROTECTED path. Protected-path writes are never auto-approved outside
+# bypassPermissions, and the safety check runs BEFORE settings allow-rules, so an Edit()/Write()
+# entry here is a silent no-op (measured: one project's runs were refused on every route and
+# DELEGATED mode silently degraded to inline for a whole 12-stage run). The working levers are the
+# prompt's own 'allow Claude to edit its own settings for this session' option, or a
+# CLAUDE_DOCS_PATH outside `.claude/`. The flows carry the ask-fallback for the refusal case.
 # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register, so no per-launch
 # trust prompt - never blanket enableAllProjectMcpServers. Union-merged; an unlisted name is a harmless no-op.
 enabled = data.setdefault("enabledMcpjsonServers", [])

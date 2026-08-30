@@ -117,6 +117,21 @@ test('a tool_result user message is not mistaken for the user asking for depth',
         'depth words inside tool output must not lift the cap');
 });
 
+// A split turn: one logical answer written as two rows sharing a message.id. Keeping only the
+// last row read the wall as an empty fragment and passed it silently - the defect the stop
+// contract hit six times before both readers learned to merge by id.
+test('a wall of text split across rows sharing one message.id is still blocked', () => {
+    const wall = 'x'.repeat(2600);
+    const p = transcript('split-id', 'do it', [{ type: 'text', text: wall }]);
+    const rows = fs.readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const last = rows[rows.length - 1];
+    last.message.id = 'm-split';
+    rows.push({ type: 'assistant', message: { id: 'm-split', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } });
+    fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'Stop', transcript_path: p }), encoding: 'utf8' });
+    assert.equal(r.status, 2);
+});
+
 test('fails open on a missing transcript, unparseable input, and an unknown event', () => {
     assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: path.join(TMP, 'nope.jsonl') }).status, 0);
     assert.strictEqual(run({ hook_event_name: 'PreCompact' }).status, 0);

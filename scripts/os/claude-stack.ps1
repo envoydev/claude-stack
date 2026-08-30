@@ -1152,18 +1152,12 @@ function Set-HookSettings {
     if ($deny -notcontains $rule) { $deny += $rule; $changed = $true }
   }
   $data.permissions.deny = $deny
-  # permissions.allow: the two gate-stamp writes the hooks REQUIRE. Without them the auto-mode
-  # classifier can refuse the write on both routes (Write tool AND Bash printf) - measured in one
-  # project across 5 sessions, where DELEGATED mode then degraded silently to inline fixes for a
-  # whole 12-stage run. Narrow by design: two exact paths under the resolved docs root, nothing else.
-  if (-not $data.permissions.PSObject.Properties['allow']) { $data.permissions | Add-Member -NotePropertyName allow -NotePropertyValue @() }
-  $docsRoot = '.claude/docs'
-  if ($data.PSObject.Properties['env'] -and $data.env.PSObject.Properties['CLAUDE_DOCS_PATH'] -and $data.env.CLAUDE_DOCS_PATH) { $docsRoot = $data.env.CLAUDE_DOCS_PATH }
-  $allow = @($data.permissions.allow)
-  foreach ($rule in @("Write($docsRoot/flow/APPROVAL)", "Write($docsRoot/flow/COMMIT-GATE)")) {
-    if ($allow -notcontains $rule) { $allow += $rule; $changed = $true }
-  }
-  $data.permissions.allow = $allow
+  # NO permissions.allow seed for the gate stamps, deliberately. The hooks require a write to
+  # <docs-root>/flow/APPROVAL and /COMMIT-GATE, and under the default docs root those sit inside
+  # '.claude/' - a PROTECTED path. Protected-path writes are never auto-approved outside
+  # bypassPermissions, and the safety check runs BEFORE settings allow-rules, so an Edit()/Write()
+  # entry here is a silent no-op. The working levers are the prompt's own 'allow Claude to edit its
+  # own settings for this session' option, or a CLAUDE_DOCS_PATH outside '.claude/'.
   # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register (never enableAllProjectMcpServers).
   if (-not $data.PSObject.Properties['enabledMcpjsonServers']) { $data | Add-Member -NotePropertyName enabledMcpjsonServers -NotePropertyValue @() }
   $enabled = @($data.enabledMcpjsonServers)

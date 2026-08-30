@@ -1399,32 +1399,32 @@
    "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site so the stamp format survives when project-solve-cross-task is not installed.",
    "owner": {
     "file": "stack/skills/project-solve-cross-task/references/execution-modes.md",
-    "marker": "flow/APPROVAL"
+    "marker": "an earlier session's leftover stamp is not consent"
    },
    "sites": [
     {
      "file": "stack/skills/project-implementer/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-test-coverage-loop/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-build-from-scratch/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-quality-loop/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-solve-task/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     }
    ]
   },
@@ -2283,6 +2283,55 @@
     {
      "file": "stack/skills/ts-js-testing/SKILL.md",
      "marker": "**Vitest** for a new plain-TS/JS suite"
+    }
+   ]
+  },
+  "verifier-blocked-target-disclosure": {
+   "_note": "Every read-only gate seat discloses a review target it could not open: reopen via serena, or name it unreviewed in the punch-list. Prose 'report what you could not verify' covered a failed build, not a file the seat never opened - measured, a seat lost 6 flagged locations in one file to a read-guard block and reported the file clean.",
+   "owner": {
+    "file": "stack/agents/aspnet-verifier.md",
+    "marker": "A review target you could not open is not a target you skip"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/data-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/devops-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/web-angular-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/ionic-angular-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/browser-extension-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/wpf-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/winforms-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/console-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/windows-service-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/integration-reviewer.md",
+     "marker": "A review target you could not open is not a target you skip"
     }
    ]
   }

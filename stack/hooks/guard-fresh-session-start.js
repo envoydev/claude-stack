@@ -22,7 +22,7 @@ if (payload.tool_name !== 'Skill') process.exit(0);
 const CTX_THRESHOLD = 150000; // the stop contracts' own ~150k ctx trigger
 // The deliberate entry points: each one opens a multi-phase run with its own state file, so a
 // fresh session resuming from that file is always cheaper than continuing on carried context.
-const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer))$/;
+const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade))$/;
 const skill = String((payload.tool_input || {}).skill || (payload.tool_input || {}).name || '');
 if (!ORCHESTRATION.test(skill.replace(/^.*:/, ''))) process.exit(0);
 

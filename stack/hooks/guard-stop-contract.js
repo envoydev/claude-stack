@@ -91,8 +91,19 @@ if (payload.hook_event_name === 'Stop') {
   const text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
   if (!text.trim()) { breadcrumb('Stop: merged message carries no text - passing'); process.exit(0); }
   const tail = text.slice(-1500); // the offer lives at the end of the turn
-  const doneClose = DONE_RE.test(tail) && PENDING_RE.test(tail) && !/\?/.test(tail);
-  if (!PROSE_ASK_RE.test(tail) && !doneClose) process.exit(0);
+  // The phrase list only ever covered the shapes MEASURED in the corpus, so an ordinary
+  // decision question ('What's the deploy target?', 'Which one should we go with?') walked
+  // straight past it (reproduced). A turn that ends on a question and hands nothing to a tool is
+  // the shape the contract is about, whatever words it uses.
+  const endsOnQuestion = /\?["')\]]*\s*$/.test(tail.trim())
+    || /\b(which|what|who|where|when|how|should|do you|would you|prefer)\b[^?]{0,120}\?\s*$/i.test(tail.trim());
+  // ...but a question ABOUT something already settled, or a rhetorical aside mid-report, is not a
+  // stop: require the question to be the turn's last word, which the tests above already encode.
+  const doneClose = DONE_RE.test(tail) && PENDING_RE.test(tail) && !/\?/.test(tail)
+    // A background job the user has no say over is a status line, not a pending decision -
+    // blocking it forced an AskUserQuestion over 'tests are still running in CI' (reproduced).
+    && !/\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b(still )?(running|in progress|queued|pending)\b/i.test(tail);
+  if (!PROSE_ASK_RE.test(tail) && !doneClose && !endsOnQuestion) process.exit(0);
   if (doneClose && !PROSE_ASK_RE.test(tail)) {
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
