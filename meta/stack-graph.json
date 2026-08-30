@@ -1373,6 +1373,7 @@
     "hooks": [
       "guard-answer-length",
       "guard-catastrophic-rm",
+      "guard-fresh-session-start",
       "guard-protected-force-push",
       "guard-read-whole-file",
       "guard-stop-contract",

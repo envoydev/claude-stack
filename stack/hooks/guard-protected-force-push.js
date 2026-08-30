@@ -26,6 +26,14 @@
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 
+// A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES this command is
+// inert text, and matching it blocked a document write for its own prose (reproduced). Blank the
+// payload spans, keeping the character count so any index into the command still holds.
+const stripHeredocs = (c) => String(c).replace(
+  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+  (m) => m.replace(/[^\n]/g, ' '),
+);
+
 // Same segment split as the rm guard - a compound command (`a && git push --force ; b`)
 // is inspected segment by segment so `git push` must be a segment's own COMMAND, not a
 // substring of another program's argument (no false positive on `echo git push --force`).
@@ -189,7 +197,7 @@ function main()
         process.exit(0); // can't parse hook input -> don't block on a harness malfunction
     }
 
-    const command = payload?.tool_input?.command ?? '';
+    const command = stripHeredocs(payload?.tool_input?.command ?? '');
     const cwd = payload?.cwd ?? process.cwd();
     if (!isProtectedForcePush(command, cwd))
     {

@@ -73,7 +73,7 @@ recommended without asking me'), do not silently self-authorize past the stops -
 has a receipted path: write `<docs-path>/flow/APPROVAL` with first line
 `AUTO - "<their words, verbatim>"` (the same file-backed waiver `project-solve-cross-task`
 uses), say in one line that stops are waived under it, and proceed taking each stop's
-recommended option; the pre-commit checkpoint and its receipt still apply. The AUTO stamp lives until step 6's
+recommended option; the pre-commit checkpoint and its receipt still apply. Write the stamp at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL` with the Write tool - `.claude/` is a protected path, so the first write in a session prompts; take the prompt's 'allow Claude to edit its own settings for this session' option and the rest of the run is free (no settings key can pre-approve it: `permissions.allow` is not consulted for protected paths); a relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate. The AUTO stamp lives until step 6's
 close deletes it - step 4's delete-when-fan-out-completes applies to per-plan APPROVED stamps,
 and a step-5 punch-list re-dispatch under AUTO rides the still-live waiver. Measured twice: with
 no waiver path, zero-ask runs improvised the override invisibly - one wrote 'take the

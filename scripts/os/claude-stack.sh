@@ -483,6 +483,7 @@ HOOKS=(
   "guard-ungated-commit.js::Bash::"               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED)
   "guard-stop-contract.js::AskUserQuestion::"     # deny an AskUserQuestion missing the fresh-session option past ~150k ctx/msg (the stop contracts' construction check, mechanized - prose fired ~0 of 50+)
   "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h)
+  "guard-fresh-session-start.js::Skill::"        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past ~150k ctx - route it through an AskUserQuestion fresh-session choice
   "guard-answer-length.js::@UserPromptSubmit::"   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   "guard-answer-length.js::@Stop::"               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
@@ -1017,6 +1018,14 @@ deny = data.setdefault("permissions", {}).setdefault("deny", [])
 for rule in deny_specs:
     if rule not in deny:
         deny.append(rule); changed = True
+# NO permissions.allow seed for the gate stamps, deliberately. The hooks require a write to
+# <docs-root>/flow/APPROVAL and /COMMIT-GATE, and under the default docs root those sit inside
+# `.claude/` - a PROTECTED path. Protected-path writes are never auto-approved outside
+# bypassPermissions, and the safety check runs BEFORE settings allow-rules, so an Edit()/Write()
+# entry here is a silent no-op (measured: one project's runs were refused on every route and
+# DELEGATED mode silently degraded to inline for a whole 12-stage run). The working levers are the
+# prompt's own 'allow Claude to edit its own settings for this session' option, or a
+# CLAUDE_DOCS_PATH outside `.claude/`. The flows carry the ask-fallback for the refusal case.
 # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register, so no per-launch
 # trust prompt - never blanket enableAllProjectMcpServers. Union-merged; an unlisted name is a harmless no-op.
 enabled = data.setdefault("enabledMcpjsonServers", [])

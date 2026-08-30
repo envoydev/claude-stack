@@ -128,7 +128,9 @@ async function analyzeTranscript(file, window) {
   };
   const msgReg = new Map();       // message.id -> {model, skill, carried, u:{in,cc,cr,out}} folded max per field
   const seenToolUse = new Set();  // tool_use id dedup across duplicated assistant lines
-  const toolById = new Map();     // tool_use id -> { name, skill }
+  const toolById = new Map();
+  // doc writes seen in a Bash command, tallied only once the result shows it executed
+  const pendingDocTouch = new Map();     // tool_use id -> { name, skill }
   let prevCtx = null;
   let pending = [];               // tool results since the previous counted assistant msg
   // One real compaction emits TWO lines (a system compactMetadata + a user isCompactSummary,
@@ -186,7 +188,10 @@ async function analyzeTranscript(file, window) {
         // A slash command opens a companion window too: a reference skill loaded in its
         // first messages serves the command, not a phase of its own (measured: a style
         // skill loaded by a command's step charged as a standalone run).
-        activeInvoke = { skill: m[1], msgs: 0 };
+        // `/clear` is a harness reset, not a skill: opening a window for it parks the whole
+        // session's real work under a phantom `clear` row and glues the genuine skills onto it
+        // as companions (measured: 4 sessions, one with 62 of 71 messages mis-bucketed).
+        activeInvoke = m[1] === 'clear' ? null : { skill: m[1], msgs: 0 };
         askSinceInvoke = false;
         // A mid-file /clear starts a new working window: raw first->last spans across it
         // read as a multi-day session at ~6% ledger coverage when the real work window was
@@ -263,8 +268,15 @@ async function analyzeTranscript(file, window) {
           // Deterministic counters the report's protocol sweeps previously had no number for
           // (measured: '0 git commits' shipped against 3 commits + a PR merge; occurrence
           // counting, not per-call, since one Bash call can carry two commits).
-          s.gitCommits += (cmdStr.match(/\bgit\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
-          s.prMerges += (cmdStr.match(/\bgh\s+pr\s+merge\b/g) || []).length;
+          // A heredoc body is DATA: a plan file or receipt that merely describes `git commit`
+          // is not an invocation. Counting it reported 13 commits where 8 ran, 4 where 1 ran,
+          // and 4 where NONE ran (measured across 3 bundles) - blank the payload before counting.
+          const cmdShell = cmdStr.replace(
+            /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+            (m2) => m2.replace(/[^\n]/g, ' '),
+          );
+          s.gitCommits += (cmdShell.match(/\bgit\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
+          s.prMerges += (cmdShell.match(/\bgh\s+pr\s+merge\b/g) || []).length;
           // Doc traffic routed through Bash (heredocs, printf >, rm -f) is real doc I/O the
           // Write/Edit-only counter missed - a receipt written+cleared via Bash showed
           // writes:0, and batched python doc writes showed writes:0 across 3 rewrites (measured).
@@ -274,6 +286,9 @@ async function analyzeTranscript(file, window) {
           // as the write signal, and re-counted one doc per prose mention (measured: a
           // single receipt write reported as 5 writes across 2 docs).
           {
+            // A write the harness DENIED never happened: the classifier-blocked attempts still
+            // counted, reporting 3 writes where 1 executed (measured). The result for this call
+            // decides - an is_error result means nothing was written.
             const touched = new Map();
             for (const seg of cmdStr.split(/&&|\|\||;|\n/)) {
               for (const pm of seg.matchAll(/(?:^|[\s"'`=(])((?:[^\s"'`;|&)]*\/)?\.claude\/docs\/[^\s"'`;|&)]+)/g)) {
@@ -282,17 +297,25 @@ async function analyzeTranscript(file, window) {
                 const rel = p.slice(p.indexOf('.claude/docs/') + '.claude/docs/'.length);
                 if (!rel) continue;
                 const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const isWrite = new RegExp(`(>>?\\s*["']?${esc})|(\\brm\\s+(?:-\\w+\\s+)*["']?${esc})|(\\btee\\s+(?:-a\\s+)?["']?${esc})|(open\\([^)]*${esc}[^)]*["']w["'])`).test(seg);
+                // A python write reaches the file three ways and only one names the path inside
+                // open(): `open("<path>","w")`, `p = "<path>" ... open(p,"w")`, and
+                // `Path("<path>").write_text(...)`. Counting only the first read a real write as a
+                // READ in 3 audited bundles (a doc reported 0 writes against 6 real edits), so the
+                // variable binding and the pathlib form are matched too.
+                // The binding and its use sit on DIFFERENT lines of a python heredoc, so both
+                // checks run against the whole command, not the segment the path appeared in.
+                const varBound = new RegExp(`(\\w+)\\s*=\\s*(?:pathlib\\.)?(?:Path\\()?["'\`][^"'\`]*${esc}`).exec(cmdStr);
+                const varWrite = varBound
+                  ? new RegExp(`open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']|\\b${varBound[1]}\\.write_(text|bytes)\\(|\\bio\\.open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']`).test(cmdStr)
+                  : false;
+                const isWrite = varWrite || new RegExp(`(>>?\\s*["']?${esc})|(\\brm\\s+(?:-\\w+\\s+)*["']?${esc})|(\\btee\\s+(?:-a\\s+)?["']?${esc})|(open\\([^)]*${esc}[^)]*["']w["'])|(${esc}["'\`]?\\s*\\)?\\.write_(text|bytes)\\()`).test(seg);
                 const e = touched.get(rel) || { r: false, w: false };
                 if (isWrite) e.w = true; else e.r = true;
                 touched.set(rel, e);
               }
             }
-            for (const [rel, e] of touched) {
-              const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
-              if (e.w) d.bashWrites = (d.bashWrites || 0) + 1;
-              if (e.r && !e.w) d.bashReads = (d.bashReads || 0) + 1;
-            }
+            // Held until the paired tool_result proves the command actually ran (below).
+            if (touched.size) pendingDocTouch.set(c.id, [...touched.entries()]);
           }
         }
         if (c.name === 'AskUserQuestion') askSinceInvoke = true;
@@ -331,8 +354,15 @@ async function analyzeTranscript(file, window) {
       for (const c of content) {
         if (c.type !== 'tool_result') continue;
         hasResult = true;
-        const text = typeof c.content === 'string' ? c.content : JSON.stringify(c.content || '');
+        // An image block is base64: measuring it as text put a shipped report's headline cost
+        // 46x over the truth (353.2k claimed vs 7,756 actually billed, read off the next turn's
+        // cache_creation). Images are counted separately and never enter the chars/4 estimate.
+        const parts = Array.isArray(c.content) ? c.content : null;
+        const imgs = parts ? parts.filter((b) => b && b.type === 'image').length : 0;
+        const textParts = parts ? parts.filter((b) => !b || b.type !== 'image') : c.content;
+        const text = typeof textParts === 'string' ? textParts : JSON.stringify(textParts || '');
         const chars = text.length;
+        if (imgs) s.imageResults = (s.imageResults || 0) + imgs;
         const info = toolById.get(c.tool_use_id);
         pending.push({ name: info ? info.name : '?', chars });
         if (!info) continue;
@@ -344,6 +374,16 @@ async function analyzeTranscript(file, window) {
         // messages missed the commit/rm/force-push/sleep variants and split one session's
         // denials into 22 'errors' + 12 blocks when all 34 were gate denials (measured).
         const isHookBlock = c.is_error && /\bBlocked: /.test(text);
+        const held = pendingDocTouch.get(c.tool_use_id);
+        if (held) {
+          pendingDocTouch.delete(c.tool_use_id);
+          for (const [rel, e] of held) {
+            const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
+            if (e.w && !c.is_error) d.bashWrites = (d.bashWrites || 0) + 1;
+            else if (e.w && c.is_error) d.bashWritesDenied = (d.bashWritesDenied || 0) + 1;
+            if (e.r && !e.w) d.bashReads = (d.bashReads || 0) + 1;
+          }
+        }
         if (t) {
           t.resultChars += chars;
           if (isHookBlock) t.hookBlocks = (t.hookBlocks || 0) + 1;

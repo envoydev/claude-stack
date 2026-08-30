@@ -32,8 +32,9 @@ PROJ-142
 On any non-trivial diff, before committing or presenting: run the formatter, then the house
 review `project-verify-code` - model-invocable, so the gate holds in autonomous flows too
 (`/code-review` is a user-run parallel sweep, not this gate; `/simplify` applies its quality
-findings in place) - plus any diff gates named in the project's
-`CLAUDE.md` - then satisfy the Definition-of-done gate. Findings caught here land in the same
+findings in place) - plus `/security-review` when the diff touches auth, crypto, secrets,
+payment or data-access paths (`baseline-security.md` owns that call), plus any diff gates named
+in the project's `CLAUDE.md` - then satisfy the Definition-of-done gate. Findings caught here land in the same
 commit; found later they become fixup noise or shipped defects. Skip for typos / one-line /
 formatting-only diffs - and for a diff an equivalent-or-stronger check just cleared: the active
 quality-loop's own dispatched re-verify plus final gate, or the cross-task flow's domain-verifier
@@ -60,9 +61,11 @@ verbatim>"` only
 on their explicit waiver - 'commit it' is an instruction to commit, never a waiver of the review.
 Write the receipt as its OWN tool call, before the call that runs `git commit` - the enforcing
 hook checks the file at commit time, so a receipt written inside the same compound command is
-invisible to a stricter gate and unauditable in the ledger. The shipped hook tolerates the
-legacy atomic write+commit shape for adoption compat - do not rely on it; the own-call receipt
-is the discipline. The `guard-ungated-commit` hook
+invisible to a stricter gate and unauditable in the ledger. The shipped hook still ACCEPTS the atomic
+write+commit shape (blocking it would reject the receipt discipline itself), so nothing stops you
+mechanically - which is exactly why the rule is the binding one: 9 of 13 commits in one audited
+session took the atomic shape and two of those left the receipt uncleared. Own-call receipt, then
+the commit, then clear it. The `guard-ungated-commit` hook
 blocks a non-trivial `git commit` without a fresh receipt
 (measured: 8 ungated commit events across 6 audited sessions rode on prose alone). The hook
 judges 'trivial' mechanically - at most 2 files and 15 changed lines - so a prose-exempt diff

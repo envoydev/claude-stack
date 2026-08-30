@@ -1399,32 +1399,32 @@
    "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site so the stamp format survives when project-solve-cross-task is not installed.",
    "owner": {
     "file": "stack/skills/project-solve-cross-task/references/execution-modes.md",
-    "marker": "flow/APPROVAL"
+    "marker": "an earlier session's leftover stamp is not consent"
    },
    "sites": [
     {
      "file": "stack/skills/project-implementer/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-test-coverage-loop/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-build-from-scratch/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-quality-loop/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     },
     {
      "file": "stack/skills/project-solve-task/SKILL.md",
-     "marker": "flow/APPROVAL"
+     "marker": "an earlier session's leftover stamp is not consent"
     }
    ]
   },
@@ -1715,7 +1715,7 @@
    ]
   },
   "commit-gate-atomic-tolerance": {
-   "_note": "DECISION: the hook tolerates the legacy atomic write+commit shape for adoption compat (blocking it would reject the corpus's dominant conforming pattern); the rule teaches own-call receipts as the discipline and names the tolerance so the prose is not hollow. A future hook tightening must update both copies.",
+   "_note": "DECISION: the hook ACCEPTS the atomic write+commit shape (blocking it would reject the corpus's dominant conforming pattern); the rule teaches own-call receipts as the discipline and now says plainly that nothing stops the atomic shape mechanically, so the reader knows the rule is the only binding - measured: 9 of 13 commits in one session took the atomic shape, two left the receipt uncleared. A future hook tightening must update both copies.",
    "owner": {
     "file": "stack/hooks/guard-ungated-commit.js",
     "marker": "Blocking\n// it would reject the receipt discipline this gate exists to enforce"
@@ -1723,7 +1723,7 @@
    "sites": [
     {
      "file": "stack/rules/baseline-git.md",
-     "marker": "tolerates the\nlegacy atomic write+commit shape for adoption compat - do not rely on it"
+     "marker": "still ACCEPTS the atomic\nwrite+commit shape (blocking it would reject the receipt discipline itself)"
     }
    ]
   },
@@ -2283,6 +2283,100 @@
     {
      "file": "stack/skills/ts-js-testing/SKILL.md",
      "marker": "**Vitest** for a new plain-TS/JS suite"
+    }
+   ]
+  },
+  "verifier-blocked-target-disclosure": {
+   "_note": "Every read-only gate seat discloses a review target it could not open: reopen via serena, or name it unreviewed in the punch-list. Prose 'report what you could not verify' covered a failed build, not a file the seat never opened - measured, a seat lost 6 flagged locations in one file to a read-guard block and reported the file clean.",
+   "owner": {
+    "file": "stack/agents/aspnet-verifier.md",
+    "marker": "A review target you could not open is not a target you skip"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/data-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/devops-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/web-angular-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/ionic-angular-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/browser-extension-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/wpf-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/winforms-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/console-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/windows-service-verifier.md",
+     "marker": "A review target you could not open is not a target you skip"
+    },
+    {
+     "file": "stack/agents/integration-reviewer.md",
+     "marker": "A review target you could not open is not a target you skip"
+    }
+   ]
+  },
+  "designer-working-set-rules": {
+   "_note": "The seven decision-level design rules (YAGNI+rule of three, cohesion/coupling placement, interfaces at real boundaries, illegal-states/fail-fast with a composition default, CQS, least astonishment, refactor-toward-a-pattern) plus the SOLID-is-vocabulary ruling. Owned in prose by project-quality-loop's code-quality stage, which AUDITS against them; restated here because the designer DECIDES them - a seam drawn wrong at design time is what the audit later finds. Byte-identical across all 10 designers; agents install individually, so each copy stays self-contained.",
+   "owner": {
+    "file": "stack/agents/aspnet-solution-designer.md",
+    "marker": "Three questions on every seam you draw"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/browser-extension-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/console-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/data-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/devops-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/ionic-angular-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/web-angular-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/windows-service-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/winforms-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/wpf-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
     }
    ]
   }
