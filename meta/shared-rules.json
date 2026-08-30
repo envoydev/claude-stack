@@ -2334,6 +2334,51 @@
      "marker": "A review target you could not open is not a target you skip"
     }
    ]
+  },
+  "designer-working-set-rules": {
+   "_note": "The seven decision-level design rules (YAGNI+rule of three, cohesion/coupling placement, interfaces at real boundaries, illegal-states/fail-fast with a composition default, CQS, least astonishment, refactor-toward-a-pattern) plus the SOLID-is-vocabulary ruling. Owned in prose by project-quality-loop's code-quality stage, which AUDITS against them; restated here because the designer DECIDES them - a seam drawn wrong at design time is what the audit later finds. Byte-identical across all 10 designers; agents install individually, so each copy stays self-contained.",
+   "owner": {
+    "file": "stack/agents/aspnet-solution-designer.md",
+    "marker": "Three questions on every seam you draw"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/browser-extension-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/console-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/data-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/devops-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/ionic-angular-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/web-angular-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/windows-service-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/winforms-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/agents/wpf-solution-designer.md",
+     "marker": "Three questions on every seam you draw"
+    }
+   ]
   }
  }
 }
