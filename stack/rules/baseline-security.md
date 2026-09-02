@@ -7,7 +7,10 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 - Crypto / secret / auth / payment / data-access work: run `/security-review` on the diff before presenting - and feed it the FULL change set: `git add -N .` first, so untracked files appear in the diff itself (undo the intent-to-add entries with `git reset -q` after), because a diff-fed review silently skips brand-new files, which are often the most security-relevant code in the change (measured near-miss). Scope the review to the genuinely unreviewed range - and know that passing `/security-review` an explicit base commit does NOT reliably scope it (measured: handed the correct base, it still returned a ~250-file diff spanning already-reviewed stages; earlier, a 3.1MB default diff): on a long-lived branch, skip its diff computation and run the scoped review yourself - compute `git diff <base>..HEAD` and review exactly that (a read-only general-purpose seat where dispatch exists, inline otherwise - and inline inside a stamped flow, where the dispatch guard blocks generic seats), applying the same vulnerability checklist `/security-review` would. On these paths the review is
 part of the pre-commit checkpoint: the `COMMIT-GATE` receipt (baseline-git) is written `VERIFIED`
 only after it ran - an auth-path diff committed on the code review alone shipped unreviewed to a
-shared branch (measured).
+shared branch (measured). A checkpoint exemption in baseline-git (a loop or cross-task gate that
+just cleared the diff) skips this half only when that gate carried a security pass - the
+`integration-reviewer` gate does, the quality loop's does not, so a loop diff on these paths still
+runs the review before `VERIFIED`.
 - Three honesty rules on that path. A skip on 'the diff is test-only' is a claim - verify it from
 the diff's own file list and name the carve-out in the close ('security review: skipped - test-only
 diff: <paths>'), never a silent unilateral call (measured: stated unilaterally twice in one session).

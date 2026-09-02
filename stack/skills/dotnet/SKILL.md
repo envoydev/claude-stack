@@ -1,6 +1,6 @@
 ---
 name: dotnet
-description: "Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, hosting & background work, testing & quality, diagnostics & performance, and WPF desktop. Routes per area, does not restate the skills. Load when starting or navigating any .NET / C# backend or desktop work - typed asks like 'add an endpoint to the orders API', 'my BackgroundService stopped overnight', or 'which skill covers EF Core queries' all start here. Companion: csharp (always, for any C#). For web front-end see frontend; for Ionic/Capacitor see mobile."
+description: "Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, hosting & background work, testing & quality, diagnostics & performance, and desktop (WPF / WinForms). Routes per area, does not restate the skills. Load when starting or navigating any .NET / C# backend or desktop work - typed asks like 'add an endpoint to the orders API', 'my BackgroundService stopped overnight', or 'which skill covers EF Core queries' all start here. Companion: csharp (always, for any C#). For web front-end see frontend; for Ionic/Capacitor see mobile."
 ---
 
 # dotnet (skill router)
@@ -9,7 +9,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 
 **Companion, not optional:** load `csharp` whenever you write or refactor any C# - naming, layout, modern syntax, async, dispose, exceptions/Result, logging, DI lifetimes. Every row below is *in addition to* the C# baseline, never instead of it.
 
-**Required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is absent means the area is absent here, not a broken pointer.
+**Required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is absent means the area is absent here, not a broken pointer.
 
 **The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
 
@@ -81,6 +81,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 | harden a long-running worker's outbound I/O - `HttpClient`/socket exhaustion, Polly v8 resilience, rate limiting, `ClientWebSocket` reconnect | `dotnet-hosted-services` (its `references/resilience-and-io.md`) |
 | pick a scheduler (Hangfire / Quartz.NET / Coravel) or run a job on exactly one instance (leader election) | `dotnet-hosted-services` (its `references/scheduling-and-coordination.md`) |
 | deploy or observe a headless worker - signals, systemd / container / Kubernetes shutdown, health checks without Kestrel, `[LoggerMessage]` | `dotnet-hosted-services` (its `references/deployment-and-observability.md`) |
+| host a worker under the Windows Service Control Manager - `AddWindowsService` / `UseWindowsService`, SCM start/stop budgets and exit codes, scripted `sc.exe` install with recovery actions, service accounts, event-log source | `dotnet-windows-service` (load `dotnet-hosted-services` first - the host model it stacks on) |
 | build a CLI tool - argument parsing (`System.CommandLine` 2.0 / `Spectre.Console.Cli` / `Cocona`), subcommands, exit codes | `dotnet-console-apps` |
 | build a chat or trading bot - a Telegram / Discord / Slack / exchange SDK plugged into a `BackgroundService`, command handlers in DI | `dotnet-console-apps` (its `references/bot-sdks.md`) |
 
@@ -113,7 +114,7 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 
 ## Legacy: .NET Framework 4.8 (net48)
 
-Maintaining or hardening a .NET Framework 4.8 codebase - the deltas from the modern floor live as a `references/net-framework-48.md` inside each owner skill. Load the owner, then that file.
+Maintaining or hardening a .NET Framework 4.8 codebase - the deltas from the modern floor live as a net48 reference inside each owner skill (`references/net-framework-48.md`, or the file the row names). Load the owner, then that file.
 
 | You are about to... | Load |
 |---|---|
@@ -129,6 +130,7 @@ Maintaining or hardening a .NET Framework 4.8 codebase - the deltas from the mod
 | pick and scope EF on net48 - EF Core 3.1 vs EF6, DbContext-per-request, the single-operation rule | `dotnet-data-access` (its `references/net-framework-48.md`) |
 | test classic ASP.NET on net48 - in-memory OWIN TestServer, HttpContextBase over sealed HttpContext.Current | `dotnet-testing` (its `references/net-framework-48.md`) |
 | build or maintain a WPF app on net48 - CommunityToolkit.Mvvm source-generator constraints, Generic Host composition, app-level exception handlers | `dotnet-wpf` (its `references/net-framework-48.md`) |
+| maintain a .NET Framework Windows Service - the `ServiceBase` shape, `installutil`, and the migration path to `AddWindowsService` | `dotnet-windows-service` (its `references/framework-services.md`) |
 
 The async deadlock angle (why `ConfigureAwait(false)` is load-bearing here) is in `csharp`'s `references/net-framework-48.md`.
 

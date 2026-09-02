@@ -45,7 +45,7 @@ implementer inherits the answer.
    interface with one implementation forever is the classic shape.
 2. **High cohesion, low coupling - the placement test.** Everything a task owns changes for the same
    reason. A task boundary that splits one axis of change across two seats, or bundles two axes into
-   one, is the wrong boundary - redraw it before dispatch, not after.
+   one, is the wrong boundary - redraw it before the build starts, not after.
 3. **Program to an interface at boundaries ONLY.** A seam belongs where one really exists: an
    external system, something the tests mock, something with two implementations or a credible
    second. An interface mirroring every class is ceremony, and a fat interface whose consumers use a
@@ -68,8 +68,24 @@ SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast commen
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
 
+**Observability is designed at the seams, never sprinkled by the implementer.** Stamp each task
+card with `log_points` - where a line goes, at what level, carrying which identifiers: the boundary
+crossings the task owns (an inbound request, message or job run's start and outcome; an outbound call
+to an external system; a persistence write), the decision points a reader would need to reconstruct
+the path (a retry, a fallback, a rejected input, a state transition), and every failure exit. Level by
+who acts: error means someone acts now, warning means degraded but handled, information means a
+business-significant event, debug means investigation only. The message carries the join keys an
+investigator needs - the correlation or trace id, the entity id - and never a secret, a token, a
+payload, or personal data beyond the project's policy. A failure is logged ONCE, at the boundary that
+handles it, never log-and-rethrow at each layer; a background job, a fire-and-forget or a swallowed
+catch with no log point is a silent failure, and a design defect. Where the framework already emits
+the event (request logging, client logging) the card says so instead of duplicating it. A task with
+no failure exit of its own stamps `log_points: none - <reason>` - an absent field and a considered
+none must never look alike. Every point goes through the repo's existing logging seam and message
+convention - name the precedent on the card, never a second logger.
+
 ## Failure modes I hunt
-- **Change-detection topology.** Never put OnPush on the shell hosting IonRouterOutlet/IonNav - it silently stops ngOnInit and lifecycle hooks firing and breaks async rendering. Default strategy on the shell, OnPush only on leaf pages and presentational components; never plan a zoneless topology (Ionic keeps Zone.js as a peer dep, not zoneless-compatible).
+- **Change-detection topology - version-gated.** Whether the shell hosting IonRouterOutlet/IonNav may run OnPush and whether the workspace can go zoneless turn on the installed Ionic and Angular majors: probe them, verify the current rule via context7 at design time, and state the pair in the report - never design from a recalled rule (measured: the Ionic 8 zoneless ban lifted on Ionic 9, where zoneless is supported (the Angular 21+ default) and Angular 22 makes OnPush the default component strategy - while the shell rule held: the component hosting IonRouterOutlet/IonNav still avoids OnPush per the current lifecycle docs, so probe both, never assume one release moved both). Under every version the durable trap is the same: state set in an Ionic lifecycle hook or a bridge callback re-renders under OnPush or zoneless only through a signal or `markForCheck()` - a plain field write there is a silently stale view.
 - **Page-caching lifecycle.** Ionic caches pages in the DOM, so ngOnInit/ngOnDestroy fire only on create/pop, not revisit - a tab-switch re-shows a cached page without re-running ngOnInit. Decide per view what must refresh on entry (route it onto ionViewWillEnter, or ionViewDidEnter for heavy deferred work) versus one-time (ngOnInit); wrong here ships stale data on every tab switch. These hooks fire only on router-mapped page components, not their children - account for that in task boundaries.
 - **Native-bridge seam.** Every native plugin call goes through one typed Angular service owning the permission check, the web fallback, the listener lifecycle, and error-to-Result mapping - never raw plugin APIs scattered across pages. The web fallback is non-optional: a native call with no web path breaks ionic serve and the PWA build. Design the fallback per plugin (real web impl > degraded stand-in > a typed 'unavailable' the UI renders as a disabled affordance), gated on Capacitor.isPluginAvailable, never a silent no-op.
 - **Permissions.** Enumerate the permission-gated capabilities (camera, geolocation, notifications) and design the check -> explain -> request-at-point-of-use -> handle-the-no cycle. The iOS prompt is one-shot, so a blind up-front request is effectively permanent denial; a denied/limited/coarse status is a typed Result the UI renders (disabled control plus a deep-link to system settings), never a throw, re-checked on resume.
@@ -78,6 +94,7 @@ no breakage named, has not been argued.
 - **Platform resolution.** Resolve platform once in a typed service exposing signals - the three checks answer different questions and must not be conflated: Capacitor.isNativePlatform() gates any native path, Capacitor.getPlatform() branches genuinely OS-specific behavior, Ionic's Platform service is the injectable/mockable one for components. Never scatter static Capacitor.* calls through the component tree.
 - **Native-binary/OTA boundary.** Classify the change up front and load `capacitor-release` when it crosses: a web-layer change (HTML/CSS/JS) ships over-the-air, but anything touching the native binary - a new or upgraded Capacitor plugin, a native dependency, native config - forces a fresh store submission and a build-number bump, and shapes the version-gating of any OTA channel.
 - **Deep-link and push routing.** Design one appUrlOpen-to-Angular-Router mapping shared by pushNotificationActionPerformed, unmatched paths guarded to a fallback route; treat the push token as rotating (re-register on start/resume, re-send on change, unregister on logout).
+- **Unwatched console on device.** A device console is unreachable in the field: a task's failure exits (a rejected sync, a permission denial, a native fallback taken) route through the app's `ErrorHandler` and a logging service that ships to the configured sink when online and queues in the offline store when not, keyed to the request or entity id - never a token, a payload or location data.
 
 ## Don't game it
 Tasks must be genuinely independent and parallel-safe, with contracts explicit enough that two implementers working at once cannot step on each other; a task boundary that is fuzzy is not done.

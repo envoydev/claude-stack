@@ -138,3 +138,29 @@ test('fails open on a missing transcript, unparseable input, and an unknown even
     const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
     assert.strictEqual(r.status, 0);
 });
+
+test('a plain-string user turn asking for depth lifts the cap', () => {
+    const p = path.join(TMP, 'string-user.jsonl');
+    fs.writeFileSync(p, [
+        JSON.stringify({ type: 'user', message: { role: 'user', content: 'розкажи детально' } }),
+        JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: WALL }] } }),
+    ].join('\n') + '\n');
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p }).status, 0);
+});
+
+test('the hard cap is a boundary: 1800 characters pass, 1801 block', () => {
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: transcript('cap-at', 'ok?', [{ type: 'text', text: 'x'.repeat(1800) }]) }).status, 0);
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: transcript('cap-over', 'ok?', [{ type: 'text', text: 'x'.repeat(1801) }]) }).status, 2);
+});
+
+test('last_assistant_message is measured ahead of a lagging transcript', () => {
+    // The harness documents the transcript as written asynchronously: here it still holds the
+    // previous turn's short answer while the payload field carries this turn's wall of text.
+    const p = transcript('lag', 'did the build pass?', [{ type: 'text', text: SHORT }]);
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p }).status, 0, 'the transcript alone is short');
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p, last_assistant_message: WALL }).status, 2, 'the field carries the wall');
+    const d = transcript('lag-depth', 'walk me through it', [{ type: 'text', text: SHORT }]);
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: d, last_assistant_message: WALL }).status, 0, 'the depth ask still comes from the transcript');
+    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: path.join(TMP, 'absent.jsonl'), last_assistant_message: WALL }).status, 0,
+        'no transcript means no user message to judge - fail open');
+});

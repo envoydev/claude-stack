@@ -121,7 +121,7 @@ test('CLI: an unknown name prints an unknown: line and never reaches the emitted
 
 const { evaluatePrereqs } = require('./stack-select.js');
 
-const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { SENTRY_ACCESS_TOKEN: true, CONTEXT7_API_KEY: true } };
+const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { SENTRY_SLUG: true, SENTRY_ACCESS_TOKEN: true, CONTEXT7_API_KEY: true } };
 const emptyEnv = { bins: {}, envs: {} };
 
 test('phase-1 hard prereqs are blockers when the binary is absent', () => {
@@ -134,15 +134,21 @@ test('phase-1 hard prereqs are blockers when the binary is absent', () => {
     assert.strictEqual(r.ok, false);
 });
 
-test('a selected sentry mcp without its token warns, never blocks; with it, clean', () => {
-    // warning by design: registration is secret-free, only runtime auth needs the token -
-    // as a blocker it cost ~90min/7 aborted runs and invited ad hoc bypasses (audit 2026-07-31)
+test('a selected sentry mcp warns for its slug and (token mode) its token, never blocks; with both, clean', () => {
+    // warnings by design: the registration is secret-free, only runtime needs the values -
+    // as a blocker the token cost ~90min/7 aborted runs and invited ad hoc bypasses (audit 2026-07-31)
     const sel = { skills: [], mcps: ['sentry'], plugins: [] };
-    const missing = evaluatePrereqs(sel, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: {} }, {});
-    assert.ok(!missing.blockers.some(b => /Sentry/i.test(b.need)), 'sentry token must not block');
-    assert.ok(missing.warnings.some(b => /Sentry/i.test(b.need)), 'sentry token warns');
-    const present = evaluatePrereqs(sel, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: { SENTRY_ACCESS_TOKEN: true } }, {});
-    assert.ok(!present.warnings.some(b => /Sentry/i.test(b.need)), 'sentry token satisfied');
+    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
+    const missing = evaluatePrereqs(sel, { bins, envs: {} }, {});
+    assert.ok(!missing.blockers.some(b => /Sentry/i.test(b.need)), 'sentry values must not block');
+    assert.ok(missing.warnings.some(b => /Sentry slug/.test(b.need)), 'sentry slug warns');
+    assert.ok(missing.warnings.some(b => /Sentry token/.test(b.need)), 'sentry token warns in the default token mode');
+    // --sentry-oauth registers no header: the token warning goes, the slug warning stays
+    const oauth = evaluatePrereqs(sel, { bins, envs: {} }, { sentryOauth: true });
+    assert.ok(!oauth.warnings.some(b => /Sentry token/.test(b.need)), 'no token warning under oauth');
+    assert.ok(oauth.warnings.some(b => /Sentry slug/.test(b.need)), 'slug still warns under oauth');
+    const present = evaluatePrereqs(sel, { bins, envs: { SENTRY_SLUG: true, SENTRY_ACCESS_TOKEN: true } }, {});
+    assert.ok(!present.warnings.some(b => /Sentry/i.test(b.need)), 'both sentry values satisfied');
 });
 
 test('a .NET skill without the dotnet SDK is a blocker', () => {
@@ -659,4 +665,67 @@ test('a table still renders when --found and --dropped name missing files (advis
     {
         fs.rmSync(dir, { recursive: true, force: true });
     }
+});
+
+// The remote context7 registration sends `${CONTEXT7_API_KEY:-}` - an unset key is the keyless
+// free tier, not an error, and `claude mcp list` stops warning for the `:-` form - so the
+// prerequisite check is the one place a missing key still shows, for either transport.
+test('context7 selected without a key warns for either transport, never blocks; with the key, clean', () => {
+    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
+    const sel = { skills: [], mcps: ['context7'], plugins: [] };
+    for (const opts of [{}, { context7Local: true }])
+    {
+        const r = evaluatePrereqs(sel, { bins, envs: {} }, opts);
+        assert.ok(r.warnings.some(w => /context7 API key/.test(w.need)), `warns without a key (${JSON.stringify(opts)})`);
+        assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
+    }
+    const keyed = evaluatePrereqs(sel, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
+    assert.ok(!keyed.warnings.some(w => /context7/i.test(w.need)), 'a set key satisfies it');
+    const none = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { context7Local: true });
+    assert.ok(!none.warnings.some(w => /context7/i.test(w.need)), 'context7 not selected - no warning');
+});
+
+// A --space install keeps its account under ~/.claude-<space>; the model's shell rarely carries
+// CLAUDE_CONFIG_DIR, so the check must be told which account file to read.
+test('detectEnvironment reads the account settings.json env from --config-dir (a --space account)', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { detectEnvironment } = require('./stack-select.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-acct-'));
+    const saved = process.env.SENTRY_SLUG;
+    delete process.env.SENTRY_SLUG;
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { SENTRY_SLUG: 'acme' } }));
+        assert.strictEqual(detectEnvironment({ configDir: dir }).envs.SENTRY_SLUG, true, 'read from the given account dir');
+        assert.strictEqual(detectEnvironment({ configDir: path.join(dir, 'no-such-account') }).envs.SENTRY_SLUG, false, 'a missing account file reads as unset');
+    }
+    finally
+    {
+        if (saved !== undefined) process.env.SENTRY_SLUG = saved;
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// 'angular' is the display name; the stack key is 'web-angular'. A mistyped --stacks value used
+// to seed nothing silently (every web-angular row rendered '-' with no hint).
+test('CLI: an unknown --stacks name is named on stderr and the table still renders in full', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-stacks-'));
+    const rawFile = path.join(dir, 'raw.json');
+    fs.writeFileSync(rawFile, JSON.stringify({ skills: [], agents: [], rules: [], plugins: [] }));
+    try
+    {
+        const args = [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'), '--table', 'rules', '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json')];
+        const bad = spawnSync('node', [...args, '--stacks', 'angular'], { encoding: 'utf8' });
+        assert.strictEqual(bad.status, 0, bad.stderr);
+        assert.match(bad.stderr, /unknown-stack 'angular'/, 'the unknown key is named');
+        assert.match(bad.stdout, /^total: \d+ rules/m, 'the table still renders with its footer');
+        const good = spawnSync('node', [...args, '--stacks', 'web-angular'], { encoding: 'utf8' });
+        assert.ok(!/unknown-stack/.test(good.stderr), 'a real key is silent');
+        assert.match(good.stdout, /\| angular-conventions\s+\| stack:web-angular/, 'the real key seeds its rows');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

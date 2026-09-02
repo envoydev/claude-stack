@@ -4,8 +4,9 @@ The hub (`SKILL.md`) stays version-agnostic. This file is the orientation map fo
 
 ## Ionic Framework
 
-Floor: Ionic 7. Current: Ionic 8 (needs Angular 16+; the house floor is Angular 17+). Prefer the 8 path.
+Floor: Ionic 7. Current: Ionic 9 (needs Angular 18-22; Ionic 8 needs Angular 16+ - the house floor is Angular 17+ either way). Prefer the 9 path.
 
+- **8 -> 9** (fetch <https://ionicframework.com/docs/updating/9-0>): Angular 16 and 17 dropped (18-22 supported); official zoneless support (Hub: Change detection and zoneless); browserslist floors raised (Chrome / Edge 89, Firefox 75, Safari / iOS 16); on Angular 22's OnPush default Ionic's own components are OnPush-ready and `ng update` migrates existing components to keep their prior behavior - the `IonRouterOutlet` / `IonNav` shell stays `Eager` explicitly (Hub: Change detection and zoneless).
 - **7 -> 8** (fetch <https://ionicframework.com/docs/updating/8-0>):
   - Legacy form syntax removed - `label` / `fill` / `helperText` / `errorText` / `counter` live on `IonInput` / `IonTextarea` / `IonSelect`, never slotted in `IonItem`; the `legacy` property is gone. (Hub: Form controls.)
   - Dark mode: import the dark palette via `dark.always.css` / `dark.class.css` / `dark.system.css`; palettes target `:root`, not `body`. Light defaults now import from `core.css`.

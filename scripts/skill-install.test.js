@@ -291,3 +291,72 @@ test('ps1: -Source installs from a caller-provided checkout and never deletes it
         fs.rmSync(src, { recursive: true, force: true });
     }
 });
+
+// --- Hook wiring pins (installer audit 2026-09: two reproduced defects) -----------------------
+// The settings.json wiring program dedupes PreToolUse entries; keyed on the command alone it never
+// wrote guard-read-whole-file's second (Bash) matcher, so the Bash branch of the read guard was dead
+// in every install. Pin: every HOOKS entry lands under its own matcher, and a rerun changes nothing.
+const hasPython = spawnSync('python3', ['--version'], { encoding: 'utf8' }).status === 0;
+const skipNoPython = hasPython ? false : 'python3 not installed - wiring pin skipped';
+
+function shArray(src, name) {
+    const block = new RegExp(`^${name}=\\(\\n([\\s\\S]*?)^\\)`, 'm').exec(src);
+    assert.ok(block, `${name}=( ... ) block found in the sh installer`);
+    return [...block[1].matchAll(/^\s*"([^"]*)"/gm)].map(m => m[1]);
+}
+
+test('sh wiring: the read guard is wired under BOTH Read and Bash, and a rerun is a no-op', { skip: skipNoPython }, () => {
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    assert.ok(prog, 'embedded wiring program found');
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-wire-'));
+    try
+    {
+        const settings = path.join(work, 'settings.json');
+        fs.writeFileSync(settings, '{}\n');
+        const run = () => spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7', 'serena'], { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        const first = run();
+        assert.strictEqual(first.status, 0, first.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const under = (event, matcher) => (wired.hooks[event] || []).filter(e => (e.matcher || '') === matcher).flatMap(e => e.hooks.map(h => h.command));
+        assert.ok(under('PreToolUse', 'Read').some(c => c.includes('guard-read-whole-file.js')), 'read guard under Read');
+        assert.ok(under('PreToolUse', 'Bash').some(c => c.includes('guard-read-whole-file.js')), 'read guard under Bash (the matcher the command-only dedupe dropped)');
+        assert.ok(under('Stop', '').some(c => c.includes('guard-stop-contract.js')), 'stop contract on Stop');
+        assert.ok(under('UserPromptSubmit', '').some(c => c.includes('guard-answer-length.js')), 'answer budget on UserPromptSubmit');
+        const before = fs.readFileSync(settings, 'utf8');
+        const second = run();
+        assert.strictEqual(second.status, 0, second.stderr);
+        assert.strictEqual(fs.readFileSync(settings, 'utf8'), before, 'second run is byte-identical (idempotent, no duplicate entries)');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});
+
+// macOS ships bash 3.2, where `set -u` + an EMPTY array expansion aborts the script. The update
+// fast path empties HOOKS when no hooks are on disk - pin that the dry run still completes under
+// the oldest bash the README's `bash .claude/claude-stack.sh` can reach.
+test('sh update --installed-only with no hooks on disk completes under the system bash (empty-array guard)', () => {
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-io-'));
+    try
+    {
+        const skill = path.join(work, '.claude', 'skills', 'csharp');
+        fs.mkdirSync(skill, { recursive: true });
+        fs.copyFileSync(path.join(ROOT, 'stack', 'skills', 'csharp', 'SKILL.md'), path.join(skill, 'SKILL.md'));
+        const bash = fs.existsSync('/bin/bash') ? '/bin/bash' : 'bash';
+        const res = spawnSync(bash, [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan'], {
+            cwd: work,
+            encoding: 'utf8',
+            env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work },
+        });
+        assert.strictEqual(res.status, 0, `exit 0 under ${bash}: ${res.stderr}`);
+        assert.match(res.stdout + res.stderr, /csharp/, 'the disk-derived plan names the installed skill');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});

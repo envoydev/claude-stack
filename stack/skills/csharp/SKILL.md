@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/IClock, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router, not here."
+description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router, not here."
 ---
 
 # C# Conventions
@@ -150,7 +150,7 @@ Behavior, I/O, and composition rules.
 ## DateTime and timezones
 - Store and pass `DateTimeOffset`, not `DateTime`, for any value crossing process or DB boundaries.
 - All persisted timestamps in UTC. Convert to local only at the presentation boundary.
-- Never call `DateTime.Now` or `DateTime.UtcNow` directly in business logic. Inject an `IClock` / `ISystemClock` abstraction (or `TimeProvider` on .NET 8+).
+- Never call `DateTime.Now` or `DateTime.UtcNow` directly in business logic. Inject `TimeProvider` - in-box on the floor, and `Microsoft.Bcl.TimeProvider` back-ports it to .NET Framework 4.6.2+ / .NET Standard 2.0 - so a test drives time with `FakeTimeProvider`; a hand-rolled `IClock` stays only where the codebase already has one.
 - Never call `DateTime.Now` for measurements - use `Stopwatch`.
 
 ## Async

@@ -113,3 +113,265 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   assert.equal(call('project-quality-loop', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot), 0, 'an ordinary skill is never gated');
 });
+
+// ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
+const runIn = (hook, payload, opts) =>
+  spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+const BIG_LINES = fs.readFileSync(BIG, 'utf8').split('\n').length;
+const SMALL = path.join(HOOKS, 'guard-fresh-session-start.js'); // well under the 200-line threshold
+const REPO = path.join(__dirname, '..');
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+// A seeded repo whose HEAD sits on a named branch (the force-push guard reads HEAD for a bare push).
+function scratchRepoOn(branch) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'branch-repo-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('symbolic-ref', 'HEAD', `refs/heads/${branch}`);
+  git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n'); git('add', '-A'); git('commit', '-qm', 'seed');
+  return dir;
+}
+// A seeded repo with a CLEAN tree - tests dirty it the way they need.
+function cleanRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clean-repo-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n'); git('add', '-A'); git('commit', '-qm', 'seed');
+  return dir;
+}
+const gateIn = (dir, command, env = {}) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command } }, {
+  env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir,
+}).status;
+const forty = () => Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
+
+test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cumulative cap', () => {
+  const read = (input, session_id) => run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: input, session_id });
+  assert.equal(read({ file_path: BIG }), 2, 'no offset/limit');
+  assert.equal(read({ file_path: BIG, offset: 1, limit: 2000 }), 2, 'a limit spanning the file is a whole-file Read');
+  assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES }), 2, 'limit = the line count');
+  assert.equal(read({ file_path: BIG, offset: 50, limit: 40 }), 0, 'a ranged read');
+  assert.equal(read({ file_path: SMALL }), 0, 'a small file reads whole');
+  assert.equal(read({ file_path: path.join(REPO, 'CLAUDE.md') }), 0, 'a non-source file is not gated');
+  assert.equal(read({ file_path: '/nope/missing.ts' }), 0, 'a missing file lets Read surface its own error');
+  const sid = `cap-${process.pid}-${Date.now()}`;
+  const third = Math.floor(BIG_LINES * 0.3);
+  assert.equal(read({ file_path: BIG, offset: 1, limit: third }, sid), 0, 'first 30%');
+  assert.equal(read({ file_path: BIG, offset: third + 1, limit: third }, sid), 0, 'second 30% - at the cap');
+  assert.equal(read({ file_path: BIG, offset: 2 * third + 1, limit: third }, sid), 2, 'third 30% reconstructs the file');
+  assert.equal(read({ file_path: BIG, offset: 2 * third + 1, limit: third }, `${sid}-other`), 0, 'the cap is per session');
+});
+
+test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and unresolvable paths on Bash', () => {
+  const noRoot = { ...process.env, CLAUDE_PROJECT_DIR: '' };
+  assert.equal(bash('guard-read-whole-file.js', `node -e "console.log(require('fs').readFileSync('${BIG}','utf8'))"`), 2, 'node readFileSync dump');
+  assert.equal(bash('guard-read-whole-file.js', `ruby -e "puts File.read('${BIG}')"`), 2, 'ruby File.read dump');
+  assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} > ${path.join(TMP, 'copy.js')}`), 0, 'a redirect into a file is a copy, not a dump');
+  assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} 2>&1`), 2, 'an fd redirect still prints');
+  assert.equal(bash('guard-read-whole-file.js', `cat ${SMALL} ${BIG}`), 2, 'every file of a multi-file cat is sized');
+  const rel = (payload, cwd) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', ...payload }, { cwd, env: noRoot }).status;
+  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 2, 'a relative path that resolves nowhere fails CLOSED');
+  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 2, 'anchored on the session cwd it is sized - and blocked');
+  assert.equal(rel({ tool_input: { command: 'cat stack/hooks/guard-fresh-session-start.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
+});
+
+test('guard-protected-force-push: the protected-branch matrix', () => {
+  const fp = (c) => bash('guard-protected-force-push.js', c);
+  for (const c of ['git push origin :main', 'git push -d origin develop', 'git push origin +main', 'git -C /tmp/x push --force origin master',
+    'git push --mirror origin', 'git push origin "main" --force', 'git push --force origin refs/heads/main', 'npm test && git push --force origin main',
+    'git push origin HEAD:main --force', 'git push -uf origin main', 'git push --force-with-lease=main:abc origin main', 'git push --all --force',
+    'GIT_SSH_COMMAND=ssh git push -f origin main', 'git push -f origin main; echo done', "git push origin 'main' -d"]) {
+    assert.equal(fp(c), 2, `must block: ${c}`);
+  }
+  for (const c of ['git push --force-with-lease origin feature/x', 'git push origin main', 'git push origin feature:main', 'git push --follow-tags origin main',
+    'echo "git push --force origin main"', 'git commit -m "no git push --force to main"', 'git push origin --delete feature/x', 'git push -u origin feature/x']) {
+    assert.equal(fp(c), 0, `must allow: ${c}`);
+  }
+});
+
+test('guard-protected-force-push: a bare force targets HEAD, judged from the session cwd', () => {
+  const dir = scratchRepoOn('main');
+  const fp = (c, cwd) => run('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd });
+  assert.equal(fp('git push -f', dir), 2, 'bare -f on main');
+  assert.equal(fp('git push', dir), 0, 'a plain push to main is fast-forward work');
+  spawnSync('git', ['-C', dir, 'checkout', '-qb', 'feature/z']);
+  assert.equal(fp('git push -f', dir), 0, 'bare -f on a feature branch');
+  assert.equal(fp('git push -f', TMP), 0, 'outside a repo the guard fails open');
+});
+
+test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
+  const rm = (c) => bash('guard-catastrophic-rm.js', c);
+  for (const c of ['rm -rf /', 'rm -rf /*', 'rm -rf /usr /lib', 'rm -rf .', 'rm -rf ./', 'rm -rf *', 'rm -rf "$HOME"/*', 'rm -rf ${HOME}',
+    'rm -rf /home/../', 'rm -rf $PWD', 'sudo rm -rf /', 'cd x && rm -rf *', 'rm --recursive ~/', 'rm -rf -- /', 'rm -r -f "/"',
+    'rm -rf dist; rm -rf /', 'rm -rf ..', 'rm -rf ../*', 'rm -rf a/../..']) {
+    assert.equal(rm(c), 2, `must block: ${c}`);
+  }
+  for (const c of ['rm -rf bin obj node_modules', 'git commit -m "rm -rf /"', 'rm -f /', 'rm -rf ./build/*', 'rm -rf /tmp/*', 'rm -rf ~/projects',
+    'echo rm -rf /', 'rm -rf ./build 2>&1', 'rm -rf /usr/', 'find . -name "*.o" -delete']) {
+    assert.equal(rm(c), 0, `must allow: ${c}`);
+  }
+});
+
+test('guard-ungated-commit: untracked-only new files are churn, not an empty tree', () => {
+  // The defect this pins: `git diff HEAD` never lists untracked files, so a feature landing in
+  // new files only read as 'nothing to commit' and passed ungated (reproduced).
+  const dir = cleanRepo();
+  for (const f of ['n1.txt', 'n2.txt', 'n3.txt']) fs.writeFileSync(path.join(dir, f), forty());
+  assert.equal(gateIn(dir, 'git add -A && git commit -m "feat: new module"'), 2, 'three 40-line new files are not trivial');
+  fs.unlinkSync(path.join(dir, 'n2.txt')); fs.unlinkSync(path.join(dir, 'n3.txt')); fs.writeFileSync(path.join(dir, 'n1.txt'), 'one line\n');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m "add note"'), 0, 'one small new file is the trivial class');
+});
+
+test('guard-ungated-commit: trivial diffs, clean trees, non-commits and non-repos pass', () => {
+  const dir = cleanRepo();
+  assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a clean tree - let git say so');
+  fs.appendFileSync(path.join(dir, 'seed.txt'), 'fix\n');
+  assert.equal(gateIn(dir, 'git commit -am typo'), 0, 'one file, one line');
+  assert.equal(gateIn(dir, 'git log --grep commit'), 0, 'not a commit');
+  assert.equal(gateIn(TMP, 'git commit -am x'), 0, 'outside a repo the guard fails open');
+});
+
+test('guard-ungated-commit: the receipt states', () => {
+  const dir = scratchRepo();
+  const gate = path.join(dir, '.claude', 'docs', 'flow', 'COMMIT-GATE');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  const receipt = (s) => fs.writeFileSync(gate, s);
+  receipt('WAIVED - "skip the review"\n'); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'WAIVED');
+  receipt('VERIFIED scope\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'VERIFIED without the authorized line');
+  receipt('VERIFIED scope\nauthorized: yes\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'an authorized line with no quoted words');
+  receipt('VERIFIED scope\nauthorized: PENDING - append the words\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a PENDING placeholder');
+  receipt('VERIFIED scope\nauthorized: "commit it"\n'); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'VERIFIED plus quoted consent');
+  const old = (Date.now() - 3 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
+  assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a 3h-old receipt is absent');
+  receipt('garbage\n'); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'an unrecognized first line');
+  fs.unlinkSync(gate);
+  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .claude/docs/flow/COMMIT-GATE && git commit -am x`), 0, 'the atomic write+commit shape carries its receipt');
+  assert.equal(gateIn(dir, `echo 'VERIFIED x' > .claude/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'atomic VERIFIED without authorized:');
+  assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
+  fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under CLAUDE_DOCS_PATH');
+});
+
+test('guard-ungated-commit: a cd or -C into a sibling repo judges THAT tree', () => {
+  const home = cleanRepo();
+  const sib = scratchRepo();
+  assert.equal(gateIn(home, 'git commit -am x'), 0, 'the clean home repo passes');
+  assert.equal(gateIn(home, `cd ${sib} && git commit -am x`), 2, 'cd into the dirty sibling');
+  assert.equal(gateIn(home, `git -C "${sib}" commit -am x`), 2, '-C into the dirty sibling');
+});
+
+test('guard-unapproved-dispatch: the stamp lifecycle', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  const disp = (seat, env = {}) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } }).status;
+  assert.equal(disp('aspnet-implementer'), 2, 'implementer with no stamp');
+  assert.equal(disp('aspnet-solution-designer'), 0, 'a designer needs no stamp');
+  assert.equal(disp('general-purpose'), 0, 'a generic seat outside a flow');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
+  assert.equal(disp('aspnet-implementer'), 0, 'stamped');
+  assert.equal(disp('general-purpose'), 2, 'a generic seat while a flow is stamped');
+  assert.equal(disp('claude'), 2, 'the other generic seat');
+  assert.equal(disp('Explore'), 0, 'a read-only built-in');
+  assert.equal(disp('aspnet-verifier'), 0, 'a verifier');
+  fs.writeFileSync(gate, 'AUTO - "run without stops"\n'); assert.equal(disp('wpf-implementer'), 0, 'the AUTO waiver');
+  fs.writeFileSync(gate, 'approved maybe\n'); assert.equal(disp('wpf-implementer'), 2, 'a first line that is neither APPROVED nor AUTO');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
+  const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
+  assert.equal(disp('wpf-implementer'), 2, 'a 9h-old stamp is absent');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
+  assert.equal(disp('wpf-implementer', { CLAUDE_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_DOCS_PATH');
+});
+
+test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
+  pause(50);
+  const tp = path.join(root, 'session.jsonl');
+  fs.writeFileSync(tp, '{}\n'); pause(20); fs.appendFileSync(tp, '{}\n'); // born after the stamp, then grown like a real transcript
+  const disp = () => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'wpf-implementer' }, transcript_path: tp },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
+  assert.equal(disp(), 2, 'the stamp predates the session');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
+  assert.equal(disp(), 0, 'a stamp written during the session');
+});
+
+test('guard-stop-contract: the AskUserQuestion gate wants a fresh-session option past the threshold, recommended from the second ask', () => {
+  const logDir = fs.mkdtempSync(path.join(TMP, 'asklog-'));
+  const hot = transcript('ask-hot', [assistantRow('h1', 'ok', { cache_read_input_tokens: 160000, input_tokens: 5 })]);
+  const hot2 = transcript('ask-hot2', [assistantRow('h2', 'ok', { cache_read_input_tokens: 200000 })]);
+  const cold = transcript('ask-cold', [assistantRow('c1', 'ok', { cache_read_input_tokens: 140000 })]);
+  const nousage = transcript('ask-nousage', [{ type: 'assistant', message: { id: 'n1', content: [{ type: 'text', text: 'ok' }] } }]);
+  const ask = (tp, options, question = 'Which next?') => runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions: [{ question, options }] } },
+    { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } }).status;
+  const plain = [{ label: 'Continue', description: 'keep going' }, { label: 'Stop', description: 'halt' }];
+  const fresh = [{ label: 'Continue', description: 'keep going' }, { label: 'Resume in a fresh session', description: 'cheaper' }];
+  const freshFirst = [{ label: 'Fresh session (Recommended)', description: 'resume from the plan' }, { label: 'Continue', description: 'x' }];
+  assert.equal(ask(cold, plain), 0, 'under the threshold nothing is required');
+  assert.equal(ask(nousage, plain), 0, 'no usage to judge - fail open');
+  assert.equal(ask(path.join(TMP, 'absent-ask.jsonl'), plain), 0, 'no transcript - fail open');
+  assert.equal(ask(hot, plain), 2, 'past the threshold with no fresh-session option');
+  assert.equal(ask(hot, fresh), 0, 'first qualifying ask: the option may be merely listed');
+  assert.equal(ask(hot, fresh), 2, 'second ask: listed but not recommended');
+  assert.equal(ask(hot, freshFirst), 0, 'recommended - passes');
+  assert.equal(ask(hot2, plain, 'Start a fresh session or continue here?'), 0, 'the question text itself may carry the offer');
+});
+
+test('guard-stop-contract: prose offers, tool-call ends, continuations and unreadable turns', () => {
+  const stop = (tp, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, ...extra });
+  assert.equal(stop(transcript('p1', [assistantRow('a', 'Patch is ready. Say the word and I will push it.')])), 2, "'say the word'");
+  assert.equal(stop(transcript('p2', [assistantRow('a', 'All green. Want me to open the PR?')])), 2, "'want me to'");
+  assert.equal(stop(transcript('p3', [{ type: 'assistant', message: { id: 'b', content: [{ type: 'text', text: 'Want me to push?' }, { type: 'tool_use', id: 't', name: 'Bash', input: {} }] } }])), 0, 'ended on a tool call');
+  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), { stop_hook_active: true }), 0, 'a continuation we caused');
+  assert.equal(stop(path.join(TMP, 'absent-stop.jsonl')), 0, 'missing transcript');
+  assert.equal(stop(transcript('p5', [{ type: 'assistant', message: { id: 'c', content: [{ type: 'thinking', thinking: 'hm' }] } }])), 0, 'no text at all');
+  assert.equal(stop(transcript('p6', [assistantRow('a', 'Is it safe? Yes - the guard fails closed.')])), 0, 'a question answered in the same breath');
+  assert.equal(run('guard-stop-contract.js', { hook_event_name: 'PreCompact' }), 0, 'an unrelated event');
+});
+
+test('guard-stop-contract: last_assistant_message wins over a lagging transcript', () => {
+  // The harness documents the transcript as written asynchronously: here it still holds the
+  // PREVIOUS turn's clean close while the payload field carries this turn's decision stop.
+  const lag = transcript('lag', [assistantRow('old', 'Fixed and committed; nothing pending.')]);
+  const stop = (extra) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: lag, ...extra });
+  assert.equal(stop({}), 0, 'the transcript alone reads clean');
+  assert.equal(stop({ last_assistant_message: 'Two options for the deploy target. Which one should we go with?' }), 2, 'the field carries the decision stop');
+  assert.equal(stop({ last_assistant_message: 'Fixed and committed; nothing pending.' }), 0, 'a clean close in the field');
+  assert.equal(stop({ last_assistant_message: '' }), 0, 'an empty field falls back to the transcript');
+});
+
+test('guard-fresh-session-start: other tools, unreadable transcripts, the name field and the exact threshold', () => {
+  const hot = transcript('fs-hot', [assistantRow('m', 'ok', { cache_read_input_tokens: 300000 })]);
+  const call = (payload) => run('guard-fresh-session-start.js', payload);
+  assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'project-solve-task' }, transcript_path: hot }), 2, 'the name field spelling');
+  const edge = transcript('fs-edge', [assistantRow('m', 'ok', { cache_read_input_tokens: 150000 })]);
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-solve-task' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
+  const sum = transcript('fs-sum', [assistantRow('m', 'ok', { cache_read_input_tokens: 100000, cache_creation_input_tokens: 40000, input_tokens: 10001 })]);
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-solve-task' }, transcript_path: sum }), 2, 'the three usage fields add up');
+});
+
+test('instrument-tool-usage: off by default, one JSONL row per call when switched on, never blocks', () => {
+  const log = path.join(TMP, 'ledger.jsonl');
+  const inst = (payload, env) => runIn('instrument-tool-usage.js', payload, { env: { ...process.env, CLAUDE_STACK_INSTRUMENT_LOG: log, ...env } }).status;
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '0' }), 0);
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '' }), 0);
+  assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: 'true' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__serena__find_symbol', 'serena']]);
+  assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
+  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'instrument-tool-usage.js')], { input: 'not json', encoding: 'utf8',
+    env: { ...process.env, CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
+  const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
+  assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
+    { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_DOCS_PATH: 'docs' }), 0);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
+});

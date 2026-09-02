@@ -50,7 +50,7 @@ or you pay for the wrong tool:
 ## The CLI is the lever; the Nx MCP is optional
 - Prefer teaching the CLI (this skill) over the Nx MCP server - `nx show` / `nx affected` output is
   leaner than large JSON payloads over MCP. If you do run the MCP, keep it in minimal mode
-  (`--minimal`) and prune tools via `.nx/nx-mcp-config.json` so its schemas do not bloat every request;
+  (`--minimal`, the default - never `--no-minimal` for workspace analysis) and prune tools with `--tools` globs so its schemas do not bloat every request;
   reserve it for Nx Cloud connectivity and running processes, not workspace analysis.
 - `npx nx configure-ai-agents` lays down the agent config once - keep the MCP minimal afterward.
 

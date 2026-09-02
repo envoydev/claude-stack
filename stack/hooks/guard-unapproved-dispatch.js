@@ -48,8 +48,15 @@ try {
   // age cap alone let one through: five implementer dispatches ran on a stamp a different,
   // already-closed session wrote 2h52m earlier - inside 8h, so the gate saw consent that this
   // run never gave (measured). The stamp is the dispatching session's own or it is not consent.
+  // birthtime is real only where the filesystem reports it - Node documents that elsewhere the
+  // field falls back to the ctime (or the epoch). A transcript's ctime is its LAST write, which
+  // would date every stamp before the session and block every dispatch with a false 'stale';
+  // a birthtime equal to the ctime is that fallback and counts as unknown (the age cap still holds).
   let sessionStartMs = 0;
-  try { sessionStartMs = fs.statSync(String(payload.transcript_path || '')).birthtimeMs || 0; } catch { sessionStartMs = 0; }
+  try {
+    const st = fs.statSync(String(payload.transcript_path || ''));
+    sessionStartMs = st.birthtimeMs && st.birthtimeMs !== st.ctimeMs ? st.birthtimeMs : 0;
+  } catch { sessionStartMs = 0; }
   if (age > MAX_STAMP_AGE_MS || (sessionStartMs && stampMs < sessionStartMs)) {
     stale = true;
   } else {

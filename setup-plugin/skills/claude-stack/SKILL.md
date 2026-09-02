@@ -27,5 +27,6 @@ the flow yourself:
   `${CLAUDE_PLUGIN_ROOT}/references/post-install.md`.
 
 Answer with the command plus one line naming the state you found (for example: 'no `.claude/skills`
-here - run `/claude-stack:setup`'). When more than one reading is plausible, ask the user which
-they want instead of guessing.
+here - run `/claude-stack:setup`'). When more than one reading is plausible, put the candidates
+through AskUserQuestion - one option per plausible command, the likeliest marked Recommended -
+instead of guessing or asking in prose.

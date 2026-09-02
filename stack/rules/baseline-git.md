@@ -39,7 +39,7 @@ commit; found later they become fixup noise or shipped defects. Skip for typos /
 formatting-only diffs - and for a diff an equivalent-or-stronger check just cleared: the active
 quality-loop's own dispatched re-verify plus final gate, or the cross-task flow's domain-verifier
 sign-offs plus the `integration-reviewer` final gate (a self-granted skip on any other reasoning
-is not this exemption). The review half may also run as a DISPATCHED domain-verifier pass over
+is not this exemption; the security-review half follows `baseline-security.md`'s own carve-out). The review half may also run as a DISPATCHED domain-verifier pass over
 exactly this diff - the right call when the session's carried context is already heavy, since the
 seat reviews from a clean context - and its sign-off satisfies the checkpoint the same way. Either
 way the review is a real invocation THIS session: a receipt claiming 'project-verify-code inline'

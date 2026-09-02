@@ -6,7 +6,7 @@
 
 ## Angular sequencing
 
-Angular does not support skipping majors - a v15->v18 plan steps v15->16->17->18 with `ng update @angular/core @angular/cli` at each step. The peer matrix (`@angular/cli` + `core` + `@angular/material` + `zone.js` + `typescript` + `rxjs` and the Node engine) is a precondition - a version outside a major's supported range fails at install before any code runs. Route the schematic-backed migrations (`HttpClientModule` -> `provideHttpClient`, standalone components, `*ngIf` -> `@if`, RxJS `toPromise()` removal) to `ng update`, never a hand edit. Load `frontend`/`angular-conventions` for the resulting code; do not reach for the .NET playbook on an Angular bump.
+Angular does not support skipping majors - a v15->v18 plan steps v15->16->17->18 with `ng update @angular/core @angular/cli` at each step. The peer matrix (`@angular/cli` + `core` + `@angular/material` + `zone.js` + `typescript` + `rxjs` and the Node engine) is a precondition - a version outside a major's supported range fails at install before any code runs. Version-bound migrations run inside `ng update`; the opt-in ones - control flow, standalone, and whatever else the current Angular migrations reference lists (fetch that roster via context7 at PLAN time, never from recall) - run as `ng generate @angular/core:<migration>` after the bump. A deprecation no schematic covers (a removed RxJS operator, a retired module API) is a planned hand edit; a hand edit of something a schematic covers is a finding against the plan. Load `frontend`/`angular-conventions` for the resulting code; do not reach for the .NET playbook on an Angular bump.
 
 ## Package majors (either stack)
 

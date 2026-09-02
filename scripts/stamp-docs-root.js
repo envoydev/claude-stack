@@ -6,7 +6,8 @@
 // after an env change without re-running the installer (the installers stamp fresh copies with
 // their own embedded logic; this script is the between-runs re-stamp).
 //
-// Usage: node stamp-docs-root.js [project-root]   (default: cwd)
+// Usage: node stamp-docs-root.js [project-root]        (default: cwd - rules/ + settings.json under <root>/.claude)
+//        node stamp-docs-root.js --claude-dir <dir>    (a global install: the account dir itself, e.g. ~/.claude-work)
 // Exit 0 always - a missing rule file or unreadable settings is a fail-soft no-op with a message.
 
 const fs = require('node:fs');
@@ -28,15 +29,17 @@ function resolveDocsRoot(settingsFile)
     }
 }
 
-function stamp(root)
+// claudeDir holds rules/ + settings.json: <project>/.claude for a project install, the account dir
+// (~/.claude, ~/.claude-<space>) for a global one.
+function stampDir(claudeDir)
 {
-    const ruleFile = path.join(root, '.claude', 'rules', 'baseline-docs-root.md');
+    const ruleFile = path.join(claudeDir, 'rules', 'baseline-docs-root.md');
     if (!fs.existsSync(ruleFile))
     {
         console.log(`stamp-docs-root: no ${ruleFile} - nothing to stamp`);
         return;
     }
-    const val = resolveDocsRoot(path.join(root, '.claude', 'settings.json'));
+    const val = resolveDocsRoot(path.join(claudeDir, 'settings.json'));
     const text = fs.readFileSync(ruleFile, 'utf8');
     if (!STAMP_RE.test(text))
     {
@@ -47,6 +50,17 @@ function stamp(root)
     console.log(`stamp-docs-root: stamped '${val}' into ${ruleFile}`);
 }
 
-if (require.main === module) stamp(path.resolve(process.argv[2] || '.'));
+function stamp(root)
+{
+    stampDir(path.join(root, '.claude'));
+}
 
-module.exports = { stamp, resolveDocsRoot };
+if (require.main === module)
+{
+    const argv = process.argv.slice(2);
+    const i = argv.indexOf('--claude-dir');
+    if (i >= 0 && argv[i + 1]) stampDir(path.resolve(argv[i + 1]));
+    else stamp(path.resolve(argv.find(a => !a.startsWith('--')) || '.'));
+}
+
+module.exports = { stamp, stampDir, resolveDocsRoot };

@@ -9,6 +9,8 @@
 //
 // Stop wiring: a turn that ends on a decision-shaped question in PROSE (no AskUserQuestion
 //   call in the final assistant message) is blocked - the model re-emits it as the tool call.
+//   The text judged is the payload's `last_assistant_message` (the harness's own copy of the
+//   turn's final text); the transcript tail is the fallback for a build that does not send it.
 // PreToolUse (AskUserQuestion) wiring: once the session's context passes the threshold, an
 //   option list with no fresh-session/resume entry is malformed per the stop contract - the
 //   call is denied with the rebuild instruction.
@@ -83,13 +85,20 @@ function breadcrumb(why) {
 
 if (payload.hook_event_name === 'Stop') {
   if (payload.stop_hook_active) process.exit(0); // continuation we caused - never loop
-  const last = lastAssistantMessage();
-  if (!last) { breadcrumb('Stop: no assistant message readable - passing'); process.exit(0); }
-  const blocks = last.message.content;
-  const hasToolUse = blocks.some((b) => b && b.type === 'tool_use');
-  if (hasToolUse) process.exit(0); // the turn ended on a tool call, not prose
-  const text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
-  if (!text.trim()) { breadcrumb('Stop: merged message carries no text - passing'); process.exit(0); }
+  // The harness sends the turn's final text as `last_assistant_message` (Stop / SubagentStop) and
+  // documents the transcript as written ASYNCHRONOUSLY - it can lag the in-memory turn, which is
+  // how a live decision stop reads as the previous turn's clean close. The field wins; the
+  // transcript tail is the fallback for a build that does not send it.
+  let text = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '';
+  if (!text.trim()) {
+    const last = lastAssistantMessage();
+    if (!last) { breadcrumb('Stop: no assistant message readable - passing'); process.exit(0); }
+    const blocks = last.message.content;
+    const hasToolUse = blocks.some((b) => b && b.type === 'tool_use');
+    if (hasToolUse) process.exit(0); // the turn ended on a tool call, not prose
+    text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+    if (!text.trim()) { breadcrumb('Stop: merged message carries no text - passing'); process.exit(0); }
+  }
   const tail = text.slice(-1500); // the offer lives at the end of the turn
   // The phrase list only ever covered the shapes MEASURED in the corpus, so an ordinary
   // decision question ('What's the deploy target?', 'Which one should we go with?') walked

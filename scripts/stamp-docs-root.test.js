@@ -50,3 +50,18 @@ test('missing rule file is a fail-soft no-op with exit 0', () => {
     const out = run(root);
     assert.match(out, /nothing to stamp/);
 });
+
+// A global install keeps rules/ + settings.json in the account dir (no <root>/.claude between).
+test('--claude-dir stamps a global install from the account dir itself', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-acct-'));
+    try
+    {
+        fs.mkdirSync(path.join(dir, 'rules'), { recursive: true });
+        fs.copyFileSync(SOURCE_RULE, path.join(dir, 'rules', 'baseline-docs-root.md'));
+        fs.writeFileSync(path.join(dir, 'settings.json'), '{"env":{"CLAUDE_DOCS_PATH":"global/docs"}}');
+        execFileSync('node', [SCRIPT, '--claude-dir', dir], { encoding: 'utf8' });
+        const line = fs.readFileSync(path.join(dir, 'rules', 'baseline-docs-root.md'), 'utf8').split('\n').find(l => l.includes("This install's root"));
+        assert.match(line, /This install's root: `global\/docs`/);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

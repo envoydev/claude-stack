@@ -40,7 +40,7 @@ implementer inherits the answer.
    interface with one implementation forever is the classic shape.
 2. **High cohesion, low coupling - the placement test.** Everything a task owns changes for the same
    reason. A task boundary that splits one axis of change across two seats, or bundles two axes into
-   one, is the wrong boundary - redraw it before dispatch, not after.
+   one, is the wrong boundary - redraw it before the build starts, not after.
 3. **Program to an interface at boundaries ONLY.** A seam belongs where one really exists: an
    external system, something the tests mock, something with two implementations or a credible
    second. An interface mirroring every class is ceremony, and a fat interface whose consumers use a
@@ -62,6 +62,22 @@ implementer inherits the answer.
 SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast comment - never the
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
+
+**Observability is designed at the seams, never sprinkled by the implementer.** Stamp each task
+card with `log_points` - where a line goes, at what level, carrying which identifiers: the boundary
+crossings the task owns (an inbound request, message or job run's start and outcome; an outbound call
+to an external system; a persistence write), the decision points a reader would need to reconstruct
+the path (a retry, a fallback, a rejected input, a state transition), and every failure exit. Level by
+who acts: error means someone acts now, warning means degraded but handled, information means a
+business-significant event, debug means investigation only. The message carries the join keys an
+investigator needs - the correlation or trace id, the entity id - and never a secret, a token, a
+payload, or personal data beyond the project's policy. A failure is logged ONCE, at the boundary that
+handles it, never log-and-rethrow at each layer; a background job, a fire-and-forget or a swallowed
+catch with no log point is a silent failure, and a design defect. Where the framework already emits
+the event (request logging, client logging) the card says so instead of duplicating it. A task with
+no failure exit of its own stamps `log_points: none - <reason>` - an absent field and a considered
+none must never look alike. Every point goes through the repo's existing logging seam and message
+convention - name the precedent on the card, never a second logger.
 
 ## Failure modes I hunt
 A worker designer settles the host; an SCM architect designs OUT the traps that make a service invisible or unrecoverable in production. I design each one out, in this order:

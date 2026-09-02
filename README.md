@@ -57,7 +57,8 @@ project; outside one it offers a global install from the recommended set),
 `/claude-stack:update` refreshes an existing one to the newest release and prunes what the stack
 removed upstream, `/claude-stack:configure` adjusts it (add or drop items), and
 `/claude-stack:validate` reconciles an install against THIS project - prunes what its frameworks do
-not use and adds the detected stacks' missing artifacts, a per-layer walk (project mode only).
+not use and adds the detected stacks' missing artifacts, a per-layer walk (project mode only); and
+`/claude-stack:status` shows the install read-only, one table per area.
 Setup and configure walk the selection one layer at a time (rules ->
 agents -> skills -> hooks -> MCPs -> plugins) as numbered full-catalog tables, locking only what
 something kept still requires - always with the reason shown. A deterministic evidence scan of
@@ -81,7 +82,7 @@ bash .claude/claude-stack.sh install                 # first time
 bash .claude/claude-stack.sh update --installed-only # later refreshes - only what is already installed, from disk
 bash .claude/claude-stack.sh install --skills-only   # just the skills, nothing else
 
-# Named flags (any order): --space, --scope, --context7, --github-cli, --keep-pins, --installed-only
+# Named flags (any order): --space, --scope, --context7, --sentry-slug, --sentry-auth, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
 bash .claude/claude-stack.sh install --space work --scope global --context7 local
 ```
 

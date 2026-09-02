@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the claude-stack plugin.",
-    "version": "0.2.32"
+    "version": "0.2.34"
   },
   "plugins": [
     {
       "name": "claude-stack",
       "source": "./setup-plugin",
-      "description": "The Claude Code stack, guided: setup (fresh install from scratch) + update (refresh + prune upstream removals) + configure (adjust the selection), all selection-driven with prerequisite checks.",
+      "description": "The Claude Code stack, guided: setup (fresh install from scratch) + update (refresh + prune upstream removals) + configure (adjust the selection) + validate (reconcile to the project) + status (read-only per-area inventory), all selection-driven with prerequisite checks.",
       "category": "development",
       "tags": [
         "setup",

@@ -839,7 +839,6 @@
         "frontend",
         "ionic-security",
         "mobile",
-        "project-quality-loop",
         "typescript"
       ],
       "skillsSource": "body",
@@ -1216,7 +1215,9 @@
     },
     "baseline-security": {
       "skills": [],
-      "agents": [],
+      "agents": [
+        "integration-reviewer"
+      ],
       "mcps": [],
       "plugins": [],
       "paths": []
@@ -1246,8 +1247,8 @@
         "**/*.Dockerfile",
         "**/docker-compose*.yml",
         "**/docker-compose*.yaml",
-        "**/compose.yml",
-        "**/compose.yaml",
+        "**/compose*.yml",
+        "**/compose*.yaml",
         "**/.github/workflows/*.yml",
         "**/.github/workflows/*.yaml"
       ]

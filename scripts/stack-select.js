@@ -68,16 +68,24 @@ const HARD_PREREQS = [
 // Phase 2 - only checked when 'when' matches the closed selection / options.
 // severity: 'blocker' (a kept item will not work) or 'warning' (soft/optional).
 const SCOPED_PREREQS = [
-    // warning, not blocker: registration is secret-free (the header keeps ${SENTRY_ACCESS_TOKEN}
-    // literal, expanded at launch) - only runtime auth needs the token. Measured: as a blocker it
-    // cost ~90min/7 aborted runs in one session and invited ad hoc bypasses in three more.
-    { when: { mcp: 'sentry' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'export SENTRY_ACCESS_TOKEN=...' },
+    // The sentry registration reads both values from the ACCOUNT settings.json env at launch (or the launch
+    // shell; a project-level settings.json never reaches .mcp.json expansion - measured), so
+    // detectEnvironment() probes that file too. Warnings, not blockers: the registration is secret-free (the
+    // placeholders stay literal in .mcp.json) - only runtime needs the values. As a blocker the token cost
+    // ~90min/7 aborted runs in one session and invited ad hoc bypasses in three more.
+    { when: { mcp: 'sentry' }, env: 'SENTRY_SLUG', severity: 'warning', need: 'Sentry slug', how: 'add SENTRY_SLUG=<org> (or <org>/<project>) to the account settings.json env - the sentry MCP URL reads it (--sentry-slug seeds it)' },
+    // token mode only (the default; --sentry-oauth registers no header and needs no token)
+    { when: { mcp: 'sentry', unlessOption: 'sentryOauth' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'add SENTRY_ACCESS_TOKEN (a personal/org API token) to the account settings.json env - or install with --sentry-auth oauth' },
     { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls' },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { mcp: 'chrome-devtools' }, bin: 'chrome', severity: 'warning', need: 'Chrome / Chromium', how: 'install Google Chrome or Chromium' },
     { when: { mcp: 'appium-mcp' }, bin: 'appium', severity: 'warning', need: 'Appium + native SDKs', how: 'install Appium and the Xcode / Android SDK / Java toolchain' },
-    { when: { option: 'context7Local' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'export CONTEXT7_API_KEY=... (or use --context7 remote)' },
+    // Advisory for BOTH transports: the remote registration sends `${CONTEXT7_API_KEY:-}` (unset = an
+    // empty header = the keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on
+    // every call), and `claude mcp list` no longer warns for the `:-` form - so this line is the one
+    // place a missing key shows up at install time.
+    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env (remote: optional, higher rate limits; local: export it or bake it) - unset = the keyless free tier' },
     { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 
@@ -92,6 +100,7 @@ function evaluatePrereqs(selection, env, options)
 
     const matches = when =>
     {
+        if (when.unlessOption && options[when.unlessOption]) return false;
         if (when.mcp) return mcps.has(when.mcp);
         if (when.plugin) return plugins.has(when.plugin);
         if (when.skillPrefix) return [...skills].some(s => s.startsWith(when.skillPrefix));
@@ -158,14 +167,34 @@ function onPath(bin)
 // Impure - probe the current machine. bins: is the command on PATH; envs: is
 // the variable set and non-empty. Kept thin; the pure evaluator is the tested
 // part. Extend the probe lists as the prereq map grows.
-function detectEnvironment()
+function accountSettingsEnv(configDir)
 {
+    // The env block of the ACCOUNT settings.json (--config-dir, else CLAUDE_CONFIG_DIR, else ~/.claude) -
+    // the one file whose env reaches .mcp.json ${VAR} expansion at launch (measured; a project-level
+    // settings.json does not). A --space install keeps its account under ~/.claude-<space>, and the
+    // model's shell rarely carries CLAUDE_CONFIG_DIR, so the guided commands pass the dir explicitly.
+    const os = require('os');
+    const p = require('path');
+    const dir = configDir || process.env.CLAUDE_CONFIG_DIR || p.join(os.homedir(), '.claude');
+    try
+    {
+        const env = JSON.parse(fs.readFileSync(p.join(dir, 'settings.json'), 'utf8')).env;
+        return env && typeof env === 'object' ? env : {};
+    }
+    catch { return {}; }
+}
+
+function detectEnvironment(opts)
+{
+    opts = opts || {};
     const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'chrome', 'appium', 'brew'];
-    const ENVS = ['SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
+    const ENVS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
+    const acct = accountSettingsEnv(opts.configDir);
+    const set = v => typeof v === 'string' && v.trim() !== '';
     const envs = {};
-    for (const e of ENVS) envs[e] = typeof process.env[e] === 'string' && process.env[e].trim() !== '';
+    for (const e of ENVS) envs[e] = set(process.env[e]) || set(acct[e]);
     return { bins, envs };
 }
 
@@ -530,6 +559,19 @@ function main(argv)
         try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
         catch (e) { console.error(`stack-select: warning - cannot read ${flag} ${file} (${e.code || e.message}); continuing without it`); return null; }
     };
+    // --stacks names are recommendation keys. An unknown one - a typo, or a display name such as
+    // 'angular' for 'web-angular' - would silently seed nothing and flag nothing (measured), so it is
+    // named on stderr; the run continues and the table stays paste-clean.
+    const parseStacks = recs =>
+    {
+        const stacks = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        const known = new Set(Object.keys((recs && recs.stacks) || {}));
+        for (const s of stacks)
+        {
+            if (recs && !known.has(s)) console.error(`stack-select: unknown-stack '${s}' - not a stack key in recommendations.json (${[...known].sort().join(', ')}); it seeds and flags nothing`);
+        }
+        return stacks;
+    };
     const graphPath = arg('--graph') || path.join(__dirname, '..', 'meta', 'stack-graph.json');
     let graph;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
@@ -542,7 +584,7 @@ function main(argv)
         const installed = readJson('--installed', arg('--installed'));
         const recs = readJson('--recs', arg('--recs'));
         if (!installed || !recs) { console.error('stack-select: --redundant needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
-        const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        const detected = parseStacks(recs);
         for (const r of findStackRedundant(graph, recs, installed, detected))
             console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
         return;
@@ -574,7 +616,7 @@ function main(argv)
         const recs = readJson('--recs', arg('--recs'));
         if (recs)
         {
-            const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+            const detected = parseStacks(recs);
             for (const m of findStackMissing(graph, recs, installed, detected)) covered.add(`${m.category}:${m.name}`);
         }
         for (const m of gaps.missing)
@@ -599,14 +641,14 @@ function main(argv)
         const installed = readJson('--installed', arg('--installed'));
         const recs = readJson('--recs', arg('--recs'));
         if (!installed || !recs) { console.error('stack-select: --missing needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
-        const detected = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        const detected = parseStacks(recs);
         for (const m of findStackMissing(graph, recs, installed, detected))
             console.log(`missing: ${m.category} ${m.name} - needed by ${m.neededBy}, not installed`);
         return;
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--github-cli] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -641,7 +683,7 @@ function main(argv)
         const installed = readJson('--installed', arg('--installed'));
         const droppedForTable = readJsonSoft('--dropped', arg('--dropped'));
         const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
-        const stacks = (arg('--stacks') || '').split(',').map(s => s.trim()).filter(Boolean);
+        const stacks = parseStacks(recs);
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
         const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence });
@@ -661,7 +703,7 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment(), { context7Local: has('--context7-local'), githubCli: has('--github-cli') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { context7Local: has('--context7-local'), sentryOauth: has('--sentry-oauth'), githubCli: has('--github-cli') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
         if (!report.ok) process.exit(1);

@@ -32,7 +32,7 @@ A test returns the `Verify(...)` task; the method name becomes the file name.
 
 ```csharp
 [Fact]
-public Task VerifyUserDto()
+public Task UserDto_Matches_Approved_Snapshot()
 {
     var user = new UserDto("user-123", "John Doe", "john@example.com");
     return Verify(user);

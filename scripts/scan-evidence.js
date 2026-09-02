@@ -99,6 +99,14 @@ function collectPackages(root, files)
     return out;
 }
 
+// A catalog regex that does not compile must not take the whole scan down with a stack trace (the
+// lint checks names and labels, not regex syntax): name it on stderr and skip that one signal.
+function safeRegex(source, where)
+{
+    try { return new RegExp(source); }
+    catch (e) { console.error(`scan-evidence: skipping ${where} - invalid regex /${source}/ (${e.message})`); return null; }
+}
+
 function scan(root, catalog)
 {
     const files = walk(root);
@@ -123,13 +131,15 @@ function scan(root, catalog)
             }
             if (!hit) for (const c of entry.csprojContent || [])
             {
-                const re = new RegExp(c.regex);
+                const re = safeRegex(c.regex, `${layer} ${name} csprojContent`);
+                if (!re) continue;
                 const f = dotnetManifests.find(x => { const t = readCapped(x); return t !== null && re.test(t); });
                 if (f) { hit = `${c.label || c.regex} in ${path.relative(root, f)}`; break; }
             }
             if (!hit) for (const c of entry.content || [])
             {
-                const re = new RegExp(c.regex);
+                const re = safeRegex(c.regex, `${layer} ${name} content`);
+                if (!re) continue;
                 const f = files.find(x => basenameMatches(c.glob, x) && (t => t !== null && re.test(t))(readCapped(x)));
                 if (f) { hit = `${c.label || c.regex} in ${path.relative(root, f)}`; break; }
             }

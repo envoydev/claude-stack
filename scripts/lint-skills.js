@@ -28,8 +28,7 @@
 //      ORDER (not just a different set);
 //   9. the on-disk agents/*.md set diverging from the agents the
 //      installers fetch (the AGENTS manifest array).
-// Also verifies the require-convention-skill hook only demands skills that exist,
-// that every NON_SKILL_TOKENS allowlist entry is still actually used (no dead
+// Also verifies that every NON_SKILL_TOKENS allowlist entry is still actually used (no dead
 // config), that rules/*.md + agents/*.md frontmatter parses as
 // strict YAML with the required keys (an unquoted ': ' scalar breaks GitHub
 // rendering and strict parsers - the skills already get this via check 1),
@@ -53,7 +52,6 @@ const STACK_HTML = path.join(ROOT, 'docs', 'claude-stack.html');
 const AGENTS_DIR = path.join(ROOT, 'stack', 'agents');
 const CLAUDE_TEMPLATE = path.join(ROOT, 'stack', 'CLAUDE.template.md');
 const CLAUDE_RULES_DIR = path.join(ROOT, 'stack', 'rules');
-const CONVENTION_HOOK = path.join(ROOT, 'stack', 'hooks', 'require-convention-skill.js');
 const PLUGIN_MARKETPLACE_URLS = new Set([
     'https://github.com/anthropics/claude-plugins-official',
     'https://github.com/jarrodwatts/claude-hud',
@@ -734,29 +732,6 @@ function main()
         }
     }
 
-    // 7. The convention hook only demands skills that exist locally. A gated
-    //    skill is a quoted token inside a suffix's owner array (the `: [...]`
-    //    value); the suffix keys themselves (`'.cs'` &c.) are not skills.
-    if (fs.existsSync(CONVENTION_HOOK))
-    {
-        const hookText = fs.readFileSync(CONVENTION_HOOK, 'utf8');
-        const gated = new Set();
-        for (const arr of hookText.matchAll(/:\s*\[([^\]]*)\]/g))
-        {
-            for (const m of arr[1].matchAll(/'([a-z0-9-]+)'/g))
-            {
-                gated.add(m[1]);
-            }
-        }
-
-        for (const name of gated)
-        {
-            if (!dirs.includes(name))
-            {
-                flag(`hooks/require-convention-skill.js gates on '${name}' but skills/${name}/ does not exist`);
-            }
-        }
-    }
 
     // 8-10. The agent scripts are the source of truth for EVERYTHING in use:
     // skills, plugins, and MCPs (claude-stack.sh == claude-stack.ps1 for all

@@ -45,7 +45,7 @@ Build the extension union from the agents' **Language + extensions** sections ON
 2. `__STYLE_CORE__` -> the condensed essence of the merge: each language's Enforced + Idioms as tight bullets (keep 'uncertain'/'inconsistent' markers), plus the cross-cutting idioms. Aim small - this text is injected into every session that touches matching code; detail beyond what a writer needs on the spot belongs in the doc, not the rule.
 3. `__DOC_PATH__` -> the SAME resolved docs root the doc was just written under, baked as a literal (a rule is static text - it cannot resolve env at load; the next capture re-bakes it if the root moved).
 
-Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
+Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Wholesale is mechanical: DELETE the existing rule file first, then Write it fresh - an in-place Write against a file this session never read is refused by the harness (measured in the architecture capture), and nothing in the old copy is worth keeping. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
 
 This generated rule is per-project output, deliberately NOT in the stack's RULES set - the installer fetches only named files and never prunes `.claude/rules/`, so `stack update` never touches it.
 

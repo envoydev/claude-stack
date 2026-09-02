@@ -26,7 +26,7 @@ Read `<docs-path>/test-coverage/COVERAGE.md` if it exists - a claim to verify, n
 Find what the project already uses - never pick or install one:
 
 - **.NET** - coverlet via `dotnet test --collect:"XPlat Code Coverage"` (or the msbuild `/p:CollectCoverage=true` form the repo already wires) -> cobertura XML.
-- **Angular** - `ng test` with the workspace's karma/istanbul (or configured equivalent) coverage output -> lcov + summary.
+- **Angular** - `ng test` with the coverage flag of the builder `angular.json` names (`--coverage` under `@angular/build:unit-test`, the Vitest default for new workspaces; `--code-coverage` under the older Karma builder - confirm an unfamiliar builder's flag via context7, never from recall) -> the `coverage/` output (lcov + summary).
 - **Plain JS/TS** - the ladder: a `package.json` test script -> a runner config file -> a test runner in devDependencies; use the first rung that answers, with its coverage flag.
 
 A surface where every rung is empty is a **'no test infrastructure'** verdict: coverage unmeasurable, the requirement UNMET, one weak point tiered substantial whose simplify-testing action names the missing harness. Installing the runner is the loop's first fix, never this capture's.

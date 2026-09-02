@@ -88,7 +88,9 @@ second and third cycle ran all six steps with zero fresh invocations - 1h42m of 
 the first cycle's reviewer).
 
 1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
-   file, not the chat, is the artifact. *Stop.*
+   file, not the chat, is the artifact - and that skill's design rules are settled IN it: every seam
+   drawn passes the seven decision-level rules and every task card carries its `log_points`, so
+   step 5 reviews the built code against a plan that already decided both. *Stop.*
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
    found. Gaps route back to step 1 on the user's word. A user who declines the audit gets the
    same honest ledger as step 5: stamp `Gated: skipped by user - <their words>` and continue -
