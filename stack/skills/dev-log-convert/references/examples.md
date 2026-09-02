@@ -38,7 +38,7 @@ Log of work 12.05.2026.
 Tuesday:
 
 ProjectA:
-1 ABC-100 (1h) - Fixed a null reference in the service layer. Testing. Merged changes.
+1 ABC-100 (1h) - Investigated a null reference in the service layer and fixed it. Testing. Merged changes.
 2 DEF-15 (30m) - Reviewed PR comments and updated the migration.
 3 Other (15m) - Daily standup.
 

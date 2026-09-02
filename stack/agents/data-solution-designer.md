@@ -37,7 +37,7 @@ implementer inherits the answer.
    interface with one implementation forever is the classic shape.
 2. **High cohesion, low coupling - the placement test.** Everything a task owns changes for the same
    reason. A task boundary that splits one axis of change across two seats, or bundles two axes into
-   one, is the wrong boundary - redraw it before dispatch, not after.
+   one, is the wrong boundary - redraw it before the build starts, not after.
 3. **Program to an interface at boundaries ONLY.** A seam belongs where one really exists: an
    external system, something the tests mock, something with two implementations or a credible
    second. An interface mirroring every class is ceremony, and a fat interface whose consumers use a
@@ -60,6 +60,22 @@ SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast commen
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
 
+**Observability is designed at the seams, never sprinkled by the implementer.** Stamp each task
+card with `log_points` - where a line goes, at what level, carrying which identifiers: the boundary
+crossings the task owns (an inbound request, message or job run's start and outcome; an outbound call
+to an external system; a persistence write), the decision points a reader would need to reconstruct
+the path (a retry, a fallback, a rejected input, a state transition), and every failure exit. Level by
+who acts: error means someone acts now, warning means degraded but handled, information means a
+business-significant event, debug means investigation only. The message carries the join keys an
+investigator needs - the correlation or trace id, the entity id - and never a secret, a token, a
+payload, or personal data beyond the project's policy. A failure is logged ONCE, at the boundary that
+handles it, never log-and-rethrow at each layer; a background job, a fire-and-forget or a swallowed
+catch with no log point is a silent failure, and a design defect. Where the framework already emits
+the event (request logging, client logging) the card says so instead of duplicating it. A task with
+no failure exit of its own stamps `log_points: none - <reason>` - an absent field and a considered
+none must never look alike. Every point goes through the repo's existing logging seam and message
+convention - name the precedent on the card, never a second logger.
+
 ## Failure modes I hunt
 - Key strategy: a natural key (email, SKU) as PK cascades every future change through all FKs - design a surrogate BIGINT IDENTITY / GENERATED ALWAYS AS IDENTITY, or a time-ordered UUID v7 / ULID for write-heavy distributed inserts (never random v4, whose scattered inserts fragment the index), keeping a UNIQUE constraint on the natural identifier.
 - Destructive migration in one deploy: a column drop / rename / type-narrow, or a non-nullable add with no default, shipped in a single migration against a live populated table - design expand-then-contract (add + backfill + ship, then drop once nothing reads the old shape), batch a wide backfill separately from the ALTER rather than one UPDATE under a table lock, and give every migration a down path.
@@ -69,6 +85,7 @@ no breakage named, has not been argued.
 - Concurrency correctness: a hot mutable row (balance transfer, inventory decrement, oversell guard) left with an unlocked read-then-write lost-update window - design a pessimistic row lock (SELECT ... FOR UPDATE) or an optimistic concurrency token / rowversion; a transaction boundary that spans external I/O holding locks across an HTTP or message round-trip; an isolation level over- or under-specified for the consistency the use-case actually needs.
 - Integrity pushed to app code instead of the schema: FK ON DELETE / ON UPDATE left to the engine default; a uniqueness rule enforced by app-side check-then-insert that races two requests into a duplicate rather than a UNIQUE constraint; nullability defaulted permissive.
 - Persistence-contract shape: decide whether the seam hands back a materialized read model / DTO or leaks IQueryable and EF entities (which defers execution and couples the caller to the ORM), so the owning app stack's seam (aspnet / console / wpf) gets a stable contract to call.
+- Log points on a schema task: a DDL-only task has no application seam to log through - its `log_points` line reads 'none - schema-only; the migration runner output is the record', never an invented logger; a batched backfill is the exception, its per-batch progress and failure exit logged and keyed to the batch range so a half-applied run resumes from the log - and the app-side write's log point stays on the owning app stack's card.
 
 ## Method (bounded)
 1. Restate the requirement as capabilities and constraints - what the feature must do, what it must not break, and what is fixed (existing schema, engine, migration history).

@@ -23,6 +23,11 @@ root with a populated `.claude/` (or the install lives in an account dir), stop 
 global adjust is the sibling `/claude-stack:configure`. Detect the OS too (`darwin`/`linux` -> the
 sh installer; Windows -> ps1 via `pwsh`).
 
+**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
+marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
+were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is
+the fallback only where the harness lacks the tool.
+
 ## The ladder - announce every step
 
 Eleven user-facing steps; the machinery between them runs silently. One banner line before each:
@@ -59,12 +64,23 @@ The setup step-2 artifact scan:
 - a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
 - `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
 - `tsconfig.json` / `jsconfig.json` -> `typescript` (language-level - keeps the TS rule/skill/LSP
-  plugin owned in a plain TS/Node repo with no framework marker).
+  plugin owned in a plain TS/Node repo with no framework marker). A TS framework stack claims its own
+  surface: when `web-angular` / `ionic-angular` / `browser-extension` detects, do NOT also report
+  `typescript` for the same app - the framework seeds carry the rules + LSP, and reporting both flags
+  `ts-js-testing` MISSING on every Angular app where testing is `angular-testing`'s (measured); both only
+  when the repo holds a genuine non-framework TS surface too (Node tooling, a published library).
+- `package.json` with `.js` sources and NO `tsconfig.json`/`jsconfig.json` -> `javascript` (the plain-JS
+  seed). One-way suppression: `typescript` and the framework stacks cover JS - never report `javascript`
+  beside them. Without this bullet a plain-JS install reads as REDUNDANT wholesale (measured: `javascript`,
+  `ts-js-testing`, `javascript-conventions` and `typescript-lsp` all flagged for removal).
 
 Report the detected set AND, for every stack you will treat as ABSENT, the exact signal you looked
 for and did not find (`wpf -> *.csproj <UseWPF>: none`). **This is the veto point** - a
 mis-detection (a WPF app on a non-standard SDK, SQL in an odd path) is corrected HERE, before the
-walk removes anything on it. Detecting nothing is valid; confirm the detection is right, then walk.
+walk removes anything on it. Detecting nothing is valid; confirm through AskUserQuestion (detection
+correct - recommended; dispute, naming the stack via Other), then walk. Stack names are the catalog keys of
+`$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
+stderr (`unknown-stack`) instead of silently flagging nothing.
 
 Compute the audits once against the current inventory, quietly - the two stack-level passes,
 the evidence scan (with the judgment catalog), the evidence gaps, and the judgment lines:
@@ -130,9 +146,9 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
  3 | ci-failure-diagnoser   | MISSING   | needed by baseline
 ```
 
-2. **One consent round** - options: **Accept all** (add every MISSING, remove every REDUNDANT in
-   this layer), **Add only**, **Remove only**, **Skip** (touch nothing), or typed numbers
-   (`add 2 3`, `remove 1`). Never bulk-act without an explicit choice; a REDUNDANT removal the user
+2. **One consent round through AskUserQuestion** - four options (the tool's cap), typed numbers via
+   Other: **Accept all** (add every MISSING, remove every REDUNDANT in this layer), **Add only**,
+   **Remove only**, **Skip** (touch nothing), or typed numbers (`add 2 3`, `remove 1`). Never bulk-act without an explicit choice; a REDUNDANT removal the user
    declines is simply kept. Restate the outcome in one line and carry this layer's accepted adds +
    removes forward.
 
@@ -153,8 +169,10 @@ The mechanical tiers stop at what signals can prove; this step carries the judgm
 a skill whose PURPOSE conflicts with the project's stated conventions, whose domain the code
 provably never touches, or whose domain the code provably DOES touch without any catalog signal,
 is invisible to every scanner. Drop scope: installed artifacts still untouched
-this run that nothing kept requires (probe `--dependents` first - a closure-held item is NOT in
-scope; at most note the finding and name the holder, its drop path is the sibling configure).
+this run that nothing kept requires (probe first - `node "$TMP/repo/scripts/stack-select.js" --selection
+"$TMP/installed.json" --graph "$TMP/repo/meta/stack-graph.json" --dependents <skill|agent|mcp|plugin>:<name>`,
+the inventory being the remaining selection - a closure-held item is NOT in scope; at most note the
+finding and name the holder, its drop path is the sibling configure).
 Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four gates:
 
 1. **The advisory list FIRST - corroborate non-use in the code.** Every `no-evidence:` item is a
@@ -240,11 +258,19 @@ dormancy alone is never a removal argument.
 ## 10. Apply - the same paths setup/configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
-remove. Emit + prereq-check it, then:
+remove, written to `$TMP/final.json` in the inventory's shape. Emit + prereq-check it -
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
+(`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
+profile), output to `$TMP/select.out` - then:
 
 - **Adds**: run the installer from the snapshot for the kept+added set -
-  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection selection.txt [--space <name>]`
-  (ps1 on Windows). The installer closes the selection and copies the added artifacts; already-installed
+  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection selection.txt [--space <name>] [--sentry-slug <slug>] [--sentry-auth token|oauth]`
+  (ps1 on Windows). Sentry environment plan: whenever sentry is installed or among the adds, read the
+  ACCOUNT `settings.json` env (`~/.claude/settings.json`, or the space's) - `SENTRY_SLUG` missing -> ask
+  it (`<org>` or `<org>/<project>`) and pass `--sentry-slug`; `SENTRY_ACCESS_TOKEN` missing in token
+  mode -> tell the user to add it there by hand (a personal/org API token, never through the chat,
+  never a project-level settings.json - its env does not reach `.mcp.json`) or to choose
+  `--sentry-auth oauth`. Both present: one line, no question. The installer closes the selection and copies the added artifacts; already-installed
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
 - **Removes**: `install --selection` does NOT uninstall - delete each accepted removal explicitly,
   showing the command first: the skill directory / agent file / rule file; a hook loses BOTH its

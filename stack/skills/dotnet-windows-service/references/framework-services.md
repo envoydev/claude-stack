@@ -62,7 +62,7 @@ Entry point: wire `AppDomain.CurrentDomain.UnhandledException` and `TaskSchedule
 
 - `OnStart` returns promptly - start a task and get out; blocking there is the classic error 1053. `RequestAdditionalTime` is a per-service stopgap (a wait hint, not strictly additive, does not extend indefinitely) - design for fast startup instead, and never reach for the machine-wide `ServicesPipeTimeout` key.
 - Timers: a single worker task with `Task.Delay(interval, token)` is the default - it avoids the overlap-and-swallowed-exception class entirely. If a `System.Timers.Timer` exists (never the Forms timer - it needs a message loop): its `Elapsed` swallows exceptions and overlaps ticks, so guard with an `Interlocked` in-flight flag and a try/catch inside the handler; `async void` is tolerable only there, only with that catch.
-- No `TimeProvider` on Framework - inject a hand-rolled clock/delay abstraction so the loop is testable without real waits.
+- `TimeProvider` reaches Framework through the `Microsoft.Bcl.TimeProvider` package (net462+): inject it and route the loop's delays and timestamps through it, so a `FakeTimeProvider` makes the loop testable without real waits - a hand-rolled clock abstraction only where one already exists.
 - Config: `ConfigurationManager` caches on first read; live reload needs a `FileSystemWatcher` + `RefreshSection`, or config moved to a store you control. EF6: one `DbContext` per unit of work, never per service lifetime - same captive-dependency rule as the modern host.
 - `ServiceBase` is a hosting shell like `BackgroundService` - nothing testable lives in it; all logic in plain injectable classes taking a `CancellationToken`.
 

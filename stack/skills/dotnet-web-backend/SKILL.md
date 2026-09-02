@@ -156,6 +156,7 @@ Default a new HTTP surface to minimal APIs; the full minimal-vs-controllers deci
 - AuthN / authZ (JWT/OIDC/Identity/policies) -> `dotnet-authentication`
 - OWASP hardening / SSRF / dependency audit -> `dotnet-security`
 - gRPC services -> `dotnet-grpc`
+- Real-time push to connected clients (SignalR hubs, backplane scale-out) -> `dotnet-realtime`
 - Background workers / hosted tasks (a daemon, an in-process `BackgroundService`, a message-only consumer's host) -> `dotnet-hosted-services`
 - Broker messaging / outbox / sagas -> `dotnet-messaging`
 - Per-layer tests -> `dotnet-testing`

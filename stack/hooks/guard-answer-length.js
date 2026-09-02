@@ -11,8 +11,10 @@
 //   immediately before the answer is written, not 30 bullets deep in an always-on rule.
 // Stop wiring: an answer whose prose (code blocks, tables and inline spans excluded) runs past the
 //   hard cap with no depth request in the user's own message is blocked, and the model re-answers
-//   at budget. Deliberately a wall-of-text catch, not a byte-counter: the soft budget lives in the
-//   reminder because a Stop block cannot unsay text the user already read - it can only add more.
+//   at budget. The answer measured is the payload's `last_assistant_message`; the transcript's
+//   assistant row is the fallback, and the user's own message always comes from the transcript.
+//   Deliberately a wall-of-text catch, not a byte-counter: the soft budget lives in the reminder
+//   because a Stop block cannot unsay text the user already read - it can only add more.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 let payload;
@@ -122,10 +124,17 @@ if (payload.hook_event_name === 'Stop') {
   } catch {
     process.exit(0);
   }
-  if (!last) process.exit(0);
-  const blocks = last.message.content;
-  if (blocks.some((b) => b && b.type === 'tool_use')) process.exit(0); // ended on a tool call
-  const text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+  // The harness's `last_assistant_message` is the turn's final text; the transcript is written
+  // asynchronously and can lag it (documented), so the field wins and the transcript's assistant
+  // row is the fallback. The user's message still comes from the transcript - the Stop payload
+  // carries no prompt - so an unreadable transcript stays the fail-open pass above.
+  let text = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '';
+  if (!text.trim()) {
+    if (!last) process.exit(0);
+    const blocks = last.message.content;
+    if (blocks.some((b) => b && b.type === 'tool_use')) process.exit(0); // ended on a tool call
+    text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+  }
   const body = proseOf(text);
   if (body.length <= HARD_CAP) process.exit(0);
   if (user && (DEPTH_RE.test(user) || DEPTH_RE_CYR.test(user))) process.exit(0); // depth asked this turn

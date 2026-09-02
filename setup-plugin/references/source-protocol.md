@@ -1,7 +1,8 @@
-# The one-download protocol - shared by the setup, update, and configure commands
+# The one-download protocol - shared by the setup, update, configure, and validate commands
 
-All three plugin commands (`/claude-stack:setup` - fresh install, `/claude-stack:update` -
-refresh + prune, `/claude-stack:configure` - adjust the selection) drive their whole run from ONE
+The four downloading commands (`/claude-stack:setup` - fresh install, `/claude-stack:update` -
+refresh + prune, `/claude-stack:configure` - adjust the selection, `/claude-stack:validate` -
+reconcile to the project; `status` never downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
 apply it, this file says WHAT holds. It lives at the plugin root's `references/` and the commands
 cite it as `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md` - commands and references ship
@@ -90,7 +91,7 @@ Everything comes out of `$TMP/repo`:
 - the `meta/` catalogs - `recommendations.json`, `evidence.json`, `judgment.json` (seeds, the
   evidence-scan signals, the judgment gates)
 - `stack/CLAUDE.template.md` (the CLAUDE.md fill-in / reconcile step)
-- `RELEASE-SOURCE` - the snapshot's commit (the `configure` command compares the stamp against it
+- `RELEASE-SOURCE` - the snapshot's commit (the `configure` and `update` commands compare the stamp against it
   via the GitHub compare API; an archive has no git history to diff locally)
 
 Run every later `node`/`bash` step against these snapshot copies - never re-fetch one from a raw

@@ -42,7 +42,7 @@ implementer inherits the answer.
    interface with one implementation forever is the classic shape.
 2. **High cohesion, low coupling - the placement test.** Everything a task owns changes for the same
    reason. A task boundary that splits one axis of change across two seats, or bundles two axes into
-   one, is the wrong boundary - redraw it before dispatch, not after.
+   one, is the wrong boundary - redraw it before the build starts, not after.
 3. **Program to an interface at boundaries ONLY.** A seam belongs where one really exists: an
    external system, something the tests mock, something with two implementations or a credible
    second. An interface mirroring every class is ceremony, and a fat interface whose consumers use a
@@ -65,6 +65,22 @@ SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast commen
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
 
+**Observability is designed at the seams, never sprinkled by the implementer.** Stamp each task
+card with `log_points` - where a line goes, at what level, carrying which identifiers: the boundary
+crossings the task owns (an inbound request, message or job run's start and outcome; an outbound call
+to an external system; a persistence write), the decision points a reader would need to reconstruct
+the path (a retry, a fallback, a rejected input, a state transition), and every failure exit. Level by
+who acts: error means someone acts now, warning means degraded but handled, information means a
+business-significant event, debug means investigation only. The message carries the join keys an
+investigator needs - the correlation or trace id, the entity id - and never a secret, a token, a
+payload, or personal data beyond the project's policy. A failure is logged ONCE, at the boundary that
+handles it, never log-and-rethrow at each layer; a background job, a fire-and-forget or a swallowed
+catch with no log point is a silent failure, and a design defect. Where the framework already emits
+the event (request logging, client logging) the card says so instead of duplicating it. A task with
+no failure exit of its own stamps `log_points: none - <reason>` - an absent field and a considered
+none must never look alike. Every point goes through the repo's existing logging seam and message
+convention - name the precedent on the card, never a second logger.
+
 ## Failure modes I hunt
 A generic designer settles the surface; a platform architect designs OUT the delivery traps. Name each in the seam so no implementer inherits it:
 - **Non-reproducible build** - a floating :latest or bare major base image, or a moving action major tag; pin base images by digest and actions by commit SHA in the design, or a green pipeline changes silently under you and a compromised action runs with your token.
@@ -74,6 +90,7 @@ A generic designer settles the surface; a platform architect designs OUT the del
 - **Over-privilege** - a long-lived cloud credential stored as a secret instead of OIDC federation, or a job permissions block wider than the job needs; least-privilege by default, elevate per job.
 - **Runtime unsoundness** - a root container, a missing healthcheck, or no PID-1 signal handling, so the orchestrator cannot tell ready from dead and a rolling cutover routes traffic to a not-ready instance.
 - **Test theatre** - an integration job wired against a mock instead of a real service container - a green that proves nothing about the wired system.
+- **Unreadable failure** - a pipeline or container task's `log_points` are its step output and the container's stdout/stderr: a failing step that does not print the command and inputs it failed on, or a container that dies before writing why, is the silent failure at this layer; the join keys are the run id and the image digest, never a secret - a derived or encoded form is not masked (the leak surface above).
 
 ## Don't game it
 Every shared seam has a single owner and the fan-out cuts by pipeline-stage or artifact, not by line. Tasks must be genuinely independent and parallel-safe: if two would edit the same workflow or compose file, merge them or redraw the boundary. A genuine fork (a cloud target, an approval policy) is presented with the trade-offs for the user to choose, never decided silently.

@@ -29,7 +29,7 @@ Every field is grounded in a file you located or it carries an UNVERIFIED/uncert
 ## Report - the structured return
 Return exactly this shape:
 
-1. **Entry** - one fenced YAML block, exactly the house schema:
+1. **Entry** - one fenced YAML block, the house schema minus `captured:` (the caller stamps that per entry at merge, from the host's branch and sha - never you):
 ```yaml
 - name:     <sibling name>
   location: <path or git URL, as given>

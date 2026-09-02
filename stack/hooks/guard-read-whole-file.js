@@ -8,7 +8,8 @@
 // 47-file grep loop dumped ~19.8k tokens the guard never saw). It also caps CUMULATIVE ranged
 // reads per file per session: 2-3 half-splits that reconstruct the whole file satisfied the
 // per-call check in 7 files across one run with zero counter-examples, so past ~60% coverage
-// the remainder goes through serena. exit 2 = block (stderr fed back); exit 0 = allow.
+// the remainder goes through serena. A cat whose output is redirected into a file is a copy,
+// not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
 const os = require('os');
 const pathMod = require('path');
@@ -63,7 +64,10 @@ if (payload.tool_name === 'Bash') {
   // Only `cat`/`sed` were gated, so the same whole-file dump walked through under any other verb:
   // `head -n 100000`, `tail -n +1`, `less`, `awk '1'`, `python3 -c "print(open(f).read())"` all
   // passed (reproduced x5 against a 1371-line file).
-  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(/.test(command)) process.exit(0);
+  // This pre-filter must name every verb the branches below look for: `readFileSync` / `File.read`
+  // were in the runtime-dump pattern but not here, so `node -e "...readFileSync(f)..."` exited on
+  // this line and that branch never ran (reproduced against the same 1371-line file).
+  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|File\.read/.test(command)) process.exit(0);
   // A whole-file read through a language runtime is the same dump with a different spelling.
   const runtimeDump = /\b(python3?|node|perl|ruby)\b[^\n]*\b(open\([^)]*\)\s*\.read\(|readFileSync|File\.read)/.test(command);
   if (runtimeDump && GATED_EXT_ANY.test(command)) {
@@ -113,6 +117,9 @@ if (payload.tool_name === 'Bash') {
   }
   for (const seg of command.split(/&&|\|\||;|\n/)) {
     if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut)\b/.test(seg)) continue;
+    // Output redirected INTO a file never reaches the context - `cat a.ts > copy.ts` is a copy,
+    // not a dump (an fd form like `2>&1` / `>&2` still prints, so only a path target is exempt).
+    if (/\s>>?\s*[^&\s>]/.test(seg)) continue;
     const catAll = seg.match(/\bcat\s+((?:(?:-\w+|"[^"]+"|'[^']+'|[^\s;&|<>]+)\s*)+)/);
     const files = catAll
       ? catAll[1].trim().split(/\s+/).filter((t) => !t.startsWith('-')).map((t) => t.replace(/^["']|["']$/g, ''))

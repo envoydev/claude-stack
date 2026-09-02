@@ -46,7 +46,7 @@ Karma, `jest.fn()` under Jest, `vi.fn()` under Vitest - and do not mix them.
 
 ## Timing and async
 
-`fakeAsync` + `tick()` for timer/debounce logic; `await fixture.whenStable()` for real promises;
+`fakeAsync` + `tick()` for timer/debounce logic under Karma or Jest (Zone.js - Angular's docs say the fakeAsync family cannot be used under the Vitest runner; there, `vi.useFakeTimers()` + `vi.advanceTimersByTime()`); `await fixture.whenStable()` for real promises;
 never a raw `setTimeout` wait in a spec. A spec that passes only with an arbitrary sleep is a
 bug in the spec.
 

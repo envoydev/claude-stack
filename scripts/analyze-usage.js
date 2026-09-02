@@ -15,6 +15,7 @@
 //   node scripts/analyze-usage.js <projects-dir>                   # one-line rollup per session
 //   node scripts/analyze-usage.js <session.jsonl> --hook-log <f>   # join a <docs-path>/tools-usage/<sid>.jsonl ledger
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
+//   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
 //   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_DOCS_PATH is non-default
 //

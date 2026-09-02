@@ -74,7 +74,7 @@ When the API carries more than one version, or you want public and internal surf
 
 - Add the `Scalar.AspNetCore` package and call `app.MapScalarApiReference()` (UI at `/scalar`) pointing at the document endpoint. Scalar runs on .NET 8 and up, so it's the recommended UI regardless of generator. The floor fallback, when a project is committed to the Swashbuckle stack and wants the familiar surface, is Swagger UI via `UseSwaggerUI()`.
 - Gate the UI: either wrap it in `if (app.Environment.IsDevelopment())` or attach `.RequireAuthorization()` in production. A docs page is a map of the internal surface - parameter names, status codes, schema shapes - and shipping it open invites scanning.
-- Theme with `.WithTheme(...)`. For convenience during local testing, prefill auth with `AddHttpAuthentication`, but only ever with a throwaway dev token - the UI renders credentials into the browser, so a real or production token there is leaked the moment the page loads. For a sensitive API, also turn off the Scalar request proxy with `.WithProxy(null)` so it can't be used to relay calls.
+- Theme with `.WithTheme(...)`. For convenience during local testing, prefill auth with `AddHttpAuthentication`, but only ever with a throwaway dev token - the UI renders credentials into the browser, so a real or production token there is leaked the moment the page loads. For a sensitive API, do not route the UI's calls through a request proxy - leave `.WithProxyUrl(...)` unset (the Aspire Scalar integration enables its own proxy by default; `DisableDefaultProxy()` turns it off there) - a proxy relays every call through another host.
 
 ## Anti-patterns
 

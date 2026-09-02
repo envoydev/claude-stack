@@ -23,20 +23,20 @@ change made only inside a consuming project is throwaway (see Invariants).
   snapshot-download-and-copy step (or the claude-stack plugin) - including `cursor-stack`'s
   installers, which clone this repo.
 - `scripts/os/claude-stack.{sh,ps1}` - the installer twins (Unix / Windows); `docs/claude-stack.html` is the browser inventory.
-- `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton (with `<placeholders>`) that each
+- `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton (an authoring outline in a stripped comment plus a rules table to trim) that each
   consuming project's `CLAUDE.md` is filled in from; the working conventions ship separately in
   the `stack/rules/baseline-*.md` set. Content shipped to projects, not this repo's own file.
 - `stack/hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
-  `guard-read-whole-file.js` (PreToolUse `Read`) + `guard-unapproved-dispatch.js` (PreToolUse
+  `guard-read-whole-file.js` (PreToolUse `Read` + `Bash` - the same dump routed through the shell) + `guard-unapproved-dispatch.js` (PreToolUse
   `Task|Agent` - blocks an `*-implementer` dispatch without the `<docs-path>/flow/APPROVAL` gate
-  file the flows write on explicit user approval or an explicit AUTO waiver) +
+  file the flows write on explicit user approval or an explicit AUTO waiver, and blocks a generic `general-purpose`/`claude` dispatch while that stamp is live; stamps older than 8h or older than the session are absent) +
   `guard-ungated-commit.js` (PreToolUse `Bash` - blocks a non-trivial `git commit` without the
   `<docs-path>/flow/COMMIT-GATE` receipt the pre-commit checkpoint writes on VERIFIED gates or an
   explicit user waiver; trivial diffs pass) +
   `guard-stop-contract.js` (dual-wired: a `Stop` hook that blocks a turn ending on a
-  decision-shaped question in prose - the blocking-ask mandate mechanized - and a PreToolUse
+  decision-shaped question in prose, or on a 'done, next step pending' close stated as fact - the blocking-ask mandate mechanized - and a PreToolUse
   `AskUserQuestion` gate that denies an option list with no fresh-session entry once the session
-  context passes ~150k) +
+  context passes ~150k - and from the second such ask, one that does not mark it Recommended) +
   `guard-fresh-session-start.js` (PreToolUse `Skill` - blocks a deliberate orchestration run
   (a capture, a loop, a solve flow) from starting on another finished run's carried history past
   ~150k ctx/msg, routing the choice through AskUserQuestion; the capabilities rule's prose form
@@ -47,7 +47,7 @@ change made only inside a consuming project is throwaway (see Invariants).
   for no depth; the short-answer contract mechanized after it failed as prose), all wired; plus `instrument-tool-usage.js`,
   wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
   settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
-  Copied from the run's clone into a project's `.claude/hooks/`; a hooks layer in the guided walk
+  Copied from the run's clone into a project's `.claude/hooks/` (wired with the placeholder quoted - `"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"` - so a project path with a space works; an update rewrites the older unquoted text in place); a hooks layer in the guided walk
   makes them selectable per install (a selection with no `hook` lines installs all nine).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
@@ -104,7 +104,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
     lacks is simply not installed; the soft replacement for the retired require-convention-skill
     hard gate.
-- `setup-plugin/` - the claude-stack plugin: five guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare), `/claude-stack:configure` (adjust an existing install - add or drop), `/claude-stack:status` (read-only per-area tables of the install - skills/agents/rules/hooks/MCPs/plugins/env/generated docs with capture dates) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`), their data catalogs in repo `meta/` (`recommendations.json` - the seeds + the never-flag `general` list, which also holds the project-conditional opt-ins no stack owns and no manifest signal can prove: the `project-related-context` / `related-project-analyzer` pair applies only where the project has sibling repos, so it is addable-not-seeded and never re-added by validate - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back.
+- `setup-plugin/` - the claude-stack plugin: five guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare; the script route prunes only the known renamed names in the installers' RETIRED_SKILLS / RETIRED_AGENTS lists - extend both twins' lists when a skill or agent is renamed), `/claude-stack:configure` (adjust an existing install - add or drop), `/claude-stack:status` (read-only per-area tables of the install - skills/agents/rules/hooks/MCPs/plugins/env/generated docs with capture dates) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`), their data catalogs in repo `meta/` (`recommendations.json` - the seeds + the never-flag `general` list, which also holds the project-conditional opt-ins no stack owns and no manifest signal can prove: the `project-related-context` / `related-project-analyzer` pair applies only where the project has sibling repos, so it is addable-not-seeded and never re-added by validate - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back.
 - `meta/` - the repo's own registries, never installed into a project: `shared-rules.json` pins
   every deliberate multi-home rule (one canonical owner + its inline restatement sites, each copy
   marker-pinned; no prose cross-mentions in the bodies) - the lint goes red when any copy's marker
@@ -159,9 +159,23 @@ documented there.
   (cross-project recall), plus `angular-cli` (framework-specific - comment out where not
   applicable), `chrome-devtools` (browser/extension debug), `appium-mcp` (native mobile E2E -
   Capacitor/Ionic, needs Xcode/Android SDK + Java) and `sentry` (error monitoring - the hosted
-  remote MCP at `https://mcp.sentry.dev/mcp`; its `Authorization: Bearer` header keeps
-  `${SENTRY_ACCESS_TOKEN}` LITERAL in the registration and expands at launch: settings.json `env`
-  on Claude, `${env:VAR}` + OS env on Cursor; comment out where the project has no Sentry). The heavy two (`chrome-devtools`,
+  remote MCP, registered as the CONSTANT `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` with the header
+  `Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`; both placeholders stay LITERAL in the
+  registration and expand at launch from the ACCOUNT settings.json `env` (`~/.claude/settings.json`,
+  or the space's - the one file measured to reach `.mcp.json` expansion; a project-level
+  `.claude/settings.json` does not; `${env:VAR}` + OS env on Cursor). The guided commands make the
+  user fill both in whenever sentry is present: `SENTRY_SLUG` = the org, or `org/project` (Sentry's
+  recommended scoping; the installers' `--sentry-slug` seeds it), `SENTRY_ACCESS_TOKEN` = a
+  personal/org API token the user adds by hand, never through the chat. `Sentry-Bearer` is the scheme
+  for an API token; plain `Bearer` is the server's OAuth-issued token scheme and rejects an API token
+  as `invalid_token`; `--sentry-auth oauth` registers no header instead, so Claude Code runs the
+  browser consent flow on first connect (a set-but-wrong header disables that fallback, so the modes
+  never mix). Unset, `${SENTRY_SLUG}` stays literal: the server accepts the path on tools/list and
+  fails every call naming the variable, and `claude mcp list` warns - diagnosable, unlike
+  `${SENTRY_SLUG:-}`, whose trailing slash the server 404s (both measured). `update` keeps the
+  registration's auth mode; an old plain-`Bearer` registration migrates to the fixed header.
+  `SENTRY_AUTH_TOKEN` is a different credential - sentry-cli's release/symbol upload, needing
+  `project:releases`. Comment out where the project has no Sentry). The heavy two (`chrome-devtools`,
   `appium-mcp`) fail at launch without their native deps - comment them out where not applicable. The `memory` MCP (one shared
   SQLite DB under `$HOME`) is the cross-project store - the per-project transient handoff runs
   on serena's local memory (durable orientation is the committed architecture docs), so comment
@@ -172,8 +186,14 @@ documented there.
   `activate_project` never fires before serena connects; (2) `--project ${CLAUDE_PROJECT_DIR}` is the
   wrong lever - use `--project-from-cwd` (above). Current Claude Code *does* expand `${VAR}` /
   `${VAR:-default}` in `.mcp.json` (command/args/env/url/headers), so the blanket 'no `${...}`
-  expansion' was too broad; the catch is only that `CLAUDE_PROJECT_DIR` isn't reliably in scope at
-  `.mcp.json` parse time for a non-plugin config. Cursor runs
+  expansion' was too broad; the catches are that `CLAUDE_PROJECT_DIR` isn't reliably in scope at
+  `.mcp.json` parse time for a non-plugin config, and that the expansion reads the SHELL
+  environment Claude Code starts in plus the ACCOUNT settings.json `env` (`~/.claude/settings.json`
+  or the space's) - a PROJECT-level `.claude/settings.json` / `settings.local.json` `env` value stays
+  literal in the config (measured in a trusted project: it reaches the MCP child process environment,
+  not the config expansion; an unset `${VAR}` stays literal with a `claude mcp list` warning,
+  `${VAR:-}` expands to empty). So a value a remote server's header or URL must read belongs in the
+  account file, which is also where the installers' next-steps point. Cursor runs
   serena with `--context ide-assistant`; Claude with `claude-code`.
 - **serena state is isolated per project** via `-e SERENA_HOME=.serena/home` (relative, resolved
   from cwd): registry, logs, and language servers live in-project under `.serena/home`, and serena's

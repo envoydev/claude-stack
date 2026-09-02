@@ -13,6 +13,8 @@
 //     including a quoted prefix with the glob outside: "$HOME"/* )
 //   - the current dir itself:  *   ./*   .   ./   $PWD   ${PWD}   $PWD/*   (`rm -rf .`
 //     / `rm -rf $PWD` wipes the cwd's contents)
+//   - the parent dir:  ..   ../   ../*   (wipes the cwd and every sibling beside it - the same
+//     unrecoverable class as '.', and `./..` was already caught while a bare `..` walked past)
 // '..' and '.' segments are collapsed first, so a path that resolves to root (`/home/../`)
 // or to the cwd (`./.`, `././`) is caught despite the literal text never being `/` or `.`. A recursive rm is
 // also blocked when it names MULTIPLE single-segment absolute paths (`/usr /lib /etc
@@ -103,7 +105,7 @@ function isCatastrophic(tok)
         || t === '~' || t === '~/*'
         || t === '$HOME' || t === '${HOME}' || t === '$HOME/*' || t === '${HOME}/*'
         || t === '$PWD' || t === '${PWD}' || t === '$PWD/*' || t === '${PWD}/*'
-        || t === '*' || t === './*' || t === '.';
+        || t === '*' || t === './*' || t === '.' || t === '..' || t === '../*';
 }
 
 // A single-segment absolute path ('/usr', '/etc', '/var') - non-catastrophic alone, but
@@ -170,8 +172,8 @@ function main()
     }
 
     process.stderr.write(
-        'Refusing a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, a bare *, ' +
-        'or several top-level system dirs at once) - the filesystem has no reflog (CLAUDE.md). ' +
+        'Refusing a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
+        'parent, a bare *, or several top-level system dirs at once) - the filesystem has no reflog (CLAUDE.md). ' +
         'Delete a specific subdirectory by name instead.\n');
     process.exit(2);
 }

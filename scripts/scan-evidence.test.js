@@ -122,3 +122,21 @@ test('scanner on an empty project yields an empty found map', () => {
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// The lint checks catalog names and labels, not regex syntax - a regex that does not compile must
+// skip its one signal with a named warning instead of killing the whole scan.
+test('a catalog regex that does not compile is skipped with a named warning, the scan still completes', () => {
+    const { spawnSync } = require('node:child_process');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-badre-'));
+    const catalogFile = path.join(root, 'catalog.json');
+    try
+    {
+        fs.writeFileSync(path.join(root, 'nx.json'), '{}');
+        fs.writeFileSync(catalogFile, JSON.stringify({ skills: { csharp: { content: [{ glob: 'Program.cs', regex: '(', label: 'broken' }] }, nx: { files: ['nx.json'] } } }));
+        const r = spawnSync('node', [SCRIPT, '--root', root, '--catalog', catalogFile], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(r.stderr, /invalid regex/, 'the bad signal is named');
+        assert.match(JSON.parse(r.stdout).found.skills.nx, /nx\.json/, 'the other signals still match');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

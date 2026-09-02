@@ -22,6 +22,11 @@ call: one quiet call per recompute, no pasted tool output, one narration line be
 This command's extra stake in the snapshot: its `RELEASE-SOURCE` commit is what step 1 compares
 the stamp against to report what an update would bring.
 
+**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
+marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
+were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is
+the fallback only where the harness lacks the tool.
+
 ## The ladder - announce every step
 
 Twelve user-facing steps; the machinery between them runs silently. Before EVERY question, one
@@ -89,7 +94,7 @@ so never diff against or mention `develop`. Two signal lines to handle, neither 
   baseline is unreachable and move on; never guess a diff, and never treat this as a reason to
   skip the update.
 
-A `TRUNCATED` first line means the preview may be missing files - say so alongside the summary.
+A `TRUNCATED` line (the third, after the version and base lines) means the preview may be missing files - say so alongside the summary.
 
 **This step's output has ONE fixed shape** - three blocks, nothing else: (1) the inventory table,
 fixed columns `category | count | items`, six rows in the fixed order
@@ -99,7 +104,7 @@ upstream changes', then the category summary only when there IS a diff; (3) the 
 Detection detail, tool notes, and narration beyond these three blocks is the chaos this shape
 exists to prevent.
 
-Close the step with one question: **adjust the selection** (continue to the area pick at step 2), or
+Close the step with one AskUserQuestion: **adjust the selection** (continue to the area pick at step 2), or
 **refresh as-is** (nothing to change - skip straight to step 10; when upstream changed nothing
 either, offer to stop rather than running a no-op, and note the sibling `update` command is the
 no-questions path for plain refreshes).
@@ -203,8 +208,16 @@ cascade never reaches here. Dropping a wired hook removes its `.claude/settings.
 
 Locked = the servers the kept selection pulls (typically just `serena`, via `baseline-navigation`);
 the rest of the installed servers are direct picks - droppable, and preserved across runs
-(`raw.json` carries them). Addable from `catalog.mcps`; note next to `sentry` that it needs
-`SENTRY_ACCESS_TOKEN`.
+(`raw.json` carries them). Addable from `catalog.mcps`; note next to `sentry` that it needs `SENTRY_SLUG` and
+(token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env. Whenever sentry is PRESENT after
+this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
+space's) and run the sentry environment plan for whatever is missing: ask the slug (`<org>` or
+`<org>/<project>`; required) and pass it as `--sentry-slug` at step 11 (the installer seeds the env),
+and tell the user to add `SENTRY_ACCESS_TOKEN` to that same file themselves - a personal/org API token,
+never pasted into the chat, never a project-level `.claude/settings.json` (its env does not reach
+`.mcp.json`) - or to pick `--sentry-auth oauth` instead. Both values already present: say so in one
+line and ask nothing. An existing registration needs no auth flag: `update` reads it back and keeps
+its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
 ## 8. Plugins
 
@@ -228,10 +241,11 @@ only when ABSENT, so this step is the one place they are changed deliberately:
   JSONL row to `<docs-path>/tools-usage/<session>.jsonl` for the usage analyzer's `--hook-log` join - a
   per-run measurement switch, flipped back to `0` after the audited run, not a leave-on flag.
 
-Show the CURRENT values read from the file - never assume the defaults - then one keep-or-change
-consent covering all three. On a docs-root change, say plainly: existing generated docs do NOT move -
-they stay under the old root until moved by hand or re-captured. Then re-stamp the deployed rule - run
-`node $TMP/repo/scripts/stamp-docs-root.js <project root>`: it rewrites the 'This install's root:'
+Show the CURRENT values read from the file - never assume the defaults - then one AskUserQuestion
+keep-or-change consent covering all three (keep - recommended; change, the new values via Other). On a
+docs-root change, say plainly: existing generated docs do NOT move - they stay under the old root until
+moved by hand or re-captured. Then re-stamp the deployed rule - run
+`node $TMP/repo/scripts/stamp-docs-root.js <project root>` (global install: `--claude-dir <account dir>`): it rewrites the 'This install's root:'
 line in `.claude/rules/baseline-docs-root.md` from the settings.json value just written, so the
 always-on awareness matches the env (every install/update run re-stamps it too). Nothing else
 needs editing. Apply on consent with a
@@ -240,8 +254,10 @@ skipped, or nothing changed: one narration line, nothing written.
 
 ## 10. Prerequisite check
 
-Run: `node stack-select.js --selection raw.json --emit selection.txt --check`,
-output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
+Run: `node stack-select.js --selection raw.json --emit selection.txt --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
+(`--sentry-oauth` when sentry is kept under a headerless registration, so its token warning does not
+fire falsely; `--config-dir` under a `--space` profile, so the env probe reads that account's
+settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
 adds marked with their reasons, the final drop list (incl. accepted orphans) named; (3) each
 blocker with its fix, each warning listed. Never run past a blocker
@@ -250,8 +266,8 @@ passed. **Convention-conflict warnings (project mode only):** when the project c
 conventions (a root or `.claude/` CLAUDE.md, `<docs-path>/architecture/` docs), check THIS RUN'S
 typed adds (never locked rows or kept installed items) against them - a conflicting add gets one
 warning line quoting the rule verbatim plus a keep-or-drop consent. No citable conflict, no
-warning; no project docs, skip silently; a conflict warning never blocks the run. Also ask here:
-keep local model/effort pins? (`--keep-pins`, default yes for a configure
+warning; no project docs, skip silently; a conflict warning never blocks the run. Also ask here,
+through AskUserQuestion: keep local model/effort pins? (`--keep-pins`, yes recommended for a configure
 run - an existing install often carries deliberate pin edits).
 
 ## 11. Update + removals
@@ -259,8 +275,8 @@ run - an existing install often carries deliberate pin edits).
 Run the installer **from the snapshot**, passing it back with `--source` so the run lands the
 same revision step 1 previewed:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection selection.txt [--space <name>] [--keep-pins]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection selection.txt [-Space <name>] [-KeepPins]`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection selection.txt [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth]`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection selection.txt [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth]`
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
@@ -278,8 +294,8 @@ user, never acted on), and any environment writes from step 9.
 
 ## 12. CLAUDE.md - the user's call (project mode)
 
-Not required - open with WHERE it lives and WHAT a yes changes, then ask; a 'no' ends the run
-cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
+Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
+recommended / skip); a 'no' ends the run cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
 seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
 On a yes: reconcile it against the fetched `stack/CLAUDE.template.md` - add the sections the
 template gained since the install, update the selection-tied parts (the rules table and any

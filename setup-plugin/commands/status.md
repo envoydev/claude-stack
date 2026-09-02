@@ -14,24 +14,27 @@ most. Anything the user wants CHANGED routes to the sibling commands (`configure
 ## 1. Find the install
 
 Project mode when the working tree has a populated `.claude/` (skills or agents present);
-otherwise global mode against the account's config dir. Nothing installed in either place ->
+otherwise global mode against the account's config dir (skills, plugins and user-scope MCPs live
+there; agents/rules/hooks are project-level by construction - the installer lays them only into a git
+repo's `.claude/` - so those areas read `none installed` at global scope). Nothing installed in either place ->
 say so and route to `/claude-stack:setup`. Open with one line naming mode and root:
 `status: project install at <root>/.claude` (or `global install at <path>`).
 
 ## 2. One question - what to show
 
-One multi-pick, then render only the chosen areas, in this fixed order:
+One AskUserQuestion multi-select (the tool caps a question at four options, so the eight areas ship
+in this FIXED grouping, all four marked Recommended): 'Skills + Agents + Rules', 'Hooks + MCPs +
+Plugins', 'Environment', 'Generated docs & data' - single area numbers via Other. Render only the
+chosen areas, in this fixed order:
 
 ```
-What do you want to see?
  1 skills   2 agents   3 rules   4 hooks   5 mcps   6 plugins
  7 environment   8 generated docs & data
- a = all (default)
 ```
 
-Enter or `a` = all areas. Numbers (space/comma separated) = just those. Every chosen area
-prints its banner even when empty - an empty area shows the banner + `none installed`, never
-silence.
+Where the harness lacks the tool, the same list as a plain-text prompt (`a` = all, numbers = just
+those) is the stated fallback. Every chosen area prints its banner even when empty - an empty area
+shows the banner + `none installed`, never silence.
 
 ## 3. The tables - fixed shapes, one per area
 
@@ -77,13 +80,14 @@ otherwise, `user-authored` when clearly neither.
 | guard-catastrophic-rm.js | yes | Bash |
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
-**MCPs** - server entries from the repo's `.mcp.json` (project mode; global: say `MCPs are
-per-project - none at global scope`):
+**MCPs** - server entries from the repo's `.mcp.json` (project mode; global: the account's user-scope
+registrations - the installer's `--scope global` registers them with `--scope user`, so read
+`claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`):
 
 | server | transport | target |
 |---|---|---|
 | serena | stdio | uvx ... --project-from-cwd |
-| sentry | http | https://mcp.sentry.dev/mcp |
+| sentry | http | https://mcp.sentry.dev/mcp/${SENTRY_SLUG} |
 
 `target` is the command or URL, middle-truncated to keep the row one line. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
@@ -99,14 +103,20 @@ values embedded in a registration - show `${VAR}` literally as written.
 | item | value |
 |---|---|
 | stack version (stamp) | 0.2.3 @ <short-sha> |
-| scope | project |
+| scope | project (the stamp's `scope:` line; `user` there = global) |
 | CLAUDE_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_AUTOCOMPACT_PCT_OVERRIDE | not set |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
+| SENTRY_SLUG (account env) | set / not set - only when sentry is installed |
+| SENTRY_ACCESS_TOKEN (account env) | set / not set - only when sentry is installed and its registration carries a header |
+| CONTEXT7_API_KEY (account env) | set / not set - only when context7 is installed remote; not set = the keyless free tier |
 
 Stamp from `claude-stack.stamp` (`no stamp - source never resolved at install time` when
 absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and
-a house default applies. This table names values only - changing them is `configure`'s
+a house default applies. The sentry and context7 rows read the ACCOUNT `settings.json` (`~/.claude/settings.json`,
+or the space's - the file `.mcp.json` expansion reads) and show presence only, never the value; a
+sentry `not set` row ends with `-> add it there (or /claude-stack:configure)` (context7 unset is a
+working free tier - no arrow, the registration sends an empty header). This table names values only - changing them is `configure`'s
 environment area.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly

@@ -81,3 +81,10 @@ test('300-file fixture leads with TRUNCATED', () => {
     const { out } = run(['--snapshot', snap, '--stamp', stampFile, '--fixture', fixtureFile]);
     assert.match(out.trim().split('\n')[2], /^TRUNCATED - /);
 });
+
+// The commands branch on exit 2 = no-stamp; a usage error must never masquerade as that signal.
+test('usage error exits 1 and prints no signal line', () => {
+    const { out, code } = run([]);
+    assert.strictEqual(code, 1);
+    assert.ok(!/no-stamp|compare-unreachable/.test(out || ''), 'no signal line on a usage error');
+});

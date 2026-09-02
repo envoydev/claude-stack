@@ -8,8 +8,9 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   `PROJECT-CODE-STYLE.md`, the related-projects folder (`related-context/` - the orientation doc
   `related-context/PROJECT-RELATED-CONTEXT.md` plus every doc about or for a sibling repo:
   cross-repo plans, change requests, issue notes, run recipes), the quality-loop prompts
-  (`loops/`), superpowers plans + specs, ADRs with no existing home (`decisions/`), the
-  instrumentation ledgers (`tools-usage/`), and any other generated artifact.
+  (`loops/`), the coverage capture (`test-coverage/`), the usage-audit bundles
+  (`claude-stack-usage-report/`), superpowers plans + specs, ADRs with no existing home (`decisions/`),
+  the instrumentation ledgers (`tools-usage/`), and any other generated artifact.
 - Creating a doc OUTSIDE this root - a committed `docs/`, the repo root, a sibling repo - happens
   only on the user's asked-first approval of that exact location (AskUserQuestion, per the
   interaction baseline); never silently, however conventional or cross-repo-visible the spot

@@ -1,6 +1,6 @@
 # Comments stage
 
-A findings-based audit. Review TARGET for comments and inline documentation only - run late, after the code they describe has stopped moving, so you are not documenting something a later stage will change. Code and naming findings are owned by the earlier stages - do not flag them here, even when you spot them.
+A findings-based audit. Review TARGET for comments and inline documentation only - run late, after the code they describe has stopped moving, so you are not documenting something a later stage will change. Code, naming and logging findings are owned by the earlier stages - do not flag them here, even when you spot them.
 
 Look for:
 - Comments that now contradict the code (an earlier stage changed the code but not the comment).

@@ -87,7 +87,7 @@ Names are singular and dotted (`myapp.order.processing.duration`); always set a 
 
 ### Cardinality discipline
 
-Each unique combination of tag values is a separate time series. Bound every tag value to a small finite set - outcome, region, order type. Never tag with a user id, order id, email, or raw exception message: unbounded values explode the series count and take the backend's memory and storage with them. The SDK caps at 2000 combinations per instrument then drops the rest - a safety valve, not a design target. If a high-cardinality dimension is genuinely needed, gate it behind config opt-in.
+Each unique combination of tag values is a separate time series. Bound every tag value to a small finite set - outcome, region, order type. Never tag with a user id, order id, email, or raw exception message: unbounded values explode the series count and take the backend's memory and storage with them. The SDK caps at 2000 combinations per instrument and folds the overflow into a single `otel.metric.overflow=true` series (1.10+; earlier SDKs dropped it) - a safety valve, not a design target. If a high-cardinality dimension is genuinely needed, gate it behind config opt-in.
 
 ### Zero-allocation tags on hot paths
 

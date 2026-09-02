@@ -32,6 +32,7 @@
    "guard-unapproved-dispatch",
    "guard-ungated-commit",
    "guard-stop-contract",
+   "guard-fresh-session-start",
    "guard-answer-length",
    "instrument-tool-usage"
   ],

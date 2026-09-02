@@ -44,7 +44,7 @@ ENTRYPOINT ["dotnet", "App.dll"]
 
 - Express service dependencies with a health condition, and give every backing service (Postgres, SQL Server, Redis) its own healthcheck, so a dependent waits for ready and not merely started.
 - Keep state in named volumes; never bind-mount or inline a secret in the compose file - pull it from a gitignored env-file that never enters source control.
-- Segment the network - put backing services on an `internal: true` network with no published host ports, expose only the edge service and bind its port to `127.0.0.1` rather than `0.0.0.0`, and disable inter-container talk by default (`icc: false`) so a compromised service cannot reach the rest.
+- Segment the network - put backing services on an `internal: true` network with no published host ports, expose only the edge service and bind its port to `127.0.0.1` rather than `0.0.0.0`, and give each service only the networks it needs - two services that never talk share no network (Compose has no `icc` key; the bridge driver option `com.docker.network.bridge.enable_icc: "false"` under a network's `driver_opts` cuts every peer on that network, so it fits only a network of mutually isolated services, and daemon.json's `icc` covers just the default bridge) - so a compromised service cannot reach the rest.
 
 ## GitHub Actions - the CI/CD contract
 

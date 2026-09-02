@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
-# [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
+# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
 # claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
 # system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; the Cursor
 # stack lives in the cursor-stack repo.
@@ -39,16 +39,27 @@ usage() {
   cat <<USAGE
 claude-stack.sh - install or update the Claude Code stack into a project.
 
-Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--github-cli] [--keep-pins]
+Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--github-cli] [--keep-pins]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; MCP/plugin versions freeze until the next update; wires .claude/settings.json
-  update    re-resolve every runtime to latest + refresh hooks/agents/rules; leaves settings.json untouched
+  update    re-resolve every runtime to latest + refresh hooks/agents/rules; re-ensures the settings.json hook wiring (idempotent)
 
 Named flags (any order, each optional with a default):
   --space <name>           install into the ~/.claude-<name> account + a separate memory_<name>.db
   --scope project|global   project (default) installs INTO this repo; global installs into the account
   --context7 local|remote  context7 transport; remote (default) is the hosted server, local the npx server
+  --sentry-slug <slug>     seed SENTRY_SLUG - the Sentry org ('<org>') or project ('<org>/<project>',
+                           Sentry's recommended form) - into the ACCOUNT settings.json "env"
+                           (<account>/settings.json); the registration reads it at launch as
+                           https://mcp.sentry.dev/mcp/\${SENTRY_SLUG}. Absent = the env is left as it is
+  --sentry-auth token|oauth  sentry MCP auth. token (default) sends 'Authorization: Sentry-Bearer
+                           \${SENTRY_ACCESS_TOKEN}' (a personal/org API token you add to the same account
+                           "env" yourself); oauth registers NO header, so Claude Code runs Sentry's
+                           browser consent flow on first connect instead. Both values expand from the
+                           ACCOUNT settings.json "env" or the launch shell - never from a project-level
+                           .claude/settings.json (measured: that stays literal). update: absent = keep
+                           the mode the registration already has
   --github-cli             install the GitHub CLI (gh) if missing
   --keep-pins              keep local model/effort frontmatter edits on installed agents/skills across
                            the refresh (an update resets them to upstream otherwise)
@@ -73,8 +84,18 @@ Environment variables:
   SCOPE=project|global   fallback for --scope when the flag is absent (default project)
   CLAUDE_CONFIG_DIR      target a specific account when no --space is given (default ~/.claude)
   STACK_SKILLS_REPO      stack source repo (release-archive download, git-clone fallback; default https://github.com/envoydev/claude-stack); ignored with --source
-  CONTEXT7_API_KEY       context7 API key, read from the environment at launch (higher rate limits)
+  CONTEXT7_API_KEY       context7 API key, read from the ACCOUNT settings.json "env" (or the launch shell) at launch - higher
+                         rate limits; unset = the keyless free tier
   CONTEXT7_BAKE_KEY      with --context7 local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted)
+  SENTRY_SLUG            the Sentry org or org/project the sentry MCP URL is scoped to - lives in the ACCOUNT
+                         settings.json "env" (seeded by --sentry-slug); unset = a literal \${SENTRY_SLUG} URL
+                         that connects and then fails every call naming the variable (claude mcp list warns)
+  SENTRY_ACCESS_TOKEN    --sentry-auth token (default): a sentry API token (Settings -> Account -> API ->
+                         Personal Tokens, or an org token) - add it to the ACCOUNT settings.json "env"
+                         yourself (or export it in the launch shell); never in .mcp.json (the registration
+                         keeps \${SENTRY_ACCESS_TOKEN} literal), never in a project-level settings.json (does
+                         not reach .mcp.json expansion). Not SENTRY_AUTH_TOKEN: that is sentry-cli's
+                         release/symbol-upload credential (needs project:releases)
 
 Examples:
   bash $0 install
@@ -99,8 +120,9 @@ esac
 AGENT="claude-code"
 
 # Named flags (any order, each with a default): --space <name> (account ~/.claude-<name> +
-# memory_<name>.db), --scope project|global, --context7 local|remote, --github-cli (install gh),
-# --keep-pins (preserve local model/effort pin edits across the refresh).
+# memory_<name>.db), --scope project|global, --context7 local|remote, --sentry-slug <slug>,
+# --sentry-auth token|oauth, --github-cli (install gh), --keep-pins (preserve local model/effort pin
+# edits across the refresh).
 # Named-only: there is no positional space - a value must be attached to its flag, so a space can be
 # literally any word (no reserved-word collisions with the flag names).
 SPACE=""
@@ -108,6 +130,8 @@ SCOPE_FLAG=""
 INSTALL_GITHUB_CLI=false
 KEEP_PINS=false
 CONTEXT7_MODE="remote"
+SENTRY_SLUG_FLAG=""
+SENTRY_AUTH_FLAG=""
 SELECTION=""
 INSTALLED_ONLY=false
 PRINT_PLAN=false
@@ -124,6 +148,10 @@ while [ $# -gt 0 ]; do
     --scope=*)    SCOPE_FLAG="${1#*=}";                        shift ;;
     --context7)   _flag_val "$1" "${2:-}"; CONTEXT7_MODE="$2"; shift 2 ;;
     --context7=*) CONTEXT7_MODE="${1#*=}";                     shift ;;
+    --sentry-slug)  _flag_val "$1" "${2:-}"; SENTRY_SLUG_FLAG="$2"; shift 2 ;;
+    --sentry-slug=*) SENTRY_SLUG_FLAG="${1#*=}";                   shift ;;
+    --sentry-auth) _flag_val "$1" "${2:-}"; SENTRY_AUTH_FLAG="$2"; shift 2 ;;
+    --sentry-auth=*) SENTRY_AUTH_FLAG="${1#*=}";                  shift ;;
     --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
     --keep-pins)  KEEP_PINS=true;                              shift ;;
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
@@ -133,7 +161,7 @@ while [ $# -gt 0 ]; do
     --skills-only) SKILLS_ONLY=true;                              shift ;;
     --source)      _flag_val "$1" "${2:-}"; SOURCE_DIR="$2";      shift 2 ;;
     --source=*)    SOURCE_DIR="${1#*=}";                          shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --sentry-slug, --sentry-auth, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
   esac
 done
 
@@ -156,6 +184,21 @@ esac
 case "$CONTEXT7_MODE" in local|remote) ;;
   *) usage >&2; echo "error: --context7 must be 'local' or 'remote' (got '$CONTEXT7_MODE')" >&2; exit 1 ;;
 esac
+# --sentry-auth: lower-cased like the other enums; empty means 'resolve later' - token on install, the
+# existing registration's mode on update (the sentry block below). --sentry-slug is seeded into the
+# account settings.json "env" and lands inside a URL at launch, so only slug characters: `org` or
+# `org/project`; empty = leave the env alone.
+SENTRY_AUTH="$(printf '%s' "$SENTRY_AUTH_FLAG" | tr '[:upper:]' '[:lower:]')"
+case "$SENTRY_AUTH" in ""|token|oauth) ;;
+  *) usage >&2; echo "error: --sentry-auth must be 'token' or 'oauth' (got '$SENTRY_AUTH')" >&2; exit 1 ;;
+esac
+SENTRY_SLUG="$SENTRY_SLUG_FLAG"
+_sentry_slug_ok() {  # $1 = candidate: <org> or <org>/<project>, slug characters only (it lands inside a URL)
+  case "$1" in ""|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*/|*//*) return 1 ;; esac; return 0
+}
+if [ -n "$SENTRY_SLUG" ] && ! _sentry_slug_ok "$SENTRY_SLUG"; then
+  usage >&2; echo "error: --sentry-slug '$SENTRY_SLUG' must be a slug (<org> or <org>/<project>; chars [A-Za-z0-9._-])" >&2; exit 1
+fi
 # --installed-only refreshes an EXISTING install from disk - meaningless on a first install, and
 # --selection is the explicit alternative to deriving one; the two cannot both decide the set.
 if [ "$INSTALLED_ONLY" = true ]; then
@@ -433,18 +476,55 @@ if [ -n "$SPACE" ]; then MEMORY_DB_FILE="memory_$SPACE.db"; fi  # space -> per-s
 MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY_SQLITE_PATH=@HOME_MEMORY_DIR@/$MEMORY_DB_FILE -- uvx --with numpy --from mcp-memory-service${MEMORY_PIN} memory server"
 
 # context7 runs REMOTE (the hosted server) by DEFAULT - no local process, and the key stays out of
-# the registration: put CONTEXT7_API_KEY in ~/.claude/settings.json (or .claude/settings.local.json)
-# under "env" and Claude Code expands ${CONTEXT7_API_KEY} in the header at launch, so .mcp.json holds
-# no secret. Pass --context7 local for the local stdio server instead - keyless by default too,
+# the registration: put CONTEXT7_API_KEY in the ACCOUNT settings.json "env" (<account>/settings.json -
+# ~/.claude or the space's dir; or export it in the launch shell) and Claude Code expands
+# ${CONTEXT7_API_KEY} in the header at launch, so .mcp.json holds no secret. A PROJECT-level
+# .claude/settings.json or settings.local.json "env" value does NOT reach .mcp.json expansion (measured:
+# it stays literal; it reaches only the MCP child process environment). Pass --context7 local for the local stdio server instead - keyless by default too,
 # and CONTEXT7_BAKE_KEY=1 (with CONTEXT7_API_KEY) bakes --api-key into <repo>/.mcp.json (keep it uncommitted).
 CONTEXT7_REMOTE_URL='https://mcp.context7.com/mcp'
-CONTEXT7_REMOTE_HDR='CONTEXT7_API_KEY: ${CONTEXT7_API_KEY}'
+CONTEXT7_REMOTE_HDR='CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}'   # :- so an unset key sends an EMPTY header = keyless free tier (measured: a literal ${CONTEXT7_API_KEY} is rejected as an invalid key on every call, an empty value passes)
 
-# sentry runs REMOTE only (the hosted MCP at mcp.sentry.dev) - no local process, no pin to resolve;
-# the token stays out of the registration: put SENTRY_ACCESS_TOKEN in settings.json "env" and Claude
-# Code expands the Authorization header at launch.
-SENTRY_REMOTE_URL='https://mcp.sentry.dev/mcp'
-SENTRY_REMOTE_HDR='Authorization: Bearer ${SENTRY_ACCESS_TOKEN}'
+# sentry runs REMOTE only (the hosted MCP at mcp.sentry.dev) - no local process, no pin to resolve.
+# The registration is CONSTANT and reads two values from the ACCOUNT settings.json "env" at launch
+# (<account>/settings.json - ~/.claude or the space's dir; the launch shell works too; a project-level
+# .claude/settings.json does NOT reach .mcp.json expansion - measured, it stays literal):
+#   SENTRY_SLUG          -> https://mcp.sentry.dev/mcp/${SENTRY_SLUG} (org, or org/project - Sentry's
+#                           recommended scoping; --sentry-slug seeds it)
+#   SENTRY_ACCESS_TOKEN  -> `Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}` under --sentry-auth
+#                           token (default) - Sentry's documented direct-token mode for a personal/org API
+#                           token; plain `Bearer` is the server's OAuth-issued token scheme and rejects an
+#                           API token as invalid_token (measured: AUTH_HEADER_REJECTED / 401 under it)
+# --sentry-auth oauth registers NO header instead, so Claude Code runs Sentry's browser consent flow on
+# first connect - a set-but-wrong header disables that fallback, which is why the modes never mix.
+# Why placeholders and not baked values: both values belong to the account, not the file, and the
+# guided commands make the user fill them in. Unset, `${SENTRY_SLUG}` stays literal - the server
+# accepts that path on tools/list and fails every call naming the variable, and `claude mcp list`
+# prints 'Missing environment variables' - a diagnosable state, unlike `${SENTRY_SLUG:-}`, whose
+# trailing slash the server 404s (both measured).
+# update: --sentry-auth absent keeps the mode the existing registration carries (read back through
+# `claude mcp get sentry`); an old plain-`Bearer` registration migrates to the fixed token header.
+if [ "$ACTION" = "update" ] && [ -z "$SENTRY_AUTH" ] && command -v claude >/dev/null 2>&1; then
+  _sentry_get="$(claude mcp get sentry 2>/dev/null || true)"
+  if printf '%s\n' "$_sentry_get" | grep -q '^ *URL: https://mcp\.sentry\.dev/' && ! printf '%s\n' "$_sentry_get" | grep -q '^ *Authorization: '; then
+    SENTRY_AUTH="oauth"   # a deliberately headerless registration stays headerless
+  fi
+fi
+[ -n "$SENTRY_AUTH" ] || SENTRY_AUTH="token"
+SENTRY_REMOTE_URL='https://mcp.sentry.dev/mcp/${SENTRY_SLUG}'
+SENTRY_REMOTE_HDR='Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}'
+[ "$SENTRY_AUTH" = "oauth" ] && SENTRY_REMOTE_HDR=""
+seed_account_env() {  # $1 = KEY $2 = VALUE - write env.KEY into the ACCOUNT settings.json (the file .mcp.json expansion reads); overwrite - a flag is explicit
+  local settings="$CONFIG_DIR/settings.json"
+  mkdir -p "$CONFIG_DIR"
+  node -e '
+const fs=require("fs");const [p,k,v]=process.argv.slice(1);
+let d={};try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){if(e.code!=="ENOENT")throw e}
+d.env=d.env||{};const before=d.env[k];d.env[k]=v;
+fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");
+console.log(before===v?`  ${k} already ${v} in ${p}`:`  ${k}=${v} written to ${p} env`);
+' "$settings" "$1" "$2" || note_failure "could not write $1 into $settings"
+}
 if [ "$CONTEXT7_MODE" = "local" ]; then
   CONTEXT7_SPEC="-- npx -y @upstash/context7-mcp${CTX7_PIN}"
   if [ -n "${CONTEXT7_BAKE_KEY:-}" ] && [ -n "${CONTEXT7_API_KEY:-}" ]; then
@@ -463,20 +543,20 @@ MCPS=(
   "angular-cli|-- npx -y @angular/cli mcp" # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
   "serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent${SERENA_PIN} serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd" # LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off
   "playwright|-- npx -y @playwright/mcp${PW_PIN} --user-data-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright/output" # drive a real browser for visual checks / web app verification
-  "chrome-devtools|-- npx chrome-devtools-mcp@latest" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
+  "chrome-devtools|-- npx -y chrome-devtools-mcp@latest" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   "appium-mcp|-- npx -y appium-mcp@latest" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
-  "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev); the Authorization header keeps ${SENTRY_ACCESS_TOKEN} LITERAL, expanded at launch from settings.json "env"; comment out where the project has no Sentry
+  "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; --sentry-slug seeds the slug); --sentry-auth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
   "$MEMORY_ENTRY"  # memory: cross-project recall - the subagent handoff runs on serena; comment out in a standalone project
   "$CONTEXT7_ENTRY"                           # up-to-date library/framework/SDK docs (beats recalled API knowledge)
 )
 
-# (4) PreToolUse hooks (claude-code): copied into the repo from the run's source clone (hooks/) on BOTH
+# (4) Hooks (claude-code): copied into the repo from the run's source snapshot (stack/hooks/) on BOTH
 # actions (per-hook fail-soft - a hook not yet upstream keeps its committed repo copy); on INSTALL each is
-# also wired into .claude/settings.json. UPDATE refreshes files only (never settings).
+# also wired into .claude/settings.json. UPDATE refreshes the files and re-ensures the wiring (idempotent).
 # Each entry: "filename::matcher::args" - args (if any) are appended to the hook command.
 HOOKS=(
   "guard-protected-force-push.js::Bash::"         # block force-push to main/master/develop
-  "guard-catastrophic-rm.js::Bash::"              # block recursive rm of /, ~, $HOME, or a bare *
+  "guard-catastrophic-rm.js::Bash::"              # block recursive rm of /, ~, $HOME, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once
   "guard-read-whole-file.js::Read::"              # block whole-file Read of a >200-line source file - locate via serena first; caps cumulative half-split reconstruction
   "guard-read-whole-file.js::Bash::"              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
   "guard-unapproved-dispatch.js::Task|Agent::"    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
@@ -621,7 +701,7 @@ if [ "$INSTALLED_ONLY" = true ]; then
       node -e 'for(const n of Object.keys((JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mcpServers)||{}))console.log("mcp "+n)' "$PWD/.mcp.json" 2>/dev/null || true
     fi
   } > "$SELECTION"
-  grep -q . "$SELECTION" || { echo "error: --installed-only found nothing installed under $_io_claude - run '$0 install' (or the /claude-stack:setup command) first" >&2; exit 1; }
+  grep -q . "$SELECTION" || { echo "error: --installed-only found nothing installed under $_io_claude - run '$0 install' (or the /claude-stack:setup command) first" >&2; rm -rf "$_IO_TMP"; exit 1; }
   # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
   # would otherwise install all of them.
   grep -q '^hook ' "$SELECTION" || HOOKS=()
@@ -672,6 +752,7 @@ if [ "$PRINT_PLAN" = true ]; then
   printf 'plan rules:';   for e in ${CLAUDE_RULES[@]+"${CLAUDE_RULES[@]}"}; do n="${e%%::*}"; printf ' %s' "${n%.md}"; done; printf '\n'
   # dedupe display: one hook wired on two tools is still one hook in the plan
   printf 'plan hooks:';   _seen=""; for e in ${HOOKS[@]+"${HOOKS[@]}"};     do n="${e%%::*}"; case " $_seen " in *" $n "*) continue ;; esac; _seen="$_seen $n"; printf ' %s' "${n%.js}"; done; printf '\n'
+  [ -n "${_IO_TMP:-}" ] && rm -rf "$_IO_TMP"   # the EXIT trap is installed further down - clean the --installed-only scratch here
   exit 0
 fi
 
@@ -786,7 +867,7 @@ stack_src() {
 # INSTALL - skills re-add UNCONDITIONALLY (clean copy each run); MCPs and plugins SKIP if already present
 # ===========================================================================
 install_skills() {
-  # Copy each selected skills/<name>/ out of the run's clone into the scope dest - all 65 house
+  # Copy each selected skills/<name>/ out of the run's clone into the scope dest - all house
   # skills live in ONE repo, so a plain copy fully reproduces what the skills CLI used to stage;
   # no npx/network-registry dependency.
   stack_src || { note_failure "skills not installed"; return 0; }   # fail-soft: skip, never abort
@@ -816,31 +897,41 @@ install_plugins() {
   done
 }
 
+_mcp_argv() {  # $1 = manifest args -> spec_words: the argv for `claude mcp add`, path tokens resolved per word
+  # Split into argv words FIRST, then resolve @SERENA_CONTEXT@ / @HOME_MEMORY_DIR@ inside each word - so
+  # a resolved path that contains a space (a home dir like '/Users/Jane Doe') stays ONE argument instead
+  # of splitting into two. read -ra splits on whitespace into an array AND disables glob expansion, so
+  # a bare '*' in the spec is passed literally, never expanded.
+  local i
+  read -ra spec_words <<<"$1"
+  for i in "${!spec_words[@]}"; do
+    spec_words[i]="${spec_words[i]//@SERENA_CONTEXT@/$SERENA_CTX}"
+    spec_words[i]="${spec_words[i]//@HOME_MEMORY_DIR@/$HOME_MEMORY_DIR}"
+  done
+}
+
 install_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
-  local entry name args spec tok_cfg url hdr
+  local entry name args url hdr
   local -a spec_words
-  tok_cfg='${CLAUDE_CONFIG_DIR}'
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
-    spec="${args//@SERENA_CONTEXT@/$SERENA_CTX}"
-    spec="${spec//@HOME_MEMORY_DIR@/$HOME_MEMORY_DIR}"
-    # CLAUDE_CONFIG_DIR unset -> the CLI can't interpolate ${CLAUDE_CONFIG_DIR} at launch, so resolve it now.
-    [ -z "${CLAUDE_CONFIG_DIR:-}" ] && spec="${spec//"$tok_cfg"/$CONFIG_DIR}"
+    if [ "$name" = "sentry" ] && [ -n "$SENTRY_SLUG" ]; then seed_account_env SENTRY_SLUG "$SENTRY_SLUG"; fi   # the env seed lands even when the registration is skipped below
     if claude mcp get "$name" >/dev/null 2>&1; then echo "  mcp $name already configured - skipping"; continue; fi
     log "mcp [$CLAUDE_SCOPE]: $name"
-    if [ "$spec" = "@HTTP@" ]; then
-      # remote (hosted) server - url/header keyed by name: sentry, else context7
+    if [ "$args" = "@HTTP@" ]; then
+      # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
+      # (sentry --sentry-auth oauth) registers with no --header at all, so the OAuth fallback stays on.
       if [ "$name" = "sentry" ]; then url="$SENTRY_REMOTE_URL"; hdr="$SENTRY_REMOTE_HDR"
       else url="$CONTEXT7_REMOTE_URL"; hdr="$CONTEXT7_REMOTE_HDR"; fi
-      claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr" || note_failure "mcp $name failed"
+      if [ -n "$hdr" ]; then
+        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr" || note_failure "mcp $name failed"
+      else
+        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" || note_failure "mcp $name failed"
+      fi
       continue
     fi
-    # ASSUMPTION: no resolved path token ($CONFIG_DIR / $HOME_MEMORY_DIR) contains a space - the MCP
-    # spec is space-separated by design (-e KEY=VAL -- cmd args), so a space inside one token cannot
-    # survive word-splitting. read -ra splits on whitespace into an array (the intended token split)
-    # AND disables glob expansion, so a bare '*' in spec is passed literally, never expanded.
-    read -ra spec_words <<<"$spec"
+    _mcp_argv "$args"
     claude mcp add --scope "$CLAUDE_SCOPE" "$name" "${spec_words[@]}" || note_failure "mcp $name failed"
   done
 }
@@ -857,7 +948,11 @@ _install_from_src() {
     src="$STACK_SRC/$subdir/$file"
     [ -f "$src" ] || { note_failure "$label '$file' not found in $STACK_REPO_URL"; continue; }
     dest="$dest_dir/$file"; mkdir -p "$(dirname "$dest")"
-    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then log "  $label current: $file"; continue; fi
+    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+      # Unchanged content can still have lost its exec bit (a re-clone, a checkout that dropped the mode) - re-assert it.
+      [ "$exec_bit" = "exec" ] && [ ! -x "$dest" ] && chmod +x "$dest"
+      log "  $label current: $file"; continue
+    fi
     cp "$src" "$dest"
     [ "$exec_bit" = "exec" ] && chmod +x "$dest"
     log "  $label installed -> $file"
@@ -867,7 +962,7 @@ _install_from_src() {
 download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (keeps repo copy)
   local root entry file; local -a files=()
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
-  for entry in "${HOOKS[@]}"; do file="${entry%%::*}"; files+=("$file"); done
+  for entry in ${HOOKS[@]+"${HOOKS[@]}"}; do file="${entry%%::*}"; files+=("$file"); done   # empty-array-safe on bash 3.2 (macOS /bin/bash) under set -u
   _install_from_src stack/hooks hook "$root/.claude/hooks" exec ${files[@]+"${files[@]}"}
 }
 
@@ -920,7 +1015,7 @@ seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the tem
 # (not skills, not agents, not rules, not hooks - an added key there parses but is ignored). So the
 # stack versions the INSTALL, not the file: one stamp naming the commit every artifact was copied
 # from. That is what /claude-stack:configure diffs against to answer 'what changed since I
-# installed?' - exactly, for all ~117 artifacts, with nothing to hand-bump:
+# installed?' - exactly, for every artifact, with nothing to hand-bump:
 #     <repo>/compare/<sha>...main  (the GitHub compare view / API)
 # Machine-local by design (it describes THIS checkout's install) and already covered by the
 # '.claude/*' gitignore line the run prints.
@@ -928,8 +1023,10 @@ stack_version_from() {
   # The stack's ONE version: an extracted release archive carries it in RELEASE-SOURCE; a git
   # checkout reads it from the plugin manifest - the same file the marketplace serves from main,
   # so the stamp, the release, and the marketplace always name the same version.
+  # '|| true': a source with neither file (a bare checkout) yields an empty version - under set -e +
+  # pipefail the failing sed would otherwise abort the run inside write_stamp.
   { sed -n 's/^version: //p' "$1/RELEASE-SOURCE" 2>/dev/null | head -1 | grep .; } ||
-    sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1
+    sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1 || true
 }
 
 write_stamp() {
@@ -974,7 +1071,7 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   # NB: program via -c (not `python3 - <<heredoc`): a pipe + heredoc both target stdin and the pipe
   # wins, so a heredoc program would never run. -c frees stdin for the piped hook specs.
   local prog; prog=$(cat <<'PY'
-import json, sys
+import json, os, sys
 path = sys.argv[1]
 deny_specs, mcp_names, bucket = [], [], None
 for a in sys.argv[2:]:
@@ -988,18 +1085,40 @@ for line in sys.stdin.read().splitlines():
     file, matcher, args = (line.split("::", 2) + ["", ""])[:3]
     if not matcher:
         continue
-    cmd = "$CLAUDE_PROJECT_DIR/.claude/hooks/" + file + ((" " + args) if args else "")
+    # The placeholder is QUOTED so a project path with a space survives the shell (the hooks docs:
+    # 'explicitly quote path placeholders'); `legacy` is the unquoted text earlier installs wired,
+    # rewritten in place below so an update never leaves two entries for one hook.
+    tail = (" " + args) if args else ""
+    cmd = '"$CLAUDE_PROJECT_DIR/.claude/hooks/' + file + '"' + tail
+    legacy = "$CLAUDE_PROJECT_DIR/.claude/hooks/" + file + tail
     if file == "instrument-tool-usage.js":
         # env-gated: the sh test costs ~nothing when off; node spawns only under CLAUDE_STACK_INSTRUMENT=1
-        cmd = '[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] || ' + cmd
-    specs.append((matcher, cmd))
-try:
-    data = json.load(open(path))
-except Exception:
+        gate = '[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] || '
+        cmd, legacy = gate + cmd, gate + legacy
+    specs.append((matcher, cmd, legacy))
+if os.path.exists(path):
+    # Refuse to touch a settings.json that does not parse: falling back to {} would REPLACE the project's
+    # whole file (permissions, statusLine, env) with just the stack's entries.
+    try:
+        data = json.load(open(path))
+    except Exception as exc:
+        print("  !! settings.json is not valid JSON (%s) - left untouched; fix it and re-run" % exc, file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(data, dict):
+        print("  !! settings.json top level is not an object - left untouched", file=sys.stderr)
+        sys.exit(1)
+else:
     data = {}
-# "@<Event>" matchers wire a non-PreToolUse lifecycle event (e.g. @Stop - no matcher key there).
 changed = False
-for matcher, command in specs:
+# Migrate the unquoted command text earlier installs wired (same file, any event) to the quoted form.
+for matcher, command, legacy in specs:
+    for entries in data.get("hooks", {}).values():
+        for e in entries:
+            for h in e.get("hooks", []):
+                if h.get("command") == legacy:
+                    h["command"] = command; changed = True
+# "@<Event>" matchers wire a non-PreToolUse lifecycle event (e.g. @Stop - no matcher key there).
+for matcher, command, legacy in specs:
     if matcher.startswith("@"):
         ev = data.setdefault("hooks", {}).setdefault(matcher[1:], [])
         if any(h.get("command", "") == command for e in ev for h in e.get("hooks", [])):
@@ -1008,8 +1127,11 @@ for matcher, command in specs:
         changed = True
         continue
     cur = data.setdefault("hooks", {}).setdefault("PreToolUse", [])
-    have = {h.get("command", "") for e in cur for h in e.get("hooks", [])}
-    if command in have:
+    # Keyed on (matcher, command): one hook file wired on two tools (guard-read-whole-file on Read AND Bash)
+    # is two entries - keying on the command alone dropped the second (measured: no install ever carried
+    # the Bash matcher).
+    have = {(e.get("matcher", ""), h.get("command", "")) for e in cur for h in e.get("hooks", [])}
+    if (matcher, command) in have:
         continue
     cur.append({"matcher": matcher, "hooks": [{"type": "command", "command": command}]})
     changed = True
@@ -1053,12 +1175,21 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' "${HOOKS[@]}" | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} || log "  !! settings.json wiring failed"
+  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} || log "  !! settings.json wiring failed"
 }
 
 # ===========================================================================
 # UPDATE - bring everything to latest
 # ===========================================================================
+# Renamed/retired upstream names: their old files left the manifests, so the refresh loops never clear
+# them - a leftover skill keeps auto-activating next to its successor, a leftover agent stays dispatchable
+# under the old @agent-name (and the capabilities capture inventories it). Only names this stack itself
+# once installed; an absent one is a no-op. The guided /claude-stack:update prunes from the stamp
+# compare instead - these lists are the script path's equivalent. Unquoted on purpose: the parity lint
+# reads the quoted manifest blocks only.
+RETIRED_SKILLS=(project-task-flow project-task-cycle project-capabilities project-failure-signatures typescript-testing data-security dotnet-error-handling mobile-security)
+RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-verifier.md mobile-solution-designer.md mobile-implementer.md mobile-verifier.md dotnet-windows-service-solution-designer.md dotnet-windows-service-implementer.md dotnet-windows-service-verifier.md code-analyzer.md issue-diagnoser.md)
+
 remove_skills() {  # rm -rf each manifest skill under the scope dest, so update starts from a clean slate
   local dest entry name
   case "$CLAUDE_SCOPE" in user) dest="$CONFIG_DIR/skills" ;; *) dest="$PWD/.claude/skills" ;; esac
@@ -1067,9 +1198,18 @@ remove_skills() {  # rm -rf each manifest skill under the scope dest, so update 
     name="${entry#*|}"
     rm -rf "$dest/$name"
   done
-  # Renamed/retired upstream skills: their old dirs left the manifest, so the loop above never
-  # clears them - prune the known old names explicitly (a leftover copy keeps firing forever).
-  for name in project-task-flow; do rm -rf "$dest/$name"; done
+  for name in ${RETIRED_SKILLS[@]+"${RETIRED_SKILLS[@]}"}; do
+    [ -d "$dest/$name" ] && { rm -rf "${dest:?}/$name"; log "  skill pruned (retired upstream): $name"; }
+  done
+  return 0
+}
+
+prune_retired_agents() {  # UPDATE: drop the known old agent names (RETIRED_AGENTS above)
+  local root name; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  for name in ${RETIRED_AGENTS[@]+"${RETIRED_AGENTS[@]}"}; do
+    [ -f "$root/.claude/agents/$name" ] && { rm -f "$root/.claude/agents/$name"; log "  agent pruned (retired upstream): $name"; }
+  done
+  return 0
 }
 
 update_skills() {
@@ -1090,32 +1230,35 @@ update_plugins() {
 
 update_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
-  # MCP binaries auto-update at launch (@latest / uvx git+); this re-asserts the config.
-  local entry name args spec tok_cfg url hdr
+  # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
+  # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
+  # design; the hosted servers (context7 remote, sentry) have nothing to pin.
+  local entry name args url hdr
   local -a spec_words
-  tok_cfg='${CLAUDE_CONFIG_DIR}'
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
-    spec="${args//@SERENA_CONTEXT@/$SERENA_CTX}"
-    spec="${spec//@HOME_MEMORY_DIR@/$HOME_MEMORY_DIR}"
-    [ -z "${CLAUDE_CONFIG_DIR:-}" ] && spec="${spec//"$tok_cfg"/$CONFIG_DIR}"
     log "mcp refresh [$CLAUDE_SCOPE]: $name"
+    if [ "$name" = "sentry" ] && [ -n "$SENTRY_SLUG" ]; then seed_account_env SENTRY_SLUG "$SENTRY_SLUG"; fi
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
-    if [ "$spec" = "@HTTP@" ]; then
-      # remote (hosted) server - url/header keyed by name: sentry, else context7
+    if [ "$args" = "@HTTP@" ]; then
+      # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
+      # (sentry --sentry-auth oauth) registers with no --header at all, so the OAuth fallback stays on.
       if [ "$name" = "sentry" ]; then url="$SENTRY_REMOTE_URL"; hdr="$SENTRY_REMOTE_HDR"
       else url="$CONTEXT7_REMOTE_URL"; hdr="$CONTEXT7_REMOTE_HDR"; fi
-      claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr" || note_failure "mcp $name failed"
+      if [ -n "$hdr" ]; then
+        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr" || note_failure "mcp $name failed"
+      else
+        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" || note_failure "mcp $name failed"
+      fi
       continue
     fi
-    # Same no-spaces-in-resolved-path assumption + glob-safe array split as install_mcps (see there).
-    read -ra spec_words <<<"$spec"
+    _mcp_argv "$args"   # split-first + per-word token resolution, as in install_mcps
     claude mcp add --scope "$CLAUDE_SCOPE" "$name" "${spec_words[@]}" || note_failure "mcp $name failed"
   done
 }
 
 update_hooks() { download_hooks; wire_hooks_settings; }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
-update_agents() { download_agents; } # UPDATE: refresh subagent files
+update_agents() { prune_retired_agents; download_agents; } # UPDATE: drop retired names, refresh subagent files
 update_rules() { download_rules; }   # UPDATE: refresh rule files
 
 # ===========================================================================
@@ -1242,7 +1385,9 @@ write_stamp   # after every copy step, so the stamp only ever names a revision t
 prune_agents_cache
 echo
 log "done: $ACTION [scope=$SCOPE, account=$CONFIG_DIR, agent=$AGENT]"
-_summary="  skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=${#HOOKS[@]}, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
+_hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one hook), matching the plan and the docs' nine
+for _e in ${HOOKS[@]+"${HOOKS[@]}"}; do _n="${_e%%::*}"; case " $_seen " in *" $_n "*) continue ;; esac; _seen="$_seen $_n"; _hook_files=$((_hook_files + 1)); done
+_summary="  skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
 [ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"
 [ "$KEEP_PINS" = true ] && _summary="$_summary; keep-pins=on"
 log "$_summary; context7=$CONTEXT7_MODE"
@@ -1256,12 +1401,17 @@ fi
 log "next steps:"
 log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
 log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
-log "  - run /project-agent-capabilities once - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
 log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 if [ "$CONTEXT7_MODE" = "remote" ]; then
-  log "  - context7 is remote; add CONTEXT7_API_KEY to $CONFIG_DIR/settings.json 'env' for higher rate limits (or re-run with --context7 local)"
+  log "  - context7 is remote; add CONTEXT7_API_KEY to $CONFIG_DIR/settings.json 'env' (the ACCOUNT file - a project-level one does not reach .mcp.json) for higher rate limits, or re-run with --context7 local"
+fi
+if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^sentry|'; then
+  log "  - sentry reads SENTRY_SLUG (your org, or org/project) from $CONFIG_DIR/settings.json 'env' - seeded by --sentry-slug, or add it there by hand (a project-level settings.json does not reach .mcp.json)"
+  if [ "$SENTRY_AUTH" = "token" ]; then log "  - sentry auth is token: add SENTRY_ACCESS_TOKEN (a personal/org API token) to the same $CONFIG_DIR/settings.json 'env' yourself - or re-run with --sentry-auth oauth for the browser consent flow"
+  else log "  - sentry is registered with no header: the first use opens Sentry's consent flow in the browser via /mcp"; fi
 fi
 [ "$INSTALL_GITHUB_CLI" = true ] && log "  - run 'gh auth login' if gh is not yet authenticated (needed before PRs/issues)"
 

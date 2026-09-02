@@ -170,12 +170,12 @@ public sealed class OrderService(IOrderRepository repository, ILogger<OrderServi
 
 ### Collection expressions (C# 12+)
 - Use `[]` collection expressions for array, `List<T>`, `Span<T>` initialization. Use the spread `..` operator to compose.
-- In C# 14 / .NET 10 these are valid in more contexts (`yield return`, `params`, `IEnumerable`-returning expression bodies, LINQ). Use them there too when clearer.
+- Target types: arrays, spans, `List<T>`, `ImmutableArray<T>`, the collection interfaces (`IEnumerable<T>`, `IReadOnlyList<T>`, `IList<T>`, ...) and any collection-builder type - all C# 12; C# 13 adds `params` collections (`params ReadOnlySpan<T>`), so a collection expression flows into those too. A newer target type or context is verified via context7 at adoption, never assumed from a release headline.
 
 ```csharp
 int[] primes = [2, 3, 5, 7];
 List<string> all = [.. defaults, .. overrides];
-IEnumerable<int> GetNumbers() => [1, 2, 3, 4];   // C# 14
+IEnumerable<int> GetNumbers() => [1, 2, 3, 4];   // interface target - C# 12
 ```
 
 ### Pattern matching

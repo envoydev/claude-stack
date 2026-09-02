@@ -34,6 +34,7 @@ tasks:
     dependencies: []
     allowed_files_or_areas: []
     anchors: []               # file:symbol the designer located - the implementer jumps to these, skipping re-navigation
+    log_points: []            # the observability the designer decided for this slice - where a line goes, at what level, with which identifiers (boundary crossings, decision points, every failure exit; 'framework-emitted' where the platform already logs it)
     forbidden_changes: []
     implementer_model: haiku | sonnet   # designer-assigned by task difficulty; sonnet floors any risk trigger
 verification_notes: []
@@ -130,6 +131,7 @@ scope: []
 acceptance: []                # the observable proof of done
 allowed_files_or_areas: []
 anchors: []                    # file:symbol the designer located - the implementer jumps to these, skipping re-navigation
+log_points: []                 # copied from the designer's card verbatim - the implementer places them through the repo's logging seam, the verifier checks level + identifiers against them
 forbidden_changes: []          # the shared seams this task must not touch
 dependencies: []
 implementer_model: haiku | sonnet   # designer-assigned by task difficulty; sonnet floors any risk trigger

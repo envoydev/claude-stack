@@ -28,7 +28,8 @@ machinery, no pasted output, one narration line between steps.
 
 ## 1. Preconditions
 Project mode: cwd has a populated `.claude/` (skills/agents/rules/hooks present). Global mode:
-the account dir holds them instead. Nothing installed in either place -> stop and route to the
+the account dir holds the skills (the installer lays agents/rules/hooks only into a git repo's
+`.claude/`, whatever the scope - a global refresh is skills-only). Nothing installed in either place -> stop and route to the
 sibling `/claude-stack:setup` command. The user names items to add or drop -> that is the
 sibling `/claude-stack:configure` command, not this one. OS: `darwin`/`linux` -> the sh
 installer; Windows -> the ps1 (via `pwsh`).
@@ -61,7 +62,7 @@ choice), and the detected migrations. Three outputs decide the path:
 
 - **Prune list EMPTY** -> step 3, the fast path. This includes `no-stamp` (exit 2 - no baseline,
   pruning impossible, refreshing unaffected), `compare-unreachable` (exit 3 - same), and a
-  `TRUNCATED` first line (the removal list cannot be trusted complete - never prune from a
+  `TRUNCATED` line, third after the version + base lines (the removal list cannot be trusted complete - never prune from a
   possibly-partial diff; route the reconcile to `configure` in the report). Say which applied.
 - **Prune list NON-EMPTY** -> step 4, the pruning path.
 
@@ -73,7 +74,16 @@ Run the installer; it derives the selection from disk itself, closes new depende
 - Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins`
 
 Scope/space mirror how the install was laid down; `--keep-pins` is the default here - a fast
-refresh must not flatten deliberate local model/effort pin edits. Then:
+refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP;
+for sentry that means the constant `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` registration with
+the `Sentry-Bearer` header (an old plain-`Bearer` header, the broken v0.2.33-and-earlier default,
+migrates by itself; a deliberately headerless oauth registration is read back and kept). Sentry
+environment plan, no question on this path: when sentry is installed, read the ACCOUNT
+`settings.json` env (`~/.claude/settings.json`, or the space's) and report - as ONE line in the
+close-out, with the file path - any of `SENTRY_SLUG` and (token mode) `SENTRY_ACCESS_TOKEN` still
+missing: the user adds them there by hand (`{ "env": { "SENTRY_SLUG": "<org>[/<project>]",
+"SENTRY_ACCESS_TOKEN": "<token>" } }`; never a project-level `.claude/settings.json`, its env does
+not reach `.mcp.json`), or runs `/claude-stack:configure`, whose sentry plan asks the slug. Then:
 
 - The compare showed `stack/CLAUDE.template.md` modified -> reconcile the project's CLAUDE.md
   additively (step 6). Otherwise skip it without reading either file.

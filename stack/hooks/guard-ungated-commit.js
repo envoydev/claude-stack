@@ -67,20 +67,26 @@ if (dashC) root = path.resolve(root, unq(dashC[1]));
 // Trivial-diff exemption: total churn across the uncommitted tree (staged + unstaged -
 // a chained `git add && git commit` stages mid-command, so staged-only would undercount).
 // <= 2 files and <= 15 changed lines is the typo/one-line class; anything bigger gates.
+// Untracked files count too: `git diff HEAD` never lists them, so a feature landing in NEW
+// files only (`git add -A && git commit`) read as 'nothing to commit' and passed ungated
+// (reproduced: three 40-line new files, exit 0). An untracked file is one row and its line
+// count is its churn - the same arithmetic a staged add gets.
 try {
-  const numstat = execSync('git diff HEAD --numstat', { cwd: root, timeout: 5000 })
-    .toString()
-    .trim();
-  if (numstat) {
-    const rows = numstat.split('\n');
-    const lines = rows.reduce((n, r) => {
-      const [a, d] = r.split('\t');
-      return n + (parseInt(a, 10) || 0) + (parseInt(d, 10) || 0);
-    }, 0);
-    if (rows.length <= 2 && lines <= 15) process.exit(0);
-  } else {
-    process.exit(0); // nothing to commit - let git say so
+  const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000 }).toString().trim();
+  const numstat = git('diff HEAD --numstat');
+  const rows = numstat ? numstat.split('\n') : [];
+  let files = rows.length;
+  let lines = rows.reduce((n, r) => {
+    const [a, d] = r.split('\t');
+    return n + (parseInt(a, 10) || 0) + (parseInt(d, 10) || 0);
+  }, 0);
+  for (const f of git('ls-files --others --exclude-standard').split('\n').filter(Boolean)) {
+    files += 1;
+    if (files > 2) break; // already past the bar - no need to size the rest
+    try { lines += fs.readFileSync(path.join(root, f), 'utf8').split('\n').filter(Boolean).length; } catch { /* unreadable - the row alone counts */ }
   }
+  if (files === 0) process.exit(0); // nothing to commit - let git say so
+  if (files <= 2 && lines <= 15) process.exit(0);
 } catch {
   process.exit(0); // not a git repo / git unavailable - never block on our own failure
 }

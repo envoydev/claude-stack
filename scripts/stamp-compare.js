@@ -15,7 +15,10 @@
 //
 // Exit codes the caller branches on: 0 = compare done; 2 = no stamp (prints
 // 'no-stamp'); 3 = compare unreachable (prints 'compare-unreachable'). Both
-// non-zero paths are refresh-only signals, never errors that stop an update.
+// non-zero paths are refresh-only signals, never errors that stop an update;
+// a usage error exits 1 so it can never read as the no-stamp signal.
+// GITHUB_TOKEN (optional) authenticates the compare: a private fork's repo
+// 404s without it, and the anonymous limit is 60 requests an hour.
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -53,7 +56,7 @@ async function compareFiles(repo, base, head)
     const fixture = arg('--fixture');   // test injection - the saved compare API JSON
     if (fixture) return JSON.parse(fs.readFileSync(fixture, 'utf8'));
     const res = await fetch(`https://api.github.com/repos/${repo}/compare/${base}...${head}`,
-        { headers: { accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(20000) });
+        { headers: { accept: 'application/vnd.github+json', ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) }, signal: AbortSignal.timeout(20000) });
     if (!res.ok) throw new Error(`compare API ${res.status}`);
     return res.json();
 }
@@ -62,7 +65,7 @@ async function main()
 {
     const stampFile = arg('--stamp') || '.claude/claude-stack.stamp';
     const snapshot = arg('--snapshot');
-    if (!snapshot) { console.error('usage: stamp-compare.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--repo <owner/name>] [--fixture <compare.json>]'); process.exit(2); }
+    if (!snapshot) { console.error('usage: stamp-compare.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--repo <owner/name>] [--fixture <compare.json>]'); process.exit(1); }
     const repo = arg('--repo') || 'envoydev/claude-stack';
 
     const stamp = readStampFile(stampFile);

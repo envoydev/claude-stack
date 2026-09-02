@@ -1396,7 +1396,7 @@
    ]
   },
   "approval-gate-stamp": {
-   "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site so the stamp format survives when project-solve-cross-task is not installed.",
+   "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when project-solve-cross-task is not installed.",
    "owner": {
     "file": "stack/skills/project-solve-cross-task/references/execution-modes.md",
     "marker": "an earlier session's leftover stamp is not consent"
@@ -1424,6 +1424,10 @@
     },
     {
      "file": "stack/skills/project-solve-task/SKILL.md",
+     "marker": "an earlier session's leftover stamp is not consent"
+    },
+    {
+     "file": "stack/skills/project-version-upgrade/SKILL.md",
      "marker": "an earlier session's leftover stamp is not consent"
     }
    ]
@@ -1608,6 +1612,18 @@
     {
      "file": "stack/rules/angular-repair-agents.md",
      "marker": "offer the resolver through AskUserQuestion"
+    },
+    {
+     "file": "setup-plugin/commands/setup.md",
+     "marker": "Every ask in this run goes through the AskUserQuestion tool"
+    },
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "Every ask in this run goes through the AskUserQuestion tool"
+    },
+    {
+     "file": "setup-plugin/commands/validate.md",
+     "marker": "Every ask in this run goes through the AskUserQuestion tool"
     }
    ]
   },
@@ -2189,7 +2205,7 @@
    ]
   },
   "loop-stage-findings-gate-line": {
-   "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the four audit stage prompts.",
+   "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the five audit stage prompts.",
    "owner": {
     "file": "stack/skills/project-quality-loop/references/code-quality.md",
     "marker": "a wrong finding costs more than a missed one"
@@ -2206,11 +2222,15 @@
     {
      "file": "stack/skills/project-quality-loop/references/comments.md",
      "marker": "a wrong finding costs more than a missed one"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/references/logging.md",
+     "marker": "a wrong finding costs more than a missed one"
     }
    ]
   },
   "loop-stage-bar-line": {
-   "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the four audit stage prompts.",
+   "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the five audit stage prompts.",
    "owner": {
     "file": "stack/skills/project-quality-loop/references/code-quality.md",
     "marker": "Bar: zero findings at every severity - real findings only"
@@ -2226,6 +2246,10 @@
     },
     {
      "file": "stack/skills/project-quality-loop/references/comments.md",
+     "marker": "Bar: zero findings at every severity - real findings only"
+    },
+    {
+     "file": "stack/skills/project-quality-loop/references/logging.md",
      "marker": "Bar: zero findings at every severity - real findings only"
     }
    ]
@@ -2336,7 +2360,7 @@
    ]
   },
   "designer-working-set-rules": {
-   "_note": "The seven decision-level design rules (YAGNI+rule of three, cohesion/coupling placement, interfaces at real boundaries, illegal-states/fail-fast with a composition default, CQS, least astonishment, refactor-toward-a-pattern) plus the SOLID-is-vocabulary ruling. Owned in prose by project-quality-loop's code-quality stage, which AUDITS against them; restated here because the designer DECIDES them - a seam drawn wrong at design time is what the audit later finds. Byte-identical across all 10 designers; agents install individually, so each copy stays self-contained.",
+   "_note": "The seven decision-level design rules (YAGNI+rule of three, cohesion/coupling placement, interfaces at real boundaries, illegal-states/fail-fast with a composition default, CQS, least astonishment, refactor-toward-a-pattern) plus the SOLID-is-vocabulary ruling. Owned in prose by project-quality-loop's code-quality stage, which AUDITS against them; restated here because the designer DECIDES them - a seam drawn wrong at design time is what the audit later finds. Byte-identical across all 10 designers and their single-chat twin project-solution-design (the skill project-solve-task runs at step 1); agents install individually, so each copy stays self-contained.",
    "owner": {
     "file": "stack/agents/aspnet-solution-designer.md",
     "marker": "Three questions on every seam you draw"
@@ -2377,6 +2401,290 @@
     {
      "file": "stack/agents/wpf-solution-designer.md",
      "marker": "Three questions on every seam you draw"
+    },
+    {
+     "file": "stack/skills/project-solution-design/SKILL.md",
+     "marker": "Three questions on every seam you draw"
+    }
+   ]
+  },
+  "designer-log-points": {
+   "_note": "The log-points design rule: observability is designed at the seams - each task card stamps `log_points` (boundary crossings, decision points, every failure exit; level by who acts; join keys, never secrets or payloads; logged once at the handling boundary; the repo's own logging seam). Owned by the designers because the designer DECIDES the points the loop's logging stage later audits for; byte-identical across all 10 designers and the project-solution-design twin, for the same selective-install reason as designer-working-set-rules.",
+   "owner": {
+    "file": "stack/agents/aspnet-solution-designer.md",
+    "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/browser-extension-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/console-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/data-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/devops-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/ionic-angular-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/web-angular-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/windows-service-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/winforms-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/agents/wpf-solution-designer.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    },
+    {
+     "file": "stack/skills/project-solution-design/SKILL.md",
+     "marker": "Observability is designed at the seams, never sprinkled by the implementer"
+    }
+   ]
+  },
+  "implementer-log-points": {
+   "_note": "The implementer-side half of designer-log-points: the card's log_points are built WITH the slice through the repo's logging seam (level + identifiers as the card says), never a later pass or a second logger. One sentence verbatim in the project-implementer twin and all 10 seats (any subset installs per project).",
+   "owner": {
+    "file": "stack/agents/aspnet-implementer.md",
+    "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+   },
+   "sites": [
+    {
+     "file": "stack/skills/project-implementer/SKILL.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/web-angular-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/wpf-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/winforms-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/console-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/windows-service-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/ionic-angular-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/data-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/devops-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    },
+    {
+     "file": "stack/agents/browser-extension-implementer.md",
+     "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
+    }
+   ]
+  },
+  "implementer-log-points-report-field": {
+   "_note": "The implementer report item that carries the placed log points to the verifier (file:symbol + level, or none on card) - the build-summary half of the log_points forcing shape, identical in all 10 seats.",
+   "owner": {
+    "file": "stack/agents/aspnet-implementer.md",
+    "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/web-angular-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/wpf-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/winforms-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/console-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/windows-service-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/ionic-angular-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/data-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/devops-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    },
+    {
+     "file": "stack/agents/browser-extension-implementer.md",
+     "marker": "the card's log points as placed (`file:symbol` + level, or `none on card`)"
+    }
+   ]
+  },
+  "verifier-log-points-gate": {
+   "_note": "The verifier-side gate for the designer's log_points card field: each task's points placed through the repo's logging seam at the card's level with the card's identifiers, nothing beyond them. Owned by the single-chat twin project-verify-code (step 2); restated in all 10 verifier seats because the seat is the dispatched form of the same protocol and installs individually.",
+   "owner": {
+    "file": "stack/skills/project-verify-code/SKILL.md",
+    "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/aspnet-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/web-angular-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/wpf-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/winforms-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/console-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/windows-service-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/ionic-angular-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/data-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/devops-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    },
+    {
+     "file": "stack/agents/browser-extension-verifier.md",
+     "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
+    }
+   ]
+  },
+  "verifier-working-set-rules": {
+   "_note": "The verifier-side pass over the seven decision-level rules applied to the DIFF (placement, seam-without-boundary, bad-value-past-boundary / non-substitutable subtype, mutate-and-answer, name outgrown, pattern started-from) with the SOLID-is-vocabulary ruling - a finding, never a block. Owned by the single-chat twin project-verify-code (step 6); restated in all 10 verifier seats after their over-build pass, for the same selective-install reason as designer-working-set-rules.",
+   "owner": {
+    "file": "stack/skills/project-verify-code/SKILL.md",
+    "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+   },
+   "sites": [
+    {
+     "file": "stack/agents/aspnet-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/web-angular-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/wpf-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/winforms-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/console-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/windows-service-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/ionic-angular-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/data-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/devops-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    },
+    {
+     "file": "stack/agents/browser-extension-verifier.md",
+     "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
+    }
+   ]
+  },
+  "answer-budget": {
+   "_note": "The short-answer budget - ~900 characters of prose, ~3 sentences plus points, lifted only by the user's own depth ask. The hook is canonical (BUDGET drives the reminder and the 2x block cap); baseline-interaction states the same number, so a budget change re-syncs the rule.",
+   "owner": {
+    "file": "stack/hooks/guard-answer-length.js",
+    "marker": "const BUDGET = 900;"
+   },
+   "sites": [
+    {
+     "file": "stack/rules/baseline-interaction.md",
+     "marker": "about 900 characters of prose"
+    }
+   ]
+  },
+  "guided-layer-table-shape": {
+   "_note": "The setup/configure fenced layer-table contract - identical by design, since either command may be the only one a run loads.",
+   "owner": {
+    "file": "setup-plugin/commands/setup.md",
+    "marker": "a layer turn missing the fenced table is invalid"
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "a layer turn missing the fenced table is invalid"
+    }
+   ]
+  },
+  "guided-stack-detection": {
+   "_note": "The artifact-scan stack-detection list setup and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
+   "owner": {
+    "file": "setup-plugin/commands/setup.md",
+    "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/validate.md",
+     "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
     }
    ]
   }
