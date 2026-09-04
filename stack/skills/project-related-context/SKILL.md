@@ -101,5 +101,27 @@ Create `.claude/rules/` when absent. The rule is regenerate-only: entries come f
 ### 5. REPORT
 Confirm both artifacts (rule created/refreshed + entry count; doc created/refreshed + entries rewritten vs kept; any location skipped as invalid or UNVERIFIED). State where each landed - machine-local under the default layout, shipped with the repo only when the project set a committed docs root. No re-paste of either body - point to the files.
 
+## Handing work to a sibling project
+
+A session belongs to ONE project. When work here needs a change THERE - a sibling repo, a consumed
+package, a related service - investigate freely (read its code, run its tests read-only, find the
+exact symbol) and then HAND IT OFF: `guard-cross-project-write.js` blocks the write, and the reason
+is not tidiness. A change applied from here skips that repo's tests, conventions, review and
+release, and the project that owns it never sees it happen.
+
+Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`, appending to it rather than
+replacing it, one section per task:
+
+- **What must change, and where** - the file and symbol you located, not 'somewhere in the auth
+  layer'. This is what the investigation is for.
+- **Why this project needs it** - the concrete failure or limitation on this side.
+- **The contract** - the shape both sides must agree on (a signature, an endpoint, a payload, a
+  version floor). If it is not stated here, both sides will guess differently.
+- **How that side verifies it** - the test or check that proves it landed.
+
+Then finish YOUR side against the other project's CURRENT behaviour, or state plainly what stays
+blocked until the card is done. Do not leave this project half-changed against a version of the
+sibling that does not exist yet.
+
 ## Don't game it
 Every entry is grounded in the agent's located evidence or carries its UNVERIFIED marker into both tiers - a relation is never smoothed over, a hint never overrides contradicting evidence silently (the contradiction is reported), a first_read never lists a doc that was not verified to exist. Unreachable siblings stay in both files as UNVERIFIED entries, not silently dropped - the reader deserves to know a seam exists even when it could not be read.

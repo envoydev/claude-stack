@@ -39,6 +39,15 @@ change made only inside a consuming project is throwaway (see Invariants).
   (a capture, a loop, a solve flow) from starting on another finished run's carried history past
   the same window-scaled trigger (40% of the window, 150k floor), routing the choice through AskUserQuestion; the capabilities rule's prose form
   lost in 4 of 4 audited sessions) +
+  `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit`/`Bash` - one session
+  belongs to ONE project: a write whose target resolves outside the project root is blocked, via
+  the file tools or the shell routes around them (redirection, `tee`, in-place `sed`, a `cp`/`mv`
+  destination, `rm`/`mkdir`, `git -C <other>` with a mutating subcommand), and the change the other
+  repo needs goes to a task card under `<docs-path>/cross-project-tasks/` instead. READING another
+  repo stays open - that is what makes the card specific. The session's own scratch, the `~/.claude`
+  account dir and `/dev` stay writable; an allowance containing the project root is dropped, both
+  sides are compared as REAL paths (macOS `/tmp` is a symlink), an unexpanded variable is never
+  judged, and `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second tree a project genuinely owns) +
   `guard-answer-length.js` (dual-wired: a `UserPromptSubmit` hook that appends the answer budget -
   3 sentences plus points, ~900 chars of prose, code/tables exempt - to every turn's context, and a
   `Stop` hook that blocks an answer past the 1800-char prose cap when the user's own message asked
@@ -46,7 +55,7 @@ change made only inside a consuming project is throwaway (see Invariants).
   wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
   settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
   Copied from the run's clone into a project's `.claude/hooks/` (wired with the placeholder quoted - `"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"` - so a project path with a space works; an update rewrites the older unquoted text in place); a hooks layer in the guided walk
-  makes them selectable per install (a selection with no `hook` lines installs all nine).
+  makes them selectable per install (a selection with no `hook` lines installs all ten).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
     (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
     `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` - a read-only
@@ -136,7 +145,7 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` → `<repo>/.mcp.json` |
 | Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
-| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all nine; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
+| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all ten; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
 | Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |

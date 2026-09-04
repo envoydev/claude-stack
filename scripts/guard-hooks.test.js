@@ -428,3 +428,93 @@ test('guard-stop-contract: CLAUDE_STACK_FRESH_SESSION_PCT=0 turns the offer off'
   assert.equal(stop('0'), 0, '0 disables the offer outright');
   assert.equal(stop('40'), 2, 'and the same session still qualifies at the default');
 });
+
+// --- guard-cross-project-write: one session, one project -------------------
+// Both directions carry equal weight here: a gate that fires on an ordinary in-project write
+// would block almost every turn, so the passes are as load-bearing as the blocks.
+const XP_ROOT = fs.mkdtempSync(path.join(TMP, 'projA-'));
+const XP_OTHER = fs.mkdtempSync(path.join(TMP, 'projB-'));
+const xp = (payload) => {
+  const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' },
+  });
+  return r.status;
+};
+const xpWrite = (file) => xp({ tool_name: 'Write', tool_input: { file_path: file } });
+const xpBash = (command) => xp({ tool_name: 'Bash', tool_input: { command } });
+
+test('guard-cross-project-write: a write into another project is blocked', () => {
+  assert.equal(xpWrite(path.join(XP_OTHER, 'src', 'a.ts')), 2, 'an absolute path in the sibling repo');
+  assert.equal(xpWrite('../projB/src/a.ts'), 2, 'the same reach expressed relatively');
+  assert.equal(xp({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_OTHER, 'a.cs') } }), 2, 'Edit too');
+  assert.equal(xp({ tool_name: 'NotebookEdit', tool_input: { notebook_path: path.join(XP_OTHER, 'a.ipynb') } }), 2, 'and NotebookEdit');
+});
+
+test('guard-cross-project-write: the shell routes around the file tools the same way', () => {
+  assert.equal(xpBash(`echo x > ${path.join(XP_OTHER, 'f.txt')}`), 2, 'redirection into the other repo');
+  assert.equal(xpBash('printf y >> ../projB/f.txt'), 2, 'appending, relative');
+  assert.equal(xpBash(`cp build/out.js ${path.join(XP_OTHER, 'vendor', 'out.js')}`), 2, 'a copy destination');
+  assert.equal(xpBash(`git -C ${XP_OTHER} commit -m "fix"`), 2, 'a commit in another checkout');
+  assert.equal(xpBash(`rm -rf ${path.join(XP_OTHER, 'dist')}`), 2, 'a delete outside the project');
+  assert.equal(xpBash(`sed -i.bak 's/a/b/' ${path.join(XP_OTHER, 'f.txt')}`), 2, 'an in-place edit');
+  // `mv` removes its SOURCE, so an out-of-tree source is a write there even when the
+  // destination is local - a destination-only rule waves this through.
+  assert.equal(xpBash(`mv ${path.join(XP_OTHER, 'a.txt')} ./b.txt`), 2, 'moving a file OUT of the other project');
+  assert.equal(xpBash('mv src/a.ts src/b.ts'), 0, 'but our own rename is ordinary work');
+});
+
+test('guard-cross-project-write: reading and investigating the other project stays open', () => {
+  // The whole point of the gate is that the handoff card must be SPECIFIC, which takes reading B.
+  assert.equal(xpBash(`cat ${path.join(XP_OTHER, 'src', 'a.ts')}`), 0, 'reading a file there');
+  assert.equal(xpBash(`grep -rn "Foo" ${XP_OTHER}`), 0, 'searching there');
+  assert.equal(xpBash(`git -C ${XP_OTHER} log --oneline -5`), 0, 'read-only git in the other checkout');
+  assert.equal(xpBash(`git -C ${XP_OTHER} diff HEAD~1`), 0, 'and a diff');
+  assert.equal(xp({ tool_name: 'Read', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }), 0, 'Read is not even matched');
+});
+
+test('guard-cross-project-write: ordinary in-project work is never touched', () => {
+  assert.equal(xpWrite(path.join(XP_ROOT, 'src', 'a.ts')), 0, 'an absolute path inside the project');
+  assert.equal(xpWrite('src/a.ts'), 0, 'a relative path inside the project');
+  assert.equal(xpBash('echo x > out.txt'), 0, 'redirection to a relative file');
+  assert.equal(xpBash('npm test 2>&1 | tail -3'), 0, '2>&1 is not a file target');
+  assert.equal(xpBash('node build.js > dist/bundle.js'), 0, 'a build output inside the tree');
+  assert.equal(xpBash("sed -i.bak 's/a/b/' src/a.ts"), 0, 'an in-place edit of our own file');
+  assert.equal(xpBash('rm -rf node_modules'), 0, 'cleaning our own tree');
+  assert.equal(xpBash('mkdir -p src/nested'), 0, 'making our own directory');
+});
+
+test('guard-cross-project-write: the session\'s own scratch and the account dir stay writable', () => {
+  // A real project does not live in the temp tree, so this case runs with THIS repo as the
+  // root - the fixtures above deliberately do, which is what proves the containment rule.
+  const repoRoot = path.join(__dirname, '..');
+  const inRepo = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const w = (f) => inRepo({ tool_name: 'Write', tool_input: { file_path: f } });
+
+  assert.equal(w(path.join(os.tmpdir(), 'scratch', 'notes.md')), 0, 'the harness scratchpad');
+  assert.equal(inRepo({ tool_name: 'Bash', tool_input: { command: 'echo x > /tmp/probe.txt' } }), 0, 'a temp file from the shell');
+  const home = os.homedir();
+  if (home) assert.equal(w(path.join(home, '.claude', 'projects', 'p', 'memory', 'm.md')), 0, 'memory writes must keep working');
+  assert.equal(w(path.join(path.dirname(repoRoot), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
+});
+
+test('guard-cross-project-write: prose describing a command is not a command', () => {
+  // The measured false-positive class: a plan or report that QUOTES a dangerous command is
+  // inert text, and blocking the document write for its own prose stalls honest work.
+  assert.equal(xpBash(heredoc('Then run: echo x > /etc/hosts')), 0, 'a heredoc body is data');
+  assert.equal(xpBash('echo "writes go to ../projB/f.txt" '), 0, 'a quoted mention is not a redirection');
+});
+
+test('guard-cross-project-write: it fails open rather than guessing', () => {
+  assert.equal(xpBash('cp a.txt "$OTHER_REPO/a.txt"'), 0, 'an unexpanded variable is not judged');
+  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: 'not json', encoding: 'utf8' }).status, 0, 'unparseable stdin never blocks');
+  const opened = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }),
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: XP_OTHER },
+  }).status;
+  assert.equal(opened, 0, 'the escape hatch opens a second tree this project really owns');
+});
