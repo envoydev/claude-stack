@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish App/App.cspro
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:<digest>
 WORKDIR /app
 COPY --from=build /app .
-USER app
+USER $APP_UID
 ENTRYPOINT ["dotnet", "App.dll"]
 ```
 

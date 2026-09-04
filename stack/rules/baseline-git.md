@@ -73,5 +73,7 @@ above that bar (a formatting-only sweep) still writes `VERIFIED` naming the exem
 split a real change into small commits to slip under it. Clear the file once the commit lands -
 after the LAST commit when one receipt covers a reviewed batch (measured: a batch receipt left
 uncleared after 4 commits) - a leftover receipt is the stale-stamp failure the hook's 2h age
-cap exists for. A commit in a SIBLING repo gets its own receipt in THAT repo's docs root,
-written and cleared the same way.
+cap exists for. A commit in a second tree this session may write (the cross-project guard's own
+allowance, for a tree the project owns) gets its own receipt in THAT tree's docs root, written and
+cleared the same way; a sibling repo is never committed from here - its change is a task card
+under `<docs-path>/cross-project-tasks/`.

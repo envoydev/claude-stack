@@ -362,7 +362,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (77).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (78).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -384,6 +384,7 @@ $Skills = @(
   'envoydev/claude-stack|project-implementer'              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate
   'envoydev/claude-stack|project-solution-design'  # single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds project-verify-plan
   'envoydev/claude-stack|project-solve-task'       # gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: project-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction
+  'envoydev/claude-stack|project-diagnose-failure' # gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report
   'envoydev/claude-stack|project-runtime-failure-signatures' # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
   'envoydev/claude-stack|project-ci-failure-signatures'        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures
   'envoydev/claude-stack|project-stack-usage-analyzer' # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
@@ -1379,6 +1380,21 @@ function Set-HookSettings {
       }
     }
   }
+  # Prune OUR hook file from a PreToolUse matcher this version no longer wires (guard-stop-contract's
+  # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
+  # match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
+  # Keyed on the SELECTED $Hooks, so a hook the user de-selected keeps its entries (configure's job).
+  $oursFiles = @(foreach ($entry in $Hooks) { ($entry -split '::', 3)[0] })
+  $wired = @(foreach ($entry in $Hooks) { $p = $entry -split '::', 3; if ($p[1] -and -not $p[1].StartsWith('@')) { "$($p[1])::$($p[0])" } })
+  $kept = @()
+  foreach ($e in $pre) {
+    $hs = @(foreach ($h in @($e.hooks)) {
+      $m = [regex]::Match([string]$h.command, '/\.claude/hooks/([A-Za-z0-9._-]+\.js)')
+      if ($m.Success -and ($oursFiles -contains $m.Groups[1].Value) -and -not ($wired -contains "$($e.matcher)::$($m.Groups[1].Value)")) { $changed = $true } else { $h }
+    })
+    if ($hs.Count -gt 0) { $e.hooks = $hs; $kept += $e } else { $changed = $true }
+  }
+  $pre = $kept
   foreach ($entry in $Hooks) {
     $parts = $entry -split '::', 3
     $file = $parts[0]

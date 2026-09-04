@@ -1,6 +1,6 @@
 # DI composition (Add* extensions, keyed services, factories)
 
-How a feature's registrations are grouped and composed, and the three registration shapes beyond a plain `AddScoped<I, T>`: idempotent (`TryAdd`), keyed, and factory. The lifetime rules (Singleton / Scoped / Transient), the captive-dependency ban, and constructor injection are the language baseline in `csharp` - this file does not restate them. Typed-options binding depth (`IOptionsSnapshot` / `IValidateOptions`) is `dotnet-web-backend`; scope-per-unit-of-work in a `BackgroundService` is `dotnet-hosted-services`.
+How a feature's registrations are grouped and composed, and the three registration shapes beyond a plain `AddScoped<I, T>`: idempotent (`TryAdd`), keyed, and factory. The lifetime rules (Singleton / Scoped / Transient), the captive-dependency ban, and constructor injection are the language baseline in `csharp` - this file does not restate them. Typed-options binding depth (`IOptionsSnapshot` / `IValidateOptions`) is the ASP.NET Core web hub skill's; scope-per-unit-of-work in a `BackgroundService` is the hosted-worker skill's - each where installed.
 
 ## Group a feature behind one Add* extension
 
@@ -98,7 +98,7 @@ services.AddOptions<EmailOptions>()
     .ValidateOnStart();
 ```
 
-Services then inject `IOptions<EmailOptions>` (singleton config) - the snapshot/monitor variants and custom `IValidateOptions<T>` live in `dotnet-web-backend`.
+Services then inject `IOptions<EmailOptions>` (singleton config) - the snapshot/monitor variants and custom `IValidateOptions<T>` are the ASP.NET Core web hub skill's, where installed.
 
 ## The shapes at a glance
 

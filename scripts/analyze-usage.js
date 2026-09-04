@@ -639,9 +639,10 @@ function readBlockLedger(target) {
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.hook) continue;
       out.rows += 1;
-      const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set() });
+      const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
       e.blocks += 1;
       if (o.event) e.events.add(o.event);
+      if (o.tool) e.tools.add(o.tool);   // rows from before the column exist without it - the cell stays empty
       const r = String(o.reason || '').slice(0, 90);
       e.reasons.set(r, (e.reasons.get(r) || 0) + 1);
       if (o.ts) {
@@ -782,10 +783,11 @@ function printReport(main, agents, hookLog, window, blockLedger) {
 
   if (blockLedger && blockLedger.rows) {
     console.log('\nHOOK BLOCKS (which guard fired; a block costs its denial text plus the retried turn)');
-    console.log(`  ${pad('hook', 32)} ${rpad('blocks', 6)} ${rpad('events', 22)} top reason`);
+    console.log(`  ${pad('hook', 32)} ${rpad('blocks', 6)} ${rpad('event / tool', 22)} top reason`);
     for (const [h, e] of Object.entries(blockLedger.byHook).sort((a, b) => b[1].blocks - a[1].blocks)) {
       const top = [...e.reasons.entries()].sort((a, b) => b[1] - a[1])[0];
-      console.log(`  ${pad(h, 32)} ${rpad(e.blocks, 6)} ${rpad([...e.events].join(','), 22)} ${(top && top[0]) || ''}`);
+      const where = [...e.events].join(',') + (e.tools.size ? ' / ' + [...e.tools].join(',') : '');
+      console.log(`  ${pad(h, 32)} ${rpad(e.blocks, 6)} ${rpad(where, 22)} ${(top && top[0]) || ''}`);
     }
     console.log(`  ${blockLedger.rows} block(s) total - review any hook whose top reason looks like honest work being stopped.`);
   }

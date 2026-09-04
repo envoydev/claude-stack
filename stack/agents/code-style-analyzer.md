@@ -14,6 +14,7 @@ suggests:
   - csharp
   - database-conventions
   - dotnet-wpf
+  - javascript
   - typescript
 ---
 

@@ -31,4 +31,4 @@ Only on genuine duplication ('3+ slices' is guidance, not a gate):
 
 - Dependencies resolve via the DI container inside the handler - not passed to `Map()`.
 - MediatR / Mediator is optional; a plain minimal-API handler works.
-- CQRS falls out naturally: commands = create/update/delete slices, queries = get/list/search slices, each free to pick its own data-access strategy (see `dotnet-data-access`).
+- CQRS falls out naturally: commands = create/update/delete slices, queries = get/list/search slices, each free to pick its own data-access strategy - the ORM / data-access skill owns the read-store vs write-store split.

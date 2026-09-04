@@ -12,9 +12,19 @@
 // this session never ran, invisible to the project that owns it.
 //
 // Reads pass. Writes inside the project root pass. Writes to the session's own scratch (the OS
-// temp dir), to the Claude account dir (~/.claude - settings, memory, plugins), and to /dev pass.
-// Everything else is blocked with the task-card instruction. exit 2 = block (stderr fed back);
-// exit 0 = allow. Fail-open on anything unparseable, and on a root that cannot be resolved.
+// temp dir), to the Claude account dirs (~/.claude and the ~/.claude-<space> siblings - settings,
+// memory, plugins), and to /dev pass. Everything else is blocked with the task-card instruction.
+// On Bash the write-shaped verbs are judged where they actually land: a `cd`/`pushd` earlier in
+// the same command moves the anchor for every relative path and every bare `git <mutating>` after
+// it (`cd ../other && git commit` is the same write as `git -C ../other commit` - reproduced
+// passing before this existed), while a `>` or a verb INSIDE a quoted string is prose, not a
+// write (a commit message reading 'pipe > /other/f' blocked the commit - reproduced).
+// exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable, on a root
+// that cannot be resolved, and on a target that cannot be judged (an unexpanded variable, a
+// relative path after `cd -` or `cd $DIR`).
+// Out of scope (same honesty as the sibling guards): a write hidden from a flat scan -
+// `--git-dir=`/`--work-tree=`, `bash -c '...'`, `eval`, `xargs rm`, `find ... -delete`, a
+// wrapper script - is NOT caught here; this guard reads the literal command.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -24,6 +34,7 @@ try {
 } catch {
   process.exit(0); // unparseable stdin - don't block
 }
+if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
 
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -49,6 +60,7 @@ try {
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
+          tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
@@ -57,8 +69,23 @@ try {
   };
 })();
 
-const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-if (!root) process.exit(0);
+// The project root is CLAUDE_PROJECT_DIR (the harness sets it for every hook). Without it - a
+// manual wiring, a test - the nearest ancestor of the session cwd holding a .git is the root,
+// because the cwd itself may be a SUBDIRECTORY the session cd-ed into, and taking that as the
+// root called the project's own sibling folder 'outside' (reproduced).
+function nearestRepoRoot(dir) {
+  let d = path.resolve(dir);
+  for (let i = 0; i < 64; i++) {
+    if (fs.existsSync(path.join(d, '.git'))) return d;
+    const parent = path.dirname(d);
+    if (parent === d) return null;
+    d = parent;
+  }
+  return null;
+}
+const cwd0 = payload.cwd || process.cwd();
+const root = process.env.CLAUDE_PROJECT_DIR || nearestRepoRoot(cwd0) || cwd0;
+if (!root || !fs.existsSync(root)) process.exit(0); // no resolvable root - nothing to compare against
 // Compare REAL paths on both sides or the gate misfires: on macOS /tmp is a symlink to
 // /private/tmp and os.tmpdir() reports the /var/folders form of an already-/private path, so a
 // raw string comparison calls the project's own file 'outside' and an allowed temp dir 'unknown'
@@ -79,19 +106,21 @@ function realish(p) {
   return path.resolve(p);
 }
 const ROOT = real(root);
+const HOME = os.homedir() || '';
+const expandTilde = (p) => (p === '~' || p.startsWith('~/')) && HOME ? path.join(HOME, p.slice(1)) : p;
 
 // Anything under one of these may be written even though it is outside the project: the
 // session's own scratch, the account-level Claude config (memory writes land here - blocking
 // them breaks the memory system), the hook log dir, and device files. CLAUDE_STACK_ALLOW_WRITE_OUTSIDE
-// is the deliberate escape hatch: a colon-separated list of extra roots for the rare project
-// that really does own a second tree (a generated-output dir, a deploy checkout).
-const HOME = os.homedir() || '';
+// is the deliberate escape hatch: a list of extra roots (colon-separated, semicolon on Windows; a
+// leading ~ expands) for the rare project that really does own a second tree (a generated-output
+// dir, a deploy checkout).
 const allowRoots = [
   os.tmpdir(), '/tmp', '/private/tmp', '/var/folders', '/dev',
   process.env.CLAUDE_STACK_HOOK_LOG_DIR,
   ...(HOME ? [path.join(HOME, '.claude')] : []),
-  ...(process.env.CLAUDE_STACK_ALLOW_WRITE_OUTSIDE || '').split(':'),
-].filter(Boolean).map(real);
+  ...(process.env.CLAUDE_STACK_ALLOW_WRITE_OUTSIDE || '').split(path.delimiter).map((s) => s.trim()),
+].filter(Boolean).map(expandTilde).map(real);
 
 function inside(target, dir) {
   const t = realish(target);
@@ -101,23 +130,27 @@ function inside(target, dir) {
 // repo would sit inside it too. On macOS os.tmpdir() is under /var/folders, so a project
 // worked on from a temp dir is exactly that case (it is how this hook's own tests run).
 const effectiveAllow = allowRoots.filter((d) => !inside(ROOT, d));
-// ~/.claude-<space> account dirs are siblings of ~/.claude, matched by prefix below.
-const spacePrefix = HOME && !inside(ROOT, real(HOME)) ? real(HOME) + path.sep + '.claude-' : null;
+// ~/.claude-<space> account dirs are siblings of ~/.claude, matched by prefix. The prefix is
+// dropped only when the project itself sits under such a dir (the containment rule above) -
+// checking whether the project sat under HOME instead disabled it for every real project, and a
+// --space install's memory writes were blocked (reproduced).
+const spacePrefix = HOME ? real(HOME) + path.sep + '.claude-' : null;
+const spaceOk = spacePrefix && !ROOT.startsWith(spacePrefix);
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
   if (effectiveAllow.some((d) => inside(t, d))) return true;
-  if (spacePrefix && t.startsWith(spacePrefix)) return true;
+  if (spaceOk && t.startsWith(spacePrefix)) return true;
 
   return false;
 }
 // Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's
 // persisted cwd, so a relative path is anchored to the project root first (same anchor the
 // sibling guards use). A relative path that stays inside the root is the normal case and passes.
-function resolveTarget(p) {
+function resolveTarget(p, base) {
   if (path.isAbsolute(p)) return p;
 
-  return path.resolve(ROOT, p);
+  return path.resolve(base || ROOT, p);
 }
 
 const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
@@ -170,42 +203,113 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'NotebookEdit') {
 
 if (tool !== 'Bash') process.exit(0);
 
-// A heredoc body is DATA, not shell - a plan that DESCRIBES a command is inert text, and
-// matching it blocks a document write for its own prose. Blank the payload, keep the length.
+// A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and
+// matching it blocks a document write for its own prose. Blank the body, keep the length. The
+// heredoc's own first line stays: `cat <<'EOF' > ../other/f.txt` carries its redirect THERE, and
+// blanking the whole match let that classic shell write through (reproduced).
 const command = String(input.command || '').replace(
   /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
-  (m) => m.replace(/[^\n]/g, ' '),
+  (m) => { const nl = m.indexOf('\n'); return nl === -1 ? m : m.slice(0, nl) + m.slice(nl).replace(/[^\n]/g, ' '); },
 );
 if (!command.trim()) process.exit(0);
+
+// Quoted spans: a `>` or a verb inside '...' / "..." is text an outer command carries (a commit
+// message, an echo, a grep pattern), never a write of its own. The write TARGET may still be
+// quoted - the patterns below capture it - only the verb's own position is checked.
+const quoted = [];
+{
+  let q = null; let start = 0;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (c === '\\' && q !== "'") { i++; continue; }
+    if (!q && (c === '"' || c === "'")) { q = c; start = i; }
+    else if (q && c === q) { quoted.push([start, i + 1]); q = null; }
+  }
+  if (q) quoted.push([start, command.length]);
+}
+const inQuotes = (i) => quoted.some(([a, b]) => i > a && i < b);
+const unquote = (s) => s.replace(/^["']|["']$/g, '');
+const isVar = (s) => /\$\{?[A-Za-z_]/.test(s);
+
+// `cd` / `pushd` earlier in the command move the anchor for everything after them. A target
+// that cannot be followed (`cd -`, `cd $DIR`, a relative cd from an unknown place) makes the
+// anchor unknown, and an unknown anchor judges nothing relative - never guess.
+const CD_RE = /(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^\s;|&()]+)/g;
+const cds = [...command.matchAll(CD_RE)].filter((c) => !inQuotes(c.index + c[0].search(/(?:cd|pushd)\s/)));
+function anchorAt(index) {
+  let cwd = ROOT;
+  for (const c of cds) {
+    if (c.index >= index) break;
+    const t = expandTilde(unquote(c[1]));
+    if (t === '-' || isVar(t) || (cwd === null && !path.isAbsolute(t))) { cwd = null; continue; }
+    cwd = path.resolve(cwd, t);
+  }
+  return cwd;
+}
+// Judge one path token found at `index` in the command: only a token that can land out of tree
+// is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
+// `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
+// anchor still at the project root is this project's own file - the case that must never block.
+function judge(raw, index, what) {
+  if (isVar(raw)) return; // an unexpanded variable - cannot judge, don't guess
+  const base = anchorAt(index);
+  const explicit = /^([~/]|\.\.[/\\])/.test(raw) || raw.includes('/../') || raw === '..';
+  if (!explicit && base === ROOT) return;
+  const expanded = expandTilde(raw);
+  if (!path.isAbsolute(expanded) && base === null) return; // relative from an unknown anchor
+  const abs = resolveTarget(expanded, base);
+  // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
+  if (!allowed(abs)) block(what, explicit ? raw : abs);
+}
+const judgeAll = (list, index, what) => {
+  for (const tok of list.match(/"[^"]*"|'[^']*'|\S+/g) || []) {
+    if (tok.startsWith('-')) continue; // a flag (or `--`), never a path
+    judge(unquote(tok), index, what);
+  }
+};
 
 // Only WRITE-shaped commands are considered, and only the paths they actually write to. A path
 // that resolves inside the project - the overwhelming majority, relative paths included - never
 // reaches the check, so the false-positive surface is limited to commands genuinely writing out
 // of tree. Read-shaped commands (cat, grep, ls, find, git log/diff/show) are not listed at all.
+const TARGET = `("[^"]+"|'[^']+'|[^\\s;|&<>()]+)`;
+const SEG = '[^;|&\\n]';
+const GIT_MUTATING = 'commit|add|checkout|switch|merge|rebase|reset|revert|restore|push|pull|apply|am|cherry-pick'
+  // `stash list`/`stash show` and the listing forms of `tag` (bare, -l, -n) are reads - flagging
+  // them as writes blocked honest investigation of the other repo (reproduced).
+  + '|stash(?!\\s+(?:list|show)\\b)|clean|rm|mv|tag\\s+(?!-l\\b|--list\\b|-n\\b)(?:-\\S+\\s+)*[^-\\s]\\S*|branch\\s+-[dDm]';
 const WRITE_PATTERNS = [
   // shell redirection into a file, `>>` included; `2>&1` and `>&2` are not file targets
-  { re: />>?\s*(?!&)("[^"]+"|'[^']+'|[^\s;|&<>()]+)/g, what: 'a shell redirection' },
-  { re: /\btee\s+(?:-\w+\s+)*("[^"]+"|'[^']+'|[^\s;|&<>()]+)/g, what: 'a `tee` write' },
-  { re: /\b(?:sed|perl)\s+[^;|&]*-i[^;|&]*?\s("[^"]+"|'[^']+'|[^\s;|&<>()]+)\s*(?:;|\||&|$)/g, what: 'an in-place edit' },
-  { re: /\b(?:cp|mv|ln|install|rsync)\s+[^;|&]*?\s("[^"]+"|'[^']+'|[^\s;|&<>()]+)\s*(?:;|\||&|$)/g, what: 'a copy/move destination' },
-  { re: /\b(?:rm|rmdir|mkdir|touch|truncate|chmod|chown)\s+(?:-\S+\s+)*("[^"]+"|'[^']+'|[^\s;|&<>()]+)/g, what: 'a filesystem change' },
+  { re: new RegExp(`>>?\\s*(?!&)${TARGET}`, 'g'), what: 'a shell redirection' },
+  { re: new RegExp(`\\btee\\s+(?:-\\w+\\s+)*${TARGET}`, 'g'), what: 'a `tee` write' },
+  // in-place edits: every path argument, not just the last - `sed -i 's/a/b/' ../other/f x`
+  // dodged a last-argument rule, and perl's usual `-pi` cluster dodged a literal `-i` (both reproduced)
+  { re: new RegExp(`\\b(?:sed|perl)\\s+((?:${SEG}*?\\s)?-[A-Za-z]*i\\b\\S*\\s${SEG}*)`, 'g'), what: 'an in-place edit', all: true },
+  { re: new RegExp(`\\b(?:cp|mv|ln|install|rsync)\\s+${SEG}*?\\s${TARGET}\\s*(?:;|\\||&|$)`, 'g'), what: 'a copy/move destination' },
+  // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x` and `truncate -s 0 ../other/log`
+  // all put the out-of-tree path AFTER a non-flag token a first-argument rule stopped at (reproduced)
+  { re: new RegExp(`\\b(?:rm|rmdir|mkdir|touch|truncate|chmod|chown)\\s+(${SEG}+)`, 'g'), what: 'a filesystem change', all: true },
   // `mv` REMOVES its source, so an out-of-tree source is a write to that tree even when the
   // destination is local - the destination-only rule above would have waved it through.
-  { re: /\bmv\s+(?:-\S+\s+)*("[^"]+"|'[^']+'|[^\s;|&<>()]+)/g, what: 'a move OUT of another project' },
+  { re: new RegExp(`\\bmv\\s+(?:-\\S+\\s+)*${TARGET}`, 'g'), what: 'a move OUT of another project' },
   // `git -C <dir> <mutating subcommand>` is a write to that dir even with no path argument
-  { re: /\bgit\s+-C\s+("[^"]+"|'[^']+'|[^\s;|&<>()]+)\s+(?:commit|add|checkout|switch|merge|rebase|reset|revert|restore|push|pull|apply|am|cherry-pick|stash|clean|rm|mv|tag|branch\s+-[dDm])\b/g, what: 'a git write in another checkout' },
+  { re: new RegExp(`\\bgit\\s+-C\\s+${TARGET}\\s+(?:${GIT_MUTATING})(?![\\w-])`, 'g'), what: 'a git write in another checkout' },
 ];
-const unquote = (s) => s.replace(/^["']|["']$/g, '');
-for (const { re, what } of WRITE_PATTERNS) {
+for (const { re, what, all } of WRITE_PATTERNS) {
   let m;
   while ((m = re.exec(command)) !== null) {
-    const raw = unquote(m[1]);
-    // Only an explicitly out-of-tree path counts: absolute, ~-rooted, or reaching up with `..`.
-    // A bare relative path is this project's own file - the case that must never be blocked.
-    if (!/^([~/]|\.\.[/\\])/.test(raw) && !raw.includes('/../') && !/^\.\.$/.test(raw)) continue;
-    const expanded = raw.startsWith('~') && HOME ? path.join(HOME, raw.slice(1)) : raw;
-    if (/\$\{?[A-Za-z_]/.test(expanded)) continue;   // an unexpanded variable - cannot judge, don't guess
-    if (!allowed(resolveTarget(expanded))) block(what, raw);
+    if (inQuotes(m.index)) continue; // prose inside a quoted string
+    if (all) judgeAll(m[1], m.index, what);
+    else judge(unquote(m[1]), m.index, what);
   }
+}
+// A bare `git <mutating>` after a `cd` out of tree writes THAT checkout - the same event as
+// `git -C <dir>`, spelled the way a session actually spells it (reproduced: passed).
+const GIT_BARE = new RegExp(`\\bgit\\s+(?:-c\\s+\\S+\\s+|--\\S+\\s+)*(?:${GIT_MUTATING})(?![\\w-])`, 'g');
+let g;
+while ((g = GIT_BARE.exec(command)) !== null) {
+  if (inQuotes(g.index)) continue;
+  const base = anchorAt(g.index);
+  if (base && base !== ROOT && !allowed(base)) block('a git write in another checkout', base);
 }
 process.exit(0);

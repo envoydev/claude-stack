@@ -77,7 +77,7 @@ this.router.navigateByUrl(
 
 ## Review output
 
-Report findings as `surface | risk | fix`, ordered by risk - e.g. `[innerHTML] fed through bypassSecurityTrustHtml | stored XSS runs in every viewer's session | bind the sanitized value and keep trust calls away from user-influenced input`. Findings on the server side route to `dotnet-security`, on the native shell to `ionic-security` - name the route, do not restate their content here.
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `[innerHTML] fed through bypassSecurityTrustHtml | stored XSS runs in every viewer's session | bind the sanitized value and keep trust calls away from user-influenced input`. Findings on the server side route to the skill covering ASP.NET / .NET hardening (the OWASP-mapped server mitigations), on the native shell to the skill covering the Ionic / Capacitor native attack surface (Keychain storage, deep links, WebView lockdown) - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack.
 
 ## Where the rest lives
 

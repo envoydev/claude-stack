@@ -195,6 +195,18 @@ test('lintOptionalCites flags a NAMED load of a skill that can be absent; a desc
     const table = '| You are about to... | Load |\n|---|---|\n| build Material UI | `angular-material` |\n';
     assert.strictEqual(lintOptionalCites('f.md', table, optional).length, 1);
 
+    // the header cell only has to END in the word 'load' ('Also load' measured unflagged in 11 rows);
+    // 'Payload' is a different word and not a routing column
+    const alsoLoad = '| Situation | Also load |\n|---|---|\n| Material UI | `angular-material` |\n';
+    assert.strictEqual(lintOptionalCites('f.md', alsoLoad, optional).length, 1, 'an Also-load column is a Load column');
+    const payload = '| Field | Payload |\n|---|---|\n| material | `angular-material` |\n';
+    assert.deepStrictEqual(lintOptionalCites('f.md', payload, optional), [], 'Payload is not a load column');
+
+    // the flow twins' spelling is a directive; a pointer ('see `x`') and domain prose ('Run migrations') are not
+    assert.strictEqual(lintOptionalCites('f.md', 'Re-enter `dotnet-architecture-tests` after the plan changes.\n', optional).length, 1);
+    assert.deepStrictEqual(lintOptionalCites('f.md', 'Never bake secrets into the image (see `dotnet-architecture-tests`).\n', optional), []);
+    assert.deepStrictEqual(lintOptionalCites('f.md', 'Run migrations before the roll (mechanics in `dotnet-architecture-tests`).\n', optional), []);
+
     // ... and the one escape: a router hub's explicit Availability callout blankets its table
     const blanketed = '**Availability** - a row whose skill is not installed means the area is absent here.\n' + table;
     assert.deepStrictEqual(lintOptionalCites('f.md', blanketed, optional), []);

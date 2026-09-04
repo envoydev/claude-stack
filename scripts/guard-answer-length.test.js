@@ -137,6 +137,8 @@ test('fails open on a missing transcript, unparseable input, and an unknown even
     assert.strictEqual(run({ hook_event_name: 'PreCompact' }).status, 0);
     const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
     assert.strictEqual(r.status, 0);
+    // a JSON scalar parses fine and used to throw a TypeError on the first field read (exit 1, stack trace shown as a hook error)
+    assert.strictEqual(spawnSync(process.execPath, [HOOK], { input: 'null', encoding: 'utf8' }).status, 0);
 });
 
 test('a plain-string user turn asking for depth lifts the cap', () => {

@@ -50,7 +50,7 @@ Template mode: when the audited file is a template that installers copy into tar
 - Facts must be true. Build commands, paths, and architecture claims in CLAUDE.md are executed and trusted every session; verify them against the repository itself. A wrong command in CLAUDE.md is worse than a missing one.
 - Hub over encyclopedia. When content grows, the fix is routing (rules, skills, hooks) plus a clear map, not a longer file.
 - Forcing shape over advisory prose. Measured across 33 real sessions: advisory prose in the instruction layer was skipped under load while mechanisms (hooks, gate files, required report fields, tool-call steps) held every time - so a CLAUDE.md line that mandates behavior nothing observable enforces is a candidate for conversion to a mechanism or a routed rule, not for stronger wording.
-- Installs are selective: any rule, skill, or agent CLAUDE.md points at may be excluded from a given install, so an install-time-optional artifact can never be a load-bearing dependency - a pointer to one must read as routing that degrades gracefully when the target is absent, and behavior CLAUDE.md itself must guarantee stays in CLAUDE.md.
+- Installs are selective - name only what is guaranteed, describe the rest. Any rule, skill, agent, or MCP server CLAUDE.md points at may be excluded from a given install, so an install-time-optional artifact can never be a load-bearing dependency, and behavior CLAUDE.md itself must guarantee stays in CLAUDE.md. A pointer names its target only where every project the file ships into gets it: in template mode that is the always-on baseline (here the symbol-navigation server the baseline locks) plus any table the template's own authoring outline has the installer or adopting team trim to the actual install (the rules table); a filled project file may name what that project's install actually holds. Beyond that guarantee a pointer describes what the target covers ('the skill covering Angular hardening - template injection, CSP, token storage'; 'the MCP that drives a real browser session') plus what to do when nothing matches - the model matches the description against the installed inventory, and a project without the target still knows what to do. A guard phrase beside a name ('when it is in your skill list') is NOT the remedy: absence becomes safe but the name stays the invitation. Read the install catalogs to learn what is guaranteed (here `meta/recommendations.json` seeds and `meta/stack-graph.json` pulls); the repo lint's optional-cite checks cover the skill half mechanically and must be green, MCP cites are audited by hand. Score under Dimension 2's routing item and Dimension 4.
 - Generic by default. In template mode this is the placeholder discipline already scored (no baked-in stack facts); in a filled file, a technology is named only where the project actually uses it or a shipped tool requires it. A decorative tech mention is a defect - cite the line and score it under Dimension 3.
 - Reversibility. Snapshot every file before editing so a regression can be undone.
 
@@ -61,7 +61,7 @@ Template mode: when the audited file is a template that installers copy into tar
 1. Read every CLAUDE.md in `CLAUDE_MD_PATHS`. Follow `@path` imports to their targets and read those too, up to four hops, since imported content is part of the always-on payload and must be scored as such.
 2. Read the rules catalog from `RULES_ROOT`: for each rule file, capture path, topic, and whether it is unconditional or path-scoped. Unconditional rules are the ones CLAUDE.md must map, because they define process and behavior for every session.
 3. Read the skill and agent catalogs from `SKILLS_ROOT` and `AGENTS_ROOT`: name, description, one-line summary each. Inventory hooks and settings (`permissions.deny` and similar) to know what enforcement already exists.
-4. Verify project facts. Check every command, path, and tool claim in CLAUDE.md against the repository: build and test commands against `package.json`, `Makefile`, `*.csproj`, or equivalents; directory claims against the actual tree; version claims against lockfiles. Record each claim as verified, stale, or wrong. Artifact pointers are facts of the same class: every rule, skill, agent, hook, or command the file names must exist in the discovered catalogs (in template mode, resolving at the deployed paths) - a pointer at a renamed or retired artifact is a wrong fact.
+4. Verify project facts. Check every command, path, and tool claim in CLAUDE.md against the repository: build and test commands against `package.json`, `Makefile`, `*.csproj`, or equivalents; directory claims against the actual tree; version claims against lockfiles. Record each claim as verified, stale, or wrong. Artifact pointers are facts of the same class: every rule, skill, agent, hook, or command the file names must exist in the discovered catalogs (in template mode, resolving at the deployed paths) - a pointer at a renamed or retired artifact is a wrong fact. Classify each named skill, agent, or MCP-server pointer by guarantee - present in every install the file ships into, or absent in some - and check that each described pointer matches at least one real catalog entry; record both for the Dimension 2 and 4 scoring.
 5. Build a linkage map: which unconditional rules exist, which are named in CLAUDE.md, which are named but do not exist, and which exist but are unmapped. Do the same for skills and agents that CLAUDE.md mentions.
 6. Build a duplication map: content repeated between CLAUDE.md and rule files, between CLAUDE.md tiers, between CLAUDE.md and skills or agents, and between CLAUDE.md and repo docs (README, AGENTS.md, style guides).
 7. Build a conflict map: instructions in CLAUDE.md that contradict a rule file, another tier, a hook, a permissions entry, or a skill or agent it routes to. Conflicts are the highest-severity defect class because they silently make behavior nondeterministic.
@@ -91,7 +91,7 @@ This is the dimension unique to CLAUDE.md: the file must function as the map of 
 - Governing rules are mapped. The file names each unconditional rule file that defines process and behavior, by backticked path with a one-line framing of what it governs (for example: process and review workflow are defined in `.claude/rules/workflow.md`). A reader, and Claude, can find every governing document from this one file. Unmapped unconditional rules and dangling links both deduct. (9)
 - Linked, never imported. Rule references are plain backticked mentions; no `@import` of any auto-loaded rules file exists anywhere in the file or its import chain. (5)
 - Logically structured. Sections follow a predictable order a reader would guess: what the project is, how to build and test it, core conventions, governing rules, where procedures live (skills), scoped guidance (path rules). Headers and bullets group related content; no grab-bag sections. (9)
-- Skills, agents, and docs are routed correctly: procedures point to skills by name, `AGENTS.md` is imported rather than restated where it exists, and README-level detail is referenced rather than copied. (7)
+- Skills, agents, and docs are routed correctly: procedures point to skills - by name where every install the file ships into guarantees them, by what they cover otherwise - `AGENTS.md` is imported rather than restated where it exists, and README-level detail is referenced rather than copied. (7)
 
 Floor for A: >= 26/30.
 
@@ -109,7 +109,7 @@ Floor for A: >= 17/20.
 Scored against the duplication map. A file loses points for content it duplicates, even if it reads well alone.
 
 - No rule content is restated. Where a rule file governs a topic, CLAUDE.md carries the link and at most a one-line framing, never a second copy that will drift. (7)
-- No procedure is restated that a skill or agent owns; the file points to it by name. (5)
+- No procedure is restated that a skill or agent owns; the file points to it - by name where guaranteed, by what it covers otherwise. (5)
 - No repo documentation is restated: `AGENTS.md` is imported, README and style guides are referenced. (4)
 - Single source of truth across tiers: the same instruction does not appear in both user and project files, or in both a nested and a root file. Each fact lives at exactly one tier, the one whose audience owns it. (4)
 
@@ -171,7 +171,7 @@ For each block the mechanism map classified as misplaced: move procedures to ski
 
 ### Step 3 - Build the hub
 
-Construct or repair the map: add a governing-rules section that names every unconditional rule file with a one-line framing, convert any `@import` of an auto-loaded rules file into a plain backticked reference, add the `@AGENTS.md` import where an AGENTS.md exists and is restated, and route procedures to their skills by name. Reorder sections into the predictable structure from Dimension 2.
+Construct or repair the map: add a governing-rules section that names every unconditional rule file with a one-line framing, convert any `@import` of an auto-loaded rules file into a plain backticked reference, add the `@AGENTS.md` import where an AGENTS.md exists and is restated, and route procedures to their skills - by name where guaranteed, by what they cover otherwise; a named pointer at a skill or MCP server the install can lack is rewritten to a description, never given a guard phrase. Reorder sections into the predictable structure from Dimension 2.
 
 ### Step 4 - Resolve duplication
 
@@ -183,7 +183,7 @@ Then, for each file still scoring below A / 9, run this bounded loop:
 
 1. Snapshot the file before the first edit.
 2. Rank the dimension deductions by points lost. Fix the largest first.
-3. Apply the smallest edit that removes the deduction. Typical fixes: rewrite a vague instruction into a verifiable one; cut lines that neither change behavior nor route; move maintainer commentary into stripped HTML comments; tighten a section that restates what its linked rule already says down to the link and framing line.
+3. Apply the smallest edit that removes the deduction. Typical fixes: rewrite a vague instruction into a verifiable one; cut lines that neither change behavior nor route; move maintainer commentary into stripped HTML comments; tighten a section that restates what its linked rule already says down to the link and framing line; replace a named pointer at a skill or MCP server the install can lack with what it covers plus the nothing-matches path.
 4. Re-score the file from scratch against the rubric with fresh eyes. Do not carry forward the previous score.
 5. Repeat until it reaches A / 9, or you hit `MAX_ITERATIONS`, or a pass produces no material score gain.
 
@@ -195,7 +195,7 @@ These override the goal of reaching A / 9. If reaching A would require breaking 
 - Imports are not deferral. Moving content into an `@path` import does not reduce context. Do not shrink a file's visible line count by pushing content into an import and claim a token-efficiency gain. The only real deferrals are path-scoped rules and skills.
 - No link farming. The governing-rules map earns points for making the layer navigable, not for length. Listing every file with paragraph-long annotations recreates the bloat the hub exists to remove; one line of framing per rule is the ceiling.
 - Never drop a constraint to save tokens. A line may only be deleted when it changes no behavior, is duplicated elsewhere, or has been genuinely replaced by a named mechanism that now exists.
-- Never invent facts or targets. Every command must be verified against the repo, and every link must point at a rule, skill, agent, or file that exists in the discovered catalogs or that you create and verify in this run. A confident wrong build command or a dangling link is worse than the gap it papers over.
+- Never invent facts or targets. Every command must be verified against the repo, and every link must point at a rule, skill, agent, or file that exists in the discovered catalogs or that you create and verify in this run - and a described pointer must match at least one real catalog entry, or it is a dangling link in disguise. A confident wrong build command or a dangling link is worse than the gap it papers over.
 - Do not weaken enforcement. Never convert a hook or permissions entry into prose, and never trim managed-policy content: it cannot be excluded by individual settings and is fixed.
 - Preserve intended tiering. If the author deliberately put something in local or user scope, do not promote it to project scope to make the project file look more complete.
 - No padding for completeness. Length is a cost paid every session.
@@ -208,7 +208,7 @@ These override the goal of reaching A / 9. If reaching A would require breaking 
 After the loop:
 
 1. Re-read every edited file end to end, including its full import chain expanded, and confirm the payload that would actually load.
-2. Confirm every link resolves: each named rule, skill, agent, and imported file exists at the stated path. Confirm no `@import` targets an auto-loaded rules file.
+2. Confirm every link resolves: each named rule, skill, agent, and imported file exists at the stated path and is one every install the file ships into guarantees, each described pointer matches a real catalog entry, and the repo lint's optional-cite checks are green. Confirm no `@import` targets an auto-loaded rules file.
 3. Re-verify every command and factual claim against the repository one more time after edits.
 4. Confirm the linkage map is complete: every unconditional rule is mapped in the hub, and no dangling references remain.
 5. Confirm no constraint was lost. Diff against the snapshots and account for every deleted line: it changed no behavior, it was duplicated, or it now lives in a named replacement that exists.
@@ -239,7 +239,7 @@ Produce a single report with:
 1. Headline: always-on payload before and after (lines and approximate tokens, imports expanded), plus how much moved to conditional or on-demand mechanisms.
 2. Summary table: one row per file with columns `file`, `tier`, `baseline grade`, `final grade`, `iterations`, `status` (`raised to A`, `already A`, `blocked: <reason>`).
 3. Fact verification: every command and claim checked, marked verified, corrected, or unresolvable.
-4. Linkage map: unconditional rules mapped in the hub, rules that were unmapped and are now linked, and any dangling references found and fixed.
+4. Linkage map: unconditional rules mapped in the hub, rules that were unmapped and are now linked, any dangling references found and fixed, and every named pointer at an optional skill or MCP server converted to a description (line, before, after).
 5. Conflict map: every contradiction found, how it was resolved, or why it is unresolved and the file is blocked. Put this first among the detail sections.
 6. Relocations: every block moved out of CLAUDE.md, with its destination and whether the destination now exists or is only a recommendation.
 7. Duplication map: each cluster, the direction, and how it was resolved.

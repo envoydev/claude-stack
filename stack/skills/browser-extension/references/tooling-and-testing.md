@@ -11,7 +11,7 @@ Loaded from the `browser-extension` skill when scaffolding, choosing tooling, or
 | Plasmo | stalled: CLI and sub-packages ~a year without releases, still self-described alpha, Parcel-based with dependency-vuln reports | never for new projects |
 | raw Vite/esbuild | hand-rolled manifest, HMR, per-browser builds | very simple extensions or unusual constraints |
 
-Scaffold: `npm create wxt` with TypeScript. Types: `@types/chrome` or `chrome-types` (generated from Chromium source, more current) + the polyfill's or WXT's bundled types. Typed messaging helpers: `@webext-core/messaging` or WXT's own.
+Scaffold: `npx wxt@latest init` with TypeScript. Types: `@types/chrome` or `chrome-types` (generated from Chromium source, more current) + the polyfill's or WXT's bundled types. Typed messaging helpers: `@webext-core/messaging` or WXT's own.
 
 ## UI frameworks vs the CSP eval wall
 

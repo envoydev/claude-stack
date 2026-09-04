@@ -80,7 +80,6 @@ For 'explain pattern X' requests, follow the refactoring.guru structure instead:
 
 ## Related skills
 
-- `csharp` - companion for any C# output; style and runtime conventions always apply (see core principle 5).
 - `csharp` (its `references/dependency-injection.md`) - registration mechanics (keyed services, `Add*` extensions, factories) when a pattern collapses into DI, as Factory/Strategy/Singleton usually do.
-- `csharp` (its `references/concurrency.md`) - when Observer or Mediator turns into producer-consumer flows (`Channel<T>`, backpressure); the hosted worker host around such a flow is `dotnet-hosted-services`.
-- `dotnet-wpf` - `ICommand`/`[RelayCommand]` specifics when Command or Observer lands in WPF/MVVM.
+- `csharp` (its `references/concurrency.md`) - when Observer or Mediator turns into producer-consumer flows (`Channel<T>`, backpressure); the worker host around such a flow is the hosted-worker skill's (BackgroundService lifecycle), where installed.
+- The WPF conventions skill, where installed - `ICommand`/`[RelayCommand]` specifics when Command or Observer lands in WPF/MVVM.

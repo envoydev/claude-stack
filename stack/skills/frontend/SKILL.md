@@ -42,5 +42,5 @@ House guidance for UI that looks intentional, not generic-AI-default. Apply it o
 ## Notes
 - Angular is the house web framework. This router is for navigation, not enforcement - the path-scoped convention rule (Availability above) is the soft enforcement layer.
 - Not every route target is a skill: context7 is an MCP server and the Design quality section is in-skill; the rest of the column are skills.
-- No separate a11y row: `angular-conventions` owns the a11y rules (and ships the `axe-core` / `jest-axe` checks), `angular-styling` the styling-side a11y. Cross-framework state management is intentionally unrouted - no house skill owns it.
+- No separate a11y row: `angular-conventions` owns the a11y rules (including the runner-matched axe checks in specs), `angular-styling` the styling-side a11y. Cross-framework state management is intentionally unrouted - no house skill owns it.
 - `frontend` and `mobile` stay split on purpose: an Ionic/Capacitor app pulls a distinct native layer (Capacitor lifecycle, plugins, permissions) that plain web work never touches.

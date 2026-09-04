@@ -14,7 +14,7 @@ Layers onto a clean layout or across vsa slices when the domain has real invaria
 - **Value object over primitive** - `Money`, `EmailAddress`, `OrderNumber` carry validation + equality, not `string`. Immutable, defined by attributes not identity (a value object with an `Id` is secretly an entity). Mechanics: `readonly record struct` / `sealed record` - see `csharp`.
 - **Strongly-typed IDs** stop cross-entity GUID mix-ups - always for root IDs that cross boundaries, optional for child IDs. Map with an EF value converter.
 - **Domain events** decouple side effects - raise on something meaningful (`OrderPlaced`); subscribers handle email / read-model / notifications. Never use events for logic inside the same aggregate - just call the private method.
-- **Domain vs integration events**: domain events stay within the bounded context in the same transaction; integration events cross contexts via a message bus (see `dotnet-messaging`).
+- **Domain vs integration events**: domain events stay within the bounded context in the same transaction; integration events cross contexts via a message bus - the .NET messaging skill's territory (broker, outbox, versioned contracts).
 
 ```csharp
 public readonly record struct CustomerId(Guid Value)

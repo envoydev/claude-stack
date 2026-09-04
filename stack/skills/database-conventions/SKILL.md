@@ -28,9 +28,9 @@ The schema is the one place integrity is cheap to enforce and expensive to retro
 
 The rules here hold across engines; the deep mechanics live with the engine skills.
 
-- **PostgreSQL** - `postgres` for index-type selection, JSONB/full-text, SARGable rewrites, the planner (EXPLAIN / pg_stat_statements / autovacuum), and connection pooling.
-- **SQLite** - `sqlite` for the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, and connection-per-thread.
-- **SQL Server / T-SQL** - no dedicated engine skill; the engine-neutral rules here, plus `references/sql-style.md`'s T-SQL style and dialect gotchas (`TOP`/`OFFSET-FETCH`, `MERGE`, `THROW`, `IDENTITY`, `TRY/CATCH`), plus `postgres`'s transferable index/SARGability principles cover most of it.
+- **PostgreSQL** - the Postgres engine skill (index-type selection, JSONB/full-text, SARGable rewrites, the planner - EXPLAIN / pg_stat_statements / autovacuum - and connection pooling), installed on Npgsql / pg evidence; without it, the rules here plus `references/sql-style.md`'s PostgreSQL columns are the whole guidance.
+- **SQLite** - the SQLite engine skill (the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, connection-per-thread), installed on SQLite provider evidence; without it, `references/sql-style.md`'s SQLite columns plus the pitfalls below.
+- **SQL Server / T-SQL** - no dedicated engine skill; the engine-neutral rules here, plus `references/sql-style.md`'s T-SQL style and dialect gotchas (`TOP`/`OFFSET-FETCH`, `MERGE`, `THROW`, `IDENTITY`, `TRY/CATCH`), plus its SARGability section, cover most of it.
 - **MongoDB / document stores** - no dedicated skill; apply document-modeling care. Embed versus reference by access pattern, index every queried field path, bound array growth, and never run an unbounded `$lookup`.
 
 ## Query safety
@@ -43,11 +43,11 @@ The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` s
 - **Deep pagination is keyset (seek), never `OFFSET`.** `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower; a keyset seek with a unique tiebreaker column holds every page equally fast:
 
 ```sql
-select id, created_at, total
-from orders
-where (created_at, id) < (:last_created_at, :last_id)
-order by created_at desc, id desc
-limit 20;
+SELECT id, created_at, total
+FROM orders
+WHERE (created_at, id) < (:last_created_at, :last_id)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
 ```
 
 (SQL Server has no row-value comparison - expand to `created_at < :ts OR (created_at = :ts AND id < :id)`.)
@@ -111,7 +111,7 @@ Integrity belongs in the schema, where it cannot be bypassed, not in application
 - Let the driver pool connections, which it does by default, and tune the pool to expected concurrency rather than the largest number the server will accept - an oversized pool just moves contention from the application to the database.
 - Connections are scarce and must always be released: rely on `using` / `Dispose` (ORMs handle this for you) and, for raw access, scope the connection explicitly so it cannot leak on an exception path. Keep connections short-lived - one per unit of work - and never hold a long-lived shared connection, which serializes work behind it and survives the failures that a fresh connection would surface.
 - Set a server-side `idle_in_transaction_session_timeout` alongside `statement_timeout` (SQL Server `LOCK_TIMEOUT`) so an abandoned client cannot pin a connection and keep holding its locks - a separate guard from the driver's pool idle timeout.
-- Server-side prepared statements break behind a transaction-mode pooler (PgBouncer, RDS Proxy) because the next call lands on a different backend - disable them driver-side or run session-mode pooling; the per-driver switches live in `postgres`.
+- Server-side prepared statements break behind a transaction-mode pooler (PgBouncer, RDS Proxy) because the next call lands on a different backend - disable them driver-side or run session-mode pooling; the per-driver switches live with the Postgres engine skill.
 
 ## Secrets
 
@@ -126,7 +126,7 @@ Default to keeping logic in the application, where it is testable, diffable, and
 The full per-engine data-type tables (text, numbers, boolean, date/time, UUID) are in `references/sql-style.md`. The defaults above are engine-neutral; these are the per-engine traps worth repeating here because the obvious choice is the wrong one.
 
 - **Money and exact quantities** - store as `decimal` / `NUMERIC(p,s)` on every engine, never `float` or `double`, since binary floats cannot represent decimal fractions and drift silently on sums.
-- **PostgreSQL** - `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap - the `postgres` skill owns the full delta.
+- **PostgreSQL** - `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap - the Postgres engine skill owns the full delta.
 - **SQL Server** - use `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode is preserved. Avoid `DATETIME`; use `DATETIME2` for higher precision and a sane range, or `DATETIMEOFFSET` when the value is timezone-aware.
-- **SQLite** - foreign keys are off by default: `PRAGMA foreign_keys = ON` on every connection - the `sqlite` skill owns the rest (type affinity, boolean/date idioms).
+- **SQLite** - foreign keys are off by default: `PRAGMA foreign_keys = ON` on every connection - the SQLite engine skill owns the rest (type affinity, boolean/date idioms).
 - **MongoDB** - the 16 MB document limit is a hard ceiling, so design to sit well under it rather than near it. The `ObjectId` already embeds a creation timestamp - read it from there instead of duplicating a separate created-at field.

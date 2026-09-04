@@ -28,8 +28,9 @@ return raw structured data, not prose for a human.
   the suite location, and the recorded requirement + exclusion list. Work ONLY that surface.
 - Parse the machine-readable output the tooling produced (cobertura XML, lcov.info,
   coverage-summary.json) - numbers come from THIS run's files, never estimated.
-- Load the surface's house testing skill by DESCRIPTION - match it from YOUR skill list by what each skill says it covers, never by a remembered name - every project installs a different set, and nothing matching means this project has no such surface (the .NET
-  testing one, the Angular one, or the plain TypeScript/JavaScript one) - to judge the suite
+- Load the surface's house testing skill (the .NET testing one, the Angular one, or the plain
+  TypeScript/JavaScript one) by DESCRIPTION - match it from YOUR skill list by what each skill says it covers,
+  never by a remembered name; every project installs a different set - to judge the suite
   against house practice and to apply the exclusion catalog's semantics. With none matching,
   characterize coverage from the instrumented output alone and say so.
 - Locate uncovered code with serena per `.claude/rules/baseline-navigation.md`; `Read` located

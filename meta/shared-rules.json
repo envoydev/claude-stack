@@ -1362,6 +1362,10 @@
         {
           "file": "stack/skills/project-related-context/SKILL.md",
           "marker": "ask ONE question before the fan-out"
+        },
+        {
+          "file": "stack/skills/project-diagnose-failure/SKILL.md",
+          "marker": "ask ONE question before the evidence pass"
         }
       ]
     },
@@ -2294,6 +2298,10 @@
         {
           "file": "stack/skills/project-architecture-analyzer/SKILL.md",
           "marker": "all four questions answered explicitly"
+        },
+        {
+          "file": "stack/skills/project-quality-loop/SKILL.md",
+          "marker": "all four are answered explicitly"
         }
       ]
     },
@@ -2689,7 +2697,7 @@
       ]
     },
     "on-demand-skill-availability": {
-      "_note": "Selection by DESCRIPTION, not by name. A skill is installed per project, so a brief that names one breaks wherever it was trimmed - the measured shapes are a skill no stack seeds (evidence-gated / opt-in) and one belonging to a different stack than the citing artifact, e.g. a cross-cutting agent naming `angular-security` in a .NET-only install. The fix is not a guard next to the name: the text describes what the skill covers, the model matches that against the installed inventory, and a project without it still reads what to do. Naming stays correct only for a skill guaranteed alongside its citer (a frontmatter preload, an own-stack skill). Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an '**Availability**' callout.",
+      "_note": "Selection by DESCRIPTION, not by name. A skill is installed per project, so a brief that names one breaks wherever it was trimmed - the measured shapes are a skill no stack seeds (evidence-gated / opt-in) and one belonging to a different stack than the citing artifact, e.g. a cross-cutting agent naming `angular-security` in a .NET-only install. The fix is not a guard next to the name: the text describes what the skill covers, the model matches that against the installed inventory, and a project without it still reads what to do. Naming stays correct only for a skill guaranteed alongside its citer (a frontmatter preload, an own-stack skill). Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an '**Availability**' callout. The same rule covers an MCP server the baseline does not lock: describe what it does, report what it could not run as UNVERIFIED.",
       "owner": {
         "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
         "marker": "match it from YOUR skill list by what each skill says it covers"
@@ -2745,7 +2753,7 @@
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
@@ -2757,7 +2765,7 @@
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
@@ -2789,11 +2797,11 @@
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "your skill list has"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "your skill list has"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
@@ -2834,6 +2842,22 @@
         {
           "file": "stack/skills/project-version-upgrade/references/upgrade-playbooks.md",
           "marker": "your skill list has"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "says it covers"
+        },
+        {
+          "file": "stack/skills/project-architecture-quality-loop/references/domain-trio-protocol.md",
+          "marker": "match it from YOUR skill list by what each skill says it covers"
+        },
+        {
+          "file": "stack/skills/project-test-coverage-loop/references/domain-trio-protocol.md",
+          "marker": "match it from YOUR skill list by what each skill says it covers"
+        },
+        {
+          "file": "stack/skills/project-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "match it from YOUR skill list by what each skill says it covers"
         }
       ]
     },
@@ -2879,7 +2903,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "An optional MCP (playwright, chrome-devtools, appium-mcp - the baseline comments out the ones a project does not need) is simply absent from a seat tools list when the project never registered it: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat granted one restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason.",
+      "_note": "An optional MCP (playwright, chrome-devtools, appium-mcp - the baseline comments out the ones a project does not need) is simply absent from a seat tools list when the project never registered it: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat granted one restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -2904,6 +2928,148 @@
         {
           "file": "stack/agents/web-angular-verifier.md",
           "marker": "else report the interaction and a11y paths as UNVERIFIED with the reason"
+        }
+      ]
+    },
+    "context7-fetch-at-use": {
+      "_note": "The docs-currency stance every convention skill restates: a version-coupled fact is fetched through the context7 MCP at use time rather than recalled - the durable policy stays in the skill, the drifting number is looked up live. Six house skills carry it inline so the sentence changes in lockstep (it is also where a describe-vs-lock decision on context7 would land).",
+      "owner": {
+        "file": "stack/skills/csharp/SKILL.md",
+        "marker": "`context7` MCP rather than memory"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/database-conventions/SKILL.md",
+          "marker": "`context7` MCP rather than memory"
+        },
+        {
+          "file": "stack/skills/dotnet-winforms/SKILL.md",
+          "marker": "`context7` MCP rather than memory"
+        },
+        {
+          "file": "stack/skills/dotnet-wpf/SKILL.md",
+          "marker": "`context7` MCP rather than memory"
+        },
+        {
+          "file": "stack/skills/devops/SKILL.md",
+          "marker": "`context7` MCP rather than memory"
+        },
+        {
+          "file": "stack/skills/javascript/SKILL.md",
+          "marker": "`context7` MCP rather than memory"
+        }
+      ]
+    },
+    "flow-stop-contract": {
+      "_note": "The gated flows' stop shape: a stop IS one AskUserQuestion call with options and a marked recommendation, never a prose question or a stop-and-wait. Owned by the solve-task flow; the diagnosis flow restates it because it ships independently.",
+      "owner": {
+        "file": "stack/skills/project-solve-task/SKILL.md",
+        "marker": "A stop IS one AskUserQuestion call"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-diagnose-failure/SKILL.md",
+          "marker": "A stop IS one AskUserQuestion call"
+        }
+      ]
+    },
+    "flow-state-two-layers-resume": {
+      "_note": "Flow state lives in two layers (the ledger file + the serena note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
+      "owner": {
+        "file": "stack/skills/project-solve-task/SKILL.md",
+        "marker": "On invocation, resume before starting"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-diagnose-failure/SKILL.md",
+          "marker": "On invocation, resume before starting"
+        }
+      ]
+    },
+    "catalogue-execution-modes": {
+      "_note": "The two failure-signature catalogues' execution-mode section: loaded INSIDE a diagnoser seat the section is already satisfied; loaded in the main session it inherits the calling flow's mode or asks once. Owned by the runtime catalogue; the CI catalogue restates it.",
+      "owner": {
+        "file": "stack/skills/project-runtime-failure-signatures/SKILL.md",
+        "marker": "Loaded INSIDE the seat, this section is already satisfied"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-ci-failure-signatures/SKILL.md",
+          "marker": "Loaded INSIDE the seat, this section is already satisfied"
+        }
+      ]
+    },
+    "designer-oriented-report-line": {
+      "_note": "The `Oriented:` header the plan gate requires, carried as the first line of the read-only designer report because the seat has no Write tool and the orchestrator writes the plan file from the report.",
+      "owner": {
+        "file": "stack/agents/aspnet-solution-designer.md",
+        "marker": "Open with the `Oriented:` line"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "Open with the `Oriented:` line"
+        }
+      ]
+    },
+    "cross-project-task-card-home": {
+      "_note": "A change another repo needs is handed off as a task card at <docs-path>/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, baseline-git binds the receipt rule to it, and the three flows that hand off write the card.",
+      "owner": {
+        "file": "stack/hooks/guard-cross-project-write.js",
+        "marker": "'cross-project-tasks', '<other-project>.md'"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/baseline-docs-root.md",
+          "marker": "a change it must make is a task card in `cross-project-tasks/`"
+        },
+        {
+          "file": "stack/rules/baseline-git.md",
+          "marker": "its change is a task card under `<docs-path>/cross-project-tasks/`"
+        },
+        {
+          "file": "stack/skills/project-related-context/SKILL.md",
+          "marker": "Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`"
+        },
+        {
+          "file": "stack/skills/project-diagnose-failure/SKILL.md",
+          "marker": "a task card under `<docs-path>/cross-project-tasks/`"
+        },
+        {
+          "file": "stack/skills/project-solve-task/SKILL.md",
+          "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         }
       ]
     }

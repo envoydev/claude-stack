@@ -494,7 +494,8 @@ function absentSkillsFor(closures, kind, name, skillDirs)
 //      judging fit'); scoping to the sentence keeps an earlier 'Load when ...'
 //      about the file itself from flagging a later pointer on the same line
 //   B. a router-table row - the token sits in the last cell of a row under a
-//      '| ... | Load |' header, which is the house routing shape
+//      '| ... | Load |' header (or '| Also load |' - any header cell whose last WORD is
+//      'load'; 'Payload' is not one), which is the house routing shape
 //
 // The remedy is NOT a guard phrase next to the name. A skill is selected by matching
 // what it says it covers against the installed inventory, so a directive that must
@@ -507,7 +508,10 @@ function absentSkillsFor(closures, kind, name, skillDirs)
 // One escape: a file opening with an explicit '**Availability**' callout blankets its
 // cites. That is for the ROUTER HUBS, whose whole content is a name -> area table and
 // which are stack-scoped anyway.
-const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|open)\b/i;
+// `re-enter` / `re-invoke` are the flow twins' spelling ('re-enter `x`' measured unflagged in three
+// always-on skills). `run` / `runs` / `see` were tried and rejected: 'Run migrations (mechanics in
+// `x`)' and 'see `x`' are pointers, and the trial flagged 11 of them for zero directives.
+const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|open|re-enter|re-invoke)\b/i;
 const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never installed|is absent|are absent|installed only (?:where|when|if)|(?:when|where|if) installed)\b/i;
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
 // '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
@@ -533,7 +537,7 @@ function lintOptionalCites(file, text, optional)
         {
             loadColumn = false;
         }
-        else if (/^\|?[\s:-]+\|/.test(line.trim()) === false && /^load$/i.test(cells[cells.length - 1] || ''))
+        else if (/^\|?[\s:-]+\|/.test(line.trim()) === false && /(?:^|\s)load$/i.test(cells[cells.length - 1] || ''))
         {
             loadColumn = true;
         }

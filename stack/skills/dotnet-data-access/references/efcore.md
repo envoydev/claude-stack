@@ -37,11 +37,12 @@ var page = await query
 ## Bulk and compiled queries
 
 ```csharp
+var now = timeProvider.GetUtcNow();   // injected TimeProvider, never DateTimeOffset.UtcNow - see csharp
 await _db.Orders
-    .Where(o => o.ExpiresAt < DateTimeOffset.UtcNow)
+    .Where(o => o.ExpiresAt < now)
     .ExecuteUpdateAsync(s => s
         .SetProperty(o => o.Status, OrderStatus.Expired)
-        .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow), ct);
+        .SetProperty(o => o.UpdatedAt, now), ct);
 ```
 
 - `ExecuteUpdateAsync` / `ExecuteDeleteAsync` emit one statement, no materialization.
@@ -58,5 +59,5 @@ The safety playbook is `dotnet-migrate`; this is the wiring it leaves open.
 
 ## Provider notes
 
-- Behind a Postgres transaction pooler, disable driver prepared statements: connection string `Max Auto Prepare=0` (see `postgres`).
-- SQLite provider: EF migrations rebuild tables for many schema ops (limited `ALTER TABLE`) - review the generated SQL (see `sqlite`).
+- Behind a Postgres transaction pooler, disable driver prepared statements: connection string `Max Auto Prepare=0` (the pooler modes themselves are the Postgres engine skill's).
+- SQLite provider: EF migrations rebuild tables for many schema ops (limited `ALTER TABLE`) - review the generated SQL; the rebuild mechanics are the SQLite engine skill's.

@@ -598,3 +598,37 @@ test('sh wiring: every hook carries a timeout, and a bare legacy entry is backfi
         fs.rmSync(work, { recursive: true, force: true });
     }
 });
+
+test('sh wiring: OUR hook on a retired PreToolUse matcher is pruned, a foreign entry and the Stop wiring are kept', { skip: skipNoPython }, () =>
+{
+    // guard-stop-contract used to be wired on PreToolUse AskUserQuestion as well as Stop. The plugin
+    // route unwires it through meta/migrations.json; the script route left the entry in place on every
+    // update and backfilled its timeout as if it were current (measured in the 2026-09-04 hooks audit).
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    assert.ok(!hooks.some((h) => h.includes('::AskUserQuestion')), 'the retired matcher is no longer in HOOKS');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-prune-'));
+    try
+    {
+        const settings = path.join(work, 'settings.json');
+        fs.writeFileSync(settings, JSON.stringify({
+            hooks: { PreToolUse: [
+                { matcher: 'AskUserQuestion', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"', timeout: 10 }] },
+                { matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/my-own-hook.js"' }] },
+            ] },
+        }));
+        const res = spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7'], { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const under = (m) => (wired.hooks.PreToolUse || []).filter((e) => e.matcher === m).flatMap((e) => e.hooks.map((h) => h.command));
+        assert.deepStrictEqual(under('AskUserQuestion'), [], 'the retired entry is gone, and its emptied matcher block with it');
+        assert.ok(under('Bash').some((c) => c.includes('my-own-hook.js')), 'a hook that is not ours is never touched');
+        assert.ok((wired.hooks.Stop || []).flatMap((e) => e.hooks).some((h) => h.command.includes('guard-stop-contract.js')), 'the Stop wiring of the same file is intact');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});

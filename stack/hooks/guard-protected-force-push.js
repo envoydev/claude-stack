@@ -196,6 +196,10 @@ function main()
     {
         process.exit(0); // can't parse hook input -> don't block on a harness malfunction
     }
+    if (!payload || typeof payload !== 'object')
+    {
+        process.exit(0); // a JSON scalar/null - nothing to judge
+    }
 
     // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
     // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -223,6 +227,7 @@ function main()
                         ts: new Date().toISOString(),
                         hook: path.basename(__filename),
                         event: payload.hook_event_name || payload.tool_name || '',
+                        tool: payload.tool_name || '',
                         reason: last.split('\n')[0].slice(0, 200),
                     }) + '\n');
                 }

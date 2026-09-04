@@ -41,11 +41,13 @@ change made only inside a consuming project is throwaway (see Invariants).
   lost in 4 of 4 audited sessions) +
   `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit`/`Bash` - one session
   belongs to ONE project: a write whose target resolves outside the project root is blocked, via
-  the file tools or the shell routes around them (redirection, `tee`, in-place `sed`, a `cp`/`mv`
-  destination, `rm`/`mkdir`, `git -C <other>` with a mutating subcommand), and the change the other
+  the file tools or the shell routes around them (redirection, `tee`, in-place `sed`/`perl`, a `cp`/`mv`
+  destination, `rm`/`mkdir`/`chmod`, `git -C <other>` with a mutating subcommand, or a `cd <other>`
+  followed by one or by a relative write), and the change the other
   repo needs goes to a task card under `<docs-path>/cross-project-tasks/` instead. READING another
-  repo stays open - that is what makes the card specific. The session's own scratch, the `~/.claude`
-  account dir and `/dev` stay writable; an allowance containing the project root is dropped, both
+  repo stays open - that is what makes the card specific. The session's own scratch, the `~/.claude` /
+  `~/.claude-<space>` account dirs and `/dev` stay writable; a `>` or verb inside a quoted string is
+  prose; an allowance containing the project root is dropped, both
   sides are compared as REAL paths (macOS `/tmp` is a symlink), an unexpanded variable is never
   judged, and `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second tree a project genuinely owns) +
   `guard-answer-length.js` (dual-wired: a `UserPromptSubmit` hook that appends the answer budget -
@@ -167,7 +169,10 @@ documented there.
 
 ## The model these templates encode
 
-- **MCP servers are per-project, never global.** Active baseline (8): `context7` (docs),
+- **MCP servers are per-project, never global.** Two are LOCKED into every install by an always-on
+  rule's backticked mention - `serena` (baseline-navigation) and `context7` (baseline-quality-gates) -
+  so artifacts may name them; every other server is recommended or stack-seeded and droppable, so a
+  body describes it. Active baseline (8): `context7` (docs),
   `serena` (symbol nav + edits + per-project memory), `playwright` (browser), `memory`
   (cross-project recall), plus `angular-cli` (framework-specific - comment out where not
   applicable), `chrome-devtools` (browser/extension debug), `appium-mcp` (native mobile E2E -

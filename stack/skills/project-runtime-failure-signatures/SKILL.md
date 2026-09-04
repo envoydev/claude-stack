@@ -23,8 +23,13 @@ Every runtime failure has a signature, and the signature names where to look - w
 
 This catalogue is single-sourced: the runtime-failure-diagnoser seat preloads this same file, so
 the inline and seated forms never drift. Loaded in the MAIN session, run the triage HERE. The
-read-only evidence-gatherer fan-out is YOUR call, made from the evidence's shape - decide it,
-do not wait to be asked:
+read-only evidence-gatherer fan-out is judged from the evidence's shape - but dispatch is
+explicit-only house-wide, so the seats never start on your own say-so: a calling flow that
+already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never
+re-ask; otherwise, when the shape below warrants gatherers, put it through ONE AskUserQuestion
+(gatherers recommended, the trigger named in the option's description; plain-text options
+where the harness lacks the tool) and stay inline on an inline answer. A shape that stays
+inline needs no ask:
 
 - **Dispatch gatherers** (parallel, one per source) when any of these holds: the evidence spans
   two or more independent sources (a server log AND a DB state AND a repro run); a log or trace

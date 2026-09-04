@@ -111,6 +111,7 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
   assert.equal(call('project-quality-loop', hot), 2, 'orchestration run on carried history');
   assert.equal(call('claude-stack:project-quality-loop', hot), 2, 'namespaced form');
+  assert.equal(call('project-diagnose-failure', hot), 2, 'the gated diagnosis flow chained onto carried history');
   assert.equal(call('project-quality-loop', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot), 0, 'an ordinary skill is never gated');
 });
@@ -526,7 +527,7 @@ test('guard-cross-project-write: it fails open rather than guessing', () => {
 test('guard hooks record every block, and nothing on a pass', () => {
   const proj = fs.mkdtempSync(path.join(TMP, 'blocklog-'));
   const run = (hook, payload) => spawnSync(process.execPath, [path.join(HOOKS, hook)], {
-    input: JSON.stringify({ session_id: 'sess1', ...payload }),
+    input: JSON.stringify({ session_id: 'sess1', hook_event_name: 'PreToolUse', ...payload }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
   }).status;
@@ -548,7 +549,8 @@ test('guard hooks record every block, and nothing on a pass', () => {
     ['guard-catastrophic-rm.js', 'guard-cross-project-write.js', 'guard-unapproved-dispatch.js']);
   for (const r of rows) {
     assert.match(r.ts, /^\d{4}-\d{2}-\d{2}T/, 'timestamped');
-    assert.ok(r.event, 'carries the event that was blocked');
+    assert.equal(r.event, 'PreToolUse', 'carries the event that was blocked');
+    assert.ok(['Bash', 'Task', 'Write'].includes(r.tool), 'and the TOOL - the event alone is PreToolUse for every guard, which says nothing');
     assert.match(r.reason, /^Blocked|^Refusing/, 'carries the first line of the denial');
     assert.ok(r.reason.length <= 200, 'reason is capped - a ledger is not a transcript');
   }
@@ -568,4 +570,83 @@ test('block telemetry never interferes with the gate', () => {
   assert.equal(blocked.status, 2, 'still blocks when the ledger cannot be written');
   assert.match(blocked.stderr, /Refusing/, 'and the model still gets the reason');
   assert.equal(run('npm test').status, 0, 'and an ordinary command still passes');
+});
+
+// --- hooks audit 2026-09-04: the cross-project guard's remaining routes, each pinned from a probe
+// that reproduced the wrong verdict before the fix (a pass on a real cross-repo write, or a block
+// on honest in-project work). The fixtures above are reused: XP_ROOT is the project, XP_OTHER the sibling.
+test('guard-cross-project-write: a cd into the other project moves the anchor for what follows', () => {
+  assert.equal(xpBash(`cd ${XP_OTHER} && git commit -am x`), 2, 'cd then a bare git commit is the -C write, spelled the usual way');
+  assert.equal(xpBash('cd ../projB && git add -A && git commit -m x'), 2, 'a relative cd, chained');
+  assert.equal(xpBash(`cd ${XP_OTHER}; git add -A; git commit -m x`), 2, 'semicolon-chained');
+  assert.equal(xpBash(`(cd ${XP_OTHER} && git commit -am x)`), 2, 'inside a subshell');
+  assert.equal(xpBash(`pushd ${XP_OTHER} && git commit -am x`), 2, 'pushd too');
+  assert.equal(xpBash(`cd ${XP_OTHER} && echo x > f.txt`), 2, 'a bare relative write after the cd lands over there');
+  assert.equal(xpBash(`cd ${XP_OTHER} && git log --oneline -3 && cat f.txt`), 0, 'reading after the cd stays open');
+  assert.equal(xpBash('cd src && echo x > ../out.txt'), 0, '../ from a subdirectory of our own project resolves inside it');
+  assert.equal(xpBash('cd $OTHER && echo x > f.txt'), 0, 'an anchor that cannot be followed judges nothing relative');
+  assert.equal(xpBash(`cd $OTHER && echo x > ${path.join(XP_OTHER, 'f.txt')}`), 2, '...while an absolute target is still judged');
+});
+
+test('guard-cross-project-write: prose inside quotes is not a write, and a heredoc keeps its own redirect', () => {
+  assert.equal(xpBash(`git commit -m "fix: pipe > ${path.join(XP_OTHER, 'f.txt')}"`), 0, 'a > inside a commit message');
+  assert.equal(xpBash(`echo "copy with: cp a ${path.join(XP_OTHER, 'b')}"`), 0, 'a verb inside an echo string');
+  assert.equal(xpBash(`echo x > "${path.join(XP_OTHER, 'my file.txt')}"`), 2, 'a quoted TARGET is still a target');
+  assert.equal(xpBash(`cat <<'EOF' > ${path.join(XP_OTHER, 'f.txt')}\nhello\nEOF`), 2, 'the heredoc line carries its redirect - only the body is data');
+  assert.equal(xpBash(`cat > ${path.join(XP_OTHER, 'f.txt')} <<'EOF'\nhello\nEOF`), 2, 'either order');
+});
+
+test('guard-cross-project-write: every argument of an in-place edit or filesystem change is judged', () => {
+  assert.equal(xpBash(`perl -pi -e 's/a/b/' ${path.join(XP_OTHER, 'f.txt')}`), 2, "perl's -pi cluster is an in-place edit");
+  assert.equal(xpBash(`sed -i 's/a/b/' ${path.join(XP_OTHER, 'f.txt')} src/a.ts`), 2, 'the FIRST of two sed targets');
+  assert.equal(xpBash(`rm -f a.txt ${path.join(XP_OTHER, 'b.txt')}`), 2, 'the second rm argument');
+  assert.equal(xpBash(`mkdir -p x ${path.join(XP_OTHER, 'y')}`), 2, 'the second mkdir argument');
+  assert.equal(xpBash(`truncate -s 0 ${path.join(XP_OTHER, 'log')}`), 2, 'truncate, after its size argument');
+  assert.equal(xpBash(`chmod +x ${path.join(XP_OTHER, 'bin', 'x')}`), 2, 'chmod, after its mode');
+  assert.equal(xpBash(`chown me ${path.join(XP_OTHER, 'bin', 'x')}`), 2, 'chown, after its owner');
+  assert.equal(xpBash('chmod 755 bin/x && truncate -s 0 log && rm -f a b && perl -pi -e "s/a/b/" src/a.ts'), 0, 'the same verbs on our own files');
+});
+
+test('guard-cross-project-write: git listing forms in the other checkout are reads', () => {
+  assert.equal(xpBash(`git -C ${XP_OTHER} stash list`), 0, 'stash list');
+  assert.equal(xpBash(`git -C ${XP_OTHER} tag`), 0, 'tag (list)');
+  assert.equal(xpBash(`git -C ${XP_OTHER} tag -l 'v*'`), 0, 'tag -l');
+  assert.equal(xpBash(`git -C ${XP_OTHER} branch`), 0, 'branch (list)');
+  assert.equal(xpBash(`git -C ${XP_OTHER} stash`), 2, 'a stash push is a write');
+  assert.equal(xpBash(`git -C ${XP_OTHER} tag v1.0`), 2, 'creating a tag is a write');
+  assert.equal(xpBash(`git -C ${XP_OTHER} branch -d x`), 2, 'deleting a branch is a write');
+});
+
+test('guard-cross-project-write: space account dirs, ~ in the allowance, and unresolvable roots', () => {
+  const home = os.homedir();
+  const repoRoot = path.join(__dirname, '..');
+  const inRepo = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '', ...env } }).status;
+  if (home) {
+    // A --space install keeps its memory under ~/.claude-<space>; the old check disabled that
+    // allowance for every project living under HOME, i.e. every real project (reproduced).
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a space account dir');
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-x', '..', 'elsewhere', 'f.txt') } }), 2, 'reaching back out of one');
+    const owned = path.join(home, `claude-stack-owned-tree-${process.pid}`); // never created - realish resolves through the missing tail
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }), 2, 'a second tree under HOME is outside');
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }, { CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '~' + owned.slice(home.length) }), 0, 'a ~ in the allowance expands');
+  }
+  assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'f.txt') } }, { CLAUDE_PROJECT_DIR: '/nonexistent/root' }), 0, 'a root that does not exist fails open, as the header promises');
+  // Without CLAUDE_PROJECT_DIR the nearest .git ancestor of the session cwd is the root - the cwd
+  // itself may be a subdirectory the session cd-ed into, which called a sibling folder 'outside'.
+  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(repoRoot, 'stack', 'x.md') }, cwd: path.join(repoRoot, 'scripts') }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '', CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' },
+  }).status, 0, 'a subdirectory cwd still sees the whole repo');
+});
+
+test('every guard fails open on a JSON scalar or null payload', () => {
+  // `null` parses, so the parse guard let it through and the first field read threw a TypeError -
+  // exit 1 with a stack trace surfaced as a hook error (reproduced on 7 of 9 guards).
+  for (const hook of fs.readdirSync(HOOKS).filter((f) => f.startsWith('guard-'))) {
+    for (const input of ['null', '"str"', '[]', '{"tool_name":"Bash","tool_input":null}']) {
+      const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], { input, encoding: 'utf8' });
+      assert.equal(r.status, 0, `${hook} on ${input}: ${(r.stderr || '').split('\n').find((l) => /Error/.test(l)) || ''}`);
+    }
+  }
 });

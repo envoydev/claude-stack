@@ -257,6 +257,12 @@
       "mcps": [],
       "plugins": []
     },
+    "project-diagnose-failure": {
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
     "project-implementer": {
       "mcps": [],
       "plugins": [
@@ -499,6 +505,7 @@
         "csharp",
         "database-conventions",
         "dotnet-wpf",
+        "javascript",
         "typescript"
       ],
       "skillsSource": "none",
@@ -714,6 +721,7 @@
     "integration-reviewer": {
       "skills": [],
       "suggests": [
+        "angular-conventions",
         "angular-testing",
         "database-conventions",
         "dotnet-code-quality",
@@ -721,7 +729,8 @@
         "dotnet-testing",
         "dotnet-web-backend",
         "project-solve-cross-task",
-        "ts-js-testing"
+        "ts-js-testing",
+        "typescript"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -1206,7 +1215,9 @@
     "baseline-quality-gates": {
       "skills": [],
       "agents": [],
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": [
         "superpowers"
       ],

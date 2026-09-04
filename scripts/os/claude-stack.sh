@@ -355,6 +355,7 @@ SKILLS=(
   "envoydev/claude-stack|project-implementer"              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate
   "envoydev/claude-stack|project-solution-design"  # single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds project-verify-plan
   "envoydev/claude-stack|project-solve-task"       # gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: project-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction
+  "envoydev/claude-stack|project-diagnose-failure" # gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report
   "envoydev/claude-stack|project-runtime-failure-signatures" # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
   "envoydev/claude-stack|project-ci-failure-signatures"        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures
   "envoydev/claude-stack|project-stack-usage-analyzer" # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
@@ -1254,6 +1255,20 @@ for entries in data.get("hooks", {}).values():
         for h in e.get("hooks", []):
             if h.get("command") in _ours and h.get("timeout") != HOOK_TIMEOUT:
                 h["timeout"] = HOOK_TIMEOUT; changed = True
+# Prune OUR hook file from a PreToolUse matcher this version no longer wires (guard-stop-contract's
+# retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
+# match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
+# Keyed on the SELECTED specs, so a hook the user de-selected keeps its entries (configure's job).
+_ours_files = {c.split("/.claude/hooks/")[-1].split('"')[0] for _, c, _ in specs}
+_pairs = {(m, c) for m, c, _ in specs if not m.startswith("@")}
+_pre = data.get("hooks", {}).get("PreToolUse", [])
+for e in list(_pre):
+    for h in list(e.get("hooks", [])):
+        c = h.get("command", "")
+        if "/.claude/hooks/" in c and c.split("/.claude/hooks/")[-1].split('"')[0] in _ours_files and (e.get("matcher", ""), c) not in _pairs:
+            e["hooks"].remove(h); changed = True
+    if not e.get("hooks"):
+        _pre.remove(e); changed = True
 # "@<Event>" matchers wire a non-PreToolUse lifecycle event (e.g. @Stop - no matcher key there).
 for matcher, command, legacy in specs:
     if matcher.startswith("@"):

@@ -206,7 +206,7 @@ cascade never reaches here. Dropping a wired hook removes its `.claude/settings.
 
 ## 7. MCPs
 
-Locked = the servers the kept selection pulls (typically just `serena`, via `baseline-navigation`);
+Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`);
 the rest of the installed servers are direct picks - droppable, and preserved across runs
 (`raw.json` carries them). Addable from `catalog.mcps`; note next to `sentry` that it needs `SENTRY_SLUG` and
 (token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env. Whenever sentry is PRESENT after

@@ -17,6 +17,7 @@ try {
 } catch {
   process.exit(0);
 }
+if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
 
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -42,6 +43,7 @@ try {
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
+          tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
@@ -68,7 +70,7 @@ function ctxThreshold(maxCtxSeen) {
 }
 // The deliberate entry points: each one opens a multi-phase run with its own state file, so a
 // fresh session resuming from that file is always cheaper than continuing on carried context.
-const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade))$/;
+const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure))$/;
 const skill = String((payload.tool_input || {}).skill || (payload.tool_input || {}).name || '');
 if (!ORCHESTRATION.test(skill.replace(/^.*:/, ''))) process.exit(0);
 

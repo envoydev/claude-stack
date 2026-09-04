@@ -169,10 +169,11 @@ the first cycle's reviewer).
    plainly that the work is running ungated and why; never build it on a casual 'yes, add it'
    (measured: every user-caught defect in two audited sessions lived in post-close ad hoc scope
    the gates never saw). When the change affects a sibling repo's client, the handoff is a
-   FILE (a task doc in the sibling's convention or a serena note), never chat-only prose -
-   verify the sibling's actual source before writing what it must do (measured: a chat-only
-   handoff was regenerated twice at full context; a speculative one shipped a wrong claim the
-   user's follow-up exposed).
+   FILE in THIS repo - a task card under `<docs-path>/cross-project-tasks/` (the cross-project
+   write guard blocks a write into the sibling's tree; reading it stays open) or a serena note -
+   never chat-only prose - and verify the sibling's actual source before writing what it must do
+   (measured: a chat-only handoff was regenerated twice at full context; a speculative one shipped
+   a wrong claim the user's follow-up exposed).
    **Doc-drift awareness** - one line at most in the close report, the user decides, never
    auto-run: when the landed change touched an architecture-critical surface (a schema/EF
    migration, a new module or project, a moved boundary or dependency direction, a changed

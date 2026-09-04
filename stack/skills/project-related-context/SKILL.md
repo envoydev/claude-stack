@@ -35,7 +35,7 @@ Dispatch all seats in a single message. Each dispatch prompt carries: the HOST p
 ### 3. MERGE - write <docs-path>/related-context/PROJECT-RELATED-CONTEXT.md
 Create `<docs-path>/related-context/` when absent. Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting at the docs root itself (the pre-folder home) is MOVED into the folder first and reconciled there - never left behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a quick reference. Shape:
 
-1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the memory MCP, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
+1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the MCP that holds cross-project recall, never here (none registered: they stay session-local). Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
 2. **The entries** - one `related_projects:` YAML block, the house schema per sibling:
 ```yaml
 related_projects:
@@ -91,7 +91,8 @@ a session on another branch knows that edge may not exist in its code>
   new sibling-repo docs there, never elsewhere.
 - serena binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
-- Dynamic cross-repo findings go to the memory MCP, never a committed file.
+- Dynamic cross-repo findings go to the MCP that holds cross-project recall, never a committed
+  file; with no such server registered they stay session-local.
 ```
 
 Create `.claude/rules/` when absent. The rule is regenerate-only: entries come from the reports, the three closing bullets are fixed - never hand-edit the copy, never let the rule grow evidence or first_read detail (always-on tokens are paid every session and every subagent; the fat stays in the doc).

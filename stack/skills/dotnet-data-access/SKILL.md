@@ -11,7 +11,7 @@ Owns the .NET side of talking to a database, the part that is the same whichever
 - NHibernate -> `references/nhibernate.md`
 - .NET Framework 4.8 (EF Core 3.1 vs EF6, DbContext-per-request) -> `references/net-framework-48.md`
 
-Out of scope, by design: raw SQL / index / planner tuning -> `postgres` or `sqlite`; the migration safety playbook (expand-contract, backfill, rollback, never edit an applied migration) -> `dotnet-migrate`; async / `CancellationToken` / hand-mapping -> `csharp`; real-DB integration tests -> `dotnet-testing`.
+Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (Postgres or SQLite); the migration safety playbook (expand-contract, backfill, rollback, never edit an applied migration) -> `dotnet-migrate`; async / `CancellationToken` / hand-mapping -> `csharp`; real-DB integration tests -> `dotnet-testing`.
 
 ## Session lifetime and thread-safety
 
@@ -43,4 +43,4 @@ Mutate set-based, not load-loop-save - one statement, no materialization. The co
 ## Full ORM plus micro-ORM
 
 - Full ORM (EF Core / NHibernate) for CRUD, validation-focused and domain-heavy writes; a micro-ORM (Dapper) for complex reads, reporting, and bulk. They coexist in one project - ORM for writes, Dapper for reads.
-- Dapper read store: inject a pooled `NpgsqlDataSource`, open a connection per call, map an internal row type to a domain DTO by hand. Parent + children in one round trip: `QueryMultipleAsync` returns both result sets, then stitch in memory - never materialize two tables and join them in C# (push the join into SQL - see `postgres`).
+- Dapper read store: inject a pooled `NpgsqlDataSource`, open a connection per call, map an internal row type to a domain DTO by hand. Parent + children in one round trip: `QueryMultipleAsync` returns both result sets, then stitch in memory - never materialize two tables and join them in C# (push the join into SQL; shaping it engine-side is the Postgres engine skill's).

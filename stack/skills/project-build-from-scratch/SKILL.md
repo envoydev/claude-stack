@@ -29,6 +29,8 @@ First milestone green: suggest the captures - `/project-architecture-analyzer` a
 
 ## Per-stack scaffolding
 
+**Availability** - each row's skills exist only where that stack was installed; match them from your skill list by what each covers, and a skill absent because the project is greenfield (an evidence-gated specialist arrives only once code shows the need) is designed around from the stack's hub skill and the vendor docs, never guessed by name.
+
 | Stack | new-project command | Architecture + convention skills |
 |---|---|---|
 | Angular web | ng new | `angular-conventions` + `angular-styling` |
@@ -48,6 +50,6 @@ Brief: 'Start a new Angular admin dashboard.'
 
 ## Rules
 - Greenfield architecture and tech choices are the user's - present options, get the pick, never scaffold before it.
-- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check context7, never memory.
+- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check the library-docs MCP (context7 where the project kept it) or the vendor doc, never memory - an option resting on a claim no doc backs says `unverified`.
 - The main session is the only orchestrator - never instruct a subagent to dispatch another; the domain seats this skill fans out carry no Agent tool.
 - An honest NEEDS_CONTEXT beats a guessed design: a blocking spec question goes to the user before options are locked.

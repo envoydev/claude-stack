@@ -1,6 +1,6 @@
 # Concurrency correctness (async, cancellation, synchronization)
 
-The async-correctness mechanics that sit on top of this skill's style rules: how to await without deadlocking, how to thread a cancellation token to the leaves, the `Channel<T>` producer-consumer basics, and the synchronization primitives worth reaching for when shared mutable state is genuinely unavoidable. What a hosted worker loop adds on top is `dotnet-hosted-services`' `references/concurrency.md` (installed where the project hosts workers).
+The async-correctness mechanics that sit on top of this skill's style rules: how to await without deadlocking, how to thread a cancellation token to the leaves, the `Channel<T>` producer-consumer basics, and the synchronization primitives worth reaching for when shared mutable state is genuinely unavoidable. What a hosted worker loop adds on top is the hosted-worker skill's own concurrency reference, installed where the project hosts workers.
 
 ## async/await correctness
 
@@ -46,7 +46,7 @@ Constructing it `new(n, n)` instead caps concurrency at `n` - a bounded gate in 
 
 ## Channel&lt;T&gt; producer-consumer basics
 
-`System.Threading.Channels` is the in-process producer-consumer primitive: producers `WriteAsync` to the writer, one or more consumers drain the reader (`await foreach (var item in reader.ReadAllAsync(ct))`). `Channel.CreateBounded<T>(capacity)` is the default choice - a full channel makes `WriteAsync` wait, which IS the backpressure that stops a fast producer from ballooning memory; `CreateUnbounded<T>` never pushes back and is only right when the producer is naturally bounded. When the producing side finishes, `writer.Complete()` (or `TryComplete(ex)` on failure) ends the consumer's `ReadAllAsync` loop cleanly - a channel nobody completes leaves the drain awaiting forever. Prefer a single drain loop as the one writer of downstream state - that serializes the mutation without a lock. Hosting that drain inside a `BackgroundService` - lifecycle, failure handling, shutdown - is `dotnet-hosted-services`' territory.
+`System.Threading.Channels` is the in-process producer-consumer primitive: producers `WriteAsync` to the writer, one or more consumers drain the reader (`await foreach (var item in reader.ReadAllAsync(ct))`). `Channel.CreateBounded<T>(capacity)` is the default choice - a full channel makes `WriteAsync` wait, which IS the backpressure that stops a fast producer from ballooning memory; `CreateUnbounded<T>` never pushes back and is only right when the producer is naturally bounded. When the producing side finishes, `writer.Complete()` (or `TryComplete(ex)` on failure) ends the consumer's `ReadAllAsync` loop cleanly - a channel nobody completes leaves the drain awaiting forever. Prefer a single drain loop as the one writer of downstream state - that serializes the mutation without a lock. Hosting that drain inside a `BackgroundService` - lifecycle, failure handling, shutdown - is the hosted-worker skill's territory, where installed.
 
 ## Interlocked and lock
 

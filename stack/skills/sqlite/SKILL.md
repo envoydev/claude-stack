@@ -5,7 +5,7 @@ description: "SQLite engine specialist - the SQLite-specific delta on top of the
 
 # sqlite (engine specialist)
 
-The SQLite-specific layer. **Cross-engine conventions live in `database-conventions` - load that hub first and do not restate it.** The EF Core side lives in `dotnet-data-access`. This is only what changes *because the engine is SQLite*.
+The SQLite-specific layer. **Cross-engine conventions - schema design, migrations, indexing and transaction rules, connection handling - are the cross-engine database hub's; load that hub first where the install has it, and do not restate it.** The EF Core side is the ORM-side skill's (EF Core / Dapper). This is only what changes *because the engine is SQLite*, and stands on its own when the hub is absent.
 
 ## When it fits
 

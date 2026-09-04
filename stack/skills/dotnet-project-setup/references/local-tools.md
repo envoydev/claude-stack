@@ -57,7 +57,7 @@ A freshly cloned repo has the manifest but not the tools; `dotnet tool restore` 
 - run: dotnet csharpier check .
 ```
 
-The wider workflow - jobs, caching, gates - is `devops`.
+The wider workflow - jobs, caching, gates - is the CI-and-deploy skill's.
 
 ## Managing the set
 
