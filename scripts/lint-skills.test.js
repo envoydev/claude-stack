@@ -168,7 +168,7 @@ test('absentSkillsFor is the cross-stack case: a skill missing where the citing 
     assert.strictEqual(absentSkillsFor(closures, 'agents', 'not-seeded-anywhere', skills).size, 0);
 });
 
-test('lintOptionalCites flags an unguarded load of an optional skill and accepts the guard forms', () => {
+test('lintOptionalCites flags a NAMED load of a skill that can be absent; a description passes', () => {
     const { lintOptionalCites } = require('./lint-skills.js');
     const optional = new Set(['dotnet-architecture-tests', 'angular-material']);
 
@@ -177,37 +177,36 @@ test('lintOptionalCites flags an unguarded load of an optional skill and accepts
     const flagged = lintOptionalCites('skills/x/SKILL.md', bare, optional);
     assert.strictEqual(flagged.length, 1);
     assert.match(flagged[0], /skills\/x\/SKILL\.md:1/);
-    assert.match(flagged[0], /dotnet-architecture-tests/);
+    assert.match(flagged[0], /BY NAME/);
 
-    // a same-line guard clears it
+    // A GUARD PHRASE next to the name is no longer the remedy. It made the cite safe to skip,
+    // but a project without that skill still learned nothing about what to do instead - and the
+    // name is what invites the Skill call in the first place.
+    assert.strictEqual(
+        lintOptionalCites('f.md', 'Load `dotnet-architecture-tests` only when it is in your skill list.\n', optional).length, 1,
+        'naming it and guarding it is still naming it');
+
+    // The remedy: describe what the skill covers, so it is matched from the installed inventory
+    // and a seat without it reads what to do anyway.
     assert.deepStrictEqual(
-        lintOptionalCites('f.md', 'Load `dotnet-architecture-tests` only when it is in your skill list.\n', optional), []);
+        lintOptionalCites('f.md', 'Load the skill covering architecture fitness tests, if your skill list has one.\n', optional), []);
 
     // a router-table row under a 'Load' column is a directive too
     const table = '| You are about to... | Load |\n|---|---|\n| build Material UI | `angular-material` |\n';
     assert.strictEqual(lintOptionalCites('f.md', table, optional).length, 1);
 
-    // ... and a file-level blanket covers every row of that table
+    // ... and the one escape: a router hub's explicit Availability callout blankets its table
     const blanketed = '**Availability** - a row whose skill is not installed means the area is absent here.\n' + table;
     assert.deepStrictEqual(lintOptionalCites('f.md', blanketed, optional), []);
+    const qualified = '**Availability - required vs optional.** A row not in your skill list means the area is absent.\n' + table;
+    assert.deepStrictEqual(lintOptionalCites('f.md', qualified, optional), []);
 
     // a pointer is not a directive - no load verb in the token's own sentence
     assert.deepStrictEqual(
         lintOptionalCites('f.md', 'Boundary enforcement lives in `dotnet-architecture-tests`.\n', optional), []);
 
-    // an unrelated 'available' never silences a file (the guard phrase is narrow)
-    const decoy = 'When dispatch is available, ask one question.\nLoad `angular-material` for Material work.\n';
-    assert.strictEqual(lintOptionalCites('f.md', decoy, optional).length, 1);
-
     // The blanket must be DELIBERATE. It used to fire on any line pairing a guard phrase with a
-    // common word ('every', 'rows', 'below'), which silenced 13 of 263 files by accident -
-    // project-architecture-analyzer/SKILL.md among them, the file whose unguarded cite produced
-    // the measured 'Unknown skill' error. Only an '**Availability**' callout blankets now.
+    // common word ('every', 'rows', 'below'), which silenced 13 of 263 files by accident.
     const accidental = 'Every seat reads the docs; a skill not installed is simply absent.\nLoad `angular-material` for Material work.\n';
-    assert.strictEqual(lintOptionalCites('f.md', accidental, optional).length, 1,
-        'a guard phrase sharing a line with a common word does NOT blanket the file');
-
-    // a qualified heading still counts as the deliberate callout
-    const qualified = '**Availability - required vs optional.** A row not in your skill list means the area is absent.\n' + table;
-    assert.deepStrictEqual(lintOptionalCites('f.md', qualified, optional), []);
+    assert.strictEqual(lintOptionalCites('f.md', accidental, optional).length, 1);
 });

@@ -501,7 +501,7 @@
         "dotnet-wpf",
         "typescript"
       ],
-      "skillsSource": "body",
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -840,7 +840,7 @@
         "mobile",
         "typescript"
       ],
-      "skillsSource": "body",
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": [
@@ -854,7 +854,7 @@
         "dotnet-testing",
         "ts-js-testing"
       ],
-      "skillsSource": "body",
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []

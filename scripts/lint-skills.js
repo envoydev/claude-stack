@@ -496,11 +496,17 @@ function absentSkillsFor(closures, kind, name, skillDirs)
 //   B. a router-table row - the token sits in the last cell of a row under a
 //      '| ... | Load |' header, which is the house routing shape
 //
-// Two guard scopes are accepted:
-//   - the cite's own line carries the guard phrase
-//   - the FILE opens an explicit '**Availability**' callout that carries it,
-//     which blankets every cite in that file (the router hubs, whose Load column
-//     is one directive per row)
+// The remedy is NOT a guard phrase next to the name. A skill is selected by matching
+// what it says it covers against the installed inventory, so a directive that must
+// survive a trimmed install DESCRIBES the capability ('the skill covering Angular
+// hardening') instead of naming it: the name only works where the skill exists, while
+// the description also tells a seat without it what to do. Naming stays correct for a
+// skill guaranteed alongside the citing artifact - a frontmatter preload, an own-stack
+// skill - which is why the check is scoped to the ones that can be absent.
+//
+// One escape: a file opening with an explicit '**Availability**' callout blankets its
+// cites. That is for the ROUTER HUBS, whose whole content is a name -> area table and
+// which are stack-scoped anyway.
 const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|open)\b/i;
 const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never installed|is absent|are absent|installed only (?:where|when|if)|(?:when|where|if) installed)\b/i;
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
@@ -532,8 +538,6 @@ function lintOptionalCites(file, text, optional)
             loadColumn = true;
         }
 
-        if (AVAILABILITY_GUARD.test(line)) continue;
-
         for (const m of line.matchAll(/`([a-z][a-z0-9-]*)`/g))
         {
             if (!optional.has(m[1])) continue;
@@ -544,8 +548,10 @@ function lintOptionalCites(file, text, optional)
             const sentence = before.slice(before.lastIndexOf('. ') + 1);
             if (inLoadCell || LOAD_VERB.test(sentence))
             {
-                findings.push(`${file}:${i + 1} directs a load of the optional skill \`${m[1]}\` with no availability guard `
-                    + `(it is absent unless evidence or an opt-in installs it - guard the line, or open the file with an '**Availability**' callout)`);
+                findings.push(`${file}:${i + 1} directs a load of \`${m[1]}\` BY NAME, and that skill can be absent here `
+                    + `(evidence-gated or opt-in). Describe what the skill covers instead, so it is matched from the `
+                    + `installed inventory and a project without it still knows what to do - or open the file with an `
+                    + `'**Availability**' callout if it is a router hub`);
             }
         }
     }
@@ -1510,9 +1516,10 @@ function main()
             for (const s of absent) if (optional.has(s)) absent.delete(s);   // already reported above
             for (const finding of lintOptionalCites(label, text, absent))
             {
-                flag(finding.replace(/ with no availability guard[\s\S]*$/,
-                    ` with no availability guard - it is absent in ${[...hostStacks(closures, kind, owner)].filter(t => !closures[t].skills.has(finding.match(/`([a-z0-9-]+)`/)[1])).join(', ')}, `
-                    + `where this ${kind === 'skills' ? 'skill' : kind.replace(/s$/, '')} is still installed (guard the line, or open the file with an '**Availability**' callout)`));
+                flag(finding.replace(/ BY NAME[\s\S]*$/,
+                    ` BY NAME, and it is absent in ${[...hostStacks(closures, kind, owner)].filter(t => !closures[t].skills.has(finding.match(/`([a-z0-9-]+)`/)[1])).join(', ')}, `
+                    + `where this ${kind === 'skills' ? 'skill' : kind.replace(/s$/, '')} is still installed. Describe what the skill `
+                    + `covers instead of naming it, so it is matched from the installed inventory`));
             }
         }
     }

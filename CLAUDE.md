@@ -270,15 +270,18 @@ documented there.
   manifests in the same sitting (cross-repo parity is discipline, not a networked lint). Never patch
   only a generated `.mcp.json` or a consuming project's copy - the installer
   regenerates and silently wipes it.
-- **A skill named in a brief may not be installed.** Every project trims the roster, so a LOAD
-  directive naming a skill is only safe when the citing artifact and the skill ship together.
-  Two absence classes, one guard: a skill no stack seeds (evidence-gated or opt-in) and a skill
-  belonging to a DIFFERENT stack than the artifact citing it - an always-on agent naming
-  `angular-security` breaks in every .NET-only install. Condition the cite ('load it when it is
-  in your skill list' / 'when installed'), or open a router file with an `**Availability**`
-  callout that blankets its table; `npm run lint` checks 25 and 26 block a new unguarded cite,
-  and `meta/shared-rules.json` pins the clause's copies. A pointer ('boundary rules live in `x`')
-  is not a directive and needs no guard.
+- **Select a skill by DESCRIPTION, not by name.** Naming works only for a skill guaranteed
+  alongside its citer - a frontmatter preload, an own-stack skill. Everything else is per-project,
+  in two absence classes: a skill no stack seeds (evidence-gated or opt-in), and one belonging to a
+  DIFFERENT stack than the artifact citing it - an always-on agent naming `angular-security` breaks
+  in every .NET-only install. So a brief says what the skill COVERS ('the skill covering Angular
+  hardening - template injection, CSP, token storage'), which the model matches against the
+  installed inventory and which still tells a seat without it what to do. A guard phrase beside the
+  name is NOT the remedy - it makes absence safe but leaves the name as the invitation and teaches
+  nothing. `npm run lint` checks 25 and 26 block a named cite that can be absent; a router hub opts
+  out with an `**Availability**` callout, since a name -> area table IS its content. A pointer
+  ('boundary rules live in `x`') is not a directive. Suggestion edges for the guided install come
+  from an agent's declared `suggests:` frontmatter, never from scraping names out of prose.
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.

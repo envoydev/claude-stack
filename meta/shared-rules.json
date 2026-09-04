@@ -2689,155 +2689,151 @@
       ]
     },
     "on-demand-skill-availability": {
-      "_note": "The seats' on-demand load guard - a skill is installed per PROJECT, so a brief naming one must be conditioned on it being in the skill list. Two absence classes, both guarded the same way: a skill no stack seeds at all (evidence-gated / opt-in) and a skill that belongs to a DIFFERENT stack than the citing artifact ships into - a cross-cutting seat installed everywhere naming `angular-security` is the measured shape. Lint check 25 blocks the first, check 26 the second.",
+      "_note": "Selection by DESCRIPTION, not by name. A skill is installed per project, so a brief that names one breaks wherever it was trimmed - the measured shapes are a skill no stack seeds (evidence-gated / opt-in) and one belonging to a different stack than the citing artifact, e.g. a cross-cutting agent naming `angular-security` in a .NET-only install. The fix is not a guard next to the name: the text describes what the skill covers, the model matches that against the installed inventory, and a project without it still reads what to do. Naming stays correct only for a skill guaranteed alongside its citer (a frontmatter preload, an own-stack skill). Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an '**Availability**' callout.",
       "owner": {
         "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
-        "marker": "load one only when it is in your skill list"
+        "marker": "match it from YOUR skill list by what each skill says it covers"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "in your skill list"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "only when it is in your skill list"
+          "marker": "in your skill list"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "in your skill list"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "only when it is in your skill list"
+          "marker": "in your skill list"
         },
         {
           "file": "stack/agents/code-style-analyzer.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/ci-failure-diagnoser.md",
-          "marker": "only when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/runtime-failure-diagnoser.md",
-          "marker": "in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/test-coverage-analyzer.md",
-          "marker": "when it is in your skill list"
+          "marker": "says it covers"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "in your skill list"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/skills/mobile/SKILL.md",
-          "marker": "only when it is in your skill list"
-        },
-        {
-          "file": "stack/skills/angular-conventions/SKILL.md",
           "marker": "in your skill list"
         },
         {
+          "file": "stack/skills/angular-conventions/SKILL.md",
+          "marker": "skill list by what"
+        },
+        {
           "file": "stack/skills/typescript/SKILL.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/skills/csharp/SKILL.md",
-          "marker": "when installed"
-        },
-        {
-          "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "where installed"
+          "marker": "your skill list has"
         },
         {
           "file": "stack/skills/project-version-upgrade/references/upgrade-playbooks.md",
-          "marker": "when installed"
+          "marker": "your skill list has"
         }
       ]
     }
