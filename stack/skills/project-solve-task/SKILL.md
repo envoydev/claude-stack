@@ -89,8 +89,9 @@ the first cycle's reviewer).
 
 1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
    file, not the chat, is the artifact - and that skill's design rules are settled IN it: every seam
-   drawn passes the seven decision-level rules and every task card carries its `log_points`, so
-   step 5 reviews the built code against a plan that already decided both. *Stop.*
+   drawn passes the seven decision-level rules and every task card carries its `log_points`, and the plan's `## Decisions` ledger holds every
+   judgment call with its precedent (or an explicit none), so step 5 reviews the built code against
+   a plan that already decided all three. *Stop.*
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
    found. Gaps route back to step 1 on the user's word. A user who declines the audit gets the
    same honest ledger as step 5: stamp `Gated: skipped by user - <their words>` and continue -
@@ -130,6 +131,12 @@ the first cycle's reviewer).
      build + fast tests, never
      integration replays or another minutes-long run; the slow full run
      happens once, in this session, at the step-5 review / step-6 done-gate.
+   Both modes build to the bar `project-implementer` and every `<stack>-implementer` seat carry -
+   the quality loop's five stages met on the first pass, comments carrying the why, each judgment
+   call decided against the codebase's precedent - and the plan's `## Decisions` ledger grows as
+   they land: appended directly in session mode, folded in from each seat's `decisions:` report
+   lines as its report lands in agents mode. A mid-build how-to-build question is a protocol
+   violation; the only build-time stop is scope beyond the plan.
    *Stop* - and this stop chooses the reviewer for step 5, through the same decision mechanism:
    'project-verify-code in-session' - no dispatch, stays in this context; 'the
    stack's `<stack>-verifier` seat' - isolated eyes, frontmatter model unless the user names one;
@@ -145,7 +152,8 @@ the first cycle's reviewer).
    choice and reviewing from memory of an earlier load is not running it (measured twice: a
    chosen reviewer was never invoked, and one COMMIT-GATE receipt cited a pass with no matching
    invocation anywhere in the session - the receipt may only name a review that actually ran).
-   Point it at the plan file so it reviews against the plan, not in isolation. The review protocol -
+   Point it at the plan file so it reviews against the plan - its task cards and its `## Decisions`
+   ledger - not in isolation. The review protocol -
    build + tests rerun, plan conformance, stack traps, the live-run probe, the wire-contract trace -
    is `project-verify-code`'s (the inline default, twin of the verifier seat); the `<stack>-verifier`
    seat runs the same protocol dispatched.
@@ -156,7 +164,8 @@ the first cycle's reviewer).
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
    (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
-   per-task evidence table. Delete or archive the cycle note, and in an agents-mode run purge the
+   per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
+   into the close. Delete or archive the cycle note, and in an agents-mode run purge the
    run's minted seat notes too - `mcp__serena__delete_memory` each `<feature>__<contract_version>__*`
    note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
    this run's deletes trail its writes (measured corpus-wide: 28 write_memory, 0 delete_memory). *Stop* - and this stop is where the
