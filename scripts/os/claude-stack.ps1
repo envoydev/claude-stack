@@ -1484,7 +1484,6 @@ function Set-HookSettings {
   }
   # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
   # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
-  if (-not $data.PSObject.Properties['env']) { $data | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
   if (-not $data.env.PSObject.Properties['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -NotePropertyValue '40'
     $changed = $true

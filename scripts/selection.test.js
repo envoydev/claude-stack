@@ -197,7 +197,15 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         assert.ok(row.what && row.what.length > 20, `${row.key} explains itself in plain words`);
         assert.ok(TYPES.has(row.validate.type), `${row.key} has a validate shape the walks can check`);
         if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
-        if (row.validate.type === 'percent') { assert.ok(Number(row.default) >= row.validate.min && Number(row.default) <= row.validate.max, `${row.key} default is inside its own range`); }
+        if (row.validate.type === 'percent')
+        {
+            const n = Number(row.default);
+            const inRange = n >= row.validate.min && n <= row.validate.max;
+            assert.ok(inRange || row.default === row.validate.off, `${row.key} default is inside its own range (or is its off value)`);
+            // the catalog's range must be the range the hook enforces, or validate passes a value
+            // the runtime silently rewrites - the fresh-session percent clamps into 5..95 with 0 off
+            if (row.key === 'CLAUDE_STACK_FRESH_SESSION_PCT') { assert.strictEqual(row.validate.min, 5, 'the gate clamps up to 5, so 1-4 must not read as valid'); assert.strictEqual(row.validate.off, '0', '0 is the documented off switch'); }
+        }
         if (row.asked_with) { assert.ok(cat.env.some(r => r.key === row.asked_with), `${row.key} rides along with a row that exists`); }
     }
 });

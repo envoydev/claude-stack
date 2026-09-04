@@ -1447,8 +1447,9 @@ function main()
         flag(`meta/shared-rules.json is unreadable: ${err.message}`);
     }
 
-    // 25. The environment catalog (meta/environment.json) against what the installers actually
+    // 27. The environment catalog (meta/environment.json) against what the installers actually
     //     seed - both directions, both twins - plus the rename targets migrations.json names.
+    //     (25 and 26 are the optional-cite checks CLAUDE.md names by number - do not renumber those.)
     try
     {
         const envCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8'));
@@ -1608,7 +1609,7 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
         return ['environment.json has no `env` array - the guided commands would read an empty environment layer'];
     }
 
-    const seededSh = new Set([...shSrc.matchAll(/env\["([A-Z0-9_]+)"\]\s*=/g)].map(m => m[1]));
+    const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => m[1]));
     const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => m[1]));
     const keys = new Set();
     for (const row of rows)
@@ -1623,7 +1624,7 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
     }
     for (const key of seededSh)
     {
-        if (key.startsWith('CLAUDE_') && !keys.has(key)) { out.push(`claude-stack.sh seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
+        if (!keys.has(key)) { out.push(`claude-stack.sh seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
     }
     for (const key of seededPs1)
     {

@@ -1336,7 +1336,6 @@ for _old, _new in (("CLAUDE_DOCS_PATH", "CLAUDE_STACK_DOCS_PATH"),):
         print("  settings.json env: %s renamed to %s" % (_old, _new))
 # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
 # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
-env = data.setdefault("env", {})
 if "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env:
     env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "40"; changed = True
 # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.

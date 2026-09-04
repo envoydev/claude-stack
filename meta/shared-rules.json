@@ -3183,6 +3183,27 @@
           "marker": "which context WINDOW is this session running in?"
         }
       ]
+    },
+    "env-pass-order": {
+      "_note": "The settings.json env pass runs RENAMES first, carrying the user's value to the new key and dropping the old one, THEN the absent-only seeds - seeding first would write a key's default over a value the user had set under the old name. A NEW variable needs no migration entry (the seeds cover it); a RENAMED one needs the pair in both installer twins and in migrations.json. Nothing in this pass deletes a value, which is why the update command reports it instead of asking for prune consent.",
+      "owner": {
+        "file": "meta/migrations.json",
+        "marker": "rename_settings_env` ({from, to}) moves the user's VALUE to the new key"
+      },
+      "sites": [
+        {
+          "file": "scripts/os/claude-stack.sh",
+          "marker": "BEFORE the absent-only seeds below - seeding first would write the default over a value the"
+        },
+        {
+          "file": "scripts/os/claude-stack.ps1",
+          "marker": "BEFORE the absent-only seeds below - seeding first would write the default over a value the"
+        },
+        {
+          "file": "setup-plugin/commands/update.md",
+          "marker": "renames first, then the absent-only seeds"
+        }
+      ]
     }
   }
 }

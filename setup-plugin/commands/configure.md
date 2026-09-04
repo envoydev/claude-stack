@@ -229,31 +229,19 @@ installed plugins are direct picks. Addable from `catalog.plugins`.
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
 release owns in the scope's settings.json `env` (`.claude/settings.json`, or the account file for a
-global install). Read the rows there rather than the list below, which is what they say today: a
-variable a release adds appears here on its own, and one typed from memory goes stale. The
-installer seeds every row only when ABSENT, so this step is the one place they change deliberately.
-A row whose key is missing from the file is one the release INTRODUCED - offer it with the
-catalog's default; a row's `renamed_from` still present on disk is the old spelling, and accepting
-it moves the value, never resets it. Today's rows:
+global install). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
+front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
+values on the day the catalog holds six. The installer seeds every row only when ABSENT, so this
+step is the one place they change deliberately. A row whose key is missing from the file is one the
+release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
+disk is the old spelling, and accepting it moves the value, never resets it.
 
-- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` - the context auto-compact trigger percent (house default
-  40). Alternatives: another percent, or auto-compact off entirely - that is the
-  `autoCompactEnabled: false` settings key, with the pct override deleted rather than left dead.
-- `CLAUDE_STACK_DOCS_PATH` - the generated-docs root (house default `.claude/docs`, machine-local). A
-  committed forward-slash path (e.g. `docs`) shares the captured docs with the team.
-- `CLAUDE_STACK_INSTRUMENT` - the tool-usage instrumentation switch (house default `0`, off - the
-  wired hook then costs a shell test per call and records nothing). `1` logs every tool call as one
-  JSONL row to `<docs-path>/tools-usage/<session>.jsonl` for the usage analyzer's `--hook-log` join - a
-  per-run measurement switch, flipped back to `0` after the audited run, not a leave-on flag.
-- `CLAUDE_STACK_FRESH_SESSION_PCT` - what share of the context window a session may carry before an
-  orchestration run (a capture, a loop, a solve flow) is offered a fresh session instead (house
-  default `40`; `0` turns the gate off). Note when showing it: on the auto-detected 200k tier this
-  is INERT below 76, because the trigger keeps the measured 150k floor and 200k x 75% is still
-  150k - it bites on a 1M window, where 40% is 400k.
-- `CLAUDE_STACK_CONTEXT_WINDOW` - the window that percentage applies to. Seeded EMPTY, meaning
-  auto-detect: the gate reads the settings model id's own window suffix (`opus[1m]`), and failing
-  that infers the tier from what the session has already carried. Set a number (e.g. `1000000`)
-  only where neither resolves - a model chosen at launch or switched with `/model`.
+Two behaviours live here rather than in the catalog, because they are about what this step DOES:
+
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` accepts a third answer beyond a percent - auto-compact off
+  entirely, which is the `autoCompactEnabled: false` settings key with the pct override DELETED
+  rather than left dead beside it.
+- A docs-root change re-stamps the deployed rule (below) and moves no existing docs.
 
 Show the CURRENT values read from the file - never assume the defaults - then one AskUserQuestion
 keep-or-change consent covering every row (keep - recommended; change, the new values via Other) -

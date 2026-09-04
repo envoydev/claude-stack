@@ -93,7 +93,11 @@ const CTX_FLOOR = 150000;
 //      window, so a message past 200k proves the 1M tier. Latched once proven (below).
 // Nothing resolves: 200k, which is exactly the behaviour before this existed.
 const _win = parseInt(process.env.CLAUDE_STACK_CONTEXT_WINDOW, 10);
-const WINDOW_OVERRIDE = Number.isNaN(_win) ? null : Math.max(100000, _win);
+// Below the smallest real window the value is not a window - it FALLS THROUGH to the next layer,
+// the same answer windowFromModelId gives a bad suffix and the same one environment.json's
+// `min` flags to validate. Clamping it up instead was three answers to one question: the hook
+// silently ran on a 100k window while the reconciler called the value invalid.
+const WINDOW_OVERRIDE = _win >= 100000 ? _win : null;
 function windowFromModelId(id) {
   const m = /\[(\d+)\s*([km])\]/i.exec(String(id || ''));
   if (!m) return null;
@@ -143,10 +147,13 @@ function knownWindow() {
   if (_knownWindow === undefined) _knownWindow = WINDOW_OVERRIDE || settingsModelWindow() || latchedWindow() || null;
   return _knownWindow;
 }
-function ctxThreshold(maxCtxSeen) {
+// `proveTier` is LAZY - a thunk returning the largest per-message context seen. A known window
+// answers without calling it, which is what keeps the stop hook from re-reading the 512KB
+// transcript tail it has already read once per clean turn close.
+function ctxThreshold(proveTier) {
   let window = knownWindow();
   if (!window) {
-    window = maxCtxSeen > 200000 ? 1000000 : 200000;
+    window = proveTier() > 200000 ? 1000000 : 200000;
     if (window > 200000) latchWindow(window);
   }
   const pct = Math.round((window * FRESH_PCT) / 100);
@@ -254,8 +261,9 @@ if (payload.hook_event_name === 'Stop') {
     const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
     // Below the floor no window tier can qualify, so return before maxCtxSeen re-reads the same
     // 512KB tail lastAssistantMessage just read - this branch runs on EVERY clean turn close.
-    if (!knownWindow() && ctx <= CTX_FLOOR) process.exit(0);
-    if (ctx <= ctxThreshold(knownWindow() ? ctx : maxCtxSeen(ctx))) process.exit(0);
+    // maxCtxSeen re-reads the tail lastAssistantMessage just read, so it is passed LAZILY: a
+    // known window never calls it, and the floor rule itself lives in ctxThreshold, once.
+    if (ctx <= ctxThreshold(() => maxCtxSeen(ctx))) process.exit(0);
     if (FRESH_RE.test(text)) process.exit(0);
     const since = lastBlockCtx();
     if (since && ctx < since * REOFFER_GROWTH) {

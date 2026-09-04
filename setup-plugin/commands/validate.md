@@ -173,19 +173,19 @@ table of the actionable rows only - an install whose env already matches gets th
 
 - **MISSING** - a catalog row with no key in the file. This is the release-introduced case: a
   variable added upstream after this install was made, which no artifact diff can surface because
-  it was never a file. Reason column: `introduced in <since>, not set`.
+  it was never a file. Reason column: `not set - introduced after this install`. The catalog carries no version per row, so never print one.
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
-- **INVALID** - a key whose value fails the row's `validate` shape (a percent out of range, a
-  non-numeric window, an instrumentation switch that is neither `0` nor `1`). Show the value and
-  the expected shape; the fix is the catalog default unless the user types another.
+- **INVALID** - a key whose value fails the row's `validate` shape (a percent outside `min`..`max`
+  and not its `off` value, a window under `min`, an instrumentation switch that is neither `0` nor
+  `1`). Show the value and the expected shape; the fix is the catalog default unless the user types
+  another. The shape is the ONLY test - a value that differs from the default is a deliberate pin,
+  never a finding.
 
 Consent exactly like the artifact layers: one AskUserQuestion round - **Accept all**, **Add
 missing only**, **Skip**, or typed numbers - then restate the outcome in one line. Accepted rows
 are written in step 11 as a merge touching ONLY those keys, everything else in the file preserved.
-A value the user has deliberately pinned is never an INVALID row just for differing from the
-default: only the row's `validate` shape decides that.
 
 ## 10. Judgment review - corroborated non-use, convention conflicts, corroborated need
 

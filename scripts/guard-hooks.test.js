@@ -143,7 +143,9 @@ test('guard-fresh-session-start: the threshold scales with the context window', 
 const runIn = (hook, payload, opts) =>
   spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
 const BIG_LINES = fs.readFileSync(BIG, 'utf8').split('\n').length;
-const SMALL = path.join(HOOKS, 'guard-fresh-session-start.js'); // well under the 200-line threshold
+const SMALL = path.join(HOOKS, 'instrument-tool-usage.js'); // 74 lines - the smallest shipped hook,
+// deliberately not one of the guards: they grow, and a fixture that drifts past 200 lines turns
+// two unrelated read-guard assertions red (measured: the fresh-session hook crossed it).
 const REPO = path.join(__dirname, '..');
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
@@ -196,7 +198,7 @@ test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and 
   const rel = (payload, cwd) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', ...payload }, { cwd, env: noRoot }).status;
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 2, 'a relative path that resolves nowhere fails CLOSED');
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 2, 'anchored on the session cwd it is sized - and blocked');
-  assert.equal(rel({ tool_input: { command: 'cat stack/hooks/guard-fresh-session-start.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
+  assert.equal(rel({ tool_input: { command: 'cat stack/hooks/instrument-tool-usage.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
 });
 
 test('guard-protected-force-push: the protected-branch matrix', () => {
