@@ -26,6 +26,10 @@
 // `--git-dir=`/`--work-tree=`, `bash -c '...'`, `eval`, `xargs rm`, `find ... -delete`, a
 // wrapper script - is NOT caught here; this guard reads the literal command.
 const fs = require('fs');
+// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
+// (the installers rename the key in place on the next install/update).
+const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const os = require('os');
 const path = require('path');
 let payload;
@@ -54,7 +58,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        const dir = path.join(root, process.env.CLAUDE_DOCS_PATH || '.claude/docs', 'hook-blocks');
+        const dir = path.join(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -165,7 +169,7 @@ function resolveTarget(p, base) {
   return path.resolve(base || ROOT, n);
 }
 
-const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRoot = docsRootEnv();
 // Name the other PROJECT, not the file: its repo root when one is findable (the nearest
 // ancestor holding a .git), else the first path segment that diverges from this project.
 function otherProjectName(target) {

@@ -700,7 +700,7 @@ $ClaudeRules = @(
   'baseline-security.md'
   'baseline-git.md'
   'baseline-navigation.md'
-  'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_DOCS_PATH)
+  'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
   # Path-scoped routing
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
   'javascript-conventions.md'  # JS-family conventions, path-scoped js/jsx/mjs/cjs
@@ -1134,8 +1134,9 @@ function Set-DocsRootStamp {
   if (Test-Path $settings) {
     try {
       $data = Get-Content $settings -Raw | ConvertFrom-Json
-      if ($data.env -and $data.env.PSObject.Properties['CLAUDE_DOCS_PATH'] -and $data.env.CLAUDE_DOCS_PATH) {
-        $val = $data.env.CLAUDE_DOCS_PATH
+      # the pre-0.2.43 key is still read: an install stamped before the rename landed
+      foreach ($k in @('CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH')) {
+        if ($data.env -and $data.env.PSObject.Properties[$k] -and $data.env.($k)) { $val = $data.env.($k); break }
       }
     } catch { Log '  !! docs-root stamp: settings.json unreadable - stamping the default' }
   }
@@ -1380,6 +1381,22 @@ function Set-HookSettings {
       }
     }
   }
+  # Unwire a hook file this stack RETIRED (its file is pruned in the same run): keyed on the file name
+  # across EVERY event, since a retired hook may have been wired outside PreToolUse (inject-code-style
+  # ran on a prompt event). Left wired, the entry keeps spawning a command whose file no longer exists.
+  foreach ($evEntries in @($data.hooks.PSObject.Properties)) {
+    $keptEv = @()
+    foreach ($e in @($evEntries.Value)) {
+      $hs = @(foreach ($h in @($e.hooks)) {
+        $m = [regex]::Match([string]$h.command, '/\.claude/hooks/([A-Za-z0-9._-]+\.js)')
+        if ($m.Success -and ($RetiredHooks -contains $m.Groups[1].Value)) { $changed = $true } else { $h }
+      })
+      if ($hs.Count -gt 0) { $e.hooks = $hs; $keptEv += $e } else { $changed = $true }
+    }
+    if ($keptEv.Count -gt 0) { $data.hooks.($evEntries.Name) = $keptEv } else { $data.hooks.PSObject.Properties.Remove($evEntries.Name) }
+  }
+  if (-not $data.hooks.PSObject.Properties['PreToolUse']) { $data.hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue @() }
+  $pre = @($data.hooks.PreToolUse)
   # Prune OUR hook file from a PreToolUse matcher this version no longer wires (guard-stop-contract's
   # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
   # match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
@@ -1440,7 +1457,7 @@ function Set-HookSettings {
   # '.claude/' - a PROTECTED path. Protected-path writes are never auto-approved outside
   # bypassPermissions, and the safety check runs BEFORE settings allow-rules, so an Edit()/Write()
   # entry here is a silent no-op. The working levers are the prompt's own 'allow Claude to edit its
-  # own settings for this session' option, or a CLAUDE_DOCS_PATH outside '.claude/'.
+  # own settings for this session' option, or a CLAUDE_STACK_DOCS_PATH outside '.claude/'.
   # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register (never enableAllProjectMcpServers).
   if (-not $data.PSObject.Properties['enabledMcpjsonServers']) { $data | Add-Member -NotePropertyName enabledMcpjsonServers -NotePropertyValue @() }
   $enabled = @($data.enabledMcpjsonServers)
@@ -1449,9 +1466,24 @@ function Set-HookSettings {
     if ($enabled -notcontains $mcpName) { $enabled += $mcpName; $changed = $true }
   }
   $data.enabledMcpjsonServers = $enabled
+  # Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
+  # key, BEFORE the absent-only seeds below - seeding first would write the default over a value the
+  # user had set under the old name. One pair per rename; keep the list identical in both installer
+  # twins and in meta/migrations.json (the plugin route applies it from there).
+  if (-not $data.PSObject.Properties['env']) { $data | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
+  foreach ($pair in @(@{ old = 'CLAUDE_DOCS_PATH'; new = 'CLAUDE_STACK_DOCS_PATH' })) {
+    if ($data.env.PSObject.Properties[$pair.old]) {
+      $val = [string]$data.env.($pair.old)
+      if (-not $data.env.PSObject.Properties[$pair.new] -and $val -ne '') {
+        $data.env | Add-Member -NotePropertyName $pair.new -NotePropertyValue $val
+      }
+      $data.env.PSObject.Properties.Remove($pair.old)
+      $changed = $true
+      Log "  settings.json env: $($pair.old) renamed to $($pair.new)"
+    }
+  }
   # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
   # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
-  if (-not $data.PSObject.Properties['env']) { $data | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
   if (-not $data.env.PSObject.Properties['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -NotePropertyValue '40'
     $changed = $true
@@ -1459,13 +1491,30 @@ function Set-HookSettings {
   # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
   # Forward slashes DELIBERATELY, also on Windows - the value is consumed by Node hooks and the
   # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
-  if (-not $data.env.PSObject.Properties['CLAUDE_DOCS_PATH']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_PATH']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_PATH -NotePropertyValue '.claude/docs'
     $changed = $true
   }
   # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_INSTRUMENT']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
+    $changed = $true
+  }
+  # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
+  # Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
+  # different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
+  # expected the gate to move (reported 2026-09-04 - the gate reads its own value, absent and
+  # defaulted to 40 anyway, so the number matched while the setting did nothing).
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_PCT']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_PCT -NotePropertyValue '40'
+    $changed = $true
+  }
+  # The context window the percentage applies to. EMPTY means auto-detect - the hooks read the
+  # settings model id's window suffix (`opus[1m]`), else what the session has already carried. Set
+  # it (e.g. '1000000') only where neither resolves; a seeded number would be a guess about someone
+  # else's model, and a wrong window moves the gate in both directions.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_CONTEXT_WINDOW']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONTEXT_WINDOW -NotePropertyValue ''
     $changed = $true
   }
   if ($changed) {
@@ -1496,6 +1545,8 @@ function Set-HookSettings {
 # once installed; an absent one is a no-op. The guided /claude-stack:update prunes from the stamp
 # compare instead - these lists are the script path's equivalent (twin of the sh RETIRED_* arrays).
 $RetiredSkills = @('project-task-flow', 'project-task-cycle', 'project-capabilities', 'project-failure-signatures', 'typescript-testing', 'data-security', 'dotnet-error-handling', 'mobile-security')
+$RetiredRules = @('baseline-agents-skills.md', 'baseline-code-quality.md', 'baseline-communication.md', 'baseline-definition-of-done.md', 'baseline-evaluating-proposals.md', 'baseline-mcp-tools.md', 'baseline-planning.md', 'baseline-related-projects.md', 'house-baseline.md', 'web-conventions.md', 'aspnet-conventions.md')
+$RetiredHooks = @('require-convention-skill.js', 'inject-code-style.js')
 $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'angular-verifier.md', 'mobile-solution-designer.md', 'mobile-implementer.md', 'mobile-verifier.md', 'dotnet-windows-service-solution-designer.md', 'dotnet-windows-service-implementer.md', 'dotnet-windows-service-verifier.md', 'code-analyzer.md', 'issue-diagnoser.md')
 
 function Remove-Skills {
@@ -1509,6 +1560,31 @@ function Remove-Skills {
   foreach ($name in $RetiredSkills) {
     $p = Join-Path $dest $name
     if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue; Log "  skill pruned (retired upstream): $name" }
+  }
+}
+
+function Remove-RetiredRules {
+  # UPDATE: drop the known old rule names ($RetiredRules above). A leftover rule is worse than a
+  # leftover skill: a pathless baseline-*.md loads into EVERY session and subagent, so a retired copy
+  # keeps shipping guidance its replacement already merged (measured on a real install: 7 of 14 rule
+  # files were names this release no longer ships).
+  $root = Get-RepoRoot
+  if (-not $root) { return }
+  foreach ($name in $RetiredRules) {
+    $p = Join-Path $root ".claude/rules/$name"
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; Log "  rule pruned (retired upstream): $name" }
+  }
+}
+
+function Remove-RetiredHooks {
+  # UPDATE: drop the known old hook names ($RetiredHooks above) - the file only; Set-HookSettings
+  # drops the matching settings.json entries in the same run (a wired command whose file is gone
+  # spawns a failure on every matching tool call).
+  $root = Get-RepoRoot
+  if (-not $root) { return }
+  foreach ($name in $RetiredHooks) {
+    $p = Join-Path $root ".claude/hooks/$name"
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; Log "  hook pruned (retired upstream): $name" }
   }
 }
 
@@ -1566,9 +1642,9 @@ function Update-Mcps {
   }
 }
 
-function Update-Hooks { Get-Hooks; Set-HookSettings }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
+function Update-Hooks { Remove-RetiredHooks; Get-Hooks; Set-HookSettings }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
 function Update-Agents { Remove-RetiredAgents; Get-Agents } # UPDATE: drop retired names, refresh subagent files
-function Update-Rules { Get-Rules }   # UPDATE: refresh rule files
+function Update-Rules { Remove-RetiredRules; Get-Rules }   # UPDATE: drop retired names, refresh rule files
 
 # ===========================================================================
 # KEEP-PINS (-KeepPins) - preserve local model/effort frontmatter edits across the refresh.
@@ -1743,11 +1819,15 @@ finally { Remove-StackSrc }
 Remove-AgentsCache
 Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
-$hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan and the docs' nine
-$summary = "  skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
+$hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
+$summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
 if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
 if ($KeepPins) { $summary += '; keep-pins=on' }
 Log "$summary; context7=$Context7"
+# The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
+# project-owned files and names this release no longer ships are neither refreshed nor counted
+# (a real install compared its 14 rule FILES against rules=4 and read it as a silent drop).
+if ($InstalledOnly) { Log "  (a directory listing can be larger: generated project files and any 'unknown:' name above are left untouched)" }
 if ($script:ClaudeMissing) { Log "  !! claude CLI absent - plugins, MCPs, and settings.json wiring were SKIPPED (install it, then re-run)" }
 if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed above - re-run '$Action' to retry" }
 
@@ -1779,7 +1859,18 @@ Write-Host '  .slopwatch       dotnet-slopwatch output'
 Write-Host '  .playwright      playwright MCP user-data-dir + output (screenshots, traces)'
 Write-Host '  .mcp.json        generated MCP server config (machine-local)'
 Write-Host ''
-Write-Host "The generated-docs root is CLAUDE_DOCS_PATH in .claude\settings.json env (seeded '.claude/docs') -"
+Write-Host "The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude\settings.json env (seeded '.claude/docs') -"
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
-Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed'
+Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
+Write-Host ''
+Write-Host 'The same env block carries the fresh-session gate''s two knobs (seeded, absent-only, so a'
+Write-Host 'hand-edited value survives every update):'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an'
+Write-Host '                                   orchestration run is offered a fresh one (default 40; 0 = off)'
+Write-Host '  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to. EMPTY = auto: the hooks'
+Write-Host '                                   read the settings model id''s window suffix (opus[1m]), else'
+Write-Host '                                   what the session has already carried. Set it (e.g. 1000000)'
+Write-Host '                                   only where neither resolves.'
+Write-Host 'On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured'
+Write-Host '150k floor, and 200k x 75% is still 150k. It bites on a 1M window, where 40% is 400k.'

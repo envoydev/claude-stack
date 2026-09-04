@@ -57,6 +57,16 @@ detected entry joins the prune list labeled `(migration: <why>)`, together with 
 `unwire_settings_hook` edit and its `then` follow-up for the report. Not detected -> silently
 skip.
 
+**Environment migrations are the exception: they never join the prune list.** An entry whose
+`detect` is `settings_env_key` and whose action is `rename_settings_env` changes a KEY in the
+scope's settings.json `env`, deletes nothing, and carries the user's value across - so it needs
+no deletion consent. The installer's env pass applies it during the refresh in both step 3 and
+step 4 (renames first, then the absent-only seeds, so a value set under the old name is never
+overwritten by the new key's default). Your job is to detect it before the run and NAME it in the
+report: `env: <old> renamed to <new> (value kept)`. New variables the release introduces need no
+catalog entry at all - the same pass seeds them absent-only - but report those too, as
+`env: <key> seeded (<value>)`, reading the file after the run rather than assuming.
+
 **Build the prune list** from the compare's `removed` lines (a `stack/...` path gone entirely
 maps to its installed artifact; a path still present in the snapshot is a move WITHIN the item,
 not a removal), the `renamed` lines of installed items (both halves, automatically: old name
@@ -150,6 +160,10 @@ changed.
 
 ## 7. Post-check
 Report the version delta, refreshed / pruned counts by category (naming the pruned items), the
+ENVIRONMENT line (every key the run seeded or renamed, read back from the scope's settings.json
+`env` - `env: <old> renamed to <new> (value kept)` / `env: <key> seeded (<value>)`; nothing
+changed -> say so in one clause, never a silent omission: an env key that moved under the user's
+feet must be visible in the same place they read the counts), the
 FYI additions routed to `configure`, and the MCP-restart reminder. The run rewrote
 `claude-stack.stamp` - the next update or configure diffs from here. When the release refreshed
 ANY installed skill or agent file, name `/project-agent-capabilities` (when installed) as the

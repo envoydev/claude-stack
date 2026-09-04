@@ -20,6 +20,10 @@
 //   fail-safe for installs that still carry the matcher (a migration unwires it); it exits 0.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
+// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
+// (the installers rename the key in place on the next install/update).
+const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -46,7 +50,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        const dir = path.join(root, process.env.CLAUDE_DOCS_PATH || '.claude/docs', 'hook-blocks');
+        const dir = path.join(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -63,22 +67,102 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 
 // The trigger scales with the CONTEXT WINDOW, not a flat token count. A fixed 150k is ~75% of a
 // 200k window (where it was measured) but only 15% of a 1M-context session, which is why it fired
-// on nearly every ask there. The window is provable from what a message actually carried - no
-// request can hold more input tokens than the window - so a session that has crossed 200k per
-// message is on the 1M tier. Percent is tunable per machine with CLAUDE_STACK_FRESH_SESSION_PCT
-// (default 40, the same shape as the harness's own auto-compact percentage); the measured 150k
-// stays as the FLOOR so a 200k-window session behaves exactly as it did before.
+// on nearly every ask there. Percent is tunable per machine with CLAUDE_STACK_FRESH_SESSION_PCT
+// (default 40, the same shape as the harness's own auto-compact percentage), seeded into the scope
+// settings.json `env` beside CLAUDE_STACK_CONTEXT_WINDOW; where the WINDOW comes from is below.
 const _pct = parseInt(process.env.CLAUDE_STACK_FRESH_SESSION_PCT, 10);
 // 0 DISABLES the offer outright - a `|| 40` fallback silently turned the off switch back on.
 // Anything else is clamped into 5..95; unset or garbage takes the 40 default.
 const FRESH_PCT = _pct === 0 ? 0 : Math.min(95, Math.max(5, Number.isNaN(_pct) ? 40 : _pct));
 const CTX_FLOOR = 150000;
+
+// --- which context WINDOW is this session running in? -------------------------------------
+// Measured on a 1M session: the transcript's message.model records `claude-opus-5` with the
+// `[1m]` suffix STRIPPED, the PreToolUse payload carries only cwd/session_id/tool_name/
+// tool_input/transcript_path, no transcript field names a window or a token limit, and no env
+// var carries the model. The ONE readable source that keeps the suffix is settings.json's
+// `model` (e.g. `opus[1m]`). So, first layer that resolves wins:
+//   1. CLAUDE_STACK_CONTEXT_WINDOW - the user's own statement, so it outranks every guess. It
+//      goes in the scope settings.json `env` block, where the installer seeds it (empty = auto).
+//      Ranking it BELOW the model id would make it dead on every machine whose settings names a
+//      plain model, since that layer would already have answered 200k.
+//   2. the settings.json model id's own window suffix - `[1m]`, `[200k]`. A property of the id,
+//      never a model -> window TABLE: a table goes stale on every model release, and a wrong
+//      guess on an unknown id is worse than falling through to what the session proves.
+//   3. what this session has already carried - no request can hold more input tokens than the
+//      window, so a message past 200k proves the 1M tier. Latched once proven (below).
+// Nothing resolves: 200k, which is exactly the behaviour before this existed.
+const _win = parseInt(process.env.CLAUDE_STACK_CONTEXT_WINDOW, 10);
+// Below the smallest real window the value is not a window - it FALLS THROUGH to the next layer,
+// the same answer windowFromModelId gives a bad suffix and the same one environment.json's
+// `min` flags to validate. Clamping it up instead was three answers to one question: the hook
+// silently ran on a 100k window while the reconciler called the value invalid.
+const WINDOW_OVERRIDE = _win >= 100000 ? _win : null;
+function windowFromModelId(id) {
+  const m = /\[(\d+)\s*([km])\]/i.exec(String(id || ''));
+  if (!m) return null;
+  const n = parseInt(m[1], 10) * (m[2].toLowerCase() === 'm' ? 1000000 : 1000);
+  return n >= 100000 ? n : null;   // a suffix that is not a window size proves nothing
+}
+function settingsModelWindow() {
+  try {
+    const path = require('path');
+    const os = require('os');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
+    for (const f of [
+      path.join(root, '.claude', 'settings.local.json'),
+      path.join(root, '.claude', 'settings.json'),
+      path.join(account, 'settings.json'),
+    ]) {
+      try {
+        const w = windowFromModelId(JSON.parse(fs.readFileSync(f, 'utf8')).model);
+        if (w) return w;
+      } catch { /* absent, unreadable, or not JSON - try the next file */ }
+    }
+  } catch { /* no home and no cwd - fall through to the next layer */ }
+  return null;
+}
+// The proven tier is LATCHED per session: the max-context scan reads a 512KB transcript TAIL, so
+// a long session's early 200k crossing scrolls out of it and the tier would regress from 400k
+// back to 150k mid-session. One file per transcript, beside the stop hook's own state.
+function tierFile() {
+  const os = require('os');
+  const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-ctx-window-${key}.tier`;
+}
+function latchedWindow() {
+  if (!payload.transcript_path) return null;
+  try {
+    const n = parseInt(fs.readFileSync(tierFile(), 'utf8'), 10);
+    return Number.isNaN(n) ? null : n;
+  } catch { return null; }
+}
+function latchWindow(w) {
+  if (!payload.transcript_path) return;
+  try { fs.writeFileSync(tierFile(), String(w)); } catch { /* best effort - the latch is a cache */ }
+}
+let _knownWindow;
+function knownWindow() {
+  if (_knownWindow === undefined) _knownWindow = WINDOW_OVERRIDE || settingsModelWindow() || latchedWindow() || null;
+  return _knownWindow;
+}
+// `proveTier` is LAZY - a thunk returning the largest per-message context seen. A known window
+// answers without calling it, which is what keeps the stop hook from re-reading the 512KB
+// transcript tail it has already read once per clean turn close.
+function ctxThreshold(proveTier) {
+  let window = knownWindow();
+  if (!window) {
+    window = proveTier() > 200000 ? 1000000 : 200000;
+    if (window > 200000) latchWindow(window);
+  }
+  const pct = Math.round((window * FRESH_PCT) / 100);
+  // The floor is the MEASURED 200k-tier behaviour, kept so those sessions are unchanged; a window
+  // known to be larger is never clamped back down to it (on 1M the percentage IS the setting).
+  return window > 200000 ? pct : Math.max(CTX_FLOOR, pct);
+}
 // How far the context must grow before the fresh-session offer is made again (see below).
 const REOFFER_GROWTH = 1.5;
-function ctxThreshold(maxCtxSeen) {
-  const window = maxCtxSeen > 200000 ? 1000000 : 200000;
-  return Math.max(CTX_FLOOR, Math.round((window * FRESH_PCT) / 100));
-}
 const FRESH_RE = /fresh session|new session|\/clear|fresh chat|resume (in|from) a fresh/i;
 // Decision-shaped prose endings measured in the corpus. Deliberately narrow: a plain
 // clarifying question is not matched - only the offer-and-wait shapes that stalled sessions.
@@ -177,8 +261,9 @@ if (payload.hook_event_name === 'Stop') {
     const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
     // Below the floor no window tier can qualify, so return before maxCtxSeen re-reads the same
     // 512KB tail lastAssistantMessage just read - this branch runs on EVERY clean turn close.
-    if (ctx <= CTX_FLOOR) process.exit(0);
-    if (ctx <= ctxThreshold(maxCtxSeen(ctx))) process.exit(0);
+    // maxCtxSeen re-reads the tail lastAssistantMessage just read, so it is passed LAZILY: a
+    // known window never calls it, and the floor rule itself lives in ctxThreshold, once.
+    if (ctx <= ctxThreshold(() => maxCtxSeen(ctx))) process.exit(0);
     if (FRESH_RE.test(text)) process.exit(0);
     const since = lastBlockCtx();
     if (since && ctx < since * REOFFER_GROWTH) {

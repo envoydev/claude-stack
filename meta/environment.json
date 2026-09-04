@@ -1,0 +1,62 @@
+{
+  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: setup asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback.",
+  "env": [
+    {
+      "key": "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
+      "default": "40",
+      "ask": true,
+      "what": "the harness's context auto-compact trigger, as a percent of the window. Not a stack gate - Claude Code's own. 'off' means `autoCompactEnabled: false` with this key deleted rather than left dead.",
+      "validate": {
+        "type": "percent",
+        "min": 5,
+        "max": 95
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_PATH",
+      "default": ".claude/docs",
+      "ask": true,
+      "renamed_from": "CLAUDE_DOCS_PATH",
+      "what": "the generated-docs root every capture, loop and hook writes under. Default is machine-local (`.claude/*` is gitignored); a committed forward-slash path like `docs` shares the captured docs with the team. Existing docs never move with it.",
+      "validate": {
+        "type": "relative-path"
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_INSTRUMENT",
+      "default": "0",
+      "ask": true,
+      "what": "the tool-usage instrumentation switch. `0` costs a shell test per call and records nothing; `1` logs every tool call as one JSONL row for a measured run, then goes back to `0`.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_FRESH_SESSION_PCT",
+      "default": "40",
+      "ask": true,
+      "what": "how much of the context window a session may carry before an orchestration run (a capture, a loop, a solve flow) is offered a fresh session instead. `0` turns the gate off. On the auto-detected 200k tier it is INERT below 76 - the trigger keeps the measured 150k floor - so it bites on a 1M window, where 40% is 400k.",
+      "validate": {
+        "type": "percent",
+        "min": 5,
+        "max": 95,
+        "off": "0"
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_CONTEXT_WINDOW",
+      "default": "",
+      "ask": true,
+      "asked_with": "CLAUDE_STACK_FRESH_SESSION_PCT",
+      "what": "the context window that percentage applies to. EMPTY means auto-detect: the gate reads the settings model id's own window suffix (`opus[1m]`), else infers the tier from what the session has already carried. Set a number (e.g. 1000000) only where neither resolves - a model chosen at launch or switched with /model.",
+      "validate": {
+        "type": "int-or-empty",
+        "min": 100000
+      }
+    }
+  ]
+}

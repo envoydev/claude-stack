@@ -25,6 +25,13 @@ function transcript(name, rows) {
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   return p;
 }
+// The context-window layers below read settings.json from the ACCOUNT dir and the project - and a
+// real machine's account file names a model like `opus[1m]`, which would silently move every
+// threshold assertion in this file. Pin an EMPTY account dir for the whole run; the tests that
+// exercise the layers point it at a fixture of their own.
+process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
+delete process.env.CLAUDE_STACK_CONTEXT_WINDOW;
+
 const assistantRow = (id, text, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text }], usage: usage || { cache_read_input_tokens: 10 } } });
 
 test('guard-read-whole-file: shell sweeps and runtime reads are dumps', () => {
@@ -136,7 +143,9 @@ test('guard-fresh-session-start: the threshold scales with the context window', 
 const runIn = (hook, payload, opts) =>
   spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
 const BIG_LINES = fs.readFileSync(BIG, 'utf8').split('\n').length;
-const SMALL = path.join(HOOKS, 'guard-fresh-session-start.js'); // well under the 200-line threshold
+const SMALL = path.join(HOOKS, 'instrument-tool-usage.js'); // 74 lines - the smallest shipped hook,
+// deliberately not one of the guards: they grow, and a fixture that drifts past 200 lines turns
+// two unrelated read-guard assertions red (measured: the fresh-session hook crossed it).
 const REPO = path.join(__dirname, '..');
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
@@ -189,7 +198,7 @@ test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and 
   const rel = (payload, cwd) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', ...payload }, { cwd, env: noRoot }).status;
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 2, 'a relative path that resolves nowhere fails CLOSED');
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 2, 'anchored on the session cwd it is sized - and blocked');
-  assert.equal(rel({ tool_input: { command: 'cat stack/hooks/guard-fresh-session-start.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
+  assert.equal(rel({ tool_input: { command: 'cat stack/hooks/instrument-tool-usage.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
 });
 
 test('guard-protected-force-push: the protected-branch matrix', () => {
@@ -267,7 +276,10 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
-  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under CLAUDE_DOCS_PATH');
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under CLAUDE_STACK_DOCS_PATH');
+  // the pre-0.2.43 spelling still resolves, so an install the rename has not reached keeps working
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the old key is read as a fallback');
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_STACK_DOCS_PATH: 'docs', CLAUDE_DOCS_PATH: 'nowhere' }), 0, 'and the new key wins when both are set');
 });
 
 test('guard-ungated-commit: a cd or -C into a sibling repo judges THAT tree', () => {
@@ -299,7 +311,7 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
   assert.equal(disp('wpf-implementer'), 2, 'a 9h-old stamp is absent');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
-  assert.equal(disp('wpf-implementer', { CLAUDE_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_DOCS_PATH');
+  assert.equal(disp('wpf-implementer', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_STACK_DOCS_PATH');
 });
 
 test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {
@@ -380,7 +392,7 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
     env: { ...process.env, CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
   const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
-    { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_DOCS_PATH: 'docs' }), 0);
+    { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: 'docs' }), 0);
   assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
 });
 
@@ -697,4 +709,75 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
   assert.equal(xpWrite('/c/Users/u/AppData/Local/Temp/x.ts'), 2, 'still outside this project on POSIX');
   assert.equal(xpWrite(path.join(XP_ROOT, 'src', 'x.ts')), 0, 'and this project\'s own file still passes');
   assert.equal(bash('guard-read-whole-file.js', `cat -n ${BIG}`), 2, 'the read guard still counts a real file');
+});
+
+// --- the context window the trigger scales against: reported 2026-09-04 on a 1M session -------
+// CLAUDE_STACK_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a
+// fresh 1M session: the window was INFERRED from observed usage, so it read 200k until the
+// session had already grown past 200k per message - the state the gate exists to prevent - and
+// 200k x every percent from 5 to 75 collapses onto the 150k floor. The window now comes from
+// three layers, and only the last one is the old inference.
+const winEnv = (extra) => ({ ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
+const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
+    { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp }, { env }).status;
+const ctxAt = (name, ctx) => transcript(name, [assistantRow(name, 'ok', { cache_read_input_tokens: ctx })]);
+function accountDir(name, model) {
+  const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
+  fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify(model === null ? {} : { model }));
+  return d;
+}
+
+test('fresh-session window: the account settings model id names the tier before any usage proves it', () => {
+    // The ONE readable source that keeps the window suffix (the transcript records `claude-opus-5`
+    // with the [1m] stripped). 190k is past the 150k floor on the 200k tier and nowhere near 40%
+    // of 1M, so this pair isolates the layer from the observed-usage inference.
+    const hot = ctxAt('win-model-190k', 190000);
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m', 'opus[1m]') })), 0, 'a 1M model id lifts the trigger to 400k');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-plain', 'opus') })), 2, 'a plain model id proves nothing - the 200k tier stands');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-none', null) })), 2, 'no model key at all - unchanged behaviour');
+    assert.equal(askLoop(ctxAt('win-model-450k', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m2', 'opus[1m]') })), 2, 'and 450k on the 1M tier still fires');
+});
+
+test('fresh-session window: CLAUDE_STACK_CONTEXT_WINDOW is the user\'s own statement and outranks the guesses', () => {
+    const hot = ctxAt('win-env-190k', 190000);
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 0, 'a declared 1M window: 190k is 19%');
+    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, '450k is past 40% of it');
+    // ranked BELOW the model id it would be dead on any machine whose settings names a model
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m3', 'opus[1m]'), CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2, 'the override beats the model id');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: 'auto' })), 2, 'a non-numeric value is ignored, not treated as 0');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '' })), 2, 'the seeded empty value means auto-detect');
+});
+
+test('fresh-session window: a percentage below 76 is not inert on a declared 1M window', () => {
+    // The report: raising the percentage to 40 changed nothing, because 200k x anything up to 75%
+    // is still under the 150k floor. On a known 1M window the percentage IS the setting.
+    const at300 = ctxAt('win-pct-300k', 300000);
+    const env = (pct) => winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_STACK_FRESH_SESSION_PCT: pct });
+    assert.equal(askLoop(at300, env('40')), 0, '300k is under 40% of 1M');
+    assert.equal(askLoop(at300, env('20')), 2, '... and past 20% of it');
+    assert.equal(askLoop(at300, env('0')), 0, '0 still disables the gate outright');
+});
+
+test('fresh-session window: a proven 1M tier is latched, so it survives the proof scrolling out', () => {
+    // maxCtxSeen reads a 512KB TAIL: a long session's early 200k crossing scrolls out of it, and
+    // the tier regressed from 400k back to 150k mid-session.
+    const env = winEnv();
+    const tp = ctxAt('win-latch', 300000);
+    assert.equal(askLoop(tp, env), 0, '300k proves the 1M tier and is under 40% of it');
+    fs.writeFileSync(tp, JSON.stringify(assistantRow('later', 'ok', { cache_read_input_tokens: 190000 })) + '\n');
+    assert.equal(askLoop(tp, env), 0, 'the same session at 190k keeps the 1M tier');
+    assert.equal(askLoop(tp, winEnv()), 2, 'a different session with no latch reads the 200k tier');
+});
+
+test('stop contract: the fresh-session offer reads the window the same three ways as its twin', () => {
+    // The two hooks carry the same window block - a change to one that misses the other would put
+    // the gate and the offer on different tiers in the same session.
+    const at = (name, ctx) => transcript(name, [assistantRow(name, 'Applied the change; tests pass.', { cache_read_input_tokens: ctx })]);
+    const stop = (tp, env) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env }).status;
+    const hot = at('stopwin-190k', 190000);
+
+    assert.equal(stop(hot, winEnv()), 2, '190k with nothing declared: the 200k tier and its 150k floor');
+    assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m', 'opus[1m]') })), 0, 'a 1M model id lifts it to 400k');
+    assert.equal(stop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 0, 'so does the declared window');
+    assert.equal(stop(at('stopwin-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'and 450k is past 40% of it');
 });

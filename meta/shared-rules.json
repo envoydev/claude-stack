@@ -31,19 +31,19 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: CLAUDE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs. The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (the generated hook's fallback constant, the skill line that quotes it, both installer seeds) must state the same value.",
+      "_note": "The docs-root default: CLAUDE_STACK_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installers rename the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, both installer seeds) must state the same value.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
-        "marker": "the `CLAUDE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
+        "marker": "the `CLAUDE_STACK_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
       },
       "sites": [
         {
           "file": "scripts/os/claude-stack.sh",
-          "marker": "env[\"CLAUDE_DOCS_PATH\"] = \".claude/docs\""
+          "marker": "env[\"CLAUDE_STACK_DOCS_PATH\"] = \".claude/docs\""
         },
         {
           "file": "scripts/os/claude-stack.ps1",
-          "marker": "Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'"
+          "marker": "Add-Member -NotePropertyName CLAUDE_STACK_DOCS_PATH -NotePropertyValue '.claude/docs'"
         },
         {
           "file": "scripts/stamp-docs-root.js",
@@ -51,11 +51,11 @@
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         }
       ]
     },
@@ -3168,6 +3168,40 @@
         {
           "file": "stack/agents/wpf-solution-designer.md",
           "marker": "one line per call the design made where the requirement left two defensible shapes"
+        }
+      ]
+    },
+    "context-window-tier": {
+      "_note": "The context WINDOW the fresh-session trigger scales against, resolved in three layers and identical in the two hooks that use it (the gate and the offer must never sit on different tiers in one session): CLAUDE_STACK_CONTEXT_WINDOW, then the settings.json model id's own [1m]-style suffix - the ONE readable source that keeps it, since the transcript strips the suffix and no payload or env var carries the model - then what the session has already carried, latched per transcript so the proof cannot scroll out of the 512KB tail. Never a model -> window TABLE: it goes stale on every release. The 150k floor applies on the 200k tier only.",
+      "owner": {
+        "file": "stack/hooks/guard-fresh-session-start.js",
+        "marker": "which context WINDOW is this session running in?"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "which context WINDOW is this session running in?"
+        }
+      ]
+    },
+    "env-pass-order": {
+      "_note": "The settings.json env pass runs RENAMES first, carrying the user's value to the new key and dropping the old one, THEN the absent-only seeds - seeding first would write a key's default over a value the user had set under the old name. A NEW variable needs no migration entry (the seeds cover it); a RENAMED one needs the pair in both installer twins and in migrations.json. Nothing in this pass deletes a value, which is why the update command reports it instead of asking for prune consent.",
+      "owner": {
+        "file": "meta/migrations.json",
+        "marker": "rename_settings_env` ({from, to}) moves the user's VALUE to the new key"
+      },
+      "sites": [
+        {
+          "file": "scripts/os/claude-stack.sh",
+          "marker": "BEFORE the absent-only seeds below - seeding first would write the default over a value the"
+        },
+        {
+          "file": "scripts/os/claude-stack.ps1",
+          "marker": "BEFORE the absent-only seeds below - seeding first would write the default over a value the"
+        },
+        {
+          "file": "setup-plugin/commands/update.md",
+          "marker": "renames first, then the absent-only seeds"
         }
       ]
     }

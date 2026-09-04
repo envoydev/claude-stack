@@ -655,7 +655,7 @@ CLAUDE_RULES=(
   "baseline-security.md"
   "baseline-git.md"
   "baseline-navigation.md"
-  "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_DOCS_PATH)
+  "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "javascript-conventions.md"  # JS-family conventions, path-scoped js/jsx/mjs/cjs
@@ -1012,7 +1012,9 @@ import json, sys
 rule, settings = sys.argv[1], sys.argv[2]
 val = ".claude/docs"
 try:
-    v = json.load(open(settings)).get("env", {}).get("CLAUDE_DOCS_PATH", "")
+    _env = json.load(open(settings)).get("env", {})
+    # the pre-0.2.43 key is still read: an install stamped before the rename landed
+    v = _env.get("CLAUDE_STACK_DOCS_PATH", "") or _env.get("CLAUDE_DOCS_PATH", "")
     if v: val = v
 except Exception:
     pass
@@ -1198,10 +1200,11 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   local prog; prog=$(cat <<'PY'
 import json, os, sys
 path = sys.argv[1]
-deny_specs, mcp_names, bucket = [], [], None
+deny_specs, mcp_names, retired_hooks, bucket = [], [], [], None
 for a in sys.argv[2:]:
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
+    if a == "--RETIRED": bucket = retired_hooks; continue
     if bucket is not None: bucket.append(a)
 specs = []
 HOOK_TIMEOUT = 10   # seconds - see the note below; the default would be 600
@@ -1269,6 +1272,19 @@ for e in list(_pre):
             e["hooks"].remove(h); changed = True
     if not e.get("hooks"):
         _pre.remove(e); changed = True
+# Unwire a hook file this stack RETIRED (its file is pruned in the same run): keyed on the file name
+# across EVERY event, since a retired hook may have been wired outside PreToolUse (inject-code-style
+# ran on a prompt event). Left wired, the entry keeps spawning a command whose file no longer exists.
+for ev_name, entries in list(data.get("hooks", {}).items()):
+    for e in list(entries):
+        for h in list(e.get("hooks", [])):
+            c = h.get("command", "")
+            if "/.claude/hooks/" in c and c.split("/.claude/hooks/")[-1].split('"')[0] in retired_hooks:
+                e["hooks"].remove(h); changed = True
+        if not e.get("hooks"):
+            entries.remove(e); changed = True
+    if not entries:
+        del data["hooks"][ev_name]; changed = True
 # "@<Event>" matchers wire a non-PreToolUse lifecycle event (e.g. @Stop - no matcher key there).
 for matcher, command, legacy in specs:
     if matcher.startswith("@"):
@@ -1299,25 +1315,49 @@ for rule in deny_specs:
 # entry here is a silent no-op (measured: one project's runs were refused on every route and
 # DELEGATED mode silently degraded to inline for a whole 12-stage run). The working levers are the
 # prompt's own 'allow Claude to edit its own settings for this session' option, or a
-# CLAUDE_DOCS_PATH outside `.claude/`. The flows carry the ask-fallback for the refusal case.
+# CLAUDE_STACK_DOCS_PATH outside `.claude/`. The flows carry the ask-fallback for the refusal case.
 # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register, so no per-launch
 # trust prompt - never blanket enableAllProjectMcpServers. Union-merged; an unlisted name is a harmless no-op.
 enabled = data.setdefault("enabledMcpjsonServers", [])
 for name in mcp_names:
     if name not in enabled:
         enabled.append(name); changed = True
+# Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
+# key, BEFORE the absent-only seeds below - seeding first would write the default over a value the
+# user had set under the old name. One pair per rename; keep the list identical in both installer
+# twins and in meta/migrations.json (the plugin route applies it from there).
+env = data.setdefault("env", {})
+for _old, _new in (("CLAUDE_DOCS_PATH", "CLAUDE_STACK_DOCS_PATH"),):
+    if _old in env:
+        if _new not in env and env[_old] != "":
+            env[_new] = env[_old]
+        del env[_old]
+        changed = True
+        print("  settings.json env: %s renamed to %s" % (_old, _new))
 # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
 # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
-env = data.setdefault("env", {})
 if "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env:
     env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "40"; changed = True
 # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
 # Forward slashes on every OS (Node hooks and the model resolve them fine on Windows).
-if "CLAUDE_DOCS_PATH" not in env:
-    env["CLAUDE_DOCS_PATH"] = ".claude/docs"; changed = True
+if "CLAUDE_STACK_DOCS_PATH" not in env:
+    env["CLAUDE_STACK_DOCS_PATH"] = ".claude/docs"; changed = True
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
+# fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
+# Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
+# different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
+# expected the gate to move (reported 2026-09-04 - the gate reads its own value, absent and
+# defaulted to 40 anyway, so the number matched while the setting did nothing).
+if "CLAUDE_STACK_FRESH_SESSION_PCT" not in env:
+    env["CLAUDE_STACK_FRESH_SESSION_PCT"] = "40"; changed = True
+# The context window the percentage applies to. EMPTY means auto-detect - the hooks read the
+# settings model id's window suffix (`opus[1m]`), else what the session has already carried. Set
+# it (e.g. "1000000") only where neither resolves; a seeded number would be a guess about someone
+# else's model, and a wrong window moves the gate in both directions.
+if "CLAUDE_STACK_CONTEXT_WINDOW" not in env:
+    env["CLAUDE_STACK_CONTEXT_WINDOW"] = ""; changed = True
 if changed:
     json.dump(data, open(path, "w"), indent=2); open(path, "a").write("\n")
     print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default ensured")
@@ -1327,7 +1367,7 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} || log "  !! settings.json wiring failed"
+  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} || log "  !! settings.json wiring failed"
 }
 
 # ===========================================================================
@@ -1340,6 +1380,8 @@ PY
 # compare instead - these lists are the script path's equivalent. Unquoted on purpose: the parity lint
 # reads the quoted manifest blocks only.
 RETIRED_SKILLS=(project-task-flow project-task-cycle project-capabilities project-failure-signatures typescript-testing data-security dotnet-error-handling mobile-security)
+RETIRED_RULES=(baseline-agents-skills.md baseline-code-quality.md baseline-communication.md baseline-definition-of-done.md baseline-evaluating-proposals.md baseline-mcp-tools.md baseline-planning.md baseline-related-projects.md house-baseline.md web-conventions.md aspnet-conventions.md)
+RETIRED_HOOKS=(require-convention-skill.js inject-code-style.js)
 RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-verifier.md mobile-solution-designer.md mobile-implementer.md mobile-verifier.md dotnet-windows-service-solution-designer.md dotnet-windows-service-implementer.md dotnet-windows-service-verifier.md code-analyzer.md issue-diagnoser.md)
 
 remove_skills() {  # rm -rf each manifest skill under the scope dest, so update starts from a clean slate
@@ -1360,6 +1402,27 @@ prune_retired_agents() {  # UPDATE: drop the known old agent names (RETIRED_AGEN
   local root name; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
   for name in ${RETIRED_AGENTS[@]+"${RETIRED_AGENTS[@]}"}; do
     [ -f "$root/.claude/agents/$name" ] && { rm -f "$root/.claude/agents/$name"; log "  agent pruned (retired upstream): $name"; }
+  done
+  return 0
+}
+
+prune_retired_rules() {  # UPDATE: drop the known old rule names (RETIRED_RULES above)
+  # A leftover rule is worse than a leftover skill: a pathless baseline-*.md is loaded into EVERY
+  # session and subagent, so a retired copy keeps shipping guidance its replacement already merged
+  # (measured on a real install: 7 of 14 rule files were names this release no longer ships).
+  local root name; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  for name in ${RETIRED_RULES[@]+"${RETIRED_RULES[@]}"}; do
+    [ -f "$root/.claude/rules/$name" ] && { rm -f "$root/.claude/rules/$name"; log "  rule pruned (retired upstream): $name"; }
+  done
+  return 0
+}
+
+prune_retired_hooks() {  # UPDATE: drop the known old hook names (RETIRED_HOOKS above)
+  # The file only - wire_hooks_settings drops the matching settings.json entries in the same run
+  # (a wired command whose file is gone spawns a failure on every matching tool call).
+  local root name; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  for name in ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"}; do
+    [ -f "$root/.claude/hooks/$name" ] && { rm -f "$root/.claude/hooks/$name"; log "  hook pruned (retired upstream): $name"; }
   done
   return 0
 }
@@ -1409,9 +1472,9 @@ update_mcps() {
   done
 }
 
-update_hooks() { download_hooks; wire_hooks_settings; }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
+update_hooks() { prune_retired_hooks; download_hooks; wire_hooks_settings; }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
 update_agents() { prune_retired_agents; download_agents; } # UPDATE: drop retired names, refresh subagent files
-update_rules() { download_rules; }   # UPDATE: refresh rule files
+update_rules() { prune_retired_rules; download_rules; }   # UPDATE: drop retired names, refresh rule files
 
 # ===========================================================================
 # KEEP-PINS (--keep-pins) - preserve local model/effort frontmatter edits across the refresh.
@@ -1537,12 +1600,16 @@ write_stamp   # after every copy step, so the stamp only ever names a revision t
 prune_agents_cache
 echo
 log "done: $ACTION [scope=$SCOPE, account=$CONFIG_DIR, agent=$AGENT]"
-_hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one hook), matching the plan and the docs' nine
+_hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 for _e in ${HOOKS[@]+"${HOOKS[@]}"}; do _n="${_e%%::*}"; case " $_seen " in *" $_n "*) continue ;; esac; _seen="$_seen $_n"; _hook_files=$((_hook_files + 1)); done
-_summary="  skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
+_summary="  installed/refreshed this run - skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
 [ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"
 [ "$KEEP_PINS" = true ] && _summary="$_summary; keep-pins=on"
 log "$_summary; context7=$CONTEXT7_MODE"
+# The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
+# project-owned files and names this release no longer ships are neither refreshed nor counted
+# (a real install compared its 14 rule FILES against rules=4 and read it as a silent drop).
+[ "$INSTALLED_ONLY" = true ] && log "  (a directory listing can be larger: generated project files and any 'unknown:' name above are left untouched)"
 if [ "$CLAUDE_MISSING" = true ]; then
   log "  !! claude CLI absent - plugins, MCPs, and settings.json wiring were SKIPPED (install it, then re-run)"
 fi
@@ -1581,8 +1648,19 @@ Add these stack-generated, machine-local artifacts to the project's .gitignore (
   .playwright      playwright MCP user-data-dir + output (screenshots, traces)
   .mcp.json        generated MCP server config (machine-local)
 
-The generated-docs root is CLAUDE_DOCS_PATH in .claude/settings.json env (seeded '.claude/docs') -
+The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude/settings.json env (seeded '.claude/docs') -
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
-re-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed
+re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
+
+The same env block carries the fresh-session gate's two knobs (seeded, absent-only, so a
+hand-edited value survives every update):
+  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an
+                                   orchestration run is offered a fresh one (default 40; 0 = off)
+  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to. EMPTY = auto: the hooks
+                                   read the settings model id's window suffix ('opus[1m]'), else
+                                   what the session has already carried. Set it (e.g. 1000000)
+                                   only where neither resolves.
+On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured
+150k floor, and 200k x 75% is still 150k. It bites on a 1M window, where 40% is 400k.
 GITIGNORE

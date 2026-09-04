@@ -104,9 +104,11 @@ values embedded in a registration - show `${VAR}` literally as written.
 |---|---|
 | stack version (stamp) | 0.2.3 @ <short-sha> |
 | scope | project (the stamp's `scope:` line; `user` there = global) |
-| CLAUDE_DOCS_PATH | .claude/docs (default) |
+| CLAUDE_STACK_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_AUTOCOMPACT_PCT_OVERRIDE | not set |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
+| CLAUDE_STACK_FRESH_SESSION_PCT | 40 (default) - the fresh-session gate's share of the window; 0 = off |
+| CLAUDE_STACK_CONTEXT_WINDOW | empty = auto (the model id's `[1m]`-style suffix, else what the session has carried) |
 | SENTRY_SLUG (account env) | set / not set - only when sentry is installed |
 | SENTRY_ACCESS_TOKEN (account env) | set / not set - only when sentry is installed and its registration carries a header |
 | CONTEXT7_API_KEY (account env) | set / not set - only when context7 is installed remote; not set = the keyless free tier |

@@ -632,3 +632,302 @@ test('sh wiring: OUR hook on a retired PreToolUse matcher is pruned, a foreign e
         fs.rmSync(work, { recursive: true, force: true });
     }
 });
+
+// --- retired rule / hook names: reported 2026-09-04 from a Windows install --------------------
+// An update's summary read rules=4 while `ls .claude/rules` showed 14 files, and the run was
+// suspected of dropping files. It had not: 3 were generated project-owned, and 7 were rule names
+// this release no longer ships (the baseline merges). Skills and agents have pruned their renamed
+// names since the lists existed; rules and hooks never did, so a retired always-on rule kept
+// loading into every session next to the merged rule that replaced it.
+const shFlatArray = (src, name) => {
+    const m = new RegExp(`^${name}=\\(([^)]*)\\)`, 'm').exec(src);
+    assert.ok(m, `${name}=( ... ) found in the sh installer`);
+    return m[1].trim().split(/\s+/).filter(Boolean);
+};
+const shFunc = (src, name) => {
+    const start = src.indexOf(`\n${name}() {`);
+    assert.ok(start > 0, `${name}() found in the sh installer`);
+    const end = src.indexOf('\n}\n', start);
+    assert.ok(end > start, `${name}() is closed at column 0`);
+    return src.slice(start, end + 3);
+};
+const psFunc = (src, name) => {
+    // `function Name {` and `function Name([type]$Arg) {` both - Write-JsonFile takes parameters.
+    const m = new RegExp(`^function ${name}[^\\n]*\\{[\\s\\S]*?^\\}`, 'm').exec(src);
+    assert.ok(m, `function ${name} found in the ps1 installer`);
+    return m[0];
+};
+const psArray = (src, name) => {
+    const m = new RegExp(`^\\$${name} = @\\(([^)]*)\\)`, 'm').exec(src);
+    assert.ok(m, `$${name} = @( ... ) found in the ps1 installer`);
+    return m[0];
+};
+
+function retiredFixture() {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-retired-'));
+    execFileSync('git', ['init', '-q', repo], { stdio: 'ignore' });
+    fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+    const w = (p) => fs.writeFileSync(path.join(repo, p), 'x\n');
+    w('.claude/rules/baseline-communication.md');          // merged into baseline-interaction
+    w('.claude/rules/baseline-code-quality.md');           // merged into baseline-quality-gates
+    w('.claude/rules/aspnet-conventions.md');              // renamed to csharp-conventions
+    w('.claude/rules/baseline-interaction.md');            // current - must survive
+    w('.claude/rules/baseline-project-architecture.md');   // GENERATED and project-owned - must survive
+    w('.claude/hooks/inject-code-style.js');               // retired for the generated style rule
+    w('.claude/hooks/guard-read-whole-file.js');           // current - must survive
+    return repo;
+}
+const stillThere = (repo, rel) => fs.existsSync(path.join(repo, rel));
+
+test('sh update: retired rule and hook FILES are pruned, current and generated ones are kept', () => {
+    const src = fs.readFileSync(SH, 'utf8');
+    const repo = retiredFixture();
+    try {
+        const harness = path.join(repo, 'harness.sh');
+        fs.writeFileSync(harness, [
+            'log() { echo "LOG: $*"; }',
+            `RETIRED_RULES=(${shFlatArray(src, 'RETIRED_RULES').join(' ')})`,
+            `RETIRED_HOOKS=(${shFlatArray(src, 'RETIRED_HOOKS').join(' ')})`,
+            shFunc(src, 'prune_retired_rules'),
+            shFunc(src, 'prune_retired_hooks'),
+            'prune_retired_rules',
+            'prune_retired_hooks',
+        ].join('\n'));
+        const res = spawnSync(fs.existsSync('/bin/bash') ? '/bin/bash' : 'bash', [harness], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(res.status, 0, res.stderr);
+        assert.strictEqual(stillThere(repo, '.claude/rules/baseline-communication.md'), false, 'a merged-away baseline rule goes');
+        assert.strictEqual(stillThere(repo, '.claude/rules/aspnet-conventions.md'), false, 'a renamed rule goes');
+        assert.strictEqual(stillThere(repo, '.claude/hooks/inject-code-style.js'), false, 'a retired hook file goes');
+        assert.ok(stillThere(repo, '.claude/rules/baseline-interaction.md'), 'the current rule stays');
+        assert.ok(stillThere(repo, '.claude/rules/baseline-project-architecture.md'), 'a GENERATED project rule is never touched');
+        assert.ok(stillThere(repo, '.claude/hooks/guard-read-whole-file.js'), 'the current hook stays');
+        assert.match(res.stdout, /rule pruned \(retired upstream\): baseline-communication\.md/, 'each prune is named');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('ps1 update: the same prune, same fixture (pwsh required)', { skip: skipNoPwsh }, () => {
+    const src = fs.readFileSync(PS1, 'utf8');
+    const repo = retiredFixture();
+    try {
+        const harness = path.join(repo, 'harness.ps1');
+        fs.writeFileSync(harness, [
+            'function Log { param([string]$m) Write-Host "LOG: $m" }',
+            `function Get-RepoRoot { return ${JSON.stringify(repo)} }`,
+            psArray(src, 'RetiredRules'),
+            psArray(src, 'RetiredHooks'),
+            psFunc(src, 'Remove-RetiredRules'),
+            psFunc(src, 'Remove-RetiredHooks'),
+            'Remove-RetiredRules',
+            'Remove-RetiredHooks',
+        ].join('\n'));
+        const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(res.status, 0, res.stderr);
+        assert.strictEqual(stillThere(repo, '.claude/rules/baseline-code-quality.md'), false, 'a merged-away baseline rule goes');
+        assert.strictEqual(stillThere(repo, '.claude/hooks/inject-code-style.js'), false, 'a retired hook file goes');
+        assert.ok(stillThere(repo, '.claude/rules/baseline-interaction.md'), 'the current rule stays');
+        assert.ok(stillThere(repo, '.claude/rules/baseline-project-architecture.md'), 'a GENERATED project rule is never touched');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('sh wiring: a retired hook is unwired from EVERY event, not just PreToolUse', { skip: skipNoPython }, () => {
+    // inject-code-style ran on a prompt event, so the PreToolUse-only prune left its entry wired -
+    // a command spawned on every matching call after its file was deleted.
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const retired = shFlatArray(src, 'RETIRED_HOOKS');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-retwire-'));
+    try {
+        const settings = path.join(work, 'settings.json');
+        const cmd = (f) => `"$CLAUDE_PROJECT_DIR/.claude/hooks/${f}"`;
+        fs.writeFileSync(settings, JSON.stringify({
+            hooks: {
+                UserPromptSubmit: [{ hooks: [{ type: 'command', command: cmd('inject-code-style.js'), timeout: 10 }] }],
+                PreToolUse: [
+                    { matcher: 'Write', hooks: [{ type: 'command', command: cmd('require-convention-skill.js') }] },
+                    { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('my-own-hook.js') }] },
+                ],
+            },
+        }));
+        const res = spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7', '--RETIRED', ...retired],
+            { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const all = Object.values(wired.hooks).flat().flatMap((e) => e.hooks).map((h) => h.command);
+        assert.ok(!all.some((c) => c.includes('inject-code-style.js')), 'the prompt-event entry is gone');
+        assert.ok(!all.some((c) => c.includes('require-convention-skill.js')), 'the PreToolUse entry is gone');
+        assert.ok(all.some((c) => c.includes('my-own-hook.js')), 'a hook that is not ours is never touched');
+        assert.ok(all.some((c) => c.includes('guard-read-whole-file.js')), 'this release\'s hooks are still wired');
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
+
+test('ps1 wiring: a retired hook is unwired from EVERY event, same as the sh twin (pwsh required)', { skip: skipNoPwsh }, () => {
+    const src = fs.readFileSync(PS1, 'utf8');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-retwire-ps-'));
+    try {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        const settings = path.join(repo, '.claude', 'settings.json');
+        const cmd = (f) => `"$CLAUDE_PROJECT_DIR/.claude/hooks/${f}"`;
+        fs.writeFileSync(settings, JSON.stringify({
+            hooks: {
+                UserPromptSubmit: [{ hooks: [{ type: 'command', command: cmd('inject-code-style.js'), timeout: 10 }] }],
+                PreToolUse: [
+                    { matcher: 'Write', hooks: [{ type: 'command', command: cmd('require-convention-skill.js') }] },
+                    { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('my-own-hook.js') }] },
+                ],
+            },
+        }, null, 2));
+        const harness = path.join(repo, 'harness.ps1');
+        fs.writeFileSync(harness, [
+            'function Log { param([string]$m) Write-Host "LOG: $m" }',
+            `function Get-RepoRoot { return ${JSON.stringify(repo)} }`,
+            "$Hooks = @('guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'guard-stop-contract.js::@Stop')",
+            "$SecretDeny = @('Read(./.env)')",
+            "$Mcps = @('context7|-- x')",
+            psArray(src, 'RetiredHooks'),
+            psFunc(src, 'Write-JsonFile'),
+            psFunc(src, 'Set-HookSettings'),
+            'Set-HookSettings',
+        ].join('\n'));
+        const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const all = Object.values(wired.hooks).flat().flatMap((e) => e.hooks).map((h) => h.command);
+        assert.ok(!all.some((c) => c.includes('inject-code-style.js')), 'the prompt-event entry is gone');
+        assert.ok(!all.some((c) => c.includes('require-convention-skill.js')), 'the PreToolUse entry is gone');
+        assert.ok(all.some((c) => c.includes('my-own-hook.js')), 'a hook that is not ours is never touched');
+        assert.ok(all.some((c) => c.includes('guard-read-whole-file.js')), 'the selected hooks are still wired');
+        assert.ok((wired.hooks.Stop || []).flatMap((e) => e.hooks).some((h) => h.command.includes('guard-stop-contract.js')), 'a lifecycle-event wiring still lands');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+// --- the fresh-session gate's env knobs: reported 2026-09-04 from a 1M session ----------------
+// CLAUDE_STACK_FRESH_SESSION_PCT was documented as tunable per machine and seeded NOWHERE, so the
+// only percentage in the env block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE - a different knob. The
+// reporting user raised that one to 40 and reasonably expected the gate to move; it reads its own
+// value, which was absent and defaulted to 40 anyway. Both knobs are now seeded, absent-only.
+test('sh env: both fresh-session knobs are seeded, and a hand-edited value is never overwritten', { skip: skipNoPython }, () => {
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-env-'));
+    const wire = (settings) => spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7'],
+        { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+    try {
+        const fresh = path.join(work, 'fresh.json');
+        assert.strictEqual(wire(fresh).status, 0);
+        const env = JSON.parse(fs.readFileSync(fresh, 'utf8')).env;
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '40', 'the gate percentage is seeded at the house default');
+        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '', 'the window is seeded EMPTY - auto-detect, never a guess about someone else\'s model');
+        assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'the existing three are untouched');
+
+        // update over a hand-edited install: absent-only, so both stay exactly as the user left them
+        const pinned = path.join(work, 'pinned.json');
+        fs.writeFileSync(pinned, JSON.stringify({ env: { CLAUDE_STACK_FRESH_SESSION_PCT: '60', CLAUDE_STACK_CONTEXT_WINDOW: '1000000' } }));
+        assert.strictEqual(wire(pinned).status, 0);
+        const kept = JSON.parse(fs.readFileSync(pinned, 'utf8')).env;
+        assert.strictEqual(kept.CLAUDE_STACK_FRESH_SESSION_PCT, '60', 'a pinned percentage survives the update');
+        assert.strictEqual(kept.CLAUDE_STACK_CONTEXT_WINDOW, '1000000', 'a declared window survives the update');
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
+
+test('ps1 env: the same two knobs, same rule (pwsh required)', { skip: skipNoPwsh }, () => {
+    const src = fs.readFileSync(PS1, 'utf8');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-env-ps-'));
+    try {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        const settings = path.join(repo, '.claude', 'settings.json');
+        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_STACK_FRESH_SESSION_PCT: '60' } }, null, 2));
+        const harness = path.join(repo, 'harness.ps1');
+        fs.writeFileSync(harness, [
+            'function Log { param([string]$m) Write-Host "LOG: $m" }',
+            `function Get-RepoRoot { return ${JSON.stringify(repo)} }`,
+            "$Hooks = @('guard-read-whole-file.js::Read')",
+            "$SecretDeny = @('Read(./.env)')",
+            "$Mcps = @('context7|-- x')",
+            psArray(src, 'RetiredHooks'),
+            psFunc(src, 'Write-JsonFile'),
+            psFunc(src, 'Set-HookSettings'),
+            'Set-HookSettings',
+        ].join('\n'));
+        const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const env = JSON.parse(fs.readFileSync(settings, 'utf8')).env;
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '60', 'the hand-edited percentage is left alone');
+        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '', 'the absent window is seeded empty');
+        assert.strictEqual(env.CLAUDE_STACK_INSTRUMENT, '0', 'and the existing seeds still land');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+// --- the docs-root env key rename (0.2.43) ---------------------------------------------------
+// CLAUDE_DOCS_PATH -> CLAUDE_STACK_DOCS_PATH: every other variable this stack owns is
+// CLAUDE_STACK_*, and a bare CLAUDE_DOCS_PATH reads as a Claude Code setting. The rename runs in
+// the installers' env pass BEFORE the absent-only seeds, or the seed would write the default over
+// a root the user had set under the old name.
+test('sh env: the docs-root key is renamed in place, value kept, before the seeds run', { skip: skipNoPython }, () => {
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-rename-'));
+    const wire = (file, before) => {
+        const p = path.join(work, file);
+        fs.writeFileSync(p, JSON.stringify(before));
+        const r = spawnSync('python3', ['-c', prog[1], p, '--DENY', ...deny, '--MCP', 'context7'],
+            { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return { env: JSON.parse(fs.readFileSync(p, 'utf8')).env, out: r.stdout };
+    };
+
+    const moved = wire('old.json', { env: { CLAUDE_DOCS_PATH: 'team/docs' } });
+    assert.strictEqual(moved.env.CLAUDE_STACK_DOCS_PATH, 'team/docs', 'the hand-set root moves to the new key, not back to the default');
+    assert.ok(!('CLAUDE_DOCS_PATH' in moved.env), 'the old key is gone - one name, not two');
+    assert.match(moved.out, /CLAUDE_DOCS_PATH renamed to CLAUDE_STACK_DOCS_PATH/, 'the rename is narrated, never silent');
+
+    const both = wire('both.json', { env: { CLAUDE_DOCS_PATH: 'stale', CLAUDE_STACK_DOCS_PATH: 'current' } });
+    assert.strictEqual(both.env.CLAUDE_STACK_DOCS_PATH, 'current', 'an already-migrated value is never overwritten by the stale one');
+    assert.ok(!('CLAUDE_DOCS_PATH' in both.env), 'and the stale key still goes');
+
+    const fresh = wire('fresh.json', {});
+    assert.strictEqual(fresh.env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'a fresh install just gets the seed');
+    assert.ok(!('CLAUDE_DOCS_PATH' in fresh.env), 'and never the retired name');
+    fs.rmSync(work, { recursive: true, force: true });
+});
+
+test('ps1 env: the same rename, same rules (pwsh required)', { skip: skipNoPwsh }, () => {
+    const src = fs.readFileSync(PS1, 'utf8');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-rename-ps-'));
+    try {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        const settings = path.join(repo, '.claude', 'settings.json');
+        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_DOCS_PATH: 'team/docs' } }, null, 2));
+        const harness = path.join(repo, 'harness.ps1');
+        fs.writeFileSync(harness, [
+            'function Log { param([string]$m) Write-Host "LOG: $m" }',
+            `function Get-RepoRoot { return ${JSON.stringify(repo)} }`,
+            "$Hooks = @('guard-read-whole-file.js::Read')",
+            "$SecretDeny = @('Read(./.env)')",
+            "$Mcps = @('context7|-- x')",
+            psArray(src, 'RetiredHooks'),
+            psFunc(src, 'Write-JsonFile'),
+            psFunc(src, 'Set-HookSettings'),
+            'Set-HookSettings',
+        ].join('\n'));
+        const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const env = JSON.parse(fs.readFileSync(settings, 'utf8')).env;
+        assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, 'team/docs', 'the hand-set root moves to the new key');
+        assert.ok(!('CLAUDE_DOCS_PATH' in env), 'the old key is gone');
+        assert.match(res.stdout, /CLAUDE_DOCS_PATH renamed to CLAUDE_STACK_DOCS_PATH/, 'and the rename is narrated');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});

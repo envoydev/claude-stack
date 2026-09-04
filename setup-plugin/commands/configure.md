@@ -225,24 +225,28 @@ Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's c
 `superpowers` and `ponytail` arrive via the skills and agents that cite them); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
-## 9. Environment - the three stack env values (when picked)
+## 9. Environment - the stack env values (when picked)
 
-The install carries three project-level environment values in the scope's settings.json
-(`.claude/settings.json`, or the account file for a global install). The installer seeds them
-only when ABSENT, so this step is the one place they are changed deliberately:
+The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
+release owns in the scope's settings.json `env` (`.claude/settings.json`, or the account file for a
+global install). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
+front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
+values on the day the catalog holds six. The installer seeds every row only when ABSENT, so this
+step is the one place they change deliberately. A row whose key is missing from the file is one the
+release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
+disk is the old spelling, and accepting it moves the value, never resets it.
 
-- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` - the context auto-compact trigger percent (house default
-  40). Alternatives: another percent, or auto-compact off entirely - that is the
-  `autoCompactEnabled: false` settings key, with the pct override deleted rather than left dead.
-- `CLAUDE_DOCS_PATH` - the generated-docs root (house default `.claude/docs`, machine-local). A
-  committed forward-slash path (e.g. `docs`) shares the captured docs with the team.
-- `CLAUDE_STACK_INSTRUMENT` - the tool-usage instrumentation switch (house default `0`, off - the
-  wired hook then costs a shell test per call and records nothing). `1` logs every tool call as one
-  JSONL row to `<docs-path>/tools-usage/<session>.jsonl` for the usage analyzer's `--hook-log` join - a
-  per-run measurement switch, flipped back to `0` after the audited run, not a leave-on flag.
+Two behaviours live here rather than in the catalog, because they are about what this step DOES:
+
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` accepts a third answer beyond a percent - auto-compact off
+  entirely, which is the `autoCompactEnabled: false` settings key with the pct override DELETED
+  rather than left dead beside it.
+- A docs-root change re-stamps the deployed rule (below) and moves no existing docs.
 
 Show the CURRENT values read from the file - never assume the defaults - then one AskUserQuestion
-keep-or-change consent covering all three (keep - recommended; change, the new values via Other). On a
+keep-or-change consent covering every row (keep - recommended; change, the new values via Other) -
+one question per row, and a row carrying `asked_with` rides along with the row it names rather than
+spending its own question. On a
 docs-root change, say plainly: existing generated docs do NOT move - they stay under the old root until
 moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (global install: `--claude-dir <account dir>`): it rewrites the 'This install's root:'

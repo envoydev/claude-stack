@@ -1447,6 +1447,32 @@ function main()
         flag(`meta/shared-rules.json is unreadable: ${err.message}`);
     }
 
+    // 27. The environment catalog (meta/environment.json) against what the installers actually
+    //     seed - both directions, both twins - plus the rename targets migrations.json names.
+    //     (25 and 26 are the optional-cite checks CLAUDE.md names by number - do not renumber those.)
+    try
+    {
+        const envCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8'));
+        const shSrc = fs.readFileSync(CLAUDE_SH, 'utf8');
+        const ps1Src = fs.readFileSync(CLAUDE_PS1, 'utf8');
+        let migrationsCatalog = null;
+        try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
+        catch { /* its own lint reports an unreadable migrations.json */ }
+        const commandSrc = {};
+        for (const cmd of ['setup.md', 'configure.md', 'validate.md'])
+        {
+            commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
+        }
+        for (const finding of lintEnvironmentCatalog(envCatalog, shSrc, ps1Src, migrationsCatalog, commandSrc))
+        {
+            flag(finding);
+        }
+    }
+    catch (err)
+    {
+        flag(`meta/environment.json is unreadable: ${err.message}`);
+    }
+
     let sharedRuleCount = 0;
     let sharedRuleCopies = 0;
     if (sharedRules)
@@ -1559,6 +1585,70 @@ function main()
         + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync).`);
 }
 
+// The environment catalog (meta/environment.json) is the ONE list the three guided commands read
+// for the settings.json `env` block - and the installers are what actually seed it. A key in the
+// catalog that no installer seeds is a promise the walk cannot keep; a key an installer seeds that
+// the catalog omits is invisible to setup, configure and validate. Both directions fail here, per
+// twin, so the drift cannot ship.
+function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
+{
+    const out = [];
+    // The three guided commands must READ the catalog, not a list typed into their prose - that is
+    // the whole point of having one: a variable a release adds is asked about, shown and reconciled
+    // without touching three command files.
+    for (const [name, src] of Object.entries(commandSrc || {}))
+    {
+        if (!src.includes('meta/environment.json'))
+        {
+            out.push(`${name} does not read meta/environment.json - its environment step would go stale the next time a variable is added`);
+        }
+    }
+    const rows = Array.isArray(catalog.env) ? catalog.env : null;
+    if (!rows)
+    {
+        return ['environment.json has no `env` array - the guided commands would read an empty environment layer'];
+    }
+
+    const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => m[1]));
+    const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => m[1]));
+    const keys = new Set();
+    for (const row of rows)
+    {
+        if (!row.key) { out.push('environment.json has a row with no `key`'); continue; }
+        if (keys.has(row.key)) { out.push(`environment.json lists ${row.key} twice`); }
+        keys.add(row.key);
+        if (typeof row.default !== 'string') { out.push(`environment.json ${row.key} has no string \`default\` - the seed value and the walk's shown default come from it`); }
+        if (!row.what) { out.push(`environment.json ${row.key} has no \`what\` - the walks print it, so a row without one cannot be asked about`); }
+        if (!seededSh.has(row.key)) { out.push(`environment.json ${row.key} is not seeded by claude-stack.sh - the catalog promises a key no install writes`); }
+        if (!seededPs1.has(row.key)) { out.push(`environment.json ${row.key} is not seeded by claude-stack.ps1 - the twins must seed the same set`); }
+    }
+    for (const key of seededSh)
+    {
+        if (!keys.has(key)) { out.push(`claude-stack.sh seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
+    }
+    for (const key of seededPs1)
+    {
+        if (!keys.has(key)) { out.push(`claude-stack.ps1 seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
+    }
+    // setup asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
+    // questions; a row with `asked_with` rides along with another row's question. Past four, the
+    // fifth question is silently dropped by the tool - so the cap is enforced here, at authoring time.
+    const asked = rows.filter(r => r.ask && !r.asked_with).length;
+    if (asked > 4) { out.push(`environment.json asks ${asked} questions on setup's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
+    // A rename in migrations.json must land on a key the catalog owns, or validate would offer to
+    // migrate a value into a variable nothing reads.
+    for (const m of (migrations && migrations.migrations) || [])
+    {
+        const r = m.rename_settings_env;
+        if (!r) { continue; }
+        if (!keys.has(r.to)) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
+        const row = rows.find(x => x.key === r.to);
+        if (row && row.renamed_from !== r.from) { out.push(`environment.json ${r.to} does not record renamed_from '${r.from}' - validate reads it to spot the old spelling on disk`); }
+    }
+
+    return out;
+}
+
 module.exports = {
     paths: { ROOT, SKILLS_DIR, CLAUDE_SH, CLAUDE_PS1, AGENTS_DIR, CLAUDE_RULES_DIR },
     parseManifest,
@@ -1567,6 +1657,7 @@ module.exports = {
     localSkillDirs,
     lintEvidenceCatalog,
     lintJudgmentCatalog,
+    lintEnvironmentCatalog,
     lintSharedRules,
     lintPreloadClaims,
     lintOptionalCites,
