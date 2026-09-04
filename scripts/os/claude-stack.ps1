@@ -1483,6 +1483,23 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
     $changed = $true
   }
+  # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
+  # Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
+  # different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
+  # expected the gate to move (reported 2026-09-04 - the gate reads its own value, absent and
+  # defaulted to 40 anyway, so the number matched while the setting did nothing).
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_PCT']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_PCT -NotePropertyValue '40'
+    $changed = $true
+  }
+  # The context window the percentage applies to. EMPTY means auto-detect - the hooks read the
+  # settings model id's window suffix (`opus[1m]`), else what the session has already carried. Set
+  # it (e.g. '1000000') only where neither resolves; a seeded number would be a guess about someone
+  # else's model, and a wrong window moves the gate in both directions.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_CONTEXT_WINDOW']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONTEXT_WINDOW -NotePropertyValue ''
+    $changed = $true
+  }
   if ($changed) {
     try {
       Write-JsonFile $data $settings
@@ -1829,3 +1846,14 @@ Write-Host "The generated-docs root is CLAUDE_DOCS_PATH in .claude\settings.json
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
 Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
+Write-Host ''
+Write-Host 'The same env block carries the fresh-session gate''s two knobs (seeded, absent-only, so a'
+Write-Host 'hand-edited value survives every update):'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an'
+Write-Host '                                   orchestration run is offered a fresh one (default 40; 0 = off)'
+Write-Host '  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to. EMPTY = auto: the hooks'
+Write-Host '                                   read the settings model id''s window suffix (opus[1m]), else'
+Write-Host '                                   what the session has already carried. Set it (e.g. 1000000)'
+Write-Host '                                   only where neither resolves.'
+Write-Host 'On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured'
+Write-Host '150k floor, and 200k x 75% is still 150k. It bites on a 1M window, where 40% is 400k.'

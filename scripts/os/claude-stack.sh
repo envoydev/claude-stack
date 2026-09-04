@@ -1332,6 +1332,19 @@ if "CLAUDE_DOCS_PATH" not in env:
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
+# fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
+# Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
+# different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
+# expected the gate to move (reported 2026-09-04 - the gate reads its own value, absent and
+# defaulted to 40 anyway, so the number matched while the setting did nothing).
+if "CLAUDE_STACK_FRESH_SESSION_PCT" not in env:
+    env["CLAUDE_STACK_FRESH_SESSION_PCT"] = "40"; changed = True
+# The context window the percentage applies to. EMPTY means auto-detect - the hooks read the
+# settings model id's window suffix (`opus[1m]`), else what the session has already carried. Set
+# it (e.g. "1000000") only where neither resolves; a seeded number would be a guess about someone
+# else's model, and a wrong window moves the gate in both directions.
+if "CLAUDE_STACK_CONTEXT_WINDOW" not in env:
+    env["CLAUDE_STACK_CONTEXT_WINDOW"] = ""; changed = True
 if changed:
     json.dump(data, open(path, "w"), indent=2); open(path, "a").write("\n")
     print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default ensured")
@@ -1626,4 +1639,15 @@ The generated-docs root is CLAUDE_DOCS_PATH in .claude/settings.json env (seeded
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
 re-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
+
+The same env block carries the fresh-session gate's two knobs (seeded, absent-only, so a
+hand-edited value survives every update):
+  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an
+                                   orchestration run is offered a fresh one (default 40; 0 = off)
+  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to. EMPTY = auto: the hooks
+                                   read the settings model id's window suffix ('opus[1m]'), else
+                                   what the session has already carried. Set it (e.g. 1000000)
+                                   only where neither resolves.
+On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured
+150k floor, and 200k x 75% is still 150k. It bites on a 1M window, where 40% is 400k.
 GITIGNORE

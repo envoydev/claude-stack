@@ -3170,6 +3170,19 @@
           "marker": "one line per call the design made where the requirement left two defensible shapes"
         }
       ]
+    },
+    "context-window-tier": {
+      "_note": "The context WINDOW the fresh-session trigger scales against, resolved in three layers and identical in the two hooks that use it (the gate and the offer must never sit on different tiers in one session): CLAUDE_STACK_CONTEXT_WINDOW, then the settings.json model id's own [1m]-style suffix - the ONE readable source that keeps it, since the transcript strips the suffix and no payload or env var carries the model - then what the session has already carried, latched per transcript so the proof cannot scroll out of the 512KB tail. Never a model -> window TABLE: it goes stale on every release. The 150k floor applies on the 200k tier only.",
+      "owner": {
+        "file": "stack/hooks/guard-fresh-session-start.js",
+        "marker": "which context WINDOW is this session running in?"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "which context WINDOW is this session running in?"
+        }
+      ]
     }
   }
 }
