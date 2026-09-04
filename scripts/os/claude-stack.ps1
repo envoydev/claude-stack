@@ -1509,12 +1509,13 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_PCT -NotePropertyValue '40'
     $changed = $true
   }
-  # The context window the percentage applies to. EMPTY means auto-detect - the hooks read the
-  # settings model id's window suffix (`opus[1m]`), else what the session has already carried. Set
-  # it (e.g. '1000000') only where neither resolves; a seeded number would be a guess about someone
-  # else's model, and a wrong window moves the gate in both directions.
+  # The context window the percentage applies to, seeded '1000000' - a stated number, since an
+  # empty box stays empty and the auto-detect fallback resolves on some machines only. On a 200k
+  # model set '200000': the value outranks detection, so a declared 1M window on a 200k session
+  # moves the trigger from 150k to 400k. Clearing it restores auto-detect (the hooks then read the
+  # settings model id's window suffix, `opus[1m]`, else what the session has already carried).
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_CONTEXT_WINDOW']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONTEXT_WINDOW -NotePropertyValue ''
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONTEXT_WINDOW -NotePropertyValue '1000000'
     $changed = $true
   }
   if ($changed) {
@@ -1868,9 +1869,10 @@ Write-Host 'The same env block carries the fresh-session gate''s two knobs (seed
 Write-Host 'hand-edited value survives every update):'
 Write-Host '  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an'
 Write-Host '                                   orchestration run is offered a fresh one (default 40; 0 = off)'
-Write-Host '  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to. EMPTY = auto: the hooks'
-Write-Host '                                   read the settings model id''s window suffix (opus[1m]), else'
-Write-Host '                                   what the session has already carried. Set it (e.g. 1000000)'
-Write-Host '                                   only where neither resolves.'
+Write-Host '  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to (seeded 1000000). SET IT'
+Write-Host '                                   TO 200000 ON A 200k MODEL - the value outranks detection, and a'
+Write-Host '                                   declared 1M window moves the trigger from 150k to 400k. Clear'
+Write-Host '                                   it for auto: the hooks read the settings model id''s window'
+Write-Host '                                   suffix (opus[1m]), else what the session has carried.'
 Write-Host 'On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured'
 Write-Host '150k floor, and 200k x 75% is still 150k. It bites on a 1M window, where 40% is 400k.'

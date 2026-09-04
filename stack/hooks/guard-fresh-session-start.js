@@ -74,7 +74,8 @@ const CTX_FLOOR = 150000;
 // var carries the model. The ONE readable source that keeps the suffix is settings.json's
 // `model` (e.g. `opus[1m]`). So, first layer that resolves wins:
 //   1. CLAUDE_STACK_CONTEXT_WINDOW - the user's own statement, so it outranks every guess. It
-//      goes in the scope settings.json `env` block, where the installer seeds it (empty = auto).
+//      goes in the scope settings.json `env` block, seeded `1000000` by the installer and meant to
+//      be corrected to `200000` on a 200k model; cleared, it falls through to the layers below.
 //      Ranking it BELOW the model id would make it dead on every machine whose settings names a
 //      plain model, since that layer would already have answered 200k.
 //   2. the settings.json model id's own window suffix - `[1m]`, `[200k]`. A property of the id,

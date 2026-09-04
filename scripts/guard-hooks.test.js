@@ -745,7 +745,7 @@ test('fresh-session window: CLAUDE_STACK_CONTEXT_WINDOW is the user\'s own state
     // ranked BELOW the model id it would be dead on any machine whose settings names a model
     assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m3', 'opus[1m]'), CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2, 'the override beats the model id');
     assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: 'auto' })), 2, 'a non-numeric value is ignored, not treated as 0');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '' })), 2, 'the seeded empty value means auto-detect');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '' })), 2, 'a cleared value means auto-detect - the seeded 1000000 is only a default');
 });
 
 test('fresh-session window: a percentage below 76 is not inert on a declared 1M window', () => {

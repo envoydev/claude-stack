@@ -1352,12 +1352,13 @@ if "CLAUDE_STACK_INSTRUMENT" not in env:
 # defaulted to 40 anyway, so the number matched while the setting did nothing).
 if "CLAUDE_STACK_FRESH_SESSION_PCT" not in env:
     env["CLAUDE_STACK_FRESH_SESSION_PCT"] = "40"; changed = True
-# The context window the percentage applies to. EMPTY means auto-detect - the hooks read the
-# settings model id's window suffix (`opus[1m]`), else what the session has already carried. Set
-# it (e.g. "1000000") only where neither resolves; a seeded number would be a guess about someone
-# else's model, and a wrong window moves the gate in both directions.
+# The context window the percentage applies to, seeded "1000000" - a stated number, since an
+# empty box stays empty and the auto-detect fallback resolves on some machines only. On a 200k
+# model set "200000": the value outranks detection, so a declared 1M window on a 200k session
+# moves the trigger from 150k to 400k. Clearing it restores auto-detect (the hooks then read the
+# settings model id's window suffix, `opus[1m]`, else what the session has already carried).
 if "CLAUDE_STACK_CONTEXT_WINDOW" not in env:
-    env["CLAUDE_STACK_CONTEXT_WINDOW"] = ""; changed = True
+    env["CLAUDE_STACK_CONTEXT_WINDOW"] = "1000000"; changed = True
 if changed:
     json.dump(data, open(path, "w"), indent=2); open(path, "a").write("\n")
     print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default ensured")
@@ -1657,10 +1658,11 @@ The same env block carries the fresh-session gate's two knobs (seeded, absent-on
 hand-edited value survives every update):
   CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an
                                    orchestration run is offered a fresh one (default 40; 0 = off)
-  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to. EMPTY = auto: the hooks
-                                   read the settings model id's window suffix ('opus[1m]'), else
-                                   what the session has already carried. Set it (e.g. 1000000)
-                                   only where neither resolves.
+  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to (seeded 1000000). SET IT
+                                   TO 200000 ON A 200k MODEL - the value outranks detection, and a
+                                   declared 1M window moves the trigger from 150k to 400k. Clear
+                                   it for auto: the hooks read the settings model id's window
+                                   suffix ('opus[1m]'), else what the session has carried.
 On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured
 150k floor, and 200k x 75% is still 150k. It bites on a 1M window, where 40% is 400k.
 GITIGNORE
