@@ -1601,7 +1601,7 @@ write_stamp   # after every copy step, so the stamp only ever names a revision t
 prune_agents_cache
 echo
 log "done: $ACTION [scope=$SCOPE, account=$CONFIG_DIR, agent=$AGENT]"
-_hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one hook), matching the plan and the docs' nine
+_hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 for _e in ${HOOKS[@]+"${HOOKS[@]}"}; do _n="${_e%%::*}"; case " $_seen " in *" $_n "*) continue ;; esac; _seen="$_seen $_n"; _hook_files=$((_hook_files + 1)); done
 _summary="  installed/refreshed this run - skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
 [ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"

@@ -1393,8 +1393,9 @@ function Set-HookSettings {
       })
       if ($hs.Count -gt 0) { $e.hooks = $hs; $keptEv += $e } else { $changed = $true }
     }
-    $data.hooks.($evEntries.Name) = $keptEv
+    if ($keptEv.Count -gt 0) { $data.hooks.($evEntries.Name) = $keptEv } else { $data.hooks.PSObject.Properties.Remove($evEntries.Name) }
   }
+  if (-not $data.hooks.PSObject.Properties['PreToolUse']) { $data.hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue @() }
   $pre = @($data.hooks.PreToolUse)
   # Prune OUR hook file from a PreToolUse matcher this version no longer wires (guard-stop-contract's
   # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
@@ -1819,7 +1820,7 @@ finally { Remove-StackSrc }
 Remove-AgentsCache
 Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
-$hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan and the docs' nine
+$hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 $summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
 if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
 if ($KeepPins) { $summary += '; keep-pins=on' }

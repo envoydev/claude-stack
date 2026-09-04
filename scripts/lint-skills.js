@@ -1629,6 +1629,11 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
     {
         if (!keys.has(key)) { out.push(`claude-stack.ps1 seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
     }
+    // setup asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
+    // questions; a row with `asked_with` rides along with another row's question. Past four, the
+    // fifth question is silently dropped by the tool - so the cap is enforced here, at authoring time.
+    const asked = rows.filter(r => r.ask && !r.asked_with).length;
+    if (asked > 4) { out.push(`environment.json asks ${asked} questions on setup's environment screen - the AskUserQuestion cap is 4; fold one row into another with asked_with, or stop asking it`); }
     // A rename in migrations.json must land on a key the catalog owns, or validate would offer to
     // migrate a value into a variable nothing reads.
     for (const m of (migrations && migrations.migrations) || [])
