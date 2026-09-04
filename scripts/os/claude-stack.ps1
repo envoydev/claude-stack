@@ -1380,6 +1380,21 @@ function Set-HookSettings {
       }
     }
   }
+  # Unwire a hook file this stack RETIRED (its file is pruned in the same run): keyed on the file name
+  # across EVERY event, since a retired hook may have been wired outside PreToolUse (inject-code-style
+  # ran on a prompt event). Left wired, the entry keeps spawning a command whose file no longer exists.
+  foreach ($evEntries in @($data.hooks.PSObject.Properties)) {
+    $keptEv = @()
+    foreach ($e in @($evEntries.Value)) {
+      $hs = @(foreach ($h in @($e.hooks)) {
+        $m = [regex]::Match([string]$h.command, '/\.claude/hooks/([A-Za-z0-9._-]+\.js)')
+        if ($m.Success -and ($RetiredHooks -contains $m.Groups[1].Value)) { $changed = $true } else { $h }
+      })
+      if ($hs.Count -gt 0) { $e.hooks = $hs; $keptEv += $e } else { $changed = $true }
+    }
+    $data.hooks.($evEntries.Name) = $keptEv
+  }
+  $pre = @($data.hooks.PreToolUse)
   # Prune OUR hook file from a PreToolUse matcher this version no longer wires (guard-stop-contract's
   # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
   # match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
@@ -1496,6 +1511,8 @@ function Set-HookSettings {
 # once installed; an absent one is a no-op. The guided /claude-stack:update prunes from the stamp
 # compare instead - these lists are the script path's equivalent (twin of the sh RETIRED_* arrays).
 $RetiredSkills = @('project-task-flow', 'project-task-cycle', 'project-capabilities', 'project-failure-signatures', 'typescript-testing', 'data-security', 'dotnet-error-handling', 'mobile-security')
+$RetiredRules = @('baseline-agents-skills.md', 'baseline-code-quality.md', 'baseline-communication.md', 'baseline-definition-of-done.md', 'baseline-evaluating-proposals.md', 'baseline-mcp-tools.md', 'baseline-planning.md', 'baseline-related-projects.md', 'house-baseline.md', 'web-conventions.md', 'aspnet-conventions.md')
+$RetiredHooks = @('require-convention-skill.js', 'inject-code-style.js')
 $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'angular-verifier.md', 'mobile-solution-designer.md', 'mobile-implementer.md', 'mobile-verifier.md', 'dotnet-windows-service-solution-designer.md', 'dotnet-windows-service-implementer.md', 'dotnet-windows-service-verifier.md', 'code-analyzer.md', 'issue-diagnoser.md')
 
 function Remove-Skills {
@@ -1509,6 +1526,31 @@ function Remove-Skills {
   foreach ($name in $RetiredSkills) {
     $p = Join-Path $dest $name
     if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue; Log "  skill pruned (retired upstream): $name" }
+  }
+}
+
+function Remove-RetiredRules {
+  # UPDATE: drop the known old rule names ($RetiredRules above). A leftover rule is worse than a
+  # leftover skill: a pathless baseline-*.md loads into EVERY session and subagent, so a retired copy
+  # keeps shipping guidance its replacement already merged (measured on a real install: 7 of 14 rule
+  # files were names this release no longer ships).
+  $root = Get-RepoRoot
+  if (-not $root) { return }
+  foreach ($name in $RetiredRules) {
+    $p = Join-Path $root ".claude/rules/$name"
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; Log "  rule pruned (retired upstream): $name" }
+  }
+}
+
+function Remove-RetiredHooks {
+  # UPDATE: drop the known old hook names ($RetiredHooks above) - the file only; Set-HookSettings
+  # drops the matching settings.json entries in the same run (a wired command whose file is gone
+  # spawns a failure on every matching tool call).
+  $root = Get-RepoRoot
+  if (-not $root) { return }
+  foreach ($name in $RetiredHooks) {
+    $p = Join-Path $root ".claude/hooks/$name"
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; Log "  hook pruned (retired upstream): $name" }
   }
 }
 
@@ -1566,9 +1608,9 @@ function Update-Mcps {
   }
 }
 
-function Update-Hooks { Get-Hooks; Set-HookSettings }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
+function Update-Hooks { Remove-RetiredHooks; Get-Hooks; Set-HookSettings }   # UPDATE: refresh hook files + re-ensure the settings.json wiring (idempotent - a new hook block, deny rule, or env key ships to updated projects too)
 function Update-Agents { Remove-RetiredAgents; Get-Agents } # UPDATE: drop retired names, refresh subagent files
-function Update-Rules { Get-Rules }   # UPDATE: refresh rule files
+function Update-Rules { Remove-RetiredRules; Get-Rules }   # UPDATE: drop retired names, refresh rule files
 
 # ===========================================================================
 # KEEP-PINS (-KeepPins) - preserve local model/effort frontmatter edits across the refresh.
@@ -1744,10 +1786,14 @@ Remove-AgentsCache
 Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
 $hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan and the docs' nine
-$summary = "  skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
+$summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
 if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
 if ($KeepPins) { $summary += '; keep-pins=on' }
 Log "$summary; context7=$Context7"
+# The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
+# project-owned files and names this release no longer ships are neither refreshed nor counted
+# (a real install compared its 14 rule FILES against rules=4 and read it as a silent drop).
+if ($InstalledOnly) { Log "  (a directory listing can be larger: generated project files and any 'unknown:' name above are left untouched)" }
 if ($script:ClaudeMissing) { Log "  !! claude CLI absent - plugins, MCPs, and settings.json wiring were SKIPPED (install it, then re-run)" }
 if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed above - re-run '$Action' to retry" }
 
