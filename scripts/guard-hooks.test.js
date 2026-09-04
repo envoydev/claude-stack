@@ -654,3 +654,47 @@ test('every guard fails open on a JSON scalar or null payload', () => {
     }
   }
 });
+
+// --- Windows / Git Bash mount paths: reported 2026-09-04 from a Windows session ------------
+// `rm -rf /c/Users/<u>/AppData/Local/Temp/<x>` - the session cleaning its OWN scratch - was
+// blocked as a cross-project write. Cause: Git Bash spells a Windows path in POSIX MOUNT form,
+// and node on win32 resolves `/c/...` against the CURRENT drive, so the target matched neither
+// the project root nor the temp allowance. The three hooks that resolve a path now translate
+// the mount form first. The win32 half is pinned through path.win32 (a POSIX host cannot run
+// the branch); the POSIX half is pinned by running the hooks.
+const MOUNT_SOURCES = ['guard-cross-project-write.js', 'guard-read-whole-file.js', 'guard-ungated-commit.js'];
+const mountRuleOf = (hook) => {
+  const src = fs.readFileSync(path.join(HOOKS, hook), 'utf8');
+  const m = /^const MOUNT_RE = (\/.*\/);$/m.exec(src);
+  assert.ok(m, `${hook} must carry the mount-form rule`);
+  // eslint-disable-next-line no-eval -- pins the SHIPPED regex, not a copy of it
+  return eval(m[1]);
+};
+
+test('mount paths: the shipped rule maps a Git Bash temp path into the Windows temp allowance', () => {
+  const w = path.win32;
+  const TEMP = 'C:\\Users\\u\\AppData\\Local\\Temp';
+  const raw = '/c/Users/u/AppData/Local/Temp/claude-stack/x';
+  const inside = (t, d) => t === d || t.startsWith(d.endsWith(w.sep) ? d : d + w.sep);
+
+  // the defect, reproduced under win32 semantics: the raw mount form lands nowhere near Temp
+  assert.equal(inside(w.resolve(raw), TEMP), false, 'raw mount form mis-resolves - this is the block');
+
+  for (const hook of MOUNT_SOURCES) {
+    const native = raw.replace(mountRuleOf(hook), (m, d) => `${d.toUpperCase()}:\\`);
+    assert.equal(inside(w.resolve(native), TEMP), true, `${hook}: translated form is inside temp`);
+  }
+  const rule = mountRuleOf('guard-cross-project-write.js');
+  assert.equal(w.resolve('/cygdrive/d/work/repo'.replace(rule, (m, d) => `${d.toUpperCase()}:\\`)), 'D:\\work\\repo', 'cygdrive form too');
+  assert.equal('/usr/local/lib'.replace(rule, 'X'), '/usr/local/lib', 'a multi-letter first segment is not a drive');
+  assert.equal('/tmp/x'.replace(rule, 'X'), '/tmp/x', 'and neither is /tmp');
+});
+
+test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
+  // The translation must never fire off Windows: `/c/...` there is an ordinary absolute path,
+  // outside the project, and the gate must keep blocking it.
+  if (process.platform === 'win32') return;
+  assert.equal(xpWrite('/c/Users/u/AppData/Local/Temp/x.ts'), 2, 'still outside this project on POSIX');
+  assert.equal(xpWrite(path.join(XP_ROOT, 'src', 'x.ts')), 0, 'and this project\'s own file still passes');
+  assert.equal(bash('guard-read-whole-file.js', `cat -n ${BIG}`), 2, 'the read guard still counts a real file');
+});

@@ -91,9 +91,20 @@ if (!root || !fs.existsSync(root)) process.exit(0); // no resolvable root - noth
 // raw string comparison calls the project's own file 'outside' and an allowed temp dir 'unknown'
 // (both reproduced by this hook's tests before this existed). A target that does not exist yet
 // has no realpath, so resolve the deepest ancestor that does and re-attach the remainder.
+// Git Bash / MSYS spell a Windows path in POSIX MOUNT form - `/c/Users/...`, or `/cygdrive/c/...`.
+// node on win32 does not know that spelling: path.resolve turns `/c/Users/u/AppData/Local/Temp/x`
+// into a path on the CURRENT drive (`\c\Users\...`), which is neither the project nor the temp
+// allowance, so a session cleaning up its own scratch was blocked (reported from a Windows session;
+// the mis-resolve is pinned in this hook's tests through path.win32). Translate the mount form to
+// the drive form before ANY resolution. Off Windows that same spelling is a real POSIX path and is
+// never touched.
+const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
+const nativePath = (p) => (process.platform === 'win32'
+  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
+  : String(p));
 const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 function realish(p) {
-  let dir = path.resolve(p);
+  let dir = path.resolve(nativePath(p));
   const rest = [];
   for (let i = 0; i < 64; i++) {
     if (fs.existsSync(dir)) return path.join(real(dir), ...rest);
@@ -103,7 +114,7 @@ function realish(p) {
     dir = parent;
   }
 
-  return path.resolve(p);
+  return path.resolve(nativePath(p));
 }
 const ROOT = real(root);
 const HOME = os.homedir() || '';
@@ -120,7 +131,7 @@ const allowRoots = [
   process.env.CLAUDE_STACK_HOOK_LOG_DIR,
   ...(HOME ? [path.join(HOME, '.claude')] : []),
   ...(process.env.CLAUDE_STACK_ALLOW_WRITE_OUTSIDE || '').split(path.delimiter).map((s) => s.trim()),
-].filter(Boolean).map(expandTilde).map(real);
+].filter(Boolean).map(expandTilde).map(nativePath).map(real);
 
 function inside(target, dir) {
   const t = realish(target);
@@ -148,9 +159,10 @@ function allowed(target) {
 // persisted cwd, so a relative path is anchored to the project root first (same anchor the
 // sibling guards use). A relative path that stays inside the root is the normal case and passes.
 function resolveTarget(p, base) {
-  if (path.isAbsolute(p)) return p;
+  const n = nativePath(p);
+  if (path.isAbsolute(n)) return n;
 
-  return path.resolve(base || ROOT, p);
+  return path.resolve(base || ROOT, n);
 }
 
 const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
@@ -240,7 +252,7 @@ function anchorAt(index) {
   let cwd = ROOT;
   for (const c of cds) {
     if (c.index >= index) break;
-    const t = expandTilde(unquote(c[1]));
+    const t = nativePath(expandTilde(unquote(c[1])));
     if (t === '-' || isVar(t) || (cwd === null && !path.isAbsolute(t))) { cwd = null; continue; }
     cwd = path.resolve(cwd, t);
   }
@@ -255,7 +267,7 @@ function judge(raw, index, what) {
   const base = anchorAt(index);
   const explicit = /^([~/]|\.\.[/\\])/.test(raw) || raw.includes('/../') || raw === '..';
   if (!explicit && base === ROOT) return;
-  const expanded = expandTilde(raw);
+  const expanded = nativePath(expandTilde(raw));
   if (!path.isAbsolute(expanded) && base === null) return; // relative from an unknown anchor
   const abs = resolveTarget(expanded, base);
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands

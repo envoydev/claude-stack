@@ -93,11 +93,19 @@ let root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 // `git -C <sibling> commit` executes in a DIFFERENT repo than this hook's default root,
 // so the diff/receipt checks below would silently judge the wrong tree (measured: a
 // cross-repo commit's ledger cwd named the home repo while the commit ran in the sibling).
+// Git Bash / MSYS spell a Windows path in POSIX MOUNT form (`/c/Users/...`, `/cygdrive/c/...`),
+// which node on win32 resolves against the CURRENT drive instead - the same falsehood that made
+// the cross-project guard block a session's own temp cleanup. Translate before resolving; off
+// Windows the spelling is a real POSIX path and is never touched.
+const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
+const nativePath = (p) => (process.platform === 'win32'
+  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
+  : String(p));
 const unq = (s) => s.replace(/^["']|["']$/g, '');
 const cdMatches = [...command.slice(0, commitMatch.index).matchAll(/(?:^|&&|;|\n|\|)\s*cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g)];
-if (cdMatches.length) root = path.resolve(root, unq(cdMatches[cdMatches.length - 1][1]));
+if (cdMatches.length) root = path.resolve(root, nativePath(unq(cdMatches[cdMatches.length - 1][1])));
 const dashC = commitMatch[0].match(/\s-C\s*("[^"]+"|'[^']+'|\S+)/);
-if (dashC) root = path.resolve(root, unq(dashC[1]));
+if (dashC) root = path.resolve(root, nativePath(unq(dashC[1])));
 // Trivial-diff exemption: total churn across the uncommitted tree (staged + unstaged -
 // a chained `git add && git commit` stages mid-command, so staged-only would undercount).
 // <= 2 files and <= 15 changed lines is the typo/one-line class; anything bigger gates.

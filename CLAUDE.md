@@ -48,7 +48,10 @@ change made only inside a consuming project is throwaway (see Invariants).
   repo stays open - that is what makes the card specific. The session's own scratch, the `~/.claude` /
   `~/.claude-<space>` account dirs and `/dev` stay writable; a `>` or verb inside a quoted string is
   prose; an allowance containing the project root is dropped, both
-  sides are compared as REAL paths (macOS `/tmp` is a symlink), an unexpanded variable is never
+  sides are compared as REAL paths (macOS `/tmp` is a symlink) and a Git Bash mount path (`/c/...`,
+  `/cygdrive/c/...`) is read as the Windows path it names before any resolution - node on win32
+  resolves that spelling against the current drive, which blocked a session cleaning its own temp
+  scratch (the read-whole-file and ungated-commit guards translate it too), an unexpanded variable is never
   judged, and `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second tree a project genuinely owns) +
   `guard-answer-length.js` (dual-wired: a `UserPromptSubmit` hook that appends the answer budget -
   3 sentences plus points, ~900 chars of prose, code/tables exempt - to every turn's context, and a
