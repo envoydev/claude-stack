@@ -700,7 +700,7 @@ $ClaudeRules = @(
   'baseline-security.md'
   'baseline-git.md'
   'baseline-navigation.md'
-  'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_DOCS_PATH)
+  'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
   # Path-scoped routing
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
   'javascript-conventions.md'  # JS-family conventions, path-scoped js/jsx/mjs/cjs
@@ -1134,8 +1134,9 @@ function Set-DocsRootStamp {
   if (Test-Path $settings) {
     try {
       $data = Get-Content $settings -Raw | ConvertFrom-Json
-      if ($data.env -and $data.env.PSObject.Properties['CLAUDE_DOCS_PATH'] -and $data.env.CLAUDE_DOCS_PATH) {
-        $val = $data.env.CLAUDE_DOCS_PATH
+      # the pre-0.2.43 key is still read: an install stamped before the rename landed
+      foreach ($k in @('CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH')) {
+        if ($data.env -and $data.env.PSObject.Properties[$k] -and $data.env.($k)) { $val = $data.env.($k); break }
       }
     } catch { Log '  !! docs-root stamp: settings.json unreadable - stamping the default' }
   }
@@ -1455,7 +1456,7 @@ function Set-HookSettings {
   # '.claude/' - a PROTECTED path. Protected-path writes are never auto-approved outside
   # bypassPermissions, and the safety check runs BEFORE settings allow-rules, so an Edit()/Write()
   # entry here is a silent no-op. The working levers are the prompt's own 'allow Claude to edit its
-  # own settings for this session' option, or a CLAUDE_DOCS_PATH outside '.claude/'.
+  # own settings for this session' option, or a CLAUDE_STACK_DOCS_PATH outside '.claude/'.
   # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register (never enableAllProjectMcpServers).
   if (-not $data.PSObject.Properties['enabledMcpjsonServers']) { $data | Add-Member -NotePropertyName enabledMcpjsonServers -NotePropertyValue @() }
   $enabled = @($data.enabledMcpjsonServers)
@@ -1464,6 +1465,22 @@ function Set-HookSettings {
     if ($enabled -notcontains $mcpName) { $enabled += $mcpName; $changed = $true }
   }
   $data.enabledMcpjsonServers = $enabled
+  # Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
+  # key, BEFORE the absent-only seeds below - seeding first would write the default over a value the
+  # user had set under the old name. One pair per rename; keep the list identical in both installer
+  # twins and in meta/migrations.json (the plugin route applies it from there).
+  if (-not $data.PSObject.Properties['env']) { $data | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
+  foreach ($pair in @(@{ old = 'CLAUDE_DOCS_PATH'; new = 'CLAUDE_STACK_DOCS_PATH' })) {
+    if ($data.env.PSObject.Properties[$pair.old]) {
+      $val = [string]$data.env.($pair.old)
+      if (-not $data.env.PSObject.Properties[$pair.new] -and $val -ne '') {
+        $data.env | Add-Member -NotePropertyName $pair.new -NotePropertyValue $val
+      }
+      $data.env.PSObject.Properties.Remove($pair.old)
+      $changed = $true
+      Log "  settings.json env: $($pair.old) renamed to $($pair.new)"
+    }
+  }
   # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
   # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
   if (-not $data.PSObject.Properties['env']) { $data | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
@@ -1474,8 +1491,8 @@ function Set-HookSettings {
   # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
   # Forward slashes DELIBERATELY, also on Windows - the value is consumed by Node hooks and the
   # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
-  if (-not $data.env.PSObject.Properties['CLAUDE_DOCS_PATH']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_PATH']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_PATH -NotePropertyValue '.claude/docs'
     $changed = $true
   }
   # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
@@ -1842,9 +1859,9 @@ Write-Host '  .slopwatch       dotnet-slopwatch output'
 Write-Host '  .playwright      playwright MCP user-data-dir + output (screenshots, traces)'
 Write-Host '  .mcp.json        generated MCP server config (machine-local)'
 Write-Host ''
-Write-Host "The generated-docs root is CLAUDE_DOCS_PATH in .claude\settings.json env (seeded '.claude/docs') -"
+Write-Host "The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude\settings.json env (seeded '.claude/docs') -"
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
-Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed'
+Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
 Write-Host ''
 Write-Host 'The same env block carries the fresh-session gate''s two knobs (seeded, absent-only, so a'

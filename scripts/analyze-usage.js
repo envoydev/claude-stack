@@ -18,7 +18,7 @@
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
-//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_DOCS_PATH is non-default
+//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_STACK_DOCS_PATH is non-default
 //
 // The headline health signal is ctx/msg (avg context re-sent per API call = input +
 // cache-write + cache-read over msgs): high tool-result volume means noisy tools, but a

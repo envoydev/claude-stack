@@ -274,7 +274,10 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
-  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under CLAUDE_DOCS_PATH');
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under CLAUDE_STACK_DOCS_PATH');
+  // the pre-0.2.43 spelling still resolves, so an install the rename has not reached keeps working
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the old key is read as a fallback');
+  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_STACK_DOCS_PATH: 'docs', CLAUDE_DOCS_PATH: 'nowhere' }), 0, 'and the new key wins when both are set');
 });
 
 test('guard-ungated-commit: a cd or -C into a sibling repo judges THAT tree', () => {
@@ -306,7 +309,7 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
   assert.equal(disp('wpf-implementer'), 2, 'a 9h-old stamp is absent');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
-  assert.equal(disp('wpf-implementer', { CLAUDE_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_DOCS_PATH');
+  assert.equal(disp('wpf-implementer', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_STACK_DOCS_PATH');
 });
 
 test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {
@@ -387,7 +390,7 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
     env: { ...process.env, CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
   const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
-    { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_DOCS_PATH: 'docs' }), 0);
+    { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: 'docs' }), 0);
   assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
 });
 

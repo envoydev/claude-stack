@@ -41,7 +41,7 @@ shell loops. The tool is `scripts/analyze-usage.js` inside the extracted snapsho
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl>` - full report, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --json` - machine dump, once per matching session.
 - `node <snapshot>/scripts/analyze-usage.js <session.jsonl> --report-md > report-usage.md` - the report SKELETON: machine-written tables plus the FILL IN judgment sections. Add `--hook-log` here too when the ledger exists (below).
-- Non-default docs root (`CLAUDE_DOCS_PATH` set): add `--docs-root <that root>` to every per-session call - the analyzer's Generated-docs table watches only `.claude/docs/` by default, so a custom root silently drops every doc touch.
+- Non-default docs root (`CLAUDE_STACK_DOCS_PATH` set): add `--docs-root <that root>` to every per-session call - the analyzer's Generated-docs table watches only `.claude/docs/` by default, so a custom root silently drops every doc touch.
 
 Then look for the instrumentation ledgers - do not wait to be pointed at them: `CLAUDE_STACK_INSTRUMENT=1` writes one per session/agent id under `<docs-path>/tools-usage/<sid>.jsonl` (or wherever `CLAUDE_STACK_INSTRUMENT_LOG` pointed). For each audited session, check that folder for the session's own id and its dispatched agents' ids; on a hit add `--hook-log <ledger>` - it joins the who-fired-what identity side the transcript alone cannot attribute. No ledger: skip the flag and say so in the report.
 

@@ -15,6 +15,10 @@
 // MAX_RECEIPT_AGE_MS are treated as absent - the stale-stamp lesson from the approval
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
+// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
+// (the installers rename the key in place on the next install/update).
+const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const path = require('path');
 const { execSync } = require('child_process');
 let payload;
@@ -43,7 +47,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        const dir = path.join(root, process.env.CLAUDE_DOCS_PATH || '.claude/docs', 'hook-blocks');
+        const dir = path.join(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
         fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
@@ -132,7 +136,7 @@ try {
 } catch {
   process.exit(0); // not a git repo / git unavailable - never block on our own failure
 }
-const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRoot = docsRootEnv();
 const gate = path.join(root, docsRoot, 'flow', 'COMMIT-GATE');
 const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right before the commit; re-stamping is one Write
 let first = '';

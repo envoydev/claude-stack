@@ -104,7 +104,7 @@ values embedded in a registration - show `${VAR}` literally as written.
 |---|---|
 | stack version (stamp) | 0.2.3 @ <short-sha> |
 | scope | project (the stamp's `scope:` line; `user` there = global) |
-| CLAUDE_DOCS_PATH | .claude/docs (default) |
+| CLAUDE_STACK_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_AUTOCOMPACT_PCT_OVERRIDE | not set |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
 | CLAUDE_STACK_FRESH_SESSION_PCT | 40 (default) - the fresh-session gate's share of the window; 0 = off |

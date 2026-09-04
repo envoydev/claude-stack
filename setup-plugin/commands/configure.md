@@ -234,7 +234,7 @@ only when ABSENT, so this step is the one place they are changed deliberately:
 - `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` - the context auto-compact trigger percent (house default
   40). Alternatives: another percent, or auto-compact off entirely - that is the
   `autoCompactEnabled: false` settings key, with the pct override deleted rather than left dead.
-- `CLAUDE_DOCS_PATH` - the generated-docs root (house default `.claude/docs`, machine-local). A
+- `CLAUDE_STACK_DOCS_PATH` - the generated-docs root (house default `.claude/docs`, machine-local). A
   committed forward-slash path (e.g. `docs`) shares the captured docs with the team.
 - `CLAUDE_STACK_INSTRUMENT` - the tool-usage instrumentation switch (house default `0`, off - the
   wired hook then costs a shell test per call and records nothing). `1` logs every tool call as one

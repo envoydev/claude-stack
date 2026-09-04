@@ -31,19 +31,19 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: CLAUDE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs. The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (the generated hook's fallback constant, the skill line that quotes it, both installer seeds) must state the same value.",
+      "_note": "The docs-root default: CLAUDE_STACK_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installers rename the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, both installer seeds) must state the same value.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
-        "marker": "the `CLAUDE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
+        "marker": "the `CLAUDE_STACK_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
       },
       "sites": [
         {
           "file": "scripts/os/claude-stack.sh",
-          "marker": "env[\"CLAUDE_DOCS_PATH\"] = \".claude/docs\""
+          "marker": "env[\"CLAUDE_STACK_DOCS_PATH\"] = \".claude/docs\""
         },
         {
           "file": "scripts/os/claude-stack.ps1",
-          "marker": "Add-Member -NotePropertyName CLAUDE_DOCS_PATH -NotePropertyValue '.claude/docs'"
+          "marker": "Add-Member -NotePropertyName CLAUDE_STACK_DOCS_PATH -NotePropertyValue '.claude/docs'"
         },
         {
           "file": "scripts/stamp-docs-root.js",
@@ -51,11 +51,11 @@
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         }
       ]
     },

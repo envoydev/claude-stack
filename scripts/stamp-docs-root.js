@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Stamp the deployed baseline-docs-root.md rule with the CURRENT docs root: the CLAUDE_DOCS_PATH
+// Stamp the deployed baseline-docs-root.md rule with the CURRENT docs root: the CLAUDE_STACK_DOCS_PATH
 // env value in <root>/.claude/settings.json, else the default. Handles both the fresh copy (the
 // __DOCS_ROOT__ placeholder) and a previously stamped value - so the guided commands can re-stamp
 // after an env change without re-running the installer (the installers stamp fresh copies with
@@ -20,8 +20,10 @@ function resolveDocsRoot(settingsFile)
 {
     try
     {
-        const val = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env?.CLAUDE_DOCS_PATH;
-        return val || DEFAULT_ROOT;
+        const env = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env || {};
+        // CLAUDE_DOCS_PATH is the pre-0.2.43 spelling - still read, so an install whose settings
+        // the rename has not reached yet stamps its own root rather than the default.
+        return env.CLAUDE_STACK_DOCS_PATH || env.CLAUDE_DOCS_PATH || DEFAULT_ROOT;
     }
     catch
     {

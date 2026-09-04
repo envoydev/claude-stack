@@ -64,10 +64,10 @@ Write `<DEST>/<project-name>/<session-id>/` containing:
 | `report-usage.md` | `node scripts/analyze-usage.js <transcript> --report-md > .../report-usage.md` - the skeleton; its FILL IN judgment sections stay unauthored, the audit does not need them |
 | `<session-id>.jsonl` | copy of the transcript - the audit's ground truth |
 | `subagents/` | copy of the transcript's sibling `subagents/` folder when it exists |
-| `tool-usage-<sid>.jsonl` | the instrumentation ledgers from the project's own docs root (`<project>/.claude/docs/tools-usage/<sid>.jsonl`, or its `CLAUDE_DOCS_PATH` root), the session's own and its dispatched agents' - COPIED, never moved: the project owns its data and this sweep is a reader |
+| `tool-usage-<sid>.jsonl` | the instrumentation ledgers from the project's own docs root (`<project>/.claude/docs/tools-usage/<sid>.jsonl`, or its `CLAUDE_STACK_DOCS_PATH` root), the session's own and its dispatched agents' - COPIED, never moved: the project owns its data and this sweep is a reader |
 
 Add `--hook-log <ledger>` to the three analyzer calls when a ledger exists; say so per session when
-none does. Add `--docs-root <root>` for any project whose `CLAUDE_DOCS_PATH` is non-default, or the
+none does. Add `--docs-root <root>` for any project whose `CLAUDE_STACK_DOCS_PATH` is non-default, or the
 analyzer's generated-docs table silently reports nothing.
 
 Then write `<DEST>/<project-name>/rollup.txt` (Phase B's rollup output) and, when the project

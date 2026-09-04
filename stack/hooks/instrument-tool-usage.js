@@ -19,7 +19,7 @@
 //
 // Output: one JSONL row per matched call at
 //   $CLAUDE_STACK_INSTRUMENT_LOG  (default: <docs-path>/tools-usage/<session-or-agent-id>.jsonl,
-//   the docs root resolved from CLAUDE_DOCS_PATH like every generated artifact)
+//   the docs root resolved from CLAUDE_STACK_DOCS_PATH like every generated artifact)
 // Coverage note: PreToolUse fires for the session's tool calls; where the running Claude
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
@@ -37,6 +37,10 @@ process.stdin.on('end', () => {
     const input = ev.tool_input || {};
     const path = require('path');
     const fs = require('fs');
+// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
+// (the installers rename the key in place on the next install/update).
+const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
     // Every tool call is logged (built-ins like Read/Edit/Grep/Bash/Task + Skill + mcp__*).
     // `detail` is a lightweight, non-sensitive hint per tool family - NEVER a command body,
     // file contents, or a full payload: the skill slug, the mcp server, a file's basename,
@@ -57,7 +61,7 @@ process.stdin.on('end', () => {
     const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
     // one ledger per session/agent id - the filename matches the transcript's id for the --hook-log join
     const sid = String(ev.session_id || 'session').replace(/[^A-Za-z0-9._-]/g, '');
-    const docsRoot = process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+    const docsRoot = docsRootEnv();
     const out =
       process.env.CLAUDE_STACK_INSTRUMENT_LOG ||
       path.join(dir, docsRoot, 'tools-usage', `${sid}.jsonl`);

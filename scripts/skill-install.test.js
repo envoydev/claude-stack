@@ -826,7 +826,7 @@ test('sh env: both fresh-session knobs are seeded, and a hand-edited value is ne
         const env = JSON.parse(fs.readFileSync(fresh, 'utf8')).env;
         assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '40', 'the gate percentage is seeded at the house default');
         assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '', 'the window is seeded EMPTY - auto-detect, never a guess about someone else\'s model');
-        assert.strictEqual(env.CLAUDE_DOCS_PATH, '.claude/docs', 'the existing three are untouched');
+        assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'the existing three are untouched');
 
         // update over a hand-edited install: absent-only, so both stay exactly as the user left them
         const pinned = path.join(work, 'pinned.json');
@@ -864,6 +864,70 @@ test('ps1 env: the same two knobs, same rule (pwsh required)', { skip: skipNoPws
         assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '60', 'the hand-edited percentage is left alone');
         assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '', 'the absent window is seeded empty');
         assert.strictEqual(env.CLAUDE_STACK_INSTRUMENT, '0', 'and the existing seeds still land');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+// --- the docs-root env key rename (0.2.43) ---------------------------------------------------
+// CLAUDE_DOCS_PATH -> CLAUDE_STACK_DOCS_PATH: every other variable this stack owns is
+// CLAUDE_STACK_*, and a bare CLAUDE_DOCS_PATH reads as a Claude Code setting. The rename runs in
+// the installers' env pass BEFORE the absent-only seeds, or the seed would write the default over
+// a root the user had set under the old name.
+test('sh env: the docs-root key is renamed in place, value kept, before the seeds run', { skip: skipNoPython }, () => {
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-rename-'));
+    const wire = (file, before) => {
+        const p = path.join(work, file);
+        fs.writeFileSync(p, JSON.stringify(before));
+        const r = spawnSync('python3', ['-c', prog[1], p, '--DENY', ...deny, '--MCP', 'context7'],
+            { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return { env: JSON.parse(fs.readFileSync(p, 'utf8')).env, out: r.stdout };
+    };
+
+    const moved = wire('old.json', { env: { CLAUDE_DOCS_PATH: 'team/docs' } });
+    assert.strictEqual(moved.env.CLAUDE_STACK_DOCS_PATH, 'team/docs', 'the hand-set root moves to the new key, not back to the default');
+    assert.ok(!('CLAUDE_DOCS_PATH' in moved.env), 'the old key is gone - one name, not two');
+    assert.match(moved.out, /CLAUDE_DOCS_PATH renamed to CLAUDE_STACK_DOCS_PATH/, 'the rename is narrated, never silent');
+
+    const both = wire('both.json', { env: { CLAUDE_DOCS_PATH: 'stale', CLAUDE_STACK_DOCS_PATH: 'current' } });
+    assert.strictEqual(both.env.CLAUDE_STACK_DOCS_PATH, 'current', 'an already-migrated value is never overwritten by the stale one');
+    assert.ok(!('CLAUDE_DOCS_PATH' in both.env), 'and the stale key still goes');
+
+    const fresh = wire('fresh.json', {});
+    assert.strictEqual(fresh.env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'a fresh install just gets the seed');
+    assert.ok(!('CLAUDE_DOCS_PATH' in fresh.env), 'and never the retired name');
+    fs.rmSync(work, { recursive: true, force: true });
+});
+
+test('ps1 env: the same rename, same rules (pwsh required)', { skip: skipNoPwsh }, () => {
+    const src = fs.readFileSync(PS1, 'utf8');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-rename-ps-'));
+    try {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        const settings = path.join(repo, '.claude', 'settings.json');
+        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_DOCS_PATH: 'team/docs' } }, null, 2));
+        const harness = path.join(repo, 'harness.ps1');
+        fs.writeFileSync(harness, [
+            'function Log { param([string]$m) Write-Host "LOG: $m" }',
+            `function Get-RepoRoot { return ${JSON.stringify(repo)} }`,
+            "$Hooks = @('guard-read-whole-file.js::Read')",
+            "$SecretDeny = @('Read(./.env)')",
+            "$Mcps = @('context7|-- x')",
+            psArray(src, 'RetiredHooks'),
+            psFunc(src, 'Write-JsonFile'),
+            psFunc(src, 'Set-HookSettings'),
+            'Set-HookSettings',
+        ].join('\n'));
+        const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const env = JSON.parse(fs.readFileSync(settings, 'utf8')).env;
+        assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, 'team/docs', 'the hand-set root moves to the new key');
+        assert.ok(!('CLAUDE_DOCS_PATH' in env), 'the old key is gone');
+        assert.match(res.stdout, /CLAUDE_DOCS_PATH renamed to CLAUDE_STACK_DOCS_PATH/, 'and the rename is narrated');
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });

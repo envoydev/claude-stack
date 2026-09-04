@@ -655,7 +655,7 @@ CLAUDE_RULES=(
   "baseline-security.md"
   "baseline-git.md"
   "baseline-navigation.md"
-  "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_DOCS_PATH)
+  "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "javascript-conventions.md"  # JS-family conventions, path-scoped js/jsx/mjs/cjs
@@ -1012,7 +1012,9 @@ import json, sys
 rule, settings = sys.argv[1], sys.argv[2]
 val = ".claude/docs"
 try:
-    v = json.load(open(settings)).get("env", {}).get("CLAUDE_DOCS_PATH", "")
+    _env = json.load(open(settings)).get("env", {})
+    # the pre-0.2.43 key is still read: an install stamped before the rename landed
+    v = _env.get("CLAUDE_STACK_DOCS_PATH", "") or _env.get("CLAUDE_DOCS_PATH", "")
     if v: val = v
 except Exception:
     pass
@@ -1313,13 +1315,25 @@ for rule in deny_specs:
 # entry here is a silent no-op (measured: one project's runs were refused on every route and
 # DELEGATED mode silently degraded to inline for a whole 12-stage run). The working levers are the
 # prompt's own 'allow Claude to edit its own settings for this session' option, or a
-# CLAUDE_DOCS_PATH outside `.claude/`. The flows carry the ask-fallback for the refusal case.
+# CLAUDE_STACK_DOCS_PATH outside `.claude/`. The flows carry the ask-fallback for the refusal case.
 # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register, so no per-launch
 # trust prompt - never blanket enableAllProjectMcpServers. Union-merged; an unlisted name is a harmless no-op.
 enabled = data.setdefault("enabledMcpjsonServers", [])
 for name in mcp_names:
     if name not in enabled:
         enabled.append(name); changed = True
+# Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
+# key, BEFORE the absent-only seeds below - seeding first would write the default over a value the
+# user had set under the old name. One pair per rename; keep the list identical in both installer
+# twins and in meta/migrations.json (the plugin route applies it from there).
+env = data.setdefault("env", {})
+for _old, _new in (("CLAUDE_DOCS_PATH", "CLAUDE_STACK_DOCS_PATH"),):
+    if _old in env:
+        if _new not in env and env[_old] != "":
+            env[_new] = env[_old]
+        del env[_old]
+        changed = True
+        print("  settings.json env: %s renamed to %s" % (_old, _new))
 # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
 # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
 env = data.setdefault("env", {})
@@ -1327,8 +1341,8 @@ if "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env:
     env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "40"; changed = True
 # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
 # Forward slashes on every OS (Node hooks and the model resolve them fine on Windows).
-if "CLAUDE_DOCS_PATH" not in env:
-    env["CLAUDE_DOCS_PATH"] = ".claude/docs"; changed = True
+if "CLAUDE_STACK_DOCS_PATH" not in env:
+    env["CLAUDE_STACK_DOCS_PATH"] = ".claude/docs"; changed = True
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
@@ -1635,9 +1649,9 @@ Add these stack-generated, machine-local artifacts to the project's .gitignore (
   .playwright      playwright MCP user-data-dir + output (screenshots, traces)
   .mcp.json        generated MCP server config (machine-local)
 
-The generated-docs root is CLAUDE_DOCS_PATH in .claude/settings.json env (seeded '.claude/docs') -
+The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude/settings.json env (seeded '.claude/docs') -
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
-re-captured after a fresh clone. To share them with the team, set CLAUDE_DOCS_PATH to a committed
+re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
 
 The same env block carries the fresh-session gate's two knobs (seeded, absent-only, so a

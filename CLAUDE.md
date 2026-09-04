@@ -106,7 +106,7 @@ change made only inside a consuming project is throwaway (see Invariants).
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
     (code quality + definition of done), security, git + pre-commit, navigation, docs-root (the
-    generated-docs root - `CLAUDE_DOCS_PATH` resolution, what lives under `<docs-path>`; the env var
+    generated-docs root - `CLAUDE_STACK_DOCS_PATH` resolution, what lives under `<docs-path>`; the env var
     is the ONLY lever, no CLAUDE.md restatement - the installers stamp the resolved value over the
     rule's `__DOCS_ROOT__` placeholder on every install/update, and setup/configure re-stamp after
     an env change) - loaded every session and
@@ -131,7 +131,13 @@ change made only inside a consuming project is throwaway (see Invariants).
   time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
   catalogs (`recommendations.json`, `evidence.json`, `judgment.json`, and `migrations.json` -
   existence-detected retirements of GENERATED per-project artifacts, applied by update / flagged
-  by validate, since the upstream file compare can never name generated output). Commands reach ALL of
+  by validate, since the upstream file compare can never name generated output; it also carries the
+  settings.json `env` RENAMES (`detect.settings_env_key` + `rename_settings_env`), which the
+  installers' env pass applies on every run - renames first, value carried over, then the
+  absent-only seeds, so a value set under the old name is never replaced by the new key's default.
+  A NEW env key needs no entry: the same pass seeds it. Every consumer of a renamed key reads the
+  old spelling as a fallback until the rename has reached every install - `CLAUDE_STACK_DOCS_PATH`
+  is the first of these, ex-`CLAUDE_DOCS_PATH`). Commands reach ALL of
   these through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}` - the
   installed plugin package is `setup-plugin/` only, so nothing in `meta/` exists inside it.
 - `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
