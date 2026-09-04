@@ -3072,6 +3072,104 @@
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         }
       ]
+    },
+    "implementer-build-bar": {
+      "_note": "The write-time quality bar the build path holds so the quality loop's five stages (structure / code quality / naming / logging / comments) pass on the first pass, plus the decisions-with-precedent and reuse-before-recreation disciplines - verbatim in the single-chat implementer twin and the 10 implementer seats, since a dispatched seat runs without the twin.",
+      "owner": {
+        "file": "stack/skills/project-implementer/SKILL.md",
+        "marker": "are the bar the built slice meets on the FIRST pass"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "are the bar the built slice meets on the FIRST pass"
+        }
+      ]
+    },
+    "designer-decisions-ledger": {
+      "_note": "The plan's `## Decisions` ledger - every judgment call recorded with its precedent (or an explicit none), project-recorded choices treated as decisions never defects, a new file's home decided per the precedent module - verbatim in the single-chat design twin and the 10 designer seats (the twin is preloaded there; the seat copy survives a trimmed preload).",
+      "owner": {
+        "file": "stack/skills/project-solution-design/SKILL.md",
+        "marker": "one line per call the design made where the requirement left two defensible shapes"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/browser-extension-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/console-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/data-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/devops-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/web-angular-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/windows-service-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/winforms-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        },
+        {
+          "file": "stack/agents/wpf-solution-designer.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
+        }
+      ]
     }
   }
 }
