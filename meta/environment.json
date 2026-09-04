@@ -49,10 +49,10 @@
     },
     {
       "key": "CLAUDE_STACK_CONTEXT_WINDOW",
-      "default": "",
+      "default": "1000000",
       "ask": true,
       "asked_with": "CLAUDE_STACK_FRESH_SESSION_PCT",
-      "what": "the context window that percentage applies to. EMPTY means auto-detect: the gate reads the settings model id's own window suffix (`opus[1m]`), else infers the tier from what the session has already carried. Set a number (e.g. 1000000) only where neither resolves - a model chosen at launch or switched with /model.",
+      "what": "the context window that percentage applies to, seeded `1000000` - a stated number, since an empty box stays empty and the auto-detect below it only resolves on some machines. SET IT TO `200000` ON A 200k MODEL: the value outranks detection, so a 1M window declared on a 200k session moves the trigger from 150k to 400k and the gate stops firing. Clearing it restores auto-detect - the gate then reads the settings model id's own window suffix (`opus[1m]`), else infers the tier from what the session has already carried.",
       "validate": {
         "type": "int-or-empty",
         "min": 100000

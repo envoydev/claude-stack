@@ -825,7 +825,7 @@ test('sh env: both fresh-session knobs are seeded, and a hand-edited value is ne
         assert.strictEqual(wire(fresh).status, 0);
         const env = JSON.parse(fs.readFileSync(fresh, 'utf8')).env;
         assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '40', 'the gate percentage is seeded at the house default');
-        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '', 'the window is seeded EMPTY - auto-detect, never a guess about someone else\'s model');
+        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '1000000', 'the window is seeded with a stated number, not an empty box nobody fills in');
         assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'the existing three are untouched');
 
         // update over a hand-edited install: absent-only, so both stay exactly as the user left them
@@ -862,7 +862,7 @@ test('ps1 env: the same two knobs, same rule (pwsh required)', { skip: skipNoPws
         assert.strictEqual(res.status, 0, res.stderr);
         const env = JSON.parse(fs.readFileSync(settings, 'utf8')).env;
         assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '60', 'the hand-edited percentage is left alone');
-        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '', 'the absent window is seeded empty');
+        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, '1000000', 'the absent window is seeded with the stated default');
         assert.strictEqual(env.CLAUDE_STACK_INSTRUMENT, '0', 'and the existing seeds still land');
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
