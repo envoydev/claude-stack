@@ -10,7 +10,7 @@ The SQLite-specific layer. **Cross-engine conventions live in `database-conventi
 ## When it fits
 
 - Good: embedded / desktop / mobile app storage, single-node edge, a local cache, and test databases. It is a file, not a server.
-- Bad: high-write-concurrency multi-client web. SQLite allows **one writer at a time** for the whole database - reach for `postgres` there.
+- Bad: high-write-concurrency multi-client web. SQLite allows **one writer at a time** for the whole database - reach for PostgreSQL there (its `postgres` skill when that is in your skill list).
 
 ## Concurrency
 

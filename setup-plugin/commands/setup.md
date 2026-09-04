@@ -148,7 +148,16 @@ Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install 
    3. `/project-related-context <sibling> ...` - OPTIONAL, and only when this project actually has sibling repos: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`, `backend - ../server`); it never scans on its own. A standalone repo skips it - not a gap. The skill is opt-in, so when it is absent say so in one conditional line ('sibling repos? add `project-related-context` via `/claude-stack:configure`') rather than the flat not-installed line the other captures get.
    4. `/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory including anything the captures above added.
 
-3. **serena, honestly per language.** Recommend serena symbol nav only where it actually holds: TypeScript / Angular / mixed web projects - yes, it is the nav tool. On C#, serena's Roslyn-backed nav is unreliable - navigation belongs to the `csharp-lsp` plugin there, and saying otherwise sends the user down a dead end. serena still earns its seat in a C# project as the per-project memory bus (the inter-agent handoff), so it stays installed either way. State which case THIS project is - one line, no hedging.
+3. **serena - one index step, then the honesty note.** The installer already seeded
+`.serena/project.yml` (detected `language_servers`, plus `ignored_paths` for `.serena` / `.claude` / `.playwright` -
+without which serena's own 327MB language-server directory gets indexed as if it were source:
+measured 126 files attempted, 112 failed, all inside `.serena/home`). Tell the user to build the
+index ONCE - `SERENA_HOME=.serena/home uvx --from serena-agent serena project index` - and that it
+is worth re-running after a large refactor or a branch switch that moves many files. Then state
+which case THIS project is, in one line: on TypeScript / Angular / mixed web, serena IS the nav
+tool; on C#, nav depends on the Roslyn server starting (the seeded language_servers entry is what
+makes it start at all), and where it still stalls on a large solution the `csharp-lsp` plugin owns
+navigation - serena stays either way as the per-project memory bus.
 
 ## Clean up the temp dir - ALWAYS
 

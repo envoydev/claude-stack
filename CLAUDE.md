@@ -29,17 +29,15 @@ change made only inside a consuming project is throwaway (see Invariants).
 - `stack/hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash`) +
   `guard-read-whole-file.js` (PreToolUse `Read` + `Bash` - the same dump routed through the shell) + `guard-unapproved-dispatch.js` (PreToolUse
   `Task|Agent` - blocks an `*-implementer` dispatch without the `<docs-path>/flow/APPROVAL` gate
-  file the flows write on explicit user approval or an explicit AUTO waiver, and blocks a generic `general-purpose`/`claude` dispatch while that stamp is live; stamps older than 8h or older than the session are absent) +
+  file the flows write on explicit user approval or an explicit AUTO waiver, and blocks a generic `general-purpose`/`claude` dispatch while that stamp is live; stamps older than 8h or older than the session are absent; also blocks an `Explore`/generic dispatch whose brief asks a SYMBOL question - callers, declaration site, resolved type - since a grep-shaped seat answers those by name-match and the built-in `Explore` loads none of the project's rules) +
   `guard-ungated-commit.js` (PreToolUse `Bash` - blocks a non-trivial `git commit` without the
   `<docs-path>/flow/COMMIT-GATE` receipt the pre-commit checkpoint writes on VERIFIED gates or an
   explicit user waiver; trivial diffs pass) +
   `guard-stop-contract.js` (dual-wired: a `Stop` hook that blocks a turn ending on a
-  decision-shaped question in prose, or on a 'done, next step pending' close stated as fact - the blocking-ask mandate mechanized - and a PreToolUse
-  `AskUserQuestion` gate that denies an option list with no fresh-session entry once the session
-  context passes ~150k - and from the second such ask, one that does not mark it Recommended) +
+  decision-shaped question in prose, or on a 'done, next step pending' close stated as fact - the blocking-ask mandate mechanized - and, on a CLEAN close past 40% of the context window (`CLAUDE_STACK_FRESH_SESSION_PCT`, floored at the measured 150k - so 150k on a 200k window, 400k on a 1M one), holds the turn ONCE so the user is asked whether to resume in a fresh session; it re-arms only when the context has grown 1.5x, and it fires after the work is finished, never mid-response - the PreToolUse `AskUserQuestion` wiring that used to deny the ask itself is gone - new installs do not wire it and a migration unwires it from old ones) +
   `guard-fresh-session-start.js` (PreToolUse `Skill` - blocks a deliberate orchestration run
   (a capture, a loop, a solve flow) from starting on another finished run's carried history past
-  ~150k ctx/msg, routing the choice through AskUserQuestion; the capabilities rule's prose form
+  the same window-scaled trigger (40% of the window, 150k floor), routing the choice through AskUserQuestion; the capabilities rule's prose form
   lost in 4 of 4 audited sessions) +
   `guard-answer-length.js` (dual-wired: a `UserPromptSubmit` hook that appends the answer budget -
   3 sentences plus points, ~900 chars of prose, code/tables exempt - to every turn's context, and a
@@ -181,7 +179,21 @@ documented there.
   on serena's local memory (durable orientation is the committed architecture docs), so comment
   `memory` out in a standalone project.
 - **serena self-activates via `--project-from-cwd`**, not a hook: it finds `.serena/project.yml`
-  in its cwd (the project root) and binds on process start, zero model involvement. Two approaches
+  in its cwd (the project root) and binds on process start, zero model involvement. That flag only
+  RESOLVES the root, though: the config serena AUTO-GENERATES for a root without one is not a
+  substitute (read in serena 1.7.0, `serena/config/serena_config.py`) - `ProjectConfigAutoGenerationMode.ASYNCHRONOUS`
+  writes the language list EMPTY and fills it from a background thread, and
+  `_determine_project_language_servers` enables only the single TOP language by file count when it
+  is not interactive, so a C#+Angular repo gets one server and a lookup racing the background pass
+  gets none. The installers therefore SEED `.serena/project.yml` on install and update - project
+  name, the `language_servers` their own narrow file scan detects (C#, TypeScript/JS), and
+  `ignored_paths` for `.serena` / `.claude` / `.playwright`, without which the indexer walks
+  serena's own ~327MB language-server tree (measured: 126 files attempted, 112 failed). A key that
+  already carries entries is never rewritten, and neither is ever appended twice - serena's own
+  generated file ships both keys EMPTY, and a duplicate YAML key is an error, not an override. The
+  key was renamed from `languages` in 1.7.0 (`ProjectConfig.RENAMED_FIELDS`, which still migrates
+  the old spelling), and the C# Roslyn server needs .NET 10+, which serena installs itself into
+  `SERENA_HOME` when it is missing. Two approaches
   that look right but FAIL - do not retry: (1) an `mcp_tool` `SessionStart` hook calling
   `activate_project` never fires before serena connects; (2) `--project ${CLAUDE_PROJECT_DIR}` is the
   wrong lever - use `--project-from-cwd` (above). Current Claude Code *does* expand `${VAR}` /
@@ -249,6 +261,15 @@ documented there.
   manifests in the same sitting (cross-repo parity is discipline, not a networked lint). Never patch
   only a generated `.mcp.json` or a consuming project's copy - the installer
   regenerates and silently wipes it.
+- **A skill named in a brief may not be installed.** Every project trims the roster, so a LOAD
+  directive naming a skill is only safe when the citing artifact and the skill ship together.
+  Two absence classes, one guard: a skill no stack seeds (evidence-gated or opt-in) and a skill
+  belonging to a DIFFERENT stack than the artifact citing it - an always-on agent naming
+  `angular-security` breaks in every .NET-only install. Condition the cite ('load it when it is
+  in your skill list' / 'when installed'), or open a router file with an `**Availability**`
+  callout that blankets its table; `npm run lint` checks 25 and 26 block a new unguarded cite,
+  and `meta/shared-rules.json` pins the clause's copies. A pointer ('boundary rules live in `x`')
+  is not a directive and needs no guard.
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.

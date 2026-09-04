@@ -21,7 +21,7 @@ Webpack earns its keep where its loader/plugin ecosystem, Module Federation, or 
 
 ## Output for libraries
 
-ESM primary: `output.library.type: 'module'` + `experiments.outputModule` - **still experimental** (the roadmap says so; sharp edges around ESM externals and splitChunks) - so pin `~5.108` and test the published tarball in a real ESM and bundler consumer before trusting it; fall back to `commonjs2` (boring, solid) if consumers break. Add a CJS build via a multi-compiler array only when a real CJS consumer exists - the exports-map shape and the dual-vs-ESM-only decision are the `npm` skill's publishing reference. Ship real source maps (`devtool: 'source-map'`; `hidden-source-map` for error-reporting-only). Keep Terser for a published library (best bytes); switch to `swcMinify` only when minification dominates CI time.
+ESM primary: `output.library.type: 'module'` + `experiments.outputModule` - **still experimental** (the roadmap says so; sharp edges around ESM externals and splitChunks) - so pin `~5.108` and test the published tarball in a real ESM and bundler consumer before trusting it; fall back to `commonjs2` (boring, solid) if consumers break. Add a CJS build via a multi-compiler array only when a real CJS consumer exists - the exports-map shape and the dual-vs-ESM-only decision are the `npm` skill's publishing reference when that skill is in your skill list. Ship real source maps (`devtool: 'source-map'`; `hidden-source-map` for error-reporting-only). Keep Terser for a published library (best bytes); switch to `swcMinify` only when minification dominates CI time.
 
 ## Structure and speed
 

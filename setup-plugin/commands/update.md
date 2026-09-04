@@ -1,12 +1,15 @@
 ---
-description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only derives the selection from disk and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, `claude plugin update` per installed stack plugin) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only derives the selection from disk and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
 # Update the Claude stack - refresh everything, prune what upstream removed
 
 You are refreshing an existing install to the newest release, unchanged in shape: the same
-items, new content - plus removing the artifacts the STACK removed upstream, which a plain
+items, new content - including the MOVING parts: the installer re-resolves every pinned MCP
+runtime to its newest published version and re-registers it, and runs `claude plugin update` on
+each installed stack plugin after refreshing the marketplaces, so an update leaves no MCP or
+plugin behind on an old version - plus removing the artifacts the STACK removed upstream, which a plain
 refresh leaves orphaned forever. The deterministic work lives in scripts, not in this chat:
 the installer's `--installed-only` derives the selection from disk and closes its dependencies
 itself, and `stamp-compare.js` computes the upstream delta - you orchestrate and report.
@@ -131,7 +134,10 @@ flag.
 ## 5. Prune
 Delete each item on the confirmed list, showing every command before running it. A deleted hook
 also loses its `.claude/settings.json` wiring in the same pass - show that edit too (a
-migration entry's `unwire_settings_hook` names exactly which entry goes; parse-edit-rewrite,
+migration entry's `unwire_settings_hook` names exactly which entry goes - `<file>::<Matcher>`
+scopes it to ONE matcher when the file stays wired for its other events, and a
+`settings_hook_wired` detect matches on that wiring being present rather than on a file;
+parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
 as a next step - run nothing on the user's behalf.
 
@@ -150,7 +156,10 @@ ANY installed skill or agent file, name `/project-agent-capabilities` (when inst
 USER's next step - never gated on roster adds/drops: the generated rule stamps each skill's
 first sentence, which drifts with content-only updates (measured: a 'roster unchanged, rule
 still accurate' skip left 7 of 10 stamped sentences stale and the user caught it manually).
-Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
+When serena is installed, also name the one-off re-index as a next step whenever this run
+re-seeded `.serena/project.yml` - an install predating the seeding has no `ignored_paths`, so its
+cache was built over serena's own language-server directory: `SERENA_HOME=.serena/home uvx --from
+serena-agent serena project index`. Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is blocked (measured: an update run tried and the harness refused it); the report
 line is the mechanism.
 

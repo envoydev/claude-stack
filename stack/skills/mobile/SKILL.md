@@ -9,6 +9,8 @@ Index mapping an Ionic/Capacitor mobile work area to the skill to load. Routes, 
 
 ## Area -> skill
 
+**Availability.** Every row below is per-project: load a skill only when it is in your skill list, and a name that is not there means this workspace has no such surface - work from this router and skip the row.
+
 | You are about to... | Load |
 |---|---|
 | follow house Ionic/Capacitor conventions - structure, lifecycle, permissions, plugin sourcing + wrapping | `ionic` |

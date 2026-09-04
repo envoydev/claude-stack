@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router, not here."
+description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router when installed, not here."
 ---
 
 # C# Conventions
@@ -197,7 +197,7 @@ Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and termina
 - `System.Text.Json` is the default. Newtonsoft.Json only for legacy compatibility or features missing from STJ (e.g. polymorphic serialization in older runtimes).
 - Configure `JsonSerializerOptions` once and reuse - never construct per call.
 - Naming policy: `JsonNamingPolicy.CamelCase` for external APIs unless a contract requires otherwise.
-- Reach for source-generated `JsonSerializerContext` on hot paths and under AOT - the source-gen mechanics and the wire-format choice (Protobuf / MessagePack vs JSON) are `dotnet-performance`.
+- Reach for source-generated `JsonSerializerContext` on hot paths and under AOT - the source-gen mechanics and the wire-format choice (Protobuf / MessagePack vs JSON) are `dotnet-performance`, when installed.
 - Never deserialize untrusted JSON without size and depth limits.
 
 ## Decoupling and DI lifetimes

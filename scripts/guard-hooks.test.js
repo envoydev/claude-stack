@@ -105,13 +105,30 @@ test('guard-stop-contract: one turn split across rows sharing a message.id is ju
 });
 
 test('guard-fresh-session-start: gates orchestration runs only, and only past the threshold', () => {
-  const hot = transcript('hot', [assistantRow('m6', 'ok', { cache_read_input_tokens: 300000 })]);
+  // 180k has never crossed 200k, so the window reads as the 200k tier -> the 150k floor applies
+  const hot = transcript('hot', [assistantRow('m6', 'ok', { cache_read_input_tokens: 180000 })]);
   const cold = transcript('cold', [assistantRow('m7', 'ok', { cache_read_input_tokens: 50000 })]);
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
   assert.equal(call('project-quality-loop', hot), 2, 'orchestration run on carried history');
   assert.equal(call('claude-stack:project-quality-loop', hot), 2, 'namespaced form');
   assert.equal(call('project-quality-loop', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot), 0, 'an ordinary skill is never gated');
+});
+
+// A flat 150k is ~75% of a 200k window but only 15% of a 1M one, which is where it fired on
+// nearly every ask. The trigger is now 40% of the window, floored at the measured 150k, and the
+// window is inferred from the largest per-message context the session has actually carried.
+test('guard-fresh-session-start: the threshold scales with the context window', () => {
+  const at = (name, ctx) => transcript(name, [assistantRow(name, 'ok', { cache_read_input_tokens: ctx })]);
+  const call = (tp, env) => runIn('guard-fresh-session-start.js',
+    { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp },
+    { env: { ...process.env, ...(env || {}) } }).status;
+
+  assert.equal(call(at('w-200k', 190000)), 2, '190k on a 200k window is past the 150k floor');
+  assert.equal(call(at('w-1m-300k', 300000)), 0, '300k on a 1M window is only 30% - not yet worth a fresh session');
+  assert.equal(call(at('w-1m-450k', 450000)), 2, '450k on a 1M window is past 40%');
+  assert.equal(call(at('w-1m-450k', 450000), { CLAUDE_STACK_FRESH_SESSION_PCT: '60' }), 0, 'the percentage is tunable');
+  assert.equal(call(at('w-1m-650k', 650000), { CLAUDE_STACK_FRESH_SESSION_PCT: '60' }), 2, '... and still fires at its own step');
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
@@ -299,26 +316,16 @@ test("guard-unapproved-dispatch: a stamp written before this session began is an
   assert.equal(disp(), 0, 'a stamp written during the session');
 });
 
-test('guard-stop-contract: the AskUserQuestion gate wants a fresh-session option past the threshold, recommended from the second ask', () => {
+test('guard-stop-contract: the AskUserQuestion gate never interrupts a response', () => {
+  // It used to deny an ask carrying no fresh-session option, which stopped Claude mid-response to
+  // rebuild the question. The offer moved to the Stop wiring, so every ask now passes.
   const logDir = fs.mkdtempSync(path.join(TMP, 'asklog-'));
-  const hot = transcript('ask-hot', [assistantRow('h1', 'ok', { cache_read_input_tokens: 160000, input_tokens: 5 })]);
-  const hot2 = transcript('ask-hot2', [assistantRow('h2', 'ok', { cache_read_input_tokens: 200000 })]);
-  const cold = transcript('ask-cold', [assistantRow('c1', 'ok', { cache_read_input_tokens: 140000 })]);
-  const nousage = transcript('ask-nousage', [{ type: 'assistant', message: { id: 'n1', content: [{ type: 'text', text: 'ok' }] } }]);
-  const ask = (tp, options, question = 'Which next?') => runIn('guard-stop-contract.js',
-    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions: [{ question, options }] } },
+  const hot = transcript('ask-hot', [assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
+  const ask = (options) => runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: hot, tool_input: { questions: [{ question: 'Which next?', options }] } },
     { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } }).status;
-  const plain = [{ label: 'Continue', description: 'keep going' }, { label: 'Stop', description: 'halt' }];
-  const fresh = [{ label: 'Continue', description: 'keep going' }, { label: 'Resume in a fresh session', description: 'cheaper' }];
-  const freshFirst = [{ label: 'Fresh session (Recommended)', description: 'resume from the plan' }, { label: 'Continue', description: 'x' }];
-  assert.equal(ask(cold, plain), 0, 'under the threshold nothing is required');
-  assert.equal(ask(nousage, plain), 0, 'no usage to judge - fail open');
-  assert.equal(ask(path.join(TMP, 'absent-ask.jsonl'), plain), 0, 'no transcript - fail open');
-  assert.equal(ask(hot, plain), 2, 'past the threshold with no fresh-session option');
-  assert.equal(ask(hot, fresh), 0, 'first qualifying ask: the option may be merely listed');
-  assert.equal(ask(hot, fresh), 2, 'second ask: listed but not recommended');
-  assert.equal(ask(hot, freshFirst), 0, 'recommended - passes');
-  assert.equal(ask(hot2, plain, 'Start a fresh session or continue here?'), 0, 'the question text itself may carry the offer');
+  assert.equal(ask([{ label: 'Continue', description: 'x' }, { label: 'Stop', description: 'y' }]), 0, 'no fresh option, deep into a 1M session - still passes');
+  assert.equal(ask([{ label: 'Fresh session', description: 'resume' }]), 0, 'and so does one that has it');
 });
 
 test('guard-stop-contract: prose offers, tool-call ends, continuations and unreadable turns', () => {
@@ -345,7 +352,7 @@ test('guard-stop-contract: last_assistant_message wins over a lagging transcript
 });
 
 test('guard-fresh-session-start: other tools, unreadable transcripts, the name field and the exact threshold', () => {
-  const hot = transcript('fs-hot', [assistantRow('m', 'ok', { cache_read_input_tokens: 300000 })]);
+  const hot = transcript('fs-hot', [assistantRow('m', 'ok', { cache_read_input_tokens: 190000 })]);   // 200k tier: past the 150k floor
   const call = (payload) => run('guard-fresh-session-start.js', payload);
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
@@ -374,4 +381,50 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
     { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_DOCS_PATH: 'docs' }), 0);
   assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
+});
+
+test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped seat', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat, prompt) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
+
+  // the measured case: a C# symbol hunt handed to the built-in Explore, which greps
+  assert.equal(disp('Explore', 'Find who calls SocketConnection.Send'), 2, 'callers question');
+  assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 2, 'declaration question');
+  assert.equal(disp('Explore', 'find the class SocketConnection'), 2, 'named-symbol hunt');
+  assert.equal(disp('general-purpose', 'list all usages of AddSocketServices'), 2, 'the generic seat too');
+
+  // a real sweep still passes - no stamp involved, so this is the no-flow path
+  assert.equal(disp('Explore', 'Map the auth module and report which files configure logging'), 0, 'a broad sweep');
+  assert.equal(disp('Explore', 'x'), 0, 'an empty brief');
+  assert.equal(disp('aspnet-verifier', 'who calls Foo'), 0, 'a named seat carries serena itself');
+});
+
+test('guard-stop-contract: the fresh-session offer lands at turn end, once per cost step', () => {
+  const logDir = fs.mkdtempSync(path.join(TMP, 'freshstop-'));
+  const at = (name, ctx, text) => transcript(name, [assistantRow(name, text || 'Applied the change; tests pass.', { cache_read_input_tokens: ctx })]);
+  const stop = (tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
+    { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } }).status;
+
+  assert.equal(stop(at('fs-cold', 300000)), 0, '300k on a 1M window is under 40% - nothing to offer');
+  const s1 = at('fs-hot', 500000);
+  assert.equal(stop(s1), 2, 'a CLEAN close past the trigger: held once so the user is asked');
+  assert.equal(stop(s1), 0, 'the same session again - already asked at this cost step');
+  assert.equal(stop(at('fs-hot', 700000)), 0, 'still under 1.5x of the last offer');
+  assert.equal(stop(at('fs-hot', 760000)), 2, 're-armed at the next cost step');
+  assert.equal(stop(at('fs-fresh', 900000, 'Done. Worth continuing in a fresh session from the plan file.')), 0,
+    'a turn that already made the offer is left alone');
+  assert.equal(stop(at('fs-other', 500000)), 2, 'another session is asked on its own first clean close');
+});
+
+test('guard-stop-contract: CLAUDE_STACK_FRESH_SESSION_PCT=0 turns the offer off', () => {
+  // A `parseInt(...) || 40` fallback used to swallow the 0 and re-enable what the user disabled.
+  const logDir = fs.mkdtempSync(path.join(TMP, 'freshoff-'));
+  const tp = transcript('fs-off', [assistantRow('fs-off', 'Applied the change; tests pass.', { cache_read_input_tokens: 900000 })]);
+  const stop = (pct) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
+    { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir, CLAUDE_STACK_FRESH_SESSION_PCT: pct } }).status;
+
+  assert.equal(stop('0'), 0, '0 disables the offer outright');
+  assert.equal(stop('40'), 2, 'and the same session still qualifies at the default');
 });

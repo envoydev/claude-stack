@@ -16,7 +16,7 @@ You are a read-only code-style characterizer. You analyze ONE language family pe
 
 ## Conventions
 - The config is the enforced source; read it, do not restate it line for line. Summarize the load-bearing rules (indentation, nullable/strictness, analyzer set, naming rules, import order) and spend your words on what the config CANNOT encode.
-- Load the house convention skill for your scope to judge divergence: `csharp` for C#, `typescript` + `angular-conventions` for TS/Angular, `angular-styling` for SCSS/CSS, `dotnet-wpf` for XAML, `database-conventions` for SQL. State where the project's real style differs from the house skill - the divergence is the useful signal, not a re-listing of the skill.
+- Load the house convention skill for your scope to judge divergence: `csharp` for C#, `typescript` + `angular-conventions` for TS/Angular, `angular-styling` for SCSS/CSS, `dotnet-wpf` for XAML, `database-conventions` for SQL. Load each only when it is in your skill list - a name that is not there means this project has no such surface, so work from what you carry and never call an absent skill. State where the project's real style differs from the house skill - the divergence is the useful signal, not a re-listing of the skill.
 - Locate representative code with serena (`mcp__serena__find_symbol`, `mcp__serena__find_referencing_symbols`, `mcp__serena__get_symbols_overview`) per `.claude/rules/baseline-navigation.md`; `Read` located ranges. Read enough real code to characterize the idiom, not one lucky file. **Hard cap: 2 locating passes.** If an idiom is still unclear after 2, record it as uncertain rather than reading on.
 
 ## Failure modes I hunt

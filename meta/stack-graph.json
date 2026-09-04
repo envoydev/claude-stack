@@ -346,7 +346,6 @@
       "suggests": [
         "angular-conventions",
         "angular-testing",
-        "dotnet-testing",
         "ionic",
         "typescript"
       ],

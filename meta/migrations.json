@@ -1,14 +1,29 @@
 {
-  "_comment": "Retirements of GENERATED per-project artifacts - the cleanup the upstream file compare can never name, because generated output was never a stack-shipped file. The update command applies these (with the same one-gate consent as its prune list) and validate flags them; detection is existence-based, never version math, so a leftover is caught no matter how old the install. Paths resolve against the install root (the project's .claude/ parent, or the account dir in global mode); a path that does not exist simply does not detect. Every entry names why the artifact is redundant and what regenerates its replacement.",
+  "_comment": "Retirements of GENERATED per-project artifacts - the cleanup the upstream file compare can never name, because generated output was never a stack-shipped file. The update command applies these (with the same one-gate consent as its prune list) and validate flags them; detection is existence-based, never version math, so a leftover is caught no matter how old the install. `unwire_settings_hook` names the hook file whose settings.json entry goes, optionally scoped to one matcher as `<file>::<Matcher>` when the file stays wired for its other events. Paths resolve against the install root (the project's .claude/ parent, or the account dir in global mode); a path that does not exist simply does not detect. Every entry names why the artifact is redundant and what regenerates its replacement.",
   "migrations": [
     {
       "id": "inject-code-style-hook-to-rule",
       "since": "0.2.2",
-      "detect": { "file_exists": ".claude/hooks/inject-code-style.js" },
-      "remove": [".claude/hooks/inject-code-style.js"],
+      "detect": {
+        "file_exists": ".claude/hooks/inject-code-style.js"
+      },
+      "remove": [
+        ".claude/hooks/inject-code-style.js"
+      ],
       "unwire_settings_hook": "inject-code-style.js",
       "why": "style delivery moved to the generated path-scoped project-code-style rule - the hook's injected context never reached subagent tool calls",
       "then": "re-run /project-code-style-analyzer so the replacement rule gets generated"
+    },
+    {
+      "id": "stop-contract-askuserquestion-observe-only",
+      "since": "0.2.35",
+      "detect": {
+        "settings_hook_wired": "guard-stop-contract.js::AskUserQuestion"
+      },
+      "remove": [],
+      "unwire_settings_hook": "guard-stop-contract.js::AskUserQuestion",
+      "why": "the fresh-session offer moved from a PreToolUse denial of the ask (which interrupted Claude mid-response) to the Stop event; the AskUserQuestion branch now only exits 0, so the wiring spends a node spawn per ask for nothing. The Stop wiring of the same file STAYS",
+      "then": "nothing - the Stop wiring already carries the offer"
     }
   ]
 }
