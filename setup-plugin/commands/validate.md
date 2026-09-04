@@ -57,7 +57,12 @@ The setup step-2 artifact scan:
 - `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
   `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
   `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) ->
-  `windows-service`; otherwise `console`.
+  `windows-service`; an EXECUTABLE carrying none of those markers (`<OutputType>Exe</OutputType>`, or
+  `Microsoft.NET.Sdk.Worker`) -> `console`. A class LIBRARY is never its own stack: `Microsoft.NET.Sdk`
+  with no `OutputType` (library is the default) - and a test project - is a surface of the app that
+  references it, so a WPF solution's own libraries stay `wpf` and add NO `console` (measured
+  mis-detection). With every .NET project a library, ask which surface they serve; never default to
+  `console`.
 - `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`.
   An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report
   `web-angular` for the same app; both only when a second, distinct non-Ionic Angular app exists.
