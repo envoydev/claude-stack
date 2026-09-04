@@ -70,7 +70,16 @@ const lineCountOf = (p) => {
 // `cat -n` dumps after a `cd` all resolved ENOENT -> lineCount 0 -> the guard silently passed
 // ~20k tokens of whole-file dumps; reproduced: the same payload blocks from the project root).
 const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].filter(Boolean);
-const resolveLineCount = (p) => {
+// Git Bash / MSYS spell a Windows path in POSIX MOUNT form (`/c/Users/...`, `/cygdrive/c/...`),
+// which node on win32 resolves against the CURRENT drive instead - the same falsehood that made
+// the cross-project guard block a session's own temp cleanup. Translate before resolving; off
+// Windows the spelling is a real POSIX path and is never touched.
+const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
+const nativePath = (p) => (process.platform === 'win32'
+  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
+  : String(p));
+const resolveLineCount = (raw) => {
+  const p = nativePath(raw);
   if (pathMod.isAbsolute(p)) return { lc: lineCountOf(p), resolved: true };
   for (const d of anchorDirs) {
     const abs = pathMod.join(d, p);
