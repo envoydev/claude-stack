@@ -1362,6 +1362,23 @@ function Set-HookSettings {
   # two entries - keying on the command alone dropped the second (measured: no install ever carried the Bash matcher).
   $have = @(foreach ($e in $pre) { foreach ($h in $e.hooks) { "$($e.matcher)::$($h.command)" } })
   $changed = $false
+  # Every hook here does <30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
+  # `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
+  # (guard-protected-force-push and guard-ungated-commit both shell out to git, and a stuck
+  # index.lock or a slow network mount hangs `git rev-parse`) freezes the session for ten minutes.
+  # 10s is ~400x the measured cost and still fails fast.
+  $HookTimeout = 10
+  # Backfill the timeout onto entries an earlier install wrote bare (they carry the 600s default).
+  foreach ($evEntries in $data.hooks.PSObject.Properties) {
+    foreach ($e in @($evEntries.Value)) {
+      foreach ($h in @($e.hooks)) {
+        if ($h.command -and $h.command -match 'claude/hooks/guard-|claude/hooks/instrument-') {
+          if (-not $h.PSObject.Properties['timeout']) { $h | Add-Member -NotePropertyName timeout -NotePropertyValue $HookTimeout; $changed = $true }
+          elseif ($h.timeout -ne $HookTimeout) { $h.timeout = $HookTimeout; $changed = $true }
+        }
+      }
+    }
+  }
   foreach ($entry in $Hooks) {
     $parts = $entry -split '::', 3
     $file = $parts[0]
@@ -1382,13 +1399,13 @@ function Set-HookSettings {
       $ev = @($data.hooks.$evName)
       $evHave = @(foreach ($e in $ev) { foreach ($h in $e.hooks) { $h.command } })
       if ($evHave -contains $cmd) { continue }
-      $ev += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $cmd }) }
+      $ev += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = $HookTimeout }) }
       $data.hooks.$evName = $ev
       $changed = $true
       continue
     }
     if ($have -contains "$matcher::$cmd") { continue }
-    $block = [pscustomobject]@{ matcher = $matcher; hooks = @([pscustomobject]@{ type = 'command'; command = $cmd }) }
+    $block = [pscustomobject]@{ matcher = $matcher; hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = $HookTimeout }) }
     $pre += $block
     $have += "$matcher::$cmd"
     $changed = $true

@@ -518,3 +518,54 @@ test('guard-cross-project-write: it fails open rather than guessing', () => {
   }).status;
   assert.equal(opened, 0, 'the escape hatch opens a second tree this project really owns');
 });
+
+// --- block telemetry: the block RATE is what says a gate earns its keep ----
+// Measured 2026-09-04: hooks cost 22-25ms, essentially all of it the node spawn, so their
+// runtime is not the risk - a FALSE block is, because it costs the denial text plus a whole
+// retried turn. Until this ledger existed the per-hook block count was unmeasurable.
+test('guard hooks record every block, and nothing on a pass', () => {
+  const proj = fs.mkdtempSync(path.join(TMP, 'blocklog-'));
+  const run = (hook, payload) => spawnSync(process.execPath, [path.join(HOOKS, hook)], {
+    input: JSON.stringify({ session_id: 'sess1', ...payload }),
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+  }).status;
+  const ledger = () => {
+    const f = path.join(proj, '.claude', 'docs', 'hook-blocks', 'sess1.jsonl');
+    return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+  };
+
+  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'npm test' } }), 0);
+  assert.deepEqual(ledger(), [], 'a pass writes nothing - the ledger is blocks only');
+
+  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }), 2);
+  assert.equal(run('guard-cross-project-write.js', { tool_name: 'Write', tool_input: { file_path: '/etc/elsewhere/x.ts' } }), 2);
+  assert.equal(run('guard-unapproved-dispatch.js', { tool_name: 'Task', tool_input: { subagent_type: 'Explore', prompt: 'who calls Foo' } }), 2);
+
+  const rows = ledger();
+  assert.equal(rows.length, 3, 'one row per block');
+  assert.deepEqual(rows.map((r) => r.hook).sort(),
+    ['guard-catastrophic-rm.js', 'guard-cross-project-write.js', 'guard-unapproved-dispatch.js']);
+  for (const r of rows) {
+    assert.match(r.ts, /^\d{4}-\d{2}-\d{2}T/, 'timestamped');
+    assert.ok(r.event, 'carries the event that was blocked');
+    assert.match(r.reason, /^Blocked|^Refusing/, 'carries the first line of the denial');
+    assert.ok(r.reason.length <= 200, 'reason is capped - a ledger is not a transcript');
+  }
+});
+
+test('block telemetry never interferes with the gate', () => {
+  // An unwritable docs root must not turn a block into a pass, nor a pass into an error.
+  const proj = fs.mkdtempSync(path.join(TMP, 'blockro-'));
+  fs.mkdirSync(path.join(proj, '.claude', 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.claude', 'docs', 'hook-blocks'), 'not a directory');
+  const run = (cmd) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+    input: JSON.stringify({ session_id: 's', tool_name: 'Bash', tool_input: { command: cmd } }),
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+  });
+  const blocked = run('rm -rf /');
+  assert.equal(blocked.status, 2, 'still blocks when the ledger cannot be written');
+  assert.match(blocked.stderr, /Refusing/, 'and the model still gets the reason');
+  assert.equal(run('npm test').status, 0, 'and an ordinary command still passes');
+});

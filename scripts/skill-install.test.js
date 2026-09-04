@@ -564,3 +564,37 @@ test('sh: a repo with no detectable sources is left to serena, never written hal
         fs.rmSync(repo, { recursive: true, force: true });
     }
 });
+
+test('sh wiring: every hook carries a timeout, and a bare legacy entry is backfilled', { skip: skipNoPython }, () =>
+{
+    // A `command` hook with no timeout takes Claude Code's 600s default. These hooks run in
+    // 22-25ms (measured), but two shell out to git - a stuck index.lock or a slow network mount
+    // would otherwise freeze the session for ten minutes on a 2ms gate.
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-timeout-'));
+    try
+    {
+        const settings = path.join(work, 'settings.json');
+        // an install from before the timeout existed: the entry is present, bare
+        fs.writeFileSync(settings, JSON.stringify({
+            hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"' }] }] },
+        }));
+        const res = spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7'], { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const all = Object.values(wired.hooks).flat().flatMap((e) => e.hooks);
+        assert.ok(all.length >= 10, `every hook wired (${all.length})`);
+        const bare = all.filter((h) => h.timeout === undefined);
+        assert.deepStrictEqual(bare, [], 'no entry may fall back to the 600s default');
+        assert.ok(all.every((h) => h.timeout === 10), 'all wired at 10s');
+        const legacy = all.filter((h) => h.command.includes('guard-catastrophic-rm.js'));
+        assert.strictEqual(legacy.length, 1, 'the pre-existing entry was backfilled, not duplicated');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});

@@ -54,6 +54,12 @@ change made only inside a consuming project is throwaway (see Invariants).
   for no depth; the short-answer contract mechanized after it failed as prose), all wired; plus `instrument-tool-usage.js`,
   wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
   settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
+  Every wired hook carries `"timeout": 10` in settings.json: they run in 22-25ms (measured, almost
+  all of it the node spawn), while a `command` hook with no timeout takes Claude Code's 600s default -
+  one stalled `git rev-parse` would freeze a session for ten minutes. Each guard also appends one row
+  per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl` (`analyze-usage.js --hook-blocks` tallies it):
+  a block costs its denial text plus the retried turn, so the block RATE is the number that says a
+  gate earns its keep, and the transcript alone records only which TOOL was denied, never which hook.
   Copied from the run's clone into a project's `.claude/hooks/` (wired with the placeholder quoted - `"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"` - so a project path with a space works; an update rewrites the older unquoted text in place); a hooks layer in the guided walk
   makes them selectable per install (a selection with no `hook` lines installs all ten).
 - `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET

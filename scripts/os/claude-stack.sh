@@ -1203,6 +1203,7 @@ for a in sys.argv[2:]:
     if a == "--MCP": bucket = mcp_names; continue
     if bucket is not None: bucket.append(a)
 specs = []
+HOOK_TIMEOUT = 10   # seconds - see the note below; the default would be 600
 for line in sys.stdin.read().splitlines():
     if not line.strip():
         continue
@@ -1213,6 +1214,11 @@ for line in sys.stdin.read().splitlines():
     # 'explicitly quote path placeholders'); `legacy` is the unquoted text earlier installs wired,
     # rewritten in place below so an update never leaves two entries for one hook.
     tail = (" " + args) if args else ""
+    # Every hook here does <30ms of work (measured: 22-25ms, almost all of it the node spawn), but
+    # a `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
+    # (guard-protected-force-push and guard-ungated-commit both shell out to git, and a stuck
+    # index.lock or a slow network mount hangs `git rev-parse`) freezes the session for ten minutes.
+    # 10s is ~400x the measured cost and still fails fast.
     cmd = '"$CLAUDE_PROJECT_DIR/.claude/hooks/' + file + '"' + tail
     legacy = "$CLAUDE_PROJECT_DIR/.claude/hooks/" + file + tail
     if file == "instrument-tool-usage.js":
@@ -1241,13 +1247,20 @@ for matcher, command, legacy in specs:
             for h in e.get("hooks", []):
                 if h.get("command") == legacy:
                     h["command"] = command; changed = True
+# Backfill the timeout onto entries an earlier install wrote bare (they carry the 600s default).
+_ours = {c for _, c, _ in specs} | {l for _, _, l in specs}
+for entries in data.get("hooks", {}).values():
+    for e in entries:
+        for h in e.get("hooks", []):
+            if h.get("command") in _ours and h.get("timeout") != HOOK_TIMEOUT:
+                h["timeout"] = HOOK_TIMEOUT; changed = True
 # "@<Event>" matchers wire a non-PreToolUse lifecycle event (e.g. @Stop - no matcher key there).
 for matcher, command, legacy in specs:
     if matcher.startswith("@"):
         ev = data.setdefault("hooks", {}).setdefault(matcher[1:], [])
         if any(h.get("command", "") == command for e in ev for h in e.get("hooks", [])):
             continue
-        ev.append({"hooks": [{"type": "command", "command": command}]})
+        ev.append({"hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT}]})
         changed = True
         continue
     cur = data.setdefault("hooks", {}).setdefault("PreToolUse", [])
@@ -1257,7 +1270,7 @@ for matcher, command, legacy in specs:
     have = {(e.get("matcher", ""), h.get("command", "")) for e in cur for h in e.get("hooks", [])}
     if (matcher, command) in have:
         continue
-    cur.append({"matcher": matcher, "hooks": [{"type": "command", "command": command}]})
+    cur.append({"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT}]})
     changed = True
 # permissions.deny: union-merge the secret-file Read blocks, preserving any the project already set.
 deny = data.setdefault("permissions", {}).setdefault("deny", [])

@@ -2836,6 +2836,76 @@
           "marker": "your skill list has"
         }
       ]
+    },
+    "hook-block-telemetry": {
+      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in all nine hooks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
+      "owner": {
+        "file": "stack/hooks/guard-cross-project-write.js",
+        "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-answer-length.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-catastrophic-rm.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-fresh-session-start.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-protected-force-push.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-read-whole-file.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-unapproved-dispatch.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-ungated-commit.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        }
+      ]
+    },
+    "optional-mcp-absence": {
+      "_note": "An optional MCP (playwright, chrome-devtools, appium-mcp - the baseline comments out the ones a project does not need) is simply absent from a seat tools list when the project never registered it: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat granted one restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason.",
+      "owner": {
+        "file": "stack/agents/integration-reviewer.md",
+        "marker": "else record the E2E path as UNVERIFIED with the reason"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "report the live-behavior checks as UNVERIFIED with the reason"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "say plainly that the browser evidence was not obtainable here"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "a gate that cannot drive the native path says so, it never greens it"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "name the untested native flows in the handoff note rather than claiming them"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "else report the interaction and a11y paths as UNVERIFIED with the reason"
+        }
+      ]
     }
   }
 }
