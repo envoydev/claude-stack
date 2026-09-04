@@ -9,7 +9,7 @@ Loaded from `dotnet-testing` when reviewing test quality ('are these tests any g
 - **Tautological / self-referential assertion** - asserts an identity round-trip (`Assert.Equal(input, Parse(input.ToString()))`) or a field against itself (`Assert.Equal(dto.Name, dto.Name)`). It can only fail if the round-trip breaks; it never proves a transformation happened.
 - **Missing `await` on an async assertion** - an `async Task` test calling `Assert.ThrowsAsync(...)` (or a `.resolves`-style assertion) without `await`; it passes silently even when the assertion would fail.
 - **Swallowed exception / assert-only-in-catch** - `try { Act(); } catch { }`, or `catch (Exception ex) { Assert.Fail(ex.Message); }`; both pass when no exception is thrown even if the result is wrong. Use `Assert.Throws` / `Assert.ThrowsAsync`.
-- **Commented-out or disabled assertions** - the test still runs and 'passes', giving the illusion of coverage. (This is coverage-gaming; reject it in review - see the reward-hacking list in `dotnet-code-quality`.)
+- **Commented-out or disabled assertions** - the test still runs and 'passes', giving the illusion of coverage. (This is coverage-gaming; reject it in review - it sits on the .NET code-quality skill's reward-hacking list.)
 
 ## Two deeper passes
 
@@ -25,4 +25,4 @@ Coverage proves a line *ran*; it does not prove a test would *fail* if that line
 
 - **Scope it** - run on critical / high-risk projects, never blindly across the whole solution. It is expensive and amplifies flaky or slow suites, so keep it off the fast PR path and stabilize the suite first.
 - Install as a local tool (`dotnet new tool-manifest`; `dotnet tool install dotnet-stryker`) for local-and-CI parity, then `dotnet stryker` on the target project.
-- Read the mutation score as a *test-quality* signal interpreted with judgment, not a vanity metric. It complements line/branch coverage (the skill's §Coverage) and the risk hotspots in `dotnet-code-quality` (its `references/crap-analysis.md`, when installed) - all three answer different questions.
+- Read the mutation score as a *test-quality* signal interpreted with judgment, not a vanity metric. It complements line/branch coverage (the skill's §Coverage) and the CRAP-score risk hotspots the .NET code-quality skill ranks in its `references/crap-analysis.md` - all three answer different questions.

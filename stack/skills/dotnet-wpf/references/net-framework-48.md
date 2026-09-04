@@ -58,7 +58,7 @@ unconditionally, and that library ports to .NET 8/9 unchanged.
 
 C# 7.3 ceiling / `Nullable` / `PolySharp` / records -> `csharp`; SDK-style + PackageReference conversion
 -> `dotnet-project-setup`; TLS, `BinaryFormatter`, code signing, dependency scanning -> `dotnet-security`;
-DPAPI `ProtectedData` for local secrets -> `dotnet-cryptography`; the migration path (portable .NET
+DPAPI `ProtectedData` for local secrets -> the cryptography-primitives skill, where installed; the migration path (portable .NET
 Standard 2.0 libraries, `WebBrowser` -> WebView2, the dead-ends to avoid) -> `dotnet-migrate`; test
 framework and structure -> `dotnet-testing`. For WPF UI automation use FlaUI (UIA3 for WPF); WinAppDriver
 is abandoned. WPF virtualization, weak events, and `INotifyDataErrorInfo` validation are SKILL.md's,

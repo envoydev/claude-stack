@@ -177,6 +177,8 @@ function buildStackGraph()
             }
         }
 
+        const fmSuggests = (String((/^suggests:\s*\n((?:\s*-\s*\S+\s*\n)+)/m.exec(text) || [])[1] || '')
+            .match(/-\s*(\S+)/g) || []).map(l => l.replace(/-\s*/, '')).filter(s => cat.skills.has(s));
         const c = categorize(backtickedTokens(bodyAfterFrontmatter(text)), cat);
         const plugins = [...new Set([...fmPlugins, ...c.plugins])].sort();
         // A skill mentioned only in the BODY is a conditional load ('load X when the
@@ -190,9 +192,13 @@ function buildStackGraph()
         // are body-sourced - unaffected by this.
         if (source !== 'frontmatter' && c.skills.length) source = 'body';
         const skills = source === 'frontmatter' ? declared : [];
-        const suggests = source === 'frontmatter'
-            ? c.skills.filter(s => !declared.includes(s))
-            : (source === 'body' ? c.skills : []);
+        // A DECLARED `suggests:` list is the durable half. Body mentions used to be the only
+        // source, which coupled the suggestion graph to prose: the moment a brief stopped
+        // NAMING an on-demand skill (it describes the capability instead, so a trimmed install
+        // still reads correctly) the edge vanished and the guided walk stopped offering it -
+        // 83 of 157 edges in one pass. Declared beats inferred; body mentions still feed in.
+        const suggests = new Set(fmSuggests.filter(s => !declared.includes(s)));
+        for (const s of (source === 'frontmatter' ? c.skills.filter(x => !declared.includes(x)) : (source === 'body' ? c.skills : []))) suggests.add(s);
 
         graph.agents[name] = {
             skills: [...skills].sort(),

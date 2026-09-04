@@ -257,6 +257,12 @@
       "mcps": [],
       "plugins": []
     },
+    "project-diagnose-failure": {
+      "mcps": [],
+      "plugins": [
+        "superpowers"
+      ]
+    },
     "project-implementer": {
       "mcps": [],
       "plugins": [
@@ -346,7 +352,6 @@
       "suggests": [
         "angular-conventions",
         "angular-testing",
-        "dotnet-testing",
         "ionic",
         "typescript"
       ],
@@ -500,9 +505,10 @@
         "csharp",
         "database-conventions",
         "dotnet-wpf",
+        "javascript",
         "typescript"
       ],
-      "skillsSource": "body",
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -715,6 +721,7 @@
     "integration-reviewer": {
       "skills": [],
       "suggests": [
+        "angular-conventions",
         "angular-testing",
         "database-conventions",
         "dotnet-code-quality",
@@ -722,7 +729,8 @@
         "dotnet-testing",
         "dotnet-web-backend",
         "project-solve-cross-task",
-        "ts-js-testing"
+        "ts-js-testing",
+        "typescript"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -841,7 +849,7 @@
         "mobile",
         "typescript"
       ],
-      "skillsSource": "body",
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": [
@@ -855,7 +863,7 @@
         "dotnet-testing",
         "ts-js-testing"
       ],
-      "skillsSource": "body",
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -1207,7 +1215,9 @@
     "baseline-quality-gates": {
       "skills": [],
       "agents": [],
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": [
         "superpowers"
       ],
@@ -1374,6 +1384,7 @@
     "hooks": [
       "guard-answer-length",
       "guard-catastrophic-rm",
+      "guard-cross-project-write",
       "guard-fresh-session-start",
       "guard-protected-force-push",
       "guard-read-whole-file",

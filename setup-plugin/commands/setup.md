@@ -93,11 +93,11 @@ The full release catalog in one table - the generator `project-*` skills and eve
 
 ## 6. Hooks
 
-Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = all nine: the eight always-on guards plus the env-gated `instrument-tool-usage` (wired like the guards, but inert until `CLAUDE_STACK_INSTRUMENT` flips to `1` - so keeping it costs nothing idle, and dropping it leaves the install unable to record a measured run without a manual re-wire). The installer wires the selected hooks into `.claude/settings.json` on install.
+Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = all ten: the nine always-on guards plus the env-gated `instrument-tool-usage` (wired like the guards, but inert until `CLAUDE_STACK_INSTRUMENT` flips to `1` - so keeping it costs nothing idle, and dropping it leaves the install unable to record a measured run without a manual re-wire). The installer wires the selected hooks into `.claude/settings.json` on install.
 
 ## 7. MCPs
 
-Locked = the servers the kept selection pulls (typically just `serena`, via `baseline-navigation`); recommended = the core four (`serena`, `context7`, `memory`, `playwright`) plus the confirmed stacks' seeds (browser/mobile servers). Everything else - `sentry` included - is a free add for projects that actually use it; note next to `sentry` that it needs two values in the ACCOUNT settings.json env (below). After the round, and only if context7 stayed selected, ask its transport here (`remote` default / `local`); and only if sentry stayed selected, run the **sentry environment plan** - ONE question asking the slug (`SENTRY_SLUG`: `<org>` or `<org>/<project>`, Sentry's recommended form; an EU-region org - its DSN reads `ingest.de.sentry.io` - must name it; required, re-ask on empty) together with the auth mode (`token`, default and recommended, vs `oauth` - browser consent, no key), and in the same screen TELL the user to add `SENTRY_ACCESS_TOKEN` (a personal or org API token: Sentry -> Settings -> Account -> API -> Personal Tokens) to the ACCOUNT `settings.json` `env` themselves - the file is `~/.claude/settings.json`, or `~/.claude-<space>/settings.json` under a space - never paste the token into the chat, and never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured). Show the exact snippet:
+Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`); recommended = the other two of the core four (`memory`, `playwright`) plus the confirmed stacks' seeds (browser/mobile servers). Everything else - `sentry` included - is a free add for projects that actually use it; note next to `sentry` that it needs two values in the ACCOUNT settings.json env (below). After the round, and only if context7 stayed selected, ask its transport here (`remote` default / `local`); and only if sentry stayed selected, run the **sentry environment plan** - ONE question asking the slug (`SENTRY_SLUG`: `<org>` or `<org>/<project>`, Sentry's recommended form; an EU-region org - its DSN reads `ingest.de.sentry.io` - must name it; required, re-ask on empty) together with the auth mode (`token`, default and recommended, vs `oauth` - browser consent, no key), and in the same screen TELL the user to add `SENTRY_ACCESS_TOKEN` (a personal or org API token: Sentry -> Settings -> Account -> API -> Personal Tokens) to the ACCOUNT `settings.json` `env` themselves - the file is `~/.claude/settings.json`, or `~/.claude-<space>/settings.json` under a space - never paste the token into the chat, and never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured). Show the exact snippet:
 
 ```json
 { "env": { "SENTRY_SLUG": "<org>[/<project>]", "SENTRY_ACCESS_TOKEN": "<token>" } }
@@ -148,7 +148,16 @@ Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install 
    3. `/project-related-context <sibling> ...` - OPTIONAL, and only when this project actually has sibling repos: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`, `backend - ../server`); it never scans on its own. A standalone repo skips it - not a gap. The skill is opt-in, so when it is absent say so in one conditional line ('sibling repos? add `project-related-context` via `/claude-stack:configure`') rather than the flat not-installed line the other captures get.
    4. `/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory including anything the captures above added.
 
-3. **serena, honestly per language.** Recommend serena symbol nav only where it actually holds: TypeScript / Angular / mixed web projects - yes, it is the nav tool. On C#, serena's Roslyn-backed nav is unreliable - navigation belongs to the `csharp-lsp` plugin there, and saying otherwise sends the user down a dead end. serena still earns its seat in a C# project as the per-project memory bus (the inter-agent handoff), so it stays installed either way. State which case THIS project is - one line, no hedging.
+3. **serena - one index step, then the honesty note.** The installer already seeded
+`.serena/project.yml` (detected `language_servers`, plus `ignored_paths` for `.serena` / `.claude` / `.playwright` -
+without which serena's own 327MB language-server directory gets indexed as if it were source:
+measured 126 files attempted, 112 failed, all inside `.serena/home`). Tell the user to build the
+index ONCE - `SERENA_HOME=.serena/home uvx --from serena-agent serena project index` - and that it
+is worth re-running after a large refactor or a branch switch that moves many files. Then state
+which case THIS project is, in one line: on TypeScript / Angular / mixed web, serena IS the nav
+tool; on C#, nav depends on the Roslyn server starting (the seeded language_servers entry is what
+makes it start at all), and where it still stalls on a large solution the `csharp-lsp` plugin owns
+navigation - serena stays either way as the per-project memory bus.
 
 ## Clean up the temp dir - ALWAYS
 

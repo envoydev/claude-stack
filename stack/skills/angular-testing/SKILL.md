@@ -12,7 +12,8 @@ is how to write tests worth counting and which code coverage cannot meaningfully
 Ionic/Capacitor apps share everything here; their extra layer - testing the native seams (the
 plugin's typed wrapper mocked, the web-fallback and permission-denied paths asserted, the honest
 jsdom boundary) - lives in the `ionic` skill's 'Testing the native seams' section, and real-device
-E2E is the appium MCP's job, not a unit suite's.
+E2E belongs to the MCP that drives the native mobile shell, not a unit suite - with no such server
+registered, report those flows as UNVERIFIED rather than faking them in jsdom.
 
 ## Runner routing
 

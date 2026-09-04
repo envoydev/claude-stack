@@ -11,7 +11,7 @@ This skill captures the **approach**, not a single library. The principles below
 
 ## Test strategy by responsibility (architecture-neutral)
 
-The strategy keys off the *role* a unit plays, not a layer name - so it maps onto whatever architecture the project picked. `dotnet-web-backend` owns the load-exactly-one-architecture rule but mandates no specific one. In a layered (Clean / Onion) project the roles below are the layers; in a vertical-slice / modular project they are the parts of a feature folder (the domain types, the handler / endpoint logic, the infrastructure wiring) - test each part the same way regardless of where it physically lives.
+The strategy keys off the *role* a unit plays, not a layer name - so it maps onto whatever architecture the project picked (the pick-one rule lives with the architecture decision, not here). In a layered (Clean / Onion) project the roles below are the layers; in a vertical-slice / modular project they are the parts of a feature folder (the domain types, the handler / endpoint logic, the infrastructure wiring) - test each part the same way regardless of where it physically lives.
 
 - **Domain / business rules** - pure unit tests, no substitutes. Cover entities, value objects, domain services, domain events, invariants, guard clauses, factory methods, and every branch of a business rule including exception paths - this is the code where an uncovered branch is never acceptable.
 - **Use cases / handlers / orchestration** (the application logic of a slice or layer) - unit tests with all ports and abstractions substituted. Cover success paths, validation failures, exception handling, and orchestration branches.
@@ -89,7 +89,7 @@ Snapshot / Verify assertions - approving serialized output instead of hand-writt
 
 - **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
 - Reports via `ReportGenerator` for HTML / Cobertura / OpenCover formats.
-- Pair with `dotnet-code-quality`'s `references/crap-analysis.md` (when installed) for CRAP-score risk hotspots.
+- For CRAP-score risk hotspots (cyclomatic complexity weighed against coverage), pair the report with the .NET code-quality skill's `references/crap-analysis.md`; with no such skill installed, rank by uncovered branches alone.
 
 ## Test project conventions
 
@@ -124,7 +124,7 @@ The rules above are for *writing* tests; reviewing an existing suite is its own 
 
 ## Routing (cross-skill)
 
-A row whose skill is absent means the area is absent here, not a broken pointer.
+**Availability** - a row whose skill is not in your skill list means the area is absent here, not a broken pointer.
 
 - Performance microbenchmarks -> `dotnet-diagnostics` (its `references/microbenchmarking.md`); crash / hang dump capture -> `dotnet-diagnostics` (its `references/dumps.md`).
 - Reward-hacking / coverage-gaming check before 'done' -> `dotnet-code-quality`; CRAP-score risk hotspots -> its `references/crap-analysis.md` (paired at §Coverage above).

@@ -15,8 +15,8 @@ Plain-JavaScript projects (`.js`/`.mjs`, with or without JSDoc/checkJs) share ev
 the published-type-surface section is the only TS-only part; a checked-JS project keeps
 `tsc --noEmit` in CI the same way. Framework surfaces have their own hubs: Angular (and Ionic)
 suites are `angular-testing`'s, .NET is `dotnet-testing`'s. Browser extensions share everything here for their chrome-free logic; the
-extension-specific seams - the mocked `chrome.*` API and Playwright persistent-context E2E - live
-in the `browser-extension` skill's `references/tooling-and-testing.md` (that skill installs in extension projects).
+extension-specific seams - the mocked `chrome.*` API and Playwright persistent-context E2E - are
+the `browser-extension` skill's ground.
 
 ## Runner routing
 
@@ -39,8 +39,8 @@ migrate a runner inside a task; a migration is its own user-approved change.
 - **DOM-adjacent code** - jsdom/happy-dom covers DOM structure and synchronous events; assert
   through user-facing queries (Testing Library where present) rather than implementation
   internals. Be honest about the boundary: no layout, no navigation, no real focus or scroll -
-  a behavior only a browser proves moves to a Playwright E2E (or the playwright MCP
-  interactively), never into deeper jsdom mocking.
+  a behavior only a browser proves moves to a Playwright E2E (or, interactively, the MCP that
+  drives a real browser, when one is registered), never into deeper jsdom mocking.
 - **Node-runtime code (fs, env, processes)** - real temp dirs (`fs.mkdtemp`) beat fs mocks;
   `memfs` where the workspace already uses it. `vi.stubEnv` (restored per test) over raw
   `process.env` writes; child-process work goes behind an injected exec seam like any boundary.

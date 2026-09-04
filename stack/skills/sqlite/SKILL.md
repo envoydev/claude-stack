@@ -5,12 +5,12 @@ description: "SQLite engine specialist - the SQLite-specific delta on top of the
 
 # sqlite (engine specialist)
 
-The SQLite-specific layer. **Cross-engine conventions live in `database-conventions` - load that hub first and do not restate it.** The EF Core side lives in `dotnet-data-access`. This is only what changes *because the engine is SQLite*.
+The SQLite-specific layer. **Cross-engine conventions - schema design, migrations, indexing and transaction rules, connection handling - are the cross-engine database hub's; load that hub first where the install has it, and do not restate it.** The EF Core side is the ORM-side skill's (EF Core / Dapper). This is only what changes *because the engine is SQLite*, and stands on its own when the hub is absent.
 
 ## When it fits
 
 - Good: embedded / desktop / mobile app storage, single-node edge, a local cache, and test databases. It is a file, not a server.
-- Bad: high-write-concurrency multi-client web. SQLite allows **one writer at a time** for the whole database - reach for `postgres` there.
+- Bad: high-write-concurrency multi-client web. SQLite allows **one writer at a time** for the whole database - reach for PostgreSQL there (and the house PostgreSQL skill, when your skill list has one).
 
 ## Concurrency
 

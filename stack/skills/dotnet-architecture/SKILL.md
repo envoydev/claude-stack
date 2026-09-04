@@ -46,4 +46,4 @@ Evolve from vertical slice to clean architecture only when slices start sharing 
 - Dependencies point inward. The domain - or a feature's core logic - depends on nothing external: no EF, HTTP, or framework types.
 - Infrastructure (EF Core, external APIs, email, storage) sits behind an abstraction the inner layer defines and the outer layer implements. Swap the implementation without touching business logic.
 - The composition root (`Program.cs`) creates infrastructure and passes it down; inner code never reaches for global state or a service locator.
-- **This is a rule only if it's enforced.** Encode dependency-direction, no-layer-skipping, and slice/module isolation as fitness tests (`dotnet-architecture-tests`) or it erodes one stray `using` at a time.
+- **This is a rule only if it's enforced.** Encode dependency-direction, no-layer-skipping, and slice/module isolation as fitness tests, or it erodes one stray `using` at a time. The .NET architecture-test skill (NetArchTest / ArchUnitNET rules that fail the build on a crossed boundary) owns the how; with none installed, the rule lives in review only.

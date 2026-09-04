@@ -1,7 +1,8 @@
 # CLAUDE.md (stack-neutral template)
 
-<!-- Fill-in block - delete once done. Copy this file into a new project as .claude/CLAUDE.md (auto-loaded,
-     same as a root CLAUDE.md; keeps the repo root tidy). To keep it committed, the project's .gitignore must
+<!-- Fill-in block - delete once done. The installer seeds this file as .claude/CLAUDE.md when the project has
+     none (auto-loaded, same as a root CLAUDE.md; keeps the repo root tidy) - copy it there by hand only when
+     that seed step was skipped. To keep it committed, the project's .gitignore must
      ignore the .claude contents but track this file: '.claude/*' then '!.claude/CLAUDE.md' (git cannot
      re-include a file when its parent dir is wholesale-ignored via '.claude/'). Then:
 1. Write the project top from the authoring outline in the comment below - replace the H1 title
@@ -17,7 +18,8 @@ If the repo's canonical agent instructions already live in an AGENTS.md (for oth
 tooling), keep this file thin and import it with @AGENTS.md instead of filling the same
 content twice - but never @import anything under .claude/rules/: those files auto-load,
 so an import pays for them twice.
-This file auto-injects every session and into subagents - keep it lean and route work by an
+This file auto-injects every session and into every custom subagent (the built-in Explore / Plan
+seats load none of it) - keep it lean and route work by an
 observable trigger (an artifact, a command, a checkpoint). The cross-project working conventions
 are NOT here: they load from the always-on baseline rules in .claude/rules/ (installer-managed,
 refreshed on update) - never restate them in this file. (HTML comment: stripped from injection,
@@ -41,7 +43,7 @@ can invoke it - a model Skill call is refused, so name the command to the user r
 | `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_DOCS_PATH` env), what lives under it, the capture-doc lifecycle |
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
-| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs, else delete this row) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
 
 <!-- Authoring outline - write these sections into the project-specific top of this file

@@ -14,6 +14,7 @@
 //   node scripts/analyze-usage.js <session.jsonl>                  # full report for one session
 //   node scripts/analyze-usage.js <projects-dir>                   # one-line rollup per session
 //   node scripts/analyze-usage.js <session.jsonl> --hook-log <f>   # join a <docs-path>/tools-usage/<sid>.jsonl ledger
+//   node scripts/analyze-usage.js <session.jsonl> --hook-blocks <d> # per-HOOK block counts from <docs-path>/hook-blocks/
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
@@ -612,6 +613,48 @@ function computeAggregates(main, agents) {
   return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools };
 }
 
+// ---------- hook-block ledger (which GUARD fired, not just which tool was denied) ----------
+// The transcript shows a denied tool call, never WHICH hook denied it, so the per-hook block rate -
+// the number that says whether a gate is earning its keep or misfiring - was unmeasurable. The
+// guard hooks now append one row per block to <docs-path>/hook-blocks/<session>.jsonl; this reads
+// them. A block costs the denial text plus the retried turn, so the count IS the cost signal.
+function readBlockLedger(target) {
+  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null };
+  if (!target) return out;
+  let files = [];
+  try {
+    files = fs.statSync(target).isDirectory()
+      ? fs.readdirSync(target).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(target, f))
+      : [target];
+  } catch { return out; }
+  // Read these SYNCHRONOUSLY - readJsonl above is stream-based and resolves a Promise, so a
+  // sync caller would return an empty tally before the first line arrived. These ledgers are one
+  // short row per block, so a plain readFileSync is both correct and cheap.
+  for (const f of files) {
+    let lines = [];
+    try { lines = fs.readFileSync(f, 'utf8').split('\n'); } catch { continue; }
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      if (!o || !o.hook) continue;
+      out.rows += 1;
+      const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
+      e.blocks += 1;
+      if (o.event) e.events.add(o.event);
+      if (o.tool) e.tools.add(o.tool);   // rows from before the column exist without it - the cell stays empty
+      const r = String(o.reason || '').slice(0, 90);
+      e.reasons.set(r, (e.reasons.get(r) || 0) + 1);
+      if (o.ts) {
+        if (!out.firstTs || o.ts < out.firstTs) out.firstTs = o.ts;
+        if (!out.lastTs || o.ts > out.lastTs) out.lastTs = o.ts;
+      }
+    }
+  }
+
+  return out;
+}
+
 function hookJoinStats(main, agents, hookLog, tools) {
   const trTools = Object.values(tools).reduce((n, t) => n + t.calls, 0);
   if (!hookLog.firstTs || !hookLog.lastTs) return { trTools, coverage: null };
@@ -634,7 +677,7 @@ function hookJoinStats(main, agents, hookLog, tools) {
   return { trTools, coverage: { inWin, pct, outside: trTools - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows) } };
 }
 
-function printReport(main, agents, hookLog, window) {
+function printReport(main, agents, hookLog, window, blockLedger) {
   const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
   console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.ccVersion ? `  Claude Code ${main.ccVersion}` : ''}`);
   if (main.clearTs && main.clearTs > main.firstTs) {
@@ -736,6 +779,17 @@ function printReport(main, agents, hookLog, window) {
     for (const [name, t] of shown) {
       console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.hookBlocks || '', 8)}`);
     }
+  }
+
+  if (blockLedger && blockLedger.rows) {
+    console.log('\nHOOK BLOCKS (which guard fired; a block costs its denial text plus the retried turn)');
+    console.log(`  ${pad('hook', 32)} ${rpad('blocks', 6)} ${rpad('event / tool', 22)} top reason`);
+    for (const [h, e] of Object.entries(blockLedger.byHook).sort((a, b) => b[1].blocks - a[1].blocks)) {
+      const top = [...e.reasons.entries()].sort((a, b) => b[1] - a[1])[0];
+      const where = [...e.events].join(',') + (e.tools.size ? ' / ' + [...e.tools].join(',') : '');
+      console.log(`  ${pad(h, 32)} ${rpad(e.blocks, 6)} ${rpad(where, 22)} ${(top && top[0]) || ''}`);
+    }
+    console.log(`  ${blockLedger.rows} block(s) total - review any hook whose top reason looks like honest work being stopped.`);
   }
 
   if (main.spikes.length) {
@@ -916,11 +970,12 @@ function printMarkdown(main, agents, hookLog, window) {
 async function main() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
-  const flagValIdx = new Set(['--hook-log', '--from', '--to', '--docs-root'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
+  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   const asJson = args.includes('--json');
   const asMd = args.includes('--report-md');
   const hookFile = flagVal('--hook-log');
+  const blockDir = flagVal('--hook-blocks');
   const docsRoot = flagVal('--docs-root');
   if (docsRoot) docsPrefixes.push(docsRoot.endsWith('/') ? docsRoot : docsRoot + '/');
   const fromStr = flagVal('--from'), toStr = flagVal('--to');
@@ -928,7 +983,7 @@ async function main() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--docs-root <path>] [--json] [--report-md]');
+    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--json] [--report-md]');
     process.exit(1);
   }
 
@@ -963,7 +1018,7 @@ async function main() {
     printMarkdown(mainStats, agents, hookLog, window);
     return;
   }
-  printReport(mainStats, agents, hookLog, window);
+  printReport(mainStats, agents, hookLog, window, readBlockLedger(blockDir));
 }
 
 main().catch((e) => { console.error(e.message); process.exit(1); });

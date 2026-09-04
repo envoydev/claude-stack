@@ -74,7 +74,7 @@ A build-time or analyzer package should not flow to projects that reference your
 <PackageReference Include="SomeAnalyzer" PrivateAssets="all" />
 ```
 
-Analyzer selection and config are `dotnet-code-quality`; SourceLink and packaging are `devops`.
+Analyzer selection and config are `dotnet-code-quality`; SourceLink and packaging are the CI-and-deploy skill's.
 
 ## Escape hatch - VersionOverride
 

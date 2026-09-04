@@ -360,3 +360,275 @@ test('sh update --installed-only with no hooks on disk completes under the syste
         fs.rmSync(work, { recursive: true, force: true });
     }
 });
+
+// The update fast path used to filter PLUGINS to empty (no 'plugin' lines were ever derived), so
+// `claude plugin update` ran on nothing and installed plugins silently stayed on old versions.
+// Pin that the derived plan carries the stack plugins, and that a missing CLI still yields them.
+test('sh update --installed-only carries plugins into the refresh plan', () => {
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-plug-'));
+    try
+    {
+        const skill = path.join(work, '.claude', 'skills', 'csharp');
+        fs.mkdirSync(skill, { recursive: true });
+        fs.copyFileSync(path.join(ROOT, 'stack', 'skills', 'csharp', 'SKILL.md'), path.join(skill, 'SKILL.md'));
+        fs.writeFileSync(path.join(work, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {} } }));
+        // an empty PATH dir stands in for 'no claude CLI reachable' - the manifest fallback path
+        const nobin = path.join(work, 'nobin');
+        fs.mkdirSync(nobin);
+        const bash = fs.existsSync('/bin/bash') ? '/bin/bash' : 'bash';
+        const res = spawnSync(bash, [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan'], {
+            cwd: work,
+            encoding: 'utf8',
+            // node stays reachable (the .mcp.json read needs it); `claude` does not
+            env: { ...process.env, PATH: `${nobin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, STACK_SKILLS_REPO: SRC_REPO, HOME: work },
+        });
+        assert.strictEqual(res.status, 0, `exit 0: ${res.stderr}`);
+        const plan = (res.stdout.split('\n').find((l) => l.startsWith('plan plugins:')) || '');
+        assert.match(plan, /superpowers/, 'the plan names the stack plugins even with no CLI to list them');
+        assert.match(plan, /claude-hud/, 'including the user-scoped one');
+        const mcps = (res.stdout.split('\n').find((l) => l.startsWith('plan mcps:')) || '');
+        assert.match(mcps, /serena/, 'mcps still come from .mcp.json');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// serena project.yml seeding - the installers' only write into a project's own
+// tooling config, and the one place a wrong shape costs the user their symbol
+// navigation. Both twins are exercised through the SAME cases, in isolation:
+// the serena block is extracted from each script and called against a scratch
+// repo, so no network, no CLI and no full install run.
+// ---------------------------------------------------------------------------
+function seedRepo(files)
+{
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'serena-seed-'));
+    execFileSync('git', ['init', '-q', work]);
+    for (const [rel, body] of Object.entries(files))
+    {
+        const dest = path.join(work, rel);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, body);
+    }
+
+    return work;
+}
+
+function runSeedSh(repo)
+{
+    const src = fs.readFileSync(SH, 'utf8').split('\n');
+    const from = src.findIndex((l) => l.startsWith('_serena_ignores='));
+    const to = src.findIndex((l, i) => i > from && l.startsWith('# INSTALL STAMP'));
+    assert.ok(from > 0 && to > from, 'the serena block is still delimited as the extractor expects');
+    const fns = path.join(repo, 'fns.sh');
+    fs.writeFileSync(fns, src.slice(from, to - 1).join('\n'));
+    const harness = path.join(repo, 'harness.sh');
+    fs.writeFileSync(harness, `log() { echo "LOG: $*"; }\nMCPS=("serena|-- x")\n. "${fns}"\nseed_serena_project\n`);
+    const bash = fs.existsSync('/bin/bash') ? '/bin/bash' : 'bash';
+    const res = spawnSync(bash, [harness], { cwd: repo, encoding: 'utf8' });
+    assert.strictEqual(res.status, 0, `seed exit 0: ${res.stderr}`);
+
+    return res.stdout;
+}
+
+function runSeedPs1(repo)
+{
+    const src = fs.readFileSync(PS1, 'utf8').split('\n');
+    const from = src.findIndex((l) => l.startsWith('$script:SerenaIgnores'));
+    const to = src.findIndex((l, i) => i > from && l.startsWith('# INSTALL STAMP'));
+    assert.ok(from > 0 && to > from, 'the serena block is still delimited as the extractor expects');
+    const fns = path.join(repo, 'fns.ps1');
+    fs.writeFileSync(fns, src.slice(from, to - 1).join('\n'));
+    const harness = path.join(repo, 'harness.ps1');
+    fs.writeFileSync(harness, [
+        'function Log { param([string]$m) Write-Host "LOG: $m" }',
+        `function Get-RepoRoot { return ${JSON.stringify(repo)} }`,
+        "$Mcps = @('serena|-- x')",
+        `. ${JSON.stringify(fns)}`,
+        'New-SerenaProject',
+    ].join('\n'));
+    const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
+    assert.strictEqual(res.status, 0, `seed exit 0: ${res.stderr}`);
+
+    return res.stdout;
+}
+
+const CFG = path.join('.serena', 'project.yml');
+const SEED_CASES = [
+    {
+        name: 'a config-less C#+TS repo gets both keys, multi-language',
+        files: { 'package.json': '{}', 'src/a.ts': 'export const a = 1;', 'src/App.csproj': '<Project/>' },
+        check: (yml) =>
+        {
+            assert.match(yml, /^language_servers: \["csharp", "typescript"\]$/m, 'both detected servers, not just the top one');
+            assert.match(yml, /^ignored_paths: \[".serena", ".claude", ".playwright"\]$/m, 'the ignore list lands on a fresh seed');
+        },
+    },
+    {
+        name: 'a JavaScript-only repo still gets the typescript server',
+        files: { 'package.json': '{}', 'src/app.js': 'module.exports = 1;' },
+        check: (yml) => assert.match(yml, /^language_servers: \["typescript"\]$/m, "serena's TS server covers plain JS - a JS repo used to detect nothing"),
+    },
+    {
+        // serena's OWN auto-generated config: both keys present but empty. Appending would make a
+        // duplicate YAML key (an error, not an override), so each must be rewritten in place.
+        name: "serena's own empty keys are rewritten in place, never duplicated",
+        files: {
+            'src/a.ts': 'export const a = 1;',
+            [CFG]: 'project_name: "x"\nlanguage_servers: []\nignored_paths: []\n',
+        },
+        check: (yml) =>
+        {
+            assert.strictEqual(yml.match(/^language_servers:/gm).length, 1, 'exactly one language_servers key');
+            assert.strictEqual(yml.match(/^ignored_paths:/gm).length, 1, 'exactly one ignored_paths key');
+            assert.match(yml, /^language_servers: \["typescript"\]$/m);
+            assert.match(yml, /^ignored_paths: \[".serena", ".claude", ".playwright"\]$/m);
+        },
+    },
+    {
+        // The gap this test exists for: before 0.2.35 the ignore list was written only on a FRESH
+        // seed, so every install predating it kept indexing serena's own ~327MB server tree.
+        name: 'an existing config that names its servers still gains the ignore list',
+        files: {
+            'src/a.ts': 'export const a = 1;',
+            [CFG]: 'project_name: "x"\nlanguages: ["csharp"]\n',
+        },
+        check: (yml) =>
+        {
+            assert.match(yml, /^languages: \["csharp"\]$/m, "the user's own language choice is untouched");
+            assert.match(yml, /^ignored_paths: \[".serena", ".claude", ".playwright"\]$/m, 'the ignore list is ensured independently');
+        },
+    },
+    {
+        name: 'a hand-tuned config is left exactly as it is',
+        files: {
+            'src/a.ts': 'export const a = 1;',
+            [CFG]: 'project_name: "x"\nlanguage_servers: ["python"]\nignored_paths:\n  - "vendor/**"\n',
+        },
+        check: (yml) => assert.strictEqual(yml, 'project_name: "x"\nlanguage_servers: ["python"]\nignored_paths:\n  - "vendor/**"\n'),
+    },
+];
+
+for (const shell of ['sh', 'ps1'])
+{
+    for (const c of SEED_CASES)
+    {
+        test(`${shell}: serena seed - ${c.name}`, { skip: shell === 'ps1' ? skipNoPwsh : false }, () =>
+        {
+            const repo = seedRepo(c.files);
+            try
+            {
+                (shell === 'sh' ? runSeedSh : runSeedPs1)(repo);
+                c.check(fs.readFileSync(path.join(repo, CFG), 'utf8'));
+            }
+            finally
+            {
+                fs.rmSync(repo, { recursive: true, force: true });
+            }
+        });
+    }
+}
+
+test('sh: seeding is idempotent - a second run adds no second key', () =>
+{
+    const repo = seedRepo({ 'package.json': '{}', 'src/a.ts': 'export const a = 1;' });
+    try
+    {
+        runSeedSh(repo);
+        runSeedSh(repo);
+        const yml = fs.readFileSync(path.join(repo, CFG), 'utf8');
+        assert.strictEqual(yml.match(/^language_servers:/gm).length, 1);
+        assert.strictEqual(yml.match(/^ignored_paths:/gm).length, 1);
+    }
+    finally
+    {
+        fs.rmSync(repo, { recursive: true, force: true });
+    }
+});
+
+test('sh: a repo with no detectable sources is left to serena, never written half-configured', () =>
+{
+    // language_servers has no default in serena's schema, so a file carrying only project_name
+    // would fail to load - writing nothing is the correct outcome, not a partial config.
+    const repo = seedRepo({ 'README.md': '# docs only\n' });
+    try
+    {
+        const out = runSeedSh(repo);
+        assert.match(out, /left project\.yml to serena's own detection/);
+        assert.strictEqual(fs.existsSync(path.join(repo, CFG)), false, 'no half-written config');
+    }
+    finally
+    {
+        fs.rmSync(repo, { recursive: true, force: true });
+    }
+});
+
+test('sh wiring: every hook carries a timeout, and a bare legacy entry is backfilled', { skip: skipNoPython }, () =>
+{
+    // A `command` hook with no timeout takes Claude Code's 600s default. These hooks run in
+    // 22-25ms (measured), but two shell out to git - a stuck index.lock or a slow network mount
+    // would otherwise freeze the session for ten minutes on a 2ms gate.
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-timeout-'));
+    try
+    {
+        const settings = path.join(work, 'settings.json');
+        // an install from before the timeout existed: the entry is present, bare
+        fs.writeFileSync(settings, JSON.stringify({
+            hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"' }] }] },
+        }));
+        const res = spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7'], { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const all = Object.values(wired.hooks).flat().flatMap((e) => e.hooks);
+        assert.ok(all.length >= 10, `every hook wired (${all.length})`);
+        const bare = all.filter((h) => h.timeout === undefined);
+        assert.deepStrictEqual(bare, [], 'no entry may fall back to the 600s default');
+        assert.ok(all.every((h) => h.timeout === 10), 'all wired at 10s');
+        const legacy = all.filter((h) => h.command.includes('guard-catastrophic-rm.js'));
+        assert.strictEqual(legacy.length, 1, 'the pre-existing entry was backfilled, not duplicated');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});
+
+test('sh wiring: OUR hook on a retired PreToolUse matcher is pruned, a foreign entry and the Stop wiring are kept', { skip: skipNoPython }, () =>
+{
+    // guard-stop-contract used to be wired on PreToolUse AskUserQuestion as well as Stop. The plugin
+    // route unwires it through meta/migrations.json; the script route left the entry in place on every
+    // update and backfilled its timeout as if it were current (measured in the 2026-09-04 hooks audit).
+    const src = fs.readFileSync(SH, 'utf8');
+    const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
+    const hooks = shArray(src, 'HOOKS');
+    const deny = shArray(src, 'SECRET_DENY');
+    assert.ok(!hooks.some((h) => h.includes('::AskUserQuestion')), 'the retired matcher is no longer in HOOKS');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-prune-'));
+    try
+    {
+        const settings = path.join(work, 'settings.json');
+        fs.writeFileSync(settings, JSON.stringify({
+            hooks: { PreToolUse: [
+                { matcher: 'AskUserQuestion', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"', timeout: 10 }] },
+                { matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/my-own-hook.js"' }] },
+            ] },
+        }));
+        const res = spawnSync('python3', ['-c', prog[1], settings, '--DENY', ...deny, '--MCP', 'context7'], { input: hooks.join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: work } });
+        assert.strictEqual(res.status, 0, res.stderr);
+        const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
+        const under = (m) => (wired.hooks.PreToolUse || []).filter((e) => e.matcher === m).flatMap((e) => e.hooks.map((h) => h.command));
+        assert.deepStrictEqual(under('AskUserQuestion'), [], 'the retired entry is gone, and its emptied matcher block with it');
+        assert.ok(under('Bash').some((c) => c.includes('my-own-hook.js')), 'a hook that is not ours is never touched');
+        assert.ok((wired.hooks.Stop || []).flatMap((e) => e.hooks).some((h) => h.command.includes('guard-stop-contract.js')), 'the Stop wiring of the same file is intact');
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
+});

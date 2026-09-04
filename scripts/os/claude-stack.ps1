@@ -59,8 +59,11 @@
   Update only: derive the selection from what is already installed (skills/agents/rules/hooks on
   disk, mcps from .mcp.json; generated project-owned files excluded) and refresh exactly that -
   never adds, never removes. Closed through stack-select.js when it is reachable next to this
-  script, so a dependency a new release introduced still installs. Plugins are machine-level and
-  skipped - refresh them via 'claude plugin update' or the guided commands.
+  script, so a dependency a new release introduced still installs. MCPs and PLUGINS are refreshed
+  to the newest versions: the pinned MCP entries are re-resolved and re-registered, and every
+  installed stack plugin gets 'claude plugin update'. Plugins come from 'claude plugin list'
+  (machine-level - no project dir to read), intersected with the manifest, so a third-party plugin
+  is never touched.
 
 .PARAMETER PrintPlan
   With -Selection or -InstalledOnly, print the resolved per-category install set and exit (dry run).
@@ -359,7 +362,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (77).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (78).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -381,6 +384,7 @@ $Skills = @(
   'envoydev/claude-stack|project-implementer'              # single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate
   'envoydev/claude-stack|project-solution-design'  # single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds project-verify-plan
   'envoydev/claude-stack|project-solve-task'       # gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: project-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction
+  'envoydev/claude-stack|project-diagnose-failure' # gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report
   'envoydev/claude-stack|project-runtime-failure-signatures' # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
   'envoydev/claude-stack|project-ci-failure-signatures'        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures
   'envoydev/claude-stack|project-stack-usage-analyzer' # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
@@ -608,9 +612,9 @@ $Hooks = @(
   'guard-read-whole-file.js::Bash::'              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
   'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   'guard-ungated-commit.js::Bash::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED)
-  'guard-stop-contract.js::AskUserQuestion::'     # deny an AskUserQuestion missing the fresh-session option past ~150k ctx/msg (the stop contracts' construction check, mechanized - prose fired ~0 of 50+)
-  'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h)
+  'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
   'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past ~150k ctx - route it through an AskUserQuestion fresh-session choice
+  'guard-cross-project-write.js::Write|Edit|NotebookEdit|Bash::'  # one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
@@ -746,6 +750,39 @@ if ($InstalledOnly) {
     try {
       foreach ($n in @((Get-Content -Raw $ioMcpJson | ConvertFrom-Json).mcpServers.PSObject.Properties.Name)) { $ioLines += "mcp $n" }
     } catch {}
+  }
+  elseif (Get-Command claude -ErrorAction SilentlyContinue) {
+    # No .mcp.json to read (a global install, or a project whose config the CLI owns): ask the CLI
+    # which servers are registered. The selection filter intersects with the MCPS manifest, so a
+    # claude.ai-managed or hand-added server is never touched.
+    try {
+      foreach ($l in @(& claude mcp list 2>$null)) {
+        if ($l -match '^([A-Za-z0-9_.-]+):\s') { $ioLines += "mcp $($Matches[1])" }
+      }
+    } catch {}
+  }
+  # Plugins are machine-level, so they come from the CLI listing rather than a project directory -
+  # without this the fast path filtered $Plugins to empty and 'update' never ran `claude plugin
+  # update` on anything. Only names the manifest carries are kept, so a third-party plugin is
+  # neither touched nor reported as unknown.
+  if (Get-Command claude -ErrorAction SilentlyContinue) {
+    $ioKnown = @($Plugins | ForEach-Object { ($_ -split '@')[0] })
+    try {
+      $ioFound = @()
+      foreach ($l in @(& claude plugin list 2>$null)) {
+        foreach ($m in [regex]::Matches([string]$l, '(?<name>[A-Za-z0-9_.-]+)@[A-Za-z0-9_.-]+')) {
+          $n = $m.Groups['name'].Value
+          if ($ioKnown -contains $n -and $ioFound -notcontains $n) { $ioFound += $n }
+        }
+      }
+      foreach ($n in $ioFound) { $ioLines += "plugin $n" }
+    } catch {}
+  }
+  # The CLI could not be read (absent, or an unexpected listing shape): fall back to the manifest's
+  # plugin set. Safe here because -InstalledOnly is update-only and `claude plugin update` updates
+  # an installed plugin and never installs a missing one.
+  if (-not ($ioLines | Where-Object { $_.StartsWith('plugin ') })) {
+    foreach ($p in $Plugins) { $ioLines += "plugin $(($p -split '@')[0])" }
   }
   if (-not $ioLines) {
     Write-Host "error: -InstalledOnly found nothing installed under $ioClaude - run install (or the /claude-stack:setup command) first" -ForegroundColor Red
@@ -1020,7 +1057,7 @@ function Install-Plugins {
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
     Log "plugin [$pScope]: $p"
-    try { & claude plugin install $p --scope $pScope } catch {}   # may prompt to trust on first run
+    try { & claude plugin install $p --scope $pScope -y } catch {}   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
     if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
   }
 }
@@ -1123,6 +1160,121 @@ function New-ClaudeMd {
   Log '  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the .claude/* + !.claude/CLAUDE.md gitignore lines so it stays committed'
 }
 
+$script:SerenaIgnores = '[".serena", ".claude", ".playwright"]'
+
+function Test-SerenaListKey {
+  # true when $Key carries a NON-EMPTY list (inline or block) in the given project.yml text
+  param([string[]]$Lines, [string]$Key)
+  $pending = $false
+  foreach ($line in $Lines) {
+    if ($line -match '^\s*([a-z_]+)\s*:(.*)$') {
+      $k = $Matches[1]; $rest = $Matches[2].Trim(); $pending = $false
+      if ($Key -split '\|' -contains $k) {
+        if ($rest -match '\[\s*[^\]\s]') { return $true }
+        if ($rest -eq '') { $pending = $true }
+      }
+      continue
+    }
+    if ($pending -and $line -match '^\s*-\s*\S') { return $true }
+  }
+  return $false
+}
+
+function Set-SerenaListKey {
+  # Neither key is ever APPENDED when it already exists: serena's own auto-generated config ships
+  # `language_servers: []` / `ignored_paths: []`, and a second key of the same name is a
+  # duplicate-key YAML error, not an override. Empty is rewritten in place; entries are left alone.
+  param([string]$Cfg, [string]$Key, [string]$Value, [string]$Comment)
+  $lines = @(Get-Content -LiteralPath $Cfg)
+  if (Test-SerenaListKey -Lines $lines -Key $Key) { return }
+  if ($lines -match "^\s*$Key\s*:") {
+    $out = $lines | ForEach-Object { if ($_ -match "^\s*$Key\s*:") { "${Key}: $Value" } else { $_ } }
+    Set-Content -LiteralPath $Cfg -Value $out -Encoding UTF8
+    Log "  serena: $Key set to $Value (was empty)"
+  } else {
+    Add-Content -LiteralPath $Cfg -Value ''
+    Add-Content -LiteralPath $Cfg -Value "# Added by claude-stack: $Comment"
+    Add-Content -LiteralPath $Cfg -Value "${Key}: $Value"
+    Log "  serena: $Key $Value appended to project.yml"
+  }
+}
+
+function Get-SerenaLangs {
+  param([string]$Root)
+  $skip = '[\\/]node_modules[\\/]|[\\/]\.git[\\/]'   # both separators - pwsh also runs on Unix
+  $langs = @()
+  $cs = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -File -Include '*.sln', '*.slnx', '*.csproj' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch $skip } | Select-Object -First 1)
+  if ($cs.Count -gt 0) { $langs += 'csharp' }
+  # serena's typescript server handles plain JavaScript too, so a package.json-only or .js-only
+  # repo takes it as well - without this a JS project detected nothing and got no seed at all.
+  $ts = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -File -Include 'tsconfig*.json', 'package.json', '*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch $skip } | Select-Object -First 1)
+  if ($ts.Count -gt 0) { $langs += 'typescript' }
+  return $langs
+}
+
+function New-SerenaProject {
+  # INSTALL + UPDATE: seed .serena/project.yml with the languages actually in this repo.
+  # serena's --project-from-cwd only RESOLVES the root (a .serena/project.yml, else a .git). It DOES
+  # auto-generate a config for a root that has none - but not one to rely on: verified in serena
+  # 1.7.0 (serena/config/serena_config.py), ProjectConfigAutoGenerationMode.ASYNCHRONOUS writes the
+  # language list EMPTY and fills it from a background thread, and _determine_project_language_servers
+  # enables only the single TOP language by file count when it is not interactive - so a C#+Angular
+  # repo gets one server, and a lookup racing the background pass gets none (measured in a consuming
+  # C# project: serena nav dead, the session fell back to grep). Seeding makes it deterministic and
+  # multi-language before the first symbol lookup. Detection is deliberately narrow - project files
+  # only, depth 4, no network - and a key that already carries entries is never rewritten, so a
+  # hand-tuned config survives every update. Ids are serena's own (project.template.yml).
+  if (-not ($Mcps | Where-Object { $_ -like 'serena|*' })) { return }
+  $root = Get-RepoRoot
+  if (-not $root) { return }   # not a repo - serena has no root to bind either
+  $cfg = Join-Path $root '.serena/project.yml'
+  if (Test-Path -LiteralPath $cfg) {
+    if (Test-SerenaListKey -Lines @(Get-Content -LiteralPath $cfg) -Key 'language_servers|languages') {
+      Log '  serena: project.yml already names its language servers - left as-is'
+    } else {
+      $langs = Get-SerenaLangs -Root $root
+      if ($langs.Count -gt 0) {
+        $list = ($langs | ForEach-Object { '"' + $_ + '"' }) -join ', '
+        Set-SerenaListKey -Cfg $cfg -Key 'language_servers' -Value "[$list]" -Comment 'serena writes this key empty (async) or with only the single top language.'
+      } else {
+        Log "  serena: no C#/TypeScript/JS sources found - language_servers left to serena's own detection"
+      }
+    }
+    # ALWAYS, independent of the languages branch: an install predating this key, and every config
+    # serena generated itself, otherwise keeps indexing .serena/home - measured on a 14-file
+    # fixture, 126 files attempted and 112 failed, every one inside the language-server directory.
+    Set-SerenaListKey -Cfg $cfg -Key 'ignored_paths' -Value $script:SerenaIgnores -Comment '.serena holds the ~327MB of language servers, .claude the stack files, .playwright the MCP browser profile - none are project source.'
+    return
+  }
+  $langs = Get-SerenaLangs -Root $root
+  # language_servers has no default in serena's schema, so a file without it fails to load: with
+  # nothing detected, write nothing and let serena generate its own.
+  if ($langs.Count -eq 0) { Log "  serena: no C#/TypeScript/JS sources found - left project.yml to serena's own detection"; return }
+  $list = ($langs | ForEach-Object { '"' + $_ + '"' }) -join ', '
+  $name = Split-Path -Leaf $root
+  New-Item -ItemType Directory -Force -Path (Join-Path $root '.serena') | Out-Null
+  $yml = @"
+# Seeded by claude-stack. serena binds this repo via --project-from-cwd; the config it would
+# auto-generate instead is written with an EMPTY language list in async mode and with only the
+# single top language otherwise, so it is stated here explicitly. Detected from the files in this
+# repo at install time; edit freely - a key that carries entries is never rewritten by an update.
+# The C# (Roslyn) server needs .NET 10+; serena installs it itself when the runtime is not on
+# PATH, into SERENA_HOME (.serena/home, ~327MB - keep .serena ignored).
+project_name: "$name"
+language_servers: [$list]
+# .serena holds SERENA_HOME (the language servers, ~327MB of DLLs and node_modules),
+# .claude the stack's own files, .playwright the browser profile/traces the playwright MCP
+# writes - none of them project source. Without this line serena's indexer walks into them:
+# measured on a 14-file fixture it tried 126 files and failed 112, every one of them inside
+# .serena/home.
+ignored_paths: $script:SerenaIgnores
+"@
+  Set-Content -LiteralPath $cfg -Value $yml -Encoding UTF8
+  Log "  serena: seeded .serena/project.yml (project_name=$name, language_servers=[$list])"
+}
+
 # ===========================================================================
 # INSTALL STAMP - which revision this install came from
 # ===========================================================================
@@ -1211,6 +1363,38 @@ function Set-HookSettings {
   # two entries - keying on the command alone dropped the second (measured: no install ever carried the Bash matcher).
   $have = @(foreach ($e in $pre) { foreach ($h in $e.hooks) { "$($e.matcher)::$($h.command)" } })
   $changed = $false
+  # Every hook here does <30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
+  # `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
+  # (guard-protected-force-push and guard-ungated-commit both shell out to git, and a stuck
+  # index.lock or a slow network mount hangs `git rev-parse`) freezes the session for ten minutes.
+  # 10s is ~400x the measured cost and still fails fast.
+  $HookTimeout = 10
+  # Backfill the timeout onto entries an earlier install wrote bare (they carry the 600s default).
+  foreach ($evEntries in $data.hooks.PSObject.Properties) {
+    foreach ($e in @($evEntries.Value)) {
+      foreach ($h in @($e.hooks)) {
+        if ($h.command -and $h.command -match 'claude/hooks/guard-|claude/hooks/instrument-') {
+          if (-not $h.PSObject.Properties['timeout']) { $h | Add-Member -NotePropertyName timeout -NotePropertyValue $HookTimeout; $changed = $true }
+          elseif ($h.timeout -ne $HookTimeout) { $h.timeout = $HookTimeout; $changed = $true }
+        }
+      }
+    }
+  }
+  # Prune OUR hook file from a PreToolUse matcher this version no longer wires (guard-stop-contract's
+  # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
+  # match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
+  # Keyed on the SELECTED $Hooks, so a hook the user de-selected keeps its entries (configure's job).
+  $oursFiles = @(foreach ($entry in $Hooks) { ($entry -split '::', 3)[0] })
+  $wired = @(foreach ($entry in $Hooks) { $p = $entry -split '::', 3; if ($p[1] -and -not $p[1].StartsWith('@')) { "$($p[1])::$($p[0])" } })
+  $kept = @()
+  foreach ($e in $pre) {
+    $hs = @(foreach ($h in @($e.hooks)) {
+      $m = [regex]::Match([string]$h.command, '/\.claude/hooks/([A-Za-z0-9._-]+\.js)')
+      if ($m.Success -and ($oursFiles -contains $m.Groups[1].Value) -and -not ($wired -contains "$($e.matcher)::$($m.Groups[1].Value)")) { $changed = $true } else { $h }
+    })
+    if ($hs.Count -gt 0) { $e.hooks = $hs; $kept += $e } else { $changed = $true }
+  }
+  $pre = $kept
   foreach ($entry in $Hooks) {
     $parts = $entry -split '::', 3
     $file = $parts[0]
@@ -1231,13 +1415,13 @@ function Set-HookSettings {
       $ev = @($data.hooks.$evName)
       $evHave = @(foreach ($e in $ev) { foreach ($h in $e.hooks) { $h.command } })
       if ($evHave -contains $cmd) { continue }
-      $ev += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $cmd }) }
+      $ev += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = $HookTimeout }) }
       $data.hooks.$evName = $ev
       $changed = $true
       continue
     }
     if ($have -contains "$matcher::$cmd") { continue }
-    $block = [pscustomobject]@{ matcher = $matcher; hooks = @([pscustomobject]@{ type = 'command'; command = $cmd }) }
+    $block = [pscustomobject]@{ matcher = $matcher; hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = $HookTimeout }) }
     $pre += $block
     $have += "$matcher::$cmd"
     $changed = $true
@@ -1350,7 +1534,7 @@ function Update-Plugins {
   foreach ($p in $Plugins) {
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }   # claude-hud is user-scope (statusline)
     Log "plugin update [$pScope]: $p"
-    try { & claude plugin update $p --scope $pScope } catch {}
+    try { & claude plugin update $p --scope $pScope -y } catch {}   # -y for the same non-TTY reason as install
   }
 }
 
@@ -1549,8 +1733,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Update-Mcps; Update-Hooks; Update-Agents; Update-Rules; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Update-Mcps; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -1572,6 +1756,9 @@ Log "  - write your project's CLAUDE.md top from the template's authoring-outlin
 Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
 Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
+if ($Mcps | Where-Object { $_ -like 'serena|*' }) {
+  Log '  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): $env:SERENA_HOME=".serena/home"; uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things'
+}
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 if ($Context7 -eq 'remote') { Log "  - context7 is remote; add CONTEXT7_API_KEY to $ConfigDir\settings.json 'env' (the ACCOUNT file - a project-level one does not reach .mcp.json) for higher rate limits, or re-run with -Context7 local" }

@@ -51,8 +51,8 @@ Adds the tradeoff analysis and metadata. Sections in order: optional YAML front 
 (`status:`, `date:`, `decision-makers:`, `consulted:`, `informed:`), title,
 **Context and Problem Statement**, optional **Decision Drivers**, **Considered Options**,
 **Decision Outcome** ('Chosen option: "...", because ...') with nested **Consequences**
-(Good/Bad bullets) and **Confirmation** (how compliance is verified - in this house, an
-architecture fitness test per `dotnet-architecture-tests` beats a review promise), then optional
+(Good/Bad bullets) and **Confirmation** (how compliance is verified - in this house an
+architecture fitness test beats a review promise, where the stack has them), then optional
 **Pros and Cons of the Options** and **More Information**.
 
 ```markdown

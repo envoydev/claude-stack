@@ -35,7 +35,7 @@ A .NET Framework 4.8 -> modern .NET move is more than a TFM bump - different pro
 
 ## Flow C - NuGet package updates
 
-1. **Audit first.** `dotnet list package --outdated` for what is behind, `dotnet list package --vulnerable` (add `--include-transitive`) for what is unsafe - the same audit trio `dotnet-project-setup`'s `references/central-package-management.md` (when installed) owns for routine dependency hygiene. Security fixes jump the queue.
+1. **Audit first.** `dotnet list package --outdated` for what is behind, `dotnet list package --vulnerable` (add `--include-transitive`) for what is unsafe - the same audit trio the .NET solution-setup skill's central-package-management reference owns for routine dependency hygiene, when your skill list has one. Security fixes jump the queue.
 2. **Sort by semver risk.** Patch and minor are usually safe; a major is a contract change - read its release notes before you commit to it. Group the work so the riskiest bumps are isolated.
 3. **One package at a time.** Update a package, build, test, then the next. A single-package step is the only step you can bisect; a mass bump turns one regression into a hunt across a dozen libraries.
 4. **Centralize versions.** With central package management the version lives once in `Directory.Packages.props`, not scattered across `.csproj` files - that mechanism is `dotnet-project-setup`.

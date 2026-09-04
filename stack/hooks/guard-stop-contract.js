@@ -11,9 +11,13 @@
 //   call in the final assistant message) is blocked - the model re-emits it as the tool call.
 //   The text judged is the payload's `last_assistant_message` (the harness's own copy of the
 //   turn's final text); the transcript tail is the fallback for a build that does not send it.
-// PreToolUse (AskUserQuestion) wiring: once the session's context passes the threshold, an
-//   option list with no fresh-session/resume entry is malformed per the stop contract - the
-//   call is denied with the rebuild instruction.
+//   The same Stop wiring carries the fresh-session offer: on a CLEAN close past the
+//   window-scaled trigger, the turn is held once so the user is asked whether to continue here
+//   or resume fresh. It fires only after the work is done (never mid-response, which is what the
+//   old PreToolUse denial did), and re-arms only when the context has grown 1.5x since the last
+//   one - so a long session is asked once per real cost step, not once per question.
+// PreToolUse (AskUserQuestion): no longer wired on a new install. The branch stays as a
+//   fail-safe for installs that still carry the matcher (a migration unwires it); it exits 0.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 let payload;
@@ -22,8 +26,59 @@ try {
 } catch {
   process.exit(0);
 }
+if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
 
-const CTX_THRESHOLD = 150000; // the stop contracts' own ~150k ctx trigger
+// --- block telemetry (shared by every guard hook; keep the copies identical) ------------
+// A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
+// FALSE positive is 10-100x the cost of the gate itself, and until this existed the block rate was
+// the one number the stack could not measure (measured 2026-09-04: the hooks emit ~22-25ms and
+// nothing else). One JSONL row per block, written where the tool-usage instrument writes, so
+// scripts/analyze-usage.js can tally both from the same docs root. Best-effort in every direction:
+// telemetry never changes the verdict and never throws.
+(() => {
+  let last = '';
+  const w = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
+  const exit = process.exit.bind(process);
+  process.exit = (code) => {
+    if (code === 2) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+        const dir = path.join(root, process.env.CLAUDE_DOCS_PATH || '.claude/docs', 'hook-blocks');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+          ts: new Date().toISOString(),
+          hook: path.basename(__filename),
+          event: payload.hook_event_name || payload.tool_name || '',
+          tool: payload.tool_name || '',
+          reason: last.split('\n')[0].slice(0, 200),
+        }) + '\n');
+      } catch { /* telemetry is never allowed to break the gate */ }
+    }
+    exit(code);
+  };
+})();
+
+// The trigger scales with the CONTEXT WINDOW, not a flat token count. A fixed 150k is ~75% of a
+// 200k window (where it was measured) but only 15% of a 1M-context session, which is why it fired
+// on nearly every ask there. The window is provable from what a message actually carried - no
+// request can hold more input tokens than the window - so a session that has crossed 200k per
+// message is on the 1M tier. Percent is tunable per machine with CLAUDE_STACK_FRESH_SESSION_PCT
+// (default 40, the same shape as the harness's own auto-compact percentage); the measured 150k
+// stays as the FLOOR so a 200k-window session behaves exactly as it did before.
+const _pct = parseInt(process.env.CLAUDE_STACK_FRESH_SESSION_PCT, 10);
+// 0 DISABLES the offer outright - a `|| 40` fallback silently turned the off switch back on.
+// Anything else is clamped into 5..95; unset or garbage takes the 40 default.
+const FRESH_PCT = _pct === 0 ? 0 : Math.min(95, Math.max(5, Number.isNaN(_pct) ? 40 : _pct));
+const CTX_FLOOR = 150000;
+// How far the context must grow before the fresh-session offer is made again (see below).
+const REOFFER_GROWTH = 1.5;
+function ctxThreshold(maxCtxSeen) {
+  const window = maxCtxSeen > 200000 ? 1000000 : 200000;
+  return Math.max(CTX_FLOOR, Math.round((window * FRESH_PCT) / 100));
+}
 const FRESH_RE = /fresh session|new session|\/clear|fresh chat|resume (in|from) a fresh/i;
 // Decision-shaped prose endings measured in the corpus. Deliberately narrow: a plain
 // clarifying question is not matched - only the offer-and-wait shapes that stalled sessions.
@@ -112,7 +167,36 @@ if (payload.hook_event_name === 'Stop') {
     // A background job the user has no say over is a status line, not a pending decision -
     // blocking it forced an AskUserQuestion over 'tests are still running in CI' (reproduced).
     && !/\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b(still )?(running|in progress|queued|pending)\b/i.test(tail);
-  if (!PROSE_ASK_RE.test(tail) && !doneClose && !endsOnQuestion) process.exit(0);
+  if (!PROSE_ASK_RE.test(tail) && !doneClose && !endsOnQuestion) {
+    // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.
+    // Past the window-scaled trigger, ask once per cost step whether to carry on here or resume
+    // fresh; a turn that already made the offer, and a session already asked at this cost step,
+    // both pass untouched.
+    const usage = (() => { const l = lastAssistantMessage(); return (l && l.message && l.message.usage) || null; })();
+    if (!usage || FRESH_PCT === 0) process.exit(0);
+    const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
+    // Below the floor no window tier can qualify, so return before maxCtxSeen re-reads the same
+    // 512KB tail lastAssistantMessage just read - this branch runs on EVERY clean turn close.
+    if (ctx <= CTX_FLOOR) process.exit(0);
+    if (ctx <= ctxThreshold(maxCtxSeen(ctx))) process.exit(0);
+    if (FRESH_RE.test(text)) process.exit(0);
+    const since = lastBlockCtx();
+    if (since && ctx < since * REOFFER_GROWTH) {
+      breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} has not grown ${REOFFER_GROWTH}x since ${since}`);
+      process.exit(0);
+    }
+    recordBlockCtx(ctx);
+    process.stderr.write(
+      `The work in this turn is finished and this session now carries ~${Math.round(ctx / 1000)}k tokens per\n` +
+      `message - every further turn re-sends all of it (a resume from a state file costs roughly a\n` +
+      `tenth). Before continuing here, put the choice to the user with ONE AskUserQuestion call:\n` +
+      `first option 'Resume in a fresh session (Recommended)' with that cost in its description,\n` +
+      `plus continuing here. If they pick the resume, answer with a short ack and the paste-ready\n` +
+      `resume block only - do not start new work in this chat. Add nothing else to this turn: the\n` +
+      `report you just wrote stands.`,
+    );
+    process.exit(2);
+  }
   if (doneClose && !PROSE_ASK_RE.test(tail)) {
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
@@ -137,65 +221,64 @@ if (payload.hook_event_name === 'Stop') {
   process.exit(2);
 }
 
-// Per-session tally of qualifying fresh-session asks, keyed by the transcript path so it dies
-// with the session's own temp dir. Fail-open: a counter that cannot be read never blocks.
-function bumpFreshAskCount() {
+// The context at which this session last blocked an ask for carrying no fresh-session option.
+// The FIRST block is what makes the choice informed; repeating it on every later ask only
+// prints an error the user has already answered (reported from a real session sitting at ~203k
+// per message, where every ask opened with the same red block). So the offer is re-required
+// only when the context has grown by half again since the last block - 150k -> 225k -> 337k:
+// still an escalation, but one that tracks the cost actually growing rather than the ask count.
+function lastBlockCtx() {
   try {
-    const os = require('os');
-    const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-    const f = `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.count`;
-    let n = 0;
-    try { n = parseInt(fs.readFileSync(f, 'utf8'), 10) || 0; } catch { n = 0; }
-    n += 1;
-    fs.writeFileSync(f, String(n));
-    return n;
+    return parseInt(fs.readFileSync(blockStateFile(), 'utf8'), 10) || 0;
   } catch {
-    return 1;
+    return 0;
+  }
+}
+function recordBlockCtx(ctx) {
+  try { fs.writeFileSync(blockStateFile(), String(ctx)); } catch { /* never let state break the gate */ }
+}
+function blockStateFile() {
+  const os = require('os');
+  const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
+}
+
+// The largest per-message context this session has carried, read off the same transcript tail.
+// It is what proves the window tier (see ctxThreshold): the CURRENT message can be small while
+// the session has already been far past 200k.
+function maxCtxSeen(fallback) {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return fallback;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 512 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    let max = fallback;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"usage"')) continue;
+      try {
+        const u = JSON.parse(line).message.usage;
+        max = Math.max(max, (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0));
+      } catch { /* not an assistant row, or a partial first line */ }
+    }
+    return max;
+  } catch {
+    return fallback;
   }
 }
 
-// --- PreToolUse on AskUserQuestion: fresh-session option required past the threshold ---
+// --- PreToolUse on AskUserQuestion: observe only ---------------------------
+// This used to DENY an ask that carried no fresh-session option. It enforced the right thing at
+// the wrong moment: the denial landed in the middle of a response, so Claude stopped the work it
+// was doing to rebuild a question, and the user watched a red block open every turn. The offer is
+// not urgent - it is about what to do NEXT - so it moved to the Stop wiring below, which fires
+// only once the turn's work is finished. New installs no longer wire this matcher at all -
+// meta/migrations.json unwires it from existing ones - and until that lands the branch is a
+// cheap no-op rather than a mid-response denial.
 if (payload.tool_name === 'AskUserQuestion') {
-  const last = lastAssistantMessage();
-  const usage = last && last.message && last.message.usage;
-  if (!usage) process.exit(0);
-  const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
-  if (ctx <= CTX_THRESHOLD) process.exit(0);
-  const qs = (payload.tool_input && payload.tool_input.questions) || [];
-  const optionText = qs
-    .flatMap((q) => (q && q.options) || [])
-    .map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)
-    .concat(qs.map((q) => (q && q.question) || ''))
-    .join(' ');
-  if (FRESH_RE.test(optionText)) {
-    // Escalation: the offer is stateless by itself, so declining it is free - measured, one
-    // session was offered a fresh start at ~180k, ~355k and ~484k per message, continued every
-    // time, and ended at 135.1M cache-read for ~50k of tool output. From the second qualifying
-    // ask on, the fresh-session option must be the RECOMMENDED one, not a listed alternative.
-    const fires = bumpFreshAskCount();
-    const recommended = qs
-      .flatMap((q) => (q && q.options) || [])
-      .some((o) => FRESH_RE.test(`${(o && o.label) || ''} ${(o && o.description) || ''}`) && /recommended/i.test(`${(o && o.label) || ''}`));
-    if (fires < 2 || recommended) process.exit(0);
-    process.stderr.write(
-      `Blocked: this is ask ${fires} past the ~150k trigger in one session and the fresh-session\n` +
-      `option is still not the recommended one. The context is ~${Math.round(ctx / 1000)}k per message -\n` +
-      `every further turn here re-sends it. Rebuild the ask with the fresh-session resume marked\n` +
-      `(Recommended) as the FIRST option, and put the cost in its description so the choice is\n` +
-      `informed. If the user picks it, end the turn with the paste-ready resume block only.`,
-    );
-    process.exit(2);
-  }
-  process.stderr.write(
-    `Blocked: this AskUserQuestion has no fresh-session option while the session context is\n` +
-    `~${Math.round(ctx / 1000)}k tokens per message (threshold ~150k). Per the stop contract\n` +
-    `the fresh-session resume IS one of the ask's options once the trigger is crossed - the\n` +
-    `question is malformed, rebuild it: keep your options and ADD one offering to resume in a\n` +
-    `fresh session from the plan/state file (a resume costs roughly a tenth of the carried\n` +
-    `context - measured). If the user picks it, end the turn with a short ack plus the\n` +
-    `paste-ready resume block - do not start new work in this chat.`,
-  );
-  process.exit(2);
+  process.exit(0);
 }
 
-process.exit(0);

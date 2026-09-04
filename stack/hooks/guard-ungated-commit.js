@@ -23,6 +23,40 @@ try {
 } catch {
   process.exit(0); // unparseable stdin - don't block
 }
+if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+
+// --- block telemetry (shared by every guard hook; keep the copies identical) ------------
+// A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
+// FALSE positive is 10-100x the cost of the gate itself, and until this existed the block rate was
+// the one number the stack could not measure (measured 2026-09-04: the hooks emit ~22-25ms and
+// nothing else). One JSONL row per block, written where the tool-usage instrument writes, so
+// scripts/analyze-usage.js can tally both from the same docs root. Best-effort in every direction:
+// telemetry never changes the verdict and never throws.
+(() => {
+  let last = '';
+  const w = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
+  const exit = process.exit.bind(process);
+  process.exit = (code) => {
+    if (code === 2) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+        const dir = path.join(root, process.env.CLAUDE_DOCS_PATH || '.claude/docs', 'hook-blocks');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+          ts: new Date().toISOString(),
+          hook: path.basename(__filename),
+          event: payload.hook_event_name || payload.tool_name || '',
+          tool: payload.tool_name || '',
+          reason: last.split('\n')[0].slice(0, 200),
+        }) + '\n');
+      } catch { /* telemetry is never allowed to break the gate */ }
+    }
+    exit(code);
+  };
+})();
 const command = String((payload.tool_input || {}).command || '');
 // A heredoc body is DATA, not shell: a plan document, a commit-message draft or a receipt that
 // merely describes `git commit` is inert text. Matching it blocked a 47KB plan write and cost a

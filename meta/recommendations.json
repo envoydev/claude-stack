@@ -33,6 +33,7 @@
    "guard-ungated-commit",
    "guard-stop-contract",
    "guard-fresh-session-start",
+   "guard-cross-project-write",
    "guard-answer-length",
    "instrument-tool-usage"
   ],
@@ -41,8 +42,10 @@
    "project-architecture-analyzer",
    "project-architecture-quality-loop",
    "project-code-style-analyzer",
+   "project-diagnose-failure",
    "project-implementer",
    "project-quality-loop",
+   "project-solution-design",
    "project-solve-cross-task",
    "project-solve-task",
    "project-test-coverage-analyzer",

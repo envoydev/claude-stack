@@ -1,6 +1,6 @@
 # Testcontainers integration tests (Postgres)
 
-A single real database in Docker, without the Aspire orchestrator. Load from `dotnet-testing` when a data-access test needs real SQL - actual constraints, indexes, and query behavior a substituted `DbConnection` can never prove - but the system under test is just the DB, not a full app graph. The container reset between tests reuses the Respawn checkpoint defined in `references/aspire-integration-testing.md`; this file does not restate that setup.
+A single real database in Docker, without the Aspire orchestrator. Load from `dotnet-testing` when a data-access test needs real SQL - actual constraints, indexes, and query behavior a substituted `DbConnection` can never prove - but the system under test is just the DB, not a full app graph.
 
 ## This vs Aspire
 
@@ -21,6 +21,7 @@ Use the database-specific module, not the generic `Testcontainers` builder - the
 <PackageReference Include="Respawn" Version="*" />
 <PackageReference Include="xunit" Version="*" />
 <PackageReference Include="xunit.runner.visualstudio" Version="*" />
+<PackageReference Include="FluentAssertions" Version="7.*" />   <!-- the hub's default assertion library - stay on 7.x -->
 ```
 
 ## The fixture: IAsyncLifetime + PostgreSqlBuilder
@@ -66,8 +67,11 @@ public sealed class OrderRepositoryTests(PostgresFixture fixture)
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
         await connection.OpenAsync();
-        await connection.ExecuteAsync(
-            "INSERT INTO orders (id, customer_id, total) VALUES (1, 'CUST1', 100.00)");
+        await using (var seed = new NpgsqlCommand(
+            "INSERT INTO orders (id, customer_id, total) VALUES (1, 'CUST1', 100.00)", connection))
+        {
+            await seed.ExecuteNonQueryAsync();
+        }
 
         var repo = new OrderRepository(connection);
         var order = await repo.GetOrderAsync(1);
@@ -81,7 +85,28 @@ Use `IClassFixture<PostgresFixture>` instead when only one class needs the conta
 
 ## Reset between tests with Respawn
 
-A shared container leaks rows across tests within a run. Respawn deletes all data while keeping the schema, so each test starts empty without a container rebuild - far cheaper than a fresh container and, unlike a transaction rollback, it still lets a test assert real commit behavior. The `Respawner.CreateAsync` checkpoint (adapter, ignored tables like `__EFMigrationsHistory`) is defined in `references/aspire-integration-testing.md` - build it there and expose a `ResetAsync()` on the fixture the same way. Call it from the test class constructor (or its own `InitializeAsync`) for per-test clean state:
+A shared container leaks rows across tests within a run. Respawn deletes all data while keeping the schema, so each test starts empty without a container rebuild - far cheaper than a fresh container and, unlike a transaction rollback, it still lets a test assert real commit behavior. Build the checkpoint once in the fixture's `InitializeAsync` (after the migrations ran) and expose a `ResetAsync()`; Postgres needs an open `DbConnection` for both calls - the connection-string overload is SQL Server only:
+
+```csharp
+using Respawn;
+using Respawn.Graph;
+
+// in PostgresFixture.InitializeAsync, after RunMigrationsAsync (field: private Respawner? _respawner;)
+_respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
+{
+    DbAdapter = DbAdapter.Postgres,
+    TablesToIgnore = new Table[] { "__EFMigrationsHistory" }
+});
+
+public async Task ResetAsync()
+{
+    await using var connection = new NpgsqlConnection(ConnectionString);
+    await connection.OpenAsync();
+    await _respawner!.ResetAsync(connection);
+}
+```
+
+Call it from the test class constructor (or its own `InitializeAsync`) for per-test clean state:
 
 ```csharp
 [Collection("postgres")]

@@ -67,4 +67,4 @@ Android enforces the cleartext ban in `res/xml/network_security_config.xml`, ref
 
 ## Review output
 
-Report findings as `surface | risk | fix`, ordered by risk - e.g. `Preferences token store | anyone with the device reads the session token | move to the Keychain/Keystore plugin, biometric-gate the read`. Findings on the web layer inside the WebView route to `angular-security`, on the API side to `dotnet-security` - name the route, do not restate their content here.
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `Preferences token store | anyone with the device reads the session token | move to the Keychain/Keystore plugin, biometric-gate the read`. Findings on the web layer inside the WebView route to the skill covering Angular web hardening (XSS, CSP, token storage, CSRF), on the API side to the skill covering ASP.NET / .NET hardening - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack.

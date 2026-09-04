@@ -5,7 +5,7 @@ description: "SQL / data-layer security-hardening reference, organized by the pe
 
 # SQL / data-layer security
 
-The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with `dotnet-security` (the app-layer EF and access-control surface; the ORM mechanics behind it are `dotnet-data-access`), `dotnet-cryptography` (the primitives - KDF, AES-GCM, constant-time compare), and `dotnet-migrate` (the reversible, data-loss-safe migration workflow). The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
+The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with the .NET application-security hardening skill (the app-layer EF and access-control surface; the ORM mechanics behind it are `dotnet-data-access`), the .NET cryptography-primitives skill (KDF, AES-GCM, constant-time compare) - both where the install has them - and `dotnet-migrate` (the reversible, data-loss-safe migration workflow). The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
 
 ## Injection - close every sink
 
@@ -37,7 +37,7 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 
 ## Encryption and exposure
 
-- **At rest:** TDE for whole-database encryption; column-level encryption / **Always Encrypted** (SQL Server) or `pgcrypto` for the few highly-sensitive columns (national id, card data). Hash - never reversibly encrypt - anything you only need to compare (see `dotnet-cryptography` for the KDF).
+- **At rest:** TDE for whole-database encryption; column-level encryption / **Always Encrypted** (SQL Server) or `pgcrypto` for the few highly-sensitive columns (national id, card data). Hash - never reversibly encrypt - anything you only need to compare (the cryptography-primitives skill covers the KDF choice; without it, Argon2id or PBKDF2 with a per-record salt).
 - **Minimize exposure:** `SELECT` only the columns needed; do not pull PII into a query that does not use it. Consider **dynamic data masking** for support/read roles. Keep secrets and PII out of computed columns and error text.
 
 ## Audit and integrity
@@ -47,4 +47,4 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 
 ## Review output
 
-Report findings as `surface | risk | fix`, ordered by risk - e.g. `runtime login is db_owner | any injection becomes schema-level compromise | split a CRUD-only runtime login from the migration login`. Findings on the app-layer EF/access-control surface route to `dotnet-security`, crypto-primitive misuse to `dotnet-cryptography` - name the route, do not restate their content here.
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `runtime login is db_owner | any injection becomes schema-level compromise | split a CRUD-only runtime login from the migration login`. Findings on the app-layer EF/access-control surface route to the .NET application-security hardening skill, crypto-primitive misuse to the .NET cryptography-primitives skill - name whichever the install has as the route, do not restate their content here; when neither is installed, keep the finding here with its fix stated in full.

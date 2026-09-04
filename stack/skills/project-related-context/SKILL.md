@@ -35,7 +35,7 @@ Dispatch all seats in a single message. Each dispatch prompt carries: the HOST p
 ### 3. MERGE - write <docs-path>/related-context/PROJECT-RELATED-CONTEXT.md
 Create `<docs-path>/related-context/` when absent. Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting at the docs root itself (the pre-folder home) is MOVED into the folder first and reconciled there - never left behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a quick reference. Shape:
 
-1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the memory MCP, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
+1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the MCP that holds cross-project recall, never here (none registered: they stay session-local). Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
 2. **The entries** - one `related_projects:` YAML block, the house schema per sibling:
 ```yaml
 related_projects:
@@ -91,7 +91,8 @@ a session on another branch knows that edge may not exist in its code>
   new sibling-repo docs there, never elsewhere.
 - serena binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
-- Dynamic cross-repo findings go to the memory MCP, never a committed file.
+- Dynamic cross-repo findings go to the MCP that holds cross-project recall, never a committed
+  file; with no such server registered they stay session-local.
 ```
 
 Create `.claude/rules/` when absent. The rule is regenerate-only: entries come from the reports, the three closing bullets are fixed - never hand-edit the copy, never let the rule grow evidence or first_read detail (always-on tokens are paid every session and every subagent; the fat stays in the doc).
@@ -100,6 +101,28 @@ Create `.claude/rules/` when absent. The rule is regenerate-only: entries come f
 
 ### 5. REPORT
 Confirm both artifacts (rule created/refreshed + entry count; doc created/refreshed + entries rewritten vs kept; any location skipped as invalid or UNVERIFIED). State where each landed - machine-local under the default layout, shipped with the repo only when the project set a committed docs root. No re-paste of either body - point to the files.
+
+## Handing work to a sibling project
+
+A session belongs to ONE project. When work here needs a change THERE - a sibling repo, a consumed
+package, a related service - investigate freely (read its code, run its tests read-only, find the
+exact symbol) and then HAND IT OFF: `guard-cross-project-write.js` blocks the write, and the reason
+is not tidiness. A change applied from here skips that repo's tests, conventions, review and
+release, and the project that owns it never sees it happen.
+
+Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`, appending to it rather than
+replacing it, one section per task:
+
+- **What must change, and where** - the file and symbol you located, not 'somewhere in the auth
+  layer'. This is what the investigation is for.
+- **Why this project needs it** - the concrete failure or limitation on this side.
+- **The contract** - the shape both sides must agree on (a signature, an endpoint, a payload, a
+  version floor). If it is not stated here, both sides will guess differently.
+- **How that side verifies it** - the test or check that proves it landed.
+
+Then finish YOUR side against the other project's CURRENT behaviour, or state plainly what stays
+blocked until the card is done. Do not leave this project half-changed against a version of the
+sibling that does not exist yet.
 
 ## Don't game it
 Every entry is grounded in the agent's located evidence or carries its UNVERIFIED marker into both tiers - a relation is never smoothed over, a hint never overrides contradicting evidence silently (the contradiction is reported), a first_read never lists a doc that was not verified to exist. Unreachable siblings stay in both files as UNVERIFIED entries, not silently dropped - the reader deserves to know a seam exists even when it could not be read.

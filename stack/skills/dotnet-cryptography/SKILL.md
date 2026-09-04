@@ -79,8 +79,3 @@ These appear in old code and tutorials; replace them on sight.
 - **RSA PKCS#1 v1.5** for encryption or signing - padding-oracle and forgery exposure. Use OAEP / PSS.
 - **A fast unsalted hash for passwords** - use PBKDF2 / Argon2id.
 - **`BinaryFormatter`** - remote-code-execution by design. The floor-aware status and replacement are owned by `dotnet-security` (A08) - reach for it rather than re-deriving the runtime timeline here.
-
-## Companions
-
-- `dotnet-authentication` - sign-in, tokens, and identity, which consume these primitives but own the protocol.
-- `dotnet-security` - OWASP categories, unsafe deserialization, and the wider hardening surface.

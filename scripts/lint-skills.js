@@ -27,7 +27,14 @@
 //   8. the two installers listing the SKILLS block in a DIFFERENT
 //      ORDER (not just a different set);
 //   9. the on-disk agents/*.md set diverging from the agents the
-//      installers fetch (the AGENTS manifest array).
+//      installers fetch (the AGENTS manifest array);
+//  10. a LOAD directive naming a skill the install can legitimately lack - an
+//      optional skill (evidence-gated or opt-in, so unreachable from any seed
+//      closure) cited with no availability guard, which makes the model call a
+//      skill that is not there and take an 'Unknown skill' error;
+//  11. the CROSS-STACK case of the same defect - a load directive naming a skill
+//      absent from a stack the CITING artifact itself ships into (an always-on
+//      agent naming `angular-security`, which a .NET-only install never has).
 // Also verifies that every NON_SKILL_TOKENS allowlist entry is still actually used (no dead
 // config), that rules/*.md + agents/*.md frontmatter parses as
 // strict YAML with the required keys (an unquoted ': ' scalar breaks GitHub
@@ -401,6 +408,159 @@ function lintSharedRules(registry, readFile)
     }
 
     return out;
+}
+
+
+// The skills an install can legitimately LACK: every local skill NOT reachable
+// from the guided commands' seeds (meta/recommendations.json) through the
+// dependency graph (agent -> skill, rule -> skill). Everything else arrives with
+// its stack; these arrive only on an evidence match or a deliberate opt-in.
+function optionalSkills(recs, graph, skillDirs)
+{
+    const reachable = new Set();
+    for (const [, c] of Object.entries(seedClosures(recs, graph)))
+    {
+        for (const s of c.skills) if (skillDirs.has(s)) reachable.add(s);
+    }
+
+    return new Set([...skillDirs].filter(s => !reachable.has(s)));
+}
+
+// What each SEED installs, closed over the graph (an agent or rule pulls its skills).
+// `general` is the opt-in list no stack owns, so it seeds nothing: a skill reachable only
+// from there is absent unless the user deliberately adds it.
+function seedClosures(recs, graph)
+{
+    const out = {};
+    for (const [tag, seed] of [['ALWAYS', recs.always || {}], ...Object.entries(recs.stacks || {})])
+    {
+        const c = { skills: new Set(seed.skills || []), agents: new Set(seed.agents || []), rules: new Set(seed.rules || []) };
+        for (const kind of ['agents', 'rules'])
+        {
+            for (const name of c[kind])
+            {
+                for (const s of (((graph[kind] || {})[name] || {}).skills || [])) c.skills.add(s);
+            }
+        }
+
+        out[tag] = c;
+    }
+
+    // ALWAYS ships into every project, so every stack's closure contains it too - without this
+    // union an always-on skill reads as 'absent everywhere' and the cross-stack check inverts.
+    for (const [tag, c] of Object.entries(out))
+    {
+        if (tag === 'ALWAYS') continue;
+        for (const kind of ['skills', 'agents', 'rules']) for (const n of out.ALWAYS[kind]) c[kind].add(n);
+    }
+
+    return out;
+}
+
+// The stacks a given artifact is installed in. ALWAYS means every project, so an artifact
+// seeded there may cite only skills that are ALSO everywhere.
+function hostStacks(closures, kind, name)
+{
+    const stacks = Object.keys(closures).filter(t => t !== 'ALWAYS');
+    if ((closures.ALWAYS[kind] || new Set()).has(name)) return new Set(stacks);
+
+    return new Set(stacks.filter(t => closures[t][kind].has(name)));
+}
+
+// The skills a given artifact must NOT direct a load of without a guard: those missing from at
+// least one stack the artifact itself ships into. This is the general case of optionalSkills -
+// a cross-cutting seat (the always-on agents) citing a stack skill is the same defect as citing
+// an evidence-gated one, and it is the shape that actually bit: `angular-security` named by an
+// agent installed in every project, .NET-only ones included.
+function absentSkillsFor(closures, kind, name, skillDirs)
+{
+    const host = hostStacks(closures, kind, name);
+    if (host.size === 0) return new Set();          // artifact itself is opt-in - nothing to prove
+
+    return new Set([...skillDirs].filter(s => [...host].some(t => !closures[t].skills.has(s))));
+}
+
+// A backticked cite of an OPTIONAL skill inside a load directive must carry an
+// availability guard, or the model calls Skill(<name>) in a project that never
+// installed it and gets 'Unknown skill: <name>' (measured 2026-09-04 in a
+// consuming project: project-architecture-analyzer told the session to load
+// `dotnet-architecture-tests`, which meta/evidence.json installs only when
+// NetArchTest/ArchUnitNET is in the manifests). A cite that merely POINTS at a
+// skill ('boundary enforcement lives in `x`') is not a directive and is not
+// flagged - only an instruction to load it.
+//
+// Two directive shapes are scanned:
+//   A. prose - a load verb in the SAME SENTENCE before the token ('load `x` when
+//      judging fit'); scoping to the sentence keeps an earlier 'Load when ...'
+//      about the file itself from flagging a later pointer on the same line
+//   B. a router-table row - the token sits in the last cell of a row under a
+//      '| ... | Load |' header (or '| Also load |' - any header cell whose last WORD is
+//      'load'; 'Payload' is not one), which is the house routing shape
+//
+// The remedy is NOT a guard phrase next to the name. A skill is selected by matching
+// what it says it covers against the installed inventory, so a directive that must
+// survive a trimmed install DESCRIBES the capability ('the skill covering Angular
+// hardening') instead of naming it: the name only works where the skill exists, while
+// the description also tells a seat without it what to do. Naming stays correct for a
+// skill guaranteed alongside the citing artifact - a frontmatter preload, an own-stack
+// skill - which is why the check is scoped to the ones that can be absent.
+//
+// One escape: a file opening with an explicit '**Availability**' callout blankets its
+// cites. That is for the ROUTER HUBS, whose whole content is a name -> area table and
+// which are stack-scoped anyway.
+// `re-enter` / `re-invoke` are the flow twins' spelling ('re-enter `x`' measured unflagged in three
+// always-on skills). `run` / `runs` / `see` were tried and rejected: 'Run migrations (mechanics in
+// `x`)' and 'see `x`' are pointers, and the trial flagged 11 of them for zero directives.
+const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|open|re-enter|re-invoke)\b/i;
+const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never installed|is absent|are absent|installed only (?:where|when|if)|(?:when|where|if) installed)\b/i;
+// A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
+// '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
+// line pairing a guard phrase with a common word ('every', 'rows', 'below'), which silenced
+// 13 of 263 files by accident - project-architecture-analyzer/SKILL.md among them, the very
+// file whose unguarded cite produced the measured 'Unknown skill' error. Proven by mutation:
+// a fresh unguarded load directive added to a blanketed file was not flagged.
+const AVAILABILITY_BLANKET = /\*\*Availability\b/;
+
+function lintOptionalCites(file, text, optional)
+{
+    const findings = [];
+    const lines = text.split(/\r?\n/);
+    const blanket = lines.some(l => AVAILABILITY_BLANKET.test(l) && AVAILABILITY_GUARD.test(l));
+    if (blanket) return findings;
+
+    let loadColumn = false;   // inside a table whose last header cell is 'Load'
+    for (let i = 0; i < lines.length; i++)
+    {
+        const line = lines[i];
+        const cells = line.trim().startsWith('|') ? line.split('|').map(c => c.trim()).filter(Boolean) : null;
+        if (!cells)
+        {
+            loadColumn = false;
+        }
+        else if (/^\|?[\s:-]+\|/.test(line.trim()) === false && /(?:^|\s)load$/i.test(cells[cells.length - 1] || ''))
+        {
+            loadColumn = true;
+        }
+
+        for (const m of line.matchAll(/`([a-z][a-z0-9-]*)`/g))
+        {
+            if (!optional.has(m[1])) continue;
+
+            const lastCell = cells ? cells[cells.length - 1] : '';
+            const inLoadCell = loadColumn && cells && lastCell.includes('`' + m[1] + '`');
+            const before = line.slice(0, m.index);
+            const sentence = before.slice(before.lastIndexOf('. ') + 1);
+            if (inLoadCell || LOAD_VERB.test(sentence))
+            {
+                findings.push(`${file}:${i + 1} directs a load of \`${m[1]}\` BY NAME, and that skill can be absent here `
+                    + `(evidence-gated or opt-in). Describe what the skill covers instead, so it is matched from the `
+                    + `installed inventory and a project without it still knows what to do - or open the file with an `
+                    + `'**Availability**' callout if it is a router hub`);
+            }
+        }
+    }
+
+    return findings;
 }
 
 // Extract the stack HTML's view of the inventory: house skill names,
@@ -1299,6 +1459,79 @@ function main()
         }
     }
 
+    // 25. Cross-skill LOAD directives must not name a skill the install can lack.
+    //     Optional skills (not reachable from any seed closure - evidence-gated or
+    //     opt-in only) are absent in most projects, so an unguarded 'load `x`' makes
+    //     the model call a skill that is not there and take an 'Unknown skill' error.
+    try
+    {
+        const recs = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8'));
+        const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8'));
+        const skillDirs = new Set(dirs);
+        const optional = optionalSkills(recs, graph, skillDirs);
+        const closures = seedClosures(recs, graph);
+        // each scanned file with the artifact that OWNS it, so check 26 can ask which stacks
+        // ship it: a skill's references belong to the skill, an agent/rule to itself.
+        const scanned = [];
+        for (const dir of dirs)
+        {
+            const skillFile = path.join(SKILLS_DIR, dir, 'SKILL.md');
+            if (fs.existsSync(skillFile)) scanned.push([`skills/${dir}/SKILL.md`, skillFile, 'skills', dir]);
+            const refDir = path.join(SKILLS_DIR, dir, 'references');
+            if (fs.existsSync(refDir))
+            {
+                for (const f of fs.readdirSync(refDir).filter(f => f.endsWith('.md')))
+                {
+                    scanned.push([`skills/${dir}/references/${f}`, path.join(refDir, f), 'skills', dir]);
+                }
+            }
+        }
+
+        if (fs.existsSync(AGENTS_DIR))
+        {
+            for (const f of fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')))
+            {
+                scanned.push([`agents/${f}`, path.join(AGENTS_DIR, f), 'agents', f.replace(/\.md$/, '')]);
+            }
+        }
+
+        if (fs.existsSync(CLAUDE_RULES_DIR))
+        {
+            for (const f of fs.readdirSync(CLAUDE_RULES_DIR).filter(f => f.endsWith('.md')))
+            {
+                scanned.push([`rules/${f}`, path.join(CLAUDE_RULES_DIR, f), 'rules', f.replace(/\.md$/, '')]);
+            }
+        }
+
+        scanned.push(['CLAUDE.template.md', CLAUDE_TEMPLATE, null, null]);
+
+        for (const [label, file, kind, owner] of scanned)
+        {
+            const text = fs.readFileSync(file, 'utf8');
+            for (const finding of lintOptionalCites(label, text, optional)) flag(finding);
+
+            // 26. Cross-stack coupling: a load directive naming a skill that is absent from at
+            //     least one stack the CITING artifact itself ships into. Check 25 is the special
+            //     case where the skill reaches no stack at all; this is the one that bit in
+            //     practice - a cross-cutting agent installed in every project naming
+            //     `angular-security`, which a .NET-only install never has.
+            if (!kind) continue;
+            const absent = absentSkillsFor(closures, kind, owner, skillDirs);
+            for (const s of absent) if (optional.has(s)) absent.delete(s);   // already reported above
+            for (const finding of lintOptionalCites(label, text, absent))
+            {
+                flag(finding.replace(/ BY NAME[\s\S]*$/,
+                    ` BY NAME, and it is absent in ${[...hostStacks(closures, kind, owner)].filter(t => !closures[t].skills.has(finding.match(/`([a-z0-9-]+)`/)[1])).join(', ')}, `
+                    + `where this ${kind === 'skills' ? 'skill' : kind.replace(/s$/, '')} is still installed. Describe what the skill `
+                    + `covers instead of naming it, so it is matched from the installed inventory`));
+            }
+        }
+    }
+    catch (err)
+    {
+        flag(`optional-cite check could not run: ${err.message}`);
+    }
+
     if (warnings.length > 0)
     {
         for (const warning of warnings)
@@ -1336,6 +1569,11 @@ module.exports = {
     lintJudgmentCatalog,
     lintSharedRules,
     lintPreloadClaims,
+    lintOptionalCites,
+    optionalSkills,
+    seedClosures,
+    hostStacks,
+    absentSkillsFor,
     NON_SKILL_TOKENS,
 };
 

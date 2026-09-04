@@ -10,11 +10,14 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   cross-repo plans, change requests, issue notes, run recipes), the quality-loop prompts
   (`loops/`), the coverage capture (`test-coverage/`), the usage-audit bundles
   (`claude-stack-usage-report/`), superpowers plans + specs, ADRs with no existing home (`decisions/`),
-  the instrumentation ledgers (`tools-usage/`), and any other generated artifact.
-- Creating a doc OUTSIDE this root - a committed `docs/`, the repo root, a sibling repo - happens
-  only on the user's asked-first approval of that exact location (AskUserQuestion, per the
-  interaction baseline); never silently, however conventional or cross-repo-visible the spot
-  looks. Editing an EXISTING first-class repo doc where it already lives (the top-level
+  the instrumentation ledgers (`tools-usage/`), the task cards handed to another repo
+  (`cross-project-tasks/`), and any other generated artifact.
+- Creating a doc OUTSIDE this root - a committed `docs/`, the repo root - happens only on the
+  user's asked-first approval of that exact location (AskUserQuestion, per the interaction
+  baseline); never silently, however conventional the spot looks. A sibling repo is never
+  written from this session, approval or not (the cross-project write guard blocks it): a doc
+  about it lives in `related-context/`, a change it must make is a task card in
+  `cross-project-tasks/`. Editing an EXISTING first-class repo doc where it already lives (the top-level
   `README.md`, an established ADR home) is not a generated doc and needs no ask.
 - Resolve the root ONCE per session, before the first generated-doc read or write: the
   `CLAUDE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`. Wherever an
@@ -29,7 +32,7 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
 - The default root is machine-local (`.claude/*` is gitignored): nothing under it is committed or
   survives a fresh clone - re-run the captures after a re-clone. A committed root (e.g. `docs`)
   shares the generated docs with the team; then track `<docs-path>/superpowers/` (do not gitignore it).
-- Superpowers (when installed) writes its implementation plans and design specs under this same
+- Superpowers writes its implementation plans and design specs under this same
   root - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never its own
   default location.
 

@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the `dotnet` companion router, not here."
+description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the .NET companion router when your skill list has one, not here."
 ---
 
 # C# Conventions
@@ -15,7 +15,7 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 
 On a .NET Framework 4.8 (net48) codebase the C# 7.3 language ceiling, the polyfill packages, and the SynchronizationContext async caveat differ from this floor - those deltas are in `references/net-framework-48.md`.
 
-Specialized concerns route through the `dotnet` router - one table mapping each area (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) to its focused skill. Load the skill the router names; this file stays the style and runtime baseline only.
+Specialized concerns route through the .NET router skill - the one whose description maps each work area (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) to its focused skill - where the install has it: load the skill it names, and with no router match work from the skills already loaded. This file stays the style and runtime baseline only.
 
 ---
 
@@ -104,7 +104,7 @@ Per-case braces give each case its own scope (no accidental variable leak); blan
 - Static fields only for true constants or thread-safe caches. Mutable static state is forbidden.
 
 ## Design patterns (GoF awareness)
-Reach for the framework-native construct before hand-rolling a pattern - most GoF patterns are already in the platform. Which construct replaces which pattern, the selection table, and the anti-pattern checks are `csharp-design-patterns`'s; load it to choose, implement, compare, or refactor toward any pattern.
+Reach for the framework-native construct before hand-rolling a pattern - most GoF patterns are already in the platform. Which construct replaces which pattern, the selection table, and the anti-pattern checks belong to the skill covering GoF design patterns in C# - load it to choose, implement, compare, or refactor toward any pattern; without it, prefer the framework-native construct and stop there.
 
 ## Modern C# syntax preferences
 
@@ -172,7 +172,7 @@ The async baseline - async all the way with no `.Result` / `.Wait()` / `.GetAwai
 - Do not use exceptions for control flow.
 - Re-throw with `throw;` not `throw ex;` (preserves stack trace).
 - Validate arguments at the top of public methods. Prefer the static throw-helpers over hand-written guards: `ArgumentNullException.ThrowIfNull(x)`, `ArgumentException.ThrowIfNullOrWhiteSpace(s)`, `ArgumentOutOfRangeException.ThrowIfNegative` / `ThrowIfGreaterThan(...)` (.NET 8).
-- Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via `dotnet` to `dotnet-web-error-handling`; don't shape HTTP errors in business code.
+- Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via the .NET router to the ASP.NET Core error-handling skill (ProblemDetails, `IExceptionHandler`); don't shape HTTP errors in business code.
 
 ## Logging
 - Structured logging via `ILogger<T>`. Use templates with named placeholders: `_logger.LogInformation("Order {OrderId} placed for {UserId}", orderId, userId)`. Never use string interpolation in log calls.
@@ -182,11 +182,11 @@ The async baseline - async all the way with no `.Result` / `.Wait()` / `.GetAwai
 - One log statement per logical event. Avoid log spam in tight loops.
 
 ## Secrets and configuration sources
-- Where secrets live (dev vs prod placement) is owned by `dotnet-security`; reach for it rather than restating the rule here.
+- Where secrets live (dev vs prod placement) is owned by the skill covering .NET application-security hardening (OWASP-mapped mitigations, secret placement) - reach for it rather than restating the rule here; without it, keep every secret out of source, config files and logs, and stop there.
 - Configuration layering: `appsettings.json` (defaults) -> `appsettings.{Environment}.json` -> environment variables -> command-line args. Later layers override earlier.
-- Hashing / encryption primitives route via `dotnet` to `dotnet-cryptography`; the secret-leak / OWASP hardening boundary is `dotnet-security`.
+- Hashing / encryption primitives route via the .NET router to the cryptography-primitives skill, where installed; the secret-leak / OWASP hardening boundary is the .NET application-security skill.
 
-Typed options binding (`IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`) and startup validation (`ValidateOnStart`, `IValidateOptions<T>`, data-annotation validation) live in `dotnet-web-backend` (its typed-options section) - consult it for those, do not restate here.
+Typed options binding (`IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`) and startup validation (`ValidateOnStart`, `IValidateOptions<T>`, data-annotation validation) belong to the web hub skill - the ASP.NET Core cross-cutting baseline (typed options, resilience, observability) - consult it where the install has it, do not restate here. The DI-side binding shape (`AddOptions<T>().BindConfiguration(...).ValidateOnStart()`) is `references/dependency-injection.md`; without the web hub, that is the whole rule.
 
 ## LINQ
 Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:
@@ -197,7 +197,7 @@ Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and termina
 - `System.Text.Json` is the default. Newtonsoft.Json only for legacy compatibility or features missing from STJ (e.g. polymorphic serialization in older runtimes).
 - Configure `JsonSerializerOptions` once and reuse - never construct per call.
 - Naming policy: `JsonNamingPolicy.CamelCase` for external APIs unless a contract requires otherwise.
-- Reach for source-generated `JsonSerializerContext` on hot paths and under AOT - the source-gen mechanics and the wire-format choice (Protobuf / MessagePack vs JSON) are `dotnet-performance`.
+- Reach for source-generated `JsonSerializerContext` on hot paths and under AOT - the source-gen mechanics and the wire-format choice (Protobuf / MessagePack vs JSON) belong to the .NET performance skill, when your skill list has one.
 - Never deserialize untrusted JSON without size and depth limits.
 
 ## Decoupling and DI lifetimes

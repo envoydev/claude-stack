@@ -113,7 +113,7 @@ Attach the policy where the routes are grouped:
 var admin = app.MapGroup("/admin").RequireAuthorization("CanPublish");
 ```
 
-`RequireAuthorization` on a minimal API group is the chokepoint - see `dotnet-minimal-api` for how groups carry filters and metadata. Read the authenticated caller from the injected `ClaimsPrincipal`, never from a header you trust by hand:
+`RequireAuthorization` on a minimal API group is the chokepoint - the minimal-API endpoint skill covers how groups carry filters and metadata. Read the authenticated caller from the injected `ClaimsPrincipal`, never from a header you trust by hand:
 
 ```csharp
 app.MapGet("/me", (ClaimsPrincipal user) =>
@@ -155,7 +155,7 @@ API keys are the weakest credential - a single static string with no identity, e
 - Store a **hash** of the key, not the key itself; a leaked database must not leak working credentials.
 - Compare in **constant time** so the check leaks no timing information about how many characters matched.
 
-The hashing and constant-time-compare primitives belong to `dotnet-cryptography` - call them, do not reimplement them. Implement the check as an authentication handler or a small middleware that sets a `ClaimsPrincipal` on success, so the rest of the pipeline treats an API-key caller exactly like any other authenticated principal.
+Hash with `SHA256.HashData` (an API key is high-entropy, so a fast hash is enough) and compare with `CryptographicOperations.FixedTimeEquals` - the .NET cryptography skill owns their correct use; reimplement neither. Implement the check as an authentication handler or a small middleware that sets a `ClaimsPrincipal` on success, so the rest of the pipeline treats an API-key caller exactly like any other authenticated principal.
 
 ## Where secrets live
 

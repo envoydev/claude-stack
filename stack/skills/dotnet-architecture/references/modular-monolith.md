@@ -11,12 +11,12 @@ The topology to reach for by default when one team-and-domain no longer fits, be
 ## Boundaries and communication
 
 - In-process, synchronous: call another module through its public interface (or a mediator), never its internals.
-- Decoupled: raise an in-process domain/integration event another module subscribes to (see `dotnet-messaging` for the in-process bus and the outbox once a hop becomes async).
+- Decoupled: raise an in-process domain/integration event another module subscribes to; once a hop becomes async, the bus, outbox, and message contracts are the .NET messaging skill's (broker-backed, at-least-once) territory.
 - No shared mutable state between modules; no shared 'common' dumping-ground that reaches into module internals.
 
 ## Keep it modular
 
-- Enforce isolation with fitness tests - module A must not reference module B's internal namespaces (see `dotnet-architecture-tests`). Without enforcement a modular monolith rots into a big ball of mud one `using` at a time.
+- Enforce isolation with fitness tests - module A must not reference module B's internal namespaces; the .NET architecture-test skill (NetArchTest / ArchUnitNET) owns the how, and with none installed the rule lives in review only. Without enforcement a modular monolith rots into a big ball of mud one `using` at a time.
 - Design each module so its data ownership and contract are clean enough that it *could* be extracted to a `microservice` later - but do not extract prematurely. The value of the modular monolith is keeping that option open at near-zero cost.
 
 ## When

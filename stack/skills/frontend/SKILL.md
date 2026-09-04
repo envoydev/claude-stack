@@ -9,7 +9,7 @@ Index mapping a web-frontend work area to the skill to load. It routes rather th
 
 **Companion, not optional:** load `javascript` (the base language layer - modules, async, errors) plus `typescript` (the type layer) for any TS/JS. Every row below is in addition to that language baseline.
 
-**Required vs optional.** In an Angular project the always-on spine is this router, the `javascript` + `typescript` language pair (every `.ts` / `.js` file), and `angular-conventions` (the framework layer, on any Angular file) - the convention rule already auto-attaches the latter two on `.ts` edits. Every other row below is an optional specialist, loaded only when its area is in play - `angular-material` (Material/CDK), `angular-styling` (CSS/SCSS), `angular-security` (hardening a feature), `mobile` (Ionic/Capacitor) - never up front. A plain non-Angular TypeScript project needs only the language pair; pure JS needs only `javascript`.
+**Availability - required vs optional.** In an Angular project the always-on spine is this router, the `javascript` + `typescript` language pair (every `.ts` / `.js` file), and `angular-conventions` (the framework layer, on any Angular file) - the convention rule already auto-attaches the latter two on `.ts` edits. Every other row below is an optional specialist, loaded only when its area is in play - `angular-material` (Material/CDK), `angular-styling` (CSS/SCSS), `angular-security` (hardening a feature), `mobile` (Ionic/Capacitor) - never up front, and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row. A plain non-Angular TypeScript project needs only the language pair; pure JS needs only `javascript`.
 
 ## Area -> skill
 
@@ -40,7 +40,7 @@ House guidance for UI that looks intentional, not generic-AI-default. Apply it o
 - **Responsive by construction, accessible by default.** Contrast, focus-visible, and keyboard paths are not optional; the a11y rules themselves stay in `angular-conventions` / `angular-styling`.
 
 ## Notes
-- Angular is the house web framework. This router is for navigation, not enforcement - the path-scoped convention rule (Required vs optional above) is the soft enforcement layer.
+- Angular is the house web framework. This router is for navigation, not enforcement - the path-scoped convention rule (Availability above) is the soft enforcement layer.
 - Not every route target is a skill: context7 is an MCP server and the Design quality section is in-skill; the rest of the column are skills.
-- No separate a11y row: `angular-conventions` owns the a11y rules (and ships the `axe-core` / `jest-axe` checks), `angular-styling` the styling-side a11y. Cross-framework state management is intentionally unrouted - no house skill owns it.
+- No separate a11y row: `angular-conventions` owns the a11y rules (including the runner-matched axe checks in specs), `angular-styling` the styling-side a11y. Cross-framework state management is intentionally unrouted - no house skill owns it.
 - `frontend` and `mobile` stay split on purpose: an Ionic/Capacitor app pulls a distinct native layer (Capacitor lifecycle, plugins, permissions) that plain web work never touches.

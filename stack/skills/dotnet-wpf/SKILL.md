@@ -44,7 +44,7 @@ Compose the app through the .NET generic host, not hand-rolled service location 
 
 ## Pairing with a Windows Service
 
-A WPF desktop is often the front for a Windows Service companion - a tray or dashboard UI over a background daemon. The service half is not WPF code: the worker model is `dotnet-hosted-services` and the SCM layer is `dotnet-windows-service` - load those for that process. What is WPF's side of the pairing: the two processes share only a contract - a named pipe, a local socket, a file or database, an IPC channel - never a UI thread or a `Dispatcher`; a service-pushed update crosses into the app as data and marshals onto the UI thread like any other off-thread work.
+A WPF desktop is often the front for a Windows Service companion - a tray or dashboard UI over a background daemon. The service half is not WPF code: the worker model is the hosted-worker skill's (BackgroundService lifecycle, graceful shutdown, 24/7 hardening) and the SCM layer is the Windows Service skill's (`AddWindowsService`, start/stop budgets, install and recovery) - load those for that process where the install has them; without them the service half is a plain generic-host worker with `AddWindowsService()`, and this skill stops at the contract below. What is WPF's side of the pairing: the two processes share only a contract - a named pipe, a local socket, a file or database, an IPC channel - never a UI thread or a `Dispatcher`; a service-pushed update crosses into the app as data and marshals onto the UI thread like any other off-thread work.
 
 ## Naming and pairing
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-project-setup
-description: "Set up a new .NET solution's build spine - the canonical src / tests / .config layout, .slnx solution files, Directory.Build.props shared build properties, global.json SDK pinning + rollForward, central package management via Directory.Packages.props, and pinning a dotnet tool in .config/dotnet-tools.json. Load to set up a new .NET solution, add a NuGet package, add a project, or pin a dotnet tool; trigger files .slnx, Directory.Build.props, Directory.Packages.props, global.json, .config/dotnet-tools.json. Companions: `dotnet` (router / parent), `dotnet-code-quality`, `devops`; schema and version migrations are `dotnet-migrate`. Do NOT load for analyzers / TreatWarningsAsErrors / .editorconfig (`dotnet-code-quality`) or CI workflows / packaging / SourceLink (`devops`)."
+description: "Set up a new .NET solution's build spine - the canonical src / tests / .config layout, .slnx solution files, Directory.Build.props shared build properties, global.json SDK pinning + rollForward, central package management via Directory.Packages.props, and pinning a dotnet tool in .config/dotnet-tools.json. Load to set up a new .NET solution, add a NuGet package, add a project, or pin a dotnet tool; trigger files .slnx, Directory.Build.props, Directory.Packages.props, global.json, .config/dotnet-tools.json. Companions, where the project installed them: the .NET router, the .NET analyzer/quality-gate skill, the CI-and-deploy skill; schema and version migrations belong to the EF migration skill. Do NOT load for analyzers / TreatWarningsAsErrors / .editorconfig (the .NET quality-gate skill) or CI workflows / packaging / SourceLink (the CI-and-deploy skill)."
 ---
 
 # dotnet-project-setup (build spine)
@@ -11,7 +11,7 @@ The files that configure every project in a solution at once - the layout, `.sln
 - Local tool pinning (`.config/dotnet-tools.json`) -> `references/local-tools.md`.
 - .NET Framework 4.8 project config (`packages.config` -> `PackageReference`, `<LangVersion>` pin, Server GC) -> `references/net-framework-48.md`.
 - Analyzers, `TreatWarningsAsErrors`, `.editorconfig`, the CI quality gate -> `dotnet-code-quality`. Do not put these in `Directory.Build.props` here.
-- CI workflows, container / `dotnet pack` packaging, SourceLink -> `devops`.
+- CI workflows, container / `dotnet pack` packaging, SourceLink -> the CI-and-deploy skill.
 - The dotnet-ef tool's migration workflow (add / apply migrations) -> `dotnet-migrate`.
 - Every other .NET work area -> the `dotnet` router (parent).
 
@@ -38,7 +38,7 @@ MySolution/
 - A setting that must hold for every project -> `Directory.Build.props`, never copy-pasted per csproj.
 - A package version -> `Directory.Packages.props`, never inline in a csproj (see the reference).
 - A pinned CLI tool -> `.config/dotnet-tools.json` (see the reference).
-- Anything CI or pipeline (`.github/workflows`) -> `devops`, not here.
+- Anything CI or pipeline (`.github/workflows`) -> the CI-and-deploy skill, not here.
 
 ## Solution file - .slnx
 
@@ -69,7 +69,7 @@ dotnet sln migrate                               # convert an existing .sln, the
 
 ## Directory.Build.props - configure every project once
 
-Placed at the solution root, MSBuild auto-imports it into every project below. Keep it to the language baseline, reusable target-framework properties, and genuinely project-wide global usings. The boundary: analyzer and warnings-as-errors props go to `dotnet-code-quality`; package metadata, packaging, and SourceLink go to `devops` - not here.
+Placed at the solution root, MSBuild auto-imports it into every project below. Keep it to the language baseline, reusable target-framework properties, and genuinely project-wide global usings. The boundary: analyzer and warnings-as-errors props go to `dotnet-code-quality`; package metadata, packaging, and SourceLink go to the CI-and-deploy skill - not here.
 
 ```xml
 <Project>
@@ -127,4 +127,4 @@ Pin the SDK so every machine and CI runner builds with the same toolchain. Proje
 | `latestMinor` | highest minor within the same major |
 | `latestMajor` | highest SDK installed on the machine |
 
-Recommend `latestFeature` - pins the toolchain for reproducible builds, yet won't fail on a box that only has a slightly newer patch. In CI, point setup-dotnet at the file with `global-json-file: global.json` (see `devops`).
+Recommend `latestFeature` - pins the toolchain for reproducible builds, yet won't fail on a box that only has a slightly newer patch. In CI, point setup-dotnet at the file with `global-json-file: global.json` (the CI-and-deploy skill owns the workflow).

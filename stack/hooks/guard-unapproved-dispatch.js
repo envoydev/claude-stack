@@ -19,7 +19,14 @@
 // stand-in (measured: one run put all 10 of a loop's dispatches on general-purpose,
 // losing every seat pin and this gate; one legitimate generic dispatch in 33 audited
 // sessions would have been bounced, a one-retry re-route). Outside a stamped flow,
-// generic seats pass untouched; read-only built-ins (Explore etc.) always pass.
+// generic seats pass untouched.
+// Symbol-search rule: a SYMBOL question - who calls this, where is it declared, what
+// type resolves here - is never delegated to a grep-shaped seat (Explore/general-purpose/
+// claude). Those answer by name-match, and the built-in Explore does not even load the
+// project's rules, so baseline-navigation's 'locate with serena, inline' never reaches it
+// (measured: a consuming session handed a C# symbol hunt to Explore and got grep hits).
+// Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
+// in it still passes.
 const fs = require('fs');
 const path = require('path');
 let payload;
@@ -28,10 +35,82 @@ try {
 } catch {
   process.exit(0); // unparseable stdin - don't block
 }
+if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+
+// --- block telemetry (shared by every guard hook; keep the copies identical) ------------
+// A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
+// FALSE positive is 10-100x the cost of the gate itself, and until this existed the block rate was
+// the one number the stack could not measure (measured 2026-09-04: the hooks emit ~22-25ms and
+// nothing else). One JSONL row per block, written where the tool-usage instrument writes, so
+// scripts/analyze-usage.js can tally both from the same docs root. Best-effort in every direction:
+// telemetry never changes the verdict and never throws.
+(() => {
+  let last = '';
+  const w = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
+  const exit = process.exit.bind(process);
+  process.exit = (code) => {
+    if (code === 2) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+        const dir = path.join(root, process.env.CLAUDE_DOCS_PATH || '.claude/docs', 'hook-blocks');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+          ts: new Date().toISOString(),
+          hook: path.basename(__filename),
+          event: payload.hook_event_name || payload.tool_name || '',
+          tool: payload.tool_name || '',
+          reason: last.split('\n')[0].slice(0, 200),
+        }) + '\n');
+      } catch { /* telemetry is never allowed to break the gate */ }
+    }
+    exit(code);
+  };
+})();
 const input = payload.tool_input || {};
 const seat = String(input.subagent_type || '');
 const GENERIC_SEATS = new Set(['general-purpose', 'claude']);
+const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude']);
 const isImplementer = /-implementer$/.test(seat);
+
+// A symbol question routed at a grep-shaped seat: block and send it back to serena.
+// The patterns are the QUESTION shapes baseline-navigation names, not tool words - a
+// sweep brief ('map the auth module', 'which files configure logging') carries none.
+const SYMBOL_QUESTION = new RegExp(
+  [
+    'who calls\\b',
+    'call(?:ers|[- ]sites)\\s+(?:of|for)\\b',
+    'where\\s+(?:is|are)\\s+\\S.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b',
+    '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
+    '\\breferences?\\s+to\\b',
+    '\\busages?\\s+of\\b',
+    '\\bwhat\\s+type\\b',
+    '\\bimplementations?\\s+of\\b',
+    '\\bsubclasses\\s+of\\b',
+    '\\b(?:find|locate)\\s+(?:the\\s+)?(?:class|interface|method|function|component|service|enum|record|struct)\\s+`?[A-Za-z_]',
+  ].join('|'),
+  'i',
+);
+if (SEARCH_SEATS.has(seat)) {
+  const brief = `${input.prompt || ''}\n${input.description || ''}`;
+  const asked = brief.match(SYMBOL_QUESTION);
+  if (asked) {
+    process.stderr.write(
+      `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
+        `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
+        `Explore does not load this project's rules at all, so it cannot know to use serena.\n` +
+        `Answer it INLINE instead: mcp__serena__find_symbol for a declaration or signature,\n` +
+        `mcp__serena__find_referencing_symbols for callers, mcp__serena__get_symbols_overview\n` +
+        `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when serena's\n` +
+        `language server cannot resolve it. Dispatch a search seat only for a genuinely broad\n` +
+        `multi-file sweep that asks no symbol question.`,
+    );
+    process.exit(2);
+  }
+}
+
 if (!isImplementer && !GENERIC_SEATS.has(seat)) {
   process.exit(0);
 }

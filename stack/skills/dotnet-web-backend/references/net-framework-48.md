@@ -44,6 +44,8 @@ sharper per-area deltas route out below.
 
 ## Route out
 
+**Availability** - a target below that is not in your skill list means that area is absent here; the baseline above still holds.
+
 DI resolvers and controller mechanics -> `dotnet-mvc-controllers`; auth (OWIN / Identity / OAuth) ->
 `dotnet-authentication`; ViewState / machineKey / secrets hardening -> `dotnet-security`; EF on 4.8 ->
 `dotnet-data-access`; OWIN integration testing -> `dotnet-testing`; the migration path (System.Web

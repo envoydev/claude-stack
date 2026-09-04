@@ -56,7 +56,7 @@ children), `ButtonBase.Command` / `CommandParameter` over `System.Windows.Input.
 - Know the ceiling: no XAML, classic value binding still flows through `Binding` / `BindingSource`,
   and there are no data templates, no rich converters, and no `DependencyProperty`. **XAML is not
   coming to WinForms** - a ViewModel shared with WPF/MAUI is the payoff, not visual parity. When you
-  want real MVVM fidelity, that is a `dotnet-wpf` decision, not a WinForms one.
+  want real MVVM fidelity, that is a WPF decision (the WPF conventions skill), not a WinForms one.
 
 ## Async: InvokeAsync and async forms
 
@@ -145,7 +145,7 @@ rollback - is the `dotnet-migrate` skill's. These are the deltas particular to W
   `PublishTrimmed` can strip runtime-needed types; it is also only valid for self-contained apps
   (trimming a framework-dependent build errors with `NETSDK1102`). Prefer `PublishReadyToRun` for
   startup and avoid trimming unless you test exhaustively. General CI / release orchestration is the
-  `devops` skill's.
+  CI-and-deploy skill's.
 
 ## Analyzers to keep on
 

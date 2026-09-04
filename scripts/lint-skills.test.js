@@ -108,3 +108,117 @@ test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gap
     assert.ok(findings.some(f => f.includes("below 'seventeen'")), 'non-integer threshold flagged');
     assert.ok(findings.some(f => f.includes('empty cadence')), 'blank occasionBound cadence flagged');
 });
+
+test('optionalSkills is every skill no seed closure reaches', () => {
+    const { optionalSkills } = require('./lint-skills.js');
+    const recs = {
+        always: { skills: ['project-solve-task'], agents: ['security-auditor'] },
+        stacks: {
+            aspnet: { skills: ['dotnet-architecture'], agents: ['aspnet-implementer'] },
+        },
+    };
+    const graph = {
+        agents: {
+            'aspnet-implementer': { skills: ['csharp', 'dotnet-testing'] },
+            'security-auditor': { skills: [] },
+        },
+        rules: {},
+    };
+    const dirs = new Set(['project-solve-task', 'dotnet-architecture', 'csharp', 'dotnet-testing', 'dotnet-architecture-tests', 'postgres']);
+    const optional = optionalSkills(recs, graph, dirs);
+
+    // seeded directly, or pulled through a seeded agent -> always installed
+    for (const reached of ['project-solve-task', 'dotnet-architecture', 'csharp', 'dotnet-testing'])
+    {
+        assert.ok(!optional.has(reached), `${reached} is reachable from a seed`);
+    }
+
+    // evidence-gated / opt-in only -> an install can lack them
+    assert.deepStrictEqual([...optional].sort(), ['dotnet-architecture-tests', 'postgres']);
+});
+
+test('absentSkillsFor is the cross-stack case: a skill missing where the citing artifact still ships', () => {
+    const { seedClosures, hostStacks, absentSkillsFor } = require('./lint-skills.js');
+    const recs = {
+        always: { agents: ['security-auditor'], skills: ['docs-as-code'] },
+        general: { skills: ['frontend'] },
+        stacks: {
+            aspnet: { agents: ['aspnet-implementer'] },
+            'web-angular': { skills: ['angular-security'], agents: [] },
+        },
+    };
+    const graph = { agents: { 'aspnet-implementer': { skills: ['csharp'] } }, rules: {} };
+    const closures = seedClosures(recs, graph);
+    const skills = new Set(['csharp', 'angular-security', 'docs-as-code', 'frontend']);
+
+    // an ALWAYS agent ships into every stack, so anything stack-scoped is absent somewhere
+    assert.deepStrictEqual([...hostStacks(closures, 'agents', 'security-auditor')].sort(), ['aspnet', 'web-angular']);
+    const absent = absentSkillsFor(closures, 'agents', 'security-auditor', skills);
+    assert.ok(absent.has('angular-security'), 'the measured shape: a cross-cutting seat naming an Angular skill');
+    assert.ok(absent.has('csharp'), 'and the mirror case in the other direction');
+    assert.ok(!absent.has('docs-as-code'), 'an always-on skill is present in every stack closure');
+    assert.ok(absent.has('frontend'), "the opt-in `general` list seeds no stack, so it is never guaranteed");
+
+    // a stack-scoped seat may name its own stack's skills freely
+    const own = absentSkillsFor(closures, 'agents', 'aspnet-implementer', skills);
+    assert.ok(!own.has('csharp'), 'its own stack ships csharp');
+    assert.ok(own.has('angular-security'), 'but not another stack\'s');
+
+    // an artifact no seed installs proves nothing - no findings rather than false ones
+    assert.strictEqual(absentSkillsFor(closures, 'agents', 'not-seeded-anywhere', skills).size, 0);
+});
+
+test('lintOptionalCites flags a NAMED load of a skill that can be absent; a description passes', () => {
+    const { lintOptionalCites } = require('./lint-skills.js');
+    const optional = new Set(['dotnet-architecture-tests', 'angular-material']);
+
+    // the measured regression: an unconditional 'add `x`' in a second sentence
+    const bare = 'Load the router first. In .NET, add `dotnet-architecture-tests` when judging a boundary.\n';
+    const flagged = lintOptionalCites('skills/x/SKILL.md', bare, optional);
+    assert.strictEqual(flagged.length, 1);
+    assert.match(flagged[0], /skills\/x\/SKILL\.md:1/);
+    assert.match(flagged[0], /BY NAME/);
+
+    // A GUARD PHRASE next to the name is no longer the remedy. It made the cite safe to skip,
+    // but a project without that skill still learned nothing about what to do instead - and the
+    // name is what invites the Skill call in the first place.
+    assert.strictEqual(
+        lintOptionalCites('f.md', 'Load `dotnet-architecture-tests` only when it is in your skill list.\n', optional).length, 1,
+        'naming it and guarding it is still naming it');
+
+    // The remedy: describe what the skill covers, so it is matched from the installed inventory
+    // and a seat without it reads what to do anyway.
+    assert.deepStrictEqual(
+        lintOptionalCites('f.md', 'Load the skill covering architecture fitness tests, if your skill list has one.\n', optional), []);
+
+    // a router-table row under a 'Load' column is a directive too
+    const table = '| You are about to... | Load |\n|---|---|\n| build Material UI | `angular-material` |\n';
+    assert.strictEqual(lintOptionalCites('f.md', table, optional).length, 1);
+
+    // the header cell only has to END in the word 'load' ('Also load' measured unflagged in 11 rows);
+    // 'Payload' is a different word and not a routing column
+    const alsoLoad = '| Situation | Also load |\n|---|---|\n| Material UI | `angular-material` |\n';
+    assert.strictEqual(lintOptionalCites('f.md', alsoLoad, optional).length, 1, 'an Also-load column is a Load column');
+    const payload = '| Field | Payload |\n|---|---|\n| material | `angular-material` |\n';
+    assert.deepStrictEqual(lintOptionalCites('f.md', payload, optional), [], 'Payload is not a load column');
+
+    // the flow twins' spelling is a directive; a pointer ('see `x`') and domain prose ('Run migrations') are not
+    assert.strictEqual(lintOptionalCites('f.md', 'Re-enter `dotnet-architecture-tests` after the plan changes.\n', optional).length, 1);
+    assert.deepStrictEqual(lintOptionalCites('f.md', 'Never bake secrets into the image (see `dotnet-architecture-tests`).\n', optional), []);
+    assert.deepStrictEqual(lintOptionalCites('f.md', 'Run migrations before the roll (mechanics in `dotnet-architecture-tests`).\n', optional), []);
+
+    // ... and the one escape: a router hub's explicit Availability callout blankets its table
+    const blanketed = '**Availability** - a row whose skill is not installed means the area is absent here.\n' + table;
+    assert.deepStrictEqual(lintOptionalCites('f.md', blanketed, optional), []);
+    const qualified = '**Availability - required vs optional.** A row not in your skill list means the area is absent.\n' + table;
+    assert.deepStrictEqual(lintOptionalCites('f.md', qualified, optional), []);
+
+    // a pointer is not a directive - no load verb in the token's own sentence
+    assert.deepStrictEqual(
+        lintOptionalCites('f.md', 'Boundary enforcement lives in `dotnet-architecture-tests`.\n', optional), []);
+
+    // The blanket must be DELIBERATE. It used to fire on any line pairing a guard phrase with a
+    // common word ('every', 'rows', 'below'), which silenced 13 of 263 files by accident.
+    const accidental = 'Every seat reads the docs; a skill not installed is simply absent.\nLoad `angular-material` for Material work.\n';
+    assert.strictEqual(lintOptionalCites('f.md', accidental, optional).length, 1);
+});

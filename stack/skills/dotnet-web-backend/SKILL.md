@@ -11,7 +11,7 @@ On .NET Framework 4.8 the classic pipeline (MVC 5 / Web API 2 / Web Forms) diffe
 
 ## Architecture - pick exactly one, here
 
-This is the single home of the architecture rule, and it has one job: stop two patterns living side by side in one repo.
+This is where the web hub pins the architecture rule, and it has one job: stop two patterns living side by side in one repo.
 
 - In an established codebase, the existing architecture wins. Match its structure exactly; do not introduce a second pattern alongside the one already there, even a 'better' one. A repo with two architectures has neither.
 - For greenfield work the architecture is a deliberate decision - load `dotnet-architecture` and follow its pick-one rule (one internal style per codebase, plus the topology and DDD-additive axes). The decision layer and each style's depth live in that hub; do not restate it here.
@@ -147,7 +147,9 @@ Anti-patterns:
 
 ## Deep specialists
 
-This skill is the cross-cutting baseline; load the focused companion for the *how*:
+This skill is the cross-cutting baseline; load the focused companion for the *how*.
+
+**Availability** - the rows below name specialists installed only where the project's stack or evidence shows the area; a row whose skill is not in your skill list means the area is absent here - work from this hub and skip the row.
 
 Default a new HTTP surface to minimal APIs; the full minimal-vs-controllers decision - when controllers earn their place, chosen per surface, not per repo - is owned by `dotnet-mvc-controllers` (its decision section).
 

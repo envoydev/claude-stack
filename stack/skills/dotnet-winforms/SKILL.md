@@ -25,7 +25,7 @@ observer, and memento orchestration -> `csharp-design-patterns`; test framework 
 mechanics -> `dotnet-testing`; the upgrade safety playbook (baseline, staged, rollback) ->
 `dotnet-migrate`; SDK-style project shape and packaging -> `dotnet-project-setup`; general
 managed-memory profiling -> `dotnet-diagnostics`; general perf and type design ->
-`dotnet-performance`; a paired Windows-Service half -> `dotnet-hosted-services` + `dotnet-windows-service`.
+`dotnet-performance`; a paired Windows-Service half -> the hosted-worker skill plus the Windows Service (SCM layer) skill, where installed.
 
 ## Logic out of code-behind - the one rule everything rests on
 
