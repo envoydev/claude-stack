@@ -18,7 +18,7 @@ function run(hook, payload) {
   return r.status;
 }
 const bash = (hook, command) => run(hook, { tool_name: 'Bash', tool_input: { command } });
-const heredoc = (body) => `cat <<'EOF' > /tmp/plan.md\n${body}\nEOF`;
+const heredoc = (body, target = '/tmp/plan.md') => `cat <<'EOF' > ${target}\n${body}\nEOF`;
 
 function transcript(name, rows) {
   const p = path.join(TMP, `${name}.jsonl`);
@@ -504,7 +504,11 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
 test('guard-cross-project-write: prose describing a command is not a command', () => {
   // The measured false-positive class: a plan or report that QUOTES a dangerous command is
   // inert text, and blocking the document write for its own prose stalls honest work.
-  assert.equal(xpBash(heredoc('Then run: echo x > /etc/hosts')), 0, 'a heredoc body is data');
+  // The heredoc lands INSIDE the project: this test project lives under os.tmpdir(), and an
+  // allowance containing the project root is dropped - so on Linux (tmpdir = /tmp) a /tmp/plan.md
+  // target is judged out-of-tree and the body would never be what blocked (measured in CI).
+  assert.equal(xpBash(heredoc('Then run: echo x > /etc/hosts', path.join(XP_ROOT, 'plan.md'))), 0, 'a heredoc body is data');
+  assert.equal(xpBash(heredoc('plain notes', path.join(XP_OTHER, 'plan.md'))), 2, "the heredoc's own first line still carries its redirect");
   assert.equal(xpBash('echo "writes go to ../projB/f.txt" '), 0, 'a quoted mention is not a redirection');
 });
 
