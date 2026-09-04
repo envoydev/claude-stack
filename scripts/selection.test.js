@@ -180,3 +180,39 @@ test('ps1: -InstalledOnly derives the same plan as the sh twin (pwsh required)',
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// --- the environment catalog (meta/environment.json) ------------------------------------------
+// One list for the settings.json env block: setup asks its rows, configure changes them, validate
+// reconciles them, the installers seed them. The lint pins catalog <-> installer parity; these
+// pin the catalog's own shape and the rename wiring, so a bad row fails here with a name.
+test('environment catalog: every row is askable, seeded and shaped', () =>
+{
+    const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-empty']);
+    assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
+    for (const row of cat.env)
+    {
+        assert.match(row.key, /^CLAUDE_[A-Z0-9_]+$/, `${row.key} is an env key`);
+        assert.strictEqual(typeof row.default, 'string', `${row.key} has a string default`);
+        assert.ok(row.what && row.what.length > 20, `${row.key} explains itself in plain words`);
+        assert.ok(TYPES.has(row.validate.type), `${row.key} has a validate shape the walks can check`);
+        if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
+        if (row.validate.type === 'percent') { assert.ok(Number(row.default) >= row.validate.min && Number(row.default) <= row.validate.max, `${row.key} default is inside its own range`); }
+        if (row.asked_with) { assert.ok(cat.env.some(r => r.key === row.asked_with), `${row.key} rides along with a row that exists`); }
+    }
+});
+
+test('environment catalog: a renamed key is declared on both sides', () =>
+{
+    const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
+    const migrations = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
+    const renames = migrations.migrations.filter(m => m.rename_settings_env);
+    assert.ok(renames.length >= 1, 'the docs-root rename is catalogued');
+    for (const m of renames)
+    {
+        const row = cat.env.find(r => r.key === m.rename_settings_env.to);
+        assert.ok(row, `${m.id} renames into a key the catalog owns`);
+        assert.strictEqual(row.renamed_from, m.rename_settings_env.from, `${row.key} records the old spelling validate looks for`);
+        assert.strictEqual(m.detect.settings_env_key, m.rename_settings_env.from, `${m.id} detects the key it renames`);
+    }
+});

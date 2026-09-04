@@ -14,7 +14,7 @@ the deterministic work; you orchestrate.
 **ONE release archive is the entire download** - read `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`
 before step 1 and hold the whole run to it: download + extract once into `$TMP/repo`, use
 `stack-select.js` / the graph / `recommendations.json` / the installer from that snapshot, hand
-the installer `--source "$TMP/repo"` in step 9, and remove `$TMP` per the 'Clean up' section on
+the installer `--source "$TMP/repo"` in step 11, and remove `$TMP` per the 'Clean up' section on
 EVERY exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per
 recompute, no pasted tool output, one narration line between steps.
 
@@ -30,13 +30,13 @@ the fallback only where the harness lacks the tool.
 
 ## The ladder - announce every step
 
-Eleven user-facing steps; the machinery between them runs silently. One banner line before each:
+Twelve user-facing steps; the machinery between them runs silently. One banner line before each:
 
 ```
-[step 3/11 - rules] reconcile the rule layer · next: agents
+[step 3/12 - rules] reconcile the rule layer · next: agents
 ```
 
-1 find + inventory · 2 detect stacks · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 judgment review · 10 apply · 11 post-check
+1 find + inventory · 2 detect stacks · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 judgment review · 11 apply · 12 post-check
 
 ## 1. Find the install and inventory it
 
@@ -108,7 +108,7 @@ detected-stack + baseline closure not installed (add candidates), each with `nee
 candidates, the signal as the reason - already deduped against the `missing:` lines by the tool).
 `no-evidence:` lines = installed, catalog-listed, no signal found - ADVISORY ONLY, never an action.
 `overlap:` / `dormant:` lines (judgment.out) + the scan's `judgment.versionConflicts` rows
-(found.json) = step 9's precomputed candidates - carried there, never acted on in the walk.
+(found.json) = step 10's precomputed candidates - carried there, never acted on in the walk.
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
@@ -134,11 +134,11 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
    your call'. A line carrying `held by <cat> <name>` is NOT your-call: the kept closure requires
    it, so present it as locked-by-holder info - its real drop path is dropping the holder via the
    sibling configure, never a promise this walk can keep. The walk itself never acts on an
-   advisory - step 9 revisits each one with code corroboration and may propose the drop there. A layer with none of the three gets a single line ('rules: nothing to reconcile')
+   advisory - step 10 revisits each one with code corroboration and may propose the drop there. A layer with none of the three gets a single line ('rules: nothing to reconcile')
    and you move straight on - do not invent rows.
 
 ```
-[step 4/11 - agents] reconcile the agent layer · next: skills
+[step 4/12 - agents] reconcile the agent layer · next: skills
  # | agent                  | state     | reason
 ---+------------------------+-----------+-----------------------------------
  1 | wpf-implementer        | REDUNDANT | owned by wpf, not detected
@@ -163,7 +163,31 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   v0.2.17 had no guided route to the instrument hook until this entry existed).
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
 
-## 9. Judgment review - corroborated non-use, convention conflicts, corroborated need
+## 9. Environment - the settings.json env block against this release
+
+The one layer that is not an artifact: the values this stack owns in the scope's settings.json
+`env`. Read the rows from the snapshot's `$TMP/repo/meta/environment.json` and the current block
+from the file (project mode: `.claude/settings.json`; global: the account file), then show one
+table of the actionable rows only - an install whose env already matches gets the single line
+`environment: nothing to reconcile` and you move on:
+
+- **MISSING** - a catalog row with no key in the file. This is the release-introduced case: a
+  variable added upstream after this install was made, which no artifact diff can surface because
+  it was never a file. Reason column: `introduced in <since>, not set`.
+- **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
+  new key and drops the old one; nothing is deleted and no default is written over it. The
+  installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
+- **INVALID** - a key whose value fails the row's `validate` shape (a percent out of range, a
+  non-numeric window, an instrumentation switch that is neither `0` nor `1`). Show the value and
+  the expected shape; the fix is the catalog default unless the user types another.
+
+Consent exactly like the artifact layers: one AskUserQuestion round - **Accept all**, **Add
+missing only**, **Skip**, or typed numbers - then restate the outcome in one line. Accepted rows
+are written in step 11 as a merge touching ONLY those keys, everything else in the file preserved.
+A value the user has deliberately pinned is never an INVALID row just for differing from the
+default: only the row's `validate` shape decides that.
+
+## 10. Judgment review - corroborated non-use, convention conflicts, corroborated need
 
 The mechanical tiers stop at what signals can prove; this step carries the judgment they cannot -
 a skill whose PURPOSE conflicts with the project's stated conventions, whose domain the code
@@ -226,7 +250,7 @@ covered everything, not only the cuts. One table, VISIBLY separate from the sign
 the usual per-item consent round:
 
 ```
-[step 9/11 - judgment] corroborated non-use + conflicts + corroborated need + overlap · next: apply
+[step 10/12 - judgment] corroborated non-use + conflicts + corroborated need + overlap · next: apply
  # | artifact                   | verdict                  | citation
 ---+----------------------------+--------------------------+--------------------------------------------------
  1 | mcp chrome-devtools        | JUDGMENT-DROP · MATERIAL | overlap: playwright also drives a browser and is the only one the project docs cite; unique gap - live console/network debug of an already-open Chrome; keep only if that is real here
@@ -237,7 +261,7 @@ the usual per-item consent round:
 
 This step is model judgment, not a signal: it is non-deterministic and can be confidently wrong,
 which is exactly why every row carries its quotation and nothing here ever auto-applies. A
-decline is final for this run - never re-litigate it. Accepted judgment drops join step 10's
+decline is final for this run - never re-litigate it. Accepted judgment drops join step 11's
 removal set and accepted judgment adds its install set, both reported there under their
 JUDGMENT label.
 
@@ -255,10 +279,12 @@ session (lever: remove, or accept it); an MCP costs its server launch + tools ev
 (`claude plugin disable <name>`). Act on a lever only on an explicit user request in this run -
 dormancy alone is never a removal argument.
 
-## 10. Apply - the same paths setup/configure use
+## 11. Apply - the same paths setup/configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
-remove, written to `$TMP/final.json` in the inventory's shape. Emit + prereq-check it -
+remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
+are applied here too, as a merge on the scope's settings.json touching ONLY those keys - seeds and
+renames included - and named in the post-check the same way an added artifact is. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
 (`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
@@ -281,11 +307,12 @@ profile), output to `$TMP/select.out` - then:
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is blocked;
   never attempt it. The run rewrites `claude-stack.stamp` to the snapshot revision.
 
-## 11. Post-check
+## 12. Post-check
 
 Report per category what was added, removed - signal-backed and JUDGMENT-labeled separately -
 and left as-is (disputed detections, deliberate extras, declined suggestions, declined
-judgment proposals). Remind that a restart picks up MCP registration changes, and surface
+judgment proposals), plus one ENVIRONMENT line naming every key seeded, renamed or corrected (or
+saying the block already matched). Remind that a restart picks up MCP registration changes, and surface
 the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 
