@@ -137,6 +137,24 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // driver in a WinForms install is the same defect as an Angular skill there: the need has to be
 // proven (a stack whose surface always has a browser, or the project's own manifests) - it is
 // never assumed. playwright sat in `always.mcps` and shipped to every console/WPF/data install.
+// MEASURED (a real 0.2.47 setup run on a WPF/WinForms project): every layer table was rendered
+// into `$TMP/table.txt` by a redirect and then never shown - the redirect empties the tool result,
+// so pasting it needed a read-back step the prescribed command never contained, and all six layer
+// questions were asked with no catalog on screen. The table must come back in the tool result.
+test('the layer table is never redirected to a file - the tool result is what gets pasted', () => {
+    for (const name of ['setup', 'configure'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
+        assert.ok(tableCmds.length, `${name} prescribes the table command`);
+        for (const line of tableCmds)
+        {
+            assert.ok(!/--table <layer>[^`]*>\s*"?\$TMP/.test(line), `${name} must not redirect the table into a file: ${line.trim().slice(0, 120)}`);
+        }
+        assert.match(body, /total: N <layer>/, `${name} carries the footer self-check`);
+    }
+});
+
 // A plugin's own defaults are not this stack's recommendation, and the stack must not force one:
 // the ASK belongs to the plugins layer's own turn (that is where the user is deciding about
 // plugins), the APPLY to the install step - the plugin has to be on disk first. Same shape as the

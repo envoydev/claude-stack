@@ -137,12 +137,12 @@ Per layer, the SAME three-beat shape as setup:
      never remove one silently, never re-offer one the user chose to keep.
 2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed
    alike). The TOOL renders it, never you:
-   `node stack-select.js --selection raw.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json" > "$TMP/table.txt"`
+   `node stack-select.js --selection raw.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json"` - **never redirected to a file**: the table comes back in the tool result and you paste those exact lines. (Measured: the old redirect-then-paste-the-file form left the tool result empty and one real run showed no table for any of its six layers. A disk copy, if you want one, is `| tee "$TMP/table.txt"`.)
    (write the step-1 inventory to `installed.json` once; omit `--found` in global mode - no scan
    ran. A not-installed row whose reason column carries a matched signal is the project telling
-   you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste `table.txt` verbatim
+   you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste the tool output verbatim
    inside a fenced code block. **The layer turn has ONE fixed shape, in order: (1) the
-   `[step n/12 - <layer>]` banner, (2) the fenced block holding `table.txt` byte-for-byte, (3) the
+   `[step n/12 - <layer>]` banner, (2) the fenced block holding the tool output byte-for-byte (self-check: your message must carry its `total: N <layer>` footer line - it is not there unless you pasted the table), (3) the
    ADD round question - a layer turn missing the fenced table is invalid: render the table and
    re-send.** A prose grouping that feels equivalent (`Installed (5): ...` / `Locked (3): ...`
    lines) is the exact failure this shape exists to prevent, and the run's narrate-don't-trace
