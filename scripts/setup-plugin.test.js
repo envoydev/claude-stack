@@ -133,6 +133,66 @@ test('the related-context capture is optional, never an always-baseline seed', (
     }
 });
 
+// An always-baseline artifact installs into EVERY project, so it must be stack-neutral. A browser
+// driver in a WinForms install is the same defect as an Angular skill there: the need has to be
+// proven (a stack whose surface always has a browser, or the project's own manifests) - it is
+// never assumed. playwright sat in `always.mcps` and shipped to every console/WPF/data install.
+// MEASURED (a real 0.2.47 setup run on a WPF/WinForms project): every layer table was rendered
+// into `$TMP/table.txt` by a redirect and then never shown - the redirect empties the tool result,
+// so pasting it needed a read-back step the prescribed command never contained, and all six layer
+// questions were asked with no catalog on screen. The table must come back in the tool result.
+test('the layer table is never redirected to a file - the tool result is what gets pasted', () => {
+    for (const name of ['setup', 'configure'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
+        assert.ok(tableCmds.length, `${name} prescribes the table command`);
+        for (const line of tableCmds)
+        {
+            assert.ok(!/--table <layer>[^`]*>\s*"?\$TMP/.test(line), `${name} must not redirect the table into a file: ${line.trim().slice(0, 120)}`);
+        }
+        assert.match(body, /total: N <layer>/, `${name} carries the footer self-check`);
+    }
+});
+
+// A plugin's own defaults are not this stack's recommendation, and the stack must not force one:
+// the ASK belongs to the plugins layer's own turn (that is where the user is deciding about
+// plugins), the APPLY to the install step - the plugin has to be on disk first. Same shape as the
+// environment choices, asked at step 1 and merged at step 10.
+test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
+    for (const [name, pluginsStep, applyStep] of [['setup', '## 8. Plugins', '10a'], ['configure', '## 8. Plugins', '11a']])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        const layer = body.slice(body.indexOf(pluginsStep), body.indexOf('## 9.'));
+        assert.match(layer, /Plugin settings - part of this layer's turn/, `${name} asks inside the plugins layer`);
+        assert.match(layer, /plugin-settings\.js/, `${name} reports with the tool, never a hand edit`);
+        assert.match(layer, /meta\/plugin-settings\.json/, `${name} reads the snapshot catalog`);
+        assert.match(layer, /Apply recommended/, `${name} offers apply`);
+        assert.match(layer, /Apply and replace differing/, `${name} offers replace`);
+        assert.match(layer, /\*\*Skip\*\*/, `${name} offers skip`);
+        assert.ok(!/--apply/.test(layer), `${name} does not write before the plugin is installed`);
+
+        const apply = body.slice(body.indexOf(`### ${applyStep}. Plugin settings`));
+        assert.match(apply, /--apply/, `${name} applies the answer at the install step`);
+        assert.match(apply, /--replace/, `${name} carries the overwrite answer through`);
+    }
+});
+
+test('the always MCP baseline is stack-neutral - a browser or native driver is seeded or proven', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
+    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'memory', 'serena'], 'only the stack-neutral three');
+    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry'])
+    {
+        assert.ok(!(recs.always.mcps || []).includes(server), `${server} must not install into every project`);
+    }
+
+    // two proven routes into a project: a stack whose surface always has a browser, or the packages
+    const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('playwright')).map(([st]) => st).sort();
+    assert.deepStrictEqual(seeded, ['browser-extension', 'ionic-angular', 'web-angular']);
+    assert.ok((evidence.mcps || {}).playwright, 'and an evidence signal for any other stack that actually uses it');
+});
+
 test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     for (const st of ['aspnet', 'wpf', 'console'])

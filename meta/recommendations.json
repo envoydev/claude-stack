@@ -22,8 +22,7 @@
   "mcps": [
    "serena",
    "context7",
-   "memory",
-   "playwright"
+   "memory"
   ],
   "hooks": [
    "guard-protected-force-push",
@@ -114,9 +113,11 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "angular-cli"
+    "angular-cli",
+    "playwright"
    ],
    "skills": [
+    "angular-security",
     "angular-testing"
    ]
   },
@@ -235,6 +236,7 @@
     "angular-test-resolver"
    ],
    "skills": [
+    "angular-security",
     "angular-testing",
     "capacitor-release",
     "ionic-security"
@@ -251,7 +253,8 @@
    ],
    "mcps": [
     "angular-cli",
-    "appium-mcp"
+    "appium-mcp",
+    "playwright"
    ]
   },
   "data": {
@@ -294,7 +297,8 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "chrome-devtools"
+    "chrome-devtools",
+    "playwright"
    ]
   },
   "typescript": {

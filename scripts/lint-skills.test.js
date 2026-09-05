@@ -168,6 +168,21 @@ test('absentSkillsFor is the cross-stack case: a skill missing where the citing 
     assert.strictEqual(absentSkillsFor(closures, 'agents', 'not-seeded-anywhere', skills).size, 0);
 });
 
+test('lintSuggestionEdges blocks the removed `suggests:` frontmatter from coming back', () => {
+    const { lintSuggestionEdges } = require('./lint-skills.js');
+    // the measured shapes: dotnet-aspire offered to a project with no Aspire, angular-security
+    // to a WinForms one - an artifact naming a skill must never reach an install decision
+    const withEdge = '---\nname: devops-implementer\nmodel: sonnet\nsuggests:\n  - dotnet-aspire\n---\n\nbody';
+    const found = lintSuggestionEdges('agents/devops-implementer.md', withEdge);
+    assert.strictEqual(found.length, 1);
+    assert.match(found[0], /agents\/devops-implementer\.md declares `suggests:`/);
+    assert.match(found[0], /meta\/evidence\.json/, 'the message names the mechanism that replaces it');
+
+    // a clean agent, and the word in prose or in a body line, are not findings
+    assert.deepStrictEqual(lintSuggestionEdges('agents/x.md', '---\nname: x\n---\n\nthe log suggests: a stale base'), []);
+    assert.deepStrictEqual(lintSuggestionEdges('skills/y/SKILL.md', 'no frontmatter here'), []);
+});
+
 test('lintOptionalCites flags a NAMED load of a skill that can be absent; a description passes', () => {
     const { lintOptionalCites } = require('./lint-skills.js');
     const optional = new Set(['dotnet-architecture-tests', 'angular-material']);

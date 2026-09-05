@@ -5,13 +5,6 @@ tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__ser
 model: sonnet
 effort: medium
 color: orange
-# suggests: the on-demand skills this seat's brief DESCRIBES rather than names (a name breaks
-# wherever the project trimmed that skill). Declared here so the guided install can still offer
-# them as advisory picks - they are never hard edges and never auto-install.
-suggests:
-  - angular-testing
-  - dotnet-testing
-  - ts-js-testing
 ---
 
 You are a read-only test-coverage characterizer. You analyze ONE measured surface per dispatch -

@@ -137,12 +137,12 @@ Per layer, the SAME three-beat shape as setup:
      never remove one silently, never re-offer one the user chose to keep.
 2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed
    alike). The TOOL renders it, never you:
-   `node stack-select.js --selection raw.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json" > "$TMP/table.txt"`
+   `node stack-select.js --selection raw.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json"` - **never redirected to a file**: the table comes back in the tool result and you paste those exact lines. (Measured: the old redirect-then-paste-the-file form left the tool result empty and one real run showed no table for any of its six layers. A disk copy, if you want one, is `| tee "$TMP/table.txt"`.)
    (write the step-1 inventory to `installed.json` once; omit `--found` in global mode - no scan
    ran. A not-installed row whose reason column carries a matched signal is the project telling
-   you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste `table.txt` verbatim
+   you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste the tool output verbatim
    inside a fenced code block. **The layer turn has ONE fixed shape, in order: (1) the
-   `[step n/12 - <layer>]` banner, (2) the fenced block holding `table.txt` byte-for-byte, (3) the
+   `[step n/12 - <layer>]` banner, (2) the fenced block holding the tool output byte-for-byte (self-check: your message must carry its `total: N <layer>` footer line - it is not there unless you pasted the table), (3) the
    ADD round question - a layer turn missing the fenced table is invalid: render the table and
    re-send.** A prose grouping that feels equivalent (`Installed (5): ...` / `Locked (3): ...`
    lines) is the exact failure this shape exists to prevent, and the run's narrate-don't-trace
@@ -194,9 +194,11 @@ Locked = agents a kept rule requires. Orphans here trace back to rule drops in s
 ## 5. Skills
 
 Locked = skills the kept rules + agents require (rule attachments and `skills:` frontmatter
-preloads). A kept agent's `suggests` - its body's conditional 'load X when...' mentions - are
-never locks: those installed rows show `-` in required-by and drop freely, no cascade. Orphans
-trace back to the rule and agent drops before them.
+preloads). A skill an agent's body merely names as a conditional load ('load X when...') is NOT
+an edge and never appears pre-selected: what a project needs is proven by the evidence scan
+against its own manifests, or seeded per stack - never inferred from a body. Those installed rows
+show `-` in required-by and drop freely, no cascade. Orphans trace back to the rule and agent
+drops before them.
 
 ## 6. Hooks
 
@@ -224,6 +226,18 @@ its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one
 Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure;
 `superpowers` and `ponytail` arrive via the skills and agents that cite them); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
+
+**Plugin settings - part of this layer's turn.** After the selection question, for every kept
+plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,
+whose config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
+here - the answer is applied at the install step, exactly like screen B's environment choices:
+
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
+
+No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
+plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports
+itself as `skipped` rather than inventing it - say so once, and point at `/claude-hud:setup`.
 
 ## 9. Environment - the stack env values (when picked)
 
@@ -295,6 +309,13 @@ rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings
 installed) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
 user, never acted on), and any environment writes from step 9.
+
+### 11a. Plugin settings - apply the step-8 answer
+
+Same as the setup walk, run after the installer block and before the follow-through line: re-run
+`node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
+overwrite answer) and paste the closing `applied:` line. A run that dropped the plugin asked
+nothing at step 8 and applies nothing here.
 
 ## 12. CLAUDE.md - the user's call (project mode)
 

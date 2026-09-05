@@ -5,11 +5,6 @@ tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__ser
 model: sonnet
 effort: high
 color: orange
-# suggests: the on-demand skills this seat's brief DESCRIBES rather than names (a name breaks
-# wherever the project trimmed that skill). Declared here so the guided install can still offer
-# them as advisory picks - they are never hard edges and never auto-install.
-suggests:
-  - dotnet-wpf
 ---
 
 You are an expert .NET build-error resolver, skilled at tracing compiler diagnostics (CS / NU / MSB) to the real cause. Your only job is to take a solution that does not compile and return it to a clean build with minimal, correct edits that preserve intent. You do not add features or change behavior.

@@ -129,7 +129,17 @@ change made only inside a consuming project is throwaway (see Invariants).
   breaks, so a multi-home edit syncs all copies mechanically; the generated `stack-graph.json`
   (the dependency graph `stack-graph.js` builds and `stack-select.js` reads at guided-install
   time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
-  catalogs (`recommendations.json`, `evidence.json`, `judgment.json`, and `migrations.json` -
+  catalogs (`recommendations.json`, `evidence.json`, `plugin-settings.json` - the recommended
+  settings the stack offers for an INSTALLED plugin's own config file (today claude-hud's
+  account-level `plugins/claude-hud/config.json` plus the `statusLine.refreshInterval` its setup's
+  block takes), applied by `scripts/plugin-settings.js`: the walks REPORT the delta and ask
+  inside the plugins layer's own turn (setup step 8 / configure step 8) and apply the answer once
+  the installer has put the plugin on disk (10a / 11a), the same ask-early-apply-after shape the
+  environment choices use. Add-only by default so a value the user already chose is reported
+  and kept, `--replace` is the explicit overwrite, a target whose gate block is absent skips
+  itself, and every row names the plugin VERSION its keys were read from - lint check 28 rejects a
+  row for an uninstalled plugin, a missing `verified` version or a key group with no `why` -,
+  `judgment.json`, and `migrations.json` -
   existence-detected retirements of GENERATED per-project artifacts, applied by update / flagged
   by validate, since the upstream file compare can never name generated output; it also carries the
   settings.json `env` RENAMES (`detect.settings_env_key` + `rename_settings_env`) the installers'
@@ -180,9 +190,14 @@ documented there.
 - **MCP servers are per-project, never global.** Two are LOCKED into every install by an always-on
   rule's backticked mention - `serena` (baseline-navigation) and `context7` (baseline-quality-gates) -
   so artifacts may name them; every other server is recommended or stack-seeded and droppable, so a
-  body describes it. Active baseline (8): `context7` (docs),
-  `serena` (symbol nav + edits + per-project memory), `playwright` (browser), `memory`
-  (cross-project recall), plus `angular-cli` (framework-specific - comment out where not
+  body describes it. Only three are STACK-NEUTRAL enough to seed into every project - `context7`
+  (docs), `serena` (symbol nav + edits + per-project memory) and `memory` (cross-project recall);
+  the rest reach a project by proof, never by assumption: a stack whose surface always has them,
+  or an evidence signal in the project's own manifests. Catalog (8): those three plus
+  `playwright` (browser - seeded for the web-angular / ionic / extension stacks, evidence-proven
+  by `Microsoft.Playwright` / `@playwright/*` anywhere else; it used to sit in the always-baseline
+  and shipped a browser driver to every WinForms and console install), `angular-cli`
+  (framework-specific - comment out where not
   applicable), `chrome-devtools` (browser/extension debug), `appium-mcp` (native mobile E2E -
   Capacitor/Ionic, needs Xcode/Android SDK + Java) and `sentry` (error monitoring - the hosted
   remote MCP, registered as the CONSTANT `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` with the header
@@ -299,8 +314,13 @@ documented there.
   name is NOT the remedy - it makes absence safe but leaves the name as the invitation and teaches
   nothing. `npm run lint` checks 25 and 26 block a named cite that can be absent; a router hub opts
   out with an `**Availability**` callout, since a name -> area table IS its content. A pointer
-  ('boundary rules live in `x`') is not a directive. Suggestion edges for the guided install come
-  from an agent's declared `suggests:` frontmatter, never from scraping names out of prose.
+  ('boundary rules live in `x`') is not a directive. And naming a skill NEVER puts it into an
+  install: the `suggests:` frontmatter that carried those edges is removed (it offered
+  `angular-security` on a WinForms install, `dotnet-aspire` on a project with no Aspire,
+  `dotnet-authentication` on a browser extension), check 27 keeps it out, and the graph emits no
+  edge from a body mention either. An install need is PROVEN, never inferred: `meta/evidence.json`
+  matched against the project's own manifests, or a per-stack seed in `meta/recommendations.json`.
+  What a seat loads at runtime stays a body matter, by description.
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.

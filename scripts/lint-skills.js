@@ -366,6 +366,38 @@ function lintJudgmentCatalog(catalog, rosters)
 // cross-mentions). Every copy is pinned by a marker phrase from that file's own wording,
 // matched whitespace-normalized so md line wrapping cannot break it. A copy edited or deleted
 // breaks its marker -> the finding lists every other copy, forcing the sync mechanically.
+// 28. The plugin-settings catalog (meta/plugin-settings.json) - the same silent-miss class as
+// evidence.json, one layer out: a row for a plugin the stack does not install is never offered,
+// and a key the plugin does not read is a no-op the user still gets asked about. The version the
+// keys were read from is part of the row, so an upstream rename is traceable rather than silent.
+// Pure, like lintEvidenceCatalog.
+function lintPluginSettings(catalog, pluginRoster)
+{
+    const out = [];
+    for (const key of Object.keys(catalog))
+    {
+        if (key !== '_comment' && key !== 'plugins') out.push(`plugin-settings.json has unknown top-level key '${key}' - the tool reads only 'plugins'`);
+    }
+
+    for (const [name, entry] of Object.entries(catalog.plugins || {}))
+    {
+        if (!pluginRoster.has(name)) out.push(`plugin-settings.json names plugin '${name}', which is not in the plugins roster - its settings would never be offered`);
+        if (!/\S+ \d+\.\d+\.\d+/.test(String(entry.verified || ''))) out.push(`plugin-settings.json '${name}' needs a \`verified\` note naming the plugin VERSION its keys were read from - a key the plugin does not read is a silent no-op`);
+        if (!Array.isArray(entry.targets) || !entry.targets.length) { out.push(`plugin-settings.json '${name}' has no targets`); continue; }
+        for (const t of entry.targets)
+        {
+            if (!t.file || path.isAbsolute(t.file) || t.file.includes('..')) out.push(`plugin-settings.json '${name}' target file must be a relative path inside the account config dir, got '${t.file}'`);
+            if (!t.settings || typeof t.settings !== 'object') { out.push(`plugin-settings.json '${name}' target '${t.file}' has no settings object`); continue; }
+            for (const group of Object.keys(t.settings))
+            {
+                if (!((t.why || {})[group])) out.push(`plugin-settings.json '${name}' target '${t.file}' changes '${group}' with no \`why\` - a recommendation the user cannot weigh is not one`);
+            }
+        }
+    }
+
+    return out;
+}
+
 // Pure, like lintEvidenceCatalog: readFile is injected for testability.
 function lintSharedRules(registry, readFile)
 {
@@ -478,6 +510,24 @@ function absentSkillsFor(closures, kind, name, skillDirs)
     if (host.size === 0) return new Set();          // artifact itself is opt-in - nothing to prove
 
     return new Set([...skillDirs].filter(s => [...host].some(t => !closures[t].skills.has(s))));
+}
+
+// 27. No artifact may put a skill into a project's install by NAMING it. The `suggests:`
+// frontmatter did exactly that: the guided walk offered `dotnet-aspire` on a devops project with
+// no Aspire in it, `dotnet-authentication` on a browser extension, `angular-security` on a
+// WinForms install. The mechanism is removed - a need is proven, never suggested. What a project
+// actually uses comes from meta/evidence.json matched against ITS OWN manifests; what a stack
+// always needs is a meta/recommendations.json seed. What a seat loads at RUNTIME stays a body
+// matter, by description (checks 25 and 26), and reaches no install decision.
+function lintSuggestionEdges(label, text)
+{
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || '');
+    if (!fm || !/^suggests:/m.test(fm[1])) return [];
+
+    return [`${label} declares \`suggests:\` in its frontmatter - that mechanism is removed, because an `
+        + `artifact naming a skill must never put it into a project's install (measured: dotnet-aspire offered `
+        + `to a project with no Aspire). Prove the need with a meta/evidence.json signal against the project's `
+        + `own manifests, or seed it per stack in meta/recommendations.json`];
 }
 
 // A backticked cite of an OPTIONAL skill inside a load directive must carry an
@@ -1410,6 +1460,18 @@ function main()
             flag(finding);
         }
 
+        // 28. The plugin-settings catalog - rows must name an installed plugin and carry a why.
+        const pluginSettingsPath = path.join(ROOT, 'meta', 'plugin-settings.json');
+        try
+        {
+            const pluginSettings = JSON.parse(fs.readFileSync(pluginSettingsPath, 'utf8'));
+            for (const finding of lintPluginSettings(pluginSettings, rosters.plugins)) flag(finding);
+        }
+        catch (err)
+        {
+            flag(`meta/plugin-settings.json is unreadable: ${err.message}`);
+        }
+
         // 23. The judgment catalog (meta/judgment.json) - same silent-miss
         //     class: refs must resolve, overlaps carry both gaps, thresholds parse.
         const judgmentPath = path.join(ROOT, 'meta', 'judgment.json');
@@ -1536,6 +1598,9 @@ function main()
             const text = fs.readFileSync(file, 'utf8');
             for (const finding of lintOptionalCites(label, text, optional)) flag(finding);
 
+            // 27. No install edge from a name: the removed `suggests:` frontmatter must not return.
+            for (const finding of lintSuggestionEdges(label, text)) flag(finding);
+
             // 26. Cross-stack coupling: a load directive naming a skill that is absent from at
             //     least one stack the CITING artifact itself ships into. Check 25 is the special
             //     case where the skill reaches no stack at all; this is the one that bit in
@@ -1656,12 +1721,14 @@ module.exports = {
     parseFlatBlock,
     localSkillDirs,
     lintEvidenceCatalog,
+    lintPluginSettings,
     lintJudgmentCatalog,
     lintEnvironmentCatalog,
     lintSharedRules,
     lintPreloadClaims,
     lintOptionalCites,
     optionalSkills,
+    lintSuggestionEdges,
     seedClosures,
     hostStacks,
     absentSkillsFor,

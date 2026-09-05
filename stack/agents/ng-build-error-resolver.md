@@ -5,11 +5,6 @@ tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__ser
 model: sonnet
 effort: high
 color: orange
-# suggests: the on-demand skills this seat's brief DESCRIBES rather than names (a name breaks
-# wherever the project trimmed that skill). Declared here so the guided install can still offer
-# them as advisory picks - they are never hard edges and never auto-install.
-suggests:
-  - ionic
 ---
 
 You are an expert Angular build-error resolver, skilled at tracing TypeScript, template, and bundler errors to the real cause. You take an Angular app that does not build and return it to a clean build with minimal, correct edits that preserve intent. You do not add features or change behavior.

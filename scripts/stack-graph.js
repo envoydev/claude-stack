@@ -177,32 +177,21 @@ function buildStackGraph()
             }
         }
 
-        const fmSuggests = (String((/^suggests:\s*\n((?:\s*-\s*\S+\s*\n)+)/m.exec(text) || [])[1] || '')
-            .match(/-\s*(\S+)/g) || []).map(l => l.replace(/-\s*/, '')).filter(s => cat.skills.has(s));
         const c = categorize(backtickedTokens(bodyAfterFrontmatter(text)), cat);
         const plugins = [...new Set([...fmPlugins, ...c.plugins])].sort();
-        // A skill mentioned only in the BODY is a conditional load ('load X when the
-        // failure touches Y') - an OPTION, not a requirement. Hard skill edges come
-        // solely from the declared skills: frontmatter (a preload must exist on disk).
-        // Body mentions land in suggests either way - unselected advisory rows in the
-        // guided walk, never locked: a frontmatter agent's conditional loads ('plus
-        // `postgres` when...') stay visible as suggestions instead of vanishing the
-        // moment a seat gains a preload. The cross-stack-noise concern that once kept
-        // frontmatter agents' bodies ignored sits in the cross-cutting seats, and those
-        // are body-sourced - unaffected by this.
+        // A skill mentioned only in the BODY is a conditional load ('load X when the failure
+        // touches Y') - an OPTION, not a requirement. Hard skill edges come solely from the
+        // declared frontmatter skills (a preload must exist on disk), and an OPTION produces
+        // NO edge at all: an agent must never put a skill into a project's install because its
+        // own prose or frontmatter names one. That was the `suggests:` mechanism, removed - it
+        // shipped `dotnet-aspire` to a devops project with no Aspire in it and `angular-security`
+        // to a WinForms one. What a project actually uses is proven by meta/evidence.json against
+        // the project's own manifests; what its stack always needs is a recommendations.json seed.
         if (source !== 'frontmatter' && c.skills.length) source = 'body';
         const skills = source === 'frontmatter' ? declared : [];
-        // A DECLARED `suggests:` list is the durable half. Body mentions used to be the only
-        // source, which coupled the suggestion graph to prose: the moment a brief stopped
-        // NAMING an on-demand skill (it describes the capability instead, so a trimmed install
-        // still reads correctly) the edge vanished and the guided walk stopped offering it -
-        // 83 of 157 edges in one pass. Declared beats inferred; body mentions still feed in.
-        const suggests = new Set(fmSuggests.filter(s => !declared.includes(s)));
-        for (const s of (source === 'frontmatter' ? c.skills.filter(x => !declared.includes(x)) : (source === 'body' ? c.skills : []))) suggests.add(s);
 
         graph.agents[name] = {
             skills: [...skills].sort(),
-            suggests: [...suggests].sort(),
             skillsSource: source,
             agents: c.agents.filter(a => a !== name),
             mcps: c.mcps,

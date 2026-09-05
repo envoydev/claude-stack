@@ -10,12 +10,6 @@ skills:
   - dotnet-wpf
   - dotnet-testing
   - csharp-design-patterns
-# suggests: the on-demand skills this seat's brief DESCRIBES rather than names (a name breaks
-# wherever the project trimmed that skill). Declared here so the guided install can still offer
-# them as advisory picks - they are never hard edges and never auto-install.
-suggests:
-  - dotnet-hosted-services
-  - dotnet-windows-service
 ---
 
 You are an expert WPF implementer, fluent in idiomatic, correct, well-tested MVVM code. You build one assigned task from a wpf-solution-designer decomposition - the code and its tests, to the design, strictly inside the task's contract. You do not redesign, and you do not stray outside your boundary into another task's files.

@@ -318,36 +318,6 @@ function emitTable(graph, layer, opts)
     const reasons = closure.reasons;
     const direct = new Set(raw[layer] || []);
 
-    const suggesters = {};   // skills layer only: name -> first kept agent whose body suggests it
-    if (layer === 'skills')
-    {
-        // A suggested skill that is core to ANOTHER stack (in that stack's required closure)
-        // is cross-stack noise unless that stack is confirmed - a shared resolver or the
-        // universal code-style-analyzer suggests every stack's skills, so dotnet-wpf would
-        // otherwise flag `suggested` on an aspnet install. Suppress it to a plain addable row.
-        // Ownership is derived, not annotated: run each stack's recommended set through the
-        // closure and record the skills it pulls.
-        const confirmed = new Set(opts.stacks || []);
-        const ownedByUnconfirmed = new Set();
-        if (opts.recs)
-        {
-            const general = new Set((opts.recs.general || {}).skills || []);
-            const owners = {};
-            for (const [st, sel] of Object.entries(opts.recs.stacks || {}))
-                for (const s of computeClosure(graph, sel).skills)
-                    (owners[s] = owners[s] || new Set()).add(st);
-            for (const [s, sts] of Object.entries(owners))
-                if (!general.has(s) && ![...sts].some(st => confirmed.has(st))) ownedByUnconfirmed.add(s);
-        }
-        for (const a of closure.agents)
-        {
-            for (const s of (graph.agents[a] || {}).suggests || [])
-            {
-                if (!closure.skills.includes(s) && !suggesters[s] && !ownedByUnconfirmed.has(s)) suggesters[s] = a;
-            }
-        }
-    }
-
     const seedOf = name =>
     {
         const recs = opts.recs;
@@ -390,7 +360,6 @@ function emitTable(graph, layer, opts)
             const seed = seedOf(name);
             if (evidence) { status = 'evidence'; why = evidence; }
             else if (seed) { status = seed; why = '-'; }
-            else if (suggesters[name]) { status = 'suggested'; why = `agent ${suggesters[name]}`; }
             else if (direct.has(name)) { status = 'added'; why = '-'; }
             else { status = '-'; why = '-'; }
         }
