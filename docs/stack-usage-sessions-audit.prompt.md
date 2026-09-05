@@ -20,6 +20,7 @@ Bundles come from more than one capture generation; inventory each one instead o
 | `session.jsonl` / `<session-id>.jsonl` | The full main-session transcript (either name, depending on the capture generation) | Ground truth |
 | `subagents/agent-*.jsonl` (+ `.meta.json`) | One transcript per dispatched seat; meta names the agent type | Ground truth |
 | `tool-usage-<sid>.jsonl` | The instrumentation hook's tool ledger | Deterministic, but check its coverage window - it can start mid-session |
+| `hook-blocks-<sid>.jsonl` | One row per guard BLOCK, naming the hook that fired - the only place that says WHICH guard denied a tool call | Deterministic; absent means either no block fired or an older capture generation, so never read absence as 'no blocks' |
 | `analyzer.json` / `usage.json` | `scripts/analyze-usage.js` JSON aggregate | Deterministic derivation |
 | `analyzer-full.txt` / `report-full.txt` / `full-report.txt` | The analyzer's raw stdout | Deterministic derivation |
 | `report-usage.md` | The in-session analysis report a model wrote | Claims - verify before reuse; appended correction blocks are prior verification, trust those |

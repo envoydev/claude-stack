@@ -65,9 +65,11 @@ Write `<DEST>/<project-name>/<session-id>/` containing:
 | `<session-id>.jsonl` | copy of the transcript - the audit's ground truth |
 | `subagents/` | copy of the transcript's sibling `subagents/` folder when it exists |
 | `tool-usage-<sid>.jsonl` | the instrumentation ledgers from the project's own docs root (`<project>/.claude/docs/tools-usage/<sid>.jsonl`, or its `CLAUDE_STACK_DOCS_PATH` root), the session's own and its dispatched agents' - COPIED, never moved: the project owns its data and this sweep is a reader |
+| `hook-blocks-<sid>.jsonl` | the guard-block ledger from the same docs root (`<project>/.claude/docs/hook-blocks/<sid>.jsonl`) - one row per BLOCK, naming which hook fired. COPIED like the ledger above. The transcript records only which TOOL was denied, never which guard denied it, so without this file the per-hook block rate - the number that says whether a gate earns its keep or misfires - is unmeasurable for the swept session |
 
 Add `--hook-log <ledger>` to the three analyzer calls when a ledger exists; say so per session when
-none does. Add `--docs-root <root>` for any project whose `CLAUDE_STACK_DOCS_PATH` is non-default, or the
+none does. Add `--hook-blocks <that session's hook-blocks file>` the same way - pass the session's
+own FILE, never the whole directory, or every other session's blocks land in this session's tally. Add `--docs-root <root>` for any project whose `CLAUDE_STACK_DOCS_PATH` is non-default, or the
 analyzer's generated-docs table silently reports nothing.
 
 Then write `<DEST>/<project-name>/rollup.txt` (Phase B's rollup output) and, when the project
