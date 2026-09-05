@@ -133,6 +133,25 @@ test('the related-context capture is optional, never an always-baseline seed', (
     }
 });
 
+// An always-baseline artifact installs into EVERY project, so it must be stack-neutral. A browser
+// driver in a WinForms install is the same defect as an Angular skill there: the need has to be
+// proven (a stack whose surface always has a browser, or the project's own manifests) - it is
+// never assumed. playwright sat in `always.mcps` and shipped to every console/WPF/data install.
+test('the always MCP baseline is stack-neutral - a browser or native driver is seeded or proven', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
+    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'memory', 'serena'], 'only the stack-neutral three');
+    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry'])
+    {
+        assert.ok(!(recs.always.mcps || []).includes(server), `${server} must not install into every project`);
+    }
+
+    // two proven routes into a project: a stack whose surface always has a browser, or the packages
+    const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('playwright')).map(([st]) => st).sort();
+    assert.deepStrictEqual(seeded, ['browser-extension', 'ionic-angular', 'web-angular']);
+    assert.ok((evidence.mcps || {}).playwright, 'and an evidence signal for any other stack that actually uses it');
+});
+
 test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     for (const st of ['aspnet', 'wpf', 'console'])

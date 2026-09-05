@@ -250,6 +250,13 @@
   }
  },
  "mcps": {
+  "playwright": {
+   "packages": [
+    "Microsoft.Playwright",
+    "Microsoft.Playwright.",
+    "@playwright/"
+   ]
+  },
   "sentry": {
    "packages": [
     "Sentry",

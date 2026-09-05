@@ -180,9 +180,14 @@ documented there.
 - **MCP servers are per-project, never global.** Two are LOCKED into every install by an always-on
   rule's backticked mention - `serena` (baseline-navigation) and `context7` (baseline-quality-gates) -
   so artifacts may name them; every other server is recommended or stack-seeded and droppable, so a
-  body describes it. Active baseline (8): `context7` (docs),
-  `serena` (symbol nav + edits + per-project memory), `playwright` (browser), `memory`
-  (cross-project recall), plus `angular-cli` (framework-specific - comment out where not
+  body describes it. Only three are STACK-NEUTRAL enough to seed into every project - `context7`
+  (docs), `serena` (symbol nav + edits + per-project memory) and `memory` (cross-project recall);
+  the rest reach a project by proof, never by assumption: a stack whose surface always has them,
+  or an evidence signal in the project's own manifests. Catalog (8): those three plus
+  `playwright` (browser - seeded for the web-angular / ionic / extension stacks, evidence-proven
+  by `Microsoft.Playwright` / `@playwright/*` anywhere else; it used to sit in the always-baseline
+  and shipped a browser driver to every WinForms and console install), `angular-cli`
+  (framework-specific - comment out where not
   applicable), `chrome-devtools` (browser/extension debug), `appium-mcp` (native mobile E2E -
   Capacitor/Ionic, needs Xcode/Android SDK + Java) and `sentry` (error monitoring - the hosted
   remote MCP, registered as the CONSTANT `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` with the header
