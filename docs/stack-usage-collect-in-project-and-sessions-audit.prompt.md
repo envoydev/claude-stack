@@ -1,9 +1,9 @@
-# Stack Usage Sweep and Audit - Run From claude-stack
+# Stack Usage Collect in Project and Sessions Audit - Run From claude-stack
 
 Gather Claude Code session usage data from several consuming projects into this repo's local
 collection, then audit the collection against the stack source. One run, two halves: a
 deterministic COLLECT half driven entirely from the claude-stack clone, and an ANALYZE half that
-hands the result to `docs/session-investigation-audit.prompt.md`.
+hands the result to `docs/stack-usage-sessions-audit.prompt.md`.
 
 Run from the claude-stack repo root, in a FRESH session. Nothing here runs inside the audited
 projects - the sweep reads their session history where Claude Code already stores it, so no
@@ -86,7 +86,7 @@ collected per project, total size, and the two gitignore checks.
 
 Then route the analysis through AskUserQuestion - run the audit now on the fresh collection
 (recommended) / collect only, audit later - unless `ANALYZE` already decides it. On yes, follow
-`docs/session-investigation-audit.prompt.md` with `SESSIONS_ROOT=docs/session-investigation`,
+`docs/stack-usage-sessions-audit.prompt.md` with `SESSIONS_ROOT=docs/session-investigation`,
 noting that this collection nests one project level above the session-id folders, so its bundle
 enumeration walks `<SESSIONS_ROOT>/<project>/<session-id>/` and its cross-session synthesis spans
 projects - a defect reproducing across two projects' stacks is the strongest cluster the sweep can

@@ -2,7 +2,7 @@
 
 Audit one project's claude-stack usage from that project's own directory and move the results into
 the claude-stack repo's local collection point. Collection only - the cross-project sweep
-(`docs/stack-usage-sweep-and-audit.prompt.md`) is what also runs the audit.
+(`docs/stack-usage-collect-in-project-and-sessions-audit.prompt.md`) is what also runs the audit.
 
 Run in a FRESH session started in the audited project's own directory. The audit reads that
 project's session transcripts, and it must not run from the tail of a session it is auditing.
