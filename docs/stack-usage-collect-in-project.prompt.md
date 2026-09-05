@@ -51,8 +51,11 @@ A destination that is not ignored is a stop condition: fix the gitignore first, 
 
 ## 3. Report back
 
-State: sessions audited, files and size copied, the gitignore check result, and that the
-per-session `report-usage.md` FILL IN sections are still unauthored (that is a separate run).
+State: sessions audited, files and size copied, and the gitignore check result. The per-session
+`report-usage.md` arrives AUTHORED here - the analyzer skill fills its judgment sections while the
+machine-written tables stay untouched - which is the difference from the cross-project sweep, whose
+bundles carry the skeleton only. What is still outstanding after this run is the AUDIT of the
+collection (`docs/stack-usage-sessions-audit.prompt.md`), a separate fresh session.
 
 ## Notes
 
