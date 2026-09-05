@@ -138,17 +138,25 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // proven (a stack whose surface always has a browser, or the project's own manifests) - it is
 // never assumed. playwright sat in `always.mcps` and shipped to every console/WPF/data install.
 // A plugin's own defaults are not this stack's recommendation, and the stack must not force one:
-// the walks report the delta and let the user apply it, replace differing values, or skip.
-test('both install walks carry the plugin-settings substep, offered not forced', () => {
-    for (const [name, step] of [['setup', '10a'], ['configure', '11a']])
+// the ASK belongs to the plugins layer's own turn (that is where the user is deciding about
+// plugins), the APPLY to the install step - the plugin has to be on disk first. Same shape as the
+// environment choices, asked at step 1 and merged at step 10.
+test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
+    for (const [name, pluginsStep, applyStep] of [['setup', '## 8. Plugins', '10a'], ['configure', '## 8. Plugins', '11a']])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, new RegExp(`### ${step}\\. Plugin settings`), `${name} has the substep`);
-        assert.match(body, /plugin-settings\.js/, `${name} runs the tool, never a hand edit`);
-        assert.match(body, /meta\/plugin-settings\.json/, `${name} reads the snapshot catalog`);
-        assert.match(body, /Apply recommended/, `${name} offers apply`);
-        assert.match(body, /Apply and replace differing/, `${name} offers replace`);
-        assert.match(body, /\*\*Skip\*\*/, `${name} offers skip`);
+        const layer = body.slice(body.indexOf(pluginsStep), body.indexOf('## 9.'));
+        assert.match(layer, /Plugin settings - part of this layer's turn/, `${name} asks inside the plugins layer`);
+        assert.match(layer, /plugin-settings\.js/, `${name} reports with the tool, never a hand edit`);
+        assert.match(layer, /meta\/plugin-settings\.json/, `${name} reads the snapshot catalog`);
+        assert.match(layer, /Apply recommended/, `${name} offers apply`);
+        assert.match(layer, /Apply and replace differing/, `${name} offers replace`);
+        assert.match(layer, /\*\*Skip\*\*/, `${name} offers skip`);
+        assert.ok(!/--apply/.test(layer), `${name} does not write before the plugin is installed`);
+
+        const apply = body.slice(body.indexOf(`### ${applyStep}. Plugin settings`));
+        assert.match(apply, /--apply/, `${name} applies the answer at the install step`);
+        assert.match(apply, /--replace/, `${name} carries the overwrite answer through`);
     }
 });
 

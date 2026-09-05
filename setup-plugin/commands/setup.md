@@ -109,6 +109,18 @@ The slug is passed to the installer as `--sentry-slug` at step 10 (it seeds the 
 
 Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure; `superpowers` and `ponytail` arrive via the skills and agents that cite them); recommended = the confirmed stacks' plugin seeds. The rest of `catalog.plugins` is freely addable.
 
+**Plugin settings - part of this layer's turn.** After the selection question, for every kept
+plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,
+whose config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
+here - the answer is applied at the install step, exactly like screen B's environment choices:
+
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
+
+No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
+plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports
+itself as `skipped` rather than inventing it - say so once, and point at `/claude-hud:setup`.
+
 ## 9. Prerequisite check
 
 Run: `node stack-select.js --selection raw.json --emit selection.txt --check [--context7-local] [--sentry-oauth] [--github-cli] [--config-dir ~/.claude-<space>]` (`--config-dir` only under a `--space` profile, so the env probe reads THAT account's settings.json instead of `~/.claude`; `--context7-local` only when the user chose context7 `local`; `--sentry-oauth` only when they chose sentry `oauth` at step 7 - it drops the token warning that mode never needs (the slug warning stays: the URL needs it in both modes; the check reads the account settings.json env as well as the shell); `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
@@ -132,21 +144,12 @@ Then apply the step-1 environment choices where they differ from what the instal
 
 When the applied `CLAUDE_STACK_DOCS_PATH` differs from what the installer stamped (the installer ran before this merge), re-stamp the deployed rule - run `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (a global install: `--claude-dir <account dir>` instead - the dir holding `rules/` + `settings.json`): it rewrites the 'This install's root:' line in `.claude/rules/baseline-docs-root.md` from settings.json, so the always-on awareness matches the env; every later update re-stamps it too.
 
-### 10a. Plugin settings - the stack's recommended object, apply or skip
+### 10a. Plugin settings - apply the step-8 answer
 
-Right after the installer returns (the plugin has to be on disk first), for every kept plugin that
-the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for - today `claude-hud`, whose
-config file is ACCOUNT-level whichever scope the plugin was installed at - show the delta and let
-the user decide. Never hand-edit either file: the tool merges, so keys outside the catalog and the
-plugin's own settings survive.
-
-1. Report: `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` and paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`. `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
-2. ONE AskUserQuestion, with the row counts in the question text: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
-3. Apply with `--apply` (plus `--replace` for the second answer) and paste the closing `applied:` line. A 'skip' writes nothing and is not re-asked.
-
-No kept plugin with a row: skip the substep silently. A target needing a block the plugin's own
-setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports itself as
-`skipped` rather than inventing the block - say so, and point at `/claude-hud:setup`.
+The plugin is on disk only now, so this is where the answer lands: re-run the tool with `--apply`
+(plus `--replace` when they chose to overwrite differing values) and paste the closing `applied:`
+line. 'Skip' writes nothing and is not re-asked. Never hand-edit either file - the tool merges, so
+keys outside the catalog and the plugin's own settings survive.
 
 ## 11. CLAUDE.md - the user's call (project mode)
 

@@ -132,8 +132,10 @@ change made only inside a consuming project is throwaway (see Invariants).
   catalogs (`recommendations.json`, `evidence.json`, `plugin-settings.json` - the recommended
   settings the stack offers for an INSTALLED plugin's own config file (today claude-hud's
   account-level `plugins/claude-hud/config.json` plus the `statusLine.refreshInterval` its setup's
-  block takes), applied by `scripts/plugin-settings.js` in the walks' plugin-settings substep
-  (setup 10a / configure 11a): add-only by default so a value the user already chose is reported
+  block takes), applied by `scripts/plugin-settings.js`: the walks REPORT the delta and ask
+  inside the plugins layer's own turn (setup step 8 / configure step 8) and apply the answer once
+  the installer has put the plugin on disk (10a / 11a), the same ask-early-apply-after shape the
+  environment choices use. Add-only by default so a value the user already chose is reported
   and kept, `--replace` is the explicit overwrite, a target whose gate block is absent skips
   itself, and every row names the plugin VERSION its keys were read from - lint check 28 rejects a
   row for an uninstalled plugin, a missing `verified` version or a key group with no `why` -,

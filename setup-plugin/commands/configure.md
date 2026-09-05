@@ -227,6 +227,18 @@ Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's c
 `superpowers` and `ponytail` arrive via the skills and agents that cite them); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
+**Plugin settings - part of this layer's turn.** After the selection question, for every kept
+plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,
+whose config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
+here - the answer is applied at the install step, exactly like screen B's environment choices:
+
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
+
+No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
+plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports
+itself as `skipped` rather than inventing it - say so once, and point at `/claude-hud:setup`.
+
 ## 9. Environment - the stack env values (when picked)
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
@@ -298,14 +310,12 @@ installed) so the generated awareness rule reflects the new inventory (the skill
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
 user, never acted on), and any environment writes from step 9.
 
-### 11a. Plugin settings - the stack's recommended object, apply or skip
+### 11a. Plugin settings - apply the step-8 answer
 
-Same substep as the setup walk, run after the installer block and before the follow-through line,
-for every plugin in the reconciled selection that `$TMP/repo/meta/plugin-settings.json` has a row
-for: report with `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>`, paste the output verbatim, then ONE
-AskUserQuestion - **Apply recommended** (Recommended; add-only), **Apply and replace differing**,
-**Skip** - and re-run with `--apply` (plus `--replace`) for the first two. A configure run that
-dropped the plugin skips the substep, and the tool never touches a key the catalog does not name.
+Same as the setup walk, run after the installer block and before the follow-through line: re-run
+`node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
+overwrite answer) and paste the closing `applied:` line. A run that dropped the plugin asked
+nothing at step 8 and applies nothing here.
 
 ## 12. CLAUDE.md - the user's call (project mode)
 
