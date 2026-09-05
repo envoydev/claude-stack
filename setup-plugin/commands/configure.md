@@ -298,6 +298,15 @@ installed) so the generated awareness rule reflects the new inventory (the skill
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
 user, never acted on), and any environment writes from step 9.
 
+### 11a. Plugin settings - the stack's recommended object, apply or skip
+
+Same substep as the setup walk, run after the installer block and before the follow-through line,
+for every plugin in the reconciled selection that `$TMP/repo/meta/plugin-settings.json` has a row
+for: report with `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>`, paste the output verbatim, then ONE
+AskUserQuestion - **Apply recommended** (Recommended; add-only), **Apply and replace differing**,
+**Skip** - and re-run with `--apply` (plus `--replace`) for the first two. A configure run that
+dropped the plugin skips the substep, and the tool never touches a key the catalog does not name.
+
 ## 12. CLAUDE.md - the user's call (project mode)
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -

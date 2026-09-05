@@ -132,6 +132,22 @@ Then apply the step-1 environment choices where they differ from what the instal
 
 When the applied `CLAUDE_STACK_DOCS_PATH` differs from what the installer stamped (the installer ran before this merge), re-stamp the deployed rule - run `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (a global install: `--claude-dir <account dir>` instead - the dir holding `rules/` + `settings.json`): it rewrites the 'This install's root:' line in `.claude/rules/baseline-docs-root.md` from settings.json, so the always-on awareness matches the env; every later update re-stamps it too.
 
+### 10a. Plugin settings - the stack's recommended object, apply or skip
+
+Right after the installer returns (the plugin has to be on disk first), for every kept plugin that
+the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for - today `claude-hud`, whose
+config file is ACCOUNT-level whichever scope the plugin was installed at - show the delta and let
+the user decide. Never hand-edit either file: the tool merges, so keys outside the catalog and the
+plugin's own settings survive.
+
+1. Report: `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` and paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`. `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+2. ONE AskUserQuestion, with the row counts in the question text: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
+3. Apply with `--apply` (plus `--replace` for the second answer) and paste the closing `applied:` line. A 'skip' writes nothing and is not re-asked.
+
+No kept plugin with a row: skip the substep silently. A target needing a block the plugin's own
+setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports itself as
+`skipped` rather than inventing the block - say so, and point at `/claude-hud:setup`.
+
 ## 11. CLAUDE.md - the user's call (project mode)
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in - recommended / skip); a 'no' ends the run cleanly (a later `/claude-stack:configure` can always reconcile it). The location: the installer seeded `.claude/CLAUDE.md` from the snapshot's `stack/CLAUDE.template.md` when the project had none - that file, in this project, is the target; a pre-existing CLAUDE.md (root or `.claude/`) is NEVER overwritten - the offer becomes a reconcile against the fetched template instead (add the sections it lacks, leave the project's own prose untouched), with the changes shown before writing. On a yes: follow the template's own authoring-outline comment - write the project top (what the project is, structure, the real build/test commands), cover the outline's inventories (stack, commands, secrets/config globs), and trim its rules table to the rules this selection actually installed. Never offer skill/agent/MCP additions here - the walk owned the selection. Skip in no-project mode (a global install seeds no project file).

@@ -137,6 +137,21 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // driver in a WinForms install is the same defect as an Angular skill there: the need has to be
 // proven (a stack whose surface always has a browser, or the project's own manifests) - it is
 // never assumed. playwright sat in `always.mcps` and shipped to every console/WPF/data install.
+// A plugin's own defaults are not this stack's recommendation, and the stack must not force one:
+// the walks report the delta and let the user apply it, replace differing values, or skip.
+test('both install walks carry the plugin-settings substep, offered not forced', () => {
+    for (const [name, step] of [['setup', '10a'], ['configure', '11a']])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(body, new RegExp(`### ${step}\\. Plugin settings`), `${name} has the substep`);
+        assert.match(body, /plugin-settings\.js/, `${name} runs the tool, never a hand edit`);
+        assert.match(body, /meta\/plugin-settings\.json/, `${name} reads the snapshot catalog`);
+        assert.match(body, /Apply recommended/, `${name} offers apply`);
+        assert.match(body, /Apply and replace differing/, `${name} offers replace`);
+        assert.match(body, /\*\*Skip\*\*/, `${name} offers skip`);
+    }
+});
+
 test('the always MCP baseline is stack-neutral - a browser or native driver is seeded or proven', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));

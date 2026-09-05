@@ -129,7 +129,15 @@ change made only inside a consuming project is throwaway (see Invariants).
   breaks, so a multi-home edit syncs all copies mechanically; the generated `stack-graph.json`
   (the dependency graph `stack-graph.js` builds and `stack-select.js` reads at guided-install
   time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
-  catalogs (`recommendations.json`, `evidence.json`, `judgment.json`, and `migrations.json` -
+  catalogs (`recommendations.json`, `evidence.json`, `plugin-settings.json` - the recommended
+  settings the stack offers for an INSTALLED plugin's own config file (today claude-hud's
+  account-level `plugins/claude-hud/config.json` plus the `statusLine.refreshInterval` its setup's
+  block takes), applied by `scripts/plugin-settings.js` in the walks' plugin-settings substep
+  (setup 10a / configure 11a): add-only by default so a value the user already chose is reported
+  and kept, `--replace` is the explicit overwrite, a target whose gate block is absent skips
+  itself, and every row names the plugin VERSION its keys were read from - lint check 28 rejects a
+  row for an uninstalled plugin, a missing `verified` version or a key group with no `why` -,
+  `judgment.json`, and `migrations.json` -
   existence-detected retirements of GENERATED per-project artifacts, applied by update / flagged
   by validate, since the upstream file compare can never name generated output; it also carries the
   settings.json `env` RENAMES (`detect.settings_env_key` + `rename_settings_env`) the installers'
