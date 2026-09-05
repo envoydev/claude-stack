@@ -300,7 +300,11 @@ documented there.
   nothing. `npm run lint` checks 25 and 26 block a named cite that can be absent; a router hub opts
   out with an `**Availability**` callout, since a name -> area table IS its content. A pointer
   ('boundary rules live in `x`') is not a directive. Suggestion edges for the guided install come
-  from an agent's declared `suggests:` frontmatter, never from scraping names out of prose.
+  from an agent's declared `suggests:` frontmatter, never from scraping names out of prose - and
+  only a STACK-scoped seat declares them: an always-roster agent ships into every project, so a
+  stack skill in its `suggests:` is offered where that stack cannot exist (the walk listed
+  `angular-security` on a WinForms install). Check 27 blocks it; the six cross-cutting seats carry
+  no suggestion list at all, their bodies describe the capability instead.
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.

@@ -483,13 +483,7 @@
       "skills": [
         "project-ci-failure-signatures"
       ],
-      "suggests": [
-        "capacitor-release",
-        "dotnet",
-        "dotnet-code-quality",
-        "frontend",
-        "mobile"
-      ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -499,15 +493,7 @@
     },
     "code-style-analyzer": {
       "skills": [],
-      "suggests": [
-        "angular-conventions",
-        "angular-styling",
-        "csharp",
-        "database-conventions",
-        "dotnet-wpf",
-        "javascript",
-        "typescript"
-      ],
+      "suggests": [],
       "skillsSource": "none",
       "agents": [],
       "mcps": [],
@@ -721,16 +707,7 @@
     "integration-reviewer": {
       "skills": [],
       "suggests": [
-        "angular-conventions",
-        "angular-testing",
-        "database-conventions",
-        "dotnet-code-quality",
-        "dotnet-migrate",
-        "dotnet-testing",
-        "dotnet-web-backend",
-        "project-solve-cross-task",
-        "ts-js-testing",
-        "typescript"
+        "project-solve-cross-task"
       ],
       "skillsSource": "body",
       "agents": [],
@@ -819,11 +796,7 @@
       "skills": [
         "project-runtime-failure-signatures"
       ],
-      "suggests": [
-        "dotnet",
-        "frontend",
-        "mobile"
-      ],
+      "suggests": [],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
@@ -833,22 +806,7 @@
     },
     "security-auditor": {
       "skills": [],
-      "suggests": [
-        "angular-conventions",
-        "angular-security",
-        "browser-extension",
-        "csharp",
-        "database-conventions",
-        "database-security",
-        "dotnet",
-        "dotnet-authentication",
-        "dotnet-cryptography",
-        "dotnet-security",
-        "frontend",
-        "ionic-security",
-        "mobile",
-        "typescript"
-      ],
+      "suggests": [],
       "skillsSource": "none",
       "agents": [],
       "mcps": [],
@@ -858,11 +816,7 @@
     },
     "test-coverage-analyzer": {
       "skills": [],
-      "suggests": [
-        "angular-testing",
-        "dotnet-testing",
-        "ts-js-testing"
-      ],
+      "suggests": [],
       "skillsSource": "none",
       "agents": [],
       "mcps": [],

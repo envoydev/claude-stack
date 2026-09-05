@@ -117,6 +117,7 @@
     "angular-cli"
    ],
    "skills": [
+    "angular-security",
     "angular-testing"
    ]
   },
@@ -235,6 +236,7 @@
     "angular-test-resolver"
    ],
    "skills": [
+    "angular-security",
     "angular-testing",
     "capacitor-release",
     "ionic-security"

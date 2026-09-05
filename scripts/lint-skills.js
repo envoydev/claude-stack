@@ -480,6 +480,32 @@ function absentSkillsFor(closures, kind, name, skillDirs)
     return new Set([...skillDirs].filter(s => [...host].some(t => !closures[t].skills.has(s))));
 }
 
+// The same cross-stack coupling in the DECLARED suggestion edges. `suggests:` is what feeds the
+// guided install's advisory rows, and an always-roster seat ships into EVERY project - so a stack
+// skill declared there is offered where that stack cannot exist (measured: `angular-security`
+// suggested by security-auditor on a WinForms install, whose walk then lists an Angular skill).
+// The stack seats' own suggestions need no check: they arrive only with their stack. The remedy is
+// the same as check 26 - the body describes what the skill covers, the model matches it against the
+// installed inventory - so an always-on seat carries no suggestion list at all.
+function lintSuggestionEdges(recs, graph, closures, skillDirs)
+{
+    const out = [];
+    for (const a of ((recs || {}).always || {}).agents || [])
+    {
+        const absent = absentSkillsFor(closures, 'agents', a, skillDirs);
+        for (const s of (((graph || {}).agents || {})[a] || {}).suggests || [])
+        {
+            if (!absent.has(s)) continue;
+            const missing = [...hostStacks(closures, 'agents', a)].filter(t => !closures[t].skills.has(s));
+            out.push(`agents/${a}.md suggests \`${s}\` in its frontmatter, but this seat is on the always-roster `
+                + `and ${missing.length} stack${missing.length === 1 ? '' : 's'} never install that skill (${missing.join(', ')}) - `
+                + `the guided install offers it there anyway. Drop the suggestion: the body already describes what the skill covers`);
+        }
+    }
+
+    return out;
+}
+
 // A backticked cite of an OPTIONAL skill inside a load directive must carry an
 // availability guard, or the model calls Skill(<name>) in a project that never
 // installed it and gets 'Unknown skill: <name>' (measured 2026-09-04 in a
@@ -1552,6 +1578,10 @@ function main()
                     + `covers instead of naming it, so it is matched from the installed inventory`));
             }
         }
+
+        // 27. The declared suggestion edges, same coupling: an always-roster seat offering a
+        //     stack skill to every project's install walk.
+        for (const finding of lintSuggestionEdges(recs, graph, closures, skillDirs)) flag(finding);
     }
     catch (err)
     {
@@ -1662,6 +1692,7 @@ module.exports = {
     lintPreloadClaims,
     lintOptionalCites,
     optionalSkills,
+    lintSuggestionEdges,
     seedClosures,
     hostStacks,
     absentSkillsFor,
