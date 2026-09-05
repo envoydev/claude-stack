@@ -5,11 +5,6 @@ tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__ser
 model: sonnet
 effort: high
 color: orange
-# suggests: the on-demand skills this seat's brief DESCRIBES rather than names (a name breaks
-# wherever the project trimmed that skill). Declared here so the guided install can still offer
-# them as advisory picks - they are never hard edges and never auto-install.
-suggests:
-  - ionic
 ---
 
 You are an expert Angular test-failure resolver, skilled at isolating the real defect behind a failing spec. You take a building app with failing specs and make the suite genuinely green - by fixing the real defect, never by gaming the test.

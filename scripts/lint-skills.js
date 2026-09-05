@@ -480,30 +480,22 @@ function absentSkillsFor(closures, kind, name, skillDirs)
     return new Set([...skillDirs].filter(s => [...host].some(t => !closures[t].skills.has(s))));
 }
 
-// The same cross-stack coupling in the DECLARED suggestion edges. `suggests:` is what feeds the
-// guided install's advisory rows, and an always-roster seat ships into EVERY project - so a stack
-// skill declared there is offered where that stack cannot exist (measured: `angular-security`
-// suggested by security-auditor on a WinForms install, whose walk then lists an Angular skill).
-// The stack seats' own suggestions need no check: they arrive only with their stack. The remedy is
-// the same as check 26 - the body describes what the skill covers, the model matches it against the
-// installed inventory - so an always-on seat carries no suggestion list at all.
-function lintSuggestionEdges(recs, graph, closures, skillDirs)
+// 27. No artifact may put a skill into a project's install by NAMING it. The `suggests:`
+// frontmatter did exactly that: the guided walk offered `dotnet-aspire` on a devops project with
+// no Aspire in it, `dotnet-authentication` on a browser extension, `angular-security` on a
+// WinForms install. The mechanism is removed - a need is proven, never suggested. What a project
+// actually uses comes from meta/evidence.json matched against ITS OWN manifests; what a stack
+// always needs is a meta/recommendations.json seed. What a seat loads at RUNTIME stays a body
+// matter, by description (checks 25 and 26), and reaches no install decision.
+function lintSuggestionEdges(label, text)
 {
-    const out = [];
-    for (const a of ((recs || {}).always || {}).agents || [])
-    {
-        const absent = absentSkillsFor(closures, 'agents', a, skillDirs);
-        for (const s of (((graph || {}).agents || {})[a] || {}).suggests || [])
-        {
-            if (!absent.has(s)) continue;
-            const missing = [...hostStacks(closures, 'agents', a)].filter(t => !closures[t].skills.has(s));
-            out.push(`agents/${a}.md suggests \`${s}\` in its frontmatter, but this seat is on the always-roster `
-                + `and ${missing.length} stack${missing.length === 1 ? '' : 's'} never install that skill (${missing.join(', ')}) - `
-                + `the guided install offers it there anyway. Drop the suggestion: the body already describes what the skill covers`);
-        }
-    }
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || '');
+    if (!fm || !/^suggests:/m.test(fm[1])) return [];
 
-    return out;
+    return [`${label} declares \`suggests:\` in its frontmatter - that mechanism is removed, because an `
+        + `artifact naming a skill must never put it into a project's install (measured: dotnet-aspire offered `
+        + `to a project with no Aspire). Prove the need with a meta/evidence.json signal against the project's `
+        + `own manifests, or seed it per stack in meta/recommendations.json`];
 }
 
 // A backticked cite of an OPTIONAL skill inside a load directive must carry an
@@ -1562,6 +1554,9 @@ function main()
             const text = fs.readFileSync(file, 'utf8');
             for (const finding of lintOptionalCites(label, text, optional)) flag(finding);
 
+            // 27. No install edge from a name: the removed `suggests:` frontmatter must not return.
+            for (const finding of lintSuggestionEdges(label, text)) flag(finding);
+
             // 26. Cross-stack coupling: a load directive naming a skill that is absent from at
             //     least one stack the CITING artifact itself ships into. Check 25 is the special
             //     case where the skill reaches no stack at all; this is the one that bit in
@@ -1578,10 +1573,6 @@ function main()
                     + `covers instead of naming it, so it is matched from the installed inventory`));
             }
         }
-
-        // 27. The declared suggestion edges, same coupling: an always-roster seat offering a
-        //     stack skill to every project's install walk.
-        for (const finding of lintSuggestionEdges(recs, graph, closures, skillDirs)) flag(finding);
     }
     catch (err)
     {

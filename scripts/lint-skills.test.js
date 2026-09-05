@@ -168,32 +168,19 @@ test('absentSkillsFor is the cross-stack case: a skill missing where the citing 
     assert.strictEqual(absentSkillsFor(closures, 'agents', 'not-seeded-anywhere', skills).size, 0);
 });
 
-test('lintSuggestionEdges catches the install-walk leak: an always-on seat suggesting a stack skill', () => {
-    const { seedClosures, lintSuggestionEdges } = require('./lint-skills.js');
-    const recs = {
-        always: { agents: ['security-auditor', 'test-coverage-analyzer'], skills: ['docs-as-code'] },
-        stacks: {
-            winforms: { agents: ['winforms-implementer'] },
-            'web-angular': { skills: ['angular-security'], agents: [] },
-        },
-    };
-    const graph = {
-        agents: {
-            // the measured shape: the walk listed `angular-security` on a WinForms install
-            'security-auditor': { skills: [], suggests: ['angular-security', 'docs-as-code'] },
-            'test-coverage-analyzer': { skills: [], suggests: [] },
-            'winforms-implementer': { skills: ['csharp'], suggests: ['angular-security'] },
-        },
-        rules: {},
-    };
-    const skills = new Set(['csharp', 'angular-security', 'docs-as-code']);
-    const found = lintSuggestionEdges(recs, graph, seedClosures(recs, graph), skills);
+test('lintSuggestionEdges blocks the removed `suggests:` frontmatter from coming back', () => {
+    const { lintSuggestionEdges } = require('./lint-skills.js');
+    // the measured shapes: dotnet-aspire offered to a project with no Aspire, angular-security
+    // to a WinForms one - an artifact naming a skill must never reach an install decision
+    const withEdge = '---\nname: devops-implementer\nmodel: sonnet\nsuggests:\n  - dotnet-aspire\n---\n\nbody';
+    const found = lintSuggestionEdges('agents/devops-implementer.md', withEdge);
+    assert.strictEqual(found.length, 1);
+    assert.match(found[0], /agents\/devops-implementer\.md declares `suggests:`/);
+    assert.match(found[0], /meta\/evidence\.json/, 'the message names the mechanism that replaces it');
 
-    assert.strictEqual(found.length, 1, 'one finding: only the always-roster seat leaks');
-    assert.match(found[0], /security-auditor\.md suggests `angular-security`/);
-    assert.match(found[0], /winforms/, 'the message names the stacks that never install it');
-    // a suggestion every project installs is fine, and a STACK seat only ships with its stack
-    assert.ok(!found.some(f => /docs-as-code|winforms-implementer/.test(f)));
+    // a clean agent, and the word in prose or in a body line, are not findings
+    assert.deepStrictEqual(lintSuggestionEdges('agents/x.md', '---\nname: x\n---\n\nthe log suggests: a stale base'), []);
+    assert.deepStrictEqual(lintSuggestionEdges('skills/y/SKILL.md', 'no frontmatter here'), []);
 });
 
 test('lintOptionalCites flags a NAMED load of a skill that can be absent; a description passes', () => {

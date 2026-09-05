@@ -194,9 +194,11 @@ Locked = agents a kept rule requires. Orphans here trace back to rule drops in s
 ## 5. Skills
 
 Locked = skills the kept rules + agents require (rule attachments and `skills:` frontmatter
-preloads). A kept agent's `suggests` - its body's conditional 'load X when...' mentions - are
-never locks: those installed rows show `-` in required-by and drop freely, no cascade. Orphans
-trace back to the rule and agent drops before them.
+preloads). A skill an agent's body merely names as a conditional load ('load X when...') is NOT
+an edge and never appears pre-selected: what a project needs is proven by the evidence scan
+against its own manifests, or seeded per stack - never inferred from a body. Those installed rows
+show `-` in required-by and drop freely, no cascade. Orphans trace back to the rule and agent
+drops before them.
 
 ## 6. Hooks
 

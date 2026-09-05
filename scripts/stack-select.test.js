@@ -5,7 +5,7 @@ const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
 const graph = require('../meta/stack-graph.json');
 
-test('an agent pulls its declared skills and plugins; body mentions only suggest', () => {
+test('an agent pulls its declared skills and plugins; body mentions pull nothing', () => {
     const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
     for (const s of ['dotnet', 'dotnet-web-backend', 'dotnet-testing'])
     {
@@ -14,15 +14,16 @@ test('an agent pulls its declared skills and plugins; body mentions only suggest
     assert.match(c.reasons['dotnet'], /aspnet-solution-designer/);
     // aspnet-implementer preloads its operative stack skills via skills: frontmatter (the
     // prose-instructed loads fired in 0 of 5 seats in one measured session while every
-    // frontmatter preload landed); only per-task surface picks stay suggestions, and a
-    // body-sourced agent still locks nothing.
+    // frontmatter preload landed). A per-task surface pick it merely NAMES in the body is no
+    // edge at all - naming a skill must never reach an install decision - and a body-sourced
+    // agent still locks nothing.
     const impl = computeClosure(graph, { agents: ['aspnet-implementer'] });
     for (const s of ['csharp', 'dotnet-web-backend', 'dotnet-web-error-handling', 'dotnet-data-access', 'dotnet-testing'])
     {
         assert.ok(impl.skills.includes(s), `the frontmatter preload '${s}' is a hard edge`);
     }
-    assert.ok(graph.agents['aspnet-implementer'].suggests.includes('dotnet-minimal-api'), 'per-task surface picks live in suggests');
-    assert.ok(!graph.agents['aspnet-implementer'].suggests.includes('csharp'), 'a declared skill never doubles as a suggestion');
+    assert.strictEqual(graph.agents['aspnet-implementer'].suggests, undefined, 'the suggests edge is removed from the graph');
+    assert.ok(!impl.skills.includes('dotnet-minimal-api'), 'a per-task surface pick named in the body is not pulled');
     assert.ok(impl.plugins.includes('ponytail'), 'aspnet-implementer still pulls the ponytail plugin');
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
     assert.deepStrictEqual(resolver.skills, [], 'a body-sourced agent locks no skills');
@@ -256,31 +257,30 @@ test('emitTable emits a perfectly aligned, fully labeled layer table', () => {
     assert.strictEqual(emitTable(orphanGraph, 'nope', {}), null, 'unknown layer returns null');
 });
 
-// A suggested skill that is core to ANOTHER stack (in that stack's required closure) must
-// not be flagged `suggested` when that stack is unconfirmed - e.g. dotnet-wpf / database-
-// conventions / ionic leaking into an aspnet+web-angular install via a shared resolver or the
-// universal code-style-analyzer. General within-stack conditionals (owned by no stack) stay.
+// No row may ever be labeled `suggested`: an agent naming a skill must not put it into an
+// install. The walk offered `dotnet-aspire` to a devops project with no Aspire and
+// `angular-security` to a WinForms one - a need is proven by the evidence scan against the
+// project's own manifests, or seeded per stack, never inferred from a body.
 const recommendations = require('../meta/recommendations.json');
 
-test('a suggested skill owned only by unconfirmed stacks is not flagged suggested', () => {
+test('an install-time need is proven, never suggested by an agent naming a skill', () => {
     const raw = {
         rules: ['csharp-conventions', 'dotnet-repair-agents', 'typescript-conventions', 'angular-conventions', 'angular-styling-conventions', 'angular-repair-agents'],
         agents: ['aspnet-solution-designer', 'aspnet-implementer', 'aspnet-verifier', 'dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'web-angular-solution-designer', 'web-angular-implementer', 'web-angular-verifier', 'ng-build-error-resolver', 'angular-test-resolver', 'code-style-analyzer'],
     };
     const table = emitTable(graph, 'skills', { raw, recs: recommendations, stacks: ['aspnet', 'web-angular'] });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
-    // cross-stack cores are demoted to a plain addable row - present (full catalog) but not suggested
-    for (const s of ['dotnet-wpf', 'database-conventions', 'ionic'])
+
+    assert.doesNotMatch(table, /suggested/, 'the suggested status is gone from every layer table');
+    // the full catalog is still shown - a skill nothing selected is a plain addable row
+    for (const s of ['dotnet-wpf', 'database-conventions', 'ionic', 'dotnet-minimal-api', 'dotnet-project-setup'])
     {
         assert.ok(rowOf(s), `${s} still appears in the full-catalog table`);
-        assert.doesNotMatch(rowOf(s), /suggested/, `${s} must not be suggested when its owning stack is unconfirmed`);
     }
-    // general conditionals owned by no stack remain legitimate suggestions for this install
-    assert.match(rowOf('dotnet-minimal-api'), /suggested/, 'dotnet-minimal-api is a genuine cross-cutting suggestion, not stack-owned');
-    // dotnet-project-setup lost its only edge in the cross-mention purge (a resolver attribution,
-    // never load-bearing) - it stays a plain addable row, not a suggestion
-    assert.ok(rowOf('dotnet-project-setup'), 'dotnet-project-setup still appears in the full-catalog table');
-    assert.doesNotMatch(rowOf('dotnet-project-setup'), /suggested/, 'no live edge carries dotnet-project-setup for this install');
+
+    // and the real seeds still label their rows
+    assert.match(rowOf('csharp'), /required/, 'a closure lock still reads required');
+    assert.match(rowOf('angular-security'), /stack:web-angular/, 'a stack seed still reads as its stack');
 });
 
 // The evidence layer: gaps between what the scanner found and what is installed.

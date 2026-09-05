@@ -299,12 +299,13 @@ documented there.
   name is NOT the remedy - it makes absence safe but leaves the name as the invitation and teaches
   nothing. `npm run lint` checks 25 and 26 block a named cite that can be absent; a router hub opts
   out with an `**Availability**` callout, since a name -> area table IS its content. A pointer
-  ('boundary rules live in `x`') is not a directive. Suggestion edges for the guided install come
-  from an agent's declared `suggests:` frontmatter, never from scraping names out of prose - and
-  only a STACK-scoped seat declares them: an always-roster agent ships into every project, so a
-  stack skill in its `suggests:` is offered where that stack cannot exist (the walk listed
-  `angular-security` on a WinForms install). Check 27 blocks it; the six cross-cutting seats carry
-  no suggestion list at all, their bodies describe the capability instead.
+  ('boundary rules live in `x`') is not a directive. And naming a skill NEVER puts it into an
+  install: the `suggests:` frontmatter that carried those edges is removed (it offered
+  `angular-security` on a WinForms install, `dotnet-aspire` on a project with no Aspire,
+  `dotnet-authentication` on a browser extension), check 27 keeps it out, and the graph emits no
+  edge from a body mention either. An install need is PROVEN, never inferred: `meta/evidence.json`
+  matched against the project's own manifests, or a per-stack seed in `meta/recommendations.json`.
+  What a seat loads at runtime stays a body matter, by description.
 - **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
   (`hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
   its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.
