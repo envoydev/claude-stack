@@ -158,12 +158,18 @@ test('the layer table is never redirected to a file - the tool result is what ge
 // A plugin's own defaults are not this stack's recommendation, and the stack must not force one:
 // the ASK belongs to the plugins layer's own turn (that is where the user is deciding about
 // plugins), the APPLY to the install step - the plugin has to be on disk first. Same shape as the
-// environment choices, asked at step 1 and merged at step 10.
+// environment choices, asked up front and merged once the installer has run. Both halves are found
+// by NAME and tied together by the apply subsection's own number: the ladders renumber whenever a
+// step is inserted, and what this pins is where the two halves sit, not what they are numbered.
 test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
-    for (const [name, pluginsStep, applyStep] of [['setup', '## 8. Plugins', '10a'], ['configure', '## 8. Plugins', '11a']])
+    for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        const layer = body.slice(body.indexOf(pluginsStep), body.indexOf('## 9.'));
+        const pluginsAt = body.search(/^## \d+\. Plugins$/m);
+        assert.ok(pluginsAt >= 0, `${name} has a numbered plugins layer`);
+        const rest = body.slice(pluginsAt + 1);
+        const nextHeading = rest.search(/^## /m);
+        const layer = nextHeading >= 0 ? rest.slice(0, nextHeading) : rest;
         assert.match(layer, /Plugin settings - part of this layer's turn/, `${name} asks inside the plugins layer`);
         assert.match(layer, /plugin-settings\.js/, `${name} reports with the tool, never a hand edit`);
         assert.match(layer, /meta\/plugin-settings\.json/, `${name} reads the snapshot catalog`);
@@ -172,7 +178,13 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
         assert.match(layer, /\*\*Skip\*\*/, `${name} offers skip`);
         assert.ok(!/--apply/.test(layer), `${name} does not write before the plugin is installed`);
 
-        const apply = body.slice(body.indexOf(`### ${applyStep}. Plugin settings`));
+        const applyHeading = body.match(/^### (\d+)a\. Plugin settings.*$/m);
+        assert.ok(applyHeading, `${name} carries the plugin-settings apply subsection`);
+        assert.ok(body.indexOf(applyHeading[0]) > pluginsAt, `${name} applies after the plugins layer`);
+        // the subsection rides the step that runs the installer - that is why the plugin is on disk
+        assert.match(body, new RegExp(`^## ${applyHeading[1]}\\. (Install|Update)`, 'm'),
+            `${name} hangs ${applyHeading[1]}a off its installer step`);
+        const apply = body.slice(body.indexOf(applyHeading[0]));
         assert.match(apply, /--apply/, `${name} applies the answer at the install step`);
         assert.match(apply, /--replace/, `${name} carries the overwrite answer through`);
     }
