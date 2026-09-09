@@ -588,11 +588,16 @@ HOOKS=(
 # denial strings. A shell read of a denied file is not blocked by anything here; that route is
 # covered by baseline-security.md's behavioral rule and by the Stop-time credential branch in
 # guard-stop-contract.js.
-# The ACCOUNT settings.json is on this list because the stack's OWN design fills it with credentials
-# (CLAUDE.md and the setup walk both send SENTRY_ACCESS_TOKEN there, and CONTEXT7_API_KEY lives in an
-# env block too). A session cat-ed one whole as its FIRST tool call. The PROJECT-level settings.json
-# is deliberately NOT denied: it carries the hook wiring a session legitimately inspects, and the
-# tokens the stack directs anywhere are account-level.
+# The ACCOUNT settings.json (~/.claude and ~/.claude-<space>, plus settings.local.json) was on this
+# list for releases because the stack's own design fills it with credentials (SENTRY_ACCESS_TOKEN,
+# CONTEXT7_API_KEY), and a session had cat-ed one whole as its first tool call. It left the list once
+# guard-secret-value.js judged that file by CONTENT on the Read route and the shell route alike
+# (a deny entry covers the Read tool only - measured above) and gained the SECRET-READ-ALLOW
+# receipt: a deny entry has no such override, so it stripped the user of the read they had just
+# consented to, and a remote user cannot open the file in a terminal they do not have. The four old
+# entries are RETIRED_DENY below - dropped from an existing install on every run, exactly those
+# strings, a project's own entries untouched. The PROJECT-level settings.json was never denied: it
+# carries the hook wiring a session legitimately inspects.
 # Stack-specific secret/config globs stay a per-project addition (the CLAUDE.md template's authoring
 # outline prompts the fill-in; baseline-security.md keeps the behavioral rule).
 # The settings.json deny-list is a Claude Code feature (no equivalent elsewhere).
@@ -603,6 +608,8 @@ SECRET_DENY=(
   "Read(*.pfx)"
   "Read(*.p12)"
   "Read(*.key)"
+)
+RETIRED_DENY=(   # written by releases up to 0.2.62 - dropped on every install/update, exact strings only
   "Read(~/.claude/settings.json)"
   "Read(~/.claude/settings.local.json)"
   "Read(~/.claude-*/settings.json)"
@@ -1225,11 +1232,12 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   local prog; prog=$(cat <<'PY'
 import json, os, sys
 path = sys.argv[1]
-deny_specs, mcp_names, retired_hooks, bucket = [], [], [], None
+deny_specs, mcp_names, retired_hooks, retired_deny, bucket = [], [], [], [], None
 for a in sys.argv[2:]:
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
+    if a == "--RETIRED-DENY": bucket = retired_deny; continue
     if bucket is not None: bucket.append(a)
 specs = []
 HOOK_TIMEOUT = 10   # seconds - see the note below; the default would be 600
@@ -1340,6 +1348,11 @@ deny = data.setdefault("permissions", {}).setdefault("deny", [])
 for rule in deny_specs:
     if rule not in deny:
         deny.append(rule); changed = True
+# Entries this stack once wrote and no longer does (RETIRED_DENY): drop exactly those strings, so an
+# update clears what an older install seeded - a project's own entry is never touched.
+for rule in [r for r in deny if r in retired_deny]:
+    deny.remove(rule); changed = True
+    print("  settings.json: dropped retired deny entry %s" % rule)
 # NO permissions.allow seed for the gate stamps, deliberately. The hooks require a write to
 # <docs-root>/flow/APPROVAL and /COMMIT-GATE, and under the default docs root those sit inside
 # `.claude/` - a PROTECTED path. Protected-path writes are never auto-approved outside
@@ -1418,7 +1431,7 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} || log "  !! settings.json wiring failed"
+  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" || log "  !! settings.json wiring failed"
 }
 
 # ===========================================================================

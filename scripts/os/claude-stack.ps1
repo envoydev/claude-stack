@@ -641,11 +641,16 @@ $Hooks = @(
 # denial strings. A shell read of a denied file is not blocked by anything here; that route is
 # covered by baseline-security.md's behavioral rule and by the Stop-time credential branch in
 # guard-stop-contract.js.
-# The ACCOUNT settings.json is on this list because the stack's OWN design fills it with credentials
-# (CLAUDE.md and the setup walk both send SENTRY_ACCESS_TOKEN there, and CONTEXT7_API_KEY lives in an
-# env block too). A session cat-ed one whole as its FIRST tool call. The PROJECT-level settings.json
-# is deliberately NOT denied: it carries the hook wiring a session legitimately inspects, and the
-# tokens the stack directs anywhere are account-level.
+# The ACCOUNT settings.json (~/.claude and ~/.claude-<space>, plus settings.local.json) was on this
+# list for releases because the stack's own design fills it with credentials (SENTRY_ACCESS_TOKEN,
+# CONTEXT7_API_KEY), and a session had cat-ed one whole as its first tool call. It left the list once
+# guard-secret-value.js judged that file by CONTENT on the Read route and the shell route alike
+# (a deny entry covers the Read tool only - measured above) and gained the SECRET-READ-ALLOW
+# receipt: a deny entry has no such override, so it stripped the user of the read they had just
+# consented to, and a remote user cannot open the file in a terminal they do not have. The four old
+# entries are $RetiredDeny below - dropped from an existing install on every run, exactly those
+# strings, a project's own entries untouched. The PROJECT-level settings.json was never denied: it
+# carries the hook wiring a session legitimately inspects.
 # Stack-specific secret/config globs stay a per-project addition (the CLAUDE.md template's authoring
 # outline prompts the fill-in; baseline-security.md keeps the behavioral rule).
 # The settings.json deny-list is a Claude Code feature (no equivalent elsewhere).
@@ -656,6 +661,8 @@ $SecretDeny = @(
   'Read(*.pfx)'
   'Read(*.p12)'
   'Read(*.key)'
+)
+$RetiredDeny = @(   # written by releases up to 0.2.62 - dropped on every install/update, exact strings only
   'Read(~/.claude/settings.json)'
   'Read(~/.claude/settings.local.json)'
   'Read(~/.claude-*/settings.json)'
@@ -1502,6 +1509,12 @@ function Set-HookSettings {
   $deny = @($data.permissions.deny)
   foreach ($rule in $SecretDeny) {
     if ($deny -notcontains $rule) { $deny += $rule; $changed = $true }
+  }
+  # Entries this stack once wrote and no longer does ($RetiredDeny): drop exactly those strings, so an
+  # update clears what an older install seeded - a project's own entry is never touched.
+  foreach ($rule in @($deny | Where-Object { $RetiredDeny -contains $_ })) {
+    $deny = @($deny | Where-Object { $_ -ne $rule }); $changed = $true
+    Log "  settings.json: dropped retired deny entry $rule"
   }
   $data.permissions.deny = $deny
   # NO permissions.allow seed for the gate stamps, deliberately. The hooks require a write to
