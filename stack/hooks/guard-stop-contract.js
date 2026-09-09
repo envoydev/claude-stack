@@ -333,6 +333,38 @@ function secretReadAllowed() {
   }
 }
 
+// The rotate ask comes ONCE per exposure. The shape stays in the transcript, so the detector kept
+// re-demanding the ask on every later turn - a decision the user had already made ('tired of these
+// messages'). An answered rotate ask (the harness's own 'Your questions have been answered' row
+// naming rotation, or the defer option) covers every credential shape that entered the session
+// BEFORE it - tool results and the user's own pastes alike; only a shape that arrives after it asks
+// again. Judged over the same 256KB tail secretInToolResults reads, and fail-open like it.
+// CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
+// the exposure - the value is in the transcript either way, so that is theirs to decide.
+const ROTATE_ASK_ON = process.env.CLAUDE_STACK_ROTATE_ASK !== '0';
+const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
+function rotateAskAnswered() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return false;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 256 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    let lastAnswer = -1;
+    let lastShape = -1;
+    buf.toString('utf8').split('\n').forEach((line, i) => {
+      if (ROTATE_ANSWER_RE.test(line)) lastAnswer = i;
+      if (SECRET_SHAPE.test(line)) lastShape = i;
+    });
+    return lastAnswer >= 0 && lastAnswer > lastShape;
+  } catch {
+    return false;
+  }
+}
+
 // A silent fail-open is indistinguishable from a clean turn, which is how the misses above
 // stayed invisible across 74 audited bundles. Every path that declines to judge says so.
 function breadcrumb(why) {
@@ -387,7 +419,7 @@ if (payload.hook_event_name === 'Stop') {
   // A live credential that has entered this session outranks every other close: it cannot be
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
-  if (!askJustAnswered() && (ROTATE_RE.test(prose) || (secretInToolResults() && !secretReadAllowed()))) {
+  if (ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered() && (ROTATE_RE.test(prose) || (secretInToolResults() && !secretReadAllowed()))) {
     process.stderr.write(
       'A credential appears to have entered this session - either named for rotation in this\n' +
       'turn, or matched by shape in a tool result. Measured seven times in the audited corpus:\n' +
@@ -396,7 +428,9 @@ if (payload.hook_event_name === 'Stop') {
       'CANNOT be unsent - it is in the transcript on disk and in every later request - so the\n' +
       'only open question is whether it gets rotated. End this turn with ONE AskUserQuestion:\n' +
       "'Rotate it now (Recommended)' and 'Acknowledge and defer'. Name the credential by its KEY\n" +
-      'and its shape only - never repeat the value, and never pass it to a tool.',
+      'and its shape only - never repeat the value, and never pass it to a tool.\n' +
+      'This ask comes once: answered, it covers every credential already in this session, and only\n' +
+      'a new exposure asks again. CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns it off.',
     );
     process.exit(2);
   }

@@ -147,6 +147,29 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   assert.equal(stop().status, 2, 'a stale receipt is no consent');
 });
 
+test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and CLAUDE_STACK_ROTATE_ASK=0 turns it off', () => {
+  // Every turn after an exposure re-demanded the ask - the shape stays in the transcript, so the
+  // detector kept firing on a decision the user had already made. An answered rotate ask now covers
+  // every credential already in the session; only a NEW exposure after it asks again.
+  const root = fs.mkdtempSync(path.join(TMP, 'projR-'));
+  const shape = 'ghp_' + 'B'.repeat(24); // fake by construction
+  const leak = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `TOKEN=${shape}` }] } };
+  const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: "A GitHub token (ghp_ shape) entered this session through a tool result. Rotate it now?"="Acknowledge and defer"' }] } };
+  // pushes the answer out of askJustAnswered's 8KB tail, so the once-per-exposure rule is what is judged
+  const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' };
+  const stop = (name, rows, extra = {}) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env: { ...env, ...extra } });
+  assert.equal(stop('r1', [leak, assistantRow('a1', 'Wired the token as asked; tests green.')]).status, 2, 'the first exposure asks');
+  const quiet = stop('r2', [leak, answered, filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
+  assert.equal(quiet.status, 0, 'an answered rotate ask covers the exposure - even a later close that names rotation');
+  const second = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: `OTHER=${'ghp_' + 'C'.repeat(24)}` }] } };
+  const again = stop('r3', [leak, answered, filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
+  assert.equal(again.status, 2, 'a NEW exposure after the answer asks again');
+  assert.match(again.stderr, /once/, 'and says the ask comes once');
+  assert.match(again.stderr, /CLAUDE_STACK_ROTATE_ASK=0/, 'and names the switch');
+  assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { CLAUDE_STACK_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
+});
+
 test('guard-stop-contract: one turn split across rows sharing a message.id is judged whole', () => {
   // The defect this pins: keeping only the LAST row read a thinking-only fragment as the turn and
   // passed a real decision stop - measured in six audited sessions.

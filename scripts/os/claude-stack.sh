@@ -1430,6 +1430,9 @@ if "CLAUDE_STACK_INSTRUMENT" not in env:
 # putting 40 files on a shared `develop`. "0" for a repo whose remote is already gated.
 if "CLAUDE_STACK_PUSH_GATE" not in env:
     env["CLAUDE_STACK_PUSH_GATE"] = "1"; changed = True
+# rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
+if "CLAUDE_STACK_ROTATE_ASK" not in env:
+    env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
 # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
 # Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
 # different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably

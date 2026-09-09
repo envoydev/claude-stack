@@ -1614,6 +1614,11 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_PUSH_GATE -NotePropertyValue '1'
     $changed = $true
   }
+  # rotate ask: the stop contract asks once per credential exposure; '0' turns the ask off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_ROTATE_ASK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
+    $changed = $true
+  }
   # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
   # Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
   # different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
