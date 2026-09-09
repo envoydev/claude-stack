@@ -37,7 +37,7 @@ to the user.
 **ONE release archive is the entire download** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
 it: download + extract once into `$TMP/repo` (the reference owns the fallback), use every tool
-from that snapshot, hand it back with `--source` in step 11, and remove `$TMP` per the 'Clean up'
+from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
 call: one quiet call per recompute, no pasted tool output, one narration line between steps.
 This command's extra stake in the snapshot: its `RELEASE-SOURCE` commit is what step 1 compares
@@ -50,19 +50,19 @@ the fallback only where the harness lacks the tool.
 
 ## The ladder - announce every step
 
-Twelve user-facing steps; the machinery between them runs silently. Before EVERY question, one
+Thirteen user-facing steps; the machinery between them runs silently. Before EVERY question, one
 banner line so the user always knows where they are, what is being decided, and what comes next:
 
 ```
-[step 3/12 - rules] adjust the installed rules · next: agents
+[step 3/13 - rules] adjust the installed rules · next: agents
 ```
 
-1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 prerequisite check · 11 update · 12 CLAUDE.md (optional)
+1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 permission mode · 11 prerequisite check · 12 update · 13 CLAUDE.md (optional)
 
-**The skeleton is INVARIANT - the stability contract.** Every run prints all 12 banners, in this
+**The skeleton is INVARIANT - the stability contract.** Every run prints all 13 banners, in this
 order, exactly once each. A step that does not apply THIS run still prints its banner followed by
-ONE line naming why it is a no-op (`[step 7/12 - MCPs] skipped - area not selected`,
-`[step 12/12 - CLAUDE.md] skipped - global mode`), then moves on - a step never silently
+ONE line naming why it is a no-op (`[step 7/13 - MCPs] skipped - area not selected`,
+`[step 13/13 - CLAUDE.md] skipped - global mode`), then moves on - a step never silently
 vanishes, and steps are never merged, reordered, renumbered, or invented. Two runs must be
 comparable banner by banner; the content varies, the skeleton never does.
 
@@ -126,7 +126,7 @@ Detection detail, tool notes, and narration beyond these three blocks is the cha
 exists to prevent.
 
 Close the step with one AskUserQuestion: **adjust the selection** (continue to the area pick at step 2), or
-**refresh as-is** (nothing to change - skip straight to step 10; when upstream changed nothing
+**refresh as-is** (nothing to change - skip straight to step 11; when upstream changed nothing
 either, offer to stop rather than running a no-op, and note the sibling `update` command is the
 no-questions path for plain refreshes).
 
@@ -163,7 +163,7 @@ Per layer, the SAME three-beat shape as setup:
    ran. A not-installed row whose reason column carries a matched signal is the project telling
    you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste the tool output verbatim
    inside a fenced code block. **The layer turn has ONE fixed shape, in order: (1) the
-   `[step n/12 - <layer>]` banner, (2) the fenced block holding the tool output byte-for-byte (self-check: your message must carry its `total: N <layer>` footer line - it is not there unless you pasted the table), (3) the
+   `[step n/13 - <layer>]` banner, (2) the fenced block holding the tool output byte-for-byte (self-check: your message must carry its `total: N <layer>` footer line - it is not there unless you pasted the table), (3) the
    ADD round question - a layer turn missing the fenced table is invalid: render the table and
    re-send.** A prose grouping that feels equivalent (`Installed (5): ...` / `Locked (3): ...`
    lines) is the exact failure this shape exists to prevent, and the run's narrate-don't-trace
@@ -178,7 +178,7 @@ Per layer, the SAME three-beat shape as setup:
    `-`):
 
 ```
-[step 5/12 - skills] adjust the installed skills · next: hooks
+[step 5/13 - skills] adjust the installed skills · next: hooks
  # | skill      | installed | required by
 ---+------------+-----------+------------------------------------------
  1 | csharp     | yes       | rule csharp-conventions
@@ -225,7 +225,7 @@ drops before them.
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
 cascade never reaches here. Dropping a wired hook removes its `.claude/settings.json` wiring too
-(step 11 shows that edit).
+(step 12 shows that edit).
 
 ## 7. MCPs
 
@@ -235,7 +235,7 @@ the rest of the installed servers are direct picks - droppable, and preserved ac
 (token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env. Whenever sentry is PRESENT after
 this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
 space's) and run the sentry environment plan for whatever is missing: ask the slug (`<org>` or
-`<org>/<project>`; required) and pass it as `--sentry-slug` at step 11 (the installer seeds the env),
+`<org>/<project>`; required) and pass it as `--sentry-slug` at step 12 (the installer seeds the env),
 and tell the user to add `SENTRY_ACCESS_TOKEN` to that same file themselves - a personal/org API token,
 by hand or exported in the shell the installer runs in (the run writes it there), never pasted into the
 chat, never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured) -
@@ -296,7 +296,23 @@ needs editing. Apply on consent with a
 merge touching ONLY the chosen keys - everything else in settings.json is preserved. Area
 skipped, or nothing changed: one narration line, nothing written.
 
-## 10. Prerequisite check
+## 10. Permission mode
+
+Runs regardless of which areas were chosen at step 2 - it is not part of that picker (the tool caps a
+question there at 4 options, already spent on rules+agents+skills / hooks / MCPs+plugins /
+environment). Read the account settings.json (`~/.claude/settings.json`, or the `--space` profile's)
+`permissions.defaultMode` and, in project mode, whether the project's own `.claude/settings.json`
+already sets one - report both in one line (`account: auto · project: unset`). Ask ONE
+AskUserQuestion: **keep it as it is** (recommended - leave the project's `permissions` block
+untouched, whatever it currently holds) or **set the default for this project** (write/overwrite
+`permissions.defaultMode` in the project's own `.claude/settings.json` only, pre-filled with the
+account's current value, editable via Other to any of `default` / `plan` / `acceptEdits` /
+`bypassPermissions` / `auto` / `dontAsk`). Global mode: skip - there is no project to scope a
+default to. Applied at step 12 (Update + removals), the same merge-only-this-key discipline as the
+Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
+`additionalDirectories`) and the rest of the file stay untouched.
+
+## 11. Prerequisite check
 
 Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
 (`--sentry-oauth` when sentry is kept under a headerless registration, so its token warning does not
@@ -314,12 +330,12 @@ warning; no project docs, skip silently; a conflict warning never blocks the run
 through AskUserQuestion: keep local model/effort pins? (`--keep-pins`, yes recommended for a configure
 run - an existing install often carries deliberate pin edits).
 
-## 11. Update + removals
+## 12. Update + removals
 
 **First, is there anything to do?** This run already computed the closed selection and already has
-the installed inventory. When the two are byte-identical AND no removals were accepted AND no env
-or plugin-settings change was chosen, print ONE line - `unchanged - nothing to install, nothing to
-remove` - and skip to step 12. Do not run the installer to prove it (measured: a run whose
+the installed inventory. When the two are byte-identical AND no removals were accepted AND no env,
+permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
+install, nothing to remove` - and skip to step 13. Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
 installer pass whose only real effect was resetting the agent model/effort pins).
 
@@ -341,16 +357,19 @@ rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings
 (3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
 installed) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
-user, never acted on), and any environment writes from step 9.
+user, never acted on), and any environment writes from step 9. On a step-10 'set the default for
+this project' answer, merge `permissions.defaultMode: <value>` into the PROJECT's
+`.claude/settings.json` here too - never the account file, touching ONLY that key inside
+`permissions`; 'keep it as it is' writes nothing.
 
-### 11a. Plugin settings - apply the step-8 answer
+### 12a. Plugin settings - apply the step-8 answer
 
 Same as the setup walk, run after the installer block and before the follow-through line: re-run
 `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
 overwrite answer) and paste the closing `applied:` line. A run that dropped the plugin asked
 nothing at step 8 and applies nothing here.
 
-## 12. CLAUDE.md - the user's call (project mode)
+## 13. CLAUDE.md - the user's call (project mode)
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
@@ -376,7 +395,7 @@ follow-ups that are the USER's to run - restart for an MCP change, `/project-age
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/project-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
-installer (a write still gets its consent ask where it happens - step 12's CLAUDE.md reconcile),
+installer (a write still gets its consent ask where it happens - step 13's CLAUDE.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a
 prose next step was ignored 3 of 3 in one audited session, which is why the reason rides beside
 every step. Close with this line, verbatim:
@@ -395,7 +414,7 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
   sibling `setup` command. Never present a layer question without its
-  `[step n/12 - <name>] ... · next: <name>` banner or without the full-catalog table.
+  `[step n/13 - <name>] ... · next: <name>` banner or without the full-catalog table.
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's
   layer is the remedy.
