@@ -80,7 +80,11 @@ if ($Src) {
   Copy-Item -LiteralPath $Src -Destination "$TMP/repo" -Recurse                      # nothing is downloaded
   Remove-Item -LiteralPath "$TMP/repo/.git" -Recurse -Force -ErrorAction SilentlyContinue
   if (-not (Test-Path -LiteralPath "$TMP/repo/RELEASE-SOURCE")) {                    # a clone has none
-    Set-Content -LiteralPath "$TMP/repo/RELEASE-SOURCE" -Value "sha: $(& git -C $Mkt rev-parse HEAD)`nref: main`nversion: $Ver`nsource: marketplace-clone"
+    # WriteAllText, never Set-Content: this file lands in the shared cache and both twins parse it
+    # line by line - Set-Content would write CRLF (a stray CR on every value) and, on PS 5.1, a BOM.
+    [System.IO.File]::WriteAllText("$TMP/repo/RELEASE-SOURCE",
+      "sha: $(& git -C $Mkt rev-parse HEAD)`nref: main`nversion: $Ver`nsource: marketplace-clone`n",
+      (New-Object System.Text.UTF8Encoding($false)))
   }
 } else {
   Invoke-WebRequest -Uri "$RepoUrl/releases/latest/download/claude-stack.zip" -OutFile "$TMP/claude-stack.zip"

@@ -120,13 +120,15 @@ function installedSkill(home) {
 // <config>/plugins/marketplaces/<name>, which is where the plugin subdir it serves is copied FROM.
 // Planted here the way Claude Code leaves it - a real git repo, an origin, a plugin manifest whose
 // version is the release it was last refreshed at - because all three are what the installer reads.
-function plantMarketplaceClone(home, { origin, version = VERSION, name = 'claude-stack' } = {}) {
+function plantMarketplaceClone(home, { origin, version = VERSION, name = 'claude-stack', crlf = false } = {}) {
     const dir = path.join(home, '.claude', 'plugins', 'marketplaces', name);
     fs.mkdirSync(dir, { recursive: true });
     execFileSync('tar', ['-xzf', ARCHIVE, '-C', dir]);
     fs.rmSync(path.join(dir, 'RELEASE-SOURCE'), { force: true });   // a clone has none - the archive's file
     const manifest = path.join(dir, 'setup-plugin', '.claude-plugin', 'plugin.json');
-    fs.writeFileSync(manifest, fs.readFileSync(manifest, 'utf8').replace(/"version":\s*"[^"]*"/, `"version": "${version}"`));
+    let text = fs.readFileSync(manifest, 'utf8').replace(/"version":\s*"[^"]*"/, `"version": "${version}"`);
+    if (crlf) text = text.replace(/\n/g, '\r\n');                  // what Git for Windows checks out by default
+    fs.writeFileSync(manifest, text);
     const git = (...args) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { stdio: 'ignore' });
     git('init', '-b', 'main');
     git('add', '-A');
@@ -274,6 +276,22 @@ test('a marketplace clone at the newest release is used instead of the archive',
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
+// Git for Windows checks out with core.autocrlf=true by default, so the manifest the version match
+// is read from has CRLF line ends there. A trailing CR would never equal the probe's version -
+// silently turning the whole route off on exactly one platform.
+test('a CRLF plugin manifest still matches the probed version', () => {
+    const host = startHost();
+    const home = work();
+    try
+    {
+        plantMarketplaceClone(home, { origin: host.url, crlf: true });
+        const out = runSh(home, host);
+        assert.match(out, /source: marketplace clone/, 'the CR does not break the version compare');
+        assert.strictEqual(host.assets, 0, 'so nothing was downloaded');
+    }
+    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
 // The clone only moves when the user refreshes the marketplace, so it can sit a release behind.
 // The version match is the whole safety argument: no match, no shortcut.
 test('a marketplace clone behind the newest release is not used', () => {
@@ -363,6 +381,16 @@ test('the ps1 twin takes the marketplace clone the same way', { skip: skipNoPwsh
         assert.match(out, /source: marketplace clone/, 'the ps1 run names the clone');
         assert.strictEqual(host.assets, 0, 'nothing was downloaded');
         assert.deepStrictEqual(cacheEntries(home).map(p => path.basename(p)), [VERSION], 'promoted into the shared layout');
+
+        // The cache is SHARED, so the file ps1 synthesized is parsed by the sh twin line by line:
+        // it must be LF and BOM-less, the way every other file both twins write is. Set-Content
+        // would have given it CRLF on Windows and a BOM on PS 5.1.
+        const raw = fs.readFileSync(path.join(cacheEntries(home)[0], 'RELEASE-SOURCE'));
+        assert.ok(!raw.includes(0x0d), 'no CR - a stray one rides on every value the sh twin reads');
+        assert.ok(!(raw[0] === 0xef && raw[1] === 0xbb), 'no BOM - it would break the first line match');
+        const second = runSh(home, host);
+        assert.match(second, /source: cache/, 'and the sh twin reuses what ps1 cached');
+        assert.match(second, /@ main [0-9a-f]{12}/, 'reading the revision back out of it');
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });

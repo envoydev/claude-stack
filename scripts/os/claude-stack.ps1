@@ -1093,8 +1093,14 @@ function Move-StackCloneToCache { param([string]$Src, [string]$Root, [string]$Ve
       Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
       Copy-Item -LiteralPath $Src -Destination $staging -Recurse -Force -ErrorAction Stop
       Remove-Item -LiteralPath (Join-Path $staging '.git') -Recurse -Force -ErrorAction SilentlyContinue
-      Set-Content -LiteralPath (Join-Path $staging 'RELEASE-SOURCE') -Encoding utf8 `
-        -Value "sha: $sha`nref: $ref`nversion: $Ver`nsource: marketplace-clone"
+      # LF + no BOM, byte-for-byte what the sh twin writes - this file goes into the SHARED cache
+      # and is parsed by both twins (`sed -n 's/^sha: //p'` on one side, `-match '^sha: '` on the
+      # other). Set-Content would give it [Environment]::NewLine (CRLF on Windows, so every value
+      # ends in a stray CR) and, on PS 5.1, -Encoding utf8 prefixes a BOM that breaks the first
+      # line's match outright.
+      [System.IO.File]::WriteAllText((Join-Path $staging 'RELEASE-SOURCE'),
+        "sha: $sha`nref: $ref`nversion: $Ver`nsource: marketplace-clone`n",
+        (New-Object System.Text.UTF8Encoding($false)))
       Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
       Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
     } catch { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
