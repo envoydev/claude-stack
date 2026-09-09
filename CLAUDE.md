@@ -388,6 +388,20 @@ documented there.
   A promote drops sibling entries older than a WEEK, never 'all but the current' - another run
   resolved its entry seconds ago and reads it for the length of its install. `STACK_SOURCE_CACHE=0`
   restores the always-fresh temp download, and a cache that cannot be written is never fatal.
+- **The first download per release is usually avoidable too - the marketplace clone.** Claude Code
+  clones the whole marketplace repo to `<config>/plugins/marketplaces/<name>` and serves the plugin
+  out of its `setup-plugin/` subdir, so every machine with the plugin installed already holds
+  `scripts/`, `meta/` and `stack/` (measured: 7.1MB). A run takes it - copying it into the cache
+  under a synthesized `RELEASE-SOURCE`, `.git` dropped - only when its `origin` is this repo AND its
+  plugin manifest carries the exact version the probe just named: the clone moves when the USER
+  refreshes the marketplace, not when a release is published, so that version match is the whole
+  safety argument, and it is also what keeps a fork's run (and every test on a developer's machine)
+  out of the canonical clone. One exception, spelled out where it happens: when the archive, the
+  probe and the `git clone` have all failed, the clone is taken UNVERIFIED - installing the release
+  the plugin was last refreshed at beats installing nothing on an offline machine, and the log line
+  plus the stamp both name the commit it was. Same four sites as the cache (`stack_src`,
+  `Get-StackSrc`, the protocol's two snippets); `scripts/source-cache.test.js` covers the match, a
+  clone behind the release, a foreign repo's clone and the offline route.
 - **The install is versioned, not the file.** Claude Code has no per-artifact version: `version:` is
   in the plugin.json schema and NOWHERE else (a `version:` key on a skill/agent/rule parses but is
   ignored - don't add one). Instead each run writes `claude-stack.stamp` (project `.claude/`, or the

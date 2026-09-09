@@ -1044,6 +1044,65 @@ function Move-StackSrcToCache {
   return ''
 }
 
+function Get-StackManifestVersion { param([string]$Dir)
+  $file = Join-Path $Dir 'setup-plugin/.claude-plugin/plugin.json'
+  if (-not (Test-Path -LiteralPath $file)) { return '' }
+  $m = [regex]::Match((Get-Content -LiteralPath $file -Raw), '"version"\s*:\s*"([^"]*)"')
+  if ($m.Success) { return $m.Groups[1].Value }
+  return ''
+}
+
+function Get-StackMarketplaceClone { param([string]$Want)
+  # Claude Code's own clone of the marketplace repo - <config>/plugins/marketplaces/<name> - is a
+  # FULL checkout of this repo, not just the plugin subdir it serves (measured: 7.1MB, with
+  # scripts/ meta/ stack/ all present), so on any machine with the plugin installed the release is
+  # usually already on disk and the archive is a second copy of what is already there.
+  # Returns the clone whose origin is OUR repo and whose plugin manifest carries $Want - the
+  # version match is what makes it safe, since the clone only moves when the user refreshes the
+  # marketplace and may otherwise sit a release behind. An empty $Want means 'any valid clone',
+  # which is the offline last resort below and nothing else.
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return '' }
+  $root = Join-Path $ConfigDir 'plugins/marketplaces'
+  if (-not (Test-Path -LiteralPath $root -PathType Container)) { return '' }
+  foreach ($dir in (Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue)) {
+    if (-not (Test-StackCacheEntry -Dir $dir.FullName)) { continue }
+    $origin = (& git -C $dir.FullName remote get-url origin 2>$null)
+    if (-not $origin) { continue }
+    if (($origin -replace '\.git$', '') -ne ($StackRepoUrl -replace '\.git$', '')) { continue }
+    if ($Want -and (Get-StackManifestVersion -Dir $dir.FullName) -ne $Want) { continue }
+    return $dir.FullName
+  }
+  return ''
+}
+
+function Move-StackCloneToCache { param([string]$Src, [string]$Root, [string]$Ver)
+  # Copy a matching clone into the cache under its version and synthesize the RELEASE-SOURCE the
+  # archive would have carried, so nothing downstream - the stamp, the guided walk's plugin-version
+  # check, the next run's cache hit - can tell the two routes apart. `.git` is dropped: 1.7MB of
+  # history no install reads, and a copy that kept it would out-vote RELEASE-SOURCE the next time
+  # the entry is handed to a run as -Source.
+  $sha = (& git -C $Src rev-parse HEAD 2>$null)
+  $ref = (& git -C $Src rev-parse --abbrev-ref HEAD 2>$null)
+  if (-not $sha) { return '' }
+  if (-not $ref) { $ref = 'main' }
+  $entry = Join-Path $Root $Ver
+  if (-not (Test-StackCacheEntry -Dir $entry)) {
+    $staging = Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)
+    try {
+      New-Item -ItemType Directory -Path $Root -Force -ErrorAction Stop | Out-Null
+      Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+      Copy-Item -LiteralPath $Src -Destination $staging -Recurse -Force -ErrorAction Stop
+      Remove-Item -LiteralPath (Join-Path $staging '.git') -Recurse -Force -ErrorAction SilentlyContinue
+      Set-Content -LiteralPath (Join-Path $staging 'RELEASE-SOURCE') -Encoding utf8 `
+        -Value "sha: $sha`nref: $ref`nversion: $Ver`nsource: marketplace-clone"
+      Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
+      Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
+    } catch { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+  if (Test-StackCacheEntry -Dir $entry) { return $entry }
+  return ''
+}
+
 function Read-ReleaseSource {
   # An extracted release archive carries its revision in RELEASE-SOURCE (the workflow writes it).
   param([string]$Dir)
@@ -1109,6 +1168,24 @@ function Get-StackSrc {
         Log "source: cache $entry @ $refName $shortSha (release $want, no download)"
         return $true
       }
+      # Nothing cached, but the marketplace clone may already BE this release - copy it into the
+      # cache instead of paying the archive. Only ever on an exact version match: the probe named
+      # the newest release, so a clone carrying that version is the same revision the archive would
+      # be.
+      $mkt = Get-StackMarketplaceClone -Want $want
+      if ($mkt) {
+        $mktEntry = Move-StackCloneToCache -Src $mkt -Root $cacheRoot -Ver $want
+        if ($mktEntry) {
+          $script:StackSrc = $mktEntry
+          $script:StackSrcOwned = $false
+          Read-ReleaseSource -Dir $mktEntry
+          $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
+          $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
+          Log "source: marketplace clone $mkt @ $refName $shortSha (release $want, no download)"
+          Remove-StaleStackCache -Root $cacheRoot -Keep $want
+          return $true
+        }
+      }
     }
   }
 
@@ -1153,8 +1230,25 @@ function Get-StackSrc {
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
   & git clone --depth 1 -b main $StackRepoUrl $tmp *> $null
   if ($LASTEXITCODE -ne 0) {
-    Add-Failure "release archive and clone of $StackRepoUrl both failed - stack source unavailable (nothing refreshed; existing copies kept)"
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    # Everything networked is gone - archive, probe and clone. The marketplace clone is the one
+    # source that needs no network at all, so take it UNVERIFIED rather than install nothing: it
+    # may be a release behind (the probe is what would have proven otherwise, and there is no probe
+    # offline), but the stamp records its exact commit, so the next online run reports the drift
+    # instead of hiding it.
+    $off = Get-StackMarketplaceClone -Want ''
+    if ($off) {
+      $script:StackSrc = $off
+      $script:StackSrcRoot = ''
+      $script:StackSrcOwned = $false
+      $script:StackSha = (& git -C $off rev-parse HEAD 2>$null)
+      $script:StackRef = (& git -C $off rev-parse --abbrev-ref HEAD 2>$null)
+      $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
+      $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
+      Log "source: marketplace clone $off @ $refName $shortSha (offline - release $(Get-StackManifestVersion -Dir $off), not checked against the release host)"
+      return $true
+    }
+    Add-Failure "release archive and clone of $StackRepoUrl both failed - stack source unavailable (nothing refreshed; existing copies kept)"
     return $false
   }
   $script:StackSrc = $tmp

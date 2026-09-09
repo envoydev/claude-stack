@@ -116,6 +116,25 @@ function installedSkill(home) {
     return fs.existsSync(path.join(home, '.claude', 'skills', 'csharp', 'SKILL.md'));
 }
 
+// Claude Code's own clone of the marketplace repo: a FULL checkout of this repo under
+// <config>/plugins/marketplaces/<name>, which is where the plugin subdir it serves is copied FROM.
+// Planted here the way Claude Code leaves it - a real git repo, an origin, a plugin manifest whose
+// version is the release it was last refreshed at - because all three are what the installer reads.
+function plantMarketplaceClone(home, { origin, version = VERSION, name = 'claude-stack' } = {}) {
+    const dir = path.join(home, '.claude', 'plugins', 'marketplaces', name);
+    fs.mkdirSync(dir, { recursive: true });
+    execFileSync('tar', ['-xzf', ARCHIVE, '-C', dir]);
+    fs.rmSync(path.join(dir, 'RELEASE-SOURCE'), { force: true });   // a clone has none - the archive's file
+    const manifest = path.join(dir, 'setup-plugin', '.claude-plugin', 'plugin.json');
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, 'utf8').replace(/"version":\s*"[^"]*"/, `"version": "${version}"`));
+    const git = (...args) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { stdio: 'ignore' });
+    git('init', '-b', 'main');
+    git('add', '-A');
+    git('commit', '-m', 'clone');
+    git('remote', 'add', 'origin', origin);
+    return { dir, head: execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() };
+}
+
 // THE POINT OF THE FEATURE: the second run downloads nothing. Same account, so the second run is
 // the 'now install it into another project' case the cache exists for.
 test('a second run reuses the cached snapshot and fetches no archive', () => {
@@ -229,6 +248,82 @@ test('an unanswerable version probe still installs from the download', () => {
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
+// THE ZERO-DOWNLOAD CASE: the plugin route already put the whole repo on disk, so a machine with
+// the plugin installed needs no archive at all - as long as the clone IS the release the probe
+// named.
+test('a marketplace clone at the newest release is used instead of the archive', () => {
+    const host = startHost();
+    const home = work();
+    try
+    {
+        const clone = plantMarketplaceClone(home, { origin: host.url });
+        const out = runSh(home, host);
+        assert.match(out, /source: marketplace clone/, 'the run names the clone as its source');
+        assert.strictEqual(host.assets, 0, 'nothing was downloaded');
+        assert.strictEqual(host.probes, 1, 'it still asked which release is newest');
+        assert.ok(installedSkill(home), 'and it installed');
+
+        // Promoted into the same cache the archive route fills, carrying the revision a stamp needs.
+        const [entry] = cacheEntries(home);
+        assert.strictEqual(path.basename(entry), VERSION);
+        const rel = fs.readFileSync(path.join(entry, 'RELEASE-SOURCE'), 'utf8');
+        assert.match(rel, new RegExp(`^sha: ${clone.head}$`, 'm'), 'the entry records the clone commit');
+        assert.match(rel, /^source: marketplace-clone$/m, 'and names the route it came from');
+        assert.ok(!fs.existsSync(path.join(entry, '.git')), 'the history is not copied into the cache');
+    }
+    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// The clone only moves when the user refreshes the marketplace, so it can sit a release behind.
+// The version match is the whole safety argument: no match, no shortcut.
+test('a marketplace clone behind the newest release is not used', () => {
+    const host = startHost();
+    const home = work();
+    try
+    {
+        plantMarketplaceClone(home, { origin: host.url, version: '0.0.1' });
+        const out = runSh(home, host);
+        assert.match(out, /releases\/latest\/download/, 'a stale clone is not a shortcut');
+        assert.strictEqual(host.assets, 1, 'it downloaded the release the probe named');
+        assert.ok(installedSkill(home));
+    }
+    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// One account can hold several marketplaces, and a fork's clone is not this stack. The origin is
+// what tells them apart - without that check, a run pointed at a fork would install the canonical
+// stack, and every test on this machine would silently read the developer's own clone.
+test('a clone of a different repo is ignored', () => {
+    const host = startHost();
+    const home = work();
+    try
+    {
+        plantMarketplaceClone(home, { origin: 'https://github.com/someone/other-stack', name: 'other-stack' });
+        const out = runSh(home, host);
+        assert.match(out, /releases\/latest\/download/, 'another repo\'s clone is not our source');
+        assert.strictEqual(host.assets, 1);
+    }
+    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// Offline is the case the clone route is really worth having: the archive, the probe and the git
+// clone all need the network, the marketplace clone needs none. Unverified is stated in the log,
+// and the stamp still records the exact commit installed.
+test('an offline run installs from the marketplace clone instead of failing', () => {
+    const host = startHost();
+    const home = work();
+    plantMarketplaceClone(home, { origin: host.url });
+    host.close();                                   // the release host is gone: nothing networked answers
+    try
+    {
+        const out = runSh(home, host);
+        assert.match(out, /source: marketplace clone/, 'the clone carried the run');
+        assert.match(out, /offline/, 'and the log says it was not checked against the release host');
+        assert.ok(installedSkill(home), 'an offline machine still installs');
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
 // Both twins share one cache layout, so a script install on Windows reuses what a run on the same
 // account already fetched. Same two assertions that matter: one asset fetch, the second run says cache.
 test('the ps1 twin caches and reuses the same way', { skip: skipNoPwsh }, () => {
@@ -248,6 +343,26 @@ test('the ps1 twin caches and reuses the same way', { skip: skipNoPwsh }, () => 
         const second = run();
         assert.match(second, /source: cache/, 'the second run reports the cache');
         assert.strictEqual(host.assets, 1, 'and fetched no archive');
+    }
+    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// The clone route is twinned too - a Windows machine with the plugin installed downloads nothing.
+test('the ps1 twin takes the marketplace clone the same way', { skip: skipNoPwsh }, () => {
+    const host = startHost();
+    const home = work();
+    try
+    {
+        plantMarketplaceClone(home, { origin: host.url });
+        const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project',
+            '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
+            cwd: home,
+            encoding: 'utf8',
+            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' },
+        });
+        assert.match(out, /source: marketplace clone/, 'the ps1 run names the clone');
+        assert.strictEqual(host.assets, 0, 'nothing was downloaded');
+        assert.deepStrictEqual(cacheEntries(home).map(p => path.basename(p)), [VERSION], 'promoted into the shared layout');
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });

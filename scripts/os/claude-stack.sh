@@ -887,7 +887,10 @@ STACK_SRC_ROOT=""       # the temp dir an owned fetch lives in (the EXIT trap's 
 #     tune and no window in which an install silently lands last week's stack.
 #   - NEVER TRUSTED BLIND. An entry counts only when it carries stack/skills + stack/agents - the
 #     same check a --source dir gets - so an interrupted promote is re-downloaded, not installed.
-# STACK_SOURCE_CACHE=0 restores the old always-fresh temp download.
+# And when the cache is empty, the download may still be avoidable: Claude Code's marketplace clone
+# is a full checkout of this repo (see _stack_marketplace_clone), so a machine with the plugin
+# installed already holds the release. STACK_SOURCE_CACHE=0 restores the old always-fresh temp
+# download.
 STACK_CACHE_ENABLED=true
 [ "${STACK_SOURCE_CACHE:-1}" = "0" ] && STACK_CACHE_ENABLED=false
 
@@ -946,6 +949,63 @@ _stack_cache_promote() {
   return 0
 }
 
+_stack_manifest_version() {
+  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1 || true
+}
+
+_stack_marketplace_clone() {
+  # Claude Code's own clone of the marketplace repo - <config>/plugins/marketplaces/<name> - is a
+  # FULL checkout of this repo, not just the plugin subdir it serves (measured: 7.1MB, with
+  # scripts/ meta/ stack/ all present), so on any machine with the plugin installed the release is
+  # usually already on disk and the archive is a second copy of what is already there.
+  # Prints the path of the clone whose origin is OUR repo and whose plugin manifest carries $1 -
+  # the version match is what makes it safe, since the clone only moves when the user refreshes the
+  # marketplace and may otherwise sit a release behind. $1 empty means 'any valid clone', which is
+  # the offline last resort below and nothing else.
+  local want="$1" dir origin v
+  command -v git >/dev/null 2>&1 || return 0
+  [ -d "$CONFIG_DIR/plugins/marketplaces" ] || return 0
+  for dir in "$CONFIG_DIR"/plugins/marketplaces/*; do
+    [ -d "$dir" ] || continue
+    _stack_cache_valid "$dir" || continue
+    origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+    [ "${origin%.git}" = "${STACK_REPO_URL%.git}" ] || continue
+    if [ -n "$want" ]; then
+      v="$(_stack_manifest_version "$dir")"
+      [ "$v" = "$want" ] || continue
+    fi
+    printf '%s' "$dir"
+    return 0
+  done
+  return 0
+}
+
+_stack_marketplace_promote() {
+  # Copy a matching clone into the cache under its version and synthesize the RELEASE-SOURCE the
+  # archive would have carried, so nothing downstream - the stamp, the guided walk's plugin-version
+  # check, the next run's cache hit - can tell the two routes apart. `.git` is dropped: 1.7MB of
+  # history no install reads, and a copy that kept it would out-vote RELEASE-SOURCE the next time
+  # the entry is handed to a run as --source.
+  local src="$1" root="$2" v="$3" sha ref
+  sha="$(git -C "$src" rev-parse HEAD 2>/dev/null || true)"
+  ref="$(git -C "$src" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  [ -n "$sha" ] || return 0
+  mkdir -p "$root" 2>/dev/null || return 0
+  if ! _stack_cache_valid "$root/$v"; then
+    rm -rf "$root/.dl.$$"
+    if cp -R "$src" "$root/.dl.$$" 2>/dev/null; then
+      rm -rf "$root/.dl.$$/.git"
+      printf 'sha: %s\nref: %s\nversion: %s\nsource: marketplace-clone\n' \
+        "$sha" "${ref:-main}" "$v" > "$root/.dl.$$/RELEASE-SOURCE" 2>/dev/null || true
+      rm -rf "$root/$v"
+      mv "$root/.dl.$$" "$root/$v" 2>/dev/null || rm -rf "$root/.dl.$$"
+    fi
+  fi
+  _stack_cache_valid "$root/$v" && printf '%s' "$root/$v"
+  return 0
+}
+
 _cleanup_stack_src() {
   if $STACK_SRC_OWNED && [ -n "$STACK_SRC_ROOT" ]; then rm -rf "$STACK_SRC_ROOT"; fi
   [ -n "${_IO_TMP:-}" ] && rm -rf "$_IO_TMP"
@@ -989,16 +1049,31 @@ stack_src() {
   fi
 
   # Cached snapshot first: the probe costs one HEAD, and a hit costs no download at all.
-  local cache_root=""
+  local cache_root="" want="" mkt="" mkt_entry=""
   if $STACK_CACHE_ENABLED; then
     cache_root="$(_stack_cache_root)"
-    local want; want="$(_stack_probe_version)"
+    want="$(_stack_probe_version)"
     if [ -n "$want" ] && _stack_cache_valid "$cache_root/$want"; then
       STACK_SRC="$cache_root/$want"; STACK_SRC_OWNED=false
       STACK_SHA="$(sed -n 's/^sha: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
       STACK_REF="$(sed -n 's/^ref: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
       log "source: cache $STACK_SRC @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (release $want, no download)"
       return 0
+    fi
+    # Nothing cached, but the marketplace clone may already BE this release - copy it into the
+    # cache instead of paying the archive. Only ever on an exact version match: the probe named the
+    # newest release, so a clone carrying that version is the same revision the archive would be.
+    if [ -n "$want" ]; then
+      mkt="$(_stack_marketplace_clone "$want")"
+      if [ -n "$mkt" ]; then mkt_entry="$(_stack_marketplace_promote "$mkt" "$cache_root" "$want")"; fi
+      if [ -n "$mkt_entry" ]; then
+        STACK_SRC="$mkt_entry"; STACK_SRC_OWNED=false
+        STACK_SHA="$(sed -n 's/^sha: //p' "$mkt_entry/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
+        STACK_REF="$(sed -n 's/^ref: //p' "$mkt_entry/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
+        log "source: marketplace clone $mkt @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (release $want, no download)"
+        _stack_cache_prune "$cache_root" "$want"
+        return 0
+      fi
     fi
   fi
 
@@ -1032,8 +1107,22 @@ stack_src() {
   command -v git >/dev/null 2>&1 || { note_failure "release archive unreachable and git not found - stack source unavailable"; return 1; }
   tmp="$(mktemp -d)"
   if ! git clone --depth 1 -b main "$STACK_REPO_URL" "$tmp" >/dev/null 2>&1; then
+    rm -rf "$tmp"
+    # Everything networked is gone - archive, probe and clone. The marketplace clone is the one
+    # source that needs no network at all, so take it UNVERIFIED rather than install nothing: it
+    # may be a release behind (the probe is what would have proven otherwise, and there is no
+    # probe offline), but the stamp records its exact commit, so the next online run reports the
+    # drift instead of hiding it.
+    local off; off="$(_stack_marketplace_clone "")"
+    if [ -n "$off" ]; then
+      STACK_SRC="$off"; STACK_SRC_OWNED=false; STACK_SRC_ROOT=""
+      STACK_SHA="$(git -C "$off" rev-parse HEAD 2>/dev/null || true)"
+      STACK_REF="$(git -C "$off" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+      log "source: marketplace clone $off @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (offline - release $(_stack_manifest_version "$off"), not checked against the release host)"
+      return 0
+    fi
     note_failure "release archive and clone of $STACK_REPO_URL both failed - stack source unavailable (nothing refreshed; existing copies kept)"
-    rm -rf "$tmp"; return 1
+    return 1
   fi
   STACK_SRC="$tmp"; STACK_SRC_ROOT="$tmp"; STACK_SRC_OWNED=true
   STACK_SHA="$(git -C "$tmp" rev-parse HEAD 2>/dev/null)"
