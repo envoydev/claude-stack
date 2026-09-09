@@ -122,7 +122,8 @@ environment plan, no question on this path: when sentry is installed, read the A
 close-out, with the file path - any of `SENTRY_SLUG` and (token mode) `SENTRY_ACCESS_TOKEN` still
 missing: the user adds them there by hand (`{ "env": { "SENTRY_SLUG": "<org>[/<project>]",
 "SENTRY_ACCESS_TOKEN": "<token>" } }`; never a project-level `.claude/settings.json`, its env does
-not reach `.mcp.json`), or runs `/claude-stack:configure`, whose sentry plan asks the slug.
+not reach `.mcp.json` - measured), exports them in the shell the installer runs in (the run writes
+every key it is handed into that file), or runs `/claude-stack:configure`, whose sentry plan asks the slug.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`

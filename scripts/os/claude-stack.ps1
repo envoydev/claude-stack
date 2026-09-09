@@ -84,11 +84,13 @@
     CLAUDE_CONFIG_DIR     target a specific account when no -Space is given (default ~/.claude).
     STACK_SKILLS_REPO     stack source repo (release-archive download, git-clone fallback; default https://github.com/envoydev/claude-stack).
     CONTEXT7_API_KEY      context7 API key; add it to the ACCOUNT settings.json 'env' for higher rate limits (unset = the keyless free tier).
+                          Set in the environment THIS script runs in, it is written into that file (every run, both scopes; logged by length).
     CONTEXT7_BAKE_KEY     with -Context7 local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted).
     SENTRY_SLUG           the Sentry org or org/project the sentry MCP URL is scoped to - lives in the ACCOUNT settings.json 'env'
-                          (seeded by -SentrySlug); unset = a literal ${SENTRY_SLUG} URL that connects and then fails every call.
+                          (seeded by -SentrySlug, else from the launch environment); unset = a literal ${SENTRY_SLUG} URL that connects and then fails every call.
     SENTRY_ACCESS_TOKEN   -SentryAuth token (default): a sentry API token (Settings -> Account -> API -> Personal Tokens, or
-                          an org token) - add it to the ACCOUNT settings.json 'env' yourself; never in .mcp.json, never in a
+                          an org token) - add it to the ACCOUNT settings.json 'env' yourself, or set it in the environment this
+                          script runs in and the run writes it there (every run, both scopes; logged by length); never in .mcp.json, never in a
                           project-level settings.json (does not reach .mcp.json expansion). Not SENTRY_AUTH_TOKEN: that is
                           sentry-cli's release/symbol-upload credential (needs project:releases).
 
@@ -320,6 +322,7 @@ if ($SentryAuth -notin @('', 'token', 'oauth')) {
   Write-Host "-SentryAuth must be 'token' or 'oauth' (got '$SentryAuth')" -ForegroundColor Red
   exit 1
 }
+if (-not $SentrySlug -and $env:SENTRY_SLUG) { $SentrySlug = $env:SENTRY_SLUG }   # the flag, else the launch environment - either lands in the account file (Set-AccountKeys)
 $SentrySlugRe = '^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)?$'
 if ($SentrySlug -and ($SentrySlug -notmatch $SentrySlugRe)) {
   Write-Host "-SentrySlug '$SentrySlug' must be a slug (<org> or <org>/<project>; chars [A-Za-z0-9._-])" -ForegroundColor Red
@@ -555,7 +558,8 @@ if ($Action -eq 'update' -and -not $SentryAuth -and (Get-Command claude -ErrorAc
 }
 if (-not $SentryAuth) { $SentryAuth = 'token' }
 $SentryRemoteUrl = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}'
-function Set-AccountEnv {  # KEY VALUE - write env.KEY into the ACCOUNT settings.json (the file .mcp.json expansion reads); overwrite - a flag is explicit
+function Set-AccountEnv {  # KEY VALUE - write env.KEY into the ACCOUNT settings.json (the file .mcp.json expansion reads); overwrite - a flag or an exported value is explicit
+  # A secret-shaped KEY is logged by LENGTH, never by value; the file is rewritten only on a change.
   param([string]$Key, [string]$Value)
   $settings = Join-Path $ConfigDir 'settings.json'
   try {
@@ -563,10 +567,37 @@ function Set-AccountEnv {  # KEY VALUE - write env.KEY into the ACCOUNT settings
     $data = if (Test-Path -LiteralPath $settings) { Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
     if (-not $data.PSObject.Properties['env']) { $data | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
     $before = if ($data.env.PSObject.Properties[$Key]) { [string]$data.env.$Key } else { $null }
+    $shown = if ($Key -match '(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$') { "set ($($Value.Length) chars)" } else { $Value }
+    if ($before -eq $Value) { Log "  $Key already $shown in $settings"; return }
     if ($data.env.PSObject.Properties[$Key]) { $data.env.$Key = $Value } else { $data.env | Add-Member -NotePropertyName $Key -NotePropertyValue $Value }
     Write-JsonFile $data $settings   # BOM-less + 2-space, like the sh twin (Set-Content -Encoding UTF8 prefixes a BOM on PS 5.1, which a JSON parser rejects)
-    if ($before -eq $Value) { Log "  $Key already $Value in $settings" } else { Log "  $Key=$Value written to $settings env" }
+    Log "  $Key=$shown written to $settings env"
   } catch { Add-Failure "could not write $Key into $settings ($($_.Exception.Message))" }
+}
+# INSTALL + UPDATE, both scopes: every key the stack knows that THIS RUN was handed lands in the
+# account file - the slug from -SentrySlug (else the launch environment), SENTRY_ACCESS_TOKEN and
+# CONTEXT7_API_KEY from the launch environment. An exported value is as explicit as a flag, so it
+# overwrites; a key the run was not handed is never touched, let alone cleared. Why the ACCOUNT file
+# at project scope too: it is the one file whose env reaches the .mcp.json URL/header expansion
+# (measured on 2.1.266 - the project's .claude/settings.json and settings.local.json leave the
+# 'Missing environment variables' warning in place, the account file clears it), and 'add it there
+# by hand' left a remote user with no terminal to do it in. A value never goes through a chat.
+function Set-AccountKeys {
+  foreach ($k in 'SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY') {
+    $v = if ($k -eq 'SENTRY_SLUG') { $SentrySlug } else { [Environment]::GetEnvironmentVariable($k) }
+    if ($v) { Set-AccountEnv $k $v }
+  }
+}
+function Get-AccountKeyState([string]$Key) {  # "KEY=set (N chars)" or "KEY=absent" from the ACCOUNT settings.json - a length, never a value
+  $settings = Join-Path $ConfigDir 'settings.json'
+  $v = ''
+  try {
+    if (Test-Path -LiteralPath $settings) {
+      $d = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
+      if ($d.PSObject.Properties['env'] -and $d.env.PSObject.Properties[$Key]) { $v = [string]$d.env.$Key }
+    }
+  } catch {}
+  if ($v.Trim()) { "$Key=set ($($v.Length) chars)" } else { "$Key=absent" }
 }
 $SentryRemoteHdr = if ($SentryAuth -eq 'oauth') { '' } else { 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}' }
 if ($Context7 -eq 'local') {
@@ -1126,7 +1157,6 @@ function Install-Mcps {
     # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
     $configured = $false
     try { & claude mcp get $name *> $null; $configured = ($LASTEXITCODE -eq 0) } catch { $configured = $false }
-    if ($name -eq 'sentry' -and $SentrySlug) { Set-AccountEnv SENTRY_SLUG $SentrySlug }   # the env seed lands even when the registration is skipped below
     if ($configured) { Write-Host "  mcp $name already configured - skipping"; continue }
     Log "mcp [$ClaudeScope]: $name"
     if ($spec -eq '@HTTP@') {
@@ -1731,7 +1761,6 @@ function Update-Mcps {
     $spec = $parts[1]
     $argArr = Resolve-McpArgv $spec   # split-first + per-word token resolution, as in Install-Mcps
     Log "mcp refresh [$ClaudeScope]: $name"
-    if ($name -eq 'sentry' -and $SentrySlug) { Set-AccountEnv SENTRY_SLUG $SentrySlug }
     try { & claude mcp remove $name -s $ClaudeScope 2>$null } catch {}
     if ($spec -eq '@HTTP@') {
       # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
@@ -1916,8 +1945,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Update-Mcps; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Update-Mcps; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -1948,11 +1977,21 @@ if ($Mcps | Where-Object { $_ -like 'serena|*' }) {
 }
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
-if ($Context7 -eq 'remote') { Log "  - context7 is remote; add CONTEXT7_API_KEY to $ConfigDir\settings.json 'env' (the ACCOUNT file - a project-level one does not reach .mcp.json) for higher rate limits, or re-run with -Context7 local" }
+# The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says
+# what actually landed; the project-level settings.json never reaches .mcp.json expansion (measured).
+if ($Context7 -eq 'remote') {
+  $c7 = Get-AccountKeyState CONTEXT7_API_KEY
+  if ($c7 -like '*=set*') { Log "  - context7 key: $c7 in $ConfigDir\settings.json env" }
+  else { Log "  - context7 key: $c7 in $ConfigDir\settings.json env - the keyless free tier works; for higher rate limits export CONTEXT7_API_KEY and re-run (the run writes it into that ACCOUNT file), or add it to that file's 'env' by hand, or re-run with -Context7 local" }
+}
 if (@($Mcps | Where-Object { $_ -like 'sentry|*' }).Count -gt 0) {
-  Log "  - sentry reads SENTRY_SLUG (your org, or org/project) from $ConfigDir\settings.json 'env' - seeded by -SentrySlug, or add it there by hand (a project-level settings.json does not reach .mcp.json)"
+  $ss = Get-AccountKeyState SENTRY_SLUG
+  if ($ss -like '*=set*') { Log "  - sentry slug: $ss in $ConfigDir\settings.json env" }
+  else { Log "  - sentry slug: $ss in $ConfigDir\settings.json env - the URL needs it: re-run with -SentrySlug <org>[/<project>] (or export SENTRY_SLUG), or add it to that file's 'env' by hand" }
   if ($SentryAuth -eq 'token') {
-    Log "  - sentry auth is token: add SENTRY_ACCESS_TOKEN (a personal/org API token) to the same $ConfigDir\settings.json 'env' yourself - or re-run with -SentryAuth oauth for the browser consent flow"
+    $st = Get-AccountKeyState SENTRY_ACCESS_TOKEN
+    if ($st -like '*=set*') { Log "  - sentry token: $st in $ConfigDir\settings.json env" }
+    else { Log "  - sentry token: $st in $ConfigDir\settings.json env - set SENTRY_ACCESS_TOKEN (a personal/org API token) in the launch environment and re-run (the run writes it into that ACCOUNT file), paste it into the snippet below, or re-run with -SentryAuth oauth for the browser consent flow" }
     # The token never goes through a chat, and not through a command argument either (it would land
     # in the PSReadLine history file). Read-Host -AsSecureString takes it from the terminal without
     # echoing it; the file is written by this snippet, not by anything that can log the value.

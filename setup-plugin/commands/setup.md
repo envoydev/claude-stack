@@ -159,7 +159,7 @@ Run the installer **from the snapshot**, and pass it back with `--source` so it 
 
 `--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/claude-stack.stamp` recording the commit it installed (read from the snapshot's `RELEASE-SOURCE`) - that is what a later `/claude-stack:configure` diffs against.
 
-The sentry values are ACCOUNT-level, not project-level: `--sentry-slug` writes `SENTRY_SLUG` into the account `settings.json` env itself, and the token is never written by this command - after the run, re-read that file and, when `SENTRY_ACCESS_TOKEN` (token mode) or `SENTRY_SLUG` is still absent, say so in the next-steps card with the file path and the snippet from step 7.
+The sentry values are ACCOUNT-level, not project-level: `--sentry-slug` writes `SENTRY_SLUG` into the account `settings.json` env itself, and the token and the context7 key land there too when they are exported in the shell the installer runs in (the run writes every key it is handed into that file, at project scope too - never through the chat) - after the run, re-read that file and, when `SENTRY_ACCESS_TOKEN` (token mode) or `SENTRY_SLUG` is still absent, say so in the next-steps card with the file path and the snippet from step 7.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`

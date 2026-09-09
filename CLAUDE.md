@@ -220,7 +220,9 @@ documented there.
   `.claude/settings.json` does not; `${env:VAR}` + OS env on Cursor). The guided commands make the
   user fill both in whenever sentry is present: `SENTRY_SLUG` = the org, or `org/project` (Sentry's
   recommended scoping; the installers' `--sentry-slug` seeds it), `SENTRY_ACCESS_TOKEN` = a
-  personal/org API token the user adds by hand, never through the chat. `Sentry-Bearer` is the scheme
+  personal/org API token the user adds by hand or exports in the shell the installer runs in - the
+  installers write every key they are handed (the slug, the token, `CONTEXT7_API_KEY`) into the account
+  file on every run at both scopes, a secret logged by length - never through the chat. `Sentry-Bearer` is the scheme
   for an API token; plain `Bearer` is the server's OAuth-issued token scheme and rejects an API token
   as `invalid_token`; `--sentry-auth oauth` registers no header instead, so Claude Code runs the
   browser consent flow on first connect (a set-but-wrong header disables that fallback, so the modes
