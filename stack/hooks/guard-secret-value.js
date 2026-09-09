@@ -285,8 +285,11 @@ const askLine = (r) =>
 // A note the rewritten call prints as its first line, so the model reads what happened and the route
 // to the value in the same tool result - nothing is fed back through a denial.
 const noteLine = (what, r) => `# credential guard: ${what} A value never enters the chat. ${askLine(r)}`;
-// Inside a double-quoted shell string: the four characters bash still reads there.
-const shDouble = (s) => String(s).replace(/[\\"$`]/g, (c) => '\\' + c);
+// Inside a double-quoted shell string: the three characters bash still reads there, and a backslash
+// only where bash would read IT - before one of those, before another backslash, or at the end. A
+// Windows path's own backslashes stay as they are: doubling every one named `D:\\a\\...` for
+// `D:\a\...` (measured on windows-latest), a path that is not the file's.
+const shDouble = (s) => String(s).replace(/\\(?=["$`\\]|$)|["$`]/g, (c) => '\\' + c);
 const SECRET_SHAPE_G = new RegExp(SECRET_SHAPE.source, 'g');
 // A value is masked when its KEY is credential-shaped and it holds a credential, or when the value
 // itself has a known credential SHAPE whatever the key - the one case the key test cannot see.

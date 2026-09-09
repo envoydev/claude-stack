@@ -112,6 +112,13 @@ test('guard-secret-value: a dump is rewritten into a redacted view - the file wi
   assert.match(env, /^API_KEY=<set \(6 chars\)>$/m, 'dotenv: the credential line is masked');
   assert.equal(rewritten('cd sub && cat settings.json && ls'), `node "${HOOK}" --redacted "${path.join(ROOT, 'sub', 'settings.json')}"`, 'the first credential file wins and the rest of the command is dropped');
   assert.equal(bash(`node "${HOOK}" --redacted "${f.secret}"`), 0, 'the redacted view itself is exempt by name');
+  // The path is double-quoted for bash, and only what bash reads inside double quotes is escaped: a
+  // Windows path's own backslashes stay as they are, or the command names a path that is not the
+  // file's (measured on windows-latest: `D:\\a\\...` for `D:\a\...`). A `$` in a path never
+  // reaches the escaper - an unexpanded variable is never judged - so a backslash is the one case.
+  fs.mkdirSync(path.join(ROOT, 'win\\dir'), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, 'win\\dir', 'settings.json'), SECRET_JSON);
+  assert.equal(rewritten("cd 'win\\dir' && cat settings.json"), `node "${HOOK}" --redacted "${path.join(ROOT, 'win\\dir', 'settings.json')}"`, 'a backslash in the path is kept as it is');
   const missing = cli('--redacted', path.join(f.dir, 'nope.json'));
   assert.equal(missing.status, 0);
   assert.match(missing.stdout, /nope\.json: not found/);
