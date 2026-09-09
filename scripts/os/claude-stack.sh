@@ -88,14 +88,16 @@ Environment variables:
   CLAUDE_CONFIG_DIR      target a specific account when no --space is given (default ~/.claude)
   STACK_SKILLS_REPO      stack source repo (release-archive download, git-clone fallback; default https://github.com/envoydev/claude-stack); ignored with --source
   CONTEXT7_API_KEY       context7 API key, read from the ACCOUNT settings.json "env" (or the launch shell) at launch - higher
-                         rate limits; unset = the keyless free tier
+                         rate limits; unset = the keyless free tier. Exported in the shell THIS script runs in, it is
+                         written into that file (every run, both scopes; logged by length, never by value)
   CONTEXT7_BAKE_KEY      with --context7 local, bake CONTEXT7_API_KEY into the registration (keep .mcp.json uncommitted)
   SENTRY_SLUG            the Sentry org or org/project the sentry MCP URL is scoped to - lives in the ACCOUNT
-                         settings.json "env" (seeded by --sentry-slug); unset = a literal \${SENTRY_SLUG} URL
+                         settings.json "env" (seeded by --sentry-slug, else from the launch shell); unset = a literal \${SENTRY_SLUG} URL
                          that connects and then fails every call naming the variable (claude mcp list warns)
   SENTRY_ACCESS_TOKEN    --sentry-auth token (default): a sentry API token (Settings -> Account -> API ->
                          Personal Tokens, or an org token) - add it to the ACCOUNT settings.json "env"
-                         yourself (or export it in the launch shell); never in .mcp.json (the registration
+                         yourself, or export it in the shell this script runs in and the run writes it there
+                         (every run, both scopes; logged by length); never in .mcp.json (the registration
                          keeps \${SENTRY_ACCESS_TOKEN} literal), never in a project-level settings.json (does
                          not reach .mcp.json expansion). Not SENTRY_AUTH_TOKEN: that is sentry-cli's
                          release/symbol-upload credential (needs project:releases)
@@ -195,7 +197,7 @@ SENTRY_AUTH="$(printf '%s' "$SENTRY_AUTH_FLAG" | tr '[:upper:]' '[:lower:]')"
 case "$SENTRY_AUTH" in ""|token|oauth) ;;
   *) usage >&2; echo "error: --sentry-auth must be 'token' or 'oauth' (got '$SENTRY_AUTH')" >&2; exit 1 ;;
 esac
-SENTRY_SLUG="$SENTRY_SLUG_FLAG"
+SENTRY_SLUG="${SENTRY_SLUG_FLAG:-${SENTRY_SLUG:-}}"   # the flag, else the launch environment - either lands in the account file (seed_account_keys)
 _sentry_slug_ok() {  # $1 = candidate: <org> or <org>/<project>, slug characters only (it lands inside a URL)
   case "$1" in ""|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*/|*//*) return 1 ;; esac; return 0
 }
@@ -518,16 +520,42 @@ fi
 SENTRY_REMOTE_URL='https://mcp.sentry.dev/mcp/${SENTRY_SLUG}'
 SENTRY_REMOTE_HDR='Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}'
 [ "$SENTRY_AUTH" = "oauth" ] && SENTRY_REMOTE_HDR=""
-seed_account_env() {  # $1 = KEY $2 = VALUE - write env.KEY into the ACCOUNT settings.json (the file .mcp.json expansion reads); overwrite - a flag is explicit
+seed_account_env() {  # $1 = KEY $2 = VALUE - write env.KEY into the ACCOUNT settings.json (the file .mcp.json expansion reads); overwrite - a flag or an exported value is explicit
+  # The value travels to node through the environment, not argv (argv is readable by every process on
+  # the box); a secret-shaped KEY is logged by LENGTH, never by value; the file is rewritten only on a change.
   local settings="$CONFIG_DIR/settings.json"
   mkdir -p "$CONFIG_DIR"
-  node -e '
-const fs=require("fs");const [p,k,v]=process.argv.slice(1);
+  _SEED_VALUE="$2" node -e '
+const fs=require("fs");const [p,k]=process.argv.slice(1);const v=process.env._SEED_VALUE;
 let d={};try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){if(e.code!=="ENOENT")throw e}
-d.env=d.env||{};const before=d.env[k];d.env[k]=v;
-fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");
-console.log(before===v?`  ${k} already ${v} in ${p}`:`  ${k}=${v} written to ${p} env`);
-' "$settings" "$1" "$2" || note_failure "could not write $1 into $settings"
+d.env=d.env||{};const before=d.env[k];
+if(before!==v){d.env[k]=v;fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");}
+const shown=/(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$/.test(k)?`set (${v.length} chars)`:v;
+console.log(before===v?`  ${k} already ${shown} in ${p}`:`  ${k}=${shown} written to ${p} env`);
+' "$settings" "$1" || note_failure "could not write $1 into $settings"
+}
+# INSTALL + UPDATE, both scopes: every key the stack knows that THIS RUN was handed lands in the
+# account file - the slug from --sentry-slug (else the launch environment), SENTRY_ACCESS_TOKEN and
+# CONTEXT7_API_KEY from the launch environment. An exported value is as explicit as a flag, so it
+# overwrites; a key the run was not handed is never touched, let alone cleared. Why the ACCOUNT file
+# at project scope too: it is the one file whose env reaches the .mcp.json URL/header expansion
+# (measured on 2.1.266 - the project's .claude/settings.json and settings.local.json leave the
+# 'Missing environment variables' warning in place, the account file clears it), and 'add it there
+# by hand' left a remote user with no terminal to do it in. A value never goes through a chat.
+seed_account_keys() {
+  local k v
+  for k in SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY; do
+    if [ "$k" = SENTRY_SLUG ]; then v="$SENTRY_SLUG"; else v="${!k:-}"; fi
+    [ -n "$v" ] && seed_account_env "$k" "$v"
+  done
+  return 0
+}
+account_key_state() {  # $1 = KEY -> "KEY=set (N chars)" or "KEY=absent" from the ACCOUNT settings.json - a length, never a value
+  node -e '
+const fs=require("fs");const [p,k]=process.argv.slice(1);let v="";
+try{v=String((JSON.parse(fs.readFileSync(p,"utf8")).env||{})[k]??"")}catch{}
+console.log(v.trim()?`${k}=set (${v.length} chars)`:`${k}=absent`);
+' "$CONFIG_DIR/settings.json" "$1" 2>/dev/null || printf '%s=absent\n' "$1"
 }
 if [ "$CONTEXT7_MODE" = "local" ]; then
   CONTEXT7_SPEC="-- npx -y @upstash/context7-mcp${CTX7_PIN}"
@@ -588,11 +616,16 @@ HOOKS=(
 # denial strings. A shell read of a denied file is not blocked by anything here; that route is
 # covered by baseline-security.md's behavioral rule and by the Stop-time credential branch in
 # guard-stop-contract.js.
-# The ACCOUNT settings.json is on this list because the stack's OWN design fills it with credentials
-# (CLAUDE.md and the setup walk both send SENTRY_ACCESS_TOKEN there, and CONTEXT7_API_KEY lives in an
-# env block too). A session cat-ed one whole as its FIRST tool call. The PROJECT-level settings.json
-# is deliberately NOT denied: it carries the hook wiring a session legitimately inspects, and the
-# tokens the stack directs anywhere are account-level.
+# The ACCOUNT settings.json (~/.claude and ~/.claude-<space>, plus settings.local.json) was on this
+# list for releases because the stack's own design fills it with credentials (SENTRY_ACCESS_TOKEN,
+# CONTEXT7_API_KEY), and a session had cat-ed one whole as its first tool call. It left the list once
+# guard-secret-value.js judged that file by CONTENT on the Read route and the shell route alike
+# (a deny entry covers the Read tool only - measured above) and gained the SECRET-READ-ALLOW
+# receipt: a deny entry has no such override, so it stripped the user of the read they had just
+# consented to, and a remote user cannot open the file in a terminal they do not have. The four old
+# entries are RETIRED_DENY below - dropped from an existing install on every run, exactly those
+# strings, a project's own entries untouched. The PROJECT-level settings.json was never denied: it
+# carries the hook wiring a session legitimately inspects.
 # Stack-specific secret/config globs stay a per-project addition (the CLAUDE.md template's authoring
 # outline prompts the fill-in; baseline-security.md keeps the behavioral rule).
 # The settings.json deny-list is a Claude Code feature (no equivalent elsewhere).
@@ -603,6 +636,8 @@ SECRET_DENY=(
   "Read(*.pfx)"
   "Read(*.p12)"
   "Read(*.key)"
+)
+RETIRED_DENY=(   # written by releases up to 0.2.62 - dropped on every install/update, exact strings only
   "Read(~/.claude/settings.json)"
   "Read(~/.claude/settings.local.json)"
   "Read(~/.claude-*/settings.json)"
@@ -966,7 +1001,6 @@ install_mcps() {
   local -a spec_words
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
-    if [ "$name" = "sentry" ] && [ -n "$SENTRY_SLUG" ]; then seed_account_env SENTRY_SLUG "$SENTRY_SLUG"; fi   # the env seed lands even when the registration is skipped below
     if claude mcp get "$name" >/dev/null 2>&1; then echo "  mcp $name already configured - skipping"; continue; fi
     log "mcp [$CLAUDE_SCOPE]: $name"
     if [ "$args" = "@HTTP@" ]; then
@@ -1225,11 +1259,12 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   local prog; prog=$(cat <<'PY'
 import json, os, sys
 path = sys.argv[1]
-deny_specs, mcp_names, retired_hooks, bucket = [], [], [], None
+deny_specs, mcp_names, retired_hooks, retired_deny, bucket = [], [], [], [], None
 for a in sys.argv[2:]:
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
+    if a == "--RETIRED-DENY": bucket = retired_deny; continue
     if bucket is not None: bucket.append(a)
 specs = []
 HOOK_TIMEOUT = 10   # seconds - see the note below; the default would be 600
@@ -1340,6 +1375,11 @@ deny = data.setdefault("permissions", {}).setdefault("deny", [])
 for rule in deny_specs:
     if rule not in deny:
         deny.append(rule); changed = True
+# Entries this stack once wrote and no longer does (RETIRED_DENY): drop exactly those strings, so an
+# update clears what an older install seeded - a project's own entry is never touched.
+for rule in [r for r in deny if r in retired_deny]:
+    deny.remove(rule); changed = True
+    print("  settings.json: dropped retired deny entry %s" % rule)
 # NO permissions.allow seed for the gate stamps, deliberately. The hooks require a write to
 # <docs-root>/flow/APPROVAL and /COMMIT-GATE, and under the default docs root those sit inside
 # `.claude/` - a PROTECTED path. Protected-path writes are never auto-approved outside
@@ -1390,6 +1430,9 @@ if "CLAUDE_STACK_INSTRUMENT" not in env:
 # putting 40 files on a shared `develop`. "0" for a repo whose remote is already gated.
 if "CLAUDE_STACK_PUSH_GATE" not in env:
     env["CLAUDE_STACK_PUSH_GATE"] = "1"; changed = True
+# rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
+if "CLAUDE_STACK_ROTATE_ASK" not in env:
+    env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
 # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
 # Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
 # different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
@@ -1418,7 +1461,7 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} || log "  !! settings.json wiring failed"
+  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" || log "  !! settings.json wiring failed"
 }
 
 # ===========================================================================
@@ -1520,7 +1563,6 @@ update_mcps() {
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
     log "mcp refresh [$CLAUDE_SCOPE]: $name"
-    if [ "$name" = "sentry" ] && [ -n "$SENTRY_SLUG" ]; then seed_account_env SENTRY_SLUG "$SENTRY_SLUG"; fi
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
     if [ "$args" = "@HTTP@" ]; then
       # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
@@ -1657,9 +1699,9 @@ install_github_cli
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; install_mcps; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project
+  install_skills; install_plugins; install_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project
 else
-  update_skills; update_plugins; update_mcps; update_hooks; update_agents; update_rules; seed_serena_project
+  update_skills; update_plugins; update_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed
@@ -1694,13 +1736,27 @@ if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^serena|'; then
 fi
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
+# The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says
+# what actually landed; the project-level settings.json never reaches .mcp.json expansion (measured).
 if [ "$CONTEXT7_MODE" = "remote" ]; then
-  log "  - context7 is remote; add CONTEXT7_API_KEY to $CONFIG_DIR/settings.json 'env' (the ACCOUNT file - a project-level one does not reach .mcp.json) for higher rate limits, or re-run with --context7 local"
+  _c7="$(account_key_state CONTEXT7_API_KEY)"
+  case "$_c7" in
+    *=set*) log "  - context7 key: $_c7 in $CONFIG_DIR/settings.json env" ;;
+    *) log "  - context7 key: $_c7 in $CONFIG_DIR/settings.json env - the keyless free tier works; for higher rate limits export CONTEXT7_API_KEY and re-run (the run writes it into that ACCOUNT file), or add it to that file's 'env' by hand, or re-run with --context7 local" ;;
+  esac
 fi
 if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^sentry|'; then
-  log "  - sentry reads SENTRY_SLUG (your org, or org/project) from $CONFIG_DIR/settings.json 'env' - seeded by --sentry-slug, or add it there by hand (a project-level settings.json does not reach .mcp.json)"
+  _ss="$(account_key_state SENTRY_SLUG)"
+  case "$_ss" in
+    *=set*) log "  - sentry slug: $_ss in $CONFIG_DIR/settings.json env" ;;
+    *) log "  - sentry slug: $_ss in $CONFIG_DIR/settings.json env - the URL needs it: re-run with --sentry-slug <org>[/<project>] (or export SENTRY_SLUG), or add it to that file's 'env' by hand" ;;
+  esac
   if [ "$SENTRY_AUTH" = "token" ]; then
-    log "  - sentry auth is token: add SENTRY_ACCESS_TOKEN (a personal/org API token) to the same $CONFIG_DIR/settings.json 'env' yourself - or re-run with --sentry-auth oauth for the browser consent flow"
+    _st="$(account_key_state SENTRY_ACCESS_TOKEN)"
+    case "$_st" in
+      *=set*) log "  - sentry token: $_st in $CONFIG_DIR/settings.json env" ;;
+      *) log "  - sentry token: $_st in $CONFIG_DIR/settings.json env - export SENTRY_ACCESS_TOKEN (a personal/org API token) in the launch shell and re-run (the run writes it into that ACCOUNT file), paste it into the snippet below, or re-run with --sentry-auth oauth for the browser consent flow" ;;
+    esac
     # The token never goes through a chat, and not through a shell argument either (it would land in
     # the history file). getpass reads it from the terminal without echoing; the file is written by
     # this snippet, not by anything that can log the value.

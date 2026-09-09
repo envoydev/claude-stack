@@ -85,9 +85,9 @@ const SCOPED_PREREQS = [
     // detectEnvironment() probes that file too. Warnings, not blockers: the registration is secret-free (the
     // placeholders stay literal in .mcp.json) - only runtime needs the values. As a blocker the token cost
     // ~90min/7 aborted runs in one session and invited ad hoc bypasses in three more.
-    { when: { mcp: 'sentry' }, env: 'SENTRY_SLUG', severity: 'warning', need: 'Sentry slug', how: 'add SENTRY_SLUG=<org> (or <org>/<project>) to the account settings.json env - the sentry MCP URL reads it (--sentry-slug seeds it)' },
+    { when: { mcp: 'sentry' }, env: 'SENTRY_SLUG', severity: 'warning', need: 'Sentry slug', how: 'add SENTRY_SLUG=<org> (or <org>/<project>) to the account settings.json env - the sentry MCP URL reads it (--sentry-slug seeds it, or export SENTRY_SLUG and the installer writes it there)' },
     // token mode only (the default; --sentry-oauth registers no header and needs no token)
-    { when: { mcp: 'sentry', unlessOption: 'sentryOauth' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'add SENTRY_ACCESS_TOKEN (a personal/org API token) to the account settings.json env - or install with --sentry-auth oauth' },
+    { when: { mcp: 'sentry', unlessOption: 'sentryOauth' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'add SENTRY_ACCESS_TOKEN (a personal/org API token) to the account settings.json env - export it in the shell the installer runs in and the run writes it there - or install with --sentry-auth oauth' },
     { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls' },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
@@ -97,7 +97,7 @@ const SCOPED_PREREQS = [
     // empty header = the keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on
     // every call), and `claude mcp list` no longer warns for the `:-` form - so this line is the one
     // place a missing key shows up at install time.
-    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env (remote: optional, higher rate limits; local: export it or bake it) - unset = the keyless free tier' },
+    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (remote: optional, higher rate limits; local: export it or bake it) - unset = the keyless free tier' },
     { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 

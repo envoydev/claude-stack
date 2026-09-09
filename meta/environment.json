@@ -50,6 +50,19 @@
       }
     },
     {
+      "key": "CLAUDE_STACK_ROTATE_ASK",
+      "default": "1",
+      "ask": false,
+      "what": "the stop contract's rotate ask once a credential shape has entered the session (a tool result, a paste). It asks ONCE per exposure: an answer covers every credential already in the transcript, and only a new one asks again. `0` turns it off for a user who accepts the exposure - the value is in the transcript either way.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
       "key": "CLAUDE_STACK_FRESH_SESSION_PCT",
       "default": "40",
       "ask": true,

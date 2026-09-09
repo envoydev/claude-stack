@@ -10,10 +10,17 @@
 // `echo $VAR`, a bare `env`), passed every guard in the stack. This gate judges CONTENT, not paths:
 // a dump verb on a JSON or dotenv file holding a credential-shaped key with a live value, a print
 // of a credential-shaped variable, a whole-environment dump, and a credential-shaped literal typed
-// into a command. The sanctioned read is this file's own CLI mode, so a denial always names a
-// route that exists wherever the guard does:
+// into a command. On the SHELL route the dump, the variable print and the environment dump are
+// REWRITTEN on the way out (hookSpecificOutput.updatedInput) rather than blocked - a block cost a
+// red denial plus a retried turn and, remote, left the user nothing they could run: the model gets
+// the file back with every credential value shown as <set (N chars)> and the rest as written, the
+// variable as its presence line, the environment as a masked listing. The Read tool and a literal
+// stay blocked. The sanctioned reads are this file's own CLI modes, so a denial and a rewrite
+// always name a route that exists wherever the guard does:
 //   node guard-secret-value.js --presence <file> [KEY ...]   ->   KEY=set (N chars) | KEY=absent
-// exit 2 = block (stderr fed back); exit 0 = allow.
+//   node guard-secret-value.js --redacted <file>            ->   the file, credential values masked
+//   node guard-secret-value.js --redacted-env               ->   the environment, the same way
+// exit 2 = block (stderr fed back); exit 0 = allow, or a JSON rewrite on stdout.
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -225,6 +232,69 @@ function resolveFile(token) {
   return null;
 }
 
+// ---- the user's own allowance for THIS session -------------------------------------------------
+// A block or a redacted view ends in an ask, and the 'show or use it' answer has to be honourable or
+// the ask offers a route this guard then denies. A remote user cannot run the copy-ready command in
+// their own terminal - the bare denial took the decision away from them. So the answer is a receipt
+// this guard reads: <docs-path>/flow/SECRET-READ-ALLOW, one entry per line ('#' comments allowed) -
+// a file path (that file may be read or dumped), a variable NAME (that variable may be printed), or
+// `*` (everything, this session). Session-scoped the way the dispatch guard's APPROVAL stamp is:
+// older than 8h, or written before this session began (the transcript's birthtime where the
+// filesystem reports a real one), reads as absent. While any entry is live the credential-literal
+// check is relaxed too - the value the user chose to expose may be placed into a file. The default
+// stays the redacted view: a model improvising a presence check is still the measured incident.
+const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
+const realOf = (p) => { try { return fs.realpathSync(p); } catch { return pathMod.resolve(p); } };
+function readReceipt(root, transcriptPath) {
+  const r = { path: pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'), stale: false, all: false, files: new Set(), names: new Set(), live: false };
+  try {
+    const st = fs.statSync(r.path);
+    let sessionStartMs = 0;
+    try {
+      const t = fs.statSync(String(transcriptPath || ''));
+      sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
+    } catch { sessionStartMs = 0; }
+    if (Date.now() - st.mtimeMs > MAX_RECEIPT_AGE_MS || (sessionStartMs && st.mtimeMs < sessionStartMs)) {
+      r.stale = true;
+    } else {
+      for (const rawLine of fs.readFileSync(r.path, 'utf8').split(LINES)) {
+        const e = rawLine.trim();
+        if (!e || e.startsWith('#')) continue;
+        if (e === '*') r.all = true;
+        else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(e)) r.names.add(e);
+        else {
+          const p = expandPath(e);
+          if (p) r.files.add(realOf(pathMod.isAbsolute(p) ? p : pathMod.join(anchorDirs()[0] || process.cwd(), p)));
+        }
+      }
+    }
+  } catch { /* absent or unreadable - no allowance recorded */ }
+  r.live = r.all || r.files.size > 0 || r.names.size > 0;
+  return r;
+}
+// The one sentence every denial and every redacted view ends on: the block or the placeholder is the
+// default, the user's answer is honoured. It names the RESOLVED receipt path - the docs root may be
+// absolute, and a relative spelling of it is one the model would have to re-anchor.
+const askLine = (r) =>
+  'If the VALUE itself is what the user needs - shown to them, or placed where a blind copy (jq ... > file, cp, sed -i) ' +
+  'cannot reach - do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order, ' +
+  "'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
+  `On the second answer write the receipt ${r.path} with the file path, the variable NAME, or \`*\` (everything, this session) ` +
+  'on its own line, then retry; it is honoured for this session only, under 8h' +
+  (r.stale ? ' - the receipt there now is stale (older than 8h, or written before this session began), so rewrite it only on a fresh answer' : '') + '.';
+// A note the rewritten call prints as its first line, so the model reads what happened and the route
+// to the value in the same tool result - nothing is fed back through a denial.
+const noteLine = (what, r) => `# credential guard: ${what} A value never enters the chat. ${askLine(r)}`;
+// Inside a double-quoted shell string: the three characters bash still reads there, and a backslash
+// only where bash would read IT - before one of those, before another backslash, or at the end. A
+// Windows path's own backslashes stay as they are: doubling every one named `D:\\a\\...` for
+// `D:\a\...` (measured on windows-latest), a path that is not the file's.
+const shDouble = (s) => String(s).replace(/\\(?=["$`\\]|$)|["$`]/g, (c) => '\\' + c);
+const SECRET_SHAPE_G = new RegExp(SECRET_SHAPE.source, 'g');
+// A value is masked when its KEY is credential-shaped and it holds a credential, or when the value
+// itself has a known credential SHAPE whatever the key - the one case the key test cannot see.
+const maskable = (k, v) => typeof v === 'string' && ((SECRET_KEY_RE.test(k) && holdsCredential(k, v)) || SECRET_SHAPE.test(v));
+
 // ---- CLI mode: the sanctioned presence-only read --------------------------------------------
 // `node guard-secret-value.js --presence <file> [KEY ...]` - what the denials and the guided
 // commands name. Prints a length or `absent`, never a value; a missing file is reported, not thrown.
@@ -250,6 +320,64 @@ if (process.argv[2] === '--presence') {
     out.push(isLive(v) ? `${k}=set (${v.length} chars)` : isPlaceholder(v) ? `${k}=absent (placeholder ${v.trim()})` : `${k}=absent`);
   }
   process.stdout.write(out.length ? out.join('\n') + '\n' : '');
+  process.exit(0);
+}
+// `node guard-secret-value.js --redacted <file>` - what a shell dump of a credential file is rewritten
+// into: the file with every credential value replaced by `<set (N chars)>` and the rest as written
+// (the hook wiring a session inspects in a settings.json, the non-secret keys of a dotenv), led by a
+// note saying so and naming the route to the value. JSON is re-emitted from its parse; a dotenv is
+// masked line by line, and a credential SHAPE anywhere in the text is masked whatever surrounds it.
+if (process.argv[2] === '--redacted') {
+  const fileArg = String(process.argv[3] || '');
+  const file = nativePath(fileArg.replace(/^~(?=\/|$)/, HOME));
+  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
+  let text = null;
+  let out = '';
+  try {
+    if (fs.statSync(file).size > MAX_BYTES) out = `# ${fileArg}: larger than ${MAX_BYTES} bytes - not a credential file this guard judges; read it in ranges\n`;
+    else text = fs.readFileSync(file, 'utf8').replace(/^﻿/, '');
+  } catch { out = `# ${fileArg}: not found\n`; }
+  if (text != null) {
+    let masked = 0;
+    const mask = (v) => { masked++; return `<set (${v.length} chars)>`; };
+    let body;
+    try {
+      const walk = (node) => {
+        if (typeof node === 'string') return SECRET_SHAPE.test(node) ? mask(node) : node;
+        if (Array.isArray(node)) return node.map(walk);
+        if (node && typeof node === 'object') {
+          const o = {};
+          for (const [k, v] of Object.entries(node)) o[k] = maskable(k, v) ? mask(v) : walk(v);
+          return o;
+        }
+        return node;
+      };
+      body = JSON.stringify(walk(JSON.parse(text)), null, 2) + '\n';
+    } catch {
+      body = text.split(LINES).map((line) => {
+        const m = line.match(DOTENV_LINE);
+        if (m && maskable(m[1], unquote(m[2]))) return `${m[1]}=${mask(unquote(m[2]))}`;
+        return line.replace(SECRET_SHAPE_G, (s) => mask(s));
+      }).join('\n');
+    }
+    out = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written.`, receipt) + '\n' + body;
+  }
+  process.stdout.write(out);
+  process.exit(0);
+}
+// `node guard-secret-value.js --redacted-env` - what a whole-environment dump is rewritten into: every
+// variable as env prints it, a credential-shaped NAME holding a credential (or any value of a known
+// credential shape) as `<set (N chars)>`. Accepted gap, stated: a credential under a name this
+// pattern does not match and with no known shape prints as env would print it.
+if (process.argv[2] === '--redacted-env') {
+  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
+  const lines = [];
+  let masked = 0;
+  for (const k of Object.keys(process.env).sort()) {
+    const v = String(process.env[k]);
+    if (maskable(k, v)) { masked++; lines.push(`${k}=<set (${v.length} chars)>`); } else lines.push(`${k}=${v}`);
+  }
+  process.stdout.write(noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it.`, receipt) + '\n' + lines.join('\n') + '\n');
   process.exit(0);
 }
 
@@ -297,71 +425,28 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 })();
 
 const input = payload.tool_input || {};
-// Every denial ends in the ask mandate below: the block is the default, the user's answer is honoured.
-const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2); };
-
-// ---- the user's own allowance for THIS session -------------------------------------------------
-// A block ends in an ask, and the 'show or use it' answer has to be honourable or the ask offers a
-// route this guard then denies. A remote user cannot run the copy-ready command in their own
-// terminal - the bare denial took the decision away from them. So the answer is a receipt this
-// guard reads: <docs-path>/flow/SECRET-READ-ALLOW, one entry per line ('#' comments allowed) - a
-// file path (that file may be read or dumped), a variable NAME (that variable may be printed), or
-// `*` (everything, this session). Session-scoped the way the dispatch guard's APPROVAL stamp is:
-// older than 8h, or written before this session began (the transcript's birthtime where the
-// filesystem reports a real one), reads as absent. While any entry is live the credential-literal
-// check is relaxed too - the value the user chose to expose may be placed into a file. The default
-// stays the block: a model improvising a presence check is still the measured incident.
-const RECEIPT = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'flow', 'SECRET-READ-ALLOW');
-const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
-const realOf = (p) => { try { return fs.realpathSync(p); } catch { return pathMod.resolve(p); } };
-let receiptStale = false;
-let allowAll = false;
-const allowedFiles = new Set();
-const allowedNames = new Set();
-try {
-  const st = fs.statSync(RECEIPT);
-  let sessionStartMs = 0;
-  try {
-    const t = fs.statSync(String(payload.transcript_path || ''));
-    sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-  } catch { sessionStartMs = 0; }
-  if (Date.now() - st.mtimeMs > MAX_RECEIPT_AGE_MS || (sessionStartMs && st.mtimeMs < sessionStartMs)) {
-    receiptStale = true;
-  } else {
-    for (const rawLine of fs.readFileSync(RECEIPT, 'utf8').split(LINES)) {
-      const e = rawLine.trim();
-      if (!e || e.startsWith('#')) continue;
-      if (e === '*') allowAll = true;
-      else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(e)) allowedNames.add(e);
-      else {
-        const p = expandPath(e);
-        if (p) allowedFiles.add(realOf(pathMod.isAbsolute(p) ? p : pathMod.join(anchorDirs()[0] || process.cwd(), p)));
-      }
-    }
-  }
-} catch { /* absent or unreadable - no allowance recorded */ }
-const receiptLive = allowAll || allowedFiles.size > 0 || allowedNames.size > 0;
-const fileAllowed = (file) => allowAll || allowedFiles.has(realOf(file));
+const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.transcript_path);
+const receiptLive = receipt.live;
+const allowAll = receipt.all;
+const allowedNames = receipt.names;
+const fileAllowed = (file) => allowAll || receipt.files.has(realOf(file));
 const secretInUnlessAllowed = (file) => (fileAllowed(file) ? null : secretIn(file));
-// The denial names the RESOLVED receipt path: the docs root may be absolute, and a relative spelling
-// of it is one the model would have to re-anchor.
-const askHint = () =>
-  '\nIf PRESENCE answers the question, take the presence route and do not ask. If the VALUE itself is\n' +
-  'what the user needs - they asked to see it, or to have it placed where a blind copy (jq ... > file,\n' +
-  'cp, sed -i) cannot reach - do not stop, and do not decide for them:\n' +
-  "end this turn with ONE AskUserQuestion carrying, in this order, 'Presence only (Recommended)',\n" +
-  "'Show or use the value this session - it enters the transcript permanently', 'Drop it'.\n" +
-  `On the second answer write the receipt ${RECEIPT}\n` +
-  'with the file path, the variable NAME, or `*` (everything, this session) on its own line, then\n' +
-  'retry. This guard honours it for this session only: under 8h, never one written before the\n' +
-  'session began.\n' +
-  (receiptStale
-    ? `A receipt at ${RECEIPT} exists but is stale - older than 8h, or written before this session\n` +
-      "began - so it records another run's decision; rewrite it only on a fresh answer.\n"
-    : '');
+// Every denial ends in the ask mandate: the block is the default, the user's answer is honoured.
+const askHint = () => '\nIf PRESENCE answers the question, take the presence route and do not ask. ' + askLine(receipt) + '\n';
+const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2); };
+// The shell route's verdict: the call is REPLACED (hookSpecificOutput.updatedInput) by one that
+// prints the placeholder form, and the tool runs that instead - no denial, no retried turn, and the
+// note on its first line carries the route to the value. Not a block, so no ledger row: the ledger
+// counts the turns a gate costs, and a rewrite costs none.
+const rewrite = (command) => {
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { command } } }));
+  process.exit(0);
+};
 const presenceHint = (file) =>
   `Per baseline-security.md a credential is read for PRESENCE only:\n` +
   `  node "${__filename}" --presence "${file}" [KEY ...]   ->  KEY=set (N chars) | KEY=absent\n` +
+  `A shell dump of it - cat "${file}" - is rewritten into the redacted view for free:\n` +
+  `  node "${__filename}" --redacted "${file}"   ->  the file, every credential value shown as <set (N chars)>\n` +
   `Never echo the value, never pass it to a tool, never ask for it in the chat - the user sets it in\n` +
   `the file by hand. A credential in a PROJECT settings.json belongs in the ACCOUNT file\n` +
   `(~/.claude/settings.json, or the space's): only that env reaches .mcp.json expansion.\n`;
@@ -516,18 +601,19 @@ if (payload.tool_name === 'Bash') {
   process.exit(0);
 }
 
+// A print of a credential-shaped variable becomes that variable's presence line - the idiom the
+// denial used to prescribe, run for the model instead of fed back to it - led by the note.
 function blockVariable(name) {
   if (allowAll || allowedNames.has(name)) return; // the user's own allowance for this session
-  block(`Blocked: \`${name}\` is a credential-shaped variable and this prints its value.\n` +
-    `Presence only: [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"\n`);
+  const note = noteLine(`\`${name}\` is a credential-shaped variable - shown as presence, not printed.`, receipt);
+  rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
 }
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
-// bound here would still be in its temporal dead zone and the gate would throw instead of blocking.
+// bound here would still be in its temporal dead zone and the gate would throw instead of judging.
+// A whole-environment dump becomes the masked listing.
 function blockEnvDump() {
   if (allowAll) return; // only `*` covers every variable at once
-  block('Blocked: a whole-environment dump (env / printenv / set / export -p / declare -p) prints every\n' +
-    'exported credential. Names only: env | cut -d= -f1. One non-secret variable: printenv NAME. A\n' +
-    'credential: presence only, [ -n "$NAME" ] && echo "NAME=set (${#NAME} chars)" || echo "NAME=absent".\n');
+  rewrite(`node "${shDouble(__filename)}" --redacted-env`);
 }
 
 function judgeShell(text, forceRuntime) {
@@ -556,7 +642,7 @@ function judgeShell(text, forceRuntime) {
     for (const stage of stages) {
       // The sanctioned read is exempt by name - it is this file - and only in its OWN stage: the
       // exemption used to cover the whole segment, so `--presence <file> | cat <file>` passed.
-      if (/guard-secret-value\.js["']?\s+--presence\b/.test(stage)) continue;
+      if (/guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/.test(stage)) continue;
 
       // Printing a credential-shaped VARIABLE: echo / printf with $NAME or ${NAME...}, printenv NAME.
       // `${#NAME}` is a length - the presence idiom - and `[ -n "$NAME" ]` is a test, so only the
@@ -608,7 +694,10 @@ function judgeShell(text, forceRuntime) {
           if (!file) continue;
           const key = secretInUnlessAllowed(file);
           if (!key) continue;
-          block(`Blocked: ${file} holds a credential under \`${key}\` - this dumps its value into the transcript.\n` + presenceHint(file));
+          // The FIRST credential file wins and the whole call becomes its redacted view - the rest of
+          // a compound command is dropped rather than spliced, so the rewritten call is always one the
+          // model can read back whole; the note names the file, so a dropped tail is re-run knowingly.
+          rewrite(`node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`);
         }
       }
     }

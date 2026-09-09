@@ -237,14 +237,15 @@ this round - kept or added - read the account `settings.json` (`~/.claude/settin
 space's) and run the sentry environment plan for whatever is missing: ask the slug (`<org>` or
 `<org>/<project>`; required) and pass it as `--sentry-slug` at step 11 (the installer seeds the env),
 and tell the user to add `SENTRY_ACCESS_TOKEN` to that same file themselves - a personal/org API token,
-never pasted into the chat, never a project-level `.claude/settings.json` (its env does not reach
-`.mcp.json`) - or to pick `--sentry-auth oauth` instead. Both values already present: say so in one
+by hand or exported in the shell the installer runs in (the run writes it there), never pasted into the
+chat, never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured) -
+or to pick `--sentry-auth oauth` instead. Both values already present: say so in one
 line and ask nothing. An existing registration needs no auth flag: `update` reads it back and keeps
 its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed, and a dump of that file by any other route is blocked by the same hook.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 ## 8. Plugins
 
