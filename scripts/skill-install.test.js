@@ -37,7 +37,7 @@ function runSkillCopy(names, extraArgs = []) {
     const out = execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only', ...extraArgs], {
         cwd: work,
         encoding: 'utf8',
-        env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work },
+        env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '' },
     });
     return { work, out };
 }
@@ -108,7 +108,7 @@ test('an unreachable source writes NO stamp (a wrong stamp is worse than none)',
         execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: path.join(work, 'nope.git'), HOME: work },
+            env: { ...process.env, STACK_SKILLS_REPO: path.join(work, 'nope.git'), HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.strictEqual(readStamp(work), null, 'no stamp when no revision was resolved');
     }
@@ -159,7 +159,7 @@ test('installs from the release archive and stamps its RELEASE-SOURCE commit', (
         const out = execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: `file://${fake}`, HOME: work },
+            env: { ...process.env, STACK_SKILLS_REPO: `file://${fake}`, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.match(out, /releases\/latest\/download/, 'took the archive route, not the clone fallback');
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'installed from the extracted archive');
@@ -208,7 +208,7 @@ test('--source pointed at a non-checkout fails once, clearly', () => {
         const out = execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only', '--source', bogus], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, HOME: work },
+            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.match(out, /is not a claude-stack checkout/, 'one clear diagnosis, not a per-file failure storm');
         assert.strictEqual(readStamp(work), null, 'no stamp when the source was never resolved');
@@ -231,7 +231,7 @@ test('ps1: install stamps the source revision it installed from (pwsh required)'
         execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work },
+            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'ps1 copied the selected skill');
         const mainTip = execFileSync('git', ['-C', SRC_REPO, 'rev-parse', 'main'], { encoding: 'utf8' }).trim();
@@ -264,7 +264,7 @@ test('ps1: -Source pointed at an extracted archive stamps from its RELEASE-SOURC
         execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly', '-Source', repo], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, HOME: work },
+            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.strictEqual(readStamp(work).sha, FAKE_SHA, 'ps1 stamp read from RELEASE-SOURCE when there is no git checkout');
         assert.strictEqual(readStamp(work).version, '7.7.7', 'ps1 stamp version read from RELEASE-SOURCE');
@@ -289,7 +289,7 @@ test('ps1: -Source installs from a caller-provided checkout and never deletes it
         const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly', '-Source', checkout], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, HOME: work },
+            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.match(out, /\(provided\)/, 'ps1 reports the borrowed source rather than cloning its own');
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'installed from the provided checkout');
@@ -360,7 +360,7 @@ test('sh update --installed-only with no hooks on disk completes under the syste
         const res = spawnSync(bash, [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work },
+            env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.strictEqual(res.status, 0, `exit 0 under ${bash}: ${res.stderr}`);
         assert.match(res.stdout + res.stderr, /csharp/, 'the disk-derived plan names the installed skill');
@@ -398,7 +398,7 @@ test('sh update --installed-only carries plugins into the refresh plan', () => {
         const res = spawnSync(bash, [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, PATH: [nobin, path.dirname(process.execPath), ...system].join(path.delimiter), STACK_SKILLS_REPO: SRC_REPO, HOME: work },
+            env: { ...process.env, PATH: [nobin, path.dirname(process.execPath), ...system].join(path.delimiter), STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '' },
         });
         assert.strictEqual(res.status, 0, `exit 0: ${res.stderr}`);
         const plan = (res.stdout.split('\n').find((l) => l.startsWith('plan plugins:')) || '');

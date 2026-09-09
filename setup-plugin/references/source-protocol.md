@@ -24,21 +24,36 @@ The run still works in its own `$TMP/repo`, copied from the cache - not read in 
 0.1s and buys two things: an `update` landing a new release mid-run cannot pull files out from under
 this one, and cleanup stays exactly what it was (`rm -rf "$TMP"` - the cache is not inside it).
 
+On a first run for a release, the snapshot may still cost nothing: Claude Code's own clone of the
+marketplace repo, at `<config>/plugins/marketplaces/claude-stack`, is a FULL checkout of this repo -
+`scripts/`, `meta/`, `stack/` and all, not just the `setup-plugin/` subdir it serves as the plugin
+(measured: 7.1MB on disk). It is used ONLY when its plugin manifest carries the exact version the
+probe just named: the clone moves when the user refreshes the marketplace, not when a release is
+published, so a version match is the one thing that proves it is the release the archive would be.
+
 ```bash
 TMP=$(mktemp -d)
 REPO_URL=https://github.com/envoydev/claude-stack
-CACHE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
+CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CACHE="$CFG/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
+MKT="$CFG/plugins/marketplaces/claude-stack"
 VER=$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$REPO_URL/releases/latest" 2>/dev/null | sed -n 's|.*/releases/tag/v\{0,1\}||p')
-if [ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && [ -d "$CACHE/$VER/stack/agents" ]; then
-  cp -R "$CACHE/$VER" "$TMP/repo"                       # cache hit: nothing is downloaded
+SRC=""
+if [ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && [ -d "$CACHE/$VER/stack/agents" ]; then SRC="$CACHE/$VER"; fi
+if [ -z "$SRC" ] && [ -n "$VER" ] && [ -d "$MKT/stack/skills" ] &&
+   grep -q "\"version\": \"$VER\"" "$MKT/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null; then SRC="$MKT"; fi
+if [ -n "$SRC" ]; then
+  cp -R "$SRC" "$TMP/repo"; rm -rf "$TMP/repo/.git"     # cache or clone: nothing is downloaded
+  [ -f "$TMP/repo/RELEASE-SOURCE" ] || printf 'sha: %s\nref: main\nversion: %s\nsource: marketplace-clone\n' \
+    "$(git -C "$MKT" rev-parse HEAD)" "$VER" > "$TMP/repo/RELEASE-SOURCE"   # a clone has no RELEASE-SOURCE
 else
   curl -fsSL "$REPO_URL/releases/latest/download/claude-stack.tar.gz" -o "$TMP/claude-stack.tar.gz"
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
   VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" | head -1)   # the archive's own version, authoritative
-  if [ -n "$VER" ] && [ ! -d "$CACHE/$VER/stack/skills" ]; then          # promote for the next run
-    mkdir -p "$CACHE" && rm -rf "$CACHE/.dl.$$" \
-      && cp -R "$TMP/repo" "$CACHE/.dl.$$" && mv "$CACHE/.dl.$$" "$CACHE/$VER" 2>/dev/null || rm -rf "$CACHE/.dl.$$"
-  fi
+fi
+if [ -n "$VER" ] && [ ! -d "$CACHE/$VER/stack/skills" ]; then            # promote for the next run
+  mkdir -p "$CACHE" && rm -rf "$CACHE/.dl.$$" \
+    && cp -R "$TMP/repo" "$CACHE/.dl.$$" && mv "$CACHE/.dl.$$" "$CACHE/$VER" 2>/dev/null || rm -rf "$CACHE/.dl.$$"
 fi
 ```
 
@@ -51,29 +66,38 @@ $RepoUrl = 'https://github.com/envoydev/claude-stack'
 $Slug = [regex]::Replace($RepoUrl, '[^A-Za-z0-9]', '-')
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
 $Cache = Join-Path (Join-Path $ConfigDir 'cache/stack-source') $Slug
+$Mkt = Join-Path $ConfigDir 'plugins/marketplaces/claude-stack'
 $Ver = ''
 try {
   $r = Invoke-WebRequest -Uri "$RepoUrl/releases/latest" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
   if ([string]$r.BaseResponse.RequestMessage.RequestUri -match '/releases/tag/v?(.+)$') { $Ver = $Matches[1] }
 } catch { }
-if ($Ver -and (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) {
-  Copy-Item -LiteralPath (Join-Path $Cache $Ver) -Destination "$TMP/repo" -Recurse   # cache hit
+$Src = ''
+if ($Ver -and (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) { $Src = Join-Path $Cache $Ver }
+elseif ($Ver -and (Test-Path -LiteralPath (Join-Path $Mkt 'stack/skills')) -and
+        ((Get-Content -LiteralPath (Join-Path $Mkt 'setup-plugin/.claude-plugin/plugin.json') -Raw) -match ('"version"\s*:\s*"' + [regex]::Escape($Ver) + '"'))) { $Src = $Mkt }
+if ($Src) {
+  Copy-Item -LiteralPath $Src -Destination "$TMP/repo" -Recurse                      # nothing is downloaded
+  Remove-Item -LiteralPath "$TMP/repo/.git" -Recurse -Force -ErrorAction SilentlyContinue
+  if (-not (Test-Path -LiteralPath "$TMP/repo/RELEASE-SOURCE")) {                    # a clone has none
+    Set-Content -LiteralPath "$TMP/repo/RELEASE-SOURCE" -Value "sha: $(& git -C $Mkt rev-parse HEAD)`nref: main`nversion: $Ver`nsource: marketplace-clone"
+  }
 } else {
   Invoke-WebRequest -Uri "$RepoUrl/releases/latest/download/claude-stack.zip" -OutFile "$TMP/claude-stack.zip"
   Expand-Archive -LiteralPath "$TMP/claude-stack.zip" -DestinationPath "$TMP/repo"
   $Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
-  if ($Ver -and -not (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) {
-    New-Item -ItemType Directory -Path $Cache -Force | Out-Null
-    Copy-Item -LiteralPath "$TMP/repo" -Destination (Join-Path $Cache $Ver) -Recurse -Force -ErrorAction SilentlyContinue
-  }
+}
+if ($Ver -and -not (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) {
+  New-Item -ItemType Directory -Path $Cache -Force | Out-Null
+  Copy-Item -LiteralPath "$TMP/repo" -Destination (Join-Path $Cache $Ver) -Recurse -Force -ErrorAction SilentlyContinue
 }
 ```
 
-Both installer twins read and write this same cache from `stack_src` / `Get-StackSrc`, so a script
-install reuses what a guided walk fetched and the other way round. `STACK_SOURCE_CACHE=0` in the
-environment turns the whole thing off - always-fresh temp download, the behaviour before the cache.
-A cache that cannot be written (a read-only or full `$HOME`) is never fatal: the run keeps the copy
-it just downloaded and carries on.
+Both installer twins read and write this same cache - and take the same marketplace clone - from
+`stack_src` / `Get-StackSrc`, so a script install reuses what a guided walk fetched and the other
+way round. `STACK_SOURCE_CACHE=0` in the environment turns the whole thing off - always-fresh temp
+download, the behaviour before the cache. A cache that cannot be written (a read-only or full
+`$HOME`) is never fatal: the run keeps the copy it just downloaded and carries on.
 
 **Carry `$TMP` in a MARKER FILE KEYED BY THE PROJECT, and address every run artifact through it.**
 Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next and
@@ -117,7 +141,10 @@ $Mark = Join-Path ([System.IO.Path]::GetTempPath()) ('claude-stack-run.' + (($Ro
   is recreating the release): `git clone --depth 1 -b main https://github.com/envoydev/claude-stack
   "$TMP/repo"` - the same one-snapshot contract, just fetched with git. Keep the `-b main` pin:
   the fallback must deliver the release branch, never whatever the default branch happens to be.
-  If both fail, say so and stop; never assemble a source from raw URLs.
+  If both fail, the marketplace clone above is the last resort - it is the only source that needs
+  no network at all, so on an offline machine take it even though no probe could confirm its
+  version, and SAY that in your narration (name the version its manifest carries). If that is
+  missing too, say so and stop; never assemble a source from raw URLs.
 - Never write the archive, the extracted repo, or your working files into the project tree.
 
 ## Check the plugin itself is current
