@@ -975,6 +975,75 @@ $script:StackSrcTried = $false # memoises the OUTCOME, so a dead source costs on
 $script:StackSrcOwned = $false # true only when WE fetched it - Remove-StackSrc removes ours, never the caller's
 $script:StackSrcRoot = ''      # the temp dir an owned fetch lives in (Remove-StackSrc's removal target)
 
+# THE SOURCE CACHE - one download per RELEASE, not one per run. The twin of the sh installer's
+# cache, sharing its layout byte for byte: <config>/cache/stack-source/<repo>/<version> holds the
+# EXTRACTED snapshot, so a script install on this account reuses what a guided /claude-stack:setup
+# fetched, and the other way round. Versioned rather than time-boxed (a new release wins the moment
+# the probe names it) and never trusted without stack/skills + stack/agents (an interrupted promote
+# is re-downloaded, not installed). STACK_SOURCE_CACHE=0 restores the always-fresh temp download.
+$script:StackCacheEnabled = ($env:STACK_SOURCE_CACHE -ne '0')
+
+function Get-StackCacheRoot {
+  # Keyed by REPO as well as version: a fork or a test fixture must never read - or poison - the
+  # canonical snapshot.
+  $slug = ([regex]::Replace($StackRepoUrl, '[^A-Za-z0-9]', '-'))
+  if ($slug.Length -gt 80) { $slug = $slug.Substring(0, 80) }
+  return (Join-Path (Join-Path $ConfigDir 'cache/stack-source') $slug)
+}
+
+function Get-StackProbeVersion {
+  # The newest release's version, from the redirect of /releases/latest (GitHub sends
+  # /releases/tag/v<version>, and the release workflow tags v<plugin manifest version> - the same
+  # string RELEASE-SOURCE carries). HEAD only: no body, no archive. Returns '' whenever it cannot
+  # be answered - a fork without releases, a file:// source, an offline run - and the caller reads
+  # that as 'just download', so a dead probe costs correctness nothing.
+  if ($StackRepoUrl -notmatch '^https?://') { return '' }
+  try {
+    $resp = Invoke-WebRequest -Uri "$StackRepoUrl/releases/latest" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+    $final = [string]$resp.BaseResponse.RequestMessage.RequestUri
+  } catch { return '' }
+  if ($final -match '/releases/tag/v?(.+)$') { return $Matches[1] }
+  return ''
+}
+
+function Test-StackCacheEntry { param([string]$Dir)
+  return ((Test-Path -LiteralPath (Join-Path $Dir 'stack/skills') -PathType Container) -and
+          (Test-Path -LiteralPath (Join-Path $Dir 'stack/agents') -PathType Container))
+}
+
+function Remove-StaleStackCache { param([string]$Root, [string]$Keep)
+  # Keep the entry just promoted; drop ones a week old. NOT 'everything but the current': another
+  # run resolved its own entry seconds ago and reads from it for the length of its install.
+  Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue | Where-Object {
+    ($_.Name -ne $Keep -and $_.LastWriteTime -lt (Get-Date).AddDays(-7)) -or
+    ($_.Name -like '.dl.*' -and $_.LastWriteTime -lt (Get-Date).AddDays(-1))
+  } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+function Move-StackSrcToCache {
+  # Move a freshly extracted snapshot into the cache and return the entry, or ''. Staged inside the
+  # cache root so the rename is same-volume, and a race resolves in favour of whoever landed first:
+  # a valid entry is never replaced, only an absent or broken one.
+  param([string]$Repo, [string]$Root)
+  $file = Join-Path $Repo 'RELEASE-SOURCE'
+  if (-not (Test-Path -LiteralPath $file)) { return '' }
+  $v = ((Get-Content -LiteralPath $file | Where-Object { $_ -match '^version: ' } | Select-Object -First 1) -replace '^version: ', '').Trim()
+  if (-not $v) { return '' }
+  $entry = Join-Path $Root $v
+  if (-not (Test-StackCacheEntry -Dir $entry)) {
+    try {
+      New-Item -ItemType Directory -Path $Root -Force -ErrorAction Stop | Out-Null
+      $staging = Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)
+      Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+      Copy-Item -LiteralPath $Repo -Destination $staging -Recurse -Force -ErrorAction Stop
+      Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
+      Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
+    } catch { Remove-Item -LiteralPath (Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)) -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+  if (Test-StackCacheEntry -Dir $entry) { return $entry }
+  return ''
+}
+
 function Read-ReleaseSource {
   # An extracted release archive carries its revision in RELEASE-SOURCE (the workflow writes it).
   param([string]$Dir)
@@ -1024,7 +1093,26 @@ function Get-StackSrc {
     return $true
   }
 
-  # Release archive first: one asset is one revision, and no git is needed to take it.
+  # Cached snapshot first: the probe costs one HEAD, and a hit costs no download at all.
+  $cacheRoot = ''
+  if ($script:StackCacheEnabled) {
+    $cacheRoot = Get-StackCacheRoot
+    $want = Get-StackProbeVersion
+    if ($want) {
+      $entry = Join-Path $cacheRoot $want
+      if (Test-StackCacheEntry -Dir $entry) {
+        $script:StackSrc = $entry
+        $script:StackSrcOwned = $false
+        Read-ReleaseSource -Dir $entry
+        $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
+        $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
+        Log "source: cache $entry @ $refName $shortSha (release $want, no download)"
+        return $true
+      }
+    }
+  }
+
+  # Release archive: one asset is one revision, and no git is needed to take it.
   $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
   $url = "$StackRepoUrl/releases/latest/download/claude-stack.zip"
@@ -1039,9 +1127,20 @@ function Get-StackSrc {
     $script:StackSrcRoot = $tmp
     $script:StackSrcOwned = $true
     Read-ReleaseSource -Dir $repo
+    # Promote and run FROM the cache entry, so this download is the last one this release needs.
+    $cached = ''
+    if ($cacheRoot) { $cached = Move-StackSrcToCache -Repo $repo -Root $cacheRoot }
+    if ($cached) {
+      Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+      $script:StackSrc = $cached
+      $script:StackSrcRoot = ''
+      $script:StackSrcOwned = $false
+      Remove-StaleStackCache -Root $cacheRoot -Keep (Split-Path -Leaf $cached)
+    }
     $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
     $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-    Log "source: $url @ $refName $shortSha"
+    $suffix = if ($cached) { ' (cached for the next run)' } else { '' }
+    Log "source: $url @ $refName $shortSha$suffix"
     return $true
   }
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

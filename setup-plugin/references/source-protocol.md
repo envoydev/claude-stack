@@ -8,12 +8,38 @@ apply it, this file says WHAT holds. It lives at the plugin root's `references/`
 cite it as `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md` - commands and references ship
 together in the plugin.
 
-## One release archive is the entire download
+## One release archive is the entire download - and only once per RELEASE
+
+The snapshot is CACHED under the account dir at `<config>/cache/stack-source/<repo>/<version>`, so
+the archive is fetched once per release rather than once per run: the second project you install
+into, and the `configure` you run an hour later, take the cached copy. What makes that safe is that
+the entry is keyed by the release VERSION and the run always asks the release host which version is
+newest first - a `HEAD` of `/releases/latest`, whose redirect names the tag (measured: 0.3s for the
+probe against ~1.8s for the 1.4MB archive, and 0.1s to copy the extracted 5.4MB snapshot off disk).
+There is no TTL to age out and no window where a run silently installs last week's stack: a new
+release wins the moment it is published, because the version the probe names is the only entry the
+run will reuse.
+
+The run still works in its own `$TMP/repo`, copied from the cache - not read in place. A copy costs
+0.1s and buys two things: an `update` landing a new release mid-run cannot pull files out from under
+this one, and cleanup stays exactly what it was (`rm -rf "$TMP"` - the cache is not inside it).
 
 ```bash
 TMP=$(mktemp -d)
-curl -fsSL https://github.com/envoydev/claude-stack/releases/latest/download/claude-stack.tar.gz -o "$TMP/claude-stack.tar.gz"
-mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
+REPO_URL=https://github.com/envoydev/claude-stack
+CACHE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
+VER=$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$REPO_URL/releases/latest" 2>/dev/null | sed -n 's|.*/releases/tag/v\{0,1\}||p')
+if [ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && [ -d "$CACHE/$VER/stack/agents" ]; then
+  cp -R "$CACHE/$VER" "$TMP/repo"                       # cache hit: nothing is downloaded
+else
+  curl -fsSL "$REPO_URL/releases/latest/download/claude-stack.tar.gz" -o "$TMP/claude-stack.tar.gz"
+  mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
+  VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" | head -1)   # the archive's own version, authoritative
+  if [ -n "$VER" ] && [ ! -d "$CACHE/$VER/stack/skills" ]; then          # promote for the next run
+    mkdir -p "$CACHE" && rm -rf "$CACHE/.dl.$$" \
+      && cp -R "$TMP/repo" "$CACHE/.dl.$$" && mv "$CACHE/.dl.$$" "$CACHE/$VER" 2>/dev/null || rm -rf "$CACHE/.dl.$$"
+  fi
+fi
 ```
 
 Windows (PowerShell):
@@ -21,9 +47,33 @@ Windows (PowerShell):
 ```powershell
 $TMP = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $TMP -Force | Out-Null
-Invoke-WebRequest -Uri https://github.com/envoydev/claude-stack/releases/latest/download/claude-stack.zip -OutFile "$TMP/claude-stack.zip"
-Expand-Archive -LiteralPath "$TMP/claude-stack.zip" -DestinationPath "$TMP/repo"
+$RepoUrl = 'https://github.com/envoydev/claude-stack'
+$Slug = [regex]::Replace($RepoUrl, '[^A-Za-z0-9]', '-')
+$ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
+$Cache = Join-Path (Join-Path $ConfigDir 'cache/stack-source') $Slug
+$Ver = ''
+try {
+  $r = Invoke-WebRequest -Uri "$RepoUrl/releases/latest" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+  if ([string]$r.BaseResponse.RequestMessage.RequestUri -match '/releases/tag/v?(.+)$') { $Ver = $Matches[1] }
+} catch { }
+if ($Ver -and (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) {
+  Copy-Item -LiteralPath (Join-Path $Cache $Ver) -Destination "$TMP/repo" -Recurse   # cache hit
+} else {
+  Invoke-WebRequest -Uri "$RepoUrl/releases/latest/download/claude-stack.zip" -OutFile "$TMP/claude-stack.zip"
+  Expand-Archive -LiteralPath "$TMP/claude-stack.zip" -DestinationPath "$TMP/repo"
+  $Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
+  if ($Ver -and -not (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) {
+    New-Item -ItemType Directory -Path $Cache -Force | Out-Null
+    Copy-Item -LiteralPath "$TMP/repo" -Destination (Join-Path $Cache $Ver) -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
 ```
+
+Both installer twins read and write this same cache from `stack_src` / `Get-StackSrc`, so a script
+install reuses what a guided walk fetched and the other way round. `STACK_SOURCE_CACHE=0` in the
+environment turns the whole thing off - always-fresh temp download, the behaviour before the cache.
+A cache that cannot be written (a read-only or full `$HOME`) is never fatal: the run keeps the copy
+it just downloaded and carries on.
 
 **Carry `$TMP` in a MARKER FILE KEYED BY THE PROJECT, and address every run artifact through it.**
 Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next and
@@ -138,7 +188,11 @@ fallback cloned), and never deletes a source it was handed - cleanup is the comm
 ## Clean up the temp dir - ALWAYS
 
 `rm -rf "$TMP" "$MARK"` (PowerShell: `Remove-Item -Recurse -Force $TMP, $Mark`) - the MARKER goes
-with the temp dir it names, or the next run in this project reads a path that no longer exists. The
+with the temp dir it names, or the next run in this project reads a path that no longer exists.
+This is also why the cache lives OUTSIDE `$TMP`, under the account dir: the line above is
+unchanged by the cache and must stay that way - never add the cache to it, or the next run pays the
+download again. Entries age out on their own (a promote drops siblings older than a week), so there
+is nothing here to tidy. The
 archive, the extracted repo, and the working files you wrote next to them (`raw.json`,
 `selection.txt`) live there and nothing else will remove them - the installer only cleans up a source IT fetched, never the one
 you passed via `--source`. Do this on EVERY exit path, not just the happy one - each command's

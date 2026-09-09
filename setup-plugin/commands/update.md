@@ -48,9 +48,9 @@ Every answer names the next action, and this step is not done until one is taken
 If the user redirects mid-answer and this ask is displaced, re-offer it ONCE when the redirect
 is handled, then proceed on their answer.
 
-**ONE release archive is the entire download** - the shared contract lives at
+**ONE release archive is the entire download - and the cache usually spares you even that** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
-it: download + extract once into `$TMP/repo`, use every tool from that snapshot, hand it back
+it: resolve the snapshot once into `$TMP/repo` - a cached release copy when the version probe says it is current, a download when it is not, use every tool from that snapshot, hand it back
 with `--source` in the install step, and remove `$TMP` on EVERY exit path (fast, slow, blocker,
 or a user 'no'). The protocol's 'Narrate, don't trace' section governs every tool call: quiet
 machinery, no pasted output, one narration line between steps.

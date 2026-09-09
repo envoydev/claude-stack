@@ -375,6 +375,19 @@ documented there.
   script (`STACK_SRC_OWNED` / `$script:StackSrcOwned` gates the cleanup); the SKILLS own removing
   their `$TMP`, on every exit path. Standalone (no `--source`) still fetches and cleans up after
   itself - keep that path working, it is the no-plugin install documented in the README.
+- **One download per RELEASE, not per run - the source cache.** The extracted snapshot is kept at
+  `<config>/cache/stack-source/<repo-slug>/<version>`, and a run reuses it when a `HEAD` of
+  `/releases/latest` says that version is still newest (measured: 0.3s to probe, against ~1.8s for
+  the 1.4MB archive and 0.1s to copy the 5.4MB snapshot off disk) - so a second project, or a
+  `configure` an hour later, downloads nothing. Both installer twins and the guided walks write the
+  SAME layout, so the two routes reuse each other's fetch; a change to the shape is therefore a
+  four-site edit (`stack_src`, `Get-StackSrc`, and the protocol's two snippets). Two properties are
+  load-bearing, keep both: it is keyed by VERSION and never by time, so a new release wins the
+  moment it exists and no TTL can serve a stale stack; and an entry counts only when it carries
+  `stack/skills` + `stack/agents`, so an interrupted promote is re-downloaded rather than installed.
+  A promote drops sibling entries older than a WEEK, never 'all but the current' - another run
+  resolved its entry seconds ago and reads it for the length of its install. `STACK_SOURCE_CACHE=0`
+  restores the always-fresh temp download, and a cache that cannot be written is never fatal.
 - **The install is versioned, not the file.** Claude Code has no per-artifact version: `version:` is
   in the plugin.json schema and NOWHERE else (a `version:` key on a skill/agent/rule parses but is
   ignored - don't add one). Instead each run writes `claude-stack.stamp` (project `.claude/`, or the
