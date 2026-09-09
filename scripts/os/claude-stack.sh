@@ -950,8 +950,11 @@ _stack_cache_promote() {
 }
 
 _stack_manifest_version() {
+  # tr -d '\r' is not decoration: Git for Windows checks out with core.autocrlf=true by default, so
+  # the manifest in a marketplace clone has CRLF line ends and the captured version would carry a
+  # trailing CR - never equal to the probe's, which would disable the clone route on Windows only.
   sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1 || true
+    "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1 | tr -d '\r' || true
 }
 
 _stack_marketplace_clone() {
