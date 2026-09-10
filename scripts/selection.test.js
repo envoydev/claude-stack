@@ -261,7 +261,9 @@ test('ps1: -InstalledOnly still sees a .claude tree marked Hidden (pwsh required
 test('environment catalog: every row is askable, seeded and shaped', () =>
 {
     const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto']);
+    // 'tokens' is an absolute per-message token count with 0 meaning off - the fresh-session
+    // triggers, which replaced a percentage that the clamps made inert at its own default.
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
@@ -275,11 +277,28 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
             const n = Number(row.default);
             const inRange = n >= row.validate.min && n <= row.validate.max;
             assert.ok(inRange || row.default === row.validate.off, `${row.key} default is inside its own range (or is its off value)`);
-            // the catalog's range must be the range the hook enforces, or validate passes a value
-            // the runtime silently rewrites - the fresh-session percent clamps into 5..95 with 0 off
-            if (row.key === 'CLAUDE_STACK_FRESH_SESSION_PCT') { assert.strictEqual(row.validate.min, 5, 'the gate clamps up to 5, so 1-4 must not read as valid'); assert.strictEqual(row.validate.off, '0', '0 is the documented off switch'); }
+        }
+        // a token count is an absolute trigger the hook reads with parseInt: anything negative or
+        // unparseable falls back to the default, and 0 is the real answer 'this tier is off' - so
+        // the catalog must accept 0 and never declare a floor the runtime would not honour
+        if (row.validate.type === 'tokens')
+        {
+            const n = Number(row.default);
+            assert.ok(Number.isInteger(n) && n >= 0, `${row.key} default is a whole token count`);
+            assert.strictEqual(row.validate.min, 0, `${row.key} accepts 0 - the hook reads it as off, not as invalid`);
+            assert.strictEqual(row.validate.off, '0', `${row.key} documents 0 as its off switch`);
         }
         if (row.asked_with) { assert.ok(cat.env.some(r => r.key === row.asked_with), `${row.key} rides along with a row that exists`); }
+        // `group_off` makes a row the OWNER of a whole feature: setup and configure ask it as one
+        // question with a 'do not use it' answer that writes this value to the row AND to every
+        // row riding with it, so an off answer can never leave half a feature switched on.
+        if (row.group_off)
+        {
+            assert.ok(row.ask && !row.asked_with, `${row.key} owns its question - a group_off row is asked, never a rider`);
+            const riders = cat.env.filter(r => r.asked_with === row.key);
+            assert.ok(riders.length > 0, `${row.key} carries group_off but nothing rides with it`);
+            for (const r of riders) { assert.ok(!r.validate || r.validate.off === row.group_off, `${r.key} reads ${row.group_off} as off, like the row it rides with`); }
+        }
     }
 });
 

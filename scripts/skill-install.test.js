@@ -834,7 +834,9 @@ test('ps1 wiring: a retired hook is unwired from EVERY event, same as the sh twi
 // CLAUDE_STACK_FRESH_SESSION_PCT was documented as tunable per machine and seeded NOWHERE, so the
 // only percentage in the env block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE - a different knob. The
 // reporting user raised that one to 40 and reasonably expected the gate to move; it reads its own
-// value, which was absent and defaulted to 40 anyway. Both knobs are now seeded, absent-only.
+// value, which was absent and defaulted to 40 anyway. Both of those keys are retired now: the gate
+// is two absolute per-tier triggers, seeded absent-only, and the auto-compact percentage belongs
+// to Claude Code, not to this stack, so the installers no longer write it at all.
 test('sh env: both fresh-session knobs are seeded, and a hand-edited value is never overwritten', { skip: skipNoPython }, () => {
     const src = fs.readFileSync(SH, 'utf8');
     const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
@@ -847,34 +849,42 @@ test('sh env: both fresh-session knobs are seeded, and a hand-edited value is ne
         const fresh = path.join(work, 'fresh.json');
         assert.strictEqual(wire(fresh).status, 0);
         const env = JSON.parse(fs.readFileSync(fresh, 'utf8')).env;
-        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '40', 'the gate percentage is seeded at the house default');
-        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, 'AUTO', 'the window box is seeded with the AUTO sentinel, not an empty box');
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_1M, '400000', 'the 1M-tier trigger is seeded at the house default');
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_200K, '150000', 'and so is the 200k-tier one');
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '250000', 'and the one every other window falls to');
+        assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in env), 'the retired percentage key is not seeded into a fresh install');
+        assert.ok(!('CLAUDE_STACK_CONTEXT_WINDOW' in env), 'and neither is the retired window box - the tier is detected, never declared');
+        assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in env), "nor Claude Code's own auto-compact trigger, which this stack no longer owns");
         assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'the existing three are untouched');
 
         // update over a hand-edited install: absent-only, so both stay exactly as the user left them
         const pinned = path.join(work, 'pinned.json');
-        fs.writeFileSync(pinned, JSON.stringify({ env: { CLAUDE_STACK_FRESH_SESSION_PCT: '60', CLAUDE_STACK_CONTEXT_WINDOW: '200000' } }));
+        fs.writeFileSync(pinned, JSON.stringify({ env: { CLAUDE_STACK_FRESH_SESSION_1M: '250000', CLAUDE_STACK_FRESH_SESSION_200K: '120000' } }));
         assert.strictEqual(wire(pinned).status, 0);
         const kept = JSON.parse(fs.readFileSync(pinned, 'utf8')).env;
-        assert.strictEqual(kept.CLAUDE_STACK_FRESH_SESSION_PCT, '60', 'a pinned percentage survives the update');
-        assert.strictEqual(kept.CLAUDE_STACK_CONTEXT_WINDOW, '200000', 'a declared window survives the update');
+        assert.strictEqual(kept.CLAUDE_STACK_FRESH_SESSION_1M, '250000', 'a pinned tier trigger survives the update');
+        assert.strictEqual(kept.CLAUDE_STACK_FRESH_SESSION_200K, '120000', 'and so does the other tier\'s');
 
-        // ...but the RETIRED 1000000 seed is cleared, because it was never the user's number: it
-        // declared a 1M window on every install and put the trigger above anything a 200k session
-        // can carry, so no fresh-session offer could ever fire (ten confirmations, four projects).
+        // A settings block still carrying the RETIRED keys is CLEANED: nothing reads them, and a
+        // dead key in the env block reads as a knob that still works. The auto-compact trigger is
+        // Claude Code's own, so it goes only while it still holds the 40 this installer seeded.
         const stale = path.join(work, 'stale.json');
-        fs.writeFileSync(stale, JSON.stringify({ env: { CLAUDE_STACK_CONTEXT_WINDOW: '1000000' } }));
+        fs.writeFileSync(stale, JSON.stringify({ env: {
+            CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_STACK_FRESH_SESSION_PCT: '0', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '40',
+        } }));
         assert.strictEqual(wire(stale).status, 0);
-        assert.strictEqual(JSON.parse(fs.readFileSync(stale, 'utf8')).env.CLAUDE_STACK_CONTEXT_WINDOW, 'AUTO',
-            'the old seed is reset to auto-detect');
+        const left = JSON.parse(fs.readFileSync(stale, 'utf8')).env;
+        assert.ok(!('CLAUDE_STACK_CONTEXT_WINDOW' in left), 'the retired window key is dropped');
+        assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in left), 'and so is the retired percentage');
+        assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in left), 'and the auto-compact seed this stack no longer owns');
+        assert.strictEqual(left.CLAUDE_STACK_FRESH_SESSION_1M, '400000', '... while the keys it does own are seeded');
 
-        // ...and so is the EMPTY seed that replaced it: same behaviour, but an empty box in the env
-        // block reads as a variable nobody filled in rather than as the answer.
-        const blank = path.join(work, 'blank.json');
-        fs.writeFileSync(blank, JSON.stringify({ env: { CLAUDE_STACK_CONTEXT_WINDOW: '' } }));
-        assert.strictEqual(wire(blank).status, 0);
-        assert.strictEqual(JSON.parse(fs.readFileSync(blank, 'utf8')).env.CLAUDE_STACK_CONTEXT_WINDOW, 'AUTO',
-            'the empty seed becomes the AUTO sentinel');
+        // ...but a hand-set auto-compact value is the user's own choice and is never touched
+        const mine = path.join(work, 'mine.json');
+        fs.writeFileSync(mine, JSON.stringify({ env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' } }));
+        assert.strictEqual(wire(mine).status, 0);
+        assert.strictEqual(JSON.parse(fs.readFileSync(mine, 'utf8')).env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, '80',
+            'a value the user set by hand survives - only the seeded 40 is dropped');
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });
@@ -885,7 +895,7 @@ test('ps1 env: the same two knobs, same rule (pwsh required)', { skip: skipNoPws
     try {
         fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
         const settings = path.join(repo, '.claude', 'settings.json');
-        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_STACK_FRESH_SESSION_PCT: '60' } }, null, 2));
+        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_STACK_FRESH_SESSION_1M: '250000' } }, null, 2));
         const harness = path.join(repo, 'harness.ps1');
         const pass1 = path.join(repo, 'pass1.json');
         fs.writeFileSync(harness, [
@@ -900,20 +910,25 @@ test('ps1 env: the same two knobs, same rule (pwsh required)', { skip: skipNoPws
             psFunc(src, 'Set-HookSettings'),
             'Set-HookSettings',
             `Copy-Item ${JSON.stringify(settings.replace(/\\/g, '/'))} ${JSON.stringify(pass1.replace(/\\/g, '/'))}`,
-            // second pass over a settings file still carrying the RETIRED 1000000 seed
-            `Set-Content -Path ${JSON.stringify(settings.replace(/\\/g, '/'))} -Value '{ "env": { "CLAUDE_STACK_CONTEXT_WINDOW": "1000000" } }'`,
+            // second pass over a settings file still carrying the RETIRED keys
+            `Set-Content -Path ${JSON.stringify(settings.replace(/\\/g, '/'))} -Value '{ "env": { "CLAUDE_STACK_CONTEXT_WINDOW": "1000000", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40", "CLAUDE_STACK_FRESH_SESSION_PCT": "0" } }'`,
             'Set-HookSettings',
         ].join('\n'));
         const res = spawnSync('pwsh', ['-NoProfile', '-File', harness], { cwd: repo, encoding: 'utf8' });
         assert.strictEqual(res.status, 0, res.stderr);
         const first = JSON.parse(fs.readFileSync(pass1, 'utf8')).env;
-        assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_PCT, '60', 'the hand-edited percentage is left alone');
-        assert.strictEqual(first.CLAUDE_STACK_CONTEXT_WINDOW, 'AUTO', 'the absent window is seeded with the AUTO sentinel');
+        assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_1M, '250000', 'the hand-edited tier trigger is left alone');
+        assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_200K, '150000', 'the absent one is seeded at the house default');
+        assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '250000', 'and so is the unreadable-window one');
+        assert.ok(!('CLAUDE_STACK_CONTEXT_WINDOW' in first), 'the retired window box is not seeded');
+        assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in first), "nor Claude Code's own auto-compact trigger");
         const env = JSON.parse(fs.readFileSync(settings, 'utf8')).env;
         assert.strictEqual(env.CLAUDE_STACK_INSTRUMENT, '0', 'the existing seeds still land');
-        // the first pass proved the absent-only seeds; this is the retired value being cleared
-        assert.strictEqual(env.CLAUDE_STACK_CONTEXT_WINDOW, 'AUTO', 'the retired 1000000 seed is reset to the AUTO sentinel');
-        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_PCT, '40', 'and the percentage is re-seeded at the house default');
+        // second pass, over a block still carrying the retired keys: the twin drops them too
+        assert.ok(!('CLAUDE_STACK_CONTEXT_WINDOW' in env), 'the retired window key is dropped');
+        assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in env), 'and so is the retired percentage');
+        assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in env), 'and the auto-compact seed at its old default');
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_1M, '400000', 'and the tier trigger is seeded at the house default');
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });

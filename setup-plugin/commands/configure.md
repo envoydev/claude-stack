@@ -16,11 +16,12 @@ sibling `update` command is the shorter path - this command is for CHOOSING what
 **This run needs NO conversation context - so it is worth MOVING, but only out of a session that
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
-figure is past the same trigger `guard-fresh-session-start.js` uses - `CLAUDE_STACK_FRESH_SESSION_PCT`
-percent (default 40) of the resolved context window - `CLAUDE_STACK_CONTEXT_WINDOW`, else the
-settings.json model id's own `[1m]`-style suffix, else what the session has already carried, else
-200,000 - floored at 150,000 on a 200k window and capped at 250,000 above it, so a default install
-triggers at 150,000 tokens per message - or when that hook has already injected the ask into this turn. Below the
+figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
+trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or `CLAUDE_STACK_FRESH_SESSION_1M`
+(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 250,000) when the window is
+neither of those two sizes or cannot be read at all - which one applies comes from the window
+suffix on the settings.json model id (`opus[1m]`, `opus[200k]`) - or when that hook has already
+injected the ask into this turn. Below the
 trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
 of a brand-new session, twice in one run, and could quote no number when the user challenged it).
@@ -276,17 +277,20 @@ step is the one place they change deliberately. A row whose key is missing from 
 release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
 disk is the old spelling, and accepting it moves the value, never resets it.
 
-Two behaviours live here rather than in the catalog, because they are about what this step DOES:
-
-- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` accepts a third answer beyond a percent - auto-compact off
-  entirely, which is the `autoCompactEnabled: false` settings key with the pct override DELETED
-  rather than left dead beside it.
-- A docs-root change re-stamps the deployed rule (below) and moves no existing docs.
+One behaviour lives here rather than in the catalog, because it is about what this step DOES: a
+docs-root change re-stamps the deployed rule (below) and moves no existing docs. Claude Code's own
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
+this step neither offers nor touches it.
 
 Show the CURRENT values read from the file - never assume the defaults - then one AskUserQuestion
 keep-or-change consent covering every row (keep - recommended; change, the new values via Other) -
 one question per row, and a row carrying `asked_with` rides along with the row it names rather than
-spending its own question. On a
+spending its own question. A row carrying `group_off` is ONE question for the whole FEATURE it owns
+- it and its riders: name each key with the value currently on disk, and give three answers - keep
+them (recommended), set your own (Other: one number per key, in the catalog's own order), or do not
+use the feature (which writes the row's `group_off` value to every key in the group). Only a row
+carrying `group_off` gets an off answer; never invent one for a row without it, and a group already
+sitting at that value is reported as off, with turning it back on as the change. On a
 docs-root change, say plainly: existing generated docs do NOT move - they stay under the old root until
 moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (global install: `--claude-dir <account dir>`): it rewrites the 'This install's root:'

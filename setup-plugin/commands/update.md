@@ -22,10 +22,11 @@ path near 10k by never reading files or output the steps below do not name.
 but only out of a session that is actually loaded. Measure before you ask: this session's own
 per-message context is `input + cache_read + cache_creation` off the last assistant message in the
 transcript. Ask ONLY when that figure is past the same trigger `guard-fresh-session-start.js` uses
-- `CLAUDE_STACK_FRESH_SESSION_PCT` percent (default 40) of the resolved context window
-(`CLAUDE_STACK_CONTEXT_WINDOW`, else the settings.json model id's own `[1m]`-style suffix, else
-what the session has already carried, else 200,000), floored at 150,000 on a 200k window and
-capped at 250,000 above it, so a default install triggers at 150,000 tokens per message - or when that hook has already injected
+- the tier's own absolute trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or
+`CLAUDE_STACK_FRESH_SESSION_1M` (default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT`
+(default 250,000) when the window is neither of those two sizes or cannot be read at all - which
+one applies comes from the window suffix on the settings.json model id (`opus[1m]`, `opus[200k]`)
+- or when that hook has already injected
 the ask into this turn. Below the trigger, or when the figure cannot be read at all, SKIP the ask
 silently and go to step 1: an ask with no measurement behind it is the failure this replaced
 (measured: it fired on the FIRST message of a brand-new session, twice in one run, and could quote
@@ -83,13 +84,16 @@ detected entry joins the prune list labeled `(migration: <why>)`, together with 
 `unwire_settings_hook` edit and its `then` follow-up for the report. Not detected -> silently
 skip.
 
-**Environment migrations are the exception: they never join the prune list.** An entry whose
-`detect` is `settings_env_key` and whose action is `rename_settings_env` changes a KEY in the
-scope's settings.json `env`, deletes nothing, and carries the user's value across - so it needs
-no deletion consent. The installer's env pass applies it during the refresh in both step 3 and
-step 4 (renames first, then the absent-only seeds, so a value set under the old name is never
-overwritten by the new key's default). Your job is to detect it before the run and NAME it in the
-report: `env: <old> renamed to <new> (value kept)`. New variables the release introduces need no
+**Environment migrations are the exception: they never join the prune list.** They act on the
+scope's settings.json `env`, and none of them can lose anything the user chose: `rename_settings_env`
+changes a KEY and carries the value across, and `remove_settings_env` drops a key this stack
+RETIRED - one nothing reads any more, and where the key still means something outside this stack it
+carries the exact seeded value it is dropped at, so a hand-set value stays. The installer's env pass
+applies them during the refresh in both step 3 and step 4
+(renames, then removals, then the absent-only seeds, so a value set under the old name is never
+overwritten by the new key's default).
+Your job is to detect them before the run and NAME them in the report: `env: <old> renamed to <new>
+(value kept)`, `env: <key> removed (retired)`. New variables the release introduces need no
 catalog entry at all - the same pass seeds them absent-only - but report those too, as
 `env: <key> seeded (<value>)`, reading the file after the run rather than assuming.
 
