@@ -1286,7 +1286,7 @@ function Copy-FromStackSrc {
   # fail-soft (a file not yet upstream keeps its committed copy), and an unchanged file is reported
   # 'current' rather than rewritten, so a no-op run leaves timestamps alone.
   param([string]$SubDir, [string]$Label, [string]$DestDir, [string[]]$Files)
-  if (-not (Get-StackSrc)) { Log "  !! stack source unavailable - kept existing $Label copies"; return }
+  if (-not (Get-StackSrc)) { Add-Failure "$Label refresh SKIPPED - stack source unavailable; the existing copies are unchanged"; return }
   foreach ($file in $Files) {
     $src = Join-Path $script:StackSrc (Join-Path $SubDir $file)
     if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { Add-Failure "$Label '$file' not found in $StackRepoUrl"; continue }
@@ -1346,31 +1346,197 @@ function Resolve-McpArgv([string]$Spec) {
   return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('${HOME_MEMORY_DIR}', $memDir) })
 }
 
+function Register-Mcp([string]$Name, [string]$Spec) {
+  # The single `claude mcp add` site for install, update and the user-scope repair retry - three
+  # copies of this argv used to drift apart. Returns $true when the CLI reported success.
+  if ($Spec -eq '@HTTP@') {
+    # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
+    # (sentry -SentryAuth oauth) registers with no --header at all, so the OAuth fallback stays on.
+    $url = if ($Name -eq 'sentry') { $SentryRemoteUrl } else { $Context7RemoteUrl }
+    $hdr = if ($Name -eq 'sentry') { $SentryRemoteHdr } else { $Context7RemoteHdr }
+    if ($hdr) { try { & claude mcp add --transport http --scope $ClaudeScope $Name $url --header $hdr } catch {} }
+    else      { try { & claude mcp add --transport http --scope $ClaudeScope $Name $url } catch {} }
+    return ($LASTEXITCODE -eq 0)
+  }
+  $argArr = Resolve-McpArgv $Spec
+  try { & claude mcp add --scope $ClaudeScope $Name @argArr } catch {}
+  return ($LASTEXITCODE -eq 0)
+}
+
 function Install-Mcps {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
     $spec = $parts[1]
-    $argArr = Resolve-McpArgv $spec
     # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
+    # 'already configured' skips the ADD, never the verify pass below: a name registered by an older
+    # release answers `mcp get` in its OLD shape, so an install over such a project must still repair it.
     $configured = $false
     try { & claude mcp get $name *> $null; $configured = ($LASTEXITCODE -eq 0) } catch { $configured = $false }
     if ($configured) { Write-Host "  mcp $name already configured - skipping"; continue }
     Log "mcp [$ClaudeScope]: $name"
-    if ($spec -eq '@HTTP@') {
-      # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
-      # (sentry -SentryAuth oauth) registers with no --header at all, so the OAuth fallback stays on.
-      $url = if ($name -eq 'sentry') { $SentryRemoteUrl } else { $Context7RemoteUrl }
-      $hdr = if ($name -eq 'sentry') { $SentryRemoteHdr } else { $Context7RemoteHdr }
-      if ($hdr) { try { & claude mcp add --transport http --scope $ClaudeScope $name $url --header $hdr } catch {} }
-      else      { try { & claude mcp add --transport http --scope $ClaudeScope $name $url } catch {} }
-      if ($LASTEXITCODE -ne 0) { Add-Failure "mcp $name failed" }
-      continue
-    }
-    try { & claude mcp add --scope $ClaudeScope $name @argArr } catch {}
-    if ($LASTEXITCODE -ne 0) { Add-Failure "mcp $name failed" }
+    if (-not (Register-Mcp $name $spec)) { Add-Failure "mcp $name failed" }
   }
+}
+
+# ===========================================================================
+# (3b) MCP VERIFY - read back what actually landed, repair what drifted (install AND update).
+# `claude mcp add` over an existing server name prints 'already exists' and EXITS 0, so a `remove`
+# that did not take - an old CLI, a scope mismatch, a registration shadowing from another scope - is
+# indistinguishable from a successful rewrite: the run reports the server refreshed and the stale
+# registration survives forever (measured on a consuming project still carrying the pre-0.2.34 stdio
+# sentry entry, SENTRY_HOST and all). The CLI stays the happy path; this pass checks the RESULT.
+#   project scope: .mcp.json is the stack-owned file - parsed directly (no spawn) and rewritten entry
+#                  by entry where the shape differs from the manifest. A server the project added by
+#                  hand is not a stack name and is never read, compared or written.
+#   user scope:    the registration lives in the account config, which this script never hand-edits -
+#                  the check runs through `claude mcp get`, a mismatch is retried once through the
+#                  CLI, and anything still wrong after that is reported, never silently accepted.
+# Twin of verify_mcps in claude-stack.sh (which reaches the same shapes through python3).
+# ===========================================================================
+$script:McpRepairs = 0
+
+function ConvertTo-CanonicalJson($Value) {
+  # Key-sorted, whitespace-free JSON - the comparison form for 'is this entry already the manifest
+  # shape'. ConvertTo-Json alone cannot answer that: it preserves key order and unwraps a
+  # single-element array, so two equal entries can serialize differently.
+  if ($null -eq $Value) { return 'null' }
+  if ($Value -is [string]) { return (ConvertTo-Json $Value -Compress) }
+  if ($Value -is [System.Collections.IDictionary]) {
+    $parts = foreach ($k in ($Value.Keys | Sort-Object)) { (ConvertTo-Json ([string]$k) -Compress) + ':' + (ConvertTo-CanonicalJson $Value[$k]) }
+    return '{' + ($parts -join ',') + '}'
+  }
+  if ($Value -is [System.Management.Automation.PSCustomObject]) {
+    $parts = foreach ($p in ($Value.PSObject.Properties | Sort-Object Name)) { (ConvertTo-Json $p.Name -Compress) + ':' + (ConvertTo-CanonicalJson $p.Value) }
+    return '{' + ($parts -join ',') + '}'
+  }
+  if ($Value -is [System.Collections.IEnumerable]) {
+    $parts = foreach ($i in $Value) { ConvertTo-CanonicalJson $i }
+    return '[' + ($parts -join ',') + ']'
+  }
+  return (ConvertTo-Json $Value -Compress)
+}
+
+function Get-McpExpected([string]$Name, [string]$Spec) {
+  # The expected .mcp.json entry, built from the SAME manifest words `claude mcp add` is given - so a
+  # pin bumped this run is itself a mismatch and the entry is rewritten; the refresh becomes verified.
+  if ($Spec -eq '@HTTP@') {
+    $url = if ($Name -eq 'sentry') { $SentryRemoteUrl } else { $Context7RemoteUrl }
+    $hdr = if ($Name -eq 'sentry') { $SentryRemoteHdr } else { $Context7RemoteHdr }
+    $want = [ordered]@{ type = 'http'; url = $url }
+    if ($hdr) {
+      $ix = $hdr.IndexOf(':')
+      $want['headers'] = [ordered]@{ $hdr.Substring(0, $ix).Trim() = $hdr.Substring($ix + 1).Trim() }
+    }
+    return $want
+  }
+  $words = @(Resolve-McpArgv $Spec)
+  $envMap = [ordered]@{}
+  $i = 0
+  while (($i + 1) -lt $words.Count -and $words[$i] -eq '-e') {
+    $kv = [string]$words[$i + 1]
+    $ix = $kv.IndexOf('=')
+    if ($ix -ge 0) { $envMap[$kv.Substring(0, $ix)] = $kv.Substring($ix + 1) } else { $envMap[$kv] = '' }
+    $i += 2
+  }
+  if ($i -lt $words.Count -and $words[$i] -eq '--') { $i++ }
+  $cmd = if ($i -lt $words.Count) { [string]$words[$i] } else { '' }
+  $rest = @(if (($i + 1) -lt $words.Count) { $words[($i + 1)..($words.Count - 1)] })
+  return [ordered]@{ type = 'stdio'; command = $cmd; args = $rest; env = $envMap }
+}
+
+function Get-McpDescription($Entry) {
+  if ($null -eq $Entry) { return 'absent' }
+  if ($Entry.PSObject.Properties.Name -contains 'url') { return "was http $($Entry.url)" }
+  $a = @($Entry.args) | Select-Object -First 3
+  return "was stdio $($Entry.command) $($a -join ' ')"
+}
+
+function Repair-McpsProject {
+  # `claude mcp add --scope project` writes <cwd>\.mcp.json - the same file this reads back.
+  $path = Join-Path (Get-Location).Path '.mcp.json'
+  $servers = [ordered]@{}
+  if (Test-Path -LiteralPath $path) {
+    try {
+      $doc = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+      if ($doc -and $doc.PSObject.Properties.Name -contains 'mcpServers' -and $doc.mcpServers) {
+        foreach ($p in $doc.mcpServers.PSObject.Properties) { $servers[$p.Name] = $p.Value }
+      }
+    }
+    catch { Log '  !! .mcp.json is not valid JSON - MCP registrations were not verified; fix it and re-run'; return }
+  }
+  $repaired = @()
+  foreach ($entry in $Mcps) {
+    $parts = $entry.Split('|', 2)
+    $name = $parts[0]
+    $want = Get-McpExpected $name $parts[1]
+    $have = if ($servers.Contains($name)) { $servers[$name] } else { $null }
+    if ((ConvertTo-CanonicalJson $have) -eq (ConvertTo-CanonicalJson $want)) { continue }
+    $repaired += , @($name, (Get-McpDescription $have))
+    $servers[$name] = $want
+  }
+  if ($repaired.Count -eq 0) { return }
+  $out = [ordered]@{ mcpServers = $servers }
+  # WriteAllText, not Set-Content -Encoding UTF8: the latter writes a BOM under Windows PowerShell 5.1,
+  # and a BOM in front of `{` makes .mcp.json unparseable for anything reading it with a plain JSON.parse.
+  [System.IO.File]::WriteAllText($path, ((ConvertTo-Json $out -Depth 20) + "`n"))
+  foreach ($r in $repaired) {
+    $script:McpRepairs++
+    Log "  mcp repaired: $($r[0]) ($($r[1]))"
+    # A repaired entry that `mcp get` still resolves at another scope is SHADOWED - the file is right
+    # and the other registration wins at launch. Report it; removing someone else's registration is
+    # not drift repair.
+    $got = ''
+    try { $got = (& claude mcp get $r[0] 2>$null) -join "`n" } catch { $got = '' }
+    if ($got -match '(?m)^\s*Scope:\s*(.+)$' -and $Matches[1] -notmatch 'Project') {
+      Log "  !! mcp $($r[0]) is also registered at another scope, which wins over .mcp.json - remove it with: claude mcp remove $($r[0]) -s user (or -s local)"
+    }
+  }
+}
+
+function Get-McpShape([string]$Name) {
+  # 'http|<url>' / 'stdio|<command> <args>' as `claude mcp get` reports it ('' when unreadable).
+  $lines = @()
+  try { $lines = @(& claude mcp get $Name 2>$null) } catch { return '' }
+  $t = ''; $u = ''; $c = ''; $a = ''
+  foreach ($l in $lines) {
+    $s = [string]$l
+    if ($s -match '^\s*Type:\s*(\S+)')    { $t = $Matches[1] }
+    elseif ($s -match '^\s*URL:\s*(\S+)') { $u = $Matches[1] }
+    elseif ($s -match '^\s*Command:\s*(\S+)') { $c = $Matches[1] }
+    elseif ($s -match '^\s*Args:\s*(.*)$')    { $a = $Matches[1].Trim() }
+  }
+  if ($t -eq 'http') { return "http|$u" }
+  if ($t) { return ("stdio|$c $a").TrimEnd() }
+  return ''
+}
+
+function Repair-McpsUser {
+  foreach ($entry in $Mcps) {
+    $parts = $entry.Split('|', 2)
+    $name = $parts[0]
+    $spec = $parts[1]
+    $want = Get-McpExpected $name $spec
+    $expected = if ($want.type -eq 'http') { "http|$($want.url)" } else { ("stdio|$($want.command) " + (@($want.args) -join ' ')).TrimEnd() }
+    $have = Get-McpShape $name
+    if (-not $have) { continue }        # an older CLI, or a server the account config does not expose
+    if ($have -eq $expected) { continue }
+    Log "  mcp shape drifted at user scope: $name - re-registering"
+    try { & claude mcp remove $name -s $ClaudeScope 2>$null | Out-Null } catch {}
+    [void](Register-Mcp $name $spec)
+    $have = Get-McpShape $name
+    if ($have -and $have -ne $expected) {
+      Add-Failure "mcp $name could not be brought to the current shape at user scope - remove it by hand (claude mcp remove $name -s user) and re-run"
+    }
+    else { $script:McpRepairs++; Log "  mcp repaired: $name (user scope)" }
+  }
+}
+
+function Test-McpRegistrations {
+  if ($script:ClaudeMissing) { return }
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }
+  if ($ClaudeScope -eq 'project') { Repair-McpsProject } else { Repair-McpsUser }
 }
 
 function Get-Hooks {
@@ -1935,13 +2101,60 @@ function Update-Skills {
   Install-Skills
 }
 
+function Get-InstalledPluginMap {
+  # name -> @{ version; scope } for the INSTALLED plugins, from `claude plugin list --json`. The
+  # listing is machine-global: an entry carries projectPath for a project-scoped install, so this
+  # keeps THIS project's rows plus the account-level ones and drops a sibling repo's. An older CLI
+  # without --json prints nothing parseable -> an empty map -> the caller keeps its defaults.
+  $map = @{}
+  $raw = ''
+  try { $raw = (& claude plugin list --json 2>$null) -join "`n" } catch { return $map }
+  if (-not $raw.Trim()) { return $map }
+  try { $doc = $raw | ConvertFrom-Json } catch { return $map }
+  $rows = if ($doc -is [System.Collections.IEnumerable] -and -not ($doc -is [string])) { $doc } elseif ($doc.PSObject.Properties.Name -contains 'installed') { $doc.installed } else { @() }
+  $cwd = [System.IO.Path]::GetFullPath((Get-Location).Path)
+  foreach ($e in @($rows)) {
+    if (-not $e) { continue }
+    $name = ([string]$e.id).Split('@')[0]
+    if (-not $name) { continue }
+    $pp = [string]$e.projectPath
+    if ($pp) {
+      try { $pp = [System.IO.Path]::GetFullPath($pp) } catch {}
+      if (-not $pp.Equals($cwd, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+    }
+    $rank = if ($pp) { 0 } else { 1 }     # this project's rows first, then the account-level ones
+    if (-not $map.ContainsKey($name) -or $rank -lt $map[$name].rank) {
+      $map[$name] = @{ rank = $rank; version = [string]$e.version; scope = [string]$e.scope }
+    }
+  }
+  return $map
+}
+
 function Update-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   try { & claude plugin marketplace update 2>$null } catch {}   # refresh marketplaces first
+  $before = Get-InstalledPluginMap
   foreach ($p in $Plugins) {
-    $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }   # claude-hud is user-scope (statusline)
+    $name = ($p -split '@')[0]
+    # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a
+    # silent no-op, so passing the INSTALL's scope left every user-scoped plugin on its old version
+    # under a project install. The manifest default (claude-hud is user-scope, the rest follow the
+    # run) only applies when the listing cannot say.
+    $pScope = if ($before.ContainsKey($name) -and $before[$name].scope) { $before[$name].scope }
+              elseif ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
     Log "plugin update [$pScope]: $p"
     try { & claude plugin update $p --scope $pScope -y } catch {}   # -y for the same non-TTY reason as install
+  }
+  # Read the versions back: `claude plugin update` reports success whether or not anything moved.
+  $after = Get-InstalledPluginMap
+  if ($before.Count -eq 0 -and $after.Count -eq 0) { return }
+  foreach ($p in $Plugins) {
+    $name = ($p -split '@')[0]
+    $v1 = if ($before.ContainsKey($name)) { $before[$name].version } else { '' }
+    $v2 = if ($after.ContainsKey($name)) { $after[$name].version } else { '' }
+    if (-not $v2) { Log "  plugin ${name}: not installed - /claude-stack:configure adds it" }
+    elseif ($v1 -and $v1 -ne $v2) { Log "  plugin ${name}: $v1 -> $v2" }
+    else { Log "  plugin ${name}: $v2 (already newest)" }
   }
 }
 
@@ -1958,26 +2171,15 @@ function Update-Mcps {
   Remove-RetiredMcps
   # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
   # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
-  # design; the hosted servers (context7 remote, sentry) have nothing to pin.
+  # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
+  # name the remove did not clear exits 0 without writing - Test-McpRegistrations is what makes this stick.
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
     $spec = $parts[1]
-    $argArr = Resolve-McpArgv $spec   # split-first + per-word token resolution, as in Install-Mcps
     Log "mcp refresh [$ClaudeScope]: $name"
     try { & claude mcp remove $name -s $ClaudeScope 2>$null } catch {}
-    if ($spec -eq '@HTTP@') {
-      # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
-      # (sentry -SentryAuth oauth) registers with no --header at all, so the OAuth fallback stays on.
-      $url = if ($name -eq 'sentry') { $SentryRemoteUrl } else { $Context7RemoteUrl }
-      $hdr = if ($name -eq 'sentry') { $SentryRemoteHdr } else { $Context7RemoteHdr }
-      if ($hdr) { try { & claude mcp add --transport http --scope $ClaudeScope $name $url --header $hdr } catch {} }
-      else      { try { & claude mcp add --transport http --scope $ClaudeScope $name $url } catch {} }
-      if ($LASTEXITCODE -ne 0) { Add-Failure "mcp $name failed" }
-      continue
-    }
-    try { & claude mcp add --scope $ClaudeScope $name @argArr } catch {}
-    if ($LASTEXITCODE -ne 0) { Add-Failure "mcp $name failed" }
+    if (-not (Register-Mcp $name $spec)) { Add-Failure "mcp $name failed" }
   }
 }
 
@@ -2149,8 +2351,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Update-Mcps; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -2163,6 +2365,7 @@ $hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Objec
 $summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
 if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
 if ($KeepPins) { $summary += '; keep-pins=on' }
+if ($script:McpRepairs -gt 0) { $summary += "; mcp registrations repaired=$($script:McpRepairs)" }
 Log "$summary; context7=$Context7"
 # The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
 # project-owned files and names this release no longer ships are neither refreshed nor counted
