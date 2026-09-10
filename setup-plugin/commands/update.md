@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, `claude plugin update` per installed stack plugin) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only derives the selection from disk and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only derives the selection from disk and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -113,7 +113,14 @@ Run the installer; it derives the selection from disk itself, closes new depende
 - Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins`
 
 Scope/space mirror how the install was laid down; `--keep-pins` is the default here - a fast
-refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP;
+refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP
+and then READS BACK what landed: at project scope the installer compares every stack-owned entry in
+`.mcp.json` against the manifest shape and rewrites the ones that drifted (`mcp repaired: <name>` in
+the log), because `claude mcp add` over a name the preceding `remove` did not clear prints 'already
+exists' and exits 0 - which is how consuming projects kept the pre-0.2.34 stdio sentry registration
+through update after update. Servers the project added by hand are never touched. Plugins are updated
+at the scope the listing says they are installed at and their versions are read back, so the log names
+each one as `x -> y` or `already newest` instead of asserting a refresh. The refresh re-registers every MCP;
 for sentry that means the constant `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` registration with
 the `Sentry-Bearer` header (an old plain-`Bearer` header, the broken v0.2.33-and-earlier default,
 migrates by itself; a deliberately headerless oauth registration is read back and kept). Sentry
@@ -204,6 +211,9 @@ changed.
 
 ## 7. Post-check
 Report the version delta, refreshed / pruned counts by category (naming the pruned items), the
+REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the plugin version moves
+- these are the drift the run corrected, and a user who has been carrying a stale registration needs
+to see it named), the
 ENVIRONMENT line (every key the run seeded or renamed, read back from the scope's settings.json
 `env` - `env: <old> renamed to <new> (value kept)` / `env: <key> seeded (<value>)`; nothing
 changed -> say so in one clause, never a silent omission: an env key that moved under the user's

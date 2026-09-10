@@ -1181,29 +1181,195 @@ _mcp_argv() {  # $1 = manifest args -> spec_words: the argv for `claude mcp add`
   done
 }
 
+_mcp_register() {  # $1 = name $2 = manifest args - the `claude mcp add` call for ONE server; 0 = added
+  # The single add site for install, update and the user-scope repair retry: three copies of this
+  # argv used to drift apart (the update copy resolved its argv before the @HTTP@ branch that ignores it).
+  local name="$1" args="$2" url hdr
+  local -a spec_words
+  if [ "$args" = "@HTTP@" ]; then
+    # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
+    # (sentry --sentry-auth oauth) registers with no --header at all, so the OAuth fallback stays on.
+    if [ "$name" = "sentry" ]; then url="$SENTRY_REMOTE_URL"; hdr="$SENTRY_REMOTE_HDR"
+    else url="$CONTEXT7_REMOTE_URL"; hdr="$CONTEXT7_REMOTE_HDR"; fi
+    if [ -n "$hdr" ]; then claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr"
+    else                   claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url"; fi
+    return $?
+  fi
+  _mcp_argv "$args"
+  claude mcp add --scope "$CLAUDE_SCOPE" "$name" "${spec_words[@]}"
+}
+
 install_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
-  local entry name args url hdr
-  local -a spec_words
+  local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    # 'already configured' skips the ADD, never the verify pass below: a name registered by an older
+    # release answers `mcp get` in its OLD shape, so an install over such a project must still repair it.
     if claude mcp get "$name" >/dev/null 2>&1; then echo "  mcp $name already configured - skipping"; continue; fi
     log "mcp [$CLAUDE_SCOPE]: $name"
-    if [ "$args" = "@HTTP@" ]; then
-      # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
-      # (sentry --sentry-auth oauth) registers with no --header at all, so the OAuth fallback stays on.
-      if [ "$name" = "sentry" ]; then url="$SENTRY_REMOTE_URL"; hdr="$SENTRY_REMOTE_HDR"
-      else url="$CONTEXT7_REMOTE_URL"; hdr="$CONTEXT7_REMOTE_HDR"; fi
-      if [ -n "$hdr" ]; then
-        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr" || note_failure "mcp $name failed"
-      else
-        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" || note_failure "mcp $name failed"
-      fi
-      continue
-    fi
-    _mcp_argv "$args"
-    claude mcp add --scope "$CLAUDE_SCOPE" "$name" "${spec_words[@]}" || note_failure "mcp $name failed"
+    _mcp_register "$name" "$args" || note_failure "mcp $name failed"
   done
+}
+
+# ---------------------------------------------------------------------------
+# (3b) MCP VERIFY - read back what actually landed, repair what drifted (install AND update).
+# `claude mcp add` over an existing server name prints 'already exists' and EXITS 0, so a `remove`
+# that did not take - an old CLI, a scope mismatch, a registration shadowing from another scope - is
+# indistinguishable from a successful rewrite: the run reports the server refreshed and the stale
+# registration survives forever (measured on a consuming project still carrying the pre-0.2.34 stdio
+# sentry entry, SENTRY_HOST and all). The CLI stays the happy path; this pass checks the RESULT.
+#   project scope: .mcp.json is the stack-owned file - parsed directly (no spawn) and rewritten entry
+#                  by entry where the shape differs from the manifest. A server the project added by
+#                  hand is not a stack name and is never read, compared or written.
+#   user scope:    the registration lives in the account config, which this script never hand-edits -
+#                  the check runs through `claude mcp get`, a mismatch is retried once through the
+#                  CLI, and anything still wrong after that is reported, never silently accepted.
+# ---------------------------------------------------------------------------
+MCP_REPAIRS=0
+
+_mcp_expect_line() {  # $1 = name $2 = manifest args -> one TAB-separated line: name, kind, shape words
+  local name="$1" args="$2" url hdr w
+  local -a spec_words
+  if [ "$args" = "@HTTP@" ]; then
+    if [ "$name" = "sentry" ]; then url="$SENTRY_REMOTE_URL"; hdr="$SENTRY_REMOTE_HDR"
+    else url="$CONTEXT7_REMOTE_URL"; hdr="$CONTEXT7_REMOTE_HDR"; fi
+    printf '%s\thttp\t%s\t%s\n' "$name" "$url" "$hdr"
+    return 0
+  fi
+  _mcp_argv "$args"
+  printf '%s\tstdio' "$name"
+  for w in ${spec_words[@]+"${spec_words[@]}"}; do printf '\t%s' "$w"; done
+  printf '\n'
+}
+
+# The expected shape is computed from the SAME manifest words `claude mcp add` is given, so a pin
+# bumped this run is itself a mismatch and the entry is rewritten - the refresh becomes verified.
+_MCP_VERIFY_PY='
+import json, sys
+path, repaired_out = sys.argv[1], sys.argv[2]
+try:
+    raw = open(path, "r", encoding="utf-8-sig").read()
+except FileNotFoundError:
+    raw = ""
+except OSError as e:
+    print("  !! .mcp.json unreadable (%s) - MCP registrations were not verified" % e); sys.exit(0)
+try:
+    data = json.loads(raw) if raw.strip() else {}
+except ValueError:
+    print("  !! .mcp.json is not valid JSON - MCP registrations were not verified; fix it and re-run"); sys.exit(0)
+if not isinstance(data, dict): data = {}
+servers = data.get("mcpServers")
+if not isinstance(servers, dict): servers = {}
+def describe(e):
+    if not isinstance(e, dict): return "absent"
+    if e.get("type") == "http" or e.get("url"): return "was http %s" % e.get("url", "?")
+    return "was stdio %s" % " ".join([str(e.get("command", "?"))] + [str(a) for a in (e.get("args") or [])][:3])
+changed = []
+for line in sys.stdin.read().splitlines():
+    if not line.strip(): continue
+    f = line.split("\t")
+    name, kind, rest = f[0], f[1], f[2:]
+    if kind == "http":
+        url = rest[0] if rest else ""
+        hdr = rest[1] if len(rest) > 1 else ""
+        want = {"type": "http", "url": url}
+        if hdr:
+            k, _, v = hdr.partition(":")
+            want["headers"] = {k.strip(): v.strip()}
+    else:
+        env, i = {}, 0
+        while i + 1 < len(rest) and rest[i] == "-e":
+            k, _, v = rest[i + 1].partition("=")
+            env[k] = v
+            i += 2
+        if i < len(rest) and rest[i] == "--": i += 1
+        want = {"type": "stdio", "command": rest[i] if i < len(rest) else "", "args": rest[i + 1:], "env": env}
+    have = servers.get(name)
+    if have == want: continue
+    servers[name] = want
+    changed.append((name, describe(have)))
+if changed:
+    data["mcpServers"] = servers
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+    with open(repaired_out, "w", encoding="utf-8") as fh:
+        fh.write("".join(n + "\n" for n, _ in changed))
+    for name, was in changed:
+        print("  mcp repaired: %s (%s)" % (name, was))
+'
+
+_verify_mcps_project() {
+  local tmpin tmpout entry name args line _scope_line
+  tmpin="$(mktemp)"; tmpout="$(mktemp)"
+  : > "$tmpout"
+  for entry in ${MCPS[@]+"${MCPS[@]}"}; do
+    name="${entry%%|*}"; args="${entry#*|}"
+    _mcp_expect_line "$name" "$args" >> "$tmpin"
+  done
+  # `claude mcp add --scope project` writes <cwd>/.mcp.json - the same file this reads back.
+  python3 -c "$_MCP_VERIFY_PY" "$PWD/.mcp.json" "$tmpout" < "$tmpin" || log "  !! MCP verify failed - registrations were not checked"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    MCP_REPAIRS=$((MCP_REPAIRS + 1))
+    # A repaired entry that `mcp get` still resolves at another scope is SHADOWED - the file is
+    # right and the other registration wins at launch. Report it; removing someone else's
+    # registration is not drift repair.
+    _scope_line="$(claude mcp get "$name" 2>/dev/null | sed -n 's/^ *Scope: *//p' | head -1)"
+    if [ -n "$_scope_line" ] && ! printf '%s' "$_scope_line" | grep -qi 'project'; then
+      log "  !! mcp $name is also registered at another scope, which wins over .mcp.json - remove it with: claude mcp remove $name -s user (or -s local)"
+    fi
+  done < "$tmpout"
+  rm -f "$tmpin" "$tmpout"
+}
+
+_mcp_get_shape() {  # $1 = name -> 'http|<url>' / 'stdio|<command> <args>' as `claude mcp get` reports it ('' when unreadable)
+  claude mcp get "$1" 2>/dev/null | awk '
+    /^ *Type: /    { t = $2 }
+    /^ *URL: /     { u = $2 }
+    /^ *Command: / { c = $2 }
+    /^ *Args: /    { sub(/^ *Args: */, ""); a = $0 }
+    END { if (t == "http") printf "http|%s", u; else if (t != "") printf "stdio|%s %s", c, a }'
+}
+
+_verify_mcps_user() {
+  local entry name args line kind want have
+  for entry in ${MCPS[@]+"${MCPS[@]}"}; do
+    name="${entry%%|*}"; args="${entry#*|}"
+    line="$(_mcp_expect_line "$name" "$args")"
+    kind="$(printf '%s' "$line" | cut -f2)"
+    if [ "$kind" = "http" ]; then
+      want="http|$(printf '%s' "$line" | cut -f3)"
+    else
+      # 'stdio|<command> <args>' - the env pairs and the -- separator are not in `mcp get`'s Command/Args lines.
+      want="stdio|$(printf '%s' "$line" | cut -f3- | tr '\t' '\n' | awk '/^-e$/{skip=1;next} skip{skip=0;next} /^--$/{next} {printf "%s%s", (n++?" ":""), $0}')"
+    fi
+    have="$(_mcp_get_shape "$name")"
+    [ -z "$have" ] && continue                     # an older CLI, or a server the account config does not expose - nothing to compare against
+    [ "$have" = "$want" ] && continue
+    log "  mcp shape drifted at user scope: $name - re-registering"
+    claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
+    _mcp_register "$name" "$args" >/dev/null 2>&1 || true
+    have="$(_mcp_get_shape "$name")"
+    if [ -n "$have" ] && [ "$have" != "$want" ]; then
+      note_failure "mcp $name could not be brought to the current shape at user scope - remove it by hand (claude mcp remove $name -s user) and re-run"
+    else
+      MCP_REPAIRS=$((MCP_REPAIRS + 1)); log "  mcp repaired: $name (user scope)"
+    fi
+  done
+}
+
+verify_mcps() {
+  [ "$CLAUDE_MISSING" = true ] && return 0
+  command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }
+  if [ "$CLAUDE_SCOPE" = "project" ]; then
+    command -v python3 >/dev/null 2>&1 || { log "  !! python3 not found - MCP registrations were not verified"; return 0; }
+    _verify_mcps_project
+  else
+    _verify_mcps_user
+  fi
+  return 0
 }
 
 # _install_from_src <subdir> <label> <dest-dir> <executable?> <file...>
@@ -1212,7 +1378,7 @@ install_mcps() {
 # 'current' rather than rewritten, so a no-op run leaves mtimes alone.
 _install_from_src() {
   local subdir="$1" label="$2" dest_dir="$3" exec_bit="$4"; shift 4
-  stack_src || { log "  !! stack source unavailable - kept existing $label copies"; return 0; }
+  stack_src || { note_failure "$label refresh SKIPPED - stack source unavailable; the existing copies are unchanged"; return 0; }
   local file src dest
   for file in "$@"; do
     src="$STACK_SRC/$subdir/$file"
@@ -1720,13 +1886,66 @@ update_skills() {
   install_skills
 }
 
+# `claude plugin list --json` -> one 'name<TAB>version<TAB>scope' line per INSTALLED stack plugin.
+# The listing is machine-global: an entry carries projectPath for a project-scoped install, so this
+# keeps THIS project's rows plus the account-level (user/local) ones and drops a sibling repo's.
+# An older CLI without --json prints nothing parseable -> no lines -> the caller keeps its defaults.
+_PLUGIN_SCAN_PY='
+import json, sys, os
+cwd = os.path.realpath(sys.argv[1])
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+rows = d.get("installed", []) if isinstance(d, dict) else d
+best = {}
+for e in rows if isinstance(rows, list) else []:
+    if not isinstance(e, dict): continue
+    name = str(e.get("id", "")).split("@")[0]
+    if not name: continue
+    pp = e.get("projectPath")
+    if pp and os.path.realpath(str(pp)) != cwd: continue
+    rank = 0 if pp else 1                       # this project first, then the account-level rows
+    if name not in best or rank < best[name][0]:
+        best[name] = (rank, str(e.get("version", "?")), str(e.get("scope", "")))
+for name, (_, ver, scope) in best.items():
+    print("%s\t%s\t%s" % (name, ver, scope))
+'
+_plugin_scan() {  # -> name<TAB>version<TAB>scope lines; empty when the CLI or python3 cannot answer
+  command -v python3 >/dev/null 2>&1 || return 0
+  claude plugin list --json 2>/dev/null | python3 -c "$_PLUGIN_SCAN_PY" "$PWD" 2>/dev/null || true
+}
+_plugin_field() {  # $1 = scan output $2 = name $3 = field index (2=version, 3=scope)
+  printf '%s\n' "$1" | awk -F'\t' -v n="$2" -v f="$3" '$1 == n { print $f; exit }'
+}
+
 update_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   claude plugin marketplace update 2>/dev/null || true            # refresh marketplaces first
+  local before after p name pscope v1 v2
+  before="$(_plugin_scan)"
   for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
-    pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac   # claude-hud is user-scope (statusline)
+    name="${p%%@*}"
+    # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a
+    # silent no-op, so passing the INSTALL's scope left every user-scoped plugin on its old version
+    # under a project install. The manifest default (claude-hud is user-scope, the rest follow the
+    # run) only applies when the listing cannot say.
+    pscope="$(_plugin_field "$before" "$name" 3)"
+    if [ -z "$pscope" ]; then
+      pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
+    fi
     log "plugin update [$pscope]: $p"
     claude plugin update "$p" --scope "$pscope" -y 2>&1 | tail -1 || true   # -y for the same non-TTY reason as install
+  done
+  # Read the versions back: `claude plugin update` reports success whether or not anything moved.
+  after="$(_plugin_scan)"
+  [ -n "$before$after" ] || return 0
+  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+    name="${p%%@*}"
+    v1="$(_plugin_field "$before" "$name" 2)"; v2="$(_plugin_field "$after" "$name" 2)"
+    if [ -z "$v2" ]; then log "  plugin $name: not installed - /claude-stack:configure adds it"
+    elif [ "$v1" != "$v2" ] && [ -n "$v1" ]; then log "  plugin $name: $v1 -> $v2"
+    else log "  plugin $name: $v2 (already newest)"; fi
   done
 }
 
@@ -1743,27 +1962,14 @@ update_mcps() {
   prune_retired_mcps
   # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
   # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
-  # design; the hosted servers (context7 remote, sentry) have nothing to pin.
-  local entry name args url hdr
-  local -a spec_words
+  # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
+  # name the remove did not clear exits 0 without writing - verify_mcps is what makes this stick.
+  local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
     log "mcp refresh [$CLAUDE_SCOPE]: $name"
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
-    if [ "$args" = "@HTTP@" ]; then
-      # remote (hosted) server - url/header keyed by name: sentry, else context7. An EMPTY header
-      # (sentry --sentry-auth oauth) registers with no --header at all, so the OAuth fallback stays on.
-      if [ "$name" = "sentry" ]; then url="$SENTRY_REMOTE_URL"; hdr="$SENTRY_REMOTE_HDR"
-      else url="$CONTEXT7_REMOTE_URL"; hdr="$CONTEXT7_REMOTE_HDR"; fi
-      if [ -n "$hdr" ]; then
-        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" --header "$hdr" || note_failure "mcp $name failed"
-      else
-        claude mcp add --transport http --scope "$CLAUDE_SCOPE" "$name" "$url" || note_failure "mcp $name failed"
-      fi
-      continue
-    fi
-    _mcp_argv "$args"   # split-first + per-word token resolution, as in install_mcps
-    claude mcp add --scope "$CLAUDE_SCOPE" "$name" "${spec_words[@]}" || note_failure "mcp $name failed"
+    _mcp_register "$name" "$args" || note_failure "mcp $name failed"
   done
 }
 
@@ -1885,9 +2091,9 @@ install_github_cli
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; install_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project
+  install_skills; install_plugins; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project
 else
-  update_skills; update_plugins; update_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project
+  update_skills; update_plugins; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed
@@ -1900,6 +2106,7 @@ for _e in ${HOOKS[@]+"${HOOKS[@]}"}; do _n="${_e%%::*}"; case " $_seen " in *" $
 _summary="  installed/refreshed this run - skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
 [ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"
 [ "$KEEP_PINS" = true ] && _summary="$_summary; keep-pins=on"
+[ "$MCP_REPAIRS" -gt 0 ] && _summary="$_summary; mcp registrations repaired=$MCP_REPAIRS"
 log "$_summary; context7=$CONTEXT7_MODE"
 # The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
 # project-owned files and names this release no longer ships are neither refreshed nor counted

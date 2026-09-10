@@ -182,8 +182,8 @@ fallback), so an install is a single revision - the one `claude-stack.stamp` rec
 | Surface | Delivery |
 |---|---|
 | Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
-| MCP | `claude mcp add` → `<repo>/.mcp.json` |
-| Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail) |
+| MCP | `claude mcp add` → `<repo>/.mcp.json`, then VERIFIED: every stack-owned entry is compared to the manifest shape and rewritten when it drifted (see the gotcha below) |
+| Plugins | 7 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud, ponytail); update runs at the scope `claude plugin list --json` says each is installed at - passing the run's own scope was a silent no-op - and reads the versions back (`x -> y` / `already newest`) |
 | Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all eleven; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
 | Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
@@ -354,7 +354,18 @@ documented there.
 
 ## Maintenance gotchas
 
-- The installer regenerates `.mcp.json` on every run - fix the template, not the output.
+- **`.mcp.json` is registered by the CLI and VERIFIED by the installer - fix the manifest, not the output.**
+  `claude mcp add` over an existing server name prints 'already exists' and EXITS 0, so a `remove` that did
+  not take (an old CLI, a scope mismatch, a registration shadowing from another scope) is indistinguishable
+  from a successful rewrite: the run reported the MCP refreshed and the stale entry survived every update -
+  measured on a consuming project still carrying the pre-0.2.34 stdio sentry registration, `SENTRY_HOST` and
+  all. So the CLI stays the happy path and `verify_mcps` / `Test-McpRegistrations` read the RESULT back: at
+  project scope `.mcp.json` is parsed directly and the drifted entries rewritten (`mcp repaired: <name>`),
+  at user scope the shape comes from `claude mcp get` and a mismatch is retried once through the CLI, then
+  reported - the account config is never hand-edited. The expected shape is built from the SAME manifest
+  words the add is given, so a pin bumped this run is itself a mismatch and the refresh becomes verified;
+  a server the project added by hand is not a stack name and is never touched. `scripts/mcp-verify.test.js`
+  pins it on both twins with a stub `claude` that exits 0 and writes nothing - the failure itself.
 - Editing a consuming project's installed copy is local-only; mirror the change into this repo's
   installer twins (both shells) or the next install wipes it - and into `cursor-stack`
   when the change touches the shared skills/MCP baseline or a twinned agent/rule.
