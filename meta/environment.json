@@ -1,18 +1,7 @@
 {
-  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: setup asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback. A row may also carry `secret: true`, and any key matching `secret_key_pattern` is treated the same way whether or not it has a row: its VALUE is never printed, never echoed back as a default, and never asked for through the chat - the walks report `set (N chars)` or `absent` and point the user at the file. Measured: seven credential exposures across one corpus, one of them an account settings.json read whole as a session's first tool call. A change to ANY of these takes effect on the NEXT TOOL CALL - every hook reads its value per invocation - so no session restart is ever needed. State that when reporting a flip: a run once told the user to restart, and `grep -rn restart` over stack/, meta/, scripts/ and setup-plugin/ found no such claim anywhere, so the model had invented it (the instrumentation ledger's first row in fact landed 27.2 s later in the same session, covering 63 of 65 calls). A fact about the stack's own behaviour that the stack does not state gets invented.",
+  "_comment": "The environment values this stack owns in the scope's settings.json `env` block (the project's .claude/settings.json, or the account file for a global install). ONE source for the three guided commands: setup asks the `ask: true` rows on its environment screen, configure step 9 shows and changes them, validate reconciles what is on disk against this list - a row absent from the file is a MISSING key the release introduced, a `renamed_from` still present is the old spelling, and a value failing `validate` is flagged with the expected shape. The installers seed every row ABSENT-ONLY on install and update (and apply the renames first, value carried over), so this catalog and the two installer twins must agree - `npm run lint` fails when they drift. Adding a variable: add the row here, seed it in both twins, and, when it replaces an older name, add the rename pair to migrations.json and give every consumer an old-name fallback. A row may carry `group_off`: it and every row naming it in `asked_with` are ONE feature, so the question that asks it also offers switching the feature off, which writes that value to the whole group (the walks never invent an off answer for a row without it). A row may also carry `secret: true`, and any key matching `secret_key_pattern` is treated the same way whether or not it has a row: its VALUE is never printed, never echoed back as a default, and never asked for through the chat - the walks report `set (N chars)` or `absent` and point the user at the file. Measured: seven credential exposures across one corpus, one of them an account settings.json read whole as a session's first tool call. A change to ANY of these takes effect on the NEXT TOOL CALL - every hook reads its value per invocation - so no session restart is ever needed. State that when reporting a flip: a run once told the user to restart, and `grep -rn restart` over stack/, meta/, scripts/ and setup-plugin/ found no such claim anywhere, so the model had invented it (the instrumentation ledger's first row in fact landed 27.2 s later in the same session, covering 63 of 65 calls). A fact about the stack's own behaviour that the stack does not state gets invented.",
   "secret_key_pattern": "(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$",
   "env": [
-    {
-      "key": "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
-      "default": "40",
-      "ask": true,
-      "what": "the harness's context auto-compact trigger, as a percent of the window. Not a stack gate - Claude Code's own. 'off' means `autoCompactEnabled: false` with this key deleted rather than left dead.",
-      "validate": {
-        "type": "percent",
-        "min": 5,
-        "max": 95
-      }
-    },
     {
       "key": "CLAUDE_STACK_DOCS_PATH",
       "default": ".claude/docs",
@@ -63,27 +52,39 @@
       }
     },
     {
-      "key": "CLAUDE_STACK_FRESH_SESSION_PCT",
-      "default": "40",
+      "key": "CLAUDE_STACK_FRESH_SESSION_1M",
+      "default": "400000",
       "ask": true,
-      "what": "how much of the context window a session may carry before an orchestration run (a capture, a loop, a solve flow) is offered a fresh session instead. `0` turns the gate off. On the auto-detected 200k tier it is INERT below 76 - the trigger keeps the measured 150k floor. Above that tier the trigger is CAPPED at 250k whatever the percentage says, because the harness auto-compacts at ~390k and a trigger above that ceiling can never fire.",
+      "group_off": "0",
+      "what": "the per-message context, in TOKENS, at which a session on a 1M window is offered a fresh session instead of carrying on (an orchestration run is gated, a finished turn is offered). This row OWNS the whole gate: the two rows riding with it are the other window sizes, and `group_off` means the question also offers turning the feature off, which writes `0` to all three. The 400,000 default sits ABOVE the harness's own auto-compaction (measured preTokens 387,619-397,171), so on this window the turn-end offer is usually unreachable and the SessionStart compact route is what reaches you - lower it (250000, 350000) to be asked before the harness decides.",
       "validate": {
-        "type": "percent",
-        "min": 5,
-        "max": 95,
+        "type": "tokens",
+        "min": 0,
         "off": "0"
       }
     },
     {
-      "key": "CLAUDE_STACK_CONTEXT_WINDOW",
-      "default": "AUTO",
+      "key": "CLAUDE_STACK_FRESH_SESSION_200K",
+      "default": "150000",
       "ask": true,
-      "asked_with": "CLAUDE_STACK_FRESH_SESSION_PCT",
-      "what": "the context window that percentage applies to. Leave it `AUTO` - AUTO MEANS auto-detect, and that is the right answer on every machine: the gate reads the settings model id's own window suffix (`opus[1m]`), else infers the tier from what the session has already carried. The seed is that WORD rather than an empty string because an empty box reads as a variable nobody got round to filling in; either value detects, but only one says so. It used to be seeded `1000000`, which killed the gate on every install that was not a 1M account - this value is the FIRST layer of the resolution, so a stated 1M window on a 200k session put the trigger above anything that session can ever carry. Put a NUMBER here (`1000000` / `200000`) only to OVERRULE detection.",
+      "asked_with": "CLAUDE_STACK_FRESH_SESSION_1M",
+      "what": "the same trigger in TOKENS for a 200k window. 150,000 is the measured figure - below it the offer nags, above it a 200k session has little room left to carry. `0` turns that tier off. The two tiers never interfere: each window size reads only its own variable.",
       "validate": {
-        "type": "int-or-auto",
-        "auto": "AUTO",
-        "min": 100000
+        "type": "tokens",
+        "min": 0,
+        "off": "0"
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_FRESH_SESSION_DEFAULT",
+      "default": "250000",
+      "ask": true,
+      "asked_with": "CLAUDE_STACK_FRESH_SESSION_1M",
+      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the settings `model` names no `[1m]`/`[200k]` window suffix) and a window that is neither of those two sizes. 250,000 sits between the two named triggers, so an unknown window is neither nagged at the 200k figure nor left unreachable at the 1M one. `0` turns the offer off wherever the window is not one of the two named sizes.",
+      "validate": {
+        "type": "tokens",
+        "min": 0,
+        "off": "0"
       }
     }
   ]

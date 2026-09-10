@@ -72,19 +72,31 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
   };
 })();
 
-// The trigger scales with the CONTEXT WINDOW, not a flat token count. A fixed 150k is ~75% of a
-// 200k window (where it was measured) but only 15% of a 1M-context session, which is why it fired
-// on nearly every ask there. Percent is tunable per machine with CLAUDE_STACK_FRESH_SESSION_PCT
-// (default 40, the same shape as the harness's own auto-compact percentage), seeded into the scope
-// settings.json `env` beside CLAUDE_STACK_CONTEXT_WINDOW; where the WINDOW comes from is below.
-const _pct = parseInt(process.env.CLAUDE_STACK_FRESH_SESSION_PCT, 10);
-// 0 DISABLES the offer outright - a `|| 40` fallback silently turned the off switch back on.
-// Anything else is clamped into 5..95; unset or garbage takes the 40 default.
-const FRESH_PCT = _pct === 0 ? 0 : Math.min(95, Math.max(5, Number.isNaN(_pct) ? 40 : _pct));
-const CTX_FLOOR = 150000;
-// The upper bound on any window larger than 200k - see ctxThreshold for the measurement behind it.
-// Without it the trigger lands above the harness's own auto-compact ceiling and never fires.
-const CTX_CEILING = 250000;
+// The trigger is an ABSOLUTE token count per WINDOW TIER, one environment variable each - the
+// percentage knob it replaces was inert at its default on both real tiers (200k x 40% fell under
+// the floor, 1M x 40% sat over the ceiling), so the clamps decided and the setting lied about what
+// it controlled. Three numbers, no arithmetic: say when you want to be asked.
+//   CLAUDE_STACK_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
+//   CLAUDE_STACK_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
+//   CLAUDE_STACK_FRESH_SESSION_DEFAULT - the trigger on anything else (default 250,000)
+// `0` on any of them turns that case's offer off. NOTE the 1M default sits ABOVE the harness's own
+// auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 / 393,969 / 395,112 / 396,651 /
+// 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
+// by design and the SessionStart `compact` route is what reaches the user - lower the variable to
+// be asked before the harness decides. Which WINDOW this session runs in is resolved below.
+function freshAt(key, dflt) {
+  const n = parseInt(process.env[key], 10);
+  return Number.isNaN(n) || n < 0 ? dflt : n;   // garbage takes the default; 0 is a real answer (off)
+}
+const FRESH_AT_200K = freshAt('CLAUDE_STACK_FRESH_SESSION_200K', 150000);
+const FRESH_AT_1M = freshAt('CLAUDE_STACK_FRESH_SESSION_1M', 400000);
+// The DEFAULT covers every case that is not one of the two named windows: a window that cannot be
+// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It sits between the
+// two triggers, so an unknown window is neither nagged at 150,000 nor left unreachable at 400,000.
+const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 250000);
+// `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read
+// at all any more - a percentage of a window is not what this gate fires on.
+const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
 
 // --- which context WINDOW is this session running in? -------------------------------------
 // Measured on a 1M session: the transcript's message.model records `claude-opus-5` with the
@@ -93,26 +105,11 @@ const CTX_CEILING = 250000;
 // var carries the model. settings.json's `model` keeps it - and so does the transcript's own
 // `cost-state` record (`modelUsage` is keyed `claude-opus-5[1m]`), which the earlier text wrongly
 // called the ONLY source; measured on CLI 2.1.258 and 2.1.261. settings.json's
-// `model` (e.g. `opus[1m]`). So, first layer that resolves wins:
-//   1. CLAUDE_STACK_CONTEXT_WINDOW - the user's own statement, so it outranks every guess. It
-//      goes in the scope settings.json `env` block, seeded `AUTO` - the word, so the knob reads as
-//      answered rather than as an empty box someone forgot. Anything that is not a window size
-//      (AUTO, empty, a typo) falls through to the layers below, which is the seeded behaviour;
-//      a NUMBER here is the overrule.
-//      Ranking it BELOW the model id would make it dead on every machine whose settings names a
-//      plain model, since that layer would already have answered 200k.
-//   2. the settings.json model id's own window suffix - `[1m]`, `[200k]`. A property of the id,
-//      never a model -> window TABLE: a table goes stale on every model release, and a wrong
-//      guess on an unknown id is worse than falling through to what the session proves.
-//   3. what this session has already carried - no request can hold more input tokens than the
-//      window, so a message past 200k proves the 1M tier. Latched once proven (below).
-// Nothing resolves: 200k, which is exactly the behaviour before this existed.
-const _win = parseInt(process.env.CLAUDE_STACK_CONTEXT_WINDOW, 10);
-// Below the smallest real window the value is not a window - it FALLS THROUGH to the next layer,
-// the same answer windowFromModelId gives a bad suffix and the same one environment.json's
-// `min` flags to validate. Clamping it up instead was three answers to one question: the hook
-// silently ran on a 100k window while the reconciler called the value invalid.
-const WINDOW_OVERRIDE = _win >= 100000 ? _win : null;
+// `model` (e.g. `opus[1m]`). The window is read from ONE place: the settings.json model id's own window suffix - `[1m]`,
+// `[200k]`. A property of the id, never a model -> window TABLE, which goes stale on every model
+// release. Anything else - no suffix, an unreadable settings file, or a suffix naming some other
+// size - is not one of the two named tiers and takes CLAUDE_STACK_FRESH_SESSION_DEFAULT. There is
+// no env override: a hand-set window was one more number to keep true.
 function windowFromModelId(id) {
   const m = /\[(\d+)\s*([km])\]/i.exec(String(id || ''));
   if (!m) return null;
@@ -138,50 +135,22 @@ function settingsModelWindow() {
   } catch { /* no home and no cwd - fall through to the next layer */ }
   return null;
 }
-// The proven tier is LATCHED per session: the max-context scan reads a 512KB transcript TAIL, so
-// a long session's early 200k crossing scrolls out of it and the tier would regress from 400k
-// back to 150k mid-session. One file per transcript, beside the stop hook's own state.
-function tierFile() {
-  const os = require('os');
-  const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-ctx-window-${key}.tier`;
-}
-function latchedWindow() {
-  if (!payload.transcript_path) return null;
-  try {
-    const n = parseInt(fs.readFileSync(tierFile(), 'utf8'), 10);
-    return Number.isNaN(n) ? null : n;
-  } catch { return null; }
-}
-function latchWindow(w) {
-  if (!payload.transcript_path) return;
-  try { fs.writeFileSync(tierFile(), String(w)); } catch { /* best effort - the latch is a cache */ }
-}
 let _knownWindow;
 function knownWindow() {
-  if (_knownWindow === undefined) _knownWindow = WINDOW_OVERRIDE || settingsModelWindow() || latchedWindow() || null;
+  if (_knownWindow === undefined) _knownWindow = settingsModelWindow() || null;
   return _knownWindow;
 }
-// `proveTier` is LAZY - a thunk returning the largest per-message context seen. A known window
-// answers without calling it, which is what keeps the stop hook from re-reading the 512KB
-// transcript tail it has already read once per clean turn close.
-function ctxThreshold(proveTier) {
-  let window = knownWindow();
-  if (!window) {
-    window = proveTier() > 200000 ? 1000000 : 200000;
-    if (window > 200000) latchWindow(window);
-  }
-  const pct = Math.round((window * FRESH_PCT) / 100);
-  // Above the 200k tier the PERCENTAGE ALONE IS UNUSABLE, and the reason is arithmetic: the
-  // FRESH_PCT default (40) is the SAME NUMBER as the harness's own auto-compact percentage, so
-  // 40% of a 1M window is 400,000 - which sits ABOVE the ceiling the harness actually enforces.
-  // Measured auto-compaction preTokens across three projects: 387,619 / 391,290 / 393,516 /
-  // 393,969 / 395,112 / 396,651 / 396,954 / 397,171. The gate could never fire on a 1M account:
-  // the harness compacted first every time and took the decision this offer exists to give the
-  // user (one session dropped 1,474,734 tokens over four compactions and was never offered).
-  // The ceiling keeps the offer inside the reachable band on any window larger than 200k; the
-  // floor keeps the MEASURED 200k-tier behaviour unchanged.
-  return window > 200000 ? Math.min(pct, CTX_CEILING) : Math.max(CTX_FLOOR, pct);
+// The trigger this session is judged against. The two named tiers each own a variable; every
+// other answer - including 'the window could not be read' - takes the DEFAULT one, so the offer
+// always has a number behind it. Guessing a TIER instead was the failure: reading an unknown
+// window as 200k offered a 1M account the resume at 150k, and reading it as 1M never offered a
+// 200k account anything at all.
+function ctxThreshold() {
+  const window = knownWindow();
+  const at = window === 200000 ? FRESH_AT_200K
+    : window === 1000000 ? FRESH_AT_1M
+      : FRESH_AT_DEFAULT;
+  return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
 }
 // How far the context must grow before the fresh-session offer is made again (see below).
 const REOFFER_GROWTH = 1.5;
@@ -440,13 +409,11 @@ if (payload.hook_event_name === 'Stop') {
     // fresh; a turn that already made the offer, and a session already asked at this cost step,
     // both pass untouched.
     const usage = (() => { const l = lastAssistantMessage(); return (l && l.message && l.message.usage) || null; })();
-    if (!usage || FRESH_PCT === 0) process.exit(0);
+    if (!usage || FRESH_OFF) process.exit(0);
     const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
-    // Below the floor no window tier can qualify, so return before maxCtxSeen re-reads the same
-    // 512KB tail lastAssistantMessage just read - this branch runs on EVERY clean turn close.
-    // maxCtxSeen re-reads the tail lastAssistantMessage just read, so it is passed LAZILY: a
-    // known window never calls it, and the floor rule itself lives in ctxThreshold, once.
-    if (ctx <= ctxThreshold(() => maxCtxSeen(ctx))) process.exit(0);
+    // null = this window's trigger is 0, which is the user switching the offer off.
+    const _fresh_at = ctxThreshold();
+    if (_fresh_at === null || ctx <= _fresh_at) process.exit(0);
     if (FRESH_RE.test(prose)) process.exit(0); // the OFFER is prose - a fenced example is not one
     const since = lastBlockCtx();
     if (since && ctx < since * REOFFER_GROWTH) {
@@ -527,32 +494,6 @@ function blockStateFile() {
   return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
 }
 
-// The largest per-message context this session has carried, read off the same transcript tail.
-// It is what proves the window tier (see ctxThreshold): the CURRENT message can be small while
-// the session has already been far past 200k.
-function maxCtxSeen(fallback) {
-  try {
-    const p = payload.transcript_path;
-    if (!p) return fallback;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    let max = fallback;
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.includes('"usage"')) continue;
-      try {
-        const u = JSON.parse(line).message.usage;
-        max = Math.max(max, (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0));
-      } catch { /* not an assistant row, or a partial first line */ }
-    }
-    return max;
-  } catch {
-    return fallback;
-  }
-}
 
 // --- PreToolUse on AskUserQuestion: INJECT, never deny ---------------------
 // This branch used to DENY an ask that carried no fresh-session option. That enforced the right
@@ -617,11 +558,12 @@ if (payload.tool_name === 'AskUserQuestion') {
 
     // 3. FRESH SESSION. No recordBlockCtx here: this is a note, not the ask itself, so it must not
     // consume the cost step the Stop wiring's real offer is owed.
-    if (FRESH_PCT !== 0 && !FRESH_RE.test(askText)) {
+    if (!FRESH_OFF && !FRESH_RE.test(askText)) {
       const u = (() => { const l = lastAssistantMessage(); return (l && l.message && l.message.usage) || null; })();
       const ctx = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
       const since = lastBlockCtx();
-      if (ctx > ctxThreshold(() => maxCtxSeen(ctx)) && !(since && ctx < since * REOFFER_GROWTH)) {
+      const at = ctxThreshold();   // null = this window's trigger is switched off
+      if (at !== null && ctx > at && !(since && ctx < since * REOFFER_GROWTH)) {
         notes.push(`This session carries ~${Math.round(ctx / 1000)}k tokens per message and every ` +
           `further turn re-sends all of it. If this ask is about what to do NEXT, add an option to ` +
           `resume in a fresh session, carrying both absolute numbers (this carry, and the ~80-105k ` +

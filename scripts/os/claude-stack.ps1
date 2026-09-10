@@ -1942,24 +1942,36 @@ function Set-HookSettings {
       Log "  settings.json env: $($pair.old) renamed to $($pair.new)"
     }
   }
+  # Environment keys this stack RETIRED: nothing reads them any more, so they are DROPPED rather
+  # than carried - a dead key in the env block reads as a knob that still works. The value is never
+  # moved anywhere. A key that still means something OUTSIDE this stack carries the seed it is
+  # dropped at, so a value the user set by hand is theirs and stays. Same list in both installer
+  # twins and in meta/migrations.json (the plugin route applies it from there).
+  foreach ($dead in @(
+      @{ key = 'CLAUDE_STACK_FRESH_SESSION_PCT'; only = $null },
+      @{ key = 'CLAUDE_STACK_CONTEXT_WINDOW';    only = $null },
+      @{ key = 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'; only = '40' })) {
+    if ($data.env.PSObject.Properties[$dead.key] -and
+        ($null -eq $dead.only -or [string]$data.env.($dead.key) -eq $dead.only)) {
+      $data.env.PSObject.Properties.Remove($dead.key)
+      $changed = $true
+      Log "  settings.json env: $($dead.key) removed (retired - nothing reads it)"
+    }
+  }
   # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
-  # still exactly that seed - a value the user set by hand is theirs and is never touched. Same
-  # list in both installer twins and in meta/migrations.json (the plugin route applies it there).
-  foreach ($reset in @(
-      @{ key = 'CLAUDE_STACK_CONTEXT_WINDOW'; seed = '1000000'; to = 'AUTO' },
-      @{ key = 'CLAUDE_STACK_CONTEXT_WINDOW'; seed = '';        to = 'AUTO' })) {
+  # still exactly that seed - a value the user set by hand is theirs and is never touched. The list
+  # is EMPTY today (CLAUDE_STACK_CONTEXT_WINDOW was the only entry and the key is retired); keep the
+  # shape, and keep any entry identical in both installer twins and in meta/migrations.json.
+  foreach ($reset in @()) {
     if ($data.env.PSObject.Properties[$reset.key] -and [string]$data.env.($reset.key) -eq $reset.seed) {
       $data.env.($reset.key) = $reset.to
       $changed = $true
       Log "  settings.json env: $($reset.key) reset to $($reset.to) (auto-detect)"
     }
   }
-  # env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
-  # absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
-  if (-not $data.env.PSObject.Properties['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -NotePropertyValue '40'
-    $changed = $true
-  }
+  # NOT seeded: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. It is Claude Code's own auto-compaction trigger,
+  # not a stack setting, and this installer wrote 40 into every project - a value nobody chose.
+  # An install that already carries it keeps it; the stack simply no longer owns the key.
   # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
   # Forward slashes DELIBERATELY, also on Windows - the value is consumed by Node hooks and the
   # model, both of which resolve '/' fine; backslashes would need JSON escaping and break parity.
@@ -1985,32 +1997,36 @@ function Set-HookSettings {
     $changed = $true
   }
   # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
-  # Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
-  # different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
-  # expected the gate to move (reported 2026-09-04 - the gate reads its own value, absent and
-  # defaulted to 40 anyway, so the number matched while the setting did nothing).
-  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_PCT']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_PCT -NotePropertyValue '40'
+  # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both
+  # real tiers (200k x 40% fell under the floor, 1M x 40% sat over the ceiling), so the clamps
+  # decided and the knob lied about what it controlled. That key is retired outright - nothing reads
+  # it any more; '0' on BOTH keys below is the off switch. 400,000 on the 1M tier is
+  # deliberately ABOVE the harness's own auto-compaction (387,619-397,171 measured), so there the
+  # SessionStart compact route carries the offer - lower it to be asked first.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_1M']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_1M -NotePropertyValue '400000'
     $changed = $true
   }
-  # The context window that percentage applies to - seeded 'AUTO', which MEANS auto-detect. The
-  # sentinel is a WORD, not an empty string: the box is written so the knob stays visible in the env
-  # block, and an empty value there reads as a variable nobody filled in rather than as a decision.
-  # Anything that is not a window size falls through to detection identically, so an install still
-  # carrying the old '' is reset to AUTO by the pass above. It was seeded '1000000', and that killed
-  # the gate on every install that was not a 1M account: this value is the FIRST layer of the hooks'
-  # window resolution, so a stated 1M window on a 200k session put the trigger above anything that
-  # session can ever carry, and no offer could fire (ten confirmations across four projects). On
-  # AUTO the hooks read the settings model id's own window suffix (`opus[1m]`), else the tier the
-  # session has already proven. Put a NUMBER here only to OVERRULE that - '1000000' or '200000'.
-  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_CONTEXT_WINDOW']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONTEXT_WINDOW -NotePropertyValue 'AUTO'
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_200K']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_200K -NotePropertyValue '150000'
     $changed = $true
   }
+  # ... and the trigger for every OTHER case: a window the hooks cannot read (the settings `model`
+  # carries no window suffix) and one that is neither named size. 250,000 sits between the two.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_DEFAULT']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_DEFAULT -NotePropertyValue '250000'
+    $changed = $true
+  }
+  # WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
+  # model id's own window suffix ('opus[1m]'), else take the tier the session has already proven
+  # (nothing can carry more input tokens than the window), else make no offer at all. The old
+  # CLAUDE_STACK_CONTEXT_WINDOW knob is retired - it was seeded '1000000', which declared a 1M
+  # window on every install and killed the gate on every account that was not 1M (ten confirmations
+  # across four projects), and its replacement seeds ('' then 'AUTO') only ever meant 'detect'.
   if ($changed) {
     try {
       Write-JsonFile $data $settings
-      Log '  settings.json: hooks + secret deny-list + mcp allow-list + compact default ensured'
+      Log '  settings.json: hooks + secret deny-list + mcp allow-list + env defaults ensured'
     }
     catch {
       # Mirror the .sh twin's `|| log "settings.json wiring failed"`: a single unwritable file must
@@ -2022,7 +2038,7 @@ function Set-HookSettings {
     }
   }
   else {
-    Log '  settings.json: hooks + secret deny-list + mcp allow-list + compact default already present - unchanged'
+    Log '  settings.json: hooks + secret deny-list + mcp allow-list + env defaults already present - unchanged'
   }
 }
 
@@ -2431,13 +2447,15 @@ Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path
 Write-Host ''
 Write-Host 'The same env block carries the fresh-session gate''s two knobs (seeded, absent-only, so a'
 Write-Host 'hand-edited value survives every update):'
-Write-Host '  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an'
-Write-Host '                                   orchestration run is offered a fresh one (default 40; 0 = off)'
-Write-Host '  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to - seeded AUTO, which'
-Write-Host '                                   means auto-detect: the hooks read the settings model id''s'
-Write-Host '                                   window suffix (opus[1m]), else the tier the session has'
-Write-Host '                                   already proven. Put a number there (1000000 / 200000) only'
-Write-Host '                                   to overrule that; it outranks every detection layer.'
-Write-Host 'On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured'
-Write-Host '150k floor, and 200k x 75% is still 150k. Above that tier it is capped at 250k, because the'
-Write-Host 'harness auto-compacts at ~390k and a trigger above that ceiling can never fire.'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a window over 200k may carry'
+Write-Host '                                   before an orchestration run is offered a fresh one (default 400000;'
+Write-Host '                                   0 = off). Above the harness own auto-compaction, so lower it to be'
+Write-Host '                                   asked before the harness decides for you'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_200K  the same trigger on a 200k window (default 150000; 0 = off)'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_DEFAULT'
+Write-Host '                                   the same trigger for every other case - a window the hooks'
+Write-Host '                                   cannot read, or one that is neither of those sizes (default'
+Write-Host '                                   250000; 0 = off)'
+Write-Host 'Which one applies is DETECTED, not configured: the hooks read the window suffix on the settings'
+Write-Host 'model id (opus[1m], opus[200k]); anything else takes the DEFAULT trigger.'
+Write-Host 'CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.'

@@ -1758,18 +1758,30 @@ for _old, _new in (("CLAUDE_DOCS_PATH", "CLAUDE_STACK_DOCS_PATH"),):
         del env[_old]
         changed = True
         print("  settings.json env: %s renamed to %s" % (_old, _new))
+# Environment keys this stack RETIRED: nothing reads them any more, so they are DROPPED rather than
+# carried - a dead key in the env block reads as a knob that still works. The value is never moved
+# anywhere. A key that still means something OUTSIDE this stack carries the seed it is dropped at,
+# so a value the user set by hand is theirs and stays. Same list in both installer twins and in
+# meta/migrations.json (the plugin route applies it from there).
+for _key, _only_when in (("CLAUDE_STACK_FRESH_SESSION_PCT", None),
+                         ("CLAUDE_STACK_CONTEXT_WINDOW", None),
+                         ("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "40")):
+    if _key in env and (_only_when is None or env[_key] == _only_when):
+        del env[_key]
+        changed = True
+        print("  settings.json env: %s removed (retired - nothing reads it)" % _key)
 # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
-# still exactly that seed - a value the user set by hand is theirs and is never touched. Same list
-# in both installer twins and in meta/migrations.json (the plugin route applies it from there).
-for _key, _bad_seed, _to in (("CLAUDE_STACK_CONTEXT_WINDOW", "1000000", "AUTO"), ("CLAUDE_STACK_CONTEXT_WINDOW", "", "AUTO")):
+# still exactly that seed - a value the user set by hand is theirs and is never touched. The list
+# is EMPTY today (CLAUDE_STACK_CONTEXT_WINDOW was the only entry and the key is retired); keep the
+# shape, and keep any entry identical in both installer twins and in meta/migrations.json.
+for _key, _bad_seed, _to in ():
     if env.get(_key) == _bad_seed:
         env[_key] = _to
         changed = True
         print("  settings.json env: %s reset to %s (auto-detect)" % (_key, _to))
-# env: project-default auto-compact trigger (compact at ~40% of the context window). Set only when
-# absent, so a project that pins its own value - or holds CONTEXT7_API_KEY here - is never clobbered.
-if "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in env:
-    env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "40"; changed = True
+# NOT seeded: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. It is Claude Code's own auto-compaction trigger,
+# not a stack setting, and this installer wrote 40 into every project - a value nobody chose.
+# An install that already carries it keeps it; the stack simply no longer owns the key.
 # generated-docs root: the authoritative value the baseline-docs-root rule resolves at session start.
 # Forward slashes on every OS (Node hooks and the model resolve them fine on Windows).
 if "CLAUDE_STACK_DOCS_PATH" not in env:
@@ -1785,30 +1797,32 @@ if "CLAUDE_STACK_PUSH_GATE" not in env:
 # rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
-# fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
-# Until they were, the only percentage in the block was CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a
-# different knob (the harness auto-compact trigger); a user raised THAT to 40 and reasonably
-# expected the gate to move (reported 2026-09-04 - the gate reads its own value, absent and
-# defaulted to 40 anyway, so the number matched while the setting did nothing).
-if "CLAUDE_STACK_FRESH_SESSION_PCT" not in env:
-    env["CLAUDE_STACK_FRESH_SESSION_PCT"] = "40"; changed = True
-# The context window that percentage applies to - seeded "AUTO", which MEANS auto-detect. The
-# sentinel is a WORD, not an empty string: the box is written so the knob stays visible in the env
-# block, and an empty value there reads as a variable nobody filled in rather than as a decision.
-# Anything that is not a window size falls through to detection identically, so an install still
-# carrying the old "" is reset to AUTO by the pass above. It was seeded "1000000", and that killed
-# the gate on every install that was not a 1M account: this value is the FIRST layer of the hooks'
-# window resolution, so a stated 1M window on a 200k session put the trigger above anything that
-# session can ever carry, and no offer could fire (ten confirmations across four projects). On
-# AUTO the hooks read the settings model id's own window suffix (`opus[1m]`), else the tier the
-# session has already proven. Put a NUMBER here only to OVERRULE that - "1000000" or "200000".
-if "CLAUDE_STACK_CONTEXT_WINDOW" not in env:
-    env["CLAUDE_STACK_CONTEXT_WINDOW"] = "AUTO"; changed = True
+# fresh-session gate - one ABSOLUTE trigger per window tier, seeded so both are visible and
+# tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
+# at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the
+# ceiling), so the clamps decided and the knob lied about what it controlled. That key is retired
+# outright - nothing reads it any more; `0` on BOTH keys below is the off switch.
+# 400,000 on the 1M tier is deliberately ABOVE the harness's own auto-compaction (387,619-397,171
+# measured), so there the SessionStart compact route carries the offer - lower it to be asked first.
+if "CLAUDE_STACK_FRESH_SESSION_1M" not in env:
+    env["CLAUDE_STACK_FRESH_SESSION_1M"] = "400000"; changed = True
+if "CLAUDE_STACK_FRESH_SESSION_200K" not in env:
+    env["CLAUDE_STACK_FRESH_SESSION_200K"] = "150000"; changed = True
+# ... and the trigger for every OTHER case: a window the hooks cannot read (the settings `model`
+# carries no window suffix) and one that is neither named size. 250,000 sits between the two.
+if "CLAUDE_STACK_FRESH_SESSION_DEFAULT" not in env:
+    env["CLAUDE_STACK_FRESH_SESSION_DEFAULT"] = "250000"; changed = True
+# WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
+# model id's own window suffix (`opus[1m]`), else take the tier the session has already proven
+# (nothing can carry more input tokens than the window), else make no offer at all. The old
+# CLAUDE_STACK_CONTEXT_WINDOW knob is retired - it was seeded "1000000", which declared a 1M window
+# on every install and killed the gate on every account that was not 1M (ten confirmations across
+# four projects), and its replacement seeds ("" then "AUTO") only ever meant 'detect'.
 if changed:
     json.dump(data, open(path, "w"), indent=2); open(path, "a").write("\n")
-    print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default ensured")
+    print("  settings.json: hooks + secret deny-list + mcp allow-list + env defaults ensured")
 else:
-    print("  settings.json: hooks + secret deny-list + mcp allow-list + compact default already present - unchanged")
+    print("  settings.json: hooks + secret deny-list + mcp allow-list + env defaults already present - unchanged")
 PY
 )
   local -a mcp_names; mcp_names=()
@@ -2177,14 +2191,16 @@ path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpower
 
 The same env block carries the fresh-session gate's two knobs (seeded, absent-only, so a
 hand-edited value survives every update):
-  CLAUDE_STACK_FRESH_SESSION_PCT   what share of the context window a session may carry before an
-                                   orchestration run is offered a fresh one (default 40; 0 = off)
-  CLAUDE_STACK_CONTEXT_WINDOW      the window that percentage applies to - seeded 'AUTO', which
-                                   means auto-detect: the hooks read the settings model id's
-                                   window suffix ('opus[1m]'), else the tier the session has
-                                   already proven. Put a number there ('1000000' / '200000') only
-                                   to overrule that; it outranks every detection layer.
-On the auto-detected 200k tier the percentage is INERT below 76: the trigger keeps the measured
-150k floor, and 200k x 75% is still 150k. Above that tier it is capped at 250k, because the
-harness auto-compacts at ~390k and a trigger above that ceiling can never fire.
+  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a window over 200k may carry
+                                   before an orchestration run is offered a fresh one (default
+                                   400000; 0 = off). Above the harness's own auto-compaction, so
+                                   lower it to be asked before the harness decides for you
+  CLAUDE_STACK_FRESH_SESSION_200K  the same trigger on a 200k window (default 150000; 0 = off)
+  CLAUDE_STACK_FRESH_SESSION_DEFAULT
+                                   the same trigger for every other case - a window the hooks
+                                   cannot read, or one that is neither of those sizes (default
+                                   250000; 0 = off)
+Which one applies is DETECTED, not configured: the hooks read the window suffix on the settings
+model id ('opus[1m]', 'opus[200k]'); anything else takes the DEFAULT trigger.
+CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.
 GITIGNORE

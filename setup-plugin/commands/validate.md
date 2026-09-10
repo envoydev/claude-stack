@@ -14,11 +14,12 @@ the deterministic work; you orchestrate.
 **This run needs NO conversation context - so it is worth MOVING, but only out of a session that
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
-figure is past the same trigger `guard-fresh-session-start.js` uses - `CLAUDE_STACK_FRESH_SESSION_PCT`
-percent (default 40) of the resolved context window - `CLAUDE_STACK_CONTEXT_WINDOW`, else the
-settings.json model id's own `[1m]`-style suffix, else what the session has already carried, else
-200,000 - floored at 150,000 on a 200k window and capped at 250,000 above it, so a default install
-triggers at 150,000 tokens per message - or when that hook has already injected the ask into this turn. Below the
+figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
+trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or `CLAUDE_STACK_FRESH_SESSION_1M`
+(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 250,000) when the window is
+neither of those two sizes or cannot be read at all - which one applies comes from the window
+suffix on the settings.json model id (`opus[1m]`, `opus[200k]`) - or when that hook has already
+injected the ask into this turn. Below the
 trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
 of a brand-new session, twice in one run, and could quote no number when the user challenged it).
@@ -146,7 +147,10 @@ One addition of your own: run the snapshot's `$TMP/repo/meta/migrations.json` de
 project (retired GENERATED artifacts - e.g. the legacy inject-code-style hook - which the
 stack-ownership model cannot flag because generated output belongs to no stack). Each detected
 entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; removing one also
-applies its `unwire_settings_hook` edit and puts its `then` follow-up in the report.
+applies its `unwire_settings_hook` edit and puts its `then` follow-up in the report. An entry acting
+on the settings.json `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
+layer instead: a retired key still on disk is a RETIRED row there, reported with its `why`, and
+accepting it drops the key - the installers' own env pass does the same on their next run.
 
 ## The walk - steps 3-8, one layer at a time
 
@@ -205,7 +209,10 @@ table of the actionable rows only - an install whose env already matches gets th
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
-- **INVALID** - a key whose value fails the row's `validate` shape (a percent outside `min`..`max`
+- **RETIRED** - a key in the file that the catalog no longer lists and `migrations.json` names in a
+  `remove_settings_env` entry. Nothing reads it; accepting drops it, and the entry's `why` is the
+  reason column. A key the catalog does not list and no migration names is someone else's - leave it.
+- **INVALID** - a key whose value fails the row's `validate` shape (a percent or token count outside `min`..`max`
   and not its `off` value, a window under `min`, an instrumentation switch that is neither `0` nor
   `1`). Show the value and the expected shape; the fix is the catalog default unless the user types
   another. The shape is the ONLY test - a value that differs from the default is a deliberate pin,

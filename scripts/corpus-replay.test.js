@@ -111,7 +111,10 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   // `transcript_path` leaves it blind, and a blind gate can never fire - the first full corpus run
   // reported this route DEAD for exactly that reason, which was the harness, not the hook.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-corpus-'));
-  const big = { cache_read_input_tokens: 190000, input_tokens: 20, output_tokens: 20 };
+  // 450k, not 190k: past 200k it PROVES the 1M tier (which is what resolves the window) and clears
+  // that tier's 400,000 default trigger. An unresolved window makes no offer at all, so a smaller
+  // figure would read DEAD for a second reason and stop testing the harness wiring this case exists for.
+  const big = { cache_read_input_tokens: 450000, input_tokens: 20, output_tokens: 20 };
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
     { type: 'assistant', cwd: dir, message: { id: 'm1', content: [{ type: 'text', text: 'x'.repeat(300) }], usage: big } },
     toolRow('Skill', { skill: 'project-solve-task' }, dir),
