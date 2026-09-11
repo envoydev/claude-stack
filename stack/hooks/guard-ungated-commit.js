@@ -66,6 +66,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -462,7 +466,7 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `The checkpoint (baseline-git.md) runs BEFORE a non-trivial commit: the formatter, then\n` +
+    `The checkpoint (the project-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
     `the house review project-verify-code - plus /security-review when the diff touches\n` +
     `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
     `${c.gate}\n` +

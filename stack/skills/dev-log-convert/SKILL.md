@@ -113,6 +113,23 @@ Total time: <sum across all groups>.
 - Time mismatch (bullets sum to a different total than the input's stated total): trust the bullets, recompute `Total time` from them, do not echo the input's total.
 - Pure non-work entries that aren't a ticket and aren't a recurring item (lunch, coffee break): omit entirely. Private life is not in the log.
 
+## When the raw material is a repo, not notes
+
+Some runs arrive with no notes - 'write the log for what I did this week', or an effort estimate -
+and the work has to be read off the repository. Three rules, each from a measured miss:
+
+- **The opening survey is ONE capped pass.** `git status --short`, `git stash list`, and
+  `git diff <base>...HEAD --stat` come first; a full diff is read per file off that stat, never as
+  one uncapped dump. Measured: two uncapped `git diff HEAD` calls cost 10.3k tokens for an estimate
+  a capped survey answered for ~4.3k in a sibling session, same repo, same task shape.
+- **`git stash list` is part of that survey**, beside `git status` and `git diff`. Measured: a
+  change analysis and effort estimate built from the branch diff and the working tree alone was
+  WRONG on scope until the user asked about the stash, and the recovery diffs cost ~9.8k.
+- **A SECOND correction on the same axis is an ask, not a third redraft.** When two consecutive
+  free-text corrections land on one axis - granularity, the time split, wording - stop regenerating
+  and put that axis through ONE AskUserQuestion carrying the options the two corrections imply.
+  Measured: two corrections on one axis were each answered with a fresh regeneration.
+
 ## Style guidance
 
 Open each summary with a past-tense verb, and render recurring non-ticket items (standups, weekly calls, merge request review - always `Other`) in a consistent canonical form matched to the input phrasing. The preferred verb openers and the canonical-form patterns: `references/style-guidance.md`.

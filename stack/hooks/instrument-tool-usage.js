@@ -48,9 +48,25 @@ const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAU
     let detail = null;
     if (tool === 'Skill') detail = input.skill || input.name || null;
     else if (tool.startsWith('mcp__')) detail = tool.split('__')[1] || null;
+    // A dispatch row with no detail cannot say WHICH seat ran - 65 of 65 Agent rows in an audited
+    // corpus carried `detail: null`, so the ledger could name the cost of dispatching and never the
+    // seat. The seat type is the one field that makes those rows readable, and it is not sensitive.
+    else if (tool === 'Task' || tool === 'Agent') detail = input.subagent_type || input.subagentType || (input.description ? String(input.description).slice(0, 60) : null);
     else if (input.file_path) detail = path.basename(String(input.file_path));
     else if (input.pattern) detail = String(input.pattern).slice(0, 60);
-    else if (tool === 'Bash') detail = input.description ? String(input.description).slice(0, 60) : null;
+    // Bash `description` is the model's to write and it is often omitted (measured: 10 of 11 rows
+    // in one session, so the whole session read as detail-blind). Fall back to the command's VERB -
+    // the first token, plus a second one only when it is a bare subcommand (`git commit`, `npm
+    // test`): no path, no flag, no argument, so nothing sensitive can ride along.
+    else if (tool === 'Bash') {
+      if (input.description) detail = String(input.description).slice(0, 60);
+      else {
+        const tok = String(input.command || '').trim().split(/\s+/).filter(Boolean);
+        const verb = tok[0] && /^[A-Za-z][\w.-]*$/.test(tok[0]) ? tok[0] : null;
+        const sub = verb && tok[1] && /^[a-z][a-z0-9:._-]*$/.test(tok[1]) ? tok[1] : null;
+        detail = verb ? (sub ? `${verb} ${sub}` : verb) : null;
+      }
+    }
     const rec = {
       ts: new Date().toISOString(),
       session: ev.session_id || null,

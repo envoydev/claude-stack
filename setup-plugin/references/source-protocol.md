@@ -57,7 +57,21 @@ if [ -n "$VER" ] && [ ! -d "$CACHE/$VER/stack/skills" ]; then            # promo
 fi
 ```
 
-Windows (PowerShell):
+Windows (PowerShell). **Invoke it as a FILE, never as a double-quoted `-Command` string.** The
+Bash tool on Windows is Git Bash, so it expands `$TMP`, `$Ver`, `$Src` - every `$Name` in the body -
+BEFORE pwsh ever sees them, and the snippet collapses into a command referring to variables that no
+longer exist. Write the block to a file and run it:
+
+```bash
+cat > "$TMP/step.ps1" <<'PS1'
+... the PowerShell below, verbatim ...
+PS1
+pwsh -NoProfile -File "$TMP/step.ps1"
+```
+
+A quoted heredoc (`<<'PS1'`) is what keeps bash out of the body; `pwsh -Command '<single quotes>'`
+works for a one-liner with no embedded quote. Measured: this collision cost three runs across two
+projects, one of them re-downloading the whole 1.4MB archive after `$TMP` came out empty.
 
 ```powershell
 $TMP = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
@@ -116,7 +130,15 @@ root, which is stable across every call of one run and different for every proje
 MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
 TMP=$(mktemp -d); printf '%s\n' "$TMP" > "$MARK"                      # first call
 TMP=$(cat "$MARK"); [ -d "$TMP/repo" ] || echo "STALE MARKER"          # every later call
+TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```
+
+**Two spellings, one temp dir.** The Bash tool on Windows is Git Bash, so `$TMP` is `/tmp/tmp.XXXX`
+- a path the Read tool, `pwsh` and a native `node` cannot open at all ('File does not exist', with
+the run's real cwd `C:\...` printed underneath). Every SHELL path stays `$TMP`; the moment a path
+leaves the shell - the Read tool, a `pwsh -File`, a node argv - it is `$TMP_WIN`, resolved once
+above and never re-derived mid-run (measured: three sessions each paid 2 API messages, 209k-233k
+cache-read apiece, rediscovering `cygpath -w` by failing first).
 
 The staleness check is part of the idiom: a marker left behind by an earlier run points at a `$TMP`
 that no longer exists, and every later step then writes into a path with no directory. On `STALE
@@ -130,6 +152,20 @@ path on its own initiative. PowerShell keeps `$TMP` the same way, in a marker ke
 ```powershell
 $Root = (git rev-parse --show-toplevel 2>$null); if (-not $Root) { $Root = (Get-Location).Path }
 $Mark = Join-Path ([System.IO.Path]::GetTempPath()) ('claude-stack-run.' + (($Root -replace '[^A-Za-z0-9]','-')) + '.path')
+```
+
+**Every PowerShell block on this page reaches pwsh through the BASH tool, so it is written to a
+`.ps1` and run with `pwsh -NoProfile -File`, never passed inline to a double-quoted `-Command`.**
+Bash expands `$Root`, `$Mark`, `$TMP` inside double quotes before pwsh ever sees them, so the
+snippet arrives with its variables already blanked and fails on a ParserError that reads like a
+PowerShell bug and is not one. Three confirmed instances across two projects, each costing several
+turns. Single-quoting a `-Command` works for a ONE-LINER; anything multi-line goes to a file:
+
+```bash
+cat > "$TMP/step.ps1" <<'PS1'
+<the PowerShell above, verbatim - bash never touches a quoted heredoc body>
+PS1
+pwsh -NoProfile -File "$TMP/step.ps1"
 ```
 
 - The archive is the newest release - the repo's release workflow republishes it on every
@@ -155,14 +191,30 @@ $Mark = Join-Path ([System.IO.Path]::GetTempPath()) ('claude-stack-run.' + (($Ro
 
 The tooling always comes fresh from the snapshot, but YOUR numbered steps ship with the
 installed plugin - so compare versions right after the download: the snapshot's is the
-`version:` line in `$TMP/repo/RELEASE-SOURCE`; the running plugin's is in
-`${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (no `CLAUDE_PLUGIN_ROOT` in the environment ->
-skip this check silently). When they differ, the plugin is behind the release: say so, recommend
-`claude plugin marketplace update claude-stack` then `claude plugin update claude-stack`, and
-offer to continue anyway - the snapshot tooling is current either way; the risk is only that
-these instructions lag it. The plugin cache is keyed by version
+`version:` line in `$TMP/repo/RELEASE-SOURCE`; the running plugin's comes from the CLI, in the
+same call:
+
+```bash
+claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s).find(x=>x.id==="claude-stack@claude-stack");console.log(p?`plugin: ${p.version} ${p.enabled?"enabled":"DISABLED"}`:"plugin: not installed")})'
+```
+
+**Do NOT read `${CLAUDE_PLUGIN_ROOT}` from the shell to find it.** That variable is expanded into a
+command's markdown at injection time, but it is NOT in the Bash tool's environment - a command that
+reads it inside the shell gets an empty string, and the check silently skips itself every time
+(measured: the same `no CLAUDE_PLUGIN_ROOT` line in five sessions across four projects, so the
+currency check had never once run). No CLI, or no `claude-stack` row -> drop the check and emit NO line about it. 'Skip silently' as prose
+produced a narration line about skipping, which is the same cost as the check (measured). When they differ, size the gap before deciding: ONE release behind is a report line and the run
+CONTINUES - the tooling is the snapshot's and is current either way, so the only risk is that these
+numbered steps lag it by one release (measured: a run that asked instead spent 5 turns on two
+meta-asks and ended telling the user to restart, with zero reconciliation done). A MULTI-release
+gap is worth the ask: say so, recommend `claude plugin marketplace update claude-stack` then
+`claude plugin update claude-stack`, and offer to continue anyway. The plugin cache is keyed by version
 (`~/.claude/plugins/cache/claude-stack/claude-stack/<version>/`), so after an update the old
-version dirs are inert leftovers - safe to delete, keeping only the dir the update installed.
+version dirs are inert leftovers - safe to delete, keeping only the dir the update installed. When
+that listing shows MORE THAN ONE version dir, the run's CLOSE-OUT carries one line offering the
+sweep - the count, the keeper, and the `rm -rf` it would run - and deletes only on an explicit yes
+(measured: a run's own `find` listed 14 stale dirs, 0.2.34 through 0.2.62, and never mentioned one
+of them).
 And if an update ever does NOT change the running content (a same-version re-release - the trap
 every release now avoids by bumping), the hard reset is `claude plugin uninstall claude-stack`
 then `claude plugin install claude-stack@claude-stack`, which rebuilds the cache from the
@@ -191,6 +243,18 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
 
 - Machinery that produces no decision (mktemp, downloads, cleanup) gets no narration beyond the
   protocol's own one-liners; a failure is narrated with its consequence, never a stack trace.
+- **Few calls means ONE call, not a parallel batch.** The snapshot resolution and any prerequisite
+  probe go in a SINGLE Bash call - two fired in parallel are two approval prompts at once on a
+  project with an empty `allowedTools`, and that is a doubled chance of a no (measured: both
+  rejected, the run abandoned; the retry collapsed download + mkdir + tar into one call and was
+  approved).
+- **Never re-run a command to re-read a result that is still in context.** A digression does not
+  expire an earlier tool result - it is in the same window and is re-sent on every later call
+  either way, so re-printing it buys nothing and costs a whole round trip (measured: ~119k of
+  re-sent context for output the session already held).
+- A long file you need to CONSULT rather than quote - the CLAUDE template, a catalog - is read
+  into `$TMP` and narrated as a summary line, never `cat`-ed into the chat (measured: 8,045 raw
+  chars of template where one line was needed).
 
 ## Use the tools from the snapshot
 
@@ -207,6 +271,17 @@ Everything comes out of `$TMP/repo`:
 Run every later `node`/`bash` step against these snapshot copies - never re-fetch one from a raw
 URL; the snapshot is already the newest, consistent copy, and it is the copy the installer runs
 from.
+
+**Read them through the Bash tool, never the Read tool - and never interpolate `$TMP` into a
+program's string literal.** On Windows `$TMP` is a Git Bash path (`/tmp/tmp.XXXX`): the Read tool
+cannot open that spelling at all, and a `node -e` body that embeds it turns `\repo\meta` into
+`repometa`, because `\r` is an escape. Both cost whole turns to rediscover - five sessions,
+roughly 882k tokens between them. So:
+
+- a catalog or JSON file -> `cat "$TMP/repo/meta/<file>.json"` or a `jq` projection of it
+- a script that needs the path -> pass it as an ARGUMENT (`node "$TMP/repo/scripts/x.js" --snapshot
+  "$TMP/repo"`), which every tool in the snapshot accepts; never build the path inside the program
+- genuinely needing the Windows spelling -> `"$(cygpath -w "$TMP")"`, once, into a variable
 
 ## Hand the same snapshot to the installer
 
@@ -227,5 +302,12 @@ is nothing here to tidy. The
 archive, the extracted repo, and the working files you wrote next to them (`raw.json`,
 `selection.txt`) live there and nothing else will remove them - the installer only cleans up a source IT fetched, never the one
 you passed via `--source`. Do this on EVERY exit path, not just the happy one - each command's
-final step lists its own exit cases. Then confirm the project tree holds only installed
+final step lists its own exit cases.
+
+**After cleanup, a stack-owned file is still one `cat` away - in the CACHE, not in a new download.**
+The promoted entry sits at `<config>/cache/stack-source/<repo-slug>/<version>`, holding the same
+tree `$TMP/repo` did. When a later turn needs one file from it (a catalog, a template, a hook's
+header), read it there. Measured: a run deleted its snapshot, then seven minutes later pulled the
+whole 1.4MB archive again to read one 75-line file, after looking in the plugin cache - which ships
+`setup-plugin/` only and has no `stack/` at all. Then confirm the project tree holds only installed
 artifacts - no archive, no extracted repo, no `raw.json`/`selection.txt`, no installer copy.

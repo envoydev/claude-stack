@@ -687,6 +687,13 @@ function main(argv)
         const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { context7Local: has('--context7-local'), sentryOauth: has('--sentry-oauth'), githubCli: has('--github-cli') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
+        // A clean check printed NOTHING, and silence is the one result a caller cannot tell from a
+        // call that never ran - the guided walks report the prerequisite verdict to the user, and
+        // an empty tool result made them narrate 'no blockers' from the exit code alone. Always
+        // name the verdict; the exit code stays the machine-readable half.
+        console.log(report.ok
+            ? `prereqs: ok - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`
+            : `prereqs: BLOCKED - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`);
         if (!report.ok) process.exit(1);
     }
 }

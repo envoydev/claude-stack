@@ -59,6 +59,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     : _readFileSync(p, o));
 
 const path = require('path');
+const crypto = require('crypto');
 const yaml = require('js-yaml');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -690,6 +691,50 @@ function lintOptionalCites(file, text, optional)
 // scanned - it is the opposite of a preload claim:
 //   A. '`x`, `y` are preloaded ...' - the skills named BEFORE the keyword
 //   B. 'the preloaded `x` skill/hub/recipe' - the skill right after it
+// A skill body may point at a SIBLING skill's reference file as a locating pointer ('`csharp` (its
+// `references/concurrency.md`)'). Nothing loads it, so a sibling rename dangles the pointer silently
+// - the reader is sent to a file that no longer exists and nothing in the repo notices. Every
+// `references/<file>.md` a skill names must resolve: in its own folder, in the sibling skill named
+// beside it (a backticked skill name within the preceding ~160 chars), or - for a pointer that
+// describes the owner by capability instead of naming it - in SOME skill folder.
+function lintReferencePointers(skillsDir, skillDirs, fsLike = fs)
+{
+    const findings = [];
+    const dirSet = new Set(skillDirs);
+    const has = (d, rel) => fsLike.existsSync(path.join(skillsDir, d, rel));
+    for (const d of skillDirs)
+    {
+        const files = [path.join(skillsDir, d, 'SKILL.md')];
+        const refDir = path.join(skillsDir, d, 'references');
+        if (fsLike.existsSync(refDir)) for (const r of fsLike.readdirSync(refDir)) if (r.endsWith('.md')) files.push(path.join(refDir, r));
+        for (const file of files)
+        {
+            if (!fsLike.existsSync(file)) continue;
+            const text = fsLike.readFileSync(file, 'utf8');
+            const re = /`(references\/[A-Za-z0-9._\/-]+\.md)`/g;
+            let m;
+            while ((m = re.exec(text)) !== null)
+            {
+                const rel = m[1];
+                if (has(d, rel)) continue;
+                const ctx = text.slice(Math.max(0, m.index - 160), m.index);
+                const named = [...ctx.matchAll(/`([a-z0-9-]+)`/g)].map(x => x[1]).filter(n => dirSet.has(n) && n !== d);
+                const label = path.relative(skillsDir, file);
+                if (named.length > 0)
+                {
+                    if (!named.some(n => has(n, rel)))
+                        findings.push(`${label}: points at \`${rel}\` beside \`${named.join('`/`')}\` and none of them has that file - a sibling rename dangled the pointer; fix the path or the name`);
+                }
+                else if (![...dirSet].some(n => has(n, rel)))
+                {
+                    findings.push(`${label}: points at \`${rel}\` which no skill folder holds - the file was renamed or removed under the pointer`);
+                }
+            }
+        }
+    }
+    return findings;
+}
+
 function lintPreloadClaims(agentFile, text, skillDirs)
 {
     const findings = [];
@@ -1333,22 +1378,25 @@ function main()
         }
     }
 
-    // 15. Soft warning: an OUTLIER-length SKILL.md description. The house style
-    //     deliberately packs routing into descriptions (Companions + version floor +
-    //     negative scope) so the rich .NET/router skills legitimately run 800-1050;
-    //     warning at 800 fired on half the corpus and just flagged the house norm.
-    //     The cap is set above that norm to catch a genuinely bloated outlier (the
-    //     1300-char case), not the intentional routing prose. Not a failure - a nudge.
-    const DESC_SOFT_LIMIT = 1100;
-    for (const dir of dirs)
+    // 15. A description over 1,000 chars FAILS the build - skills and agents alike. The house
+    //     style deliberately packs routing into descriptions (Companions + version floor + negative
+    //     scope), so the rich .NET/router skills legitimately run 800-1,000; but every description
+    //     is loaded into every session before a single message (check 33 sums them), so past that
+    //     bar the routing prose is paid for on every turn of every install. This was a warning at
+    //     1,100: nine descriptions sat between 1,004 and 1,146 and it fired on none of them.
+    const DESC_LIMIT = 1000;
+    const descriptionFiles = [
+        ...dirs.map(dir => [`skills/${dir}/SKILL.md`, path.join(SKILLS_DIR, dir, 'SKILL.md')]),
+        ...fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).sort().map(f => [`agents/${f}`, path.join(AGENTS_DIR, f)]),
+    ];
+    for (const [label, file] of descriptionFiles)
     {
-        const skillFile = path.join(SKILLS_DIR, dir, 'SKILL.md');
-        if (!fs.existsSync(skillFile))
+        if (!fs.existsSync(file))
         {
             continue;
         }
 
-        const fm = fs.readFileSync(skillFile, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        const fm = fs.readFileSync(file, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
         if (!fm)
         {
             continue;
@@ -1361,12 +1409,12 @@ function main()
         }
         catch
         {
-            continue;   // check 1 already flagged the YAML failure
+            continue;   // checks 1 and 18 already flagged the YAML failure
         }
 
-        if (meta && typeof meta.description === 'string' && meta.description.length > DESC_SOFT_LIMIT)
+        if (meta && typeof meta.description === 'string' && meta.description.length > DESC_LIMIT)
         {
-            warn(`skills/${dir}/SKILL.md description is ${meta.description.length} chars (> ${DESC_SOFT_LIMIT}) - consider tightening`);
+            flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
     }
 
@@ -1561,6 +1609,37 @@ function main()
             flag(`the capability-claim sweep could not run: ${err.message}`);
         }
 
+        // 32. House voice in the SHIPPED text: no em-dash. The guided walks and the rules are the
+        //     only voice source on a fresh install (the baseline-interaction rule is not there yet),
+        //     so a dash that reaches a project teaches the wrong one - measured, a first-run
+        //     narration line opened with an em-dash on exactly that surface.
+        try
+        {
+            const dashed = [];
+            const sweep = (dir, rel) =>
+            {
+                for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+                {
+                    if (e.name.startsWith('.')) continue;
+                    const full = path.join(dir, e.name);
+                    const r = `${rel}/${e.name}`;
+                    if (e.isDirectory()) sweep(full, r);
+                    else if (/\.(md|js|sh|ps1|json)$/.test(e.name))
+                    {
+                        const text = fs.readFileSync(full, 'utf8');
+                        const hit = text.split('\n').findIndex(l => /[\u2014\u2015]/.test(l));
+                        if (hit !== -1) dashed.push(`${r}:${hit + 1}`);
+                    }
+                }
+            };
+            for (const d of ['stack', 'setup-plugin', 'meta']) sweep(path.join(ROOT, d), d);
+            for (const site of dashed) flag(`house voice: an em-dash in shipped text at ${site} - single dashes only`);
+        }
+        catch (err)
+        {
+            flag(`the em-dash sweep could not run: ${err.message}`);
+        }
+
         // 29. The deliberate-only roster vs the fresh-session hook's ORCHESTRATION list.
         try
         {
@@ -1617,6 +1696,34 @@ function main()
     catch (err)
     {
         flag(`guard-secret-value.js / meta/environment.json parity check could not read its inputs: ${err.message}`);
+    }
+
+    // 29. The capabilities usage policy carries a content stamp, and the stamp matches the block.
+    //     That block ships VERBATIM into every project's generated baseline-project-agent-capabilities.md,
+    //     and nothing could tell a project carrying a two-release-old copy from a current one - the
+    //     generated rule is never re-fetched, only re-generated by a user re-run. The stamp is what
+    //     `/claude-stack:validate` compares a project's copy against, so it has to be true here first.
+    try
+    {
+        const capPath = path.join(SKILLS_DIR, 'project-agent-capabilities', 'SKILL.md');
+        const capLines = fs.readFileSync(capPath, 'utf8').split('\n');
+        const start = capLines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
+        if (start < 0) { flag('project-agent-capabilities/SKILL.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
+        else
+        {
+            const revLine = capLines[start + 1] || '';
+            const declared = (revLine.match(/policy-rev:\s*([0-9a-f]{8})/) || [])[1];
+            let end = start + 2;
+            while (end < capLines.length && !capLines[end].startsWith('## ')) end += 1;
+            const block = capLines.slice(start + 2, end).join('\n').trim();
+            const actual = crypto.createHash('sha1').update(block).digest('hex').slice(0, 8);
+            if (!declared) flag('project-agent-capabilities/SKILL.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
+            else if (declared !== actual) flag(`project-agent-capabilities/SKILL.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
+        }
+    }
+    catch (err)
+    {
+        flag(`project-agent-capabilities/SKILL.md is unreadable: ${err.message}`);
     }
 
     // 24. The shared-rules registry (meta/shared-rules.json) - the sanctioned multi-home
@@ -1757,6 +1864,54 @@ function main()
         console.error('');
     }
 
+    // 34. Every `references/<file>.md` a skill names resolves - own folder, the sibling named beside
+    //     it, or some skill folder for a capability-described owner. A sibling rename used to dangle
+    //     these locating pointers silently (surface-4 audit: 69 cross-skill pointers, none checked).
+    for (const finding of lintReferencePointers(SKILLS_DIR, localSkillDirs())) flag(finding);
+
+    // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
+    //     is re-sent on EVERY message of every session and every subagent of an install that takes
+    //     it: the pathless baseline rules load like CLAUDE.md, and each agent's and skill's
+    //     `description` rides the dispatch/skill inventory. An audit of 164 sessions measured the
+    //     standing floor at 87k-134k tokens per message and the stack-owned share at roughly a
+    //     third of it, with nothing in the repo measuring - so a paragraph added here costs more
+    //     than the same paragraph anywhere else, and it used to cost it invisibly.
+    let alwaysOnChars = 0;
+    try
+    {
+        const descOf = (file) =>
+        {
+            const m = fs.readFileSync(file, 'utf8').match(/^description:\s*(.*)$/m);
+            return m ? m[1].length : 0;
+        };
+        let ruleChars = 0;
+        for (const f of fs.readdirSync(CLAUDE_RULES_DIR))
+        {
+            if (!f.endsWith('.md')) continue;
+            const full = path.join(CLAUDE_RULES_DIR, f);
+            if (/^paths:/m.test(fs.readFileSync(full, 'utf8'))) continue;   // path-scoped: lazy, not always-on
+            ruleChars += fs.statSync(full).size;
+        }
+        let agentChars = 0;
+        for (const f of fs.readdirSync(AGENTS_DIR)) if (f.endsWith('.md')) agentChars += descOf(path.join(AGENTS_DIR, f));
+        let skillChars = 0;
+        for (const d of localSkillDirs()) skillChars += descOf(path.join(SKILLS_DIR, d, 'SKILL.md'));
+        alwaysOnChars = ruleChars + agentChars + skillChars;
+        // The ceiling is the measured surface plus ~10% headroom: it is a budget to DEFEND, not a
+        // target to grow into. Raising it is a deliberate edit with a reason, which is the point.
+        const ALWAYS_ON_MAX = 160000;
+        if (alwaysOnChars > ALWAYS_ON_MAX)
+        {
+            flag(`always-on surface ${alwaysOnChars} chars (~${Math.round(alwaysOnChars / 4000)}k tokens) is over the ${ALWAYS_ON_MAX} budget`
+                + ` - pathless rules ${ruleChars}, agent descriptions ${agentChars}, skill descriptions ${skillChars}.`
+                + ` Every one of those characters is re-sent on every message of every session and subagent: trim, or raise the budget deliberately.`);
+        }
+    }
+    catch (err)
+    {
+        flag(`the always-on surface measurement could not run: ${err.message}`);
+    }
+
     if (findings.length > 0)
     {
         for (const finding of findings)
@@ -1771,7 +1926,8 @@ function main()
     console.log(`lint-skills: clean (${dirs.length} skills, ${primary.active.size} active manifest entries, `
         + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; both manifests + HTML in sync; `
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
-        + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync).`);
+        + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync; `
+        + `always-on surface ~${Math.round(alwaysOnChars / 4000)}k tokens).`);
 }
 
 // The environment catalog (meta/environment.json) is the ONE list the three guided commands read
@@ -1853,6 +2009,7 @@ module.exports = {
     lintSharedRules,
     lintPreloadClaims,
     lintOptionalCites,
+    lintReferencePointers,
     optionalSkills,
     lintSuggestionEdges,
     seedClosures,

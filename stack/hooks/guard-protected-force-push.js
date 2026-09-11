@@ -236,6 +236,10 @@ function main()
                         event: payload.hook_event_name || payload.tool_name || '',
                         tool: payload.tool_name || '',
                         reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
                     }) + '\n');
                 }
                 catch { /* telemetry is never allowed to break the gate */ }
@@ -252,7 +256,7 @@ function main()
     }
 
     process.stderr.write(
-        'Rewriting or deleting a shared branch (main/master/develop) is forbidden (CLAUDE.md) - ' +
+        'Rewriting or deleting a shared branch (main/master/develop) is forbidden - a house rule enforced here, no prose copy to consult - ' +
         'no force-push, branch deletion, or --mirror. Push to a feature branch and open a PR; ' +
         'use --force-with-lease only on your own feature branch.\n');
     process.exit(2);

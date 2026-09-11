@@ -90,7 +90,7 @@ test('scanner honors the skip-list, the depth cap, and reports nothing for absen
         assert.strictEqual(found.skills['dotnet-grpc'], undefined, 'a beyond-depth-cap manifest is not read');
         assert.strictEqual(found.skills['dotnet-realtime'], undefined, 'no signal, no entry - absence is empty, not false');
         // under central package management a PackageVersion pin can exist for a package no
-        // project references - a pin alone must never count as usage (the knopka false-adds)
+        // project references - a pin alone must never count as usage (the false-adds measured in a consuming project)
         assert.strictEqual(found.skills['dotnet-aspire'], undefined, 'a CPM PackageVersion pin with no PackageReference is not evidence');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }

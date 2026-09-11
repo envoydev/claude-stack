@@ -3,8 +3,10 @@ paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.ser
 ---
 
 Editing Angular / Ionic framework code - load `angular-conventions` (on top of the `typescript`
-baseline) before the edit - skip the load when it is already in context (some seats preload it);
-conventions are the source of truth, not recall.
+baseline): the FIRST action after this rule attaches is that Skill call, before the NEXT edit lands (a path-scoped rule attaches ON the touch, so it can never precede its own trigger) - even when the touch is incidental to the session's main thread (measured: this rule and the TypeScript one both attached, their bodies
+entered the session, and neither skill was loaded across 12 edits). Skip the load when it is already
+in context (some seats preload it); conventions are the source of truth, not recall. Say which
+layers you loaded, or that they were already in context - the receipt is what makes the load happen.
 Covers components, services, directives, pipes, guards, resolvers, modules, routes, and templates -
 an Ionic/Capacitor app shares the same conventions (a bespoke layout outside `src/app` / `src/lib`:
 load the skill yourself). In an Ionic/Capacitor workspace (`ionic.config.json` /

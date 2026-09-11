@@ -102,6 +102,9 @@ test('--report-md emits the machine-written skeleton with tables and fill-in sec
   assert.ok(md.includes('| csharp |  | 0 | ~0 | 2 (1 carried) | 40 | 7.0k |'), 'skills attribution row present (sticky carry labeled)');
   assert.ok(md.includes('| Read | 1 | ~100 | 0 |  |'), 'tools table row present');
   // judgment surface is fill-in only
+  // Guard blocks is the FOURTH required fill: the no-ledger branch prints a question ('say which,
+  // do not infer') that shipped unanswered in audited bundles because no section was marked.
+  assert.ok(md.includes('## Guard blocks - FILL IN'));
   assert.ok(md.includes('## Waste analysis - FILL IN'));
   assert.ok(md.includes('## Protocol check - FILL IN'));
   assert.ok(md.includes('## Verdict - FILL IN'));
@@ -131,6 +134,57 @@ const bash = (id, command) => ({
 const result = (id, extra) => ({
   type: 'user', timestamp: '2026-07-15T07:00:01.000Z',
   message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok', ...(extra || {}) }] },
+});
+
+test('hook-log join: the ledger cross-check counts calls in the window, on parsed epochs', () => {
+  // Both sides are ISO strings. `firstTs - 250` on a string is NaN, so every comparison was false
+  // and inWin was 0 for EVERY session carrying a ledger - the report printed '0% of tool calls are
+  // inside the ledger window' plus the false 'wired mid-session' line the latency budget exists to
+  // remove. Re-derived by hand across the audited corpus, those same sessions were 8/8, 10/10,
+  // 12/12, 25/25, 50/51 and 65/66. Nothing referenced inWin or callPct in this file before.
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo one'), result('t1'), bash('t2', 'echo two'), result('t2')]);
+  const ledger = path.join(dir, 'tools-usage.jsonl');
+  // The ledger rows straddle the two calls, both of which sit at 07:00:00.000Z.
+  fs.writeFileSync(ledger, [
+    line({ ts: '2026-07-15T06:59:59.900Z', tool: 'Bash', detail: 'echo one' }),
+    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'echo two' }),
+  ].join(''));
+  const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
+  assert.ok(cov, 'the join reports coverage when a ledger is given');
+  assert.strictEqual(cov.inWin, 2, 'both calls are inside the ledger window');
+  assert.strictEqual(cov.callPct, 100, '... so call coverage is 100%, not 0%');
+  assert.strictEqual(cov.tailCalls, 0, 'and nothing sits past the window - the string + number form concatenated and always said 0 here too');
+
+  // A call genuinely outside the window still counts as outside: the fix is arithmetic, not a blanket pass.
+  const dir2 = tmp();
+  const file2 = fixture(dir2, [bash('t1', 'echo one'), result('t1')]);
+  const ledger2 = path.join(dir2, 'tools-usage.jsonl');
+  fs.writeFileSync(ledger2, line({ ts: '2026-07-15T09:00:00.000Z', tool: 'Bash', detail: 'much later' }));
+  const cov2 = run([file2, '--hook-log', ledger2]).hookLog.coverage;
+  assert.strictEqual(cov2.inWin, 0, 'a call two hours before the ledger opens is outside it');
+  assert.strictEqual(cov2.callPct, 0, '... and reads as 0% for a real reason');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir2, { recursive: true, force: true });
+});
+
+test('generated-docs touches: a Windows Write target matches the docs prefix', () => {
+  // `docsPrefixes` is spelled with forward slashes; a Windows run writes `C:\\...\\.claude\\docs\\`,
+  // so every doc a Windows session wrote scored 0 writes (measured: five Write calls, three docs).
+  const dir = tmp();
+  const w = (id, file_path) => ({
+    type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z',
+    message: { id: `m-${id}`, model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), content: [{ type: 'tool_use', id, name: 'Write', input: { file_path, content: 'x' } }] },
+  });
+  const file = fixture(dir, [
+    w('w1', 'C:\\Projects\\app\\.claude\\docs\\architecture\\ARCHITECTURE.md'), result('w1'),
+    w('w2', '/home/u/app/.claude/docs/architecture/ARCHITECTURE.md'), result('w2'),
+  ]);
+  const { main } = run([file]);
+  const touch = main.docTouches && main.docTouches['architecture/ARCHITECTURE.md'];
+  assert.ok(touch, 'the doc is seen at all');
+  assert.strictEqual(touch.writes, 2, 'both separators count - the Windows one was invisible before');
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('user prompts: one typed turn counts once; echoes, stdout siblings and compact summaries do not', () => {
@@ -272,7 +326,9 @@ test('--hook-blocks reaches --json and the markdown report, with the false-posit
   const file = writeFixture(dir);
   const blocks = path.join(dir, 'hook-blocks');
   fs.mkdirSync(blocks);
-  fs.writeFileSync(path.join(blocks, 'sess.jsonl'),
+  // named for the SESSION, which is how the guards write it - a directory is narrowed to the
+  // analyzed session's own file, so a neighbour's rows can never land in this tally
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'),
     line({ ts: '2026-07-15T07:00:00.000Z', hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'whole-file Read of Big.cs' }) +
     line({ ts: '2026-07-15T07:05:00.000Z', hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Bash', reason: 'cat of Big.cs' }),
   );
@@ -283,4 +339,288 @@ test('--hook-blocks reaches --json and the markdown report, with the false-posit
   assert.ok(md.includes('guard-read-whole-file.js'), 'the ledger was dropped from --report-md entirely');
   assert.ok(/false positive/i.test(md), 'a denial may be a false positive - the old gloss scored every block as a success');
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The block detector matched 'Blocked' / 'Do NOT retry' bare, and those are the HARNESS's words
+// too. Measured over the 489-transcript audit corpus: 90 real stack blocks (every one carrying the
+// PreToolUse guard bracket) against 11 auto-mode-classifier denials, 3 foreground-`sleep` blocks
+// and 2 AskUserQuestion schema failures - 16 events charged to guards that never ran, one of them
+// surfacing as a phantom `denialsByHook: {"(unattributed)": 1}` in a shipped report.
+test('harness denials never count as stack hook blocks, and stay visible as their own number', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+    const file = path.join(dir, 'session.jsonl');
+    const call = (id, name) => ({ type: 'tool_use', id, name, input: {} });
+    const result = (id, content, extra = {}) => line({
+        type: 'user', timestamp: '2026-07-15T07:00:01.000Z', ...extra,
+        message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content }] },
+    });
+    fs.writeFileSync(file,
+        line({ type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 100, 5), content: [call('t1', 'Read'), call('t2', 'Bash'), call('t3', 'Bash'), call('t4', 'AskUserQuestion'), call('t5', 'Write')] } }) +
+        // a real one: the PreToolUse bracket is how all 90 corpus blocks arrive
+        result('t1', 'PreToolUse:Read hook error: [node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-read-whole-file.js"]: Blocked: whole-file Read of Big.cs (300 lines).') +
+        // the auto-mode classifier - carries its own denial kind AND says so in the text
+        result('t2', 'Permission for this action was denied by the Claude Code auto mode classifier. Reason: Blocked by classifier.', { toolDenialKind: 'automode-blocked' }) +
+        // the Bash tool's own foreground-sleep block; no stack hook blocks sleep
+        result('t3', '<tool_use_error>Blocked: sleep 45 followed by: tail -20 out.log. To wait for a condition, use Monitor.</tool_use_error>') +
+        // a tool-schema failure whose own text contains 'Do not retry this call'
+        result('t4', '<tool_use_error>InputValidationError: questions.0.options too_small. Do not retry this call and do not invent a filler second option.</tool_use_error>') +
+        // the user's own no - already a decline, and it reads as neither
+        result('t5', "The user doesn't want to proceed with this tool use.", { toolDenialKind: 'user-rejected' }),
+    );
+    const { main } = run([file]);
+    assert.strictEqual(main.toolCalls.Read.hookBlocks, 1, 'the real guard denial still counts');
+    assert.strictEqual(main.toolCalls.Bash.hookBlocks || 0, 0, 'classifier and sleep blocks are not guard denials');
+    assert.strictEqual(main.toolCalls.AskUserQuestion.hookBlocks || 0, 0, 'a schema failure is not a guard denial');
+    assert.deepStrictEqual(main.denialsByHook, { 'guard-read-whole-file.js': 1 }, 'no phantom (unattributed) row');
+    assert.strictEqual(main.harnessDenials, 3, "the three that read as a block are counted as the harness's");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- the ledger join --------------------------------------------------------------------------
+// `hookLog.firstTs - HOOK_LATENCY_MS` on an ISO STRING is NaN, and every `>=` against NaN is
+// false, so `inWin` was 0 for every session that had a ledger at all: 107 of the 136 cross-check
+// lines in the audit corpus's shipped reports read '0% of tool calls are inside the ledger window'
+// while the true coverage of those same sessions ran 8/8, 10/10, 25/25, 50/51, 65/66. Nothing could
+// pin it because the function was unreachable - hence the export.
+const { hookJoinStats } = require('./analyze-usage.js');
+
+test('hook-ledger join: coverage is computed on parsed epochs, and the latency budget is the measured one', () => {
+    const at = (ms) => new Date(Date.parse('2026-07-15T07:00:00.000Z') + ms).toISOString();
+    // 8 calls, all inside the ledger's own span; the last one lands 400ms after the final ledger
+    // row - inside the measured hook latency (183-497ms), so it is coverage, not a tail.
+    const main = {
+        file: 'x.jsonl', firstTs: at(0), lastTs: at(10000), clearTs: null,
+        toolCallTs: [at(0), at(1000), at(2000), at(3000), at(4000), at(5000), at(6000), at(6400)],
+    };
+    const hookLog = { rows: 8, firstTs: at(0), lastTs: at(6000) };
+    const j = hookJoinStats(main, [], hookLog, { Read: { calls: 8, resultChars: 0, errors: 0, hookBlocks: 0 } });
+    assert.strictEqual(j.coverage.inWin, 8, 'every in-window call counts - this was 0 for every session');
+    assert.strictEqual(j.coverage.callPct, 100);
+    assert.strictEqual(j.coverage.tailCalls, 0, 'a call inside the latency budget is not a tail');
+    assert.strictEqual(j.coverage.outside, 0);
+
+    // A call well past the budget IS a tail, and must still be reported as one.
+    const late = { ...main, toolCallTs: [...main.toolCallTs, at(20000)], lastTs: at(20000) };
+    const j2 = hookJoinStats(late, [], hookLog, { Read: { calls: 9, resultChars: 0, errors: 0, hookBlocks: 0 } });
+    assert.strictEqual(j2.coverage.tailCalls, 1, 'a genuinely late call is a tail');
+    assert.strictEqual(j2.coverage.inWin, 8);
+});
+
+// A DIRECTORY of hook-block ledgers is the PROJECT's shared collection, one file per session.
+// Reading all of it charged one session with eight sessions' blocks (measured: 28 reported against
+// the session's own 1, which is also what its transcript's hook-blk column says).
+test('hook-block ledger: a directory is narrowed to the analyzed session, never merged', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    const row = (hook) => JSON.stringify({ ts: '2026-07-15T07:00:00.000Z', hook, event: 'PreToolUse', tool: 'Read', reason: 'Blocked: x' }) + '\n';
+    fs.writeFileSync(path.join(blocks, 'mine.jsonl'), row('guard-read-whole-file.js'));
+    fs.writeFileSync(path.join(blocks, 'someone-else.jsonl'), row('guard-secret-value.js').repeat(9));
+    const file = path.join(dir, 'mine.jsonl');
+    fs.writeFileSync(file, line({ type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), content: [] } }));
+
+    const { hookBlocks } = JSON.parse(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
+    assert.strictEqual(hookBlocks.rows, 1, "only this session's ledger is read");
+    assert.deepStrictEqual(Object.keys(hookBlocks.byHook), ['guard-read-whole-file.js']);
+
+    // The file may still be passed directly - that bypasses the narrowing entirely.
+    const direct = JSON.parse(execFileSync('node', [SCRIPT, file, '--hook-blocks', path.join(blocks, 'someone-else.jsonl'), '--json'], { encoding: 'utf8' }));
+    assert.strictEqual(direct.hookBlocks.rows, 9, 'an explicit file is read as given');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The generated-docs table read one hardcoded spelling on each route: `/.claude/docs/` with
+// forward slashes for Read/Write (blank for every Windows project - 4 of the 9 audited) and the
+// literal `.claude/docs/` for Bash (so `--docs-root` fixed only half the table).
+test('generated docs: both routes honour --docs-root, and a Windows path is not invisible', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+    const file = path.join(dir, 'session.jsonl');
+    fs.writeFileSync(file,
+        line({ type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), content: [
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: "cat > docs/architecture/ARCHITECTURE.md <<'EOF'\nx\nEOF" } },
+            { type: 'tool_use', id: 't2', name: 'Write', input: { file_path: 'C:\\proj\\docs\\architecture\\ASSESSMENT.md' } },
+        ] } }) +
+        line({ type: 'user', timestamp: '2026-07-15T07:00:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }) +
+        line({ type: 'user', timestamp: '2026-07-15T07:00:02.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ok' }] } }));
+
+    const { main } = run([file, '--docs-root', 'docs']);
+    assert.strictEqual(main.docTouches['architecture/ARCHITECTURE.md'].bashWrites, 1, 'the Bash route sees the remapped root');
+    assert.strictEqual(main.docTouches['architecture/ASSESSMENT.md'].writes, 1, 'a backslash path is the same document');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The exclusion list is only as good as its enumeration: <local-command-caveat> appears 117 times
+// in the audit corpus and <fork-boilerplate> once, and each one manufactured a free-text user turn -
+// which is exactly what an unheld-stop candidate is built from.
+test('user prompts: every harness-injected wrapper is excluded, not just the ones first thought of', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+    const file = path.join(dir, 'session.jsonl');
+    const userText = (txt, ts, uuid) => line({ type: 'user', uuid, timestamp: ts, message: { content: [{ type: 'text', text: txt }] } });
+    fs.writeFileSync(file,
+        line({ type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] } }) +
+        userText('<local-command-caveat>the command output is shown below</local-command-caveat>', '2026-07-15T07:00:01.000Z', 'u1') +
+        userText('<fork-boilerplate>a fork was started</fork-boilerplate>', '2026-07-15T07:00:02.000Z', 'u2') +
+        userText('now fix the parser', '2026-07-15T07:00:03.000Z', 'u3'));
+    const { main } = run([file]);
+    assert.strictEqual(main.userPrompts, 1, 'only the typed turn is a prompt');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Four report defects the audit filed against the same table set: a companion skill's row read as
+// a run that cost nothing, a denial the bracket could not name left as a phantom guard, result
+// SIZES with no call beside them, and one reason per hook standing in for several causes.
+test('report joins: a folded companion, an unattributed denial, the biggest results and every block reason', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    const file = path.join(dir, 'sess.jsonl');
+    const at = (i) => `2026-07-15T07:${String(i).padStart(2, '0')}:00.000Z`;
+    let body = '';
+    // two Skill calls in one turn: the second reads as an in-protocol companion load
+    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'project-solve-task' } }] } });
+    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'project-solve-task', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'create-ticket' } }] } });
+    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'project-solve-task', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
+    // a big Bash result with its own description, and a failing one 30 minutes earlier in the day
+    body += line({ type: 'assistant', timestamp: at(4), message: { id: 'm4', model: 'claude-opus-5', usage: usage(1, 0, 1200, 20), content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'cat meta/migrations.json', description: 'read the migrations catalog' } }] } });
+    body += line({ type: 'user', timestamp: at(5), message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'x'.repeat(5180) }] } });
+    body += line({ type: 'assistant', timestamp: at(6), message: { id: 'm5', model: 'claude-opus-5', usage: usage(1, 0, 1300, 20), content: [{ type: 'tool_use', id: 'b2', name: 'Bash', input: { command: 'npm test', description: 'run the suite' } }] } });
+    body += line({ type: 'user', timestamp: at(7), message: { content: [{ type: 'tool_result', tool_use_id: 'b2', content: 'boom', is_error: true }] } });
+    // a Stop-hook denial with NO bracket - the JSON permission route the report called a phantom
+    body += line({ type: 'user', isMeta: true, timestamp: at(8), message: { role: 'user', content: 'Stop hook feedback:\nBlocked: this turn ends on a decision-shaped question in prose.' } });
+    fs.writeFileSync(file, body);
+    fs.writeFileSync(path.join(blocks, 'sess.jsonl'),
+        JSON.stringify({ ts: '2026-07-15T07:08:00.300Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', reason: 'Blocked: decision-shaped question', detail: { branch: 'prose-ask', matched: 'your call' } }) + '\n'
+        + JSON.stringify({ ts: at(9), hook: 'guard-secret-value.js', event: 'PreToolUse', tool: 'Read', reason: 'Blocked: Read of /a/settings.json' }) + '\n'
+        + JSON.stringify({ ts: at(10), hook: 'guard-secret-value.js', event: 'PreToolUse', tool: 'Read', reason: 'Blocked: Read of /b/.env' }) + '\n');
+
+    const { main, hookBlocks } = JSON.parse(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
+    // the companion's cost is charged to its parent, and the terminal row says so instead of 0
+    assert.strictEqual(main.companionOf['create-ticket'], 'project-solve-task', 'the second Skill call in one turn is a companion load');
+    const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+    assert.match(text, /create-ticket\s+1\s+~\d+\s+folded -> project-solve-task/, 'the companion row names where its cost went, never a bare 0');
+    // the unattributed denial is joined to the ledger row 300ms away
+    assert.match(text, /joined by ledger timestamp \(within 300ms\): guard-stop-contract\.js×1/, 'the phantom guard becomes the one that actually fired');
+    // the biggest results carry the call's own label
+    assert.match(text, /Bash read the migrations catalog/, 'a result size is printed beside what the call asked for');
+    // errors carry their timestamps, so a phase cannot be blamed for another phase's failures
+    assert.match(text, /errors, by WHEN they landed/, 'the errors get a when');
+    assert.match(text, /07:07:00/, '... naming each one');
+    // one row per DISTINCT reason, not one per hook
+    const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+    assert.match(md, /\| `guard-secret-value\.js` \| 1 \| PreToolUse \/ Read \| Blocked: Read of \/a\/settings\.json \|/, 'the first file gets its own row');
+    assert.match(md, /\| `guard-secret-value\.js` \| 1 \| PreToolUse \/ Read \| Blocked: Read of \/b\/\.env \|/, 'and so does the second - two files are two causes');
+    assert.match(md, /\[prose-ask\]/, "the guard's own branch tag rides along with the reason");
+    assert.strictEqual(hookBlocks.rows, 3);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the window tier names its source, and an abandoned session says so', () => {
+    const dir = tmp();
+    const file = path.join(dir, 'sess.jsonl');
+    const at = (i) => `2026-07-16T09:${String(i).padStart(2, '0')}:00.000Z`;
+    let body = '';
+    // the session's own reminder carries the suffix; cost-state's billing key does NOT
+    body += line({ type: 'user', timestamp: at(1), message: { role: 'user', content: 'You are powered by the model named Opus 5. The exact model ID is claude-opus-5[1m].' } });
+    body += line({ type: 'assistant', timestamp: at(2), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'ls', description: 'list' } }] } });
+    body += line({ type: 'user', timestamp: at(3), message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'ok' }] } });
+    body += line({ type: 'cost-state', timestamp: at(4), modelUsage: { 'claude-opus-5': { thinkingTokens: 10 } }, totalCostUSD: 0.5 });
+    // the last row in the file is the interrupt marker: the run was abandoned, not closed
+    body += line({ type: 'user', timestamp: at(5), message: { role: 'user', content: '[Request interrupted by user for tool use]' } });
+    fs.writeFileSync(file, body);
+
+    const text = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+    assert.match(text, /model \(with window suffix\) claude-opus-5\[1m\] \(the session's own model reminder\) - cost-state says claude-opus-5/,
+        'the reminder answers and the disagreement is printed, never silently resolved');
+    assert.match(text, /user interrupts 1 - the session ENDS on one/, 'a session ending on an interrupt is reported as abandoned');
+    const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+    assert.match(md, /\*\*Model \(with window suffix\)\*\* claude-opus-5\[1m\]/, 'the markdown report carries the same source line');
+    assert.match(md, /\*\*Interrupts\*\* 1 - the session ENDS on one/, '... and the same interrupt line');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A FORK's transcript opens as a copy of its parent's rows, each still carrying the parent's id
+// under `session_id` (the camel-case `sessionId` is rewritten to the fork's own): two forks of one conversation shared 90-92 assistant ids with their parent and the
+// rollup counted that run three times; the dedupe was done by hand (measured).
+test('fork prefix: rows carrying another session id are counted apart, and the ledger join runs over the tail only', () => {
+  const dir = tmp();
+  const own = '22222222-2222-4222-8222-222222222222';
+  const parent = '11111111-1111-4111-8111-111111111111';
+  const file = path.join(dir, own + '.jsonl');
+  const parentCall = bash('t1', 'echo parent');
+  parentCall.message.usage = usage(1, 0, 5000, 1);
+  const ownCall = bash('t2', 'echo own');
+  ownCall.timestamp = '2026-07-15T07:10:00.000Z';
+  fs.writeFileSync(file, [
+    line({ ...parentCall, sessionId: own, session_id: parent }),
+    line({ ...result('t1'), sessionId: own, session_id: parent }),
+    line({ ...ownCall, sessionId: own, session_id: own }),
+    line({ ...result('t2'), sessionId: own, session_id: own, timestamp: '2026-07-15T07:10:01.000Z' }),
+  ].join(''));
+  const ledger = path.join(dir, 'tools-usage.jsonl');
+  fs.writeFileSync(ledger, line({ ts: '2026-07-15T07:10:00.100Z', tool: 'Bash', detail: 'echo own' }));
+  const out = run([file, '--hook-log', ledger]);
+  assert.deepStrictEqual(out.main.forkPrefix, { rows: 2, msgs: 1, cacheRead: 5000, cacheCreate: 0, output: 1, toolCalls: 1, sessionIds: [parent] });
+  assert.strictEqual(out.main.total.msgs, 2, 'the totals still count the whole file');
+  assert.strictEqual(out.main.total.cacheRead, 5010);
+  const cov = out.hookLog.coverage;
+  assert.strictEqual(cov.calls, 1, 'the join sees the tail only');
+  assert.strictEqual(cov.inWin, 1);
+  assert.strictEqual(cov.outside, 0, "the parent's call is not this ledger's gap");
+  // a plain session file is nobody's fork
+  const plain = fixture(tmp(), [{ ...bash('t1', 'echo'), sessionId: 'not-a-session-id' }, result('t1')]);
+  assert.strictEqual(run([plain]).main.forkPrefix.msgs, 0);
+});
+
+// A call the harness rejects before PreToolUse leaves no ledger row, and a ledger row can have no
+// transcript call (an ask the transcript never wrote). A count-based 'unmatched' cancelled the two
+// into a false 40 vs 40 (measured): the join now lists each side.
+test('hook-log join: unmatched calls and unmatched rows are listed per side, not netted', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo one'), result('t1'), bash('t2', 'echo two'), result('t2')]);
+  const ledger = path.join(dir, 'tools-usage.jsonl');
+  fs.writeFileSync(ledger, [
+    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'echo one' }),
+    line({ ts: '2026-07-15T07:00:00.200Z', tool: 'AskUserQuestion', detail: 'q' }),
+  ].join(''));
+  const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
+  assert.strictEqual(cov.unmatched, 0, 'the netted count says all is well');
+  assert.strictEqual(cov.matchedCalls, 1);
+  assert.strictEqual(cov.unmatchedCallCount, 1, '... one call has no row');
+  assert.strictEqual(cov.unmatchedCalls[0].tool, 'Bash');
+  assert.strictEqual(cov.unmatchedRowCount, 1, '... and one row has no call');
+  assert.strictEqual(cov.unmatchedRows[0].tool, 'AskUserQuestion');
+  assert.strictEqual(run([file, '--hook-log', ledger]).hookLog.rowsIdx, undefined, 'the row index stays out of the dump');
+});
+
+// The bill sees calls the transcript never records - the harness's post-turn recap call is one -
+// so cost-state cache-read exceeded the transcript's by exactly one peak context (694,773 vs
+// 590,045, measured) and nothing said so.
+test('cost-state cache-read above the transcript is reported as untranscribed calls', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1'),
+    { type: 'cost-state', sessionId: 'x', modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, thinkingTokens: 0, cacheReadInputTokens: 22, cacheCreationInputTokens: 0 } } }]);
+  const { main } = run([file]);
+  assert.strictEqual(main.costState.cacheRead, 22);
+  assert.strictEqual(main.total.cacheRead, 10);
+  assert.deepStrictEqual(main.untranscribed, { cacheRead: 12, contexts: 1.1 });
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\*\*Untranscribed calls\*\* cost-state cache-read 22 vs transcript 10 - gap 12/);
+});
+
+// The fork-liveness probe writes a mode: probe row into the same ledger the guards block into; a
+// probe is a measurement, never a block, and the tally must not read it as one.
+test('hook-blocks: a probe row is counted apart from the blocks', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    line({ ts: '2026-07-15T07:00:00.500Z', hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'Blocked: whole-file Read of Big.cs' }),
+    line({ ts: '2026-07-15T07:00:01.500Z', hook: 'guard-cross-project-write.js', event: 'PreToolUse', tool: 'Edit', mode: 'probe', kind: 'fork-liveness', reason: 'probe: Edit of a file while a live sibling session' }),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rows, 1, 'one block');
+  assert.strictEqual(hookBlocks.probes, 1, 'one probe, apart');
+  assert.deepStrictEqual(hookBlocks.probeKinds, { 'fork-liveness': 1 });
+  assert.strictEqual(Object.keys(hookBlocks.byHook).length, 1, 'the probe is not a hook block row');
 });

@@ -115,7 +115,12 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   // that tier's 400,000 default trigger. An unresolved window makes no offer at all, so a smaller
   // figure would read DEAD for a second reason and stop testing the harness wiring this case exists for.
   const big = { cache_read_input_tokens: 450000, input_tokens: 20, output_tokens: 20 };
+  // Two rows, in that order: the session's own cold FLOOR and then the carry. The gate offers a
+  // resume only when the carry minus the floor is a real share of what a message costs, so a
+  // one-row fixture recovers nothing by its own arithmetic and would read DEAD for a third reason.
+  const floor = { cache_creation_input_tokens: 20000, input_tokens: 20, output_tokens: 20 };
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
+    { type: 'assistant', cwd: dir, message: { id: 'm0', content: [{ type: 'text', text: 'first turn' }], usage: floor } },
     { type: 'assistant', cwd: dir, message: { id: 'm1', content: [{ type: 'text', text: 'x'.repeat(300) }], usage: big } },
     toolRow('Skill', { skill: 'project-solve-task' }, dir),
   ].map((r) => JSON.stringify(r)).join('\n') + '\n');

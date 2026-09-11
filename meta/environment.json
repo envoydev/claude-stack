@@ -77,10 +77,10 @@
     },
     {
       "key": "CLAUDE_STACK_FRESH_SESSION_DEFAULT",
-      "default": "250000",
+      "default": "180000",
       "ask": true,
       "asked_with": "CLAUDE_STACK_FRESH_SESSION_1M",
-      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the settings `model` names no `[1m]`/`[200k]` window suffix) and a window that is neither of those two sizes. 250,000 sits between the two named triggers, so an unknown window is neither nagged at the 200k figure nor left unreachable at the 1M one. `0` turns the offer off wherever the window is not one of the two named sizes.",
+      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the settings `model` names no `[1m]`/`[200k]` window suffix) and a window that is neither of those two sizes. 180,000 is REACHABLE on the smallest window it could be applied to: at 250,000 it sat ABOVE a 200k window entirely, so a session on that tier could never trip the gate and it silently did not exist. An unproven window is assumed SMALL on purpose - an offer made a little early is one dismissible ask, while one that can never fire is no gate at all. `0` turns the offer off wherever the window is not one of the two named sizes.",
       "validate": {
         "type": "tokens",
         "min": 0,

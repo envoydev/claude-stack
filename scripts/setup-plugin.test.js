@@ -193,16 +193,47 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
 test('the always MCP baseline is stack-neutral - a browser or native driver is seeded or proven', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
-    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'memory', 'serena'], 'only the stack-neutral three');
-    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry'])
+    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'serena'], 'only the two rules lock in');
+    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry', 'memory'])
     {
         assert.ok(!(recs.always.mcps || []).includes(server), `${server} must not install into every project`);
     }
+
+    // memory was seeded into every install and measured at zero calls across a 164-session audit:
+    // addable from the table, never seeded, and never flagged missing OR redundant by validate -
+    // which is exactly what the `general` list means.
+    assert.ok(((recs.general || {}).mcps || []).includes('memory'), 'memory is offered, not seeded');
+
+    // the heavy two fail at launch without Chrome / the mobile SDKs, so no stack seeds them; the
+    // native driver reaches a project through its own dependency instead.
+    for (const heavy of ['chrome-devtools', 'appium-mcp'])
+    {
+        const seededBy = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes(heavy)).map(([st]) => st);
+        assert.deepStrictEqual(seededBy, [], `${heavy} is addable only, seeded by no stack`);
+    }
+    assert.ok((evidence.mcps || {})['appium-mcp'], 'appium-mcp arrives by proof - its own dependency');
 
     // two proven routes into a project: a stack whose surface always has a browser, or the packages
     const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('playwright')).map(([st]) => st).sort();
     assert.deepStrictEqual(seeded, ['browser-extension', 'ionic-angular', 'web-angular']);
     assert.ok((evidence.mcps || {}).playwright, 'and an evidence signal for any other stack that actually uses it');
+});
+
+test('every shipped plugin is reachable from a seed closure - validate cannot flag what nothing seeds', () => {
+    const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
+    const sh = fs.readFileSync(path.join(ROOT, 'scripts', 'os', 'claude-stack.sh'), 'utf8');
+    const block = sh.match(/^PLUGINS=\(\n([\s\S]*?)^\)/m);
+    assert.ok(block, 'the installer PLUGINS manifest is readable');
+    const shipped = [...block[1].matchAll(/^\s*"([A-Za-z0-9_.-]+)@/gm)].map(m => m[1]).sort();
+    assert.ok(shipped.length >= 5, 'the manifest lists the shipped plugins');
+
+    // findStackMissing sources are the always baseline plus each DETECTED stack, both run through
+    // the closure - so a plugin no seed reaches is invisible to validate's ADD side on every
+    // install. Measured: three of the seven sat outside every seed, one of them the commit-time
+    // security gate, and a validate run reported nothing missing while it was not installed.
+    const reachable = new Set(computeClosure(graph, recs.always).plugins || []);
+    for (const sel of Object.values(recs.stacks)) for (const p of computeClosure(graph, sel).plugins || []) reachable.add(p);
+    for (const name of shipped) assert.ok(reachable.has(name), `${name} is reachable from a seed closure`);
 });
 
 test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {

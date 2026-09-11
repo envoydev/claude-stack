@@ -237,3 +237,52 @@ test('lintOptionalCites flags a NAMED load of a skill that can be absent; a desc
     const accidental = 'Every seat reads the docs; a skill not installed is simply absent.\nLoad `angular-material` for Material work.\n';
     assert.strictEqual(lintOptionalCites('f.md', accidental, optional).length, 1);
 });
+
+// The usage-policy block ships VERBATIM into every project's generated capabilities rule and is
+// never re-fetched, so a project can carry a two-release-old policy with nothing able to notice.
+// The stamp is what /claude-stack:validate compares a project's copy against - so it has to be
+// true in the source first, and the lint is what keeps it true.
+test('check 29: the capabilities usage policy carries a stamp that matches its own block', () =>
+{
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { paths } = require('./lint-skills.js');
+    const file = path.join(paths.SKILLS_DIR, 'project-agent-capabilities', 'SKILL.md');
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const start = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
+    assert.ok(start >= 0, 'the stamped block is still where the lint and the skill both look for it');
+    const declared = (lines[start + 1].match(/policy-rev:\s*([0-9a-f]{8})/) || [])[1];
+    assert.ok(declared, 'the rev line sits directly under the heading, inside the copy target');
+    let end = start + 2;
+    while (end < lines.length && !lines[end].startsWith('## ')) end += 1;
+    const actual = require('crypto').createHash('sha1')
+        .update(lines.slice(start + 2, end).join('\n').trim()).digest('hex').slice(0, 8);
+    assert.strictEqual(declared, actual, 'the shipped rev is the block\'s own hash - bump it when the policy moves');
+    // and validate must look for the same token, or the comparison it prescribes finds nothing
+    const val = fs.readFileSync(path.join(paths.ROOT, 'setup-plugin', 'commands', 'validate.md'), 'utf8');
+    assert.match(val, /policy-rev: \[0-9a-f\]\*/, 'validate greps for the token this lint maintains');
+});
+
+test('check 34: a references/ pointer at a sibling skill must resolve in that sibling; a capability-described one in some skill', () => {
+    const { lintReferencePointers } = require('./lint-skills.js');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-refs-'));
+    const mk = (d, rel, body) => { fs.mkdirSync(path.dirname(path.join(root, d, rel)), { recursive: true }); fs.writeFileSync(path.join(root, d, rel), body); };
+    mk('csharp', 'SKILL.md', '# csharp\n');
+    mk('csharp', 'references/concurrency.md', '# c\n');
+    mk('dotnet', 'SKILL.md', [
+        'own file: `references/own.md`.',
+        'good sibling: `csharp` (its `references/concurrency.md`).',
+        'dangling sibling: `csharp` (its `references/renamed-away.md`).',
+        'described owner, resolves somewhere: the C# skill\'s `references/concurrency.md`.',
+        'described owner, nowhere: the C# skill\'s `references/never-existed.md`.',
+    ].join('\n'));
+    mk('dotnet', 'references/own.md', '# o\n');
+    const findings = lintReferencePointers(root, ['csharp', 'dotnet']);
+    assert.strictEqual(findings.length, 2, findings.join('\n'));
+    assert.match(findings[0], /renamed-away\.md.*csharp.*dangled/);
+    assert.match(findings[1], /never-existed\.md.*no skill folder/);
+    fs.rmSync(root, { recursive: true, force: true });
+});

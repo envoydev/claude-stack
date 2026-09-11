@@ -21,8 +21,14 @@
   ],
   "mcps": [
    "serena",
-   "context7",
-   "memory"
+   "context7"
+  ],
+  "plugins": [
+   "superpowers",
+   "claude-md-management",
+   "security-guidance",
+   "claude-hud",
+   "ponytail"
   ],
   "hooks": [
    "guard-protected-force-push",
@@ -42,6 +48,7 @@
    "project-architecture-analyzer",
    "project-architecture-quality-loop",
    "project-code-style-analyzer",
+   "project-commit-checkpoint",
    "project-diagnose-failure",
    "project-implementer",
    "project-quality-loop",
@@ -65,6 +72,9 @@
   ],
   "agents": [
    "related-project-analyzer"
+  ],
+  "mcps": [
+   "memory"
   ]
  },
  "stacks": {
@@ -254,7 +264,6 @@
    ],
    "mcps": [
     "angular-cli",
-    "appium-mcp",
     "playwright"
    ]
   },
@@ -298,7 +307,6 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "chrome-devtools",
     "playwright"
    ]
   },

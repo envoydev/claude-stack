@@ -12,6 +12,13 @@ The Markdown authoring and review skill. Owns two layers of rules and the proced
 
 The question this skill answers is **'is this doc well-formed?'** - not 'does this doc belong here?' Style review never decides whether a doc should exist; it assumes the doc earned its place and asks whether the prose structure and Markdown are clean.
 
+**One load per session, and the tables below are the whole check.** This is a before-write check,
+not a companion that rides along: load it once, run both passes over the docs this session writes,
+and do not re-load it for the next `.md` - it is already in context. Neither `references/` file is
+opened unless a specific rule the two quick-reference tables do not settle is actually in dispute
+(measured: one session carried this skill across 11 messages for 1.6M cache-read tokens - ~52% of
+that session's whole cache-read, for a single style check on one file).
+
 ## How to run a review
 
 Two passes, syntax before style. The reviewer reads a syntax violation differently from a style violation, so do not interleave them.

@@ -851,7 +851,7 @@ test('sh env: both fresh-session knobs are seeded, and a hand-edited value is ne
         const env = JSON.parse(fs.readFileSync(fresh, 'utf8')).env;
         assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_1M, '400000', 'the 1M-tier trigger is seeded at the house default');
         assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_200K, '150000', 'and so is the 200k-tier one');
-        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '250000', 'and the one every other window falls to');
+        assert.strictEqual(env.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '180000', 'and the one every other window falls to - REACHABLE on a 200k window, which 250,000 was not');
         assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in env), 'the retired percentage key is not seeded into a fresh install');
         assert.ok(!('CLAUDE_STACK_CONTEXT_WINDOW' in env), 'and neither is the retired window box - the tier is detected, never declared');
         assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in env), "nor Claude Code's own auto-compact trigger, which this stack no longer owns");
@@ -919,7 +919,7 @@ test('ps1 env: the same two knobs, same rule (pwsh required)', { skip: skipNoPws
         const first = JSON.parse(fs.readFileSync(pass1, 'utf8')).env;
         assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_1M, '250000', 'the hand-edited tier trigger is left alone');
         assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_200K, '150000', 'the absent one is seeded at the house default');
-        assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '250000', 'and so is the unreadable-window one');
+        assert.strictEqual(first.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '180000', 'and so is the unreadable-window one - at 250,000 it sat above a 200k window entirely and the gate could never fire there');
         assert.ok(!('CLAUDE_STACK_CONTEXT_WINDOW' in first), 'the retired window box is not seeded');
         assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in first), "nor Claude Code's own auto-compact trigger");
         const env = JSON.parse(fs.readFileSync(settings, 'utf8')).env;
@@ -996,4 +996,59 @@ test('ps1 env: the same rename, same rules (pwsh required)', { skip: skipNoPwsh 
         assert.match(res.stdout, /CLAUDE_DOCS_PATH renamed to CLAUDE_STACK_DOCS_PATH/, 'and the rename is narrated');
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+// --- the whole-tree attribute sweep (Windows) --------------------------------------------------
+// Clear-WriteBlockers fixes ONE file, at the moment it is written. A `.claude` tree that picked up
+// the ReadOnly or Hidden attribute wholesale - a copy off a network share, a backup restore, an
+// antivirus quarantine - therefore stayed blocked everywhere the run did not happen to write:
+// measured, 174 Hidden files, 2 cleared, 172 left. Hidden is the worse half, because Get-ChildItem
+// omits it without -Force, so an -InstalledOnly derivation reads a Hidden artifact as ABSENT.
+// One sweep per run, before any step touches the tree, with the count in the log.
+function markBlocked(paths) {
+    const set = paths.map((p) => `$i = Get-Item -LiteralPath ${JSON.stringify(p)} -Force; $i.Attributes = $i.Attributes -bor [System.IO.FileAttributes]::Hidden`).join('\n');
+    const count = `$n = @(${paths.map((p) => JSON.stringify(p)).join(',')}) | Where-Object { (Get-Item -LiteralPath $_ -Force).Attributes -band [System.IO.FileAttributes]::Hidden }; Write-Output $n.Count`;
+    const res = spawnSync('pwsh', ['-NoProfile', '-Command', set + '\n' + count], { encoding: 'utf8' });
+    return res.status === 0 && res.stdout.trim() === String(paths.length);
+}
+
+function stillBlocked(paths) {
+    const q = `$n = @(${paths.map((p) => JSON.stringify(p)).join(',')}) | Where-Object { (Get-Item -LiteralPath $_ -Force).Attributes -band ([System.IO.FileAttributes]::Hidden -bor [System.IO.FileAttributes]::ReadOnly) }; Write-Output $n.Count`;
+    return Number(spawnSync('pwsh', ['-NoProfile', '-Command', q], { encoding: 'utf8' }).stdout.trim());
+}
+
+test('ps1: one run clears ReadOnly/Hidden across the WHOLE .claude tree, not just what it writes (pwsh required)', { skip: skipNoPwsh }, () => {
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'skinst-attr-'));
+    const sel = path.join(work, 'sel.txt');
+    fs.writeFileSync(sel, 'skill csharp\n');
+    try
+    {
+        // A tree the run will NOT write into: a different skill, a rule, a hook, a generated doc.
+        // Every one of them must come out clear, which is what makes this a tree sweep and not a
+        // restatement of the per-write call.
+        const untouched = [
+            ['skills', 'angular', 'SKILL.md'],
+            ['rules', 'csharp-conventions.md'],
+            ['hooks', 'guard-catastrophic-rm.js'],
+            ['docs', 'architecture', 'ARCHITECTURE.md'],
+        ].map((parts) => path.join(work, '.claude', ...parts));
+        for (const f of untouched) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'x\n'); }
+        if (!markBlocked(untouched)) { console.log('    (skipped: this platform cannot set the Hidden attribute)'); return; }
+
+        const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly'], {
+            cwd: work,
+            encoding: 'utf8',
+            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work, CLAUDE_CONFIG_DIR: '' },
+        });
+        assert.strictEqual(stillBlocked(untouched), 0, 'every blocked file in the tree is cleared, not only the ones this run wrote');
+        // The count is in the output because the silent version is what let 172 files stay blocked
+        // while the close reported the 2 it had fixed.
+        const m = out.match(/cleared ReadOnly\/Hidden on (\d+) file\(s\)/);
+        assert.ok(m, 'the run says how many files it cleared');
+        assert.ok(Number(m[1]) >= untouched.length, `the count covers the whole tree (said ${m && m[1]}, at least ${untouched.length} were set)`);
+    }
+    finally
+    {
+        fs.rmSync(work, { recursive: true, force: true });
+    }
 });

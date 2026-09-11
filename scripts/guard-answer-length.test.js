@@ -170,3 +170,52 @@ test('last_assistant_message is measured ahead of a lagging transcript', () => {
     assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: path.join(TMP, 'absent.jsonl'), last_assistant_message: WALL }).status, 0,
         'no transcript means no user message to judge - fail open');
 });
+
+test('the em-dash ban is enforced on the same prose the cap reads', () => {
+    // Measured across four audited sessions: 32 em-dashes in 21,434 characters of prose in one, 4
+    // in another, 2 each in two more - with this hook's own injection carrying 'single dashes,
+    // never em-dashes' three times in the same transcript. The rule was stated every turn and
+    // checked on no surface; the Stop branch already holds the answer, so it checks it here.
+    const stop = (text, userText) => run({
+        hook_event_name: 'Stop',
+        transcript_path: transcript(`dash-${Math.random().toString(36).slice(2)}`, userText || 'what changed?', [{ type: 'text', text }]),
+        last_assistant_message: text,
+    });
+    assert.strictEqual(stop(SHORT).status, 0, 'a clean short answer passes');
+    const one = stop('Done — the build is green.');
+    assert.strictEqual(one.status, 2, 'an em-dash in prose is blocked');
+    assert.match(one.stderr, /single dashes/, 'the denial names the rule');
+    assert.match(one.stderr, /replaced by a single dash/, '... and asks for the same answer, not a shorter one');
+    assert.strictEqual(stop('Done. See `a — b` in the table.').status, 0, 'a code span is not prose - the cap reads the same text');
+    assert.strictEqual(stop('```\nconst a = 1; // a — b\n```\nDone.').status, 0, 'and neither is a fenced block');
+    // The length exemptions excuse the LENGTH; an em-dash is a character to replace, so they do not
+    // reach it - a re-answer at the same length loses nothing.
+    const deep = stop(`${WALL} — and that is the detail.`, 'walk me through it in detail');
+    assert.strictEqual(deep.status, 2, 'a depth request excuses the wall of text, not the em-dash');
+    assert.match(deep.stderr, /single dashes/, '... and the denial says so alone');
+    assert.doesNotMatch(deep.stderr, /characters of prose - the house budget/, '... without demanding a shorter answer');
+    // Both wrong at once: ONE denial, naming both.
+    const both = stop(`${WALL} — done.`);
+    assert.strictEqual(both.status, 2, 'over the cap and carrying an em-dash');
+    assert.match(both.stderr, /also uses 1 em-dash/, 'the length denial carries the voice fix');
+    assert.match(both.stderr, /characters of prose/, '... and still names the length');
+});
+
+// The interaction rule's 're-ask on the SAME deliverable -> ONE format AskUserQuestion' shipped as
+// prose and lost: nine corrections, nine redrafts of one report, 1.64M cache-read, no ask
+// (measured). The UserPromptSubmit half now names the ask on the third short turn in a row that
+// follows a long answer - injection only, so a wrong guess costs one sentence, never a turn.
+test('UserPromptSubmit names the format ask after three short turns that each followed a long answer', () => {
+    const long = (id) => ({ type: 'assistant', message: { id, role: 'assistant', content: [{ type: 'text', text: WALL }] } });
+    const short = (t) => ({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: t }] } });
+    const rows = [short('write the report'), long('a1'), short('no, shorter'), long('a2'), short('drop the table'), long('a3')];
+    const write = (name, rs) => { const p = path.join(TMP, name + '.jsonl'); fs.writeFileSync(p, rs.map((r) => JSON.stringify(r)).join('\n') + '\n'); return p; };
+    const ctxOf = (prompt, tp) => JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }).stdout).hookSpecificOutput.additionalContext;
+    const ctx = ctxOf('and in Ukrainian', write('streak', rows));
+    assert.match(ctx, /FORMAT ASK/, 'the third short correction gets the format-ask line');
+    assert.match(ctx, /3 consecutive short turns/, '... naming the count');
+    assert.match(ctx, /3 sentences/, '... beside the budget, not instead of it');
+    assert.doesNotMatch(ctxOf('and in Ukrainian', write('streak2', rows.slice(0, 4))), /FORMAT ASK/, 'two short turns are a conversation, not a streak');
+    assert.doesNotMatch(ctxOf(WALL, write('streak3', rows)), /FORMAT ASK/, 'a long turn is a brief, not a correction');
+    assert.doesNotMatch(ctxOf('<command-name>/help</command-name>', write('streak4', rows)), /FORMAT ASK/, 'a slash turn is not a correction');
+});

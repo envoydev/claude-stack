@@ -54,6 +54,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -64,6 +68,12 @@ const GATED_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/;
 // Same extensions, unanchored - a sweep command names its files inside a glob or a loop body,
 // never as the string's own tail, so the anchored form above can never match a command line.
 const GATED_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)\b/i;
+// The SWEEP branch adds `md`. A loop over every SKILL.md in an install is the single most measured
+// dump shape in the collection - 84.1KB from 35 files in one call, 120KB from 46 in another, and
+// the only thing that stopped either was the harness's own persisted-output cap. Markdown is not
+// symbol-navigable, so the single-file size check below deliberately still ignores it: one named
+// `.md` file is a fine read, thirty-five of them in a loop is not.
+const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)\b/i;
 // Small files are cheap to read whole. 200, not 100: measured across four real
 // sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
 // serena detour costs about what the whole-file read would - the guard only pays above 200.
@@ -77,6 +87,24 @@ const lineCountOf = (p) => {
 // `cat -n` dumps after a `cd` all resolved ENOENT -> lineCount 0 -> the guard silently passed
 // ~20k tokens of whole-file dumps; reproduced: the same payload blocks from the project root).
 const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].filter(Boolean);
+// A `cd <dir> &&` at the head of the command moves the anchor for everything after it, and a
+// relative target then resolves nowhere - which failed CLOSED and denied the call. Add every
+// literal `cd` target as one more candidate anchor; a variable or `-` target is unfollowable and
+// simply contributes nothing. The sibling cross-project guard tracks the same thing positionally.
+const CD_RE = /(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^\s;|&()]+)/g;
+// `$VAR` / `${VAR}` that this hook cannot see through. The sibling guard's rule, applied here for
+// the same reason: 6 of 12 measured denials in one project named a `$R/...` target, and judging a
+// path whose value is unknown is guessing, not gating.
+const isVar = (s) => /\$\{?[A-Za-z_]/.test(s);
+// A `VAR=value` set in the SAME command is knowable - expand those before giving up on a target.
+const assignsOf = (cmd) => {
+  const m = new Map();
+  for (const a of String(cmd).matchAll(/(?:^|&&|\|\||;|\n|\s)([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&|]+)/g))
+    m.set(a[1], a[2].replace(/^["']|["']$/g, ''));
+  return m;
+};
+const expandWith = (assigns, s) => String(s).replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
+  (m, br, bare) => (assigns.has(br || bare) ? assigns.get(br || bare) : m));
 // Git Bash / MSYS spell a Windows path in POSIX MOUNT form (`/c/Users/...`, `/cygdrive/c/...`),
 // which node on win32 resolves against the CURRENT drive instead - the same falsehood that made
 // the cross-project guard block a session's own temp cleanup. Translate before resolving; off
@@ -94,8 +122,14 @@ const resolveLineCount = (raw) => {
   }
   return { lc: 0, resolved: false };
 };
+// The hint must be EXECUTABLE, not just correct. serena's tools are deferred behind tool search in
+// this harness, so naming them is not having them: measured, two sessions carried the rule text
+// saying exactly that and still made 100 Bash calls and 0 serena calls. The loading call goes in
+// the denial itself, where the model is already looking for what to do instead.
 const serenaHint = (p) =>
-  `Locate first with serena: get_symbols_overview('${p}') then find_symbol(...),\n` +
+  `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
+  `  ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol,mcp__serena__find_referencing_symbols\n` +
+  `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
   `for a large body fetch it without the body first, then Read the range you need).`;
 
@@ -120,7 +154,7 @@ const sessionStateFile = () => pathMod.join(os.tmpdir(), `guard-read-${(payload.
 // already parses the extension, so it is the one place that can close the gap: it names the rule
 // that governs the file, ONCE per rule per session, as non-blocking additionalContext.
 const CONVENTION_RULES = [
-  [/\.Designer\.cs\b/i, 'winforms-conventions.md'],
+  [/\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b/, 'winforms-conventions.md'], // twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#
   [/\.cs\b/i, 'csharp-conventions.md'],
   [/\.xaml\b/i, 'wpf-conventions.md'],
   [/\.(component|service|directive|pipe|guard|resolver|module|routes)\.ts\b/i, 'angular-conventions.md'],
@@ -134,9 +168,32 @@ const CONVENTION_RULES = [
 // The announcement is HELD until the call is allowed, and only then marked as said: a denial and an
 // injection are two different answers to the same tool call, and a rule announced into a turn that
 // was blocked would be spent on a command that never ran.
+// A command that only READS governed files does not need the rule - and worse, announcing there
+// SPENDS it: the announcement is once per rule per session, so an inventory `sed -n '1,20p'` over
+// every SKILL.md marked markdown-docs said, and the authoring Write minutes later got nothing.
+// Measured twice, on an `awk | head -c 900` and on a `sed -n '1,20p'` loop, each re-paid across
+// the following messages. So: a write verb or a redirection into a file, or no announcement.
+const WRITES_RE = new RegExp([
+  '>>?\\s*[^&\\s>]',                                 // redirection into a path
+  '\\btee\\b',
+  '\\b(?:sed|perl)\\b[^\\n]*\\s-i\\b',                   // in-place edit
+  '\\b(?:cp|mv|touch|install)\\b',
+  '\\bgit\\s+(?:apply|checkout|restore|mv)\\b',
+  '\\bpatch\\b',
+  '\\b(?:python3?|node|perl|ruby)\\b[^\\n]*(?:writeFileSync|appendFileSync|open\\([^)]*[\'"][waxr])',
+].join('|'));
+// The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
+// neither is the install's own `.claude/` tree. A `.md` hit whose targets all live there is dropped.
+const UNGOVERNED_MD = /(?:^|[\s"'=])(?:\.\/)?\.claude\//;
 function announceRules(text) {
+  if (!WRITES_RE.test(text)) return;
   const hit = [];
   for (const [re, rule] of CONVENTION_RULES) if (re.test(text) && !hit.includes(rule)) hit.push(rule);
+  if (hit.includes('markdown-docs.md')) {
+    const mdTargets = [...String(text).matchAll(/(?:^|[\s"'=])((?:[^\s"';|&]+)?\.md)\b/g)].map((m) => m[1]);
+    if (mdTargets.length && mdTargets.every((f) => UNGOVERNED_MD.test(` ${f}`) || f.includes('.claude/')))
+      hit.splice(hit.indexOf('markdown-docs.md'), 1);
+  }
   if (!hit.length) return;
   let state = {};
   const f = sessionStateFile();
@@ -173,6 +230,14 @@ if (payload.tool_name === 'Bash') {
   // command is inert text, and matching it blocks a document write for its own prose (reproduced).
   // Blank the payload spans, keeping the character count so any index into the command still holds.
   const command = stripHeredocsOf(String(input.command || ''));
+  // Anchors and same-command assignments, computed once for every check below.
+  const assigns = assignsOf(command);
+  for (const c of command.matchAll(CD_RE)) {
+    const target = expandWith(assigns, c[1].replace(/^["']|["']$/g, ''));
+    if (target === '-' || isVar(target)) continue;
+    const abs = pathMod.isAbsolute(nativePath(target)) ? nativePath(target) : pathMod.join(anchorDirs[0] || process.cwd(), target);
+    if (!anchorDirs.includes(abs)) anchorDirs.push(abs);
+  }
   // Only `cat`/`sed` were gated, so the same whole-file dump walked through under any other verb:
   // `head -n 100000`, `tail -n +1`, `less`, `awk '1'`, `python3 -c "print(open(f).read())"` all
   // passed (reproduced x5 against a 1371-line file).
@@ -206,7 +271,12 @@ if (payload.tool_name === 'Bash') {
     const sweep = /\bfor\b/i.test(sweepM[0]) ? 'a shell loop over a file list'
       : /-exec/i.test(sweepM[0]) ? 'find -exec cat' : 'xargs cat';
     const namedFind = sweepM[0].match(/-name\s+(["']?)([^"'\s*?\[\]]+)\1(?=\s|$)/);
-    if (!namedFind && gatedIn(sweepM[0])) {
+    // The literal-name exemption rests on 'no glob metacharacter means it names ONE file'. That
+    // holds for a source file and fails completely for `-name SKILL.md`, which names one file per
+    // skill directory - 35 of them in the measured dump, 46 in the next. So the exemption does not
+    // cover markdown: a repeated literal `.md` name across a tree is the sweep, not the idiom.
+    const namedOne = namedFind && !/\.md\b/i.test(namedFind[2] || '');
+    if (!namedOne && SWEEP_EXT_ANY.test(sweepM[0])) {
       process.stderr.write(
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
@@ -226,13 +296,33 @@ if (payload.tool_name === 'Bash') {
     // A whole-file read through a language runtime is the same dump with a different spelling.
     const rtCall = seg.match(/\b(?:python3?|node|perl|ruby)\b[^\n]*?\b(?:open\(\s*(["'][^"']*["'])[^)]*\)\s*\.read\(|(?:readFileSync|File\.read)\(\s*(["'][^"']*["']))/);
     if (rtCall && gatedIn(rtCall[1] || rtCall[2] || seg)) {
-      process.stderr.write(
-        'Blocked: whole-file read of a source file through a language runtime.\n' +
-        'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
-        'differently. Locate the symbol first (serena find_symbol / get_symbols_overview), then read\n' +
-        'only the range you need.',
-      );
-      process.exit(2);
+      // This branch used to block on the extension ALONE - it never reached the line count the
+      // `cat` path below is judged by, and it could not tell a dump from a COUNT. Measured: a
+      // `node -e` whose entire output was `.match(...).length` on a 198-line file (under the
+      // guard's own threshold) was denied, killing a five-probe compound command and costing a
+      // 107k-token retry. Two exemptions, in order:
+      //   - the expression REDUCES: the read feeds a count/search/test and the content itself is
+      //     never printed, so nothing large can reach the context;
+      //   - the file is knowable and under THRESHOLD, exactly as for `cat`.
+      const lit = String(rtCall[1] || rtCall[2] || '').replace(/^["']|["']$/g, '');
+      const reduces = /\)\s*\.\s*(?:match|split|indexOf|lastIndexOf|includes|search|test|length|filter|reduce|count|find|index|scan)\b/.test(seg)
+        && !/\bconsole\.log\(\s*(?:[A-Za-z_$][\w$]*\s*\)|(?:fs\.)?readFileSync|open\()/.test(seg)
+        && !/\bprint\(\s*open\(/.test(seg);
+      let oversized = true;
+      if (lit && !isVar(lit)) {
+        const { lc, resolved } = resolveLineCount(expandWith(assigns, lit));
+        if (resolved) oversized = lc > THRESHOLD;
+      }
+      if (!reduces && oversized) {
+        process.stderr.write(
+          'Blocked: whole-file read of a source file through a language runtime.\n' +
+          'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
+          'differently. Locate the symbol first (serena find_symbol / get_symbols_overview), then read\n' +
+          'only the range you need. An expression that only COUNTS or SEARCHES - the read feeding\n' +
+          '.match/.split/.length with no print of the content - is not a dump and is not blocked.',
+        );
+        process.exit(2);
+      }
     }
 
     // A dump verb whose output is unbounded is a dump: `head -n <huge>` and `tail -n +1` both print
@@ -258,8 +348,13 @@ if (payload.tool_name === 'Bash') {
       : [];
     const sedM = seg.match(/\bsed\s+-n\s+["']1,\$p["']\s+("[^"]+"|'[^']+'|[^\s;&|<>]+)/);
     if (sedM) files.push(sedM[1].replace(/^["']|["']$/g, ''));
-    for (const f of files) {
+    for (const rawF of files) {
+    const f = expandWith(assigns, rawF);
     if (!GATED_EXT.test(f)) continue;
+    // A target still carrying an unexpanded variable is unknowable - the sibling guard's rule:
+    // judge nothing rather than deny on a guess. This failed CLOSED before, and half the denials
+    // in one measured project were `$R/...` paths the session had every right to read.
+    if (isVar(f)) continue;
     const { lc, resolved } = resolveLineCount(f);
     if (!resolved) {
       // A dump-shaped command on a gated file whose size we cannot check fails CLOSED -
@@ -291,7 +386,29 @@ const path = input.file_path || '';
 // the symbol-navigable languages the stack's LSP plugins cover (TS/JS family,
 // C#, Go), plus large templates (Angular .html, Razor .razor/.cshtml, WPF
 // .xaml) where you should read the range. SQL/SCSS/markdown aren't symbol-nav.
-if (!GATED_EXT.test(path)) process.exit(0);
+// A file too big to fit a tool result is the most predictable whole-read in the system, whatever
+// its extension: the harness spills the oversized output to disk, and the recovery Read pulls the
+// whole thing straight back into context. Measured: a 93KB spill read WHOLE, twice, for 99,277
+// chars and no hook-block row, because the extension was not on the gated list. This branch judges
+// SIZE, not language, and it only ever objects to the whole-file SHAPE - a ranged read of the same
+// file passes untouched, which is the entire remedy.
+const BIG_BYTES = 60 * 1024;
+if (!GATED_EXT.test(path)) {
+  let size = 0;
+  try { size = fs.statSync(path).size; } catch { /* missing - let Read surface its own error */ }
+  const whole = (input.offset ?? 0) <= 1 && input.limit == null;
+  if (size > BIG_BYTES && whole) {
+    process.stderr.write(
+      `Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB).\n` +
+      `A file this large does not fit a tool result - reading it whole spends its entire size on\n` +
+      `context, and every message after it re-sends that. Take what you came for instead:\n` +
+      `  grep -n '<pattern>' '${path}'   ->  then Read with offset+limit on the lines it names\n` +
+      `A persisted/spilled output is the common case here: grep or tail it, never Read it whole.`,
+    );
+    process.exit(2);
+  }
+  process.exit(0);
+}
 const lineCount = lineCountOf(path);
 if (lineCount === 0) process.exit(0); // missing/unreadable - let Read surface its own error
 if (lineCount <= THRESHOLD) process.exit(0);

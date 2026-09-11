@@ -112,7 +112,11 @@ test('ps1: selection filters each category (pwsh required)', { skip: hasPwsh ? f
 // stays no hooks (the no-hook-lines special case must not fire), and the flag
 // is update-only and exclusive with an explicit selection.
 
-function makeInstallSandbox({ hooks = true } = {})
+// `stamp` names the hook catalog the PREVIOUS install shipped. Hooks are an all-or-nothing layer
+// on this path - an install that has hooks receives every hook the release ships - with one
+// exception: a hook that was shipped THEN and is absent NOW was dropped through configure and
+// stays dropped. Passing the full catalog (the default here) is the steady state: nothing to adopt.
+function makeInstallSandbox({ hooks = true, stamp = ALL_SHIPPED_HOOKS } = {})
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'io-'));
     const c = p => fs.mkdirSync(path.join(root, p), { recursive: true });
@@ -125,8 +129,12 @@ function makeInstallSandbox({ hooks = true } = {})
     if (hooks) fs.writeFileSync(path.join(root, '.claude/hooks/guard-catastrophic-rm.js'), 'x');
     fs.writeFileSync(path.join(root, '.claude/hooks/inject-code-style.js'), 'x');              // legacy generated - excluded
     fs.writeFileSync(path.join(root, '.mcp.json'), '{"mcpServers":{"serena":{}}}');
+    if (stamp !== null) fs.writeFileSync(path.join(root, '.claude', 'claude-stack.stamp'), `sha: aaa\nversion: 0.2.60\nshipped-hooks: ${stamp.join(',')}\n`);
     return root;
 }
+
+// the hook catalog the installer manifest ships, read from the manifest itself
+const ALL_SHIPPED_HOOKS = [...new Set([...fs.readFileSync(SH, 'utf8').matchAll(/^\s*"([a-z0-9-]+)\.js::/gm)].map(m => m[1]))];
 
 function runInstalledOnly(root, extraArgs = [])
 {
@@ -144,7 +152,7 @@ test('sh: --installed-only derives the plan from disk, excluding user-authored a
         assert.ok(!skills.includes('my-own-skill'), 'user-authored skill never enters the set');
         assert.ok(planLine(out, 'rules').includes('csharp-conventions'));
         assert.ok(!planLine(out, 'rules').includes('baseline-project-architecture'), 'generated rule excluded');
-        assert.deepStrictEqual(planLine(out, 'hooks'), ['guard-catastrophic-rm'], 'legacy generated hook excluded');
+        assert.deepStrictEqual(planLine(out, 'hooks'), ['guard-catastrophic-rm'], 'legacy generated hook excluded, and a dropped hook is not resurrected');
         assert.ok(planLine(out, 'mcps').includes('serena'), 'mcp read from .mcp.json');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -155,6 +163,31 @@ test('sh: --installed-only with no hooks on disk installs no hooks (special case
     try
     {
         assert.deepStrictEqual(planLine(runInstalledOnly(root), 'hooks'), []);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('sh: --installed-only ADOPTS a hook the release added, and only that one', () => {
+    // an install stamped before guard-answer-length existed: it is new here, every other absent
+    // hook was shipped then and dropped since
+    const root = makeInstallSandbox({ stamp: ALL_SHIPPED_HOOKS.filter(h => h !== 'guard-answer-length') });
+    try
+    {
+        const out = runInstalledOnly(root);
+        assert.deepStrictEqual(planLine(out, 'hooks').sort(), ['guard-answer-length', 'guard-catastrophic-rm'], 'the new hook joins, the dropped ones do not');
+        assert.match(out, /adopting hook guard-answer-length - shipped by this release and absent here/);
+        assert.match(out, /hook guard-stop-contract was dropped from this install - leaving it out/);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('sh: --installed-only with no stamp key adopts the whole catalog once (the first update after this release)', () => {
+    const root = makeInstallSandbox({ stamp: null });
+    try
+    {
+        const hooks = planLine(runInstalledOnly(root), 'hooks');
+        assert.ok(hooks.length >= 10, 'no recorded shipped set means nothing can read as a deliberate drop');
+        assert.ok(!hooks.includes('inject-code-style'), 'the legacy generated hook is still never installed');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

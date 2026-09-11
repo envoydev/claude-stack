@@ -1,6 +1,6 @@
 ---
 name: project-ci-failure-signatures
-description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat. Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is project-runtime-failure-signatures), not authoring CI/CD (that is devops).
+description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat. Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is project-runtime-failure-signatures), not authoring CI/CD (the pipeline-authoring house skill covers that).
 ---
 
 # CI Triage - turn a red pipeline into a verdict and a route

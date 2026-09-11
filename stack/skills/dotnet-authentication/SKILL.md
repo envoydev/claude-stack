@@ -55,14 +55,19 @@ var claims = new[]
     new Claim(ClaimTypes.Role, user.Role),
 };
 var now = timeProvider.GetUtcNow();   // injected TimeProvider, never DateTime.Now - see csharp
-var token = new JwtSecurityToken(
-    issuer: config["Jwt:Issuer"],
-    audience: config["Jwt:Audience"],
-    claims: claims,
-    notBefore: now.UtcDateTime,
-    expires: now.AddMinutes(15).UtcDateTime,
-    signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
+var handler = new JsonWebTokenHandler();   // Microsoft.IdentityModel.JsonWebTokens - the handler .NET 8+ JwtBearer validates with
+string jwt = handler.CreateToken(new SecurityTokenDescriptor
+{
+    Issuer = config["Jwt:Issuer"],
+    Audience = config["Jwt:Audience"],
+    Subject = new ClaimsIdentity(claims),
+    NotBefore = now.UtcDateTime,
+    Expires = now.AddMinutes(15).UtcDateTime,
+    SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256),
+});
 ```
+
+Mint on the same handler family you validate with: since .NET 8 `AddJwtBearer` validates through `JsonWebTokenHandler` by default and its events surface a `JsonWebToken`, so an `OnTokenValidated` that casts `context.SecurityToken` to `JwtSecurityToken` breaks; the legacy `JwtSecurityTokenHandler` path is reachable only by setting `UseSecurityTokenValidators = true`, which forfeits the faster default.
 
 Symmetric `HmacSha256` is fine when one service issues and validates. The moment a second party must verify a token it did not mint, switch to asymmetric signing (RSA / ECDSA) so the verifier holds only the public key. Keep access tokens short-lived and pair them with a refresh token if sessions must outlive fifteen minutes - a long-lived access token is a long-lived liability with no way to revoke it. The signing key is a secret: it comes from configuration, never source.
 

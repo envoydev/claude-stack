@@ -138,6 +138,86 @@ function assertSecondRun(sb, out, twin)
     assert.ok(!out.includes(TOKEN2), `${twin}: a value reached the log`);
 }
 
+// A hook the release ADDED could never reach an existing install: --installed-only derives the
+// selection from the hook FILES on disk, so a newly shipped guard was invisible to every update
+// (measured: the v0.2.20 commit gate reached zero of three consuming projects). The stamp now
+// records the hook catalog the run SHIPPED, which is what separates 'the user dropped it' from
+// 'it did not exist yet' - on disk those two are identical.
+const stampOf = (sb) => fs.readFileSync(path.join(sb.repo, '.claude', 'claude-stack.stamp'), 'utf8');
+const shippedHooks = (sb) => (/^shipped-hooks: (.*)$/m.exec(stampOf(sb)) || [, ''])[1].split(',').filter(Boolean);
+const hooksOnDisk = (sb) => fs.readdirSync(path.join(sb.repo, '.claude', 'hooks')).filter(f => f.endsWith('.js')).map(f => f.replace(/\.js$/, '')).sort();
+
+// --installed-only is mutually exclusive with --selection, so this path needs its own runners.
+const updateIoSh = (sb) => execFileSync('bash', [SH, 'update', '--scope', 'project', '--source', ROOT, '--installed-only'], { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+const updateIoPs = (sb) => execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'update', '-Scope', 'project', '-Source', ROOT, '-InstalledOnly'], { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+
+function assertHookAdoption(sb, run, updateIo, twin)
+{
+    run(sb, 'install');
+    const shipped = shippedHooks(sb);
+    assert.ok(shipped.length >= 10, `${twin}: the stamp records the whole shipped hook catalog, not this run's subset`);
+    assert.deepStrictEqual(hooksOnDisk(sb), ['guard-secret-value'], `${twin}: the selection installed one hook`);
+
+    // every other hook was shipped at install time and is absent now - a deliberate drop, kept dropped
+    const kept = updateIo(sb);
+    assert.deepStrictEqual(hooksOnDisk(sb), ['guard-secret-value'], `${twin}: a dropped hook is not resurrected`);
+    assert.match(kept, /installed-only: hook guard-answer-length was dropped from this install - leaving it out/, `${twin}: and the decision is reported`);
+
+    // now make one hook look NEW: drop it from the stamp's shipped list, as an install predating it has
+    const stampFile = path.join(sb.repo, '.claude', 'claude-stack.stamp');
+    fs.writeFileSync(stampFile, stampOf(sb).replace(/^shipped-hooks: .*$/m, (line) => line.split(',').filter(n => !n.endsWith('guard-answer-length')).join(',')));
+    const adopted = updateIo(sb);
+    assert.match(adopted, /installed-only: adopting hook guard-answer-length - shipped by this release and absent here/, `${twin}: a hook the release added IS adopted`);
+    assert.deepStrictEqual(hooksOnDisk(sb), ['guard-answer-length', 'guard-secret-value'], `${twin}: and it lands on disk`);
+    const wiring = JSON.stringify(JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8')).hooks || {});
+    assert.ok(wiring.includes('guard-answer-length.js'), `${twin}: the adopted hook is wired, not just copied`);
+    assert.ok(!adopted.includes('adopting hook guard-catastrophic-rm'), `${twin}: the other dropped hooks stay dropped in the same run`);
+}
+
+test('sh: update adopts a hook the release ADDED, and never resurrects one the user dropped', () => {
+    assertHookAdoption(sandbox(), runSh, updateIoSh, 'sh');
+});
+
+test('ps1: update adopts a hook the release ADDED, and never resurrects one the user dropped (pwsh required)', { skip: skipNoPwsh }, () => {
+    assertHookAdoption(sandbox(), runPs, updateIoPs, 'ps1');
+});
+
+// The update command's close-out used to ASSERT 'no key renamed, reset or newly seeded' with
+// nothing to read back - a rename and a removal each printed a line, a SEED printed nothing. Three
+// audited runs stated it anyway and one of them named keys it had never probed.
+const SEEDS = [
+    ['CLAUDE_STACK_DOCS_PATH', '.claude/docs'],
+    ['CLAUDE_STACK_INSTRUMENT', '0'],
+    ['CLAUDE_STACK_PUSH_GATE', '1'],
+    ['CLAUDE_STACK_ROTATE_ASK', '1'],
+    ['CLAUDE_STACK_FRESH_SESSION_1M', '400000'],
+    ['CLAUDE_STACK_FRESH_SESSION_200K', '150000'],
+    ['CLAUDE_STACK_FRESH_SESSION_DEFAULT', '180000'],
+];
+
+function assertSeedLines(sb, out, twin)
+{
+    for (const [key, value] of SEEDS)
+    {
+        assert.ok(out.includes(`settings.json env: ${key} seeded (${value})`), `${twin}: the seed of ${key} is reported`);
+        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8')).env[key], value, `${twin}: ${key} landed`);
+    }
+}
+
+test('sh: every env key the install seeds is REPORTED, and a second run reports none', () => {
+    const sb = sandbox();
+    assertSeedLines(sb, runSh(sb, 'install'), 'sh');
+    const again = runSh(sb, 'update');
+    for (const [key] of SEEDS) assert.ok(!again.includes(`env: ${key} seeded`), `sh: ${key} is not re-reported when it is already set`);
+});
+
+test('ps1: every env key the install seeds is REPORTED, and a second run reports none (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    assertSeedLines(sb, runPs(sb, 'install'), 'ps1');
+    const again = runPs(sb, 'update');
+    for (const [key] of SEEDS) assert.ok(!again.includes(`env: ${key} seeded`), `ps1: ${key} is not re-reported when it is already set`);
+});
+
 test('sh: the slug, the sentry token and the context7 key the run is handed land in the ACCOUNT settings.json at project scope', () => {
     const sb = sandbox();
     try

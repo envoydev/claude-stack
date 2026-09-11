@@ -72,6 +72,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -283,6 +287,71 @@ function block(what, shown, abs = shown) {
   process.exit(2);
 }
 
+// --- fork-liveness PROBE - log-only, denies nothing ------------------------------------------
+// A backgrounded turn continues under a NEW session id whose transcript opens as a copy of the
+// parent's rows, and the user keeps talking to the OTHER copy. Measured once: the background copy
+// ran five test cycles, killed the user's Word five times and edited the same method as the
+// foreground for 15 minutes after the foreground's user had said stop - 10.44M cache-read, one
+// edit collision. This branch appends a `mode: probe` row to the hook-blocks ledger whenever a
+// mutating call runs while another session of the SAME LINEAGE - an ancestor whose id this
+// transcript carries, or a sibling whose transcript carries one of those ids - touched its own
+// transcript within FORK_LIVE_MS. A copied row carries the id twice - `sessionId` rewritten to the
+// fork's own, `session_id` keeping the original (measured: 387 of 1,093 rows in one fork carried a
+// parent's id, none by the camel-case key) - so both keys are read. The rows are read for a week
+// before any denial is built on them: a backgrounded turn has no user to end a denial in an ask,
+// and two deliberate sessions from one fork point would be held. Head-only reads keep it at a few
+// ms per call; the head is 1MB because a fork's first rows can be the parent's whole compaction
+// summary (measured: the first foreign id sat past 64KB in one fork).
+const FORK_LIVE_MS = 60 * 1000;
+const FORK_HEAD_BYTES = 1024 * 1024;
+const SESSION_ID_RE = /"session_?[iI]d":"([0-9a-f]{8}-[0-9a-f-]{27})"/g;
+const PROBE_SHELL = /\b(?:taskkill|pkill|killall|kill)\b|\b(?:dotnet|npm|pnpm|yarn|cargo|mvn|gradle|make|pytest|go)\s+(?:test|build|run)\b|\bgit\s+(?:-c\s+\S+\s+)*(?:checkout|restore|reset|clean|stash|commit|push|merge|rebase|cherry-pick|revert)\b|(?:^|[\s;&|(])(?:rm|mv|cp|mkdir|rmdir|touch|chmod|tee)\b|\bsed\s+(?:-[a-zA-Z]*i|--in-place)/;
+function forkProbe(what, shown) {
+  try {
+    const tp = String(payload.transcript_path || '');
+    const own = String(payload.session_id || '');
+    if (!tp || !own || !fs.existsSync(tp)) return;
+    const dir = path.dirname(tp);
+    const head = (p) => {
+      const fd = fs.openSync(p, 'r');
+      const b = Buffer.alloc(FORK_HEAD_BYTES);
+      const n = fs.readSync(fd, b, 0, b.length, 0);
+      fs.closeSync(fd);
+      return b.toString('utf8', 0, n);
+    };
+    const idsIn = (text) => { const s = new Set(); for (const m of text.matchAll(SESSION_ID_RE)) s.add(m[1]); return s; };
+    const now = Date.now();
+    const ancestors = [...idsIn(head(tp))].filter((id) => id !== own);
+    if (!ancestors.length) return;   // not a fork - nothing shares this conversation
+    const lineage = new Set([own, ...ancestors]);
+    const live = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.jsonl') || f === path.basename(tp)) continue;
+      const p = path.join(dir, f);
+      let age;
+      try { age = now - fs.statSync(p).mtimeMs; } catch { continue; }
+      if (age > FORK_LIVE_MS) continue;
+      const id = f.slice(0, -6);
+      const related = ancestors.includes(id) ? 'ancestor'
+        : [...idsIn(head(p))].some((x) => lineage.has(x)) ? 'sibling' : null;
+      if (related) live.push({ id, relation: related, ageMs: Math.round(age) });
+    }
+    if (!live.length) return;
+    const dirOut = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dirOut, { recursive: true });
+    fs.appendFileSync(path.join(dirOut, own + '.jsonl'), JSON.stringify({
+      ts: new Date().toISOString(),
+      hook: path.basename(__filename),
+      event: payload.hook_event_name || payload.tool_name || '',
+      tool: payload.tool_name || '',
+      mode: 'probe',
+      kind: 'fork-liveness',
+      reason: 'probe: ' + what + ' while a live ' + live[0].relation + ' session of this conversation (' + live[0].id + ', ' + live[0].ageMs + 'ms ago) - logged, not denied',
+      detail: { what: String(shown).slice(0, 200), live },
+    }) + '\n');
+  } catch { /* a probe never changes a verdict and never throws */ }
+}
+
 const input = payload.tool_input || {};
 const tool = payload.tool_name;
 
@@ -290,6 +359,7 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'NotebookEdit') {
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));
+  forkProbe(tool + ' of a file', target);
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
   process.exit(0);
 }
@@ -306,6 +376,7 @@ const command = rawCommand.replace(
   (m) => { const nl = m.indexOf('\n'); return nl === -1 ? m : m.slice(0, nl) + m.slice(nl).replace(/[^\n]/g, ' '); },
 );
 if (!command.trim()) process.exit(0);
+if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 160));
 
 // Quoted spans: a `>` or a verb inside '...' / "..." is text an outer command carries (a commit
 // message, an echo, a grep pattern), never a write of its own. The write TARGET may still be
@@ -364,6 +435,13 @@ const expandVars = (t) => t.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
 // it never reached the check). A leading-slash token whose body carries a regex metacharacter and
 // which ends in sed command letters is a script; `/abs/path` has no metacharacter and stays a path.
 const SED_SCRIPT = /^\/(?=[^/]*[\^$*+?\[\]\\.])[^/]*\/[a-zA-Z]*$/;
+// The narrow form above only recognizes an address carrying a REGEX metacharacter, so a LITERAL
+// address (`/ApPermissionGuard/d`), a substitution (`s/a/b/`) and a line address (`1,$d`) were all
+// judged as out-of-project PATHS - 3 of 8 cross-write blocks in the audited corpus were sed scripts
+// read that way. This form covers them, and it is applied ONLY to the sed/perl route: on the
+// rm/chmod route those same tokens really are paths. The trailing command letter set is kept to
+// the address commands (`d p q =`) so `/etc/passwd` and `/tmp/file.txt` still read as paths.
+const SED_SCRIPT_ARG = /^(?:\/(?:[^/\\]|\\.)*\/(?:,\/(?:[^/\\]|\\.)*\/)?[dpq=]|(?:\$|\d+)(?:,(?:\$|\d+))?[dpq=]|[sy]\/(?:[^/\\]|\\.)*\/(?:[^/\\]|\\.)*\/[a-zA-Z0-9]*)$/;
 
 // `cd` / `pushd` earlier in the command move the anchor for everything after them. A target
 // that cannot be followed (`cd -`, `cd $DIR`, a relative cd from an unknown place) makes the
@@ -406,10 +484,11 @@ function judge(rawIn, index, what) {
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
   if (!allowed(abs)) block(what, explicit ? raw : abs, abs);
 }
-const judgeAll = (list, index, what) => {
+const judgeAll = (list, index, what, sedish) => {
   for (const tok of shellWords(list)) {
     if (tok.startsWith('-')) continue; // a flag (or `--`), never a path
     if (!tok || SED_SCRIPT.test(tok)) continue; // an empty -i suffix, or a sed address form
+    if (sedish && SED_SCRIPT_ARG.test(tok)) continue; // ...and the script itself, on the sed route only
     judge(tok, index, what);
   }
 };
@@ -430,7 +509,7 @@ const WRITE_PATTERNS = [
   { re: new RegExp(`\\btee\\s+(?:-\\w+\\s+)*${TARGET}`, 'g'), what: 'a `tee` write' },
   // in-place edits: every path argument, not just the last - `sed -i 's/a/b/' ../other/f x`
   // dodged a last-argument rule, and perl's usual `-pi` cluster dodged a literal `-i` (both reproduced)
-  { re: new RegExp(`\\b(?:sed|perl)\\s+((?:${SEG}*?\\s)?-[A-Za-z]*i\\b\\S*\\s${SEG}*)`, 'g'), what: 'an in-place edit', all: true },
+  { re: new RegExp(`\\b(?:sed|perl)\\s+((?:${SEG}*?\\s)?-[A-Za-z]*i\\b\\S*\\s${SEG}*)`, 'g'), what: 'an in-place edit', all: true, sedish: true },
   { re: new RegExp(`\\b(?:cp|mv|ln|install|rsync)\\s+${SEG}*?\\s${TARGET}\\s*(?:;|\\||&|$)`, 'g'), what: 'a copy/move destination' },
   // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x` and `truncate -s 0 ../other/log`
   // all put the out-of-tree path AFTER a non-flag token a first-argument rule stopped at (reproduced)
@@ -441,11 +520,11 @@ const WRITE_PATTERNS = [
   // `git -C <dir> <mutating subcommand>` is a write to that dir even with no path argument
   { re: new RegExp(`\\bgit\\s+-C\\s+${TARGET}\\s+(?:${GIT_MUTATING})(?![\\w-])`, 'g'), what: 'a git write in another checkout' },
 ];
-for (const { re, what, all } of WRITE_PATTERNS) {
+for (const { re, what, all, sedish } of WRITE_PATTERNS) {
   let m;
   while ((m = re.exec(command)) !== null) {
     if (inQuotes(m.index)) continue; // prose inside a quoted string
-    if (all) judgeAll(m[1], m.index, what);
+    if (all) judgeAll(m[1], m.index, what, sedish);
     else judge(unquote(m[1]), m.index, what);
   }
 }
