@@ -78,7 +78,7 @@ Common rules regardless of library:
 
 | Library | When to pick |
 |---|---|
-| **FluentAssertions 7.x** | Default. Rich diff output, structural equality, async support. Stay on 7.x: v8+ moved to a paid commercial license - upgrading a client project is a licensing decision, not a routine bump. |
+| **FluentAssertions 7.x** | Default. Rich diff output, structural equality, async support. Stay on 7.x: v8+ is free only for open-source and non-commercial use and needs a paid license for commercial projects (v7 stays Apache-2.0) - upgrading a client project is a licensing decision, not a routine bump. |
 | **AwesomeAssertions** | Apache-2.0 community fork taken from FluentAssertions' last Apache-licensed release (v7) and developed forward independently. Drop-in choice when you want a permissive license and ongoing fixes without FA v8's commercial terms. |
 | **Shouldly** | Project preference. Simpler API; good when FA's surface area feels heavy. |
 | **xUnit/NUnit/MSTest built-in `Assert`** | When the project has no FA/Shouldly dependency and stays minimal. |

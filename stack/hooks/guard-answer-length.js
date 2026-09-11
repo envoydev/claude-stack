@@ -15,6 +15,8 @@
 //   assistant row is the fallback, and the user's own message always comes from the transcript.
 //   Deliberately a wall-of-text catch, not a byte-counter: the soft budget lives in the reminder
 //   because a Stop block cannot unsay text the user already read - it can only add more.
+// SessionStart wiring: re-emits the budget as additionalContext whenever the harness rebuilds the
+//   context (startup, resume, clear, compact) - a compaction drops the UserPromptSubmit injection.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 // The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43

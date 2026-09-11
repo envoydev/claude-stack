@@ -1363,6 +1363,19 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   const s3 = `m5-${Math.random().toString(36).slice(2)}`;
   assert.equal(ctxOf(call('echo x > .claude/docs/loops/RUN-STATE.md', s3)), '', 'the generated docs root is not governed');
   assert.match(ctxOf(call('echo x > docs/guide.md', s3)), /markdown-docs\.md/, 'a project doc still is');
+  // the WinForms row is the twin of winforms-conventions.md's paths: the designer file AND the hand-written
+  // *Form.cs / *Form.*.cs code-behind (a Designer-only row never named the rule on a MainForm.cs edit, so the
+  // rule's own code-behind clause was unreachable from the shell route). Case-sensitive: Platform.cs and
+  // Transform.cs end in the letters form and stay plain C#.
+  const s4 = `m5-${Math.random().toString(36).slice(2)}`;
+  const formCtx = ctxOf(call("sed -i '' 's/a/b/' src/Forms/MainForm.cs", s4));
+  assert.match(formCtx, /winforms-conventions\.md/, "a hand-written *Form.cs edit names the WinForms rule");
+  assert.match(formCtx, /csharp-conventions\.md/, "... and the C# baseline beside it");
+  const s5 = `m5-${Math.random().toString(36).slice(2)}`;
+  const platCtx = ctxOf(call("sed -i '' 's/a/b/' src/Core/Platform.cs", s5));
+  assert.doesNotMatch(platCtx, /winforms-conventions\.md/, "Platform.cs is not a form");
+  assert.match(platCtx, /csharp-conventions\.md/, "... it is plain C#");
+  assert.match(ctxOf(call("sed -i '' 's/a/b/' src/Forms/MainForm.Designer.cs", `m5-${Math.random().toString(36).slice(2)}`)), /winforms-conventions\.md/, "the designer file still names it");
   // a denial and an injection are two answers to one call: the rule is not spent on a blocked command
   const s2 = `m5-${Math.random().toString(36).slice(2)}`;
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);

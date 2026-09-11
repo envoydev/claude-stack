@@ -24,11 +24,11 @@ context re-send - so fold reads together rather than trimming what each one retu
 
 **This walk is script orchestration, not reasoning** - a stamp compare, an installer invocation, a
 grep over its log. It runs identically on the cheap tier and costs about a THIRD as much there
-(measured: the same scripted walk in the same project cost 3x on `opus[1m]` as on sonnet). There is
-no frontmatter key that pins it - a slash command's frontmatter carries `description`,
-`disable-model-invocation`, `user-invocable`, `arguments`/`argument-hint` and `allowed-tools`, and
-no model field (checked against the Claude Code docs), and `/model` is the USER's command. So when
-this session is on an expensive tier, say it ONCE in the opening line - 'this walk is scripted;
+(measured: the same scripted walk in the same project cost 3x on `opus[1m]` as on sonnet). A frontmatter
+`model:` key CAN pin a skill's run to a tier (the Claude Code skills frontmatter reference lists
+`model` and `effort` beside `allowed-tools`), and this command deliberately carries none: a pin
+every install inherits is a behaviour change that ships with its own evidence, and `/model` is the
+USER's command. So when this session is on an expensive tier, say it ONCE in the opening line - 'this walk is scripted;
 `/model sonnet` runs it for about a third' - and continue either way. Never ask about it, never
 repeat it.
 
@@ -296,7 +296,7 @@ as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's CLAUDE.md (project mode)
 Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` command's step 11: add sections the template gained, update the rules table for
+`configure` command's step 13: add sections the template gained, update the rules table for
 what this run pruned, never overwrite the project's own prose, show changes before writing.
 Skip in global mode.
 

@@ -8,7 +8,7 @@ effort: xhigh
 
 # Project Version Upgrade - Plan, Approve, Execute (Deliberate)
 
-You drive a breaking version event - framework, runtime, or load-bearing package - from detection to a verified upgrade: enumerate what actually breaks, sequence it foundation-first, get the user's approval on the plan, then execute it stage by stage with a gate after every stage. Judgment runs in-session (the frontmatter pins this turn to `opus`/`xhigh`); the reads and the edits are delegated to the cheap seats.
+You drive a breaking version event - framework, runtime, or load-bearing package - from detection to a verified upgrade: enumerate what actually breaks, sequence it foundation-first, get the user's approval on the plan, then execute it stage by stage with a gate after every stage. Judgment runs in-session; the reads and the edits are delegated to the cheap seats. The frontmatter names `opus`/`xhigh` for that judgment, but a skill-level model pin is not reliably honored for main-session turns (measured: invocations ran on the session model despite it, while agent-level pins in the same session held exactly), so check the session model at run start: when it is not Opus, say so in the first thing the user sees, so the switch to `/model` Opus can happen before the plan is reasoned.
 
 The event kind - framework vs package - is not the user's call to make up front: DETECT reads the manifests and classifies it. The workflow is identical either way; only the breaking-change surface differs. A routine minor/patch bump with no breaking changes needs none of this - say so and exit.
 
@@ -18,7 +18,7 @@ Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing 
 
 The staged plan is presented and NOTHING is edited until the user approves - an upgrade is consequential. Two answers end the run early: 'just the plan' (exit after PLAN, hand over the plan) and 'stop'.
 
-**Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/project-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. (Side effect worth knowing: an auto run never pauses, so the opus/xhigh pin covers execution too; a gated run resumes on the session model after approval.)
+**Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/project-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. (Side effect worth knowing: an auto run never pauses, so the model the session is on at run start carries the whole run; a gated run can switch at the approval pause and drop to a cheaper model for execution.)
 
 ## The run
 

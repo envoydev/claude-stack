@@ -1,6 +1,6 @@
 ---
 name: project-build-from-scratch
-description: "Build a new application or major module from scratch - greenfield design, scaffolding, and build orchestration, before code exists. DESIGN runs IN-SESSION on this skill's opus/xhigh pinned turn: the spec becomes 2-3 reasoned architecture options and the user picks - nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice - through the domain seats or in-session, per the run-start ask. Not for changing an existing codebase - a feature inside a live app is `project-solve-cross-task`, a new module in an existing repo is the project-architecture-analyzer capture plus that stack's solution-designer. Triggers on build from scratch, new project, greenfield, scaffold, start a new app."
+description: "Build a new application or major module from scratch - greenfield design, scaffolding, and build orchestration, before code exists. DESIGN runs IN-SESSION on Opus (checked at run start, not pinned): the spec becomes 2-3 reasoned architecture options and the user picks - nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice - through the domain seats or in-session, per the run-start ask. Not for changing an existing codebase - a feature inside a live app is `project-solve-cross-task`, a new module in an existing repo is the project-architecture-analyzer capture plus that stack's solution-designer. Triggers on build from scratch, new project, greenfield, scaffold, start a new app."
 disable-model-invocation: true
 model: opus
 effort: xhigh
@@ -8,11 +8,11 @@ effort: xhigh
 
 # Project Build From Scratch - Greenfield Design, Scaffold, Build
 
-Use this skill to build a new application or a major new module from scratch, before code exists. The design happens here, in-session - there is no dispatched greenfield seat: with no code to read, a design pass reasons from the spec that is already in this conversation, and its options come back to the user anyway. The frontmatter pins the invoking turn to `opus`/`xhigh`, so DESIGN runs on the architect's budget regardless of the session model (the pin lasts the turn - after the user's pick, orchestration resumes on the session model, which is fine: scaffold and build are dispatch mechanics).
+Use this skill to build a new application or a major new module from scratch, before code exists. The design happens here, in-session - there is no dispatched greenfield seat: with no code to read, a design pass reasons from the spec that is already in this conversation, and its options come back to the user anyway. The frontmatter names `opus`/`xhigh` for that DESIGN turn, but a skill-level model pin is not reliably honored for main-session turns (measured: invocations ran on the session model despite it, while agent-level pins in the same session held exactly), so check the session model at run start: when it is not Opus, say so in the opening line, so the switch to `/model` Opus can happen before the options are reasoned. After the user's pick the session can drop to a cheaper model, which is fine: scaffold and build are dispatch mechanics.
 
 ## Steps
 
-### 1. DESIGN - in-session, on the pinned turn
+### 1. DESIGN - in-session, on Opus
 Turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, using the brainstorming discipline plus the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. A spec gap that blocks the design is a question to the user (the superpowers brainstorming + `AskUserQuestion` path), never a guess. Multi-stack designs name the seam and its producer/consumer direction up front - the build step will run it producer-first per `project-solve-cross-task`.
 
 ### 2. THE PICK - hard gate

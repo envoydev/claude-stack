@@ -9,7 +9,7 @@ A plan built perfectly is still wrong if the plan was wrong - the design carries
 
 ## Audit mode - this chat or the verifier seat
 
-Audit inline in this chat, the four passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat to run the same four passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion - this chat, or the verifier seat? - and hold the answer; a mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the four passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (`project-solve-cross-task` and its trio protocol own that call; the inherited-mode dispatch applies to this skill's own single-chat chain).
+Audit inline in this chat, the five passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat to run the same five passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion - this chat, or the verifier seat? - and hold the answer; a mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the five passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (`project-solve-cross-task` and its trio protocol own that call; the inherited-mode dispatch applies to this skill's own single-chat chain).
 
 ## When to use / not
 
@@ -58,13 +58,14 @@ Then the body: a short punch-list, not a rewrite. One line per finding: `severit
 
 ## Example
 
-Auditing the `project-solution-design` export plan ('add data export to the records list' - three tasks: a query projection, a streamed export endpoint, an integration test), one finding per pass:
+Auditing the `project-solution-design` export plan ('add data export to the records list' - three tasks: a query projection, a streamed export endpoint, an integration test), one line per pass:
 
 ```text
 1 risk      | MAJOR | no task names cancellation on the streamed export - a client abort leaks the open reader | thread the stack's cancellation mechanism through Tasks 1-2 (its skill's trap list)
 2 scope     | MINOR | Task 2 adds an export-format option the requirement never asked for | drop it
-3 edges     | MAJOR | empty result set unspecified - header-only output or an error?    | name the expected shape in Task 2; assert it in Task 3
-4 soundness | pass  | extends the existing query seam, tasks in dependency order, smallest plan
+3 existence | pass  | every symbol, package and config key the plan names resolves in the repo
+4 edges     | MAJOR | empty result set unspecified - header-only output or an error?    | name the expected shape in Task 2; assert it in Task 3
+5 soundness | pass  | extends the existing query seam, tasks in dependency order, smallest plan
 ```
 
 Verdict: fix the plan (2 MAJOR), re-check the two lines, then build.

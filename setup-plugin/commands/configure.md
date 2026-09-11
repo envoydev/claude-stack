@@ -279,7 +279,7 @@ installed plugins are direct picks. Addable from `catalog.plugins`.
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,
 whose config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
-here - the answer is applied at the install step, exactly like screen B's environment choices:
+here - the answer is applied at the update step, exactly like the step-9 environment choices:
 
 1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
 2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).

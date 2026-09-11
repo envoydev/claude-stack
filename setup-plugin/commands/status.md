@@ -122,6 +122,8 @@ is how a commit-time security gate sat off through two runs that both reported n
 | scope | project (the stamp's `scope:` line; `user` there = global) |
 | CLAUDE_STACK_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
+| CLAUDE_STACK_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
+| CLAUDE_STACK_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
 | CLAUDE_STACK_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
 | CLAUDE_STACK_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
 | CLAUDE_STACK_FRESH_SESSION_DEFAULT | 180000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies is detected from the window suffix on the settings model id |
@@ -131,7 +133,9 @@ is how a commit-time security gate sat off through two runs that both reported n
 
 Stamp from `claude-stack.stamp` (`no stamp - source never resolved at install time` when
 absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and
-a house default applies. The sentry and context7 rows read the ACCOUNT `settings.json` (`~/.claude/settings.json`,
+a house default applies. The rows above are the keys the stack SEEDS; any other `CLAUDE_STACK_*`
+key the file carries (`CLAUDE_STACK_ALLOW_WRITE_OUTSIDE`, a key a newer release added) gets its
+own row, value as written - this table is not a filter. The sentry and context7 rows read the ACCOUNT `settings.json` (`~/.claude/settings.json`,
 or the space's - the file `.mcp.json` expansion reads) and show presence only, never the value. That holds for ANY key, not just these three: a key matching the catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed as `set (N chars)` or `absent`, never by value; a
 sentry `not set` row ends with `-> add it there (or /claude-stack:configure)` (context7 unset is a
 working free tier - no arrow, the registration sends an empty header). This table names values only - changing them is `configure`'s

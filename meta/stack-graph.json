@@ -1102,7 +1102,9 @@
       "mcps": [],
       "plugins": [],
       "paths": [
-        "**/*.Designer.cs"
+        "**/*.Designer.cs",
+        "**/*Form.cs",
+        "**/*Form.*.cs"
       ]
     },
     "wpf-conventions": {

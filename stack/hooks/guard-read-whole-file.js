@@ -154,7 +154,7 @@ const sessionStateFile = () => pathMod.join(os.tmpdir(), `guard-read-${(payload.
 // already parses the extension, so it is the one place that can close the gap: it names the rule
 // that governs the file, ONCE per rule per session, as non-blocking additionalContext.
 const CONVENTION_RULES = [
-  [/\.Designer\.cs\b/i, 'winforms-conventions.md'],
+  [/\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b/, 'winforms-conventions.md'], // twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#
   [/\.cs\b/i, 'csharp-conventions.md'],
   [/\.xaml\b/i, 'wpf-conventions.md'],
   [/\.(component|service|directive|pipe|guard|resolver|module|routes)\.ts\b/i, 'angular-conventions.md'],
