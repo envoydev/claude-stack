@@ -263,11 +263,14 @@ function main()
         let dirty = '';
         try
         {
-            const { execSync } = require('child_process');
-            const cmd = pathspec.length
-                ? `git status --porcelain -- ${pathspec.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`
-                : 'git status --porcelain';
-            dirty = execSync(cmd, { cwd: root, timeout: 5000 }).toString().trim();
+            // argv, never a shell string: the pathspec used to be single-quoted into an execSync
+            // line, and on win32 that line runs through cmd.exe, where a single quote is a literal
+            // character - git was asked about a file named 'seed.txt' with the quotes, found it
+            // clean, and `git restore <dirty file>` passed on every Windows install (measured: the
+            // release CI's windows job, both pathspec tests, 0 where 2 was expected).
+            const { execFileSync } = require('child_process');
+            dirty = execFileSync('git', ['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])],
+                { cwd: root, timeout: 5000 }).toString().trim();
         }
         catch { dirty = ''; } // not a git repo / git unavailable - never block on our own failure
 
