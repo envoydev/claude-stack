@@ -691,6 +691,50 @@ function lintOptionalCites(file, text, optional)
 // scanned - it is the opposite of a preload claim:
 //   A. '`x`, `y` are preloaded ...' - the skills named BEFORE the keyword
 //   B. 'the preloaded `x` skill/hub/recipe' - the skill right after it
+// A skill body may point at a SIBLING skill's reference file as a locating pointer ('`csharp` (its
+// `references/concurrency.md`)'). Nothing loads it, so a sibling rename dangles the pointer silently
+// - the reader is sent to a file that no longer exists and nothing in the repo notices. Every
+// `references/<file>.md` a skill names must resolve: in its own folder, in the sibling skill named
+// beside it (a backticked skill name within the preceding ~160 chars), or - for a pointer that
+// describes the owner by capability instead of naming it - in SOME skill folder.
+function lintReferencePointers(skillsDir, skillDirs, fsLike = fs)
+{
+    const findings = [];
+    const dirSet = new Set(skillDirs);
+    const has = (d, rel) => fsLike.existsSync(path.join(skillsDir, d, rel));
+    for (const d of skillDirs)
+    {
+        const files = [path.join(skillsDir, d, 'SKILL.md')];
+        const refDir = path.join(skillsDir, d, 'references');
+        if (fsLike.existsSync(refDir)) for (const r of fsLike.readdirSync(refDir)) if (r.endsWith('.md')) files.push(path.join(refDir, r));
+        for (const file of files)
+        {
+            if (!fsLike.existsSync(file)) continue;
+            const text = fsLike.readFileSync(file, 'utf8');
+            const re = /`(references\/[A-Za-z0-9._\/-]+\.md)`/g;
+            let m;
+            while ((m = re.exec(text)) !== null)
+            {
+                const rel = m[1];
+                if (has(d, rel)) continue;
+                const ctx = text.slice(Math.max(0, m.index - 160), m.index);
+                const named = [...ctx.matchAll(/`([a-z0-9-]+)`/g)].map(x => x[1]).filter(n => dirSet.has(n) && n !== d);
+                const label = path.relative(skillsDir, file);
+                if (named.length > 0)
+                {
+                    if (!named.some(n => has(n, rel)))
+                        findings.push(`${label}: points at \`${rel}\` beside \`${named.join('`/`')}\` and none of them has that file - a sibling rename dangled the pointer; fix the path or the name`);
+                }
+                else if (![...dirSet].some(n => has(n, rel)))
+                {
+                    findings.push(`${label}: points at \`${rel}\` which no skill folder holds - the file was renamed or removed under the pointer`);
+                }
+            }
+        }
+    }
+    return findings;
+}
+
 function lintPreloadClaims(agentFile, text, skillDirs)
 {
     const findings = [];
@@ -1817,6 +1861,11 @@ function main()
         console.error('');
     }
 
+    // 34. Every `references/<file>.md` a skill names resolves - own folder, the sibling named beside
+    //     it, or some skill folder for a capability-described owner. A sibling rename used to dangle
+    //     these locating pointers silently (surface-4 audit: 69 cross-skill pointers, none checked).
+    for (const finding of lintReferencePointers(SKILLS_DIR, localSkillDirs())) flag(finding);
+
     // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
     //     is re-sent on EVERY message of every session and every subagent of an install that takes
     //     it: the pathless baseline rules load like CLAUDE.md, and each agent's and skill's
@@ -1957,6 +2006,7 @@ module.exports = {
     lintSharedRules,
     lintPreloadClaims,
     lintOptionalCites,
+    lintReferencePointers,
     optionalSkills,
     lintSuggestionEdges,
     seedClosures,

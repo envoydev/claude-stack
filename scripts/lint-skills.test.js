@@ -262,3 +262,27 @@ test('check 29: the capabilities usage policy carries a stamp that matches its o
     const val = fs.readFileSync(path.join(paths.ROOT, 'setup-plugin', 'commands', 'validate.md'), 'utf8');
     assert.match(val, /policy-rev: \[0-9a-f\]\*/, 'validate greps for the token this lint maintains');
 });
+
+test('check 34: a references/ pointer at a sibling skill must resolve in that sibling; a capability-described one in some skill', () => {
+    const { lintReferencePointers } = require('./lint-skills.js');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-refs-'));
+    const mk = (d, rel, body) => { fs.mkdirSync(path.dirname(path.join(root, d, rel)), { recursive: true }); fs.writeFileSync(path.join(root, d, rel), body); };
+    mk('csharp', 'SKILL.md', '# csharp\n');
+    mk('csharp', 'references/concurrency.md', '# c\n');
+    mk('dotnet', 'SKILL.md', [
+        'own file: `references/own.md`.',
+        'good sibling: `csharp` (its `references/concurrency.md`).',
+        'dangling sibling: `csharp` (its `references/renamed-away.md`).',
+        'described owner, resolves somewhere: the C# skill\'s `references/concurrency.md`.',
+        'described owner, nowhere: the C# skill\'s `references/never-existed.md`.',
+    ].join('\n'));
+    mk('dotnet', 'references/own.md', '# o\n');
+    const findings = lintReferencePointers(root, ['csharp', 'dotnet']);
+    assert.strictEqual(findings.length, 2, findings.join('\n'));
+    assert.match(findings[0], /renamed-away\.md.*csharp.*dangled/);
+    assert.match(findings[1], /never-existed\.md.*no skill folder/);
+    fs.rmSync(root, { recursive: true, force: true });
+});

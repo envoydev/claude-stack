@@ -7,6 +7,10 @@ Authoring or restructuring any .md (README, ADR, runbook) loads the `markdown-st
 keywords only catch explicit lint asks, so a content edit misses it. ADR / Mermaid-diagram / C4 work
 also loads `docs-as-code` (same blind spot). Skip one-line tweaks.
 
+<!-- Maintainer note: the one-line-tweak carve-out stays in prose on purpose - `paths:` takes globs and brace
+     expansion only (checked against the Claude Code memory docs: no negation form, and an invalid pattern
+     matches nothing), so an exclusion cannot live in the glob. -->
+
 **When this rule reaches you it is already too late for the write that triggered it.** A path-scoped
 rule attaches ON a file touch, so it can never precede its own trigger - measured 9.9 s AFTER the edit
 it governs, and 22 s after another. So: load the skill now, before the NEXT write to that file, and

@@ -173,8 +173,8 @@ if (isImplementer) {
       `If the user gave one THIS conversation, write ${gate}\n` +
       `with one first line - APPROVED <plan/contract id> - "<their words, verbatim>" (or\n` +
       `AUTO - "<their words, verbatim>" for a no-stops run) - then retry the dispatch.\n` +
-      `Never fabricate the quote. Otherwise: present the plan and ask the user - that\n` +
-      `stop IS the recovery path. Do NOT route around this gate by doing the seat's\n` +
+      `Never fabricate the quote. Otherwise: present the plan and ask the user through ONE\n` +
+      `AskUserQuestion - that stop IS the recovery path. Do NOT route around this gate by doing the seat's\n` +
       `build work inline instead: a blocked dispatch means the flow is missing its\n` +
       `approval, not that the flow should be abandoned (measured: one session answered\n` +
       `this block by building inline and shipped the runtime defect the gated flow's\n` +

@@ -89,8 +89,9 @@ the `csharp-lsp` plugin; serena keeps its seat either way as the per-project mem
 
 The deliberate captures turn a fresh install into an oriented one. Run each only if its skill is
 installed (`/claude-stack:configure` adds a missing one). The order is dependency order - do not
-shuffle it. These are yours to type: all but `project-architecture-analyzer` are manual-only
-(`disable-model-invocation`), so the assistant cannot invoke one on your behalf:
+shuffle it. These are yours to type: all but the two analyzers (`project-architecture-analyzer`,
+`project-test-coverage-analyzer`) are manual-only (`disable-model-invocation`), so the assistant
+cannot invoke one on your behalf:
 
 1. `/project-architecture-analyzer` - writes the durable architecture docs every seat reads to
    orient. Runs after the serena index above, because the capture navigates by symbol.

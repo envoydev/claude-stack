@@ -662,7 +662,7 @@ AGENTS=(
   "test-coverage-analyzer.md"             # analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the project-test-coverage-analyzer skill fans it out over the raw results; never runs the suite
   "code-style-analyzer.md"                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
   "related-project-analyzer.md"           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-context/PROJECT-RELATED-CONTEXT.md
-  "ci-failure-diagnoser.md"          # analysis phase (opus/high): read-only CI red-run diagnosis via gh - categorize, local repro, route
+  "ci-failure-diagnoser.md"          # analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route
   "runtime-failure-diagnoser.md"               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
   "evidence-gatherer.md"             # diagnosis support (sonnet/low): read-only - a diagnoser dispatches it to reproduce/confirm and return a compact digest, keeping log volume off the opus seat
   "security-auditor.md"              # analysis phase (opus/xhigh): read-only cross-stack security posture audit - OWASP/CWE punch-list routed to implementers, complements /security-review

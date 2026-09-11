@@ -1,0 +1,10 @@
+# SSR and hydration - the rules
+
+Web targets only: a Capacitor WebView has no server render, so none of this applies inside an Ionic native app. `SKILL.md` keeps the one-line pointer; this file is the rule set - read it before touching server rendering, hydration, or any code that runs during the server pass.
+
+Server-render, then hydrate so the client reuses the server-painted DOM instead of re-rendering it from scratch. The model is three stages: SSR paints the pixels, hydration wires up the event handlers, incremental hydration delays that wiring until a block is actually needed.
+
+- Enable full hydration with `provideClientHydration()`. Incremental hydration is stable from v20, but its opt-in/opt-out wiring changed across v20-v22 - see your version's delta file under `references/` for the exact call; either way it auto-enables event replay, so do not also add `withEventReplay()`. Drive it from `@defer` with `hydrate` triggers - `hydrate on idle|immediate|timer|viewport|interaction|hover`, `hydrate when`, `hydrate never` - which lets you defer even above-the-fold content a plain `@defer` could not.
+- Do not lean on the HTTP transfer cache for authenticated responses - it skips credentialed (`withCredentials`) requests, so a response you thought was cached re-fetches on the client. Verify SSR behavior through E2E, not the deprecated `@angular/platform-server/testing`.
+- Never touch `window`, `document`, or `localStorage` in a `constructor`, field initializer, or `ngOnInit` that runs during server render - reach browser-only APIs through `isPlatformBrowser` or `afterNextRender`, and seed shared state server-safe (no browser API in a signal or store initializer).
+- Render deterministically on the server: no `Date.now()` / `Math.random()`-derived output in a server-rendered template - a relative '3m ago' timestamp is the classic case - render a stable value during SSR and swap to the live form after hydration, or the client/server DOM mismatch throws the server paint away.

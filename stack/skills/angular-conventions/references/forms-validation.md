@@ -2,6 +2,10 @@
 
 `SKILL.md` states the principle: validation is a layer - declared on the model, reusable rules, one shared error surface. This file is the detailed strategy. It holds on typed reactive forms today and carries over to Signal Forms where the workspace is on v21+.
 
+## Which form API
+
+Typed reactive forms (`FormGroup<T>`) are the default for existing code and for any workspace below v22. On v22+ prefer Signal Forms for new forms - `form()` from `@angular/forms/signals`, stable there: signal-driven, model-based, and type-safe end to end; on v21 it is experimental, so version-tag any use (`v21.md`). Template-driven forms are only for trivial throwaway inputs. Never type or default a field as `null` - a `null` default widens the typed control to `T | null` and leaks null checks into every consumer.
+
 - **Built-in before custom.** Use the framework validators (`Validators.required`, `email`, `min`, `pattern`) for the common cases. Write a custom `ValidatorFn` only for genuine domain rules; keep it a pure named function returning `ValidationErrors | null` (with a stable error key and any params the message needs), exported and unit-tested in isolation, never an inline arrow buried in a control.
 - **Cross-field rules sit on the group.** A rule that compares two controls (password-confirm, end-after-start) is a validator on the parent `FormGroup`, not on either child, so it reads both values. Surface the error where it makes sense for display - hang it off the group, or set it onto the relevant control so the message lands next to the field the user must fix.
 - **Async validators are debounced and cancel.** For server checks (username taken, code valid) write an `AsyncValidatorFn` that debounces, switches to cancel the stale request, and resolves to `ValidationErrors | null`. Run it on blur or otherwise rate-limit it so it does not fire per keystroke, and drive a pending indicator off the control's `pending` state.

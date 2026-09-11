@@ -13,7 +13,7 @@ Floor is .NET 8 / C# 12. What this skill does NOT cover: in-memory reactive stre
 
 Default to Wolverine. Its core is MIT (open-core; the CritterWatch monitoring console is the only commercial piece, and you do not need it to ship), and it folds the in-process mediator and the out-of-process message bus into one programming model, so a handler that today runs inline can be moved onto a queue by changing routing, not code. The outbox, sagas, scheduled messages, and convention-discovered handlers are all in the box.
 
-MassTransit is mature and well-documented, but it went to a commercial license from v9 onward. The house rule is OSS-first, so reach for MassTransit only when there is a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine.
+MassTransit is mature and well-documented, but v9 onward is commercially licensed; v8 stays open source and loses official maintenance after 2026, so a v8 estate is on a clock. The house rule is OSS-first, so reach for MassTransit only when there is a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine.
 
 ```csharp
 builder.Host.UseWolverine(opts =>
