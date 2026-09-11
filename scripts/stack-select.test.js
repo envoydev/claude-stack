@@ -5,6 +5,22 @@ const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
 const graph = require('../meta/stack-graph.json');
 
+test('--check always names its verdict, clean or not', () => {
+    // A clean check printed NOTHING at all, and silence is the one result a caller cannot tell
+    // from a call that never ran - the guided walks report the prerequisite verdict to the user,
+    // and an empty tool result left them narrating 'no blockers' from the exit code alone.
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: ['csharp'], rules: [], agents: [], mcps: [], plugins: [], hooks: [] }));
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--check'], { encoding: 'utf8' });
+    assert.match(r.stdout, /^prereqs: (ok|BLOCKED) - \d+ blocker\(s\), \d+ warning\(s\)$/m, 'the verdict line is always printed');
+    assert.strictEqual(r.status === 0, /prereqs: ok/.test(r.stdout), 'the exit code and the line agree');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('an agent pulls its declared skills and plugins; body mentions pull nothing', () => {
     const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
     for (const s of ['dotnet', 'dotnet-web-backend', 'dotnet-testing'])

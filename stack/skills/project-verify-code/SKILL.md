@@ -37,22 +37,26 @@ A factual claim in a finding or a fix rationale is verified before it is stated 
 
 ## Output
 
-**Four named fields, every run, each with a value.** A controlled measurement in one report step:
+**Five named fields, every run, each with a value.** A controlled measurement in one report step:
 five NAMED fields were emitted 5 of 5 times, while the same step's prose condition was emitted 0 of
 1 - so if it must happen every time, it is a field with a value, not a sentence about when to write
-one. None of these four was emitted in the measured review, and the user asked 'have you fixed
+one. None of the first four was emitted in the measured review, and the user asked 'have you fixed
 everything?' 76 seconds later.
 
 ```
 Build:      <the command and its verdict line, quoted>
 Live-probe: <the quoted probe output, or NOT RUN - <reason>>
 Findings:   <count by severity, or `none`>
+Probe code: <deleted: <what>, or `none written`>
 Next run:   <what the next pass must cover, or `nothing owed`>
 ```
 
-`none` and `nothing owed` are answers; an omitted line is not, and a NOT RUN live-probe is never a
-pass (measured: one review reported 'sound after one fix' with build and tests quoted and no
-live-probe line - the app could not boot its HTTP wiring).
+`none`, `none written` and `nothing owed` are answers; an omitted line is not, and a NOT RUN
+live-probe is never a pass (measured: one review reported 'sound after one fix' with build and
+tests quoted and no live-probe line - the app could not boot its HTTP wiring). `Probe code:` is the
+cleanup the quality-gates baseline already requires with no ask, folded in here as a field because
+the cross-cutting sentence lost: the check passed, the scratch probe stayed, and the USER had to
+ask for the cleanup (measured). Delete it as soon as the check that needed it passes, then say so.
 
 Then the body: a ranked punch-list, most severe first - one line per finding: `severity | the defect (file:symbol) | the fix`. If the code is sound, say so plainly and name what you checked and ran. Every finding keyed to a file + symbol so a fix lands exactly there. Nothing you could not verify is reported as unverified - unverified is never a pass. Hand the list back; this skill does not apply fixes.
 

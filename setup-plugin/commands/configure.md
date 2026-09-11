@@ -18,7 +18,7 @@ is actually loaded.** Measure before you ask: this session's own per-message con
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
 trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or `CLAUDE_STACK_FRESH_SESSION_1M`
-(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 250,000) when the window is
+(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 180,000) when the window is
 neither of those two sizes or cannot be read at all - which one applies comes from the window
 suffix on the settings.json model id (`opus[1m]`, `opus[200k]`) - or when that hook has already
 injected the ask into this turn. Below the
@@ -48,6 +48,12 @@ the stamp against to report what an update would bring.
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
 were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is
 the fallback only where the harness lacks the tool.
+
+**House voice in every line this run emits** - narration, tables and the asks alike: single
+dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
+`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
+surface where the rule forbidding it cannot yet exist).
 
 ## The ladder - announce every step
 
@@ -81,11 +87,18 @@ comparable banner by banner; the content varies, the skeleton never does.
   hooks = `.claude/hooks/*.js` basenames WITHOUT the `.js` suffix - the graph catalog stores bare
   names, and `stack-select.js` also strips a stray suffix (exclude the GENERATED legacy
   `inject-code-style.js` - same reason);
-  mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin list` filtered to the
-  entries enabled for THIS project (project scope at this path, or user scope) - the listing is
-  machine-global, so an unfiltered read folds sibling repos' plugins into this project's selection
-  (measured: two near-miss removals/updates of a sibling's plugin); fail-soft
-  without the CLI. Show the inventory grouped by category, with counts. In project mode, also
+  mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
+  apply to THIS project (project scope at this path, or user scope) - the listing is machine-global,
+  so an unfiltered read folds sibling repos' plugins into this project's selection (measured: two
+  near-miss removals/updates of a sibling's plugin). The filter is this one command, not a shape to
+  re-derive - measured, deriving it cost six Bash calls and ~477k of avoidable context, one of them
+  an ENOENT. It prints `name<TAB>version<TAB>scope<TAB>enabled`, the same four fields the installers'
+  own scan reads, and is fail-soft without the CLI:
+
+  ```bash
+  claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const fs=require("fs");const real=p=>{try{return fs.realpathSync(p)}catch{return p}};const here=real(".");let d;try{d=JSON.parse(s)}catch{return}const rows=Array.isArray(d)?d:(d.installed||[]);const best={};for(const e of rows){const n=String(e.id||"").split("@")[0];if(!n)continue;const pp=e.projectPath?real(String(e.projectPath)):null;if(pp&&pp!==here)continue;const rank=pp?0:1;if(!(n in best)||rank<best[n][0])best[n]=[rank,e.version||"?",e.scope||"",e.enabled===false?"no":"yes"]}for(const n of Object.keys(best).sort())console.log([n,...best[n].slice(1)].join("\t"))})'
+  ```
+ Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
   "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - so the walk's
   tables can label what the project provably uses (`--found`); skip it in global mode (no
@@ -133,7 +146,8 @@ no-questions path for plain refreshes).
 
 ## 2. Choose the areas
 
-One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, MCPs, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing): 'Rules + Agents + Skills', 'Hooks', 'MCPs + Plugins', 'Environment' - all selected by default, each option's description naming the areas it covers. Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> MCPs -> plugins -> environment; every skipped layer keeps its installed set untouched and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
+One multi-pick: which areas to adjust this run - rules, agents, skills, hooks, MCPs, plugins, environment (default: all). The AskUserQuestion tool caps a question at 4 options, so present exactly this fixed grouping rather than improvising one per run (measured: an ad hoc 5-option split errored once before self-healing): 'Rules + Agents + Skills', 'Hooks', 'MCPs + Plugins', 'Environment' - all selected by default, each option's description naming the areas it covers. Only the chosen areas are walked, in the fixed dependency order rules -> agents -> skills -> hooks -> MCPs -> plugins -> environment; every skipped layer keeps its installed SET untouched - its files are still refreshed by the
+installer run at step 12, which works from the whole selection - and gets one narration line naming it. Cascades still cross area lines - the closure owns consistency, the picker only decides which tables you page through: a consent-drop's dependents are handled wherever they land, and orphans that fall in a SKIPPED layer are collected and presented in one combined drop round after the last walked layer, never silently kept or removed.
 
 ## The walk - steps 3-8, one layer at a time
 
@@ -141,9 +155,17 @@ Same dependency-ordered walk as `setup` (rules pull agents + skills, agents pull
 everything pulls MCPs and plugins, hooks stand alone - dependencies only point FORWARD), applied to
 the installed set with no recommended phase. Hold TWO running files in the temp dir: `raw.json` -
 the remaining selection (installed + adds - drops, every category incl. `hooks` and `mcps`) - and
-`dropped.json` - everything dropped so far, per category. Seed BOTH before the first recompute -
-`raw.json` from the step-1 inventory, `dropped.json` as `{}` - so no layer ever runs against a
-file that does not exist yet.
+`dropped.json` - everything dropped so far, per category. Both are ONE object keyed by category,
+each value an array of names, and that is the whole schema - do not go looking for it (measured: a
+run spent `--help`, an `ls examples` and a source grep at 258k context to confirm this shape):
+
+```json
+{ "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
+  "hooks": ["guard-stop-contract"], "mcps": ["serena"], "plugins": ["superpowers"] }
+```
+
+Seed BOTH before the first recompute - `raw.json` from the step-1 inventory, `dropped.json` as
+`{}` - so no layer ever runs against a file that does not exist yet.
 
 Per layer, the SAME three-beat shape as setup:
 
@@ -351,13 +373,22 @@ lands the same revision step 1 previewed:
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
-`update --selection` refreshes the selected set - it does NOT uninstall what was dropped.
+`update --selection` refreshes EVERY item in the selection, in every category, whether or not its
+area was walked this run - the area picker decides which tables you page through, never which files
+the installer rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on disk,
+and a post-check that calls it 'untouched' is wrong (measured: four layers reported untouched while
+all 88 selected items had just been refreshed). It does NOT uninstall what was dropped.
 **Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
-stamp action) - never paste its output; (2) removals - each dropped item (incl. accepted
+stamp action) - never paste its output, and take the counts from the line that states them:
+`grep -E 'installed/refreshed this run' "$TMP/install.out"` (a `tail -20` of a 243-line log misses
+it, which is how the wrong post-check above was written); (2) removals - each dropped item (incl. accepted
 orphans) with its command shown before running it: delete the skill directory / agent file /
 rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
 (show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP;
-`claude plugin uninstall <name>` for a plugin; 'removals: none' when nothing was dropped;
+`claude plugin uninstall <name> --scope <the scope step 1's listing printed for it>` for a plugin -
+and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
+it for every project'), since account-wide and project-local are different consents and the wrong
+`--scope` fails with `not installed in project scope`; 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
 installed) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
@@ -406,6 +437,7 @@ every step. Close with this line, verbatim:
 'Nothing is pending on this run - these are yours to run when you choose.' The stop-contract
 guard reads that sentence as a finished close; without it a 'done + next step' card is blocked
 as a stall and the guard demands the very ask this paragraph removes.
+The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message).
 
 
 ## Clean up the temp dir - ALWAYS

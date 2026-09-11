@@ -58,6 +58,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -203,8 +207,21 @@ if (payload.hook_event_name === 'Stop') {
     text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
   }
   const body = proseOf(text);
-  if (body.length <= HARD_CAP) process.exit(0);
-  if (user && (DEPTH_RE.test(user) || DEPTH_RE_CYR.test(user))) process.exit(0); // depth asked this turn
+  // The OTHER half of the same injected rule, and the half nothing checked: 'single dashes, never
+  // em-dashes'. Measured across four audited sessions - 32 em-dashes in 21,434 chars of prose in
+  // one, 4 in another, 2 each in two more - with the budget text carrying that clause loaded THREE
+  // times in the same transcript, so this is not a placement problem: the rule was injected every
+  // turn and enforced on no surface. The Stop branch already holds the turn's prose, so it is one
+  // more pass over text this hook has read anyway. Only the em-dash and its horizontal-bar twin are
+  // checked - the same injection's 'single quotes in prose' clause is not, because a double quote
+  // legitimately names a string value and the false positives would cost a turn each.
+  const DASHES = /[\u2014\u2015]/g;
+  const dashes = (body.match(DASHES) || []).length;
+  let overLength = body.length > HARD_CAP;
+  if (!overLength && !dashes) process.exit(0);
+  // The three length exemptions below excuse the LENGTH only. An em-dash is a character to
+  // replace, not content to drop, so no exemption reaches it and the re-answer loses nothing.
+  if (overLength && user && (DEPTH_RE.test(user) || DEPTH_RE_CYR.test(user))) overLength = false; // depth asked this turn
   // Two exemptions, both bought with measured damage: one forced re-answer went 3,184 -> 1,085
   // chars and took TWO of five headline findings and a self-correction disclosure with it. A cap
   // that deletes content the user needed is worse than the wall of text it replaced.
@@ -214,10 +231,26 @@ if (payload.hook_event_name === 'Stop') {
   //     talking. Trimming it makes the report non-conforming, which is a second failure.
   // Both are deliberately narrow, and neither is reachable by a run that simply wants to write
   // more: a bare 'sorry' does not match, and neither does a heading the stack does not mandate.
-  if (SELF_CORRECTION_RE.test(text)) process.exit(0);
-  if (MANDATED_FIELD_RE.test(text)) process.exit(0);
+  if (overLength && SELF_CORRECTION_RE.test(text)) overLength = false;
+  if (overLength && MANDATED_FIELD_RE.test(text)) overLength = false;
+  if (!overLength && !dashes) process.exit(0);
+
+  global.BLOCK_DETAIL = { branch: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
+    matched: overLength ? `${body.length} chars of prose` : `${dashes} em-dash(es)` };
+  if (!overLength) {
+    process.stderr.write(
+      `This answer uses ${dashes} em-dash(es). The house voice is single dashes - the rule is in\n` +
+      `baseline-interaction.md and this hook injects it into every turn, including the one you just\n` +
+      `answered (measured: 32 em-dashes in 21,434 characters of prose in one audited session, with\n` +
+      `the rule loaded three times in the same transcript). Re-send the SAME answer with every\n` +
+      `em-dash replaced by a single dash - change nothing else, add no apology and no note about\n` +
+      `the edit.`,
+    );
+    process.exit(2);
+  }
 
   process.stderr.write(
+    (dashes ? `This answer also uses ${dashes} em-dash(es) - the house voice is single dashes, so\nreplace them while you are rewriting it.\n` : '') +
     `This answer is ${body.length} characters of prose - the house budget is ~${BUDGET} (about 3\n` +
     `sentences plus points) and the hard cap is ${HARD_CAP}. Code, tables and command output were\n` +
     `already excluded from that count, and nothing in the user's message asked for depth, so this\n` +

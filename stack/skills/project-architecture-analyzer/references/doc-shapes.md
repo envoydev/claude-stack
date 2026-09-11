@@ -31,7 +31,7 @@ Before ANY candidate is recorded as a weakness, answer all four explicitly; an u
 
 - **Never pad upward.** No observation is promoted to a weakness, and no minor to a major, to make the doc look thorough. Zero gate-passing weaknesses is a valid, complete result on a healthy codebase - state it plainly.
 - **Never truncate downward.** EVERY candidate that passed the gate is recorded - twenty-five real weaknesses means the doc carries twenty-five; dropping one because a list is getting long is silent data loss the next capture cannot detect. Strengths the same: every genuine one, not a round number.
-- **Length is handled by ranking and spilling, never by deletion.** Order by blast radius so the top is actionable at a glance; spill entry detail to `<docs-path>/architecture/references/` topic files. The entry itself stays.
+- **Length is handled by ranking and spilling, never by deletion.** Order by blast radius so the top is actionable at a glance; spill entry detail to `<docs-path>/architecture/references/` topic files. The entry itself stays. The threshold that triggers the spill is in *Format discipline* below - ~300 lines, `wc -l`-checked after the write; without a number this rule never fires.
 
 ### The three buckets - every surviving item lands in exactly one
 
@@ -59,3 +59,10 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
 - **Worth knowing** - one line per entry plus its promotion condition; detail spills to a `references/` topic file when it needs more. A long list stays cheap to read - that is what the lighter shape is for.
 - **Deliberate tradeoffs** - the decision and the reason it was made, so no later round re-litigates it.
 - **Summary** - the per-bucket and Must-fix tier tally, and the top few highest-leverage fixes.
+
+### Format discipline - the assessment has a budget too
+
+The map is capped and checked; the assessment was not, and it is the doc the `project-architecture-quality-loop` reads at INTAKE on every round, so its weight is paid again each time (measured: one assessment reached 1,068 lines / ~31k tokens, another 1,935 - neither had a number to fail against, because 'length is handled by ranking and spilling' names the mechanism and no threshold, and a rule with no threshold never fires).
+
+- **Target: ~300 lines for `ASSESSMENT.md` itself.** Double the map's, because an entry carries reasoning the map does not - but a number, and a checked one: `wc -l` it after the write, and over target run the spill pass. Spilling is not deleting: the entry's title, tier, one-line cost and its Remediation and Strength-check fields stay inline; the supporting detail - the located-code walkthrough, the measurement, the alternatives weighed - moves to `<docs-path>/architecture/references/<topic>.md` and the entry links it. Ranking still comes first, so the top of the doc is actionable before anything is spilled.
+- **Per-round history is NOT part of this doc.** A running log of what each capture or loop round did is orientation for one reader on one day, and it grows without bound while every intake pays for it (measured: 352 of one assessment's 1,935 lines were round log). Keep at most the **last 3 rounds** inline as a short table - date, what changed, entries opened/closed - and move everything older to `<docs-path>/architecture/references/assessment-rounds.md`, appended to, never rewritten. A project that keeps no log keeps none; nothing here asks for one.

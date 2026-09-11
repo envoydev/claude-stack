@@ -27,6 +27,7 @@
 // this guard reads the literal command's flat tokens.
 'use strict';
 const fs = require('fs');
+const path = require('path');
 // The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
@@ -191,7 +192,7 @@ function main()
             {
                 try
                 {
-                    const path = require('path');
+                    // `path` is required at module scope above.
                     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
                     // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
@@ -204,6 +205,10 @@ function main()
                         event: payload.hook_event_name || payload.tool_name || '',
                         tool: payload.tool_name || '',
                         reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
                     }) + '\n');
                 }
                 catch { /* telemetry is never allowed to break the gate */ }
@@ -231,25 +236,86 @@ function main()
         .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
     if (destructiveGit.test(gitScan))
     {
+        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+
+        // The PATHSPEC the command actually names. The gate used to ask only 'is the tree dirty',
+        // which made its own prescribed escape - 'name the ONE file to revert instead of the whole
+        // tree' - unreachable: `git restore .gitignore` was denied with all seven dirty files
+        // listed, six of which the command never touched (measured live, twice in one session).
+        // `reset --hard` and `checkout .` / `checkout --` with no path are whole-tree by nature and
+        // keep the old arithmetic; anything that names paths is judged on THOSE paths only.
+        const pathspec = (() => {
+            const m = command.match(/git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(checkout|restore|reset|clean)\b([^\n;&|]*)/);
+            if (!m) return [];
+            const verb = m[1];
+            if (verb === 'reset') return [];                       // takes a commit, never a pathspec
+            let rest = m[2] || '';
+            rest = rest.replace(/^\s*--\s/, ' ');                  // the `--` separator itself
+            const args = (rest.match(/"[^"]*"|'[^']*'|\S+/g) || [])
+                .map((a) => a.replace(/^["']|["']$/g, ''))
+                .filter((a) => a && !a.startsWith('-') && a !== '--');
+            // `.` is the whole tree spelled as a path, and an unexpanded variable is unknowable -
+            // both fall back to the whole-tree check rather than a guess.
+            if (!args.length || args.some((a) => a === '.' || /\$\{?[A-Za-z_]/.test(a))) return [];
+            return args;
+        })();
+
         let dirty = '';
         try
         {
             const { execSync } = require('child_process');
-            const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-            dirty = execSync('git status --porcelain', { cwd: root, timeout: 5000 }).toString().trim();
+            const cmd = pathspec.length
+                ? `git status --porcelain -- ${pathspec.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`
+                : 'git status --porcelain';
+            dirty = execSync(cmd, { cwd: root, timeout: 5000 }).toString().trim();
         }
         catch { dirty = ''; } // not a git repo / git unavailable - never block on our own failure
-        if (dirty)
+
+        // The user's own 'discard it' for THIS session. Every other blocking guard in the stack
+        // honours an answer; this one had none, so it re-blocked a discard the user had just
+        // chosen through AskUserQuestion, and the chosen action was silently substituted with a
+        // `git stash push -u` (measured: answer at 06:54:14, block at 06:54:22, 142,674 cache-read
+        // on the retried turn). Same shape as CROSS-WRITE-ALLOW: one path per line or `*` for the
+        // whole tree, this session's own, under 8h.
+        const allowed = (() => {
+            if (!dirty) return false;
+            try
+            {
+                const receipt = path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
+                const st = fs.statSync(receipt);
+                let sessionStartMs = 0;
+                try
+                {
+                    const tr = fs.statSync(String(payload.transcript_path || ''));
+                    sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
+                }
+                catch { sessionStartMs = 0; }
+                if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
+                const lines = fs.readFileSync(receipt, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+                if (lines.includes('*')) return true;
+                const targets = pathspec.length ? pathspec : dirty.split('\n').map((r) => r.slice(3).trim());
+                return targets.length > 0 && targets.every((f) => lines.some((l) => l === f || f.startsWith(`${l}/`)));
+            }
+            catch { return false; } // absent or unreadable - no allowance recorded
+        })();
+
+        if (dirty && !allowed)
         {
             const rows = dirty.split('\n');
+            const scope = pathspec.length ? `the path(s) this command names` : `the working tree`;
+            const receiptRel = path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
             process.stderr.write(
-                `Blocked: this discards uncommitted work in ${rows.length} file(s), and there is no reflog for a\n` +
-                `working tree - once it is gone it is gone (CLAUDE.md's rm rule, same class).\n` +
+                `Blocked: this discards uncommitted work in ${rows.length} file(s) under ${scope}, and there is\n` +
+                `no reflog for a working tree - once it is gone it is gone (CLAUDE.md's rm rule, same class).\n` +
                 rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
                 (rows.length > 10 ? `\n  ... and ${rows.length - 10} more` : '') +
-                `\n\nIf the loss is intended, say so to the user first and get their word. Otherwise keep the\n` +
-                `work: \`git stash -u\` (recoverable), or commit it, or name the ONE file to revert instead of\n` +
-                `the whole tree. A clean tree passes this gate untouched.`,
+                `\n\nDo not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
+                `  'Keep the work (Recommended)' - \`git stash -u\`, or commit it\n` +
+                `  'Discard it' - the loss is intended and the user says so\n` +
+                `  'Narrow it' - name the ONE file to revert instead of the whole tree\n` +
+                `On 'Discard it', write the receipt ${receiptRel} - one path per line exactly as the\n` +
+                `command spells them, or \`*\` for everything - then retry the SAME command. It is honoured\n` +
+                `for this session only, under 8h. A clean path passes this gate untouched.`,
             );
             process.exit(2);
         }

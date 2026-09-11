@@ -75,6 +75,58 @@ const rewritten = (command, env) => updatedCommand(run({ tool_name: 'Bash', tool
 const read = (file_path, env) => run({ tool_name: 'Read', tool_input: { file_path }, session_id: 'suite' }, env).status;
 const cli = (...args) => spawnSync(process.execPath, [HOOK, ...args], { encoding: 'utf8' });
 
+// Measured across four audited sessions: five blocks on /claude-stack:update's own downloaded
+// snapshot. Not the temp PATH - the CONTENT: this stack's catalogs are lists of variable NAMES
+// under a field literally called `key`, and a name that names a credential is not one. The shell
+// route was the worse half - the walk got its own catalog back with every `key` masked.
+test('guard-secret-value: a stage that only PRINTS reads nothing - the rotation snippet survives', () => {
+  const f = fixtures();
+  // The measured failure: the stack asked the user to rotate an exposed credential, offered a
+  // copy-ready `printf` of the rotation one-liner, and this guard answered it. At 0.2.62 that was a
+  // visible block; at HEAD it had become a SILENT rewrite into a `--redacted` dump of the settings
+  // file, so the snippet never reached the user and the token stayed live to the end of the session.
+  const snippet = `printf '%s\\n' "python3 -c \\"import getpass,pathlib;f=pathlib.Path('${f.secret}')\\""`;
+  assert.equal(bash(snippet), 0, 'a printf whose payload merely NAMES a credential file is text, not a read');
+  assert.equal(bash(`echo "edit ${f.secret} by hand"`), 0, 'and so is an echo of prose naming the same path');
+  // The carve-out is the FILE-CANDIDATE scan alone. Everything that made this guard worth having
+  // still fires, so the fix cannot be a hole:
+  assert.equal(bash('echo $SENTRY_ACCESS_TOKEN'), REWRITE, 'a credential VARIABLE in a print verb is still caught');
+  assert.equal(bash('printf "%s" "$CONTEXT7_API_KEY"'), REWRITE, '... in printf too');
+  assert.equal(bash(`echo "${FAKE_JWT}"`), 2, 'a credential-shaped LITERAL is still blocked');
+  assert.equal(bash(`cat ${f.secret}`), REWRITE, 'an actual read of the same file is still rewritten');
+  assert.equal(bash(`printf '%s' x && cat ${f.secret}`), REWRITE, 'a print stage does not excuse a read stage beside it');
+});
+
+test('guard-secret-value: the Windows spelling of the home dir is a path this guard can expand', () => {
+  const f = fixtures();
+  // `expandPath` returns null for any surviving `$`, so before USERPROFILE joined the VARS map the
+  // account settings.json on every Windows install was never judged at all - and that is the one
+  // platform where the path is routinely written that way. Measured: a live token printed from it.
+  assert.equal(read('$USERPROFILE/settings.json', { USERPROFILE: f.dir }), 2, 'the Read route now resolves it');
+  assert.equal(bash('cat $USERPROFILE/settings.json', { USERPROFILE: f.dir }), REWRITE, '... and so does the shell route');
+  assert.equal(read('${USERPROFILE}/settings.json', { USERPROFILE: f.dir }), 2, 'the braced form too');
+  assert.equal(read('$USERPROFILE/clean-settings.json', { USERPROFILE: f.dir }), 0, 'a file with no credential still passes - this expands paths, it does not widen what counts');
+});
+
+test('guard-secret-value: a credential-shaped key holding an identifier NAME is not a credential', () => {
+  const repo = path.join(__dirname, '..');
+  for (const f of ['meta/environment.json', 'meta/migrations.json', 'meta/recommendations.json', 'meta/plugin-settings.json']) {
+    assert.equal(read(path.join(repo, f)), 0, `${f} - the walks read this file on every run`);
+    assert.equal(bash(`cat ${path.join(repo, f)}`), 0, `${f} - and a dump of it is not rewritten into a masked view`);
+  }
+  const f = fixtures();
+  const names = path.join(f.dir, 'catalog.json');
+  fs.writeFileSync(names, JSON.stringify({ env: [{ key: 'SENTRY_ACCESS_TOKEN' }, { key: 'CONTEXT7_API_KEY' }], rename: { settings_env_key: 'CLAUDE_DOCS_PATH' } }));
+  assert.equal(read(names), 0, 'a catalog of credential NAMES is not a credential file');
+  // ...and the tell never excuses a value that is shaped like a credential
+  const aws = path.join(f.dir, 'aws.json');
+  fs.writeFileSync(aws, JSON.stringify({ AWS_ACCESS_KEY: 'AKIA1234567890ABCDEF' }));
+  assert.equal(read(aws), 2, 'an all-caps AWS key id is judged on its shape, not excused as a name');
+  const held = path.join(f.dir, 'held.json');
+  fs.writeFileSync(held, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'sntryu_0123456789abcdef0123456789abcdef' } }));
+  assert.equal(read(held), 2, 'and the same key holding a real token still blocks');
+});
+
 test('guard-secret-value: a dump verb on a file that holds a credential is blocked, judged by content', () => {
   const f = fixtures();
   assert.equal(bash(`cat ${f.secret}`), REWRITE, 'cat of a settings.json with a live token');
@@ -88,6 +140,19 @@ test('guard-secret-value: a dump verb on a file that holds a credential is block
   assert.equal(bash(`cat ${f.emptyDotenv}`), 0, 'an empty KEY= is not a live value');
   assert.equal(bash(`cat ${f.code}`), 0, 'source code is never a credential file');
   assert.equal(bash(`cat ${path.join(f.dir, 'missing.json')}`), 0, 'a missing file has nothing to judge');
+});
+
+test('guard-secret-value: the Grep TOOL is the third read route, and only its CONTENT mode prints', () => {
+  // Measured live: a Bash read of a project settings.json was blocked at 11:09:37, and 8s later a
+  // Grep with output_mode content on the SAME path returned two of its lines. Nothing leaked only
+  // because the pattern happened to select non-credential keys.
+  const f = fixtures();
+  const grep = (tool_input) => run({ tool_name: 'Grep', tool_input, session_id: 'suite' }).status;
+  assert.equal(grep({ pattern: 'SENTRY', path: f.secret, output_mode: 'content' }), 2, 'content mode prints the value line');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.secret, output_mode: 'count' }), 0, 'a count prints no value');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.secret }), 0, 'and files_with_matches is the default - a path, not a value');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.clean, output_mode: 'content' }), 0, 'a file with no live credential is a free read');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content' }), 0, 'a directory walk is not a named read - the file routes still gate it');
 });
 
 test('guard-secret-value: a dump is rewritten into a redacted view - the file with every credential value replaced, never a block', () => {
@@ -175,7 +240,16 @@ test('guard-secret-value: the --presence exemption covers its own segment only',
 test('guard-secret-value: an inline runtime read of a credential file is the same dump, spelled differently', () => {
   const f = fixtures();
   assert.equal(bash(`node -e "const s=JSON.parse(require('fs').readFileSync('${f.secret}','utf8'));console.log(JSON.stringify(s.env||{},null,2))"`), REWRITE, 'the measured leak');
-  assert.equal(bash(`node -e "console.log(Object.keys(require('${f.secret}').env))"`), REWRITE, 'keys-only through a runtime still resolves the file - the sanctioned route is --presence');
+  // A runtime print that is ONLY a key list is the presence read spelled in code, and rewriting it
+  // into the whole-file redacted view answered a ~200-char question with 6,273 chars, after which
+  // the run needed a third command to re-check the half of its own output the rewrite swallowed
+  // (measured, ~214k avoidable). It passes through as written; anything that can turn those names
+  // back into values does not.
+  assert.equal(bash(`node -e "console.log(Object.keys(require('${f.secret}').env))"`), 0, 'a key list is names, not values');
+  assert.equal(bash(`node -e "const d=JSON.parse(require('fs').readFileSync('${f.secret}','utf8'));console.log(Object.keys(d.env||{}).join('\\n'))"`), 0, '... in the spelling that was measured');
+  assert.equal(bash(`python3 -c "import json;d=json.load(open('${f.secret}'));print('\\n'.join(d['env'].keys()))"`), 0, '... and in python');
+  assert.equal(bash(`node -e "const d=require('${f.secret}');console.log(Object.keys(d.env).map(k=>d.env[k]))"`), REWRITE, 'keys mapped back to their values is a dump again');
+  assert.equal(bash(`node -e "console.log(Object.keys(require('${f.secret}').env), require('${f.secret}').env)"`), REWRITE, '... and so is a key list printed beside the object');
   assert.equal(bash(`python3 -c "import json;print(json.load(open('${f.secret}')))"`), REWRITE, 'python json.load');
   assert.equal(bash(`ruby -e "puts File.read('${f.secret}')"`), REWRITE, 'ruby File.read');
   assert.equal(bash(`node -e "console.log(require('${f.clean}').env)"`), 0, 'a clean file through a runtime passes');

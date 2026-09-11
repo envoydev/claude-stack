@@ -91,11 +91,22 @@ function readJsonl(file, onObj) {
 const STYLE_RULE_MARKER = 'the project-code-style-analyzer skill owns this rule';
 const STYLE_INJECT_MARKER = 'maintained by the project-code-style-analyzer';
 const docsPrefixes = ['/.claude/docs/'];
+// The same roots, spelled for the BASH route: no leading separator, because a command names the
+// path relative or absolute and the match anchors on a shell boundary instead. `--docs-root` used
+// to reach only the Read/Write route, so a project with a remapped docs root had its heredocs,
+// redirects and `rm`s invisible in the same table that showed its Read/Write touches - one table
+// answering two ways.
+const bashDocRoots = () => docsPrefixes.map((p) => p.replace(/^\//, ''));
 
+// The prefix is spelled with forward slashes while a Windows session writes a backslash path,
+// so the generated-docs table scored 0 writes for every document a Windows run demonstrably wrote
+// (measured: five Write calls, three docs, all reported as untouched). Normalize the separator
+// before matching - the prefix list stays in one spelling.
 function docRelPath(filePath) {
+  const norm = String(filePath).replace(/\\/g, '/');
   for (const p of docsPrefixes) {
-    const i = filePath.indexOf(p);
-    if (i >= 0) return filePath.slice(i + p.length);
+    const i = norm.indexOf(p);
+    if (i >= 0) return norm.slice(i + p.length);
   }
   return null;
 }
@@ -147,11 +158,16 @@ async function analyzeTranscript(file, window) {
     compactions: 0,
     compactionEvents: [],        // { ts, pre, post, dropped, durationMs } - one row per compaction
     stopHookBlocks: 0,           // Stop-hook denials: an isMeta user STRING, invisible to is_error
+    harnessDenials: 0,           // denials that are the HARNESS's, not a stack hook's - kept out of hook-blk
     denialsByHook: {},           // hook file name (or '(unattributed)') -> denials attributed to it
+    topResults: [],              // the N biggest tool results, each with the call's own label
     peakCtx: 0,                  // largest per-message context carried, and where
     peakCtxAt: null,
     floorCtx: 0,                 // smallest per-message context = the standing inventory
     modelIdsFull: [],            // model ids WITH their window suffix, from cost-state
+    modelIdReminder: null,       // the id the SESSION was told it is running, from its own reminder
+    userInterrupts: 0,           // '[Request interrupted by user]' markers - a stop, never an error
+    lastInterruptTs: null,
     totalCostUSD: null,
     thinkingTokens: 0,           // from cost-state.modelUsage - unattributable to any one message
     commandInvocations: {},      // slash-command name -> count (from <command-name> markers)
@@ -176,11 +192,21 @@ async function analyzeTranscript(file, window) {
   // JSON permission-decision route carries no bracket at all. An unattributable denial still counts,
   // it just lands in its own bucket - the transcript alone records which TOOL was denied, never
   // which hook, and that is the whole reason the hook-block ledger exists.
-  const attributeDenial = (text) => {
-    const m = /\["?[^"\]]*\/hooks\/([A-Za-z0-9._-]+\.js)"?\]/.exec(text);
+  const attributeDenial = (text, ts) => {
+    // The bracket the harness prints is `[node "<path>/hooks/<file>.js"]` - the interpreter, a
+    // SPACE, then the quoted path. The first shape of this pattern allowed no space before the
+    // quote and required the quote to sit right after `[`, so it matched none of the 90 real stack
+    // denials in the audit corpus and every one of them landed in `(unattributed)` - the bucket
+    // meant for the JSON permission-decision route, which made a working attribution look absent.
+    // Windows paths arrive backslashed, so both separators are accepted.
+    const m = /\[[^\]]*[\/\\]hooks[\/\\]([A-Za-z0-9._-]+\.js)/.exec(text);
     const key = m ? m[1] : '(unattributed)';
     s.denialsByHook = s.denialsByHook || {};
     s.denialsByHook[key] = (s.denialsByHook[key] || 0) + 1;
+    // A denial the bracket cannot name is still attributable from the OUTSIDE: every guard writes
+    // its own block-ledger row within milliseconds of denying (measured: 0.3s on the case that
+    // filed this). Keep the timestamp so the report can join it instead of naming a phantom guard.
+    if (!m && ts) (s.unattributedDenials = s.unattributedDenials || []).push(ts);
   };
   let prevCtx = null;
   let pending = [];               // tool results since the previous counted assistant msg
@@ -230,6 +256,23 @@ async function analyzeTranscript(file, window) {
     if (raw.includes(STYLE_INJECT_MARKER)) s.styleInjections++;
     if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
     if (!s.ccVersion && o.version) s.ccVersion = o.version;
+    // TWO records name the model, and they can DISAGREE: `cost-state.modelUsage` keys off the id
+    // the billing rows carry, while the session's own reminder names the id it was STARTED on
+    // (measured: a bundle whose cost-state said one tier and whose reminder said another - the
+    // report picked the wrong window and judged the fresh-session gate against the wrong number).
+    // Keep both and say which answered; the reminder is the session's own statement about itself.
+    if (!s.modelIdReminder) {
+      const mid = raw.match(/exact model ID is ([A-Za-z0-9._:@[\]-]+)/);
+      if (mid) s.modelIdReminder = mid[1].replace(/[.,'"`]+$/, '');
+    }
+    // An interrupt is the USER stopping the turn - it is not a tool error and not a hook block,
+    // and a session that ENDS on one ended by hand. Neither fact had a home in the report, so an
+    // abandoned run read as a completed one (measured: two rejected approvals, then the marker,
+    // then nothing - reported as a clean close).
+    if (raw.includes('[Request interrupted by user')) {
+      s.userInterrupts += 1;
+      if (o.timestamp) s.lastInterruptTs = o.timestamp;
+    }
     // `cost-state` is a record in this same file, and it is the ONLY place two facts survive:
     // the THINKING tokens (billed, attributable to no single message - 86,346 in one session, with
     // all 116 thinking blocks empty, so spike residuals could never be closed), and the model id
@@ -408,12 +451,17 @@ async function analyzeTranscript(file, window) {
             // counted, reporting 3 writes where 1 executed (measured). The result for this call
             // decides - an is_error result means nothing was written.
             const touched = new Map();
+            const roots = bashDocRoots();
+            const rootAlt = roots.map((r) => r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+            const docPathRe = new RegExp(`(?:^|[\\s"'\`=(])((?:[^\\s"'\`;|&)]*/)?(?:${rootAlt})[^\\s"'\`;|&)]+)`, 'g');
             for (const seg of cmdShell.split(/&&|\|\||;|\n/)) {
-              for (const pm of seg.matchAll(/(?:^|[\s"'`=(])((?:[^\s"'`;|&)]*\/)?\.claude\/docs\/[^\s"'`;|&)]+)/g)) {
+              for (const pm of seg.matchAll(docPathRe)) {
                 const p = pm[1].replace(/[/:,.]+$/, ''); // a trailing separator is punctuation, not the name
                 if (p.includes('$')) continue; // unexpanded variable - not a literal doc path
                 if (/[*?\[]/.test(p)) continue; // a GLOB names no one document
-                const rel = p.slice(p.indexOf('.claude/docs/') + '.claude/docs/'.length);
+                const hit = roots.find((r) => p.includes(r));
+                if (!hit) continue;
+                const rel = p.slice(p.indexOf(hit) + hit.length);
                 // Only a DOCUMENT: keying on every token under the docs root produced 79 rows for
                 // ~6 real documents - directories, globs and trailing punctuation each got a row.
                 if (!rel || !/\.md$/i.test(rel)) continue;
@@ -449,6 +497,21 @@ async function analyzeTranscript(file, window) {
           }
         }
         if (c.name === 'AskUserQuestion') askSinceInvoke = true;
+        // What the call was FOR, in the call's own words - the Bash description the model wrote,
+        // the file a Read named, the seat a dispatch went to. The report used to print result
+        // SIZES with no call beside them, so whoever wrote it hand-mapped char counts back onto
+        // calls by eye (measured: eight results re-derived by hand for one bundle's report).
+        info.label = (() => {
+          const i = c.input || {};
+          if (c.name === 'Bash') return String(i.description || i.command || '').replace(/\s+/g, ' ').slice(0, 70);
+          if (i.file_path || i.notebook_path) return String(i.file_path || i.notebook_path).split(/[/\\]/).pop();
+          if (c.name === 'Agent' || c.name === 'Task') return [i.subagent_type, i.description].filter(Boolean).join(': ').slice(0, 70);
+          if (c.name === 'Skill') return String(i.skill || '');
+          if (i.pattern) return String(i.pattern).slice(0, 70);
+          if (i.query) return String(i.query).slice(0, 70);
+          if (c.name.startsWith('mcp__')) return c.name.split('__').slice(2).join('__');
+          return '';
+        })();
         toolById.set(c.id, info);
         lastToolName = c.name;
       }
@@ -467,10 +530,13 @@ async function analyzeTranscript(file, window) {
       // is a POSITIVE one: origin.kind === 'human'. Counting by exclusion list inflated the prompt
       // count by up to 500% across 12 bundles - it missed <command-name>, <local-command-stdout>,
       // isCompactSummary, and the sibling records one typed turn produces. The list stays as the
-      // fallback for a transcript generation that carries no origin.
+      // fallback for a transcript generation that carries no origin, and it is only as good as its
+      // enumeration: <local-command-caveat> (117 occurrences in the 489-transcript audit corpus)
+      // and <fork-boilerplate> were still missing, each one manufacturing a free-text user turn -
+      // which is what an unheld-stop candidate is built from (285 candidates across that corpus).
       const isInjectedText = (txt) => (o.origin
         ? o.origin.kind !== 'human'
-        : /^\s*<(task-notification|system-reminder|teammate-message|background-task|command-message|command-args|local-command-stdout|local-command-stderr)\b/.test(txt))
+        : /^\s*<(task-notification|system-reminder|teammate-message|background-task|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|fork-boilerplate)\b/.test(txt))
         || o.isCompactSummary === true;
       // One typed turn can emit several user records sharing a parentUuid (the command marker, its
       // message, its stdout). The first one counts; the rest are the same turn.
@@ -486,7 +552,7 @@ async function analyzeTranscript(file, window) {
         // against 6 and then named both Stop blocks two paragraphs later.
         if (/^\s*Stop hook feedback:/.test(content)) {
           s.stopHookBlocks = (s.stopHookBlocks || 0) + 1;
-          attributeDenial(content);
+          attributeDenial(content, o.timestamp);
         }
         if (!o.isMeta && !isInjectedText(content) && firstOfTurn()) {
           s.userPrompts++;
@@ -518,18 +584,39 @@ async function analyzeTranscript(file, window) {
         const info = toolById.get(c.tool_use_id);
         pending.push({ name: info ? info.name : '?', chars });
         if (!info) continue;
+        // The biggest individual results, joined to what the call asked for. Kept sorted and
+        // capped, so this costs nothing on a long session.
+        s.topResults.push({ name: info.name, label: info.label || '', chars, ts: o.timestamp || null, error: !!c.is_error });
+        s.topResults.sort((a, b) => b.chars - a.chars);
+        if (s.topResults.length > 12) s.topResults.length = 12;
         const t = s.toolCalls[info.name];
         // A PreToolUse guard denial is the gate WORKING, not a tool failure - bucketing them
         // as errors made reports call a working gate 'the session's weak point' (measured in
         // three bundles: 124/132, 14/14 and 15/15 'Read errors' were all guard blocks).
         // Match the whole guard family by its shared 'Blocked' word - enumerating two messages
-        // missed the commit/rm/force-push/sleep variants and split one session's denials into 22
+        // missed the commit/rm/force-push variants and split one session's denials into 22
         // 'errors' + 12 blocks when all 34 were gate denials (measured). The COLON is not part of
-        // the contract: two real denials read '... Blocked because no receipt. Do NOT retry this
-        // command yet.' and arrive by the JSON permission-decision route with no hooks bracket at
-        // all, so requiring either would newly hide a whole class of real blocks.
-        const isHookBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text));
-        if (isHookBlock) attributeDenial(text);
+        // the contract, and the ["…/hooks/*.js"] bracket is attribution, not the test.
+        //
+        // But 'Blocked' and 'Do NOT retry' are the HARNESS's words too, and matching them bare
+        // charged three classes of non-stack denial to the guards. Measured over the 489-transcript
+        // audit corpus: 90 real stack blocks (all carrying the PreToolUse guard bracket), against
+        // 11 auto-mode-classifier denials ('Blocked by classifier', `toolDenialKind:
+        // "automode-blocked"`), 3 harness foreground-`sleep` blocks (no stack hook blocks sleep)
+        // and 2 AskUserQuestion schema failures whose own text says 'Do not retry this call' -
+        // 16 events filed against guards that never ran, one of them as a phantom
+        // `denialsByHook: {"(unattributed)": 1}`. Excluded by their own signatures, and COUNTED as
+        // harness denials so the separation is visible rather than a silent drop.
+        const harnessDenial =
+          o.toolDenialKind === 'automode-blocked' ||        // the auto-mode classifier
+          o.toolDenialKind === 'user-rejected' ||           // the user's own no (also caught below as a decline)
+          /denied by the Claude Code auto mode classifier/i.test(text) ||
+          /\bInputValidationError\b/.test(text) ||          // a tool-schema failure, never a PreToolUse event
+          /Blocked: sleep\b/.test(text);                    // the Bash tool's own foreground-sleep block
+        const readsAsBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text));
+        const isHookBlock = readsAsBlock && !harnessDenial;
+        if (isHookBlock) attributeDenial(text, o.timestamp);
+        else if (readsAsBlock) s.harnessDenials = (s.harnessDenials || 0) + 1;  // reads as a block, is the harness's
         const held = pendingDocTouch.get(c.tool_use_id);
         if (held) {
           pendingDocTouch.delete(c.tool_use_id);
@@ -557,18 +644,26 @@ async function analyzeTranscript(file, window) {
           t.resultChars += chars;
           if (isHookBlock) t.hookBlocks = (t.hookBlocks || 0) + 1;
           else if (isDecline) t.declines = (t.declines || 0) + 1;
-          else if (c.is_error) t.errors += 1;
+          else if (c.is_error) {
+            t.errors += 1;
+            // WHEN each error happened, so the report attributes it to the phase that actually ran
+            // then. Measured: two errors at 06:57 were reported as the browser phase's, and the
+            // browser work did not start until ~07:2x - a whole phase blamed for someone else's.
+            if (o.timestamp) (t.errorTs = t.errorTs || []).push(o.timestamp);
+          }
         }
         if (info.skill) s.skillInvocations[info.skill].injectedChars += chars;
         if (info.name.startsWith('mcp__')) {
           const mc = s.mcp[info.name.split('__')[1] || '?'];
-          if (mc) { mc.resultChars += chars; if (c.is_error) mc.errors += 1; }
+          // The same carve-out the tool tally makes above: a user declining an MCP-driven ask is an
+          // answer, not a server failure, and counting it inflated the error rate of a working server.
+          if (mc) { mc.resultChars += chars; if (c.is_error && !isDecline) mc.errors += 1; }
         }
       }
       const textJoined = content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n');
       if (/^\s*Stop hook feedback:/.test(textJoined)) {
         s.stopHookBlocks = (s.stopHookBlocks || 0) + 1;
-        attributeDenial(textJoined);
+        attributeDenial(textJoined, o.timestamp);
       }
       if (!hasResult && !o.isMeta && textJoined.trim() && !isInjectedText(textJoined) && firstOfTurn()) {
         s.userPrompts++;
@@ -724,7 +819,17 @@ function computeAggregates(main, agents) {
       const ty = a.meta.agentType || '(unknown)';
       sub.types[ty] = (sub.types[ty] || 0) + 1;
     }
-    return { skill: k, cmd: main.commandInvocations[k] || 0, inv, mAttr, sub };
+    // A companion's own cost is folded into the skill that loaded it, so its row would read
+    // `0 msgs / 0 output` for a run that provably happened - measured, and read by an audit as
+    // 'the skill did not run'. Name the row it was folded into instead of printing the zero.
+    const folded = (() => {
+      const map = main.companionOf || {};
+      const seen = new Set();
+      let cur = map[k] || null;
+      while (cur && map[cur] && !seen.has(cur)) { seen.add(cur); cur = map[cur]; }
+      return cur;
+    })();
+    return { skill: k, cmd: main.commandInvocations[k] || 0, inv, mAttr, sub, folded };
   });
   // Seats whose transcripts carry no skill stamp are real dispatch cost the SKILLS rows
   // cannot show - name them so an undercount reads as coverage, never as fewer dispatches.
@@ -777,8 +882,10 @@ function computeAggregates(main, agents) {
   const tools = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [name, t] of Object.entries(src.toolCalls)) {
-      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0 });
+      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0, declines: 0, errorTs: [] });
       e.calls += t.calls; e.resultChars += t.resultChars; e.errors += t.errors; e.hookBlocks += t.hookBlocks || 0;
+      e.declines += t.declines || 0;
+      if (t.errorTs) e.errorTs = e.errorTs.concat(t.errorTs).sort();
     }
   }
 
@@ -790,14 +897,22 @@ function computeAggregates(main, agents) {
 // the number that says whether a gate is earning its keep or misfiring - was unmeasurable. The
 // guard hooks now append one row per block to <docs-path>/hook-blocks/<session>.jsonl; this reads
 // them. A block costs the denial text plus the retried turn, so the count IS the cost signal.
-function readBlockLedger(target) {
-  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null };
+// A DIRECTORY is the project's shared collection - one file per session - so reading all of it
+// attributes every other session's blocks to the one being analyzed (measured: a bundle's report
+// carried a sibling session's denial). The session being analyzed names its own file, so a
+// directory is narrowed to `<session-id>.jsonl` and, when that is absent, to nothing at all: an
+// empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
+function readBlockLedger(target, sessionId) {
+  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [] };
   if (!target) return out;
   let files = [];
   try {
-    files = fs.statSync(target).isDirectory()
-      ? fs.readdirSync(target).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(target, f))
-      : [target];
+    if (fs.statSync(target).isDirectory()) {
+      const own = sessionId ? path.join(target, `${sessionId}.jsonl`) : null;
+      files = own && fs.existsSync(own) ? [own] : [];
+    } else {
+      files = [target];
+    }
   } catch { return out; }
   // Read these SYNCHRONOUSLY - readJsonl above is stream-based and resolves a Promise, so a
   // sync caller would return an empty tally before the first line arrived. These ledgers are one
@@ -811,12 +926,20 @@ function readBlockLedger(target) {
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.hook) continue;
       out.rows += 1;
+      if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
       e.blocks += 1;
       if (o.event) e.events.add(o.event);
       if (o.tool) e.tools.add(o.tool);   // rows from before the column exist without it - the cell stays empty
+      // Keyed by REASON, which carries the file the denial named - two blocks on two different
+      // files are two causes, and a table showing only the top one invited exactly that conflation
+      // (measured: a report asserted one shared cause across three rows, one of which named a
+      // different file and a real credential). The guard's own branch tag rides along when it set
+      // one, so a hook with several branches says which fired.
       const r = String(o.reason || '').slice(0, 90);
-      e.reasons.set(r, (e.reasons.get(r) || 0) + 1);
+      const branch = o.detail && o.detail.branch ? String(o.detail.branch) : '';
+      const key = branch ? `[${branch}] ${r}` : r;
+      e.reasons.set(key, (e.reasons.get(key) || 0) + 1);
       if (o.ts) {
         if (!out.firstTs || o.ts < out.firstTs) out.firstTs = o.ts;
         if (!out.lastTs || o.ts > out.lastTs) out.lastTs = o.ts;
@@ -825,6 +948,36 @@ function readBlockLedger(target) {
   }
 
   return out;
+}
+
+// The transcript names the TOOL a denial hit and, when the harness prints the bracket, the hook
+// file. The JSON permission-decision route prints no bracket at all, so those land in
+// '(unattributed)' - and a reader then goes looking for a guard that was never missing. Every guard
+// writes a block-ledger row at the moment it denies, so the two join by TIME: nearest row inside
+// the window, each row consumed once. Measured on the case that filed this: 0.3s apart.
+const DENIAL_JOIN_MS = 5000;
+function joinUnattributedDenials(main, blockLedger) {
+  const stamps = (main.unattributedDenials || []).map((t) => Date.parse(t)).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+  const rows = ((blockLedger && blockLedger.rowTs) || []).slice().sort((a, b) => a.ts - b.ts);
+  const used = new Set();
+  const joined = {};
+  let matched = 0;
+  let worst = 0;
+  for (const at of stamps) {
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < rows.length; i++) {
+      if (used.has(i)) continue;
+      const d = Math.abs(rows[i].ts - at);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0 || bestD > DENIAL_JOIN_MS) continue;
+    used.add(best);
+    matched += 1;
+    if (bestD > worst) worst = bestD;
+    joined[rows[best].hook] = (joined[rows[best].hook] || 0) + 1;
+  }
+  return { total: stamps.length, matched, joined, worstMs: worst };
 }
 
 function hookJoinStats(main, agents, hookLog, tools) {
@@ -837,9 +990,24 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // few ms outside the transcript's own window and printed '1 call outside the window' plus a FALSE
   // 'wired mid-session' line over 62/62 and 194/194 real coverage, across 16 bundles. Widen the
   // window by the hook's own latency budget before comparing.
-  const HOOK_LATENCY_MS = 250;
+  // Both sides are ISO STRINGS. `firstTs - HOOK_LATENCY_MS` on a string is NaN and every `>=`
+  // against NaN is false, so inWin was 0 for every session that had a ledger at all - the report
+  // printed '0% of tool calls are inside the ledger window' plus the very 'wired mid-session' line
+  // the latency budget above was added to remove. Re-derived by hand across the audited corpus, the
+  // true coverage of those same sessions runs 8/8, 10/10, 12/12, 25/25, 50/51 and 65/66. Parse to
+  // epoch milliseconds on BOTH sides before any arithmetic.
+  // 250ms was the first guess and it was too tight: the hook latencies measured in the audit
+  // corpus ran 183/190/213/259/300/331/333/497ms, so HALF of them fell outside the budget and the
+  // call they belong to read as out-of-window - which prints the false 'ledger wired mid-session'
+  // line this budget exists to remove. 750 clears the measured maximum with room; the window is a
+  // tolerance for one hook's own spawn time, not a semantic boundary, so widening it cannot pull
+  // in a call from a different phase of the session.
+  const HOOK_LATENCY_MS = 750;
+  const ms = (ts) => (typeof ts === 'number' ? ts : Date.parse(ts));
+  const firstMs = ms(hookLog.firstTs);
+  const lastMs = ms(hookLog.lastTs);
   const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
-  const inWin = allTs.filter((ts) => ts >= hookLog.firstTs - HOOK_LATENCY_MS && ts <= hookLog.lastTs + HOOK_LATENCY_MS).length;
+  const inWin = allTs.filter((ts) => ms(ts) >= firstMs - HOOK_LATENCY_MS && ms(ts) <= lastMs + HOOK_LATENCY_MS).length;
   // Anchor coverage to the ACTIVE window (after a mid-file /clear) - the raw span counted a
   // dead 23h50m gap as uncovered session time, reporting ~6% coverage for a ~96%-covered
   // 89-minute work window (measured).
@@ -850,11 +1018,36 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // A quiet tail (zero calls after the ledger's last row) and a real coverage gap read the
   // same in percentages - count the tail's calls so the report can tell them apart
   // (measured: an idle 38%-of-session tail with 0 tool calls was reported as unlogged activity).
-  const tailCalls = allTs.filter((ts) => ts > hookLog.lastTs + HOOK_LATENCY_MS).length;
+  // `lastTs + HOOK_LATENCY_MS` on a string CONCATENATES ('...Z' + 250 = '...Z250'), so this was
+  // always false too and the quiet-tail line printed unconditionally.
+  const tailCalls = allTs.filter((ts) => ms(ts) > lastMs + HOOK_LATENCY_MS).length;
   // CALL coverage leads, wall clock follows: a session whose last hour is one idle await_summary
   // reads as 38% time-covered and 100% call-covered, and the second number is the true one.
   const callPct = allTs.length ? Math.round((100 * inWin) / allTs.length) : 100;
   return { trTools, coverage: { inWin, callPct, pct, outside: trTools - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows) } };
+}
+
+// The window tier comes from a model id, and the two records that carry one can disagree. The
+// session's OWN reminder is the id it was started on; cost-state keys off the billing rows. Say
+// which one answered, and say it once - both renderers call this.
+function windowSource(main) {
+  const rem = main.modelIdReminder || null;
+  const cs = (main.modelIdsFull || []).join(', ') || null;
+  if (!rem && !cs) return null;
+  if (!rem) return `${cs} (from cost-state; the session's own model reminder is absent)`;
+  if (!cs) return `${rem} (the session's own model reminder)`;
+  const agree = main.modelIdsFull.includes(rem);
+  return agree
+    ? `${rem} (the session's own model reminder; cost-state agrees)`
+    : `${rem} (the session's own model reminder) - cost-state says ${cs}: the reminder wins, it is what the session ran on`;
+}
+
+// The user stopping a turn is neither an error nor a hook block, and a session whose LAST row is
+// the interrupt marker did not close, it was abandoned - both invisible before.
+function interruptLine(main) {
+  if (!main.userInterrupts) return null;
+  const ended = main.lastInterruptTs && main.lastTs && main.lastInterruptTs >= main.lastTs;
+  return `user interrupts ${main.userInterrupts}${ended ? ' - the session ENDS on one: it was abandoned by hand, not closed' : ''}`;
 }
 
 function printReport(main, agents, hookLog, window, blockLedger) {
@@ -872,12 +1065,20 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
     console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction`);
   }
-  if (main.modelIdsFull && main.modelIdsFull.length) console.log(`models (with window suffix, from cost-state) ${main.modelIdsFull.join(', ')} - the assistant messages strip the suffix, and it is what picks the context tier`);
+  {
+    const src = windowSource(main);
+    if (src) console.log(`model (with window suffix) ${src} - the assistant messages strip the suffix, and it is what picks the context tier`);
+    const il = interruptLine(main);
+    if (il) console.log(il);
+  }
   if (main.totalCostUSD != null) console.log(`billed $${Number(main.totalCostUSD).toFixed(2)} (cost-state)`);
   if (main.stopHookBlocks) console.log(`Stop-hook denials ${main.stopHookBlocks} - these arrive as meta user TEXT, not tool results, so they are absent from the hook-blk column below`);
+  if (main.harnessDenials) console.log(`Harness denials ${main.harnessDenials} - read as a block (auto-mode classifier, a foreground sleep, a tool-schema failure) but no stack hook ran: excluded from hook-blk, never charge a guard for them`);
   {
     const byHook = Object.entries(main.denialsByHook || {}).sort((a, b) => b[1] - a[1]);
     if (byHook.length) console.log(`denials by hook: ${byHook.map(([h, n]) => `${h}×${n}`).join(', ')} - the bracket is attribution only; '(unattributed)' is the JSON permission route, not a missing block`);
+    const dj = joinUnattributedDenials(main, blockLedger);
+    if (dj.matched) console.log(`  joined by ledger timestamp (within ${Math.round(dj.worstMs)}ms): ${Object.entries(dj.joined).map(([h, n]) => `${h}×${n}`).join(', ')}${dj.matched < dj.total ? ` - ${dj.total - dj.matched} still unattributed` : ''}`);
   }
   for (const c of main.compactionEvents || []) {
     console.log(`  compaction ${c.ts || '?'}: ${c.pre != null ? fmt(c.pre) : '?'} -> ${c.post != null ? fmt(c.post) : '?'} tok, dropped ${c.dropped != null ? fmt(c.dropped) : '?'}${c.durationMs ? `, ${dur(c.durationMs)}` : ''}${c.trigger ? ` (${c.trigger})` : ''}`);
@@ -931,7 +1132,9 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     for (const r of agg.skillRows) {
       const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried${r.mAttr.maxCarryRun >= 30 ? ', carry likely stale - a frozen stamp absorbing later phases' : ''})` : '';
       const comp = r.mAttr.companionMsgs ? ` (+${r.mAttr.companionMsgs} via companion loads, ~${fmt(r.mAttr.companionOut || 0)} of the out)` : '';
-      console.log(`  ${pad(r.skill, 44)} ${rpad(r.cmd || '', 4)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(r.mAttr.msgs + carried + comp, 9)} ${rpad(fmt(r.mAttr.output), 9)} ${rpad(fmt(r.mAttr.cacheRead), 13)}`);
+      const folded = r.folded && !r.mAttr.msgs;
+      const msgCell = folded ? `folded -> ${r.folded}` : r.mAttr.msgs + carried + comp;
+      console.log(`  ${pad(r.skill, 44)} ${rpad(r.cmd || '', 4)} ${rpad(r.inv.calls, 5)} ${rpad('~' + fmt(approxTok(r.inv.injectedChars)), 9)} ${rpad(msgCell, 9)} ${rpad(folded ? '-' : fmt(r.mAttr.output), 9)} ${rpad(folded ? '-' : fmt(r.mAttr.cacheRead), 13)}`);
       if (r.sub.msgs) {
         const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
         console.log(`  ${pad(`    sub: ${seats}`, 44)} ${rpad('', 4)} ${rpad('', 5)} ${rpad('', 9)} ${rpad(r.sub.msgs, 9)} ${rpad(fmt(r.sub.output), 9)} ${rpad(fmt(r.sub.cacheRead), 13)}`);
@@ -966,15 +1169,31 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     }
   }
 
-  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working)');
-  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('hook-blk', 8)}`);
+  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; declines = the USER answering an ask, never a failure; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working)');
+  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('declines', 9)} ${rpad('hook-blk', 8)}`);
   {
     // Top 15 by result volume, PLUS any dropped row carrying errors or hook blocks - a
     // 100%-error tool must never vanish on low volume (measured: 2/2-error browser_click did).
     const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
     const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
     for (const [name, t] of shown) {
-      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.hookBlocks || '', 8)}`);
+      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.declines || '', 9)} ${rpad(t.hookBlocks || '', 8)}`);
+    }
+  }
+  {
+    const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
+    if (errs.length) {
+      console.log('\n  errors, by WHEN they landed (attribute them to the phase running at that time, never to the loudest one):');
+      for (const [name, t] of errs) {
+        const ts = t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ');
+        console.log(`  ${pad(name, 28)} ${rpad(t.errors, 5)} ${ts}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''}`);
+      }
+    }
+  }
+  if (main.topResults && main.topResults.length) {
+    console.log('\n  biggest single results (the call is named, so nothing has to be mapped back by hand):');
+    for (const r of main.topResults.slice(0, 8)) {
+      console.log(`  ${pad(r.name + (r.label ? ` ${r.label}` : ''), 60)} ${rpad('~' + fmt(approxTok(r.chars)), 9)} ${r.error ? 'error' : ''}`);
     }
   }
 
@@ -982,11 +1201,15 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     console.log('\nHOOK BLOCKS (which guard fired; a block costs its denial text plus the retried turn)');
     console.log(`  ${pad('hook', 32)} ${rpad('blocks', 6)} ${rpad('event / tool', 22)} top reason`);
     for (const [h, e] of Object.entries(blockLedger.byHook).sort((a, b) => b[1].blocks - a[1].blocks)) {
-      const top = [...e.reasons.entries()].sort((a, b) => b[1] - a[1])[0];
+      const reasons = [...e.reasons.entries()].sort((a, b) => b[1] - a[1]);
       const where = [...e.events].join(',') + (e.tools.size ? ' / ' + [...e.tools].join(',') : '');
-      console.log(`  ${pad(h, 32)} ${rpad(e.blocks, 6)} ${rpad(where, 22)} ${(top && top[0]) || ''}`);
+      console.log(`  ${pad(h, 32)} ${rpad(e.blocks, 6)} ${rpad(where, 22)} ${(reasons[0] && reasons[0][0]) || ''}${reasons[0] && reasons[0][1] > 1 ? ` x${reasons[0][1]}` : ''}`);
+      // Each further DISTINCT reason on its own line: they are different causes, and one line per
+      // hook made a report assert a single shared cause across rows that named different files.
+      for (const [r, n] of reasons.slice(1, 5)) console.log(`  ${pad('', 32)} ${rpad('', 6)} ${rpad('', 22)} ${r}${n > 1 ? ` x${n}` : ''}`);
+      if (reasons.length > 5) console.log(`  ${pad('', 32)} ${rpad('', 6)} ${rpad('', 22)} … +${reasons.length - 5} more distinct reason(s)`);
     }
-    console.log(`  ${blockLedger.rows} block(s) total - review any hook whose top reason looks like honest work being stopped.`);
+    console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
 
   if (main.spikes.length) {
@@ -1006,7 +1229,7 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     if (j.coverage) {
       console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
       console.log(`  cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.trTools} - vs ${hookLog.rows} ledger rows`);
-      if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - a ledger wired mid-session legitimately misses the head`);
+      if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook at all and can have no row`);
       if (j.coverage.unmatched > 0) console.log(`  ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap`);
     } else {
       console.log(`  cross-check: transcript saw ${j.trTools} tool calls vs ${hookLog.rows} hook rows (ledger rows carry no timestamps, so window coverage is unavailable)`);
@@ -1027,12 +1250,20 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
     extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction.`);
   }
-  if (main.modelIdsFull && main.modelIdsFull.length) extraFacts.push(`- **Models (with window suffix)** ${main.modelIdsFull.map((m) => `\`${m}\``).join(', ')} - from \`cost-state\`; the assistant messages strip the suffix, and it is what picks the context tier.`);
+  {
+    const src = windowSource(main);
+    if (src) extraFacts.push(`- **Model (with window suffix)** ${src} - the assistant messages strip the suffix, and it is what picks the context tier.`);
+    const il = interruptLine(main);
+    if (il) extraFacts.push(`- **Interrupts** ${il.replace(/^user interrupts /, '')}`);
+  }
   if (main.totalCostUSD != null) extraFacts.push(`- **Billed** $${Number(main.totalCostUSD).toFixed(2)} (\`cost-state\`).`);
   if (main.stopHookBlocks) extraFacts.push(`- **Stop-hook denials** ${main.stopHookBlocks} - meta user TEXT, not tool results, so absent from the \`hook-blk\` column.`);
+  if (main.harnessDenials) extraFacts.push(`- **Harness denials** ${main.harnessDenials} - the auto-mode classifier, a foreground \`sleep\`, or a tool-schema failure. They read as a block and no stack hook ran: excluded from \`hook-blk\`, and never charged to a guard.`);
   {
     const byHook = Object.entries(main.denialsByHook || {}).sort((a, b) => b[1] - a[1]);
     if (byHook.length) extraFacts.push(`- **Denials by hook**: ${byHook.map(([h, n]) => `\`${h}\` x${n}`).join(', ')} - the bracket is attribution only; \`(unattributed)\` is the JSON permission route.`);
+    const dj = joinUnattributedDenials(main, blockLedger);
+    if (dj.matched) extraFacts.push(`- **Unattributed denials joined by ledger timestamp** (within ${Math.round(dj.worstMs)}ms): ${Object.entries(dj.joined).map(([h, n]) => `\`${h}\` x${n}`).join(', ')}${dj.matched < dj.total ? ` - ${dj.total - dj.matched} still unattributed.` : '.'}`);
   }
   for (const c of main.compactionEvents || []) {
     extraFacts.push(`- **Compaction** ${c.ts || '?'}: ${c.pre != null ? fmt(c.pre) : '?'} -> ${c.post != null ? fmt(c.post) : '?'} tokens, dropped ${c.dropped != null ? fmt(c.dropped) : '?'}${c.durationMs ? `, ${dur(c.durationMs)}` : ''}.`);
@@ -1098,13 +1329,16 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     out.push('`cmd` = slash invocations counted from command markers; `(N carried)` = msgs attributed by');
     out.push('carry-forward after the stamp dropped at a task-notification - inferred, not stamped.');
     out.push('`(+N via companion loads)` = msgs a nested in-protocol reference load would have stolen,');
-    out.push('folded back into the invoking skill; `carry likely stale` = an unbroken 30+-msg carry run -');
+    out.push('folded back into the invoking skill, and `folded -> <skill>` on the companion row itself -');
+    out.push('its cost is charged there, so the row is not a run that cost nothing; `carry likely stale` = an unbroken 30+-msg carry run -');
     out.push("a frozen stamp absorbing later phases, flag it, don't charge it.", '');
     out.push('| skill | cmd | calls | result | attr msgs | attr out | attr cache-rd |', '|---|---|---|---|---|---|---|');
     for (const r of agg.skillRows) {
       const carried = r.mAttr.carriedMsgs ? ` (${r.mAttr.carriedMsgs} carried${r.mAttr.maxCarryRun >= 30 ? ', carry likely stale' : ''})` : '';
       const comp = r.mAttr.companionMsgs ? ` (+${r.mAttr.companionMsgs} via companion loads, ~${fmt(r.mAttr.companionOut || 0)} of the out)` : '';
-      out.push(`| ${r.skill} | ${r.cmd || ''} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${r.mAttr.msgs}${carried}${comp} | ${fmt(r.mAttr.output)} | ${fmt(r.mAttr.cacheRead)} |`);
+      const folded = r.folded && !r.mAttr.msgs;
+      const msgCell = folded ? `folded -> ${r.folded}` : `${r.mAttr.msgs}${carried}${comp}`;
+      out.push(`| ${r.skill} | ${r.cmd || ''} | ${r.inv.calls} | ~${fmt(approxTok(r.inv.injectedChars))} | ${msgCell} | ${folded ? '-' : fmt(r.mAttr.output)} | ${folded ? '-' : fmt(r.mAttr.cacheRead)} |`);
       if (r.sub.msgs) {
         const seats = Object.entries(r.sub.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}×${n}`).join(' ');
         out.push(`| - sub: ${seats} | | | | ${r.sub.msgs} | ${fmt(r.sub.output)} | ${fmt(r.sub.cacheRead)} |`);
@@ -1144,15 +1378,39 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
 
   out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
   out.push('`hook-blk` = PreToolUse denials. A denial is not automatically the gate working - it may be a FALSE POSITIVE, and a false positive costs the denial text plus the whole retried turn. Read the block before scoring it. (Shipped verbatim over sessions whose blocks were 2 of 2 and 3 of 3 false positives, across 11 bundles.)', '');
-  out.push('| tool | calls | results | errors | hook-blk |', '|---|---|---|---|---|');
+  out.push('| tool | calls | results | errors | declines | hook-blk |', '|---|---|---|---|---|---|');
   {
     const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
     const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
     for (const [name, t] of shown) {
-      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.hookBlocks || ''} |`);
+      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.declines || ''} | ${t.hookBlocks || ''} |`);
     }
   }
   out.push('');
+  {
+    const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
+    if (errs.length) {
+      out.push('### Errors, by when they landed', '');
+      out.push('Attribute each error to the phase that was RUNNING at that time. Measured: two errors at');
+      out.push('06:57 were reported as the browser phase\'s, and the browser work started ~07:2x.', '');
+      out.push('| tool | errors | timestamps |', '|---|---|---|');
+      for (const [name, t] of errs) {
+        out.push(`| ${name} | ${t.errors} | ${t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ')}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''} |`);
+      }
+      out.push('');
+    }
+  }
+  if (main.topResults && main.topResults.length) {
+    out.push('### Biggest single results', '');
+    out.push('Each row is ONE call with its own label - the Bash description the model wrote, the file a');
+    out.push('Read named, the seat a dispatch went to - so a result size never has to be mapped back onto');
+    out.push('a call by hand (measured: one report re-derived eight of these by eye).', '');
+    out.push('| tool | what the call asked for | result | when |', '|---|---|---|---|');
+    for (const r of main.topResults.slice(0, 8)) {
+      out.push(`| ${r.name}${r.error ? ' (error)' : ''} | ${r.label || ''} | ~${fmt(approxTok(r.chars))} | ${r.ts || ''} |`);
+    }
+    out.push('');
+  }
 
   if (main.spikes.length) {
     out.push('## Context spikes (main session)', '');
@@ -1167,7 +1425,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     if (j.coverage) {
       out.push(`- Coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session.`);
       out.push(`- Cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.trTools} - vs ${hookLog.rows} ledger rows.`);
-      if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - a ledger wired mid-session legitimately misses the head.`);
+      if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook and can have no row.`);
       if (j.coverage.unmatched > 0) out.push(`- ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap.`);
     } else {
       out.push(`- ${j.trTools} transcript tool calls vs ${hookLog.rows} ledger rows (ledger rows carry no timestamps, so window coverage is unavailable).`);
@@ -1178,24 +1436,33 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
   // The markdown emitter never received the ledger at all, so the bundle reports the sweeps
   // actually read carried no guard-block section - 7 confirmations, while the terminal report
   // printed one from the same data.
-  out.push('## Guard blocks (which guard fired; a block costs its denial text plus the retried turn)', '');
+  out.push('## Guard blocks - FILL IN (which guard fired; a block costs its denial text plus the retried turn)', '');
   if (blockLedger && blockLedger.rows) {
     out.push('_A block is not automatically the gate working. A FALSE positive is the most expensive event in this table - it costs the denial plus the whole retried turn - so read each top reason and say whether it stopped honest work._', '');
-    out.push('| hook | blocks | event / tool | top reason |', '|---|---|---|---|');
+    out.push('_Answer that below the table: one line per ROW, saying whether that reason caught something or stopped honest work._', '');
+    out.push('_ONE ROW PER DISTINCT REASON, not per hook: a reason carries the file the denial named, so two reasons under one hook are two causes and must be judged separately (measured: a report asserted one shared cause across three rows, one of which named a different file and a real credential)._', '');
+    out.push('| hook | blocks | event / tool | reason |', '|---|---|---|---|');
     for (const [hook, e] of Object.entries(blockLedger.byHook).sort((a, b) => b[1].blocks - a[1].blocks)) {
-      const top = [...e.reasons.entries()].sort((x, y) => y[1] - x[1])[0];
       const where = [...e.events].join(',') + (e.tools.size ? ' / ' + [...e.tools].join(',') : '');
-      out.push(`| \`${hook}\` | ${e.blocks} | ${where} | ${((top && top[0]) || '').replace(/\|/g, '\\|')} |`);
+      for (const [r, n] of [...e.reasons.entries()].sort((x, y) => y[1] - x[1])) {
+        out.push(`| \`${hook}\` | ${n} | ${where} | ${String(r).replace(/\|/g, '\\|')} |`);
+      }
     }
     out.push('', `${blockLedger.rows} block(s) total.`, '');
   } else {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
+    out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
   }
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
   out.push('## Verdict - FILL IN', '', '| skill | worked as intended | biggest strength | biggest waste source | one concrete suggestion |', '|---|---|---|---|---|', '');
   console.log(out.join('\n'));
 }
+
+// Exported for the tests: the join's arithmetic shipped broken (ISO string minus a number = NaN,
+// so every ledger-joined session printed '0% of tool calls are inside the ledger window') and
+// stayed broken because nothing could reach the function to pin it.
+module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine };
 
 // ---------- entry ----------
 
@@ -1209,7 +1476,11 @@ async function main() {
   const hookFile = flagVal('--hook-log');
   const blockDir = flagVal('--hook-blocks');
   const docsRoot = flagVal('--docs-root');
-  if (docsRoot) docsPrefixes.push(docsRoot.endsWith('/') ? docsRoot : docsRoot + '/');
+  // one spelling for both routes: backslashes normalized, `./` dropped, one trailing slash
+  if (docsRoot) {
+    const r = String(docsRoot).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') + '/';
+    if (!docsPrefixes.includes(r)) docsPrefixes.push(r);
+  }
   const fromStr = flagVal('--from'), toStr = flagVal('--to');
   const window = fromStr || toStr
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
@@ -1245,9 +1516,13 @@ async function main() {
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
-  const blockLedger = readBlockLedger(blockDir);
+  const blockLedger = readBlockLedger(blockDir, path.basename(target, '.jsonl'));
   if (asJson) {
-    const body = { main: mainStats, agents, hookLog, hookBlocks: blockLedger };
+    // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
+    // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
+    // Fold them into the dump beside the ledger they describe.
+    const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, computeAggregates(mainStats, agents).tools) : null;
+    const body = { main: mainStats, agents, hookLog: hookLog && join ? { ...hookLog, ...join.coverage ? { coverage: join.coverage } : {} } : hookLog, hookBlocks: blockLedger };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }
@@ -1258,4 +1533,7 @@ async function main() {
   printReport(mainStats, agents, hookLog, window, blockLedger);
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+// Run only as a COMMAND. Required as a module (the tests, which need to reach hookJoinStats),
+// it must define its functions and do nothing else - otherwise the require prints the usage
+// line and exits 1 before a single assertion runs.
+if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

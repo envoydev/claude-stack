@@ -14,6 +14,12 @@ treat the load as a precondition of the SKILL that owns the deliverable, not of 
 works through the shell gets no attach at all until it uses a file tool (measured: 0 attaches over 123
 `.md` write targets); `guard-read-whole-file.js` names this rule on the first shell touch instead.
 
-**The generated docs root is NOT governed here.** Every document under `<docs-path>` belongs to the
-capture skill that writes it, and that skill's own body states the shape and loads `markdown-style`
-itself. Two owners pulling one file in opposite directions is worse than either alone.
+**The generated docs root is NOT governed here, and neither are the generated rules.** Every document
+under `<docs-path>` belongs to the capture skill that writes it, and so does every generated
+`.claude/rules/baseline-project-*.md` and `.claude/rules/project-code-style.md` - those are MACHINE
+output whose shape the generating skill fixes verbatim, down to the frontmatter. That skill's own
+body states the shape and loads `markdown-style` itself. Two owners pulling one file in opposite
+directions is worse than either alone, and measured across three bundles this attach cost a whole
+message (~328 tokens of rule read against 92.5k re-sent) before a rule write that then correctly
+did NOT load the style skill - and it was obeyed in only 1 of 2 identical runs, so it was neither a
+reliable gate nor a free one.

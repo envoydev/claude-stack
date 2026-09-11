@@ -198,6 +198,27 @@ function Clear-WriteBlockers([string]$Path) {
   } catch {}
 }
 
+function Clear-WriteBlockersTree([string]$Root) {
+  # The per-write call above fixes ONE file at a time, which is the wrong shape for a tree that has
+  # been marked wholesale: a measured Windows run found 174 Hidden files under `.claude`, cleared
+  # the 2 it happened to write, and left 172 set - every one of them a future 'access denied' on a
+  # file this installer owns. One sweep per run, before the copies, with the count in the log so
+  # the user sees what was actually changed rather than a per-file silence.
+  if (-not (Test-Path -LiteralPath $Root)) { return }
+  $blocked = [System.IO.FileAttributes]::ReadOnly -bor [System.IO.FileAttributes]::Hidden
+  $cleared = 0
+  try {
+    foreach ($f in @(Get-ChildItem -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue)) {
+      # The `.claude` DIRECTORY itself may legitimately be hidden on Windows (a dot-dir often is);
+      # this only clears the bits on the files and subdirectories the installer writes into.
+      try {
+        if ($f.Attributes -band $blocked) { $f.Attributes = $f.Attributes -band (-bnot $blocked); $cleared++ }
+      } catch {}
+    }
+  } catch {}
+  if ($cleared -gt 0) { Log "  cleared ReadOnly/Hidden on $cleared file(s) under $Root - they block a raw write on Windows" }
+}
+
 function Write-JsonFile([object]$Data, [string]$Path, [int]$Depth = 20) {
   # PowerShell's ConvertTo-Json indents inconsistently and version-dependently (5.1 = 4-space
   # ladders + double-space colons; 7 = deep nested alignment). node's JSON.stringify(_, null, 2)
@@ -649,6 +670,7 @@ $Hooks = @(
   'guard-read-whole-file.js::Bash::'              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
   'guard-secret-value.js::Read::'                 # block a Read of a file that HOLDS a credential (content-judged: a JSON/dotenv key matching environment.json's secret_key_pattern with a live value) - presence only via `node guard-secret-value.js --presence <file> [KEY ...]`
   'guard-secret-value.js::Bash::'                 # same gate on Bash: cat/jq/grep/an inline node read of such a file, `echo $SECRET`, a bare `env`, or a credential-shaped literal in the command - a prose rule that failed live (a JSON.stringify(s.env) printed a token)
+  'guard-secret-value.js::Grep::'                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   'guard-ungated-commit.js::Bash::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
   'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
@@ -662,6 +684,10 @@ $Hooks = @(
   'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
+# The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
+# names so a later -InstalledOnly run can tell a hook the user DROPPED (shipped then, absent now)
+# from one this release ADDED (not shipped then) - on disk the two look the same.
+$HooksCatalog = @($Hooks)
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
 # .claude/settings.json alongside the hooks on INSTALL (idempotent, union-merged - a consuming project's
@@ -863,6 +889,29 @@ if ($InstalledOnly) {
     Write-Host "error: -InstalledOnly found nothing installed under $ioClaude - run install (or the /claude-stack:setup command) first" -ForegroundColor Red
     Remove-Item -LiteralPath $script:InstalledOnlyTmp -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
+  }
+  # A hook the release ADDED reaches an existing install ONLY here. The derivation above lists what
+  # is on DISK, so a newly shipped guard was invisible to every update - measured: the v0.2.20
+  # commit gate reached zero of three consuming projects, every run surfacing it as an FYI the user
+  # exited past while the same runs refreshed the rule text it exists to enforce. Hooks are
+  # therefore an all-or-nothing layer on this path: an install that HAS hooks gets every shipped
+  # one. The exception is a deliberate drop - a hook named in the PREVIOUS run's stamp and absent
+  # from disk now was removed through configure, and stays removed.
+  if ($ioLines | Where-Object { $_.StartsWith('hook ') }) {
+    $ioPrevHooks = @()
+    $ioStamp = Join-Path $ioClaude 'claude-stack.stamp'
+    if (Test-Path -LiteralPath $ioStamp) {
+      foreach ($l in @(Get-Content -LiteralPath $ioStamp)) {
+        if ($l -match '^shipped-hooks:\s*(.*)$') { $ioPrevHooks = @($Matches[1] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+      }
+    }
+    foreach ($h in $HooksCatalog) {
+      $n = ($h -split '::')[0] -replace '\.js$', ''
+      if ($ioLines -contains "hook $n") { continue }
+      if ($ioPrevHooks -contains $n) { Log "installed-only: hook $n was dropped from this install - leaving it out"; continue }
+      $ioLines += "hook $n"
+      Log "installed-only: adopting hook $n - shipped by this release and absent here"
+    }
   }
   # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
   # would otherwise install all of them.
@@ -1584,7 +1633,7 @@ function Set-DocsRootStamp {
     $ruleBody = (Get-Content -LiteralPath $rule -Raw).Replace('__DOCS_ROOT__', $val)
     Clear-WriteBlockers $rule
     [System.IO.File]::WriteAllText($rule, $ruleBody, (New-Object System.Text.UTF8Encoding($false)))
-  } catch { Log '  !! docs-root stamp failed - the rule keeps the env-wins fallback' }
+  } catch { Log "  !! docs-root stamp failed on $rule - the rule keeps the env-wins fallback (that RULE file is the write target, not the install stamp)" }
 }
 
 function New-ClaudeMd {
@@ -1645,12 +1694,17 @@ function Get-SerenaLangs {
   param([string]$Root)
   $skip = '[\\/]node_modules[\\/]|[\\/]\.git[\\/]'   # both separators - pwsh also runs on Unix
   $langs = @()
-  $cs = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -File -Include '*.sln', '*.slnx', '*.csproj' -ErrorAction SilentlyContinue |
+  # -Force on BOTH enumerations, the same omission the --installed-only derivation above was fixed
+  # for: without it Get-ChildItem silently drops every item carrying the Hidden attribute, and a
+  # Windows tree that acquired it wholesale (measured: 174 Hidden files under one project's .claude)
+  # detects zero languages - so the seed is skipped and serena falls back to the async
+  # auto-generation this function exists to replace.
+  $cs = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -File -Force -Include '*.sln', '*.slnx', '*.csproj' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch $skip } | Select-Object -First 1)
   if ($cs.Count -gt 0) { $langs += 'csharp' }
   # serena's typescript server handles plain JavaScript too, so a package.json-only or .js-only
   # repo takes it as well - without this a JS project detected nothing and got no seed at all.
-  $ts = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -File -Include 'tsconfig*.json', 'package.json', '*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs' -ErrorAction SilentlyContinue |
+  $ts = @(Get-ChildItem -LiteralPath $Root -Recurse -Depth 3 -File -Force -Include 'tsconfig*.json', 'package.json', '*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch $skip } | Select-Object -First 1)
   if ($ts.Count -gt 0) { $langs += 'typescript' }
   return $langs
@@ -1764,6 +1818,16 @@ function Write-Stamp {
   if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
   $dest = Join-Path $dir 'claude-stack.stamp'
   $stampedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+  # The hook FILE names this release SHIPS (one entry per file, not per matcher) - the catalog, not
+  # this run's subset. -InstalledOnly reads it back to separate a hook the user dropped through
+  # configure (shipped then, absent now) from one that did not exist when this install was made
+  # (not shipped then) - on disk the two are identical, and only the second may be adopted.
+  $stampHookNames = @()
+  foreach ($h in $HooksCatalog) {
+    $n = ($h -split '::')[0] -replace '\.js$', ''
+    if ($stampHookNames -notcontains $n) { $stampHookNames += $n }
+  }
+  $stampHooks = $stampHookNames -join ','
   $lines = @(
     '# claude-stack install stamp - machine-local, written by claude-stack.sh / claude-stack.ps1.'
     '# The revision every artifact of this install was copied from. To see what changed since:'
@@ -1777,6 +1841,7 @@ function Write-Stamp {
     "installed: $stampedAt"
     "action: $Action"
     "scope: $ClaudeScope"
+    "shipped-hooks: $stampHooks"
   )
   # LF + no BOM, byte-for-byte what the sh twin writes. Set-Content emits [Environment]::NewLine,
   # so on Windows the same stamp came out CRLF - and a reader that splits on `\n` then anchors a
@@ -1978,11 +2043,13 @@ function Set-HookSettings {
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_PATH']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_PATH -NotePropertyValue '.claude/docs'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_PATH seeded (.claude/docs)'
   }
   # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_INSTRUMENT']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_INSTRUMENT seeded (0)'
   }
   # publish gate: `git push` / `gh pr merge` need a flow/PUSH-GATE receipt like a commit does.
   # Seeded ON - across four audited sessions every push and merge passed every guard, one of them
@@ -1990,11 +2057,13 @@ function Set-HookSettings {
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_PUSH_GATE']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_PUSH_GATE -NotePropertyValue '1'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_PUSH_GATE seeded (1)'
   }
   # rotate ask: the stop contract asks once per credential exposure; '0' turns the ask off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_ROTATE_ASK']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)'
   }
   # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both
@@ -2006,16 +2075,20 @@ function Set-HookSettings {
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_1M']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_1M -NotePropertyValue '400000'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_FRESH_SESSION_1M seeded (400000)'
   }
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_200K']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_200K -NotePropertyValue '150000'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_FRESH_SESSION_200K seeded (150000)'
   }
   # ... and the trigger for every OTHER case: a window the hooks cannot read (the settings `model`
-  # carries no window suffix) and one that is neither named size. 250,000 sits between the two.
+  # carries no window suffix) and one that is neither named size. 180,000 is REACHABLE on a 200k
+  # window - at 250,000 it sat above that window entirely and the gate could never fire there.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_DEFAULT']) {
-    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_DEFAULT -NotePropertyValue '250000'
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_DEFAULT -NotePropertyValue '180000'
     $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_FRESH_SESSION_DEFAULT seeded (180000)'
   }
   # WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
   # model id's own window suffix ('opus[1m]'), else take the tier the session has already proven
@@ -2140,7 +2213,8 @@ function Get-InstalledPluginMap {
     }
     $rank = if ($pp) { 0 } else { 1 }     # this project's rows first, then the account-level ones
     if (-not $map.ContainsKey($name) -or $rank -lt $map[$name].rank) {
-      $map[$name] = @{ rank = $rank; version = [string]$e.version; scope = [string]$e.scope }
+      $enabled = if ($null -eq $e.enabled) { $true } else { [bool]$e.enabled }
+      $map[$name] = @{ rank = $rank; version = [string]$e.version; scope = [string]$e.scope; enabled = $enabled }
     }
   }
   return $map
@@ -2158,6 +2232,19 @@ function Update-Plugins {
     # run) only applies when the listing cannot say.
     $pScope = if ($before.ContainsKey($name) -and $before[$name].scope) { $before[$name].scope }
               elseif ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
+    # UPDATE alone cannot adopt: `claude plugin update` is a no-op on a plugin that is not
+    # installed, and says nothing about one that is installed but DISABLED. So a selection that
+    # ADDED a plugin left it absent or parked, and this function's own log line - 'not installed -
+    # /claude-stack:configure adds it' - was false, since configure runs this very function
+    # (measured: two added plugins still `disabled` after the run, recovered by hand over 8
+    # messages and ~1.05M of context).
+    if (-not $before.ContainsKey($name)) {
+      Log "plugin install [$pScope]: $p"
+      try { & claude plugin install $p --scope $pScope -y } catch {}
+    } elseif (-not $before[$name].enabled) {
+      Log "plugin enable [$pScope]: $p (installed but disabled)"
+      try { & claude plugin enable $p --scope $pScope } catch {}
+    }
     Log "plugin update [$pScope]: $p"
     try { & claude plugin update $p --scope $pScope -y } catch {}   # -y for the same non-TTY reason as install
   }
@@ -2168,7 +2255,8 @@ function Update-Plugins {
     $name = ($p -split '@')[0]
     $v1 = if ($before.ContainsKey($name)) { $before[$name].version } else { '' }
     $v2 = if ($after.ContainsKey($name)) { $after[$name].version } else { '' }
-    if (-not $v2) { Log "  plugin ${name}: not installed - /claude-stack:configure adds it" }
+    if (-not $v2) { Log "  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)" }
+    elseif (-not $after[$name].enabled) { Log "  plugin ${name}: $v2 but DISABLED - 'claude plugin enable $p' turns it back on" }
     elseif ($v1 -and $v1 -ne $v2) { Log "  plugin ${name}: $v1 -> $v2" }
     else { Log "  plugin ${name}: $v2 (already newest)" }
   }
@@ -2315,13 +2403,30 @@ function Remove-AgentsCache {
 # ===========================================================================
 # WINDOWS SERENA FIX (interim) - remove once oraios/serena#311 ships upstream
 # ===========================================================================
+function Start-SerenaPreWarm {
+  # Windows-only, and DELIBERATELY its own step: `claude mcp add` only registers serena - the
+  # package is not materialized in the uv cache until serena first launches, and that first launch
+  # is a download that runs INSIDE Claude Code's 30s MCP connect budget. Pre-warming it here is what
+  # keeps the first session's serena connect inside that budget. It used to live inside the
+  # #311 TS-LSP workaround below, whose own header says to delete the whole block once that ships
+  # upstream - which would have taken this with it, silently, for a reason unrelated to #311.
+  if (-not $OnWindows) { return }
+  if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { return }
+  $serenaOn = $false
+  try { & claude mcp get serena *> $null; $serenaOn = ($LASTEXITCODE -eq 0) } catch {}
+  if (-not $serenaOn) { return }
+  # Any subcommand makes uvx resolve+cache serena-agent (the download happens before the command
+  # runs, so the exit code is irrelevant); $SerenaPin keeps it the version the MCP registration uses.
+  try { & uvx --from ('serena-agent' + $SerenaPin) serena --help *> $null } catch {}
+}
+
 function Repair-SerenaTsLspWindows {
   # Windows-only. serena/solidlsp spawns npm's extensionless POSIX shim
   # (.bin/typescript-language-server), which cmd.exe can't run, so serena's TS symbol/reference
   # tools die at language-server init (oraios/serena#311). serena exposes NO command/path override,
   # so the only lever is patching _create_launch_command in the cached package. Two steps:
-  #   1) pre-warm: `claude mcp add` only registers serena - the package isn't materialized in the uv
-  #      cache until serena first launches, so force a uvx run now or there is nothing to patch yet.
+  #   1) pre-warm: Start-SerenaPreWarm above owns it (it is not a #311 concern - see its header);
+  #      this block calls it because there is nothing to patch until the package is cached.
   #   2) delegate the idempotent patch to scripts/os/fix-serena-ts-windows.ps1 (single source of truth),
   #      fetched from the repo like the hooks. Fail-soft throughout. No-op on the .sh twin (Unix runs
   #      the shim directly via its shebang). REMOVE this whole block once #311 ships upstream.
@@ -2332,9 +2437,7 @@ function Repair-SerenaTsLspWindows {
   if (-not $serenaOn) { return }   # only patch when serena is actually part of this stack
 
   Log 'serena: applying interim Windows TS-LSP launch fix (oraios/serena#311)'
-  # Pre-warm: any subcommand makes uvx resolve+cache serena-agent (download happens before the
-  # command runs, so the exit code is irrelevant); $SerenaPin keeps it the same version the MCP uses.
-  try { & uvx --from ('serena-agent' + $SerenaPin) serena --help *> $null } catch {}
+  Start-SerenaPreWarm   # idempotent, and the package must be in the uv cache before it can be patched
 
   # From the run's source clone, like every other repo-owned file - so this patch is the same
   # revision as the rest of the install rather than whatever the raw CDN happens to be serving.
@@ -2350,6 +2453,13 @@ function Repair-SerenaTsLspWindows {
 # ===========================================================================
 # DISPATCH
 # ===========================================================================
+# ONE attribute sweep per run, before any step reads or writes the tree. Per-write clearing fixes
+# only the file being written, which on a tree that was marked wholesale leaves every other file
+# blocked (measured: 174 Hidden, 2 cleared, 172 left) - and a Hidden file is also invisible to a
+# `Get-ChildItem` without -Force, which is what makes an -InstalledOnly derivation read it as absent.
+if ($ClaudeScope -eq 'user') { Clear-WriteBlockersTree $ConfigDir }
+else { Clear-WriteBlockersTree (Join-Path (Get-Location).Path '.claude') }
+
 # -SkillsOnly: run ONLY the skill step and exit, before any prerequisite check or claude-CLI-
 # dependent step (testability - drives just the git-copy with no claude/gh/network dependency).
 if ($SkillsOnly) {
@@ -2367,8 +2477,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -2380,7 +2490,9 @@ Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
 $hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 $summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
 if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
-if ($KeepPins) { $summary += '; keep-pins=on' }
+# Always stated, both ways: a run that RESET the pins to catalog defaults printed no line at all, so
+# the close had nothing to cite and asserted the reset from memory instead.
+if ($KeepPins) { $summary += '; keep-pins=on' } else { $summary += '; keep-pins=off (agent model/effort pins reset to catalog defaults)' }
 if ($script:McpRepairs -gt 0) { $summary += "; mcp registrations repaired=$($script:McpRepairs)" }
 Log "$summary; context7=$Context7"
 # The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
@@ -2391,10 +2503,26 @@ if ($script:ClaudeMissing) { Log "  !! claude CLI absent - plugins, MCPs, and se
 if ($script:FailCount -gt 0) { Log "  !! $($script:FailCount) item(s) failed above - re-run '$Action' to retry" }
 
 Log 'next steps:'
-Log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
-Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
-Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
+# Each capture line is gated on the artifact it would produce being ABSENT - an update used to tell a
+# project that already holds all three generated rules to go capture them, ~175 tokens of log tail
+# re-read on every run. The serena line below was already gated this way.
+$genRoot = Get-RepoRoot; if (-not $genRoot) { $genRoot = (Get-Location).Path }
+$genRules = Join-Path $genRoot '.claude/rules'
+$seedFile = Join-Path $genRoot '.claude/CLAUDE.md'
+# This one is gated on the SEED still being unfilled, not on the file's absence: the installer has
+# just written it, so the file always exists by the time these lines print.
+if ((Test-Path -LiteralPath $seedFile) -and ((Get-Content -LiteralPath $seedFile -Raw -ErrorAction SilentlyContinue) -match 'Fill-in block - delete once done')) {
+  Log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-related-context.md'))) {
+  Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
+}
+if (-not ((Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-architecture.md')) -and (Test-Path -LiteralPath (Join-Path $genRules 'project-code-style.md')))) {
+  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-agent-capabilities.md'))) {
+  Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
+}
 if ($Mcps | Where-Object { $_ -like 'serena|*' }) {
   Log '  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): $env:SERENA_HOME=".serena/home"; uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things'
 }
@@ -2414,17 +2542,22 @@ if (@($Mcps | Where-Object { $_ -like 'sentry|*' }).Count -gt 0) {
   if ($SentryAuth -eq 'token') {
     $st = Get-AccountKeyState SENTRY_ACCESS_TOKEN
     if ($st -like '*=set*') { Log "  - sentry token: $st in $ConfigDir\settings.json env" }
-    else { Log "  - sentry token: $st in $ConfigDir\settings.json env - set SENTRY_ACCESS_TOKEN (a personal/org API token) in the launch environment and re-run (the run writes it into that ACCOUNT file), paste it into the snippet below, or re-run with -SentryAuth oauth for the browser consent flow" }
-    # The token never goes through a chat, and not through a command argument either (it would land
-    # in the PSReadLine history file). Read-Host -AsSecureString takes it from the terminal without
-    # echoing it; the file is written by this snippet, not by anything that can log the value.
-    Log "      the token never travels through a chat, and does not belong in a command argument. Paste it into this:"
-    Log "      `$t = Read-Host 'token (not echoed)' -AsSecureString"
-    Log "      `$p = '$ConfigDir\settings.json'"
-    Log "      `$d = if (Test-Path `$p) { Get-Content `$p -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }"
-    Log "      if (-not `$d.PSObject.Properties['env']) { `$d | Add-Member env ([pscustomobject]@{}) }"
-    Log "      `$d.env | Add-Member SENTRY_ACCESS_TOKEN (ConvertFrom-SecureString `$t -AsPlainText) -Force"
-    Log "      `$d | ConvertTo-Json -Depth 20 | Set-Content `$p"
+    else {
+      Log "  - sentry token: $st in $ConfigDir\settings.json env - set SENTRY_ACCESS_TOKEN (a personal/org API token) in the launch environment and re-run (the run writes it into that ACCOUNT file), paste it into the snippet below, or re-run with -SentryAuth oauth for the browser consent flow"
+      # Only when the key is ABSENT - the twin's own fix, mirrored here: these lines sat outside the
+      # branch, so a run that had just reported `SENTRY_ACCESS_TOKEN=set (71 chars)` still told the
+      # user to paste one in. The token never goes through a chat, and not through a command
+      # argument either (it would land in the PSReadLine history file). Read-Host -AsSecureString
+      # takes it from the terminal without echoing it; the file is written by this snippet, not by
+      # anything that can log the value.
+      Log "      the token never travels through a chat, and does not belong in a command argument. Paste it into this:"
+      Log "      `$t = Read-Host 'token (not echoed)' -AsSecureString"
+      Log "      `$p = '$ConfigDir\settings.json'"
+      Log "      `$d = if (Test-Path `$p) { Get-Content `$p -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }"
+      Log "      if (-not `$d.PSObject.Properties['env']) { `$d | Add-Member env ([pscustomobject]@{}) }"
+      Log "      `$d.env | Add-Member SENTRY_ACCESS_TOKEN (ConvertFrom-SecureString `$t -AsPlainText) -Force"
+      Log "      `$d | ConvertTo-Json -Depth 20 | Set-Content `$p"
+    }
   }
   else { Log "  - sentry is registered with no header: the first use opens Sentry's consent flow in the browser via /mcp" }
 }
@@ -2455,7 +2588,7 @@ Write-Host '  CLAUDE_STACK_FRESH_SESSION_200K  the same trigger on a 200k window
 Write-Host '  CLAUDE_STACK_FRESH_SESSION_DEFAULT'
 Write-Host '                                   the same trigger for every other case - a window the hooks'
 Write-Host '                                   cannot read, or one that is neither of those sizes (default'
-Write-Host '                                   250000; 0 = off)'
+Write-Host '                                   180000; 0 = off)'
 Write-Host 'Which one applies is DETECTED, not configured: the hooks read the window suffix on the settings'
 Write-Host 'model id (opus[1m], opus[200k]); anything else takes the DEFAULT trigger.'
 Write-Host 'CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.'

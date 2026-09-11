@@ -16,11 +16,15 @@ is actually loaded.** Measure before you ask: this session's own per-message con
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
 trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or `CLAUDE_STACK_FRESH_SESSION_1M`
-(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 250,000) when the window is
+(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 180,000) when the window is
 neither of those two sizes or cannot be read at all - which one applies comes from the window
 suffix on the settings.json model id (`opus[1m]`, `opus[200k]`) - or when that hook has already
-injected the ask into this turn. Below the
-trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
+injected the ask into this turn. One more case fires it regardless of the figure: this session already ran ANOTHER guided walk (a
+`/claude-stack:` command completed earlier in this chat). That history is pure carry for a run that needs
+none of it, and an absolute trigger never catches it - measured, a validate chained behind an update
+re-sent that history on all 24 of its messages at 121.7k per message, well under every tier's number.
+Below the
+trigger and with no earlier guided run, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
 of a brand-new session, twice in one run, and could quote no number when the user challenged it).
 Never author the decision in prose either way.
@@ -50,6 +54,12 @@ marked, free text via Other; a prose question or a bare stop-and-wait is invalid
 were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is
 the fallback only where the harness lacks the tool.
 
+**House voice in every line this run emits** - narration, tables and the asks alike: single
+dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
+`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
+surface where the rule forbidding it cannot yet exist).
+
 ## The ladder - announce every step
 
 Twelve user-facing steps; the machinery between them runs silently. One banner line before each:
@@ -66,10 +76,21 @@ Confirm the install (project mode, above), then **inventory the installed set fr
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
 `baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
-`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json`; plugins = `claude plugin
-list` filtered to the entries enabled for THIS project (project scope at this path, or user
-scope) - the listing is machine-global, and an unfiltered read proposes sibling repos' plugins as
-REDUNDANT here (measured near-miss uninstall); fail-soft without the CLI. Write it as one inventory JSON in `$TMP`
+`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json`; plugins = the SAME `claude plugin list --json`
+scan configure runs (its step 1 carries the one-line command - copy it, do not re-derive it), which
+prints `name<TAB>version<TAB>scope<TAB>enabled` filtered to the entries that apply to THIS project
+(project scope at this path, or user scope) - the listing is machine-global, and an unfiltered read
+proposes sibling repos' plugins as REDUNDANT here (measured near-miss uninstall); fail-soft without
+the CLI. **Carry each plugin's SCOPE into the inventory JSON** (`plugins` entries as
+`{name,scope}`), because an uninstall is scope-addressed: a removal ask naming only the plugin lets
+the user consent to a project-local drop and get an account-wide one, and the wrong `--scope` fails
+with `not installed in project scope` (measured: 8 messages and 1.2M cache-read spent rediscovering
+the scope the listing had already printed). **A plugin the listing
+marks `disabled` is a THIRD state, not an absence:** record those names in a separate
+`plugins_disabled` array and keep them OUT of the `plugins` array, so the walk neither proposes
+installing what is already on disk nor removing what the user parked. Measured: two stack plugins
+sat disabled through an update and a validate run four minutes apart, and both runs reported
+nothing to do - one of them the commit-time security gate three artifacts assert is running. Write it as one inventory JSON in `$TMP`
 (`{rules,agents,skills,hooks,mcps,plugins}` arrays) - the `--installed` input for the walk.
 
 ## 2. Detect the project's stacks - and show the evidence
@@ -104,8 +125,13 @@ The setup step-2 artifact scan:
 Report the detected set AND, for every stack you will treat as ABSENT, the exact signal you looked
 for and did not find (`wpf -> *.csproj <UseWPF>: none`). **This is the veto point** - a
 mis-detection (a WPF app on a non-standard SDK, SQL in an odd path) is corrected HERE, before the
-walk removes anything on it. Detecting nothing is valid; confirm through AskUserQuestion (detection
-correct - recommended; dispute, naming the stack via Other), then walk. Stack names are the catalog keys of
+walk removes anything on it. Detecting nothing is valid; confirm through AskUserQuestion, and put the CONSEQUENCE in each option's
+description, not just the stack list - the answer authorizes removals, and a user who cannot see that
+asks about a stack that was never at risk (measured: the one Other reply in an audited run asked about a
+stack the run had DETECTED). 'Detection correct' (recommended) - every detected stack keeps its
+artifacts; only the ABSENT stacks' artifacts become removal candidates, and each is still asked about
+one at a time. 'Dispute' - name the stack via Other and it is treated as present, nothing of its is
+proposed. Then walk. Stack names are the catalog keys of
 `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
 stderr (`unknown-stack`) instead of silently flagging nothing.
 
@@ -143,11 +169,20 @@ applicability no manifest can prove, e.g. the `project-related-context` / `relat
 pair, which apply only where the project has sibling repos) - you present its output, you do not
 re-derive it.
 
-One addition of your own: run the snapshot's `$TMP/repo/meta/migrations.json` detects against the
-project (retired GENERATED artifacts - e.g. the legacy inject-code-style hook - which the
-stack-ownership model cannot flag because generated output belongs to no stack). Each detected
+One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
+whose comment alone is 2,000 characters:
+
+```bash
+node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root .
+```
+
+Its `migration:` lines are the retired GENERATED artifacts (e.g. the legacy inject-code-style
+hook) that the stack-ownership model cannot flag, because generated output belongs to no stack.
+Each fired entry prints its own indented `why:` / `then:` / `remove:` / `unwire:` /
+`env-rename:` / `env-remove:` lines and an entry that did not fire prints nothing. Each detected
 entry joins the matching layer's REDUNDANT rows labeled `(migration: <why>)`; removing one also
-applies its `unwire_settings_hook` edit and puts its `then` follow-up in the report. An entry acting
+applies its `unwire:` edit and puts its `then:` follow-up in the report. (The version and diff
+lines the same call prints are update's business, not validate's - ignore them here.) An entry acting
 on the settings.json `env` (`rename_settings_env`, `remove_settings_env`) belongs to the ENVIRONMENT
 layer instead: a retired key still on disk is a RETIRED row there, reported with its `why`, and
 accepting it drops the key - the installers' own env pass does the same on their next run.
@@ -192,6 +227,12 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   on an install predating its catalog entry (measured: a v0.1.23-era install upgraded to
   v0.2.17 had no guided route to the instrument hook until this entry existed).
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
+  The five always-baseline plugins (`superpowers`, `claude-md-management`, `security-guidance`,
+  `claude-hud`, `ponytail`) show MISSING on any install that lacks them, whatever the stack.
+  Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
+  `installed but disabled for this project` - and its accept action is `claude plugin enable
+  <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
+  deliberate choice and is not re-raised in the close.
 
 ## 9. Environment - the settings.json env block against this release
 
@@ -232,7 +273,11 @@ this run that nothing kept requires (probe first - `node "$TMP/repo/scripts/stac
 "$TMP/installed.json" --graph "$TMP/repo/meta/stack-graph.json" --dependents <skill|agent|mcp|plugin>:<name>`,
 the inventory being the remaining selection - a closure-held item is NOT in scope; at most note the
 finding and name the holder, its drop path is the sibling configure).
-Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four gates:
+Add scope: release-shipped artifacts the walk left unproposed. **Every grep below runs INLINE in
+this session** - the corroboration for one item is a handful of bounded greps, and dispatching them
+costs more than running them (measured: an async dispatch plus a scheduled wakeup turned 4 greps into
+three idle turns). If a seat is dispatched anyway, wait on its completion notification - never spend a
+turn polling for it. Five inputs, five gates:
 
 1. **The advisory list FIRST - corroborate non-use in the code.** Every `no-evidence:` item is a
    prime drop candidate the package scan alone cannot judge. For each: derive the skill's domain
@@ -265,7 +310,25 @@ Add scope: release-shipped artifacts the walk left unproposed. Four inputs, four
    exclusions do not match this project (an exclusion hit kills the proposal). Propose
    JUDGMENT-ADD with the trail as the citation: the greps run, the quoted hits, the exclusion
    check. No surfaced trail, no proposal - 'the project might grow into it' passes no gate.
-4. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
+4. **Registered MCP servers the project never calls.** The mechanical passes reconcile a server
+   against the project's FRAMEWORKS, which is why 14 validate runs across 6 projects never caught
+   a browser-extension project carrying `chrome-devtools` AND `playwright` and calling neither
+   across 17 sessions, or a headless .NET backend carrying `playwright` (24 tool schemas) and
+   `sentry` (8). A registered server is not free: its schemas are injected into every session and
+   every subagent. So judge each one the project did not prove:
+   - **Measured first, where a measurement exists.** `ls "<docs-path>/tools-usage"/*.jsonl` - the
+     instrumentation ledgers. When any exist, count per server:
+     `grep -ho '"tool":"mcp__[a-z0-9-]*' <docs-path>/tools-usage/*.jsonl | sort | uniq -c`. A server
+     with rows is KEPT, no judgment needed; a server with zero rows across several sessions is a
+     drop candidate with the count as its citation. State the number of sessions the ledgers cover.
+   - **No ledgers?** Say so - `no usage measurement (CLAUDE_STACK_INSTRUMENT is "0"; flip it to "1"
+     for a run to measure)` - and fall back to the same corroboration gate 1 uses: the evidence
+     scan's verdict for that server plus bounded NAMED greps for its domain markers. Never propose
+     a drop on absence of a ledger alone.
+   - The two locked servers (`serena`, `context7`) are never proposed - an always-on rule names
+     them, so they are closure-held. Everything else is in scope.
+
+5. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
    (judgment.out) - pairs from the shipped catalog where BOTH sides are installed, each side's
    unique gap precomputed on the line. Your judgment adds the third part: which one the
    project's own docs or config actually cite - and the proposal drops the uncited one, its
@@ -285,7 +348,7 @@ covered everything, not only the cuts. One table, VISIBLY separate from the sign
 the usual per-item consent round:
 
 ```
-[step 10/12 - judgment] corroborated non-use + conflicts + corroborated need + overlap · next: apply
+[step 10/12 - judgment] corroborated non-use + conflicts + corroborated need + uncalled servers + overlap · next: apply
  # | artifact                   | verdict                  | citation
 ---+----------------------------+--------------------------+--------------------------------------------------
  1 | mcp chrome-devtools        | JUDGMENT-DROP · MATERIAL | overlap: playwright also drives a browser and is the only one the project docs cite; unique gap - live console/network debug of an already-open Chrome; keep only if that is real here
@@ -338,11 +401,29 @@ profile), output to `$TMP/select.out` - then:
 - **Removes**: `install --selection` does NOT uninstall - delete each accepted removal explicitly,
   showing the command first: the skill directory / agent file / rule file; a hook loses BOTH its
   `.claude/hooks/` file and its `.claude/settings.json` wiring; `claude mcp remove <name>`;
-  `claude plugin uninstall <name>`.
+  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` - and the removal ask
+  that proposed it NAMES that scope ('enabled at USER scope - removing it removes it for every
+  project'), since account-wide and project-local are different consents.
+- **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
+  block inside `.claude/rules/baseline-project-agent-capabilities.md` ships verbatim from the skill
+  and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
+  One comparison:
+
+  ```bash
+  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md
+  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/project-agent-capabilities/SKILL.md"
+  ```
+
+  Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
+  (written before the stamp existed) - report it as a finding with both values and name the re-run as
+  the fix. No rule on disk is not a finding here; it is the capture never having run.
 - Then name `/project-agent-capabilities` (when installed) in the post-check report as the
   USER's next step, so the generated awareness rule reflects the reconciled inventory - the
-  skill is manual-only (`disable-model-invocation`), a Skill call from this run is blocked;
-  never attempt it. The run rewrites `claude-stack.stamp` to the snapshot revision.
+  skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
+  never attempt it. `claude-stack.stamp` is rewritten ONLY by an installer invocation - the apply step's
+  own run writes it. A validate run that added nothing leaves the stamp exactly as it found it and never
+  hand-edits it: the file's own header says the installers write it, and a hand-written one carries a
+  fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
@@ -356,6 +437,7 @@ audited session, which is why the reason rides beside every step. Close with thi
 'Nothing is pending on this run - these are yours to run when you choose.' The stop-contract
 guard reads that sentence as a finished close; without it a 'done + next step' card is blocked
 as a stall and the guard demands the very ask this paragraph removes.
+The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message).
 
 
 ## 12. Post-check

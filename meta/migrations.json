@@ -38,7 +38,7 @@
       "remove_settings_env": {
         "key": "CLAUDE_STACK_FRESH_SESSION_PCT"
       },
-      "why": "the fresh-session gate fires on an ABSOLUTE token count per window - 150000 on a 200k window, 400000 on a 1M one, 250000 on any other or unreadable one - so a percentage of the window is not read by anything any more. It was inert at its own default on both real tiers before it was retired, and a dead key in the env block reads as a knob that still works",
+      "why": "the fresh-session gate fires on an ABSOLUTE token count per window - 150000 on a 200k window, 400000 on a 1M one, 180000 on any other or unreadable one - so a percentage of the window is not read by anything any more. It was inert at its own default on both real tiers before it was retired, and a dead key in the env block reads as a knob that still works",
       "then": "nothing - set CLAUDE_STACK_FRESH_SESSION_200K / _1M / _DEFAULT instead, or 0 on all three to turn the offer off"
     },
     {

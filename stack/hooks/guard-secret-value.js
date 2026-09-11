@@ -57,9 +57,20 @@ const isLive = (v) => typeof v === 'string' && v.trim() !== '' && !isPlaceholder
 // a credential-shaped key (`"apiKey": "test-key-1234"`) has no content tell and still blocks - read
 // it through `--presence`, or rename the key.
 const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|replace|example|dummy|placeholder)/i;
+// A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
+// least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
+// lists of variable names under a field literally called `key`, so `meta/environment.json`
+// (`env.0.key` = `CLAUDE_STACK_DOCS_PATH`) and `meta/migrations.json`
+// (`detect.settings_env_key` = `CLAUDE_DOCS_PATH`) were read as credential files - on the Read
+// route a block, and on the shell route something worse: every `key` in the file the guided walks
+// run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like
+// an AWS `AKIA...` id (no underscore anyway) is judged on its shape, not excused as a name. The
+// gap this accepts is a real password spelled in screaming snake under 64 characters.
+const NAME_VALUE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
 const isSampleValue = (key, v) => {
   const s = String(v).trim();
-  return s.toLowerCase() === String(key).toLowerCase() || /\s/.test(s) || TEMPLATE_VALUE.test(s) || s.startsWith('MII');
+  return s.toLowerCase() === String(key).toLowerCase() || /\s/.test(s) || TEMPLATE_VALUE.test(s) || s.startsWith('MII')
+    || (s.length <= 64 && NAME_VALUE.test(s) && !SECRET_SHAPE.test(s));
 };
 const holdsCredential = (key, v) => isLive(v) && !isSampleValue(key, v);
 // A file-SHAPE tell: a basename ending .example / .sample / .template / .dist ships the KEYS, never
@@ -120,6 +131,11 @@ const accountDir = () => process.env.CLAUDE_CONFIG_DIR || pathMod.join(HOME, '.c
 // skipped rather than guessed at.
 const VARS = new Map([
   ['HOME', [HOME]],
+  // The WINDOWS spelling of the same directory. Without it `$USERPROFILE/.claude/settings.json`
+  // kept a `$` through expandPath, which returns null for any surviving variable, so the account
+  // file on every Windows install was never judged at all - the one platform where the path is
+  // routinely written that way. Measured: a live token printed from that path in a Windows session.
+  ['USERPROFILE', [process.env.USERPROFILE || HOME]],
   ['CLAUDE_PROJECT_DIR', [process.env.CLAUDE_PROJECT_DIR || '']],
   ['CLAUDE_CONFIG_DIR', [accountDir()]],
 ]);
@@ -417,6 +433,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -580,6 +600,50 @@ const ENV_BARE = /process\.env(?![.[\w])|os\.environ(?![.[\w(])|%ENV\b|\bENV\.(?
 const ENV_REDUCED = /Object\.keys\(\s*process\.env\s*\)|os\.environ\.keys\(\s*\)|\bENV\.keys\b/g;
 const RUNTIME_PRINT = /console\.log|JSON\.stringify|\bprint\s*\(|\bputs\b|(?:^|\s)-p(?=\s|$)|--print\b/;
 
+// A RUNTIME stage that reduces the file it reads to a KEY LIST prints names, never values - the
+// same sanctioned read `jq keys` and `cut -f1` already get on the shell route. Measured: a
+// `node -e "... Object.keys(d.env||{})"` asking for ~200 chars of key names came back as 6,273
+// chars of the whole redacted file, and the model then needed a third command to re-check the half
+// of its own output the rewrite had swallowed. Narrow on purpose: the printed expression must
+// BEGIN with a key-list call (optionally wrapped once in list/sorted/join) and carry none of the
+// idioms that turn names back into values, so anything cleverer than that still gets the redacted
+// view - which is an over-broad answer, never a leak.
+const PRINT_CALL = /(?:console\.(?:log|info)|process\.stdout\.write|\bprint|\bputs)\s*\(/g;
+function argsOf(text, openIdx) {
+  let depth = 0;
+  for (let i = openIdx; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')' && --depth === 0) return text.slice(openIdx + 1, i);
+  }
+  return text.slice(openIdx + 1);   // unbalanced - judge what there is
+}
+const KEYS_ARG = /^\s*(?:(?:list|sorted|Array\.from)\s*\(\s*|(?:'[^']*'|"[^"]*")\s*\.\s*join\s*\(\s*)?(?:Object\.keys\s*\(|[\w$)\]'"[.]+\.keys\s*\(\s*\))/;
+const VALUE_IDIOM = /=>|\bfor\b|\.values\s*\(|\.entries\s*\(|JSON\.stringify|\bitems\s*\(/;
+// A SECOND argument prints whatever it names beside the key list - the same reason `jq 'keys, .'`
+// is not a reducer. Nesting and quotes are tracked so the commas inside the key call itself don't
+// count.
+function hasTopLevelComma(args) {
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < args.length; i++) {
+    const ch = args[i];
+    if (quote) { if (ch === '\\') i++; else if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === '\'' || ch === '`') { quote = ch; continue; }
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (ch === ',' && depth === 0) return true;
+  }
+  return false;
+}
+function printsKeysOnly(stage) {
+  const prints = [...stage.matchAll(PRINT_CALL)];
+  if (!prints.length) return false;
+  return prints.every((m) => {
+    const args = argsOf(stage, m.index + m[0].length - 1);
+    return KEYS_ARG.test(args) && !VALUE_IDIOM.test(args) && !hasTopLevelComma(args);
+  });
+}
+
 // ---- Bash matcher ----
 if (payload.tool_name === 'Bash') {
   const raw = String(input.command || '');
@@ -679,6 +743,20 @@ function judgeShell(text, forceRuntime) {
         if (ENV_BARE.test(stage.replace(ENV_REDUCED, ' keys ')) && RUNTIME_PRINT.test(stage)) blockEnvDump();
       }
 
+      // A stage whose only verb PRINTS reads no file: `printf '%s\n' '<a rotation one-liner>'`
+      // emits a snippet for the USER to run, and the runtime word inside the quoted string is DATA,
+      // not an execution. Measured: this guard rewrote the credential-ROTATION command the stack had
+      // just asked the user to run into a `--redacted` dump of the settings file, so the snippet
+      // never reached them and the exposed token stayed live - and at HEAD the substitution was
+      // SILENT, which is worse than the visible block it replaced. The credential-literal scan (well
+      // above, on the whole command) and the variable and env-dump scans (earlier in this stage)
+      // have already run, so this skips the file-candidate scan alone: `echo $SECRET` and a
+      // credential typed into the command are still caught, a stage merely QUOTING a path is not.
+      if (/^(?:echo|printf)\b/.test(stage.replace(PREFIX_WORDS, '')) && !/\$\{?[A-Za-z_]/.test(stage)) continue;
+      // ...and a runtime stage that prints only a KEY LIST is the sanctioned presence read, so it
+      // passes through as written rather than becoming a whole-file redacted dump.
+      if (isRuntime && printsKeysOnly(stage)) continue;
+
       // A dump verb or a runtime read on a file that HOLDS a credential - judged by content, not path.
       homeAnchor = isRuntime && /homedir|expanduser|USERPROFILE|HOME/.test(stage);
       const candidates = [];
@@ -712,5 +790,35 @@ if (payload.tool_name === 'Read') {
   const file = resolveFile(String(input.file_path || ''));
   const key = file && secretInUnlessAllowed(file);
   if (key) block(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
+}
+
+// The Grep TOOL is the third read route onto the same file, and it was ungated: measured live, a
+// Bash read of a project settings.json was blocked and eight seconds later a Grep with
+// `output_mode: content` on the SAME path returned its lines - nothing leaked only because the
+// pattern happened to select non-credential keys. Only the CONTENT mode prints values;
+// `files_with_matches` (the default) and `count` return a path or a number and are never blocked,
+// which keeps 'does this file mention SENTRY_SLUG' a free question.
+if (payload.tool_name === 'Grep') {
+  if (String(input.output_mode || 'files_with_matches') === 'content') {
+    const target = String(input.path || '');
+    // A directory target is judged by the credential-bearing files it would print from; with no
+    // path at all the search is the whole project, which is how the measured leak would have run.
+    const roots = target ? [target] : [process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd()];
+    for (const r of roots) {
+      const file = resolveFile(r);
+      if (!file) continue;
+      let st = null;
+      try { st = fs.statSync(file); } catch { st = null; }
+      if (st && st.isDirectory()) continue;   // a tree walk is not a named read - the file routes still gate it
+      const key = secretInUnlessAllowed(file);
+      if (key) {
+        block(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +
+          `A content-mode Grep PRINTS the matching lines, so it is the same value read the Read and\n` +
+          `shell routes already block - just spelled as a search. Use \`output_mode: "count"\` or\n` +
+          `\`"files_with_matches"\` to ask whether the key is there, or the presence route for what it holds.\n` +
+          presenceHint(file));
+      }
+    }
+  }
 }
 process.exit(0);

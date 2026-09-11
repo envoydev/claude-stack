@@ -69,6 +69,17 @@ no stamp, heavily edited copy - say `unverified`, never guess); `user-authored` 
 | baseline-project-architecture | always-on | GENERATED |
 | project-code-style | paths: `**/*.js` | GENERATED |
 
+Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
+else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
+every message of every session: total the bytes of the pathless rules plus the project
+instructions in one call (`wc -c <rules dir>/baseline-*.md CLAUDE.md .claude/CLAUDE.md
+2>/dev/null | tail -1`) and render `always-on floor: <N> chars (~<N/4000>k tokens) across <n>
+pathless rules + CLAUDE.md - re-sent on every message and prepended to every subagent dispatch`.
+Report the number, judge nothing: there is no threshold here and no advice line (measured: the
+standing floor was 63.5% of one 164-session collection's entire token bill, and nine independent
+installs floored between 87k and 134k tokens per message - of which the stack's own always-on
+text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matching touch.
+
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for
 the capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack`
 otherwise, `user-authored` when clearly neither.
@@ -98,6 +109,11 @@ values embedded in a registration - show `${VAR}` literally as written.
 | plugin | version | status |
 |---|---|---|
 
+`status` is the listing's own word, copied through - `enabled`, `disabled`, or the scope it is
+installed at. A `disabled` row is REPORTED, never dropped: a stack plugin that is installed but
+parked is invisible to every inventory that filters the listing down to what is enabled, and that
+is how a commit-time security gate sat off through two runs that both reported nothing to do.
+
 **Environment** - the install's knobs and identity, one row each:
 
 | item | value |
@@ -108,7 +124,7 @@ values embedded in a registration - show `${VAR}` literally as written.
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
 | CLAUDE_STACK_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
 | CLAUDE_STACK_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
-| CLAUDE_STACK_FRESH_SESSION_DEFAULT | 250000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies is detected from the window suffix on the settings model id |
+| CLAUDE_STACK_FRESH_SESSION_DEFAULT | 180000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies is detected from the window suffix on the settings model id |
 | SENTRY_SLUG (account env) | set / not set - only when sentry is installed |
 | SENTRY_ACCESS_TOKEN (account env) | set / not set - only when sentry is installed and its registration carries a header |
 | CONTEXT7_API_KEY (account env) | set / not set - only when context7 is installed remote; not set = the keyless free tier |

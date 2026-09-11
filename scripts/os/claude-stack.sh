@@ -593,6 +593,7 @@ HOOKS=(
   "guard-read-whole-file.js::Bash::"              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
   "guard-secret-value.js::Read::"                 # block a Read of a file that HOLDS a credential (content-judged: a JSON/dotenv key matching environment.json's secret_key_pattern with a live value) - presence only via `node guard-secret-value.js --presence <file> [KEY ...]`
   "guard-secret-value.js::Bash::"                 # same gate on Bash: cat/jq/grep/an inline node read of such a file, `echo $SECRET`, a bare `env`, or a credential-shaped literal in the command - a prose rule that failed live (a JSON.stringify(s.env) printed a token)
+  "guard-secret-value.js::Grep::"                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   "guard-unapproved-dispatch.js::Task|Agent::"    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   "guard-ungated-commit.js::Bash::"               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
   "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
@@ -606,6 +607,10 @@ HOOKS=(
   "guard-answer-length.js::@Stop::"               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
+# The manifest as SHIPPED, taken before any selection filter narrows HOOKS. The stamp records these
+# names so a later --installed-only run can tell a hook the user DROPPED (shipped then, absent now)
+# from one this release ADDED (not shipped then) - on disk the two look the same.
+HOOKS_CATALOG=(${HOOKS[@]+"${HOOKS[@]}"})
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
 # .claude/settings.json alongside the hooks on INSTALL (idempotent, union-merged - a consuming project's
@@ -787,6 +792,29 @@ if [ "$INSTALLED_ONLY" = true ]; then
   # no-op update. Plugins are machine-level and mcps come from .mcp.json; neither is evidence that
   # THIS target has an install.
   grep -qE '^(skill|agent|rule|hook) ' "$SELECTION" || { echo "error: --installed-only found nothing installed under $_io_claude - run '$0 install' (or the /claude-stack:setup command) first" >&2; rm -rf "$_IO_TMP"; exit 1; }
+  # A hook the release ADDED reaches an existing install ONLY here. The derivation above lists what
+  # is on DISK, so a newly shipped guard was invisible to every update - measured: the v0.2.20
+  # commit gate reached zero of three consuming projects, every run surfacing it as an FYI the user
+  # exited past while the same runs refreshed the rule text it exists to enforce. Hooks are
+  # therefore an all-or-nothing layer on this path: an install that HAS hooks gets every shipped
+  # one. The exception is a deliberate drop - a hook named in the PREVIOUS run's stamp and absent
+  # from disk now was removed through configure, and stays removed.
+  if grep -q '^hook ' "$SELECTION"; then
+    # No stamp, or one written before this key existed, leaves _io_prev empty - and an empty
+    # 'shipped then' set means every absent hook reads as new and is adopted once. That is the
+    # intended first-update behaviour: the stamp this run writes then records the catalog, so a
+    # drop made after it sticks. `|| true` because set -e would kill the run on a missing stamp.
+    _io_prev="$(sed -n 's/^shipped-hooks: //p' "$_io_claude/claude-stack.stamp" 2>/dev/null | head -1 || true)"
+    for _io_e in ${HOOKS_CATALOG[@]+"${HOOKS_CATALOG[@]}"}; do
+      _io_n="${_io_e%%::*}"; _io_n="${_io_n%.js}"
+      if grep -qxF "hook $_io_n" "$SELECTION"; then continue; fi
+      case ",$_io_prev," in
+        *",$_io_n,"*) log "installed-only: hook $_io_n was dropped from this install - leaving it out" ; continue ;;
+      esac
+      printf 'hook %s\n' "$_io_n" >> "$SELECTION"
+      log "installed-only: adopting hook $_io_n - shipped by this release and absent here"
+    done
+  fi
   # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
   # would otherwise install all of them.
   grep -q '^hook ' "$SELECTION" || HOOKS=()
@@ -1418,7 +1446,7 @@ download_rules() {  # copy each rule .md into .claude/rules/; per-rule fail-soft
 stamp_docs_root_rule() {  # replace __DOCS_ROOT__ in the copied baseline-docs-root.md with the CURRENT env value (settings.json, else the default) - runs on install AND update, so the stamp always tracks the env
   local root="$1" rule="$1/.claude/rules/baseline-docs-root.md"
   [ -f "$rule" ] || return 0
-  python3 - "$rule" "$root/.claude/settings.json" <<'PY' || log "  !! docs-root stamp failed - the rule keeps the env-wins fallback"
+  python3 - "$rule" "$root/.claude/settings.json" <<'PY' || log "  !! docs-root stamp failed on $rule - the rule keeps the env-wins fallback (that RULE file is the write target, not the install stamp)"
 import json, sys
 rule, settings = sys.argv[1], sys.argv[2]
 val = ".claude/docs"
@@ -1585,6 +1613,16 @@ write_stamp() {
           dir="$root/.claude" ;;
   esac
   mkdir -p "$dir"; dest="$dir/claude-stack.stamp"
+  # The hook FILE names this release SHIPS (one entry per file, not per matcher) - the catalog, not
+  # this run's subset. --installed-only reads it back to separate a hook the user dropped through
+  # configure (shipped then, absent now) from one that did not exist when this install was made
+  # (not shipped then) - on disk the two are identical, and only the second may be adopted.
+  local _stamp_hooks="" _sh_e _sh_n _sh_seen=""
+  for _sh_e in ${HOOKS_CATALOG[@]+"${HOOKS_CATALOG[@]}"}; do
+    _sh_n="${_sh_e%%::*}"; _sh_n="${_sh_n%.js}"
+    case ",$_sh_seen," in *",$_sh_n,"*) continue ;; esac
+    _sh_seen="$_sh_seen,$_sh_n"; _stamp_hooks="${_stamp_hooks:+$_stamp_hooks,}$_sh_n"
+  done
   cat > "$dest" <<STAMP
 # claude-stack install stamp - machine-local, written by claude-stack.sh / claude-stack.ps1.
 # The revision every artifact of this install was copied from. To see what changed since:
@@ -1598,6 +1636,7 @@ version: $version
 installed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 action: $ACTION
 scope: $CLAUDE_SCOPE
+shipped-hooks: $_stamp_hooks
 STAMP
   log "  stamp: $dest @ $(printf '%.12s' "$STACK_SHA")"
 }
@@ -1786,17 +1825,21 @@ for _key, _bad_seed, _to in ():
 # Forward slashes on every OS (Node hooks and the model resolve them fine on Windows).
 if "CLAUDE_STACK_DOCS_PATH" not in env:
     env["CLAUDE_STACK_DOCS_PATH"] = ".claude/docs"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_PATH seeded (.claude/docs)")
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
+    print("  settings.json env: CLAUDE_STACK_INSTRUMENT seeded (0)")
 # publish gate: `git push` / `gh pr merge` need a flow/PUSH-GATE receipt like a commit does.
 # Seeded ON - across four audited sessions every push and merge passed every guard, one of them
 # putting 40 files on a shared `develop`. "0" for a repo whose remote is already gated.
 if "CLAUDE_STACK_PUSH_GATE" not in env:
     env["CLAUDE_STACK_PUSH_GATE"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_PUSH_GATE seeded (1)")
 # rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)")
 # fresh-session gate - one ABSOLUTE trigger per window tier, seeded so both are visible and
 # tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
 # at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the
@@ -1806,12 +1849,16 @@ if "CLAUDE_STACK_ROTATE_ASK" not in env:
 # measured), so there the SessionStart compact route carries the offer - lower it to be asked first.
 if "CLAUDE_STACK_FRESH_SESSION_1M" not in env:
     env["CLAUDE_STACK_FRESH_SESSION_1M"] = "400000"; changed = True
+    print("  settings.json env: CLAUDE_STACK_FRESH_SESSION_1M seeded (400000)")
 if "CLAUDE_STACK_FRESH_SESSION_200K" not in env:
     env["CLAUDE_STACK_FRESH_SESSION_200K"] = "150000"; changed = True
+    print("  settings.json env: CLAUDE_STACK_FRESH_SESSION_200K seeded (150000)")
 # ... and the trigger for every OTHER case: a window the hooks cannot read (the settings `model`
-# carries no window suffix) and one that is neither named size. 250,000 sits between the two.
+# carries no window suffix) and one that is neither named size. 180,000 is REACHABLE on a 200k
+# window - at 250,000 it sat above that window entirely and the gate could never fire there.
 if "CLAUDE_STACK_FRESH_SESSION_DEFAULT" not in env:
-    env["CLAUDE_STACK_FRESH_SESSION_DEFAULT"] = "250000"; changed = True
+    env["CLAUDE_STACK_FRESH_SESSION_DEFAULT"] = "180000"; changed = True
+    print("  settings.json env: CLAUDE_STACK_FRESH_SESSION_DEFAULT seeded (180000)")
 # WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
 # model id's own window suffix (`opus[1m]`), else take the tier the session has already proven
 # (nothing can carry more input tokens than the window), else make no offer at all. The old
@@ -1921,15 +1968,15 @@ for e in rows if isinstance(rows, list) else []:
     if pp and os.path.realpath(str(pp)) != cwd: continue
     rank = 0 if pp else 1                       # this project first, then the account-level rows
     if name not in best or rank < best[name][0]:
-        best[name] = (rank, str(e.get("version", "?")), str(e.get("scope", "")))
-for name, (_, ver, scope) in best.items():
-    print("%s\t%s\t%s" % (name, ver, scope))
+        best[name] = (rank, str(e.get("version", "?")), str(e.get("scope", "")), "yes" if e.get("enabled", True) else "no")
+for name, (_, ver, scope, enabled) in best.items():
+    print("%s\t%s\t%s\t%s" % (name, ver, scope, enabled))
 '
 _plugin_scan() {  # -> name<TAB>version<TAB>scope lines; empty when the CLI or python3 cannot answer
   command -v python3 >/dev/null 2>&1 || return 0
   claude plugin list --json 2>/dev/null | python3 -c "$_PLUGIN_SCAN_PY" "$PWD" 2>/dev/null || true
 }
-_plugin_field() {  # $1 = scan output $2 = name $3 = field index (2=version, 3=scope)
+_plugin_field() {  # $1 = scan output $2 = name $3 = field index (2=version, 3=scope, 4=enabled)
   printf '%s\n' "$1" | awk -F'\t' -v n="$2" -v f="$3" '$1 == n { print $f; exit }'
 }
 
@@ -1948,6 +1995,19 @@ update_plugins() {
     if [ -z "$pscope" ]; then
       pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
     fi
+    # UPDATE alone cannot adopt: `claude plugin update` is a no-op on a plugin that is not
+    # installed, and says nothing about one that is installed but DISABLED. So a selection that
+    # ADDED a plugin left it absent or parked, and this function's own log line - 'not installed -
+    # /claude-stack:configure adds it' - was false, since configure runs this very function
+    # (measured: two added plugins still `disabled` after the run, recovered by hand over 8
+    # messages and ~1.05M of context).
+    if [ -z "$(_plugin_field "$before" "$name" 2)" ]; then
+      log "plugin install [$pscope]: $p"
+      claude plugin install "$p" --scope "$pscope" -y 2>&1 | tail -1 || true
+    elif [ "$(_plugin_field "$before" "$name" 4)" = "no" ]; then
+      log "plugin enable [$pscope]: $p (installed but disabled)"
+      claude plugin enable "$p" --scope "$pscope" 2>&1 | tail -1 || true
+    fi
     log "plugin update [$pscope]: $p"
     claude plugin update "$p" --scope "$pscope" -y 2>&1 | tail -1 || true   # -y for the same non-TTY reason as install
   done
@@ -1957,7 +2017,8 @@ update_plugins() {
   for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
     name="${p%%@*}"
     v1="$(_plugin_field "$before" "$name" 2)"; v2="$(_plugin_field "$after" "$name" 2)"
-    if [ -z "$v2" ]; then log "  plugin $name: not installed - /claude-stack:configure adds it"
+    if [ -z "$v2" ]; then log "  plugin $name: NOT installed - the install above did not take (is the marketplace reachable?)"
+    elif [ "$(_plugin_field "$after" "$name" 4)" = "no" ]; then log "  plugin $name: $v2 but DISABLED - 'claude plugin enable $p' turns it back on"
     elif [ "$v1" != "$v2" ] && [ -n "$v1" ]; then log "  plugin $name: $v1 -> $v2"
     else log "  plugin $name: $v2 (already newest)"; fi
   done
@@ -2119,7 +2180,9 @@ _hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one h
 for _e in ${HOOKS[@]+"${HOOKS[@]}"}; do _n="${_e%%::*}"; case " $_seen " in *" $_n "*) continue ;; esac; _seen="$_seen $_n"; _hook_files=$((_hook_files + 1)); done
 _summary="  installed/refreshed this run - skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
 [ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"
-[ "$KEEP_PINS" = true ] && _summary="$_summary; keep-pins=on"
+# Always stated, both ways: a run that RESET the pins to catalog defaults printed no line at all, so
+# the close had nothing to cite and asserted the reset from memory instead.
+if [ "$KEEP_PINS" = true ]; then _summary="$_summary; keep-pins=on"; else _summary="$_summary; keep-pins=off (agent model/effort pins reset to catalog defaults)"; fi
 [ "$MCP_REPAIRS" -gt 0 ] && _summary="$_summary; mcp registrations repaired=$MCP_REPAIRS"
 log "$_summary; context7=$CONTEXT7_MODE"
 # The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
@@ -2134,10 +2197,16 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 log "next steps:"
-log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
-log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
-log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
+# Each capture line is gated on the artifact it would produce being ABSENT - an update used to tell a
+# project that already holds all three generated rules to go capture them, ~175 tokens of log tail
+# re-read on every run. The serena line beside them was already gated this way.
+_gen_rules="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "$PWD")/.claude/rules"
+# This one is gated on the SEED still being unfilled, not on the file's absence: the installer has
+# just written it, so the file always exists by the time these lines print.
+grep -q 'Fill-in block - delete once done' "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "$PWD")/.claude/CLAUDE.md" 2>/dev/null && log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
+[ -f "$_gen_rules/baseline-project-related-context.md" ] || log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
+[ -f "$_gen_rules/baseline-project-architecture.md" ] && [ -f "$_gen_rules/project-code-style.md" ] || log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+[ -f "$_gen_rules/baseline-project-agent-capabilities.md" ] || log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
 if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^serena|'; then
   log "  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): SERENA_HOME=.serena/home uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things"
 fi
@@ -2162,13 +2231,15 @@ if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^sentry|'; then
     _st="$(account_key_state SENTRY_ACCESS_TOKEN)"
     case "$_st" in
       *=set*) log "  - sentry token: $_st in $CONFIG_DIR/settings.json env" ;;
-      *) log "  - sentry token: $_st in $CONFIG_DIR/settings.json env - export SENTRY_ACCESS_TOKEN (a personal/org API token) in the launch shell and re-run (the run writes it into that ACCOUNT file), paste it into the snippet below, or re-run with --sentry-auth oauth for the browser consent flow" ;;
+      *) log "  - sentry token: $_st in $CONFIG_DIR/settings.json env - export SENTRY_ACCESS_TOKEN (a personal/org API token) in the launch shell and re-run (the run writes it into that ACCOUNT file), paste it into the snippet below, or re-run with --sentry-auth oauth for the browser consent flow"
+         # Only when the key is ABSENT. These lines used to sit after `esac`, so a run that had just
+         # reported `SENTRY_ACCESS_TOKEN=set (71 chars)` still told the user to paste one in.
+         # The token never goes through a chat, and not through a shell argument either (it would
+         # land in the history file). getpass reads it from the terminal without echoing; the file
+         # is written by this snippet, not by anything that can log the value.
+         log "      the token never travels through a chat, and does not belong in a shell argument. Paste it into this:"
+         log "      python3 -c \"import getpass,json,pathlib;f=pathlib.Path('$CONFIG_DIR/settings.json');d=json.loads(f.read_text() or '{}') if f.exists() else {};d.setdefault('env',{})['SENTRY_ACCESS_TOKEN']=getpass.getpass('token (not echoed): ');f.parent.mkdir(parents=True,exist_ok=True);f.write_text(json.dumps(d,indent=2))\"" ;;
     esac
-    # The token never goes through a chat, and not through a shell argument either (it would land in
-    # the history file). getpass reads it from the terminal without echoing; the file is written by
-    # this snippet, not by anything that can log the value.
-    log "      the token never travels through a chat, and does not belong in a shell argument. Paste it into this:"
-    log "      python3 -c \"import getpass,json,pathlib;f=pathlib.Path('$CONFIG_DIR/settings.json');d=json.loads(f.read_text() or '{}') if f.exists() else {};d.setdefault('env',{})['SENTRY_ACCESS_TOKEN']=getpass.getpass('token (not echoed): ');f.parent.mkdir(parents=True,exist_ok=True);f.write_text(json.dumps(d,indent=2))\""
   else log "  - sentry is registered with no header: the first use opens Sentry's consent flow in the browser via /mcp"; fi
 fi
 [ "$INSTALL_GITHUB_CLI" = true ] && log "  - run 'gh auth login' if gh is not yet authenticated (needed before PRs/issues)"
@@ -2199,7 +2270,7 @@ hand-edited value survives every update):
   CLAUDE_STACK_FRESH_SESSION_DEFAULT
                                    the same trigger for every other case - a window the hooks
                                    cannot read, or one that is neither of those sizes (default
-                                   250000; 0 = off)
+                                   180000; 0 = off)
 Which one applies is DETECTED, not configured: the hooks read the window suffix on the settings
 model id ('opus[1m]', 'opus[200k]'); anything else takes the DEFAULT trigger.
 CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.

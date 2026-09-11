@@ -250,6 +250,14 @@
   }
  },
  "mcps": {
+  "appium-mcp": {
+   "packages": [
+    "appium",
+    "appium-",
+    "@wdio/",
+    "webdriverio"
+   ]
+  },
   "playwright": {
    "packages": [
     "Microsoft.Playwright",

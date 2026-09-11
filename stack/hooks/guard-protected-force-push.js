@@ -236,6 +236,10 @@ function main()
                         event: payload.hook_event_name || payload.tool_name || '',
                         tool: payload.tool_name || '',
                         reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
                     }) + '\n');
                 }
                 catch { /* telemetry is never allowed to break the gate */ }

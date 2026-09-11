@@ -28,6 +28,18 @@ The first RUN of an audit stage is always a dispatch - never skip straight to an
 
 **Unchanged-slice gate and re-audit scoping.** When TARGET is partitioned into slices (one auditor per slice), record with every returned result - zero-findings or not - the git sha it audited. Before re-dispatching an auditor over a slice for the same stage, run `git diff --name-only <recorded-sha> -- <slice paths>`: an empty diff on a zero-findings slice means the prior verdict still stands - carry it forward, log the skip, and do not dispatch. A pass-2+ RUN over a findings-bearing slice may scope to that diff plus the files carrying open findings - an unchanged file's prior verdict stands - logging the scope in the SCORE line. Never brief an agent to confirm that nothing changed - the diff is the confirmation (measured: two dispatches over a byte-identical slice cost ~241k tokens to return the same empty set).
 
+**A seat's FLOOR is paid per dispatch, so the slice count is a budget decision.** Every dispatch
+re-sends that seat's whole standing inventory before it reads one line of the target - measured at
+about 112k tokens for a domain verifier, against 53k for the style-characterizer shape and 39k for
+the architecture one. Across one audited collection the domain verifier was the single largest line
+item anywhere - 86 seats, 687.7M cache-read, 27.9% of the whole bill, 73% of it floor, and 81 of
+those 86 were rubric audits over 78 distinct slice briefs on two project-days. So: fold slices
+together until each seat has enough to justify its own floor (a seat reviewing four related slices
+pays the floor once, not four times), and prefer the NARROWEST read-only seat the project has
+installed whenever the stage is a pure rubric read - no build, no test rerun, no memory write, no
+browser driver. Splitting finer buys parallelism at 112k a slice; say in the SCORE line why the
+split was worth it.
+
 **One auditor gets the diff as its lens.** When TARGET is partitioned into slices, dedicate one auditor to the cumulative `git diff` against the run's green-baseline sha - the delta IS its slice, regression hunting its rubric - because some defect classes are visible only in the change (measured: the diff-lens auditor was the only one of six to catch a model-snapshot drift; no whole-file correctness lens ever opens a snapshot file).
 
 **Auditor contradiction.** Two auditors contradicting each other on a checkable fact is settled by the cheapest deterministic command in-session - never a tie-break re-dispatch, which costs a seat and returns another opinion.

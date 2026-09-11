@@ -29,6 +29,10 @@ REPORT.md
 best-practice/
 docs/session-to-analize/
 docs/session-investigation/
+# ...and every near-spelling of it: a 115MB collection of real transcripts sat in
+# `docs/sessions-investigation/` (plural) where the exact line above did not reach it, one
+# `git add -A` away from a public repo. The glob is the containment, not the exact name.
+docs/*investigation*/
 
 # examples: worked reference projects - track clean source, exclude build caches,
 # stack state, and grader-only harness artifacts. (node_modules/.claude/.serena/.mcp.json/

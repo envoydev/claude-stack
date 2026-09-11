@@ -148,7 +148,16 @@ cycle in the same chat, even when an earlier cycle already loaded it.
      work instead of a guess: ONE task card carrying only the log points to add at the suspect
      seam - the exact symbols, the levels, and the identifiers each line must carry - so the next
      occurrence arrives one tier higher. Name the hypothesis each line is there to decide.
-   Stamp `Outcome:` with the branch taken. *Stop* - and this close-out stop carries anything
+   Stamp `Outcome:` with the branch taken. **A proven cause is a CLOSING point, not a midpoint:**
+   the findings file is durable and self-contained by construction, so whatever the fork picked,
+   the next phase - writing the report, building the tasks, reading the new logs - starts in a
+   FRESH session resumed from that path, and this stop offers it as an option in its own words
+   ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
+   hours or past roughly 150k ctx per message (measured: one 17h15m diagnosis chat carried FOUR
+   auto-compactions - ~1.46M tokens of context dropped at 360-371k each - with the findings file
+   durable from early in the run; every message after the cause was proven re-sent a history the
+   file already held, and no `Stop` gate can catch it because that session never closed).
+   *Stop* - and this close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/cross-project-tasks/`
    - never chat-only prose). Delete the serena cursor note; keep the signature-to-fix note if the

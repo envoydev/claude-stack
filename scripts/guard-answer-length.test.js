@@ -170,3 +170,33 @@ test('last_assistant_message is measured ahead of a lagging transcript', () => {
     assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: path.join(TMP, 'absent.jsonl'), last_assistant_message: WALL }).status, 0,
         'no transcript means no user message to judge - fail open');
 });
+
+test('the em-dash ban is enforced on the same prose the cap reads', () => {
+    // Measured across four audited sessions: 32 em-dashes in 21,434 characters of prose in one, 4
+    // in another, 2 each in two more - with this hook's own injection carrying 'single dashes,
+    // never em-dashes' three times in the same transcript. The rule was stated every turn and
+    // checked on no surface; the Stop branch already holds the answer, so it checks it here.
+    const stop = (text, userText) => run({
+        hook_event_name: 'Stop',
+        transcript_path: transcript(`dash-${Math.random().toString(36).slice(2)}`, userText || 'what changed?', [{ type: 'text', text }]),
+        last_assistant_message: text,
+    });
+    assert.strictEqual(stop(SHORT).status, 0, 'a clean short answer passes');
+    const one = stop('Done — the build is green.');
+    assert.strictEqual(one.status, 2, 'an em-dash in prose is blocked');
+    assert.match(one.stderr, /single dashes/, 'the denial names the rule');
+    assert.match(one.stderr, /replaced by a single dash/, '... and asks for the same answer, not a shorter one');
+    assert.strictEqual(stop('Done. See `a — b` in the table.').status, 0, 'a code span is not prose - the cap reads the same text');
+    assert.strictEqual(stop('```\nconst a = 1; // a — b\n```\nDone.').status, 0, 'and neither is a fenced block');
+    // The length exemptions excuse the LENGTH; an em-dash is a character to replace, so they do not
+    // reach it - a re-answer at the same length loses nothing.
+    const deep = stop(`${WALL} — and that is the detail.`, 'walk me through it in detail');
+    assert.strictEqual(deep.status, 2, 'a depth request excuses the wall of text, not the em-dash');
+    assert.match(deep.stderr, /single dashes/, '... and the denial says so alone');
+    assert.doesNotMatch(deep.stderr, /characters of prose - the house budget/, '... without demanding a shorter answer');
+    // Both wrong at once: ONE denial, naming both.
+    const both = stop(`${WALL} — done.`);
+    assert.strictEqual(both.status, 2, 'over the cap and carrying an em-dash');
+    assert.match(both.stderr, /also uses 1 em-dash/, 'the length denial carries the voice fix');
+    assert.match(both.stderr, /characters of prose/, '... and still names the length');
+});

@@ -20,10 +20,13 @@
 // right home for a loop like this') and then ran the loop anyway, to 380k tokens per message.
 // Same step run fresh in the next session cost 134k. This is that rule mechanized.
 //
-// It blocks only when BOTH hold: the session's context is already past the threshold, AND the
-// incoming skill is one of the orchestration entry points below. Everything else passes.
+// The incoming skill must be one of the orchestration entry points below - everything else passes -
+// and then EITHER trigger is enough: the session's context is already past the threshold, or this
+// session has already made one deliberate run (see priorOrchestrationRun below, which is what
+// reaches the chained case the size trigger structurally cannot).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
+const nodePath = require('path');
 // The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
@@ -65,6 +68,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -81,7 +88,7 @@ if (!IS_SKILL_CALL && EVENT !== 'UserPromptSubmit' && EVENT !== 'SessionStart') 
 // it controlled. Three numbers, no arithmetic: say when you want to be asked.
 //   CLAUDE_STACK_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
 //   CLAUDE_STACK_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
-//   CLAUDE_STACK_FRESH_SESSION_DEFAULT - the trigger on anything else (default 250,000)
+//   CLAUDE_STACK_FRESH_SESSION_DEFAULT - the trigger on anything else (default 180,000)
 // `0` on any of them turns that case's offer off. NOTE the 1M default sits ABOVE the harness's own
 // auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 / 393,969 / 395,112 / 396,651 /
 // 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
@@ -94,9 +101,14 @@ function freshAt(key, dflt) {
 const FRESH_AT_200K = freshAt('CLAUDE_STACK_FRESH_SESSION_200K', 150000);
 const FRESH_AT_1M = freshAt('CLAUDE_STACK_FRESH_SESSION_1M', 400000);
 // The DEFAULT covers every case that is not one of the two named windows: a window that cannot be
-// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It sits between the
-// two triggers, so an unknown window is neither nagged at 150,000 nor left unreachable at 400,000.
-const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 250000);
+// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It must be REACHABLE
+// on the smallest window it could be applied to, which is why it sits under 200,000. At 250,000 it
+// sat ABOVE a 200k window entirely, so a session on that tier could never trip it and the gate
+// silently did not exist - measured on a session that peaked at 187.2k (93.6% of its window) with
+// both Stop hooks running and neither holding. An unproven window is assumed SMALL on purpose: an
+// offer made a little early is one dismissible ask, re-armed only after 1.5x growth, while an offer
+// that can never fire is no gate at all.
+const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 180000);
 // `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read
 // at all any more - a percentage of a window is not what this gate fires on.
 const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
@@ -138,9 +150,40 @@ function settingsModelWindow() {
   } catch { /* no home and no cwd - fall through to the next layer */ }
   return null;
 }
+// The SECOND source, and the reason this is no longer settings-only: the transcript's own
+// `cost-state` records key `modelUsage` by the FULL model id, suffix intact. Measured across the
+// audited corpus - a session whose settings id carried no suffix still proved a 1M window through
+// `claude-opus-5[1m]` here, and one session carried `[1m]` and a bare id at once, so the LARGEST
+// window any record proves is the one the session could reach. The comment above already called
+// this a second source while the code read only the first.
+function costStateWindow() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return null;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 512 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    let best = null;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"cost-state"')) continue;
+      try {
+        const o = JSON.parse(line);
+        if (o.type !== 'cost-state' || !o.modelUsage) continue;
+        for (const id of Object.keys(o.modelUsage)) {
+          const w = windowFromModelId(id);
+          if (w && (best === null || w > best)) best = w;
+        }
+      } catch { /* partial first line of the tail window - skip */ }
+    }
+    return best;
+  } catch { return null; }   // no transcript, unreadable, or not JSON - the DEFAULT tier covers it
+}
 let _knownWindow;
 function knownWindow() {
-  if (_knownWindow === undefined) _knownWindow = settingsModelWindow() || null;
+  if (_knownWindow === undefined) _knownWindow = settingsModelWindow() || costStateWindow() || null;
   return _knownWindow;
 }
 // The trigger this session is judged against. The two named tiers each own a variable; every
@@ -150,9 +193,13 @@ function knownWindow() {
 // 200k account anything at all.
 function ctxThreshold() {
   const window = knownWindow();
-  const at = window === 200000 ? FRESH_AT_200K
+  let at = window === 200000 ? FRESH_AT_200K
     : window === 1000000 ? FRESH_AT_1M
       : FRESH_AT_DEFAULT;
+  // A trigger at or above the window it applies to can never be reached, and a gate that cannot
+  // fire is the gate not existing. Honour the number that was set up to the point it goes
+  // unreachable, then clamp it back inside the window.
+  if (at > 0 && window && at >= window) at = Math.floor(window * 0.9);
   return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
 }
 // The deliberate entry points: each one opens a multi-phase run with its own state file, so a
@@ -179,6 +226,36 @@ if (IS_SKILL_CALL) {
     || prompt.match(/(?:^|\s)\/([A-Za-z0-9:_-]+)/);
   skill = m ? m[1] : '';
 }
+// --- a `disable-model-invocation` skill is the USER's to type, and this is what enforces it ---
+// Every project's generated capabilities rule used to stamp 'the harness BLOCKS the Skill call'.
+// Measured, it did not: a user typed the command with a LEADING SPACE, so no `<command-name>`
+// marker fired, and the model reached the flagged skill through a `Skill` tool call four seconds
+// later - body injected, run started. An ASSERTED harness behaviour is the weakest form of a gate,
+// so the assertion became this gate. Only the MODEL's own Skill call is denied: a slash turn
+// arrives as UserPromptSubmit and never reaches here, so the user's own route is untouched. No env
+// switch - the verdict is the skill's own frontmatter, not a judgment that can be wrong.
+if (IS_SKILL_CALL && skill) {
+  const bare = skill.replace(/^.*:/, '');
+  try {
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    // the flag lives in the frontmatter - read the head, never the body
+    const fd = fs.openSync(nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'), 'r');
+    const buf = Buffer.alloc(4096);
+    const n = fs.readSync(fd, buf, 0, 4096, 0);
+    fs.closeSync(fd);
+    const head = (buf.toString('utf8', 0, n).split(/^---\s*$/m)[1] || '');
+    if (/^disable-model-invocation:\s*true\s*$/m.test(head)) {
+      process.stderr.write(
+        `Blocked: ${skill} is marked disable-model-invocation - it is the USER's to type, never yours\n` +
+        `to call. Do not retry it under another spelling and do not spend the turn explaining that you\n` +
+        `cannot: name the command, say in ONE line what it does, and hand the turn back so the user\n` +
+        `can run /${bare} themselves.`,
+      );
+      process.exit(2);
+    }
+  } catch { /* no such skill on disk, or unreadable - not this guard's business */ }
+}
+
 if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 
 // SessionStart carries no run name and nothing measurable - the transcript has just been REPLACED
@@ -224,11 +301,134 @@ function lastUsage() {
     return null;
   }
 }
+// --- what a resume would actually RECOVER: the session's own cold floor ----------------------
+// The trigger is absolute context, and a large share of it can be the INSTALL's own standing
+// inventory - system prompt, CLAUDE.md, the always-on rules, every MCP tool schema - which a fresh
+// session pays again on its first message. Measured across the nine projects in the audited
+// collection that floor runs 87k-134k per message, and one 18-minute single-command run that
+// STARTED from `/clear` (first message 103,964) tripped the 150,000 gate at 159,363 after ~55k of
+// actual conversation: the ask and its close cost two messages and 320,973 context and moved
+// nothing. So the offer also asks what it would BUY - the part of the carry a resume does NOT
+// re-pay - and stays quiet while that is under 40% of what a message now costs. This is not a
+// percentage of the WINDOW (the retired PCT knob, where the clamps decided and the number lied);
+// it is read from this session's own first message, and an unreadable floor answers yes, which is
+// the behaviour that shipped before it. On an install whose floor is most of its window the offer
+// therefore goes quiet by design - a resume that recovers 16k per message is not worth a turn, and
+// the harness's own compaction covers that session.
+const MIN_RECOVERABLE_SHARE = 0.4;
+function coldFloor() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return null;
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(Math.min(fs.statSync(p).size, 512 * 1024));
+    fs.readSync(fd, buf, 0, buf.length, 0);   // the HEAD of the file - message 1, not the tail
+    fs.closeSync(fd);
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"assistant"')) continue;
+      try {
+        const u = JSON.parse(line).message.usage;
+        if (u) return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+      } catch { /* a partial or shapeless row - keep looking */ }
+    }
+    return null;
+  } catch { return null; }
+}
+// True when a resume is worth a turn: the carry MINUS this session's own floor is a real share of
+// what every message now costs. Anything unreadable - no floor, no context figure - answers yes.
+function worthResuming(ctx) {
+  const floor = coldFloor();
+  if (!ctx || floor === null || floor <= 0) return true;
+  return (ctx - floor) >= ctx * MIN_RECOVERABLE_SHARE;
+}
+// --- a PRIOR deliberate run in this session is its own trigger ----------------------------
+// The size trigger alone missed the measured shape: four deliberate flows chained with zero
+// `/clear` boundaries, 199.1k average context per message for well under 30k of actual tool
+// output, and not one of them was gated - each run STARTED under the threshold and crossed it only
+// while running, by which time the history the next run re-sends is already the bill. So a SECOND
+// deliberate run carries its own evidence - a previous run's own marker in this session's
+// transcript - and the offer fires at ANY context size. The size trigger stays for the single-run
+// case. Completion is deliberately NOT required: a prior run still in flight makes the case for a
+// fresh session stronger, not weaker. What IS required is a human turn between the two, so a run
+// re-entering its own skill mid-flight is never read as a second run.
+const CHAIN_TAIL = 8 * 1024 * 1024;   // measured over the audited corpus: p90 transcript 0.7MB, largest 10.6MB
+function priorOrchestrationRun() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return false;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - CHAIN_TAIL);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const text = buf.toString('utf8');
+    // Two spellings of ONE event, both read from the raw text - a transcript JSON-escapes neither
+    // `<` nor `/`: the slash route's `<command-name>` marker, and the model route's `Skill`
+    // tool_use input. Prose ABOUT a run matches neither, which is what keeps this cheap and quiet.
+    const hits = [];
+    for (const re of [
+      /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/g,
+      /"skill"\s*:\s*"([A-Za-z0-9:_-]+)"/g,
+    ]) {
+      let m;
+      while ((m = re.exec(text)) !== null) if (isOrchestration(m[1])) hits.push({ at: m.index, name: m[1] });
+    }
+    if (!hits.length) return false;
+    hits.sort((a, b) => a.at - b.at);
+    // ONE test does both jobs: an earlier run counts only when a HUMAN turn follows it - a `user`
+    // record that is not a tool_result. That excludes the call being judged without having to
+    // guess whether it is on disk yet (it may be: the assistant row carrying a `Skill` tool_use is
+    // written before PreToolUse fires), because nothing human follows it either way - a slash
+    // prompt is the last line, and a tool_use is followed only by the result that has not happened.
+    // It also keeps the SAME command chained twice, which matching the last hit by NAME did not.
+    // It is deliberately loose in one direction: a user interjecting mid-run and the run then
+    // entering another orchestration skill reads as a second run. That costs ONE dismissible ask
+    // per session, against a measured 199.1k/message for missing the real case.
+    // Slice from the END of the hit's own line - a marker lives inside a user record, so reading
+    // the remainder of that same line would count the prior run's own prompt as the turn after it.
+    const nl = text.indexOf('\n', hits[0].at);
+    if (nl === -1) return false;
+    for (const line of text.slice(nl + 1).split('\n')) {
+      if (line.includes('"type":"user"') && !line.includes('"tool_result"')) return true;
+    }
+    return false;
+  } catch {
+    return false;   // unreadable transcript - the size trigger still covers this session
+  }
+}
+// ONE chained offer per session: once the user has answered it, a retry of the same run goes
+// through. The size trigger keeps its own re-arm (it escalates with the context it measures);
+// this one has no number to grow, so repeating it would only print an answered question again.
+function chainedOfferFile() {
+  const os = require('os');
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
+}
+
 const usage = lastUsage();
-if (!usage) process.exit(0);
-const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
+// A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
+const ctx = usage
+  ? (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0)
+  : 0;
 const FRESH_AT = ctxThreshold();   // null = this window's trigger is switched off
-if (FRESH_OFF || FRESH_AT === null || ctx <= FRESH_AT) process.exit(0);
+// Both triggers are subject to the same question - what a resume would actually recover - so the
+// gate and the offer can never sit on different arithmetic in one session.
+const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResuming(ctx);
+const chained = !FRESH_OFF && !overSize && worthResuming(ctx)
+  && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
+if (!overSize && !chained) process.exit(0);
+if (chained) {
+  try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
+}
+
+const why = chained
+  ? `is a deliberate orchestration run and this session has ALREADY run one - every turn of the\n`
+    + `new run re-sends the finished run's whole history (measured: four flows chained with no\n`
+    + `/clear boundary drove 199.1k tokens per message for under 30k of actual tool output).`
+  : `is a deliberate orchestration run and this session already carries ~${Math.round(ctx / 1000)}k tokens\n`
+    + `per message of another run's history - every turn of the new run re-sends all of it\n`
+    + `(measured: the same step cost 260k/message chained vs 134k fresh).`;
 
 // UserPromptSubmit can only ADD context - exit 2 there erases the prompt and tells the user, not
 // the model - so the slash route states the same thing as an instruction and lets the model ask.
@@ -237,9 +437,7 @@ if (EVENT === 'UserPromptSubmit') {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
       additionalContext:
-        `/${skill} is a deliberate orchestration run and this session already carries ` +
-        `~${Math.round(ctx / 1000)}k tokens per message of another run's history - every turn of the new ` +
-        `run re-sends all of it (measured: the same step cost 260k/message chained vs 134k fresh). ` +
+        `/${skill} ${why.replace(/\n/g, ' ')} ` +
         `Do NOT start the run yet. Put it to the user as ONE AskUserQuestion: start it in a fresh ` +
         `session (recommended - end this turn with the paste-ready invocation and the state file it ` +
         `resumes from), or run it here anyway with the cost stated.`,
@@ -249,11 +447,9 @@ if (EVENT === 'UserPromptSubmit') {
 }
 
 process.stderr.write(
-  `Blocked: ${skill} is a deliberate orchestration run and this session already carries\n` +
-  `~${Math.round(ctx / 1000)}k tokens per message of another run's history - every turn of the new run\n` +
-  `re-sends all of it (measured: the same step cost 260k/message chained vs 134k fresh).\n` +
-  `Put it to the user as ONE AskUserQuestion: start it in a fresh session (recommended - end\n` +
-  `this turn with the paste-ready invocation and the state file it resumes from), or run it\n` +
-  `here anyway with the cost stated. Do not start the run before that answer lands.`,
+  `Blocked: ${skill} ${why}\n`
+  + `Put it to the user as ONE AskUserQuestion: start it in a fresh session (recommended - end\n`
+  + `this turn with the paste-ready invocation and the state file it resumes from), or run it\n`
+  + `here anyway with the cost stated. Do not start the run before that answer lands.`,
 );
 process.exit(2);

@@ -42,6 +42,16 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 const LEDGER = path.join(TMP, 'ledger');
 
 const assistantRow = (id, text, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text }], usage: usage || { cache_read_input_tokens: 10 } } });
+// Every fresh-session fixture is TWO rows: the session's own cold FLOOR and then the context being
+// measured. Both hooks read both - the offer is made only when what a resume would RECOVER (the
+// carry minus the floor a fresh session pays again) is a real share of what a message now costs -
+// so a one-row fixture recovers nothing by construction and would pin the opposite behaviour. The
+// floor here is 20k; the measured range across the audited projects is 87k-134k, and the case that
+// forced this rule is a 103,964 floor tripping a 150,000 trigger after ~55k of real conversation.
+const ctxRows = (name, ctx, text) => [
+  assistantRow(`${name}-floor`, 'the first turn of this session', { cache_creation_input_tokens: 20000 }),
+  assistantRow(name, text || 'ok', { cache_read_input_tokens: ctx }),
+];
 
 test('guard-read-whole-file: shell sweeps and runtime reads are dumps', () => {
   assert.equal(bash('guard-read-whole-file.js', 'for f in src/*.cs; do cat -n "$f"; done'), 2, 'loop over a glob');
@@ -101,6 +111,21 @@ test('guard-stop-contract: a decision question in ordinary words is still a stop
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: q }), 2);
   const done = transcript('done', [assistantRow('m2', 'Done. Not pushed yet - the branch is ready whenever you are.')]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: done }), 2, 'declarative step-done close');
+});
+
+test('guard-stop-contract: an offer whose object is a DOTTED PATH is still a stop', () => {
+  // The object class was `[^.?!\n]`, which excluded every dotted path, so the offers most likely to
+  // be made in this repo were exactly the ones the gate could not see. A dot followed by space or
+  // end still terminates, so a match cannot span a sentence boundary.
+  const offer = (name, text) => run('guard-stop-contract.js',
+    { hook_event_name: 'Stop', transcript_path: transcript(name, [assistantRow(name, text)]) });
+  assert.equal(offer('dot-claudemd', 'Want me to update CLAUDE.md?'), 2, 'CLAUDE.md');
+  assert.equal(offer('dot-gitignore', 'Want me to add the .gitignore entries?'), 2, 'a leading-dot filename');
+  assert.equal(offer('dot-pkg', 'Shall I bump package.json?'), 2, 'package.json');
+  assert.equal(offer('dot-settings', 'Should I wire it into settings.json?'), 2, 'settings.json');
+  assert.equal(offer('dot-plain', 'Want me to run the tests?'), 2, 'the undotted offer still matches');
+  assert.equal(offer('dot-boundary', 'I applied the change and the suite is green. Three files moved.'), 0,
+    'a dot followed by a space still ends the sentence - no match spans it');
 });
 
 test('guard-stop-contract: status about a running job is not a pending decision', () => {
@@ -182,8 +207,8 @@ test('guard-stop-contract: one turn split across rows sharing a message.id is ju
 test('guard-fresh-session-start: gates orchestration runs only, and only past the threshold', () => {
   // 450k PROVES the 1M tier (no request holds more input tokens than the window), which resolves
   // the window and puts it past that tier's 400k trigger. 180k would prove nothing and make no offer.
-  const hot = transcript('hot', [assistantRow('m6', 'ok', { cache_read_input_tokens: 450000 })]);
-  const cold = transcript('cold', [assistantRow('m7', 'ok', { cache_read_input_tokens: 50000 })]);
+  const hot = transcript('hot', ctxRows('m6', 450000));
+  const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
   assert.equal(call('project-quality-loop', hot), 2, 'orchestration run on carried history');
   assert.equal(call('claude-stack:project-quality-loop', hot), 2, 'namespaced form');
@@ -196,7 +221,7 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
 // percentage it replaces was inert at its default on both real tiers - 200k x 40% fell under the
 // floor and 1M x 40% sat over the ceiling - so the clamps decided and the knob lied.
 test('guard-fresh-session-start: the trigger is the tier\'s own variable', () => {
-  const at = (name, ctx) => transcript(name, [assistantRow(name, 'ok', { cache_read_input_tokens: ctx })]);
+  const at = (name, ctx) => transcript(name, ctxRows(name, ctx));
   const call = (tp, env) => runIn('guard-fresh-session-start.js',
     { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp },
     { env: { ...process.env, ...(env || {}) } }).status;
@@ -210,8 +235,10 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
   assert.equal(call(at('w-200k-160', 160000), w200()), 2, '160k is past it');
   assert.equal(call(at('w-200k-110', 110000), w200({ CLAUDE_STACK_FRESH_SESSION_200K: '100000' })), 2, 'the tier variable moves it');
   // A window that cannot be read is not guessed at: it takes CLAUDE_STACK_FRESH_SESSION_DEFAULT,
-  // 250,000, which sits between the two named triggers.
-  assert.equal(call(at('w-undeclared', 190000)), 0, '190k with nothing declared is under the 250k default');
+  // 180,000 - a figure REACHABLE on the smallest window it could be applied to. At 250,000 it sat
+  // above a 200k window entirely, so an unreadable window on that tier could never trip the gate.
+  assert.equal(call(at('w-undeclared', 170000)), 0, '170k with nothing declared is under the 180k default');
+  assert.equal(call(at('w-undeclared-190k', 190000)), 2, '190k is past it - on a 200k window that is 95% full, and the gate must still reach it');
   assert.equal(call(at('w-undeclared-260k', 260000)), 2, '260k is past it');
   assert.equal(call(at('w-undeclared-160k', 160000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '150000' }), 2, 'the default variable moves it');
   assert.equal(call(at('w-undeclared-260k-off', 260000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
@@ -532,6 +559,38 @@ test('guard-catastrophic-rm: git destroys a working tree too, and prose about it
   assert.equal(rm('echo "careful" && git clean -fdx'), 2, 'but a real one after a prose mention still blocks');
 });
 
+test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard receipt', () => {
+  // The gate asked only 'is the tree dirty', which made its own prescribed escape - 'name the ONE
+  // file to revert instead of the whole tree' - unreachable: `git restore .gitignore` was denied
+  // with all seven dirty files listed, six of which the command never touched (measured twice).
+  const dir = cleanRepo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'one\n');
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'two\n');
+  spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', dir, 'commit', '-qm', 'two files'], { encoding: 'utf8' });
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'one changed\n');          // only a.txt is dirty
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+
+  assert.equal(rm('git restore b.txt').status, 0, 'a CLEAN path has nothing to lose, dirty tree or not');
+  assert.equal(rm('git restore a.txt').status, 2, 'the dirty one it names is still blocked');
+  assert.equal(rm('git checkout -- .').status, 2, 'and the whole tree keeps the old arithmetic');
+  assert.match(rm('git restore a.txt').stderr, /the path\(s\) this command names/, 'the denial says which scope it judged');
+
+  // every other blocking guard honours an answer; this one re-blocked a discard the user had just
+  // chosen, and the chosen action was silently substituted with a `git stash push -u`
+  assert.match(rm('git restore a.txt').stderr, /DISCARD-ALLOW/, 'the denial names the receipt');
+  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '# the user answered Discard it\na.txt\n');
+  assert.equal(rm('git restore a.txt').status, 0, 'the receipt is honoured for the path it names');
+  assert.equal(rm('git checkout -- .').status, 2, 'but it does not cover the whole tree');
+  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
+  assert.equal(rm('git checkout -- .').status, 0, 'the * line does');
+  fs.utimesSync(path.join(flow, 'DISCARD-ALLOW'), new Date(Date.now() - 9 * 3600 * 1000), new Date(Date.now() - 9 * 3600 * 1000));
+  assert.equal(rm('git checkout -- .').status, 2, 'a receipt older than 8h reads as absent');
+});
+
 test('guard-read-whole-file: the extension is judged against the PATH, not the whole line', () => {
   // Every one of these was replayed as a false positive: GATED_EXT_ANY was tested against the WHOLE
   // compound command at three sites, and the sweep test ran above the per-segment loop.
@@ -566,6 +625,9 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   assert.equal(disp('aspnet-implementer'), 0, 'stamped');
   assert.equal(disp('general-purpose'), 2, 'a generic seat while a flow is stamped');
   assert.equal(disp('claude'), 2, 'the other generic seat');
+  // a fork inherits the WHOLE parent context - the most expensive dispatch there is, and the one
+  // seat no gate looked at (measured: 869,483 cache-read for a read-only grep job)
+  assert.equal(disp('fork'), 2, 'a fork is a generic seat while a flow is stamped');
   assert.equal(disp('Explore'), 0, 'a read-only built-in');
   assert.equal(disp('aspnet-verifier'), 0, 'a verifier');
   fs.writeFileSync(gate, 'AUTO - "run without stops"\n'); assert.equal(disp('wpf-implementer'), 0, 'the AUTO waiver');
@@ -661,7 +723,7 @@ test('guard-stop-contract: last_assistant_message wins over a lagging transcript
 });
 
 test('guard-fresh-session-start: other tools, unreadable transcripts, the name field and the exact threshold', () => {
-  const hot = transcript('fs-hot', [assistantRow('m', 'ok', { cache_read_input_tokens: 190000 })]);   // past the 150k floor
+  const hot = transcript('fs-hot', ctxRows('m', 190000));   // past the 150k floor
   // The window is RESOLVED here (a 200k model id): this test pins the boundary, and an unresolved
   // window now makes no offer at all, which would mask every one of these branches behind the same 0.
   const call = (payload) => runIn('guard-fresh-session-start.js', payload,
@@ -669,9 +731,9 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
   assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'project-solve-task' }, transcript_path: hot }), 2, 'the name field spelling');
-  const edge = transcript('fs-edge', [assistantRow('m', 'ok', { cache_read_input_tokens: 150000 })]);
+  const edge = transcript('fs-edge', ctxRows('m', 150000));
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-solve-task' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
-  const sum = transcript('fs-sum', [assistantRow('m', 'ok', { cache_read_input_tokens: 100000, cache_creation_input_tokens: 40000, input_tokens: 10001 })]);
+  const sum = transcript('fs-sum', [ctxRows('m', 0)[0], assistantRow('m', 'ok', { cache_read_input_tokens: 100000, cache_creation_input_tokens: 40000, input_tokens: 10001 })]);
   assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-solve-task' }, transcript_path: sum }), 2, 'the three usage fields add up');
 });
 
@@ -684,9 +746,16 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: 'true' }), 0);
   assert.equal(inst({ tool_name: 'mcp__serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
+  // description the model omitted falls back to the VERB - never a path or an argument
+  assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__serena__find_symbol', 'serena']]);
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__serena__find_symbol', 'serena'],
+    ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
+  assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
   assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'instrument-tool-usage.js')], { input: 'not json', encoding: 'utf8',
     env: { ...process.env, CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
   const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
@@ -715,11 +784,11 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
 
 test('guard-stop-contract: the fresh-session offer lands at turn end, once per cost step', () => {
   const logDir = fs.mkdtempSync(path.join(TMP, 'freshstop-'));
-  const at = (name, ctx, text) => transcript(name, [assistantRow(name, text || 'Applied the change; tests pass.', { cache_read_input_tokens: ctx })]);
+  const at = (name, ctx, text) => transcript(name, ctxRows(name, ctx, text || 'Applied the change; tests pass.'));
   const stop = (tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
     { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } }).status;
 
-  assert.equal(stop(at('fs-cold', 220000)), 0, '220k on a 1M window is under the 250k trigger - nothing to offer');
+  assert.equal(stop(at('fs-cold', 170000)), 0, '170k with no readable window is under the 180k default - nothing to offer');
   const s1 = at('fs-hot', 500000);
   assert.equal(stop(s1), 2, 'a CLEAN close past the trigger: held once so the user is asked');
   assert.equal(stop(s1), 0, 'the same session again - already asked at this cost step');
@@ -733,7 +802,7 @@ test('guard-stop-contract: the fresh-session offer lands at turn end, once per c
 test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
   // A `parseInt(...) || 40` fallback used to swallow the 0 and re-enable what the user disabled;
   // the tier variables keep that property (0 is an answer, garbage takes the default).
-  const tp = transcript('fs-off', [assistantRow('fs-off', 'Applied the change; tests pass.', { cache_read_input_tokens: 900000 })]);
+  const tp = transcript('fs-off', ctxRows('fs-off', 900000, 'Applied the change; tests pass.'));
   // a fresh state dir per call: the offer is made ONCE per session, so a shared one would answer
   // every assertion after the first with the already-asked 0 rather than with the tier's verdict
   const stop = (extra) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
@@ -831,6 +900,14 @@ test('guard-cross-project-write: the session cleaning its own scratch is not a c
   assert.equal(xpBash('rm -f "$SP"/run*.log'), 0, 'and an unresolved variable is never judged');
   assert.equal(xpBash(`rm -f "${sp}/run.log"`), 0, 'the fully quoted spelling always passed - now all three agree');
   assert.equal(xpBash("sed -i '' '/^DIVIDER$/d' notes.md"), 0, "a sed ADDRESS is a script, not a path");
+  // ...and so is a LITERAL address, a substitution and a line address - 3 of 8 audited cross-write
+  // blocks were sed scripts judged as out-of-project paths because only a metacharacter address
+  // was recognized.
+  assert.equal(xpBash("sed -i '' '/ApPermissionGuard/d' notes.md"), 0, 'a literal sed address is a script');
+  assert.equal(xpBash("sed -i '' 's/a/b/g' notes.md"), 0, 'a substitution is a script');
+  assert.equal(xpBash("sed -i '' '1,$d' notes.md"), 0, 'a line address is a script');
+  // the exemption is sed-scoped and stops at the command letters a path would not end in
+  assert.equal(xpBash("rm -f /ApPermissionGuard/d"), 2, 'the same token on the rm route is still a path');
   assert.equal(xpBash("sed -i '' 's/a/b/' notes.md"), 0, 'as is a substitution');
   assert.equal(xpBash('rm -f /run*.log'), 0, 'a target whose leading segment is a glob names no project to hand off to');
   // and the real writes still block, including one the variable resolution now makes judgeable
@@ -1089,7 +1166,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 const winEnv = (extra) => ({ ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
     { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp }, { env }).status;
-const ctxAt = (name, ctx) => transcript(name, [assistantRow(name, 'ok', { cache_read_input_tokens: ctx })]);
+const ctxAt = (name, ctx) => transcript(name, ctxRows(name, ctx));
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
   fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify(model === null ? {} : { model }));
@@ -1107,7 +1184,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     const start = (source, env) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'SessionStart', source }, { env: winEnv(env) });
     const injected = (r) => (r.stdout && r.stdout.includes('additionalContext') ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '');
-    const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 250k default trigger
+    const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 180k default trigger
 
     // NEVER exit 2 on UserPromptSubmit: that erases the user's prompt and shows the reason to the
     // user only - the run would be lost and the model would never learn why.
@@ -1135,27 +1212,28 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
 });
 
 test('fresh-session window: the account settings model id names the tier before any usage proves it', () => {
-    // The ONE readable source that keeps the window suffix (the transcript records `claude-opus-5`
-    // with the [1m] stripped). 190k is past the 150k floor on the 200k tier and nowhere near 40%
-    // of 1M, so this pair isolates the layer from the observed-usage inference.
-    const hot = ctxAt('win-model-190k', 190000);
+    // The FIRST readable source that keeps the window suffix (the transcript's own assistant rows
+    // record `claude-opus-5` with the [1m] stripped; `cost-state` keeps it, and is the second
+    // source - covered in its own case below). 170k is past the 150k floor on the 200k tier and
+    // under the 180k default an unresolved window takes, so each layer shows its own trigger here.
+    const hot = ctxAt('win-model-170k', 170000);
     assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m', 'opus[1m]') })), 0, 'a 1M model id lifts the trigger to that tier\'s 400k');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-200k', 'opus[200k]') })), 2, 'a 200k suffix resolves the window - 190k is past its 150k floor');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-plain', 'opus') })), 0, 'a plain model id proves nothing - an unresolved window makes no offer');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-none', null) })), 0, 'no model key at all - same silence');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-200k', 'opus[200k]') })), 2, 'a 200k suffix resolves the window - 170k is past its 150k floor');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-plain', 'opus') })), 0, 'a plain model id proves no TIER - it falls to the default trigger, which 170k is under');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-none', null) })), 0, 'no model key at all - same default');
     assert.equal(askLoop(ctxAt('win-model-450k', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m2', 'opus[1m]') })), 2, 'and 450k on the 1M tier still fires');
 });
 
 test('fresh-session window: the retired CLAUDE_STACK_CONTEXT_WINDOW override is inert', () => {
     // It used to be the FIRST resolution layer and is gone: the window is detected, never stated.
     // Every install seeded the key, so a settings block still carrying one must not move a tier.
-    const hot = ctxAt('win-env-190k', 190000);
+    const hot = ctxAt('win-env-170k', 170000);
     assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 0,
-        'a stated 200k window resolves nothing now - 190k proves no tier, so there is no offer');
+        'a stated 200k window resolves nothing now - the default trigger applies, and 170k is under it');
     assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'opus[200k]') })), 2,
-        'the model id decides alone: 190k is past the 200k tier trigger, whatever the dead key says');
+        'the model id decides alone: 170k is past the 200k tier trigger, whatever the dead key says');
     assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2,
-        '... and 450k still proves the 1M tier by itself');
+        '... and 450k fires on the default trigger, the dead key naming a tier it cannot set');
 });
 
 test('fresh-session window: the tier variable is the whole setting on a declared 1M window', () => {
@@ -1182,7 +1260,7 @@ test('fresh-session window: an unreadable window takes the DEFAULT trigger, not 
     // A carried figure proves the window is BIGGER than itself, never which of the two sizes it
     // is - so an unreadable window now takes its own trigger instead of being guessed at.
     const env = winEnv();
-    assert.equal(askLoop(ctxAt('win-def-220k', 220000), env), 0, '220k with no readable window is under the 250k default');
+    assert.equal(askLoop(ctxAt('win-def-170k', 170000), env), 0, '170k with no readable window is under the 180k default');
     assert.equal(askLoop(ctxAt('win-def-260k', 260000), env), 2, '260k is past it');
     assert.equal(askLoop(ctxAt('win-def-260k-1m', 260000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('def-1m', 'opus[1m]') })), 0,
         'the same session on a readable 1M window waits for its own 400k trigger');
@@ -1190,19 +1268,55 @@ test('fresh-session window: an unreadable window takes the DEFAULT trigger, not 
         '... and on a readable 200k window, its own 150k one');
 });
 
+test('fresh-session window: cost-state is the SECOND source, and the largest suffix any record proves wins', () => {
+    // The settings model id is not the only place the window survives: the transcript's own
+    // `cost-state` rows key `modelUsage` by the FULL id, suffix intact. Measured across the audited
+    // corpus - a session whose settings id carried no suffix still proved a 1M window here, and one
+    // carried `claude-opus-5[1m]` and a bare id at once, so the LARGEST window any record proves is
+    // the one the session could reach. Both guard files' comments already named this source while
+    // the code read only the first.
+    const withCost = (name, ctx, ids) => transcript(name, [
+        ...ctxRows(name, ctx),
+        { type: 'cost-state', modelUsage: Object.fromEntries(ids.map((i) => [i, { thinkingTokens: 0 }])) },
+    ]);
+    const plainAcct = () => winEnv({ CLAUDE_CONFIG_DIR: accountDir('cs-plain', 'opus') });
+    // 300k: under the 1M tier's 400k trigger, past the 180k default an unresolved window takes.
+    assert.equal(askLoop(withCost('cs-1m', 300000, ['claude-opus-5[1m]']), plainAcct()), 0,
+        'cost-state proves the 1M window the settings id does not - 300k waits for that tier\'s 400k');
+    assert.equal(askLoop(withCost('cs-bare', 300000, ['claude-opus-5']), plainAcct()), 2,
+        '... and a bare id there proves nothing, so the default trigger applies and 300k is past it');
+    assert.equal(askLoop(withCost('cs-mixed', 300000, ['claude-opus-5', 'claude-haiku-4-5-20251001', 'claude-opus-5[1m]']), plainAcct()), 0,
+        'a session carrying a suffixed AND a bare id is on the larger window - that is what it reached');
+    assert.equal(askLoop(withCost('cs-settings-wins', 300000, ['claude-opus-5[1m]']),
+        winEnv({ CLAUDE_CONFIG_DIR: accountDir('cs-200k', 'opus[200k]') })), 2,
+        'the settings id stays the FIRST source - a declared 200k window is not overridden by usage');
+});
+
+test('fresh-session window: a trigger at or above its own window is clamped back inside it', () => {
+    // A gate that cannot fire is the gate not existing. The measured case is the DEFAULT at 250,000
+    // on a 200k window, and the same hole opens whenever the variable is hand-set past the window.
+    const hot = ctxAt('clamp-190k', 190000);
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-200k', 'opus[200k]'), CLAUDE_STACK_FRESH_SESSION_200K: '250000' })), 2,
+        'a 250,000 trigger on a 200k window is unreachable - clamped to 90% of the window, so 190k still fires');
+    assert.equal(askLoop(ctxAt('clamp-170k', 170000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-200k2', 'opus[200k]'), CLAUDE_STACK_FRESH_SESSION_200K: '250000' })), 0,
+        '... and the clamp does not fire the gate early - 170k is under the clamped 180,000');
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-off', 'opus[200k]'), CLAUDE_STACK_FRESH_SESSION_200K: '0' })), 0,
+        '0 is still the off switch, never clamped into a trigger');
+});
+
 test('stop contract: the fresh-session offer reads the window exactly as its twin does', () => {
     // The two hooks carry the same window block - a change to one that misses the other would put
     // the gate and the offer on different triggers in the same session.
-    const at = (name, ctx) => transcript(name, [assistantRow(name, 'Applied the change; tests pass.', { cache_read_input_tokens: ctx })]);
+    const at = (name, ctx) => transcript(name, ctxRows(name, ctx, 'Applied the change; tests pass.'));
     const stop = (tp, env) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env }).status;
     const hot = at('stopwin-190k', 190000);
 
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-200k', 'opus[200k]') })), 2, '190k on a declared 200k tier: past its 150k floor');
-    assert.equal(stop(hot, winEnv()), 0, '190k with no readable window: under the 250k default - the twin agrees with the gate');
+    assert.equal(stop(hot, winEnv()), 2, '190k with no readable window: PAST the 180k default - the twin agrees with the gate. This is the blocker: at the old 250,000 an unreadable window on a 200k tier could never trip either hook, and a session measured at 187.2k (93.6% of its window) ran both Stop hooks with neither holding');
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m', 'opus[1m]') })), 0, 'a 1M model id lifts it past 190k');
     assert.equal(stop(at('stopwin-450k', 450000), winEnv()), 2, 'and 450k is past the default trigger');
     assert.equal(stop(at('stopwin-450k-1m', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m2', 'opus[1m]') })), 2, '... as it is past the 1M one');
-    assert.equal(stop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 0, 'the retired override moves nothing here either');
+    assert.equal(stop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 190k is past it');
 });
 
 test('guard-answer-length: the cap holds, and never deletes a report field or a self-correction', () => {
@@ -1234,17 +1348,86 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   const call = (command, session_id) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command }, session_id }, {});
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
   const s1 = `m5-${Math.random().toString(36).slice(2)}`;
-  assert.match(ctxOf(call("grep -rn 'IOrderService' src/Api/Orders.cs", s1)), /csharp-conventions\.md/, 'a grep is a touch');
-  assert.equal(ctxOf(call('dotnet build && grep -n x src/Api/Orders.cs', s1)), '', 'once per rule per session');
-  assert.match(ctxOf(call('wc -l README.md', s1)), /markdown-docs\.md/, 'a different rule still announces');
+  // A pure READ announces nothing. The announcement is once per rule per session, so spending it on
+  // an inventory grep leaves the authoring write with no notice at all - measured twice, each time
+  // re-paid on every later message in the turn's context.
+  assert.equal(ctxOf(call("grep -rn 'IOrderService' src/Api/Orders.cs", s1)), '', 'a read is not a touch');
+  assert.equal(ctxOf(call("awk '/^description:/' src/Api/Orders.cs | head -c 900", s1)), '', 'nor is a bounded extraction');
+  assert.match(ctxOf(call("sed -i '' 's/a/b/' src/Api/Orders.cs", s1)), /csharp-conventions\.md/, 'an in-place edit is');
+  assert.equal(ctxOf(call('dotnet build && cp x.cs src/Api/Orders.cs', s1)), '', 'once per rule per session');
+  assert.match(ctxOf(call('echo x > README.md', s1)), /markdown-docs\.md/, 'a different rule still announces');
   assert.equal(ctxOf(call('ls -la', s1)), '', 'a command naming nothing governed is silent');
   assert.equal(ctxOf(call(`cat <<'EOF' > plan.md\nedit src/Thing.sql later\nEOF`, s1)), '', 'a heredoc body is prose, not a touch');
+  // the generated docs root and the install's own tree are not governed by markdown-docs.md - its
+  // own body says so - so a write that only touches them announces nothing
+  const s3 = `m5-${Math.random().toString(36).slice(2)}`;
+  assert.equal(ctxOf(call('echo x > .claude/docs/loops/RUN-STATE.md', s3)), '', 'the generated docs root is not governed');
+  assert.match(ctxOf(call('echo x > docs/guide.md', s3)), /markdown-docs\.md/, 'a project doc still is');
   // a denial and an injection are two answers to one call: the rule is not spent on a blocked command
   const s2 = `m5-${Math.random().toString(36).slice(2)}`;
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);
   assert.equal(blocked.status, 2, 'a whole-file dump of a large .js file is still blocked');
   assert.equal(ctxOf(blocked), '', 'and announces nothing');
-  assert.match(ctxOf(call(`grep -n Foo ${BIG}`, s2)), /javascript-conventions\.md/, 'the next allowed touch still gets it');
+  assert.match(ctxOf(call(`cp x.js ${BIG}`, s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
+});
+
+test('guard-read-whole-file: an unexpanded $VAR is judged by nobody, and a leading cd moves the anchor', () => {
+  // 6 of 12 measured denials in one project named a `$R/...` target: the size check could not
+  // resolve it, failed CLOSED, and denied reads the session had every right to make. The sibling
+  // cross-project guard already refuses to judge a path whose value it cannot see.
+  const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
+  assert.equal(call(`cat $R/src/Thing.cs`), 0, 'an unexpanded variable target is not judged');
+  assert.equal(call(`cat \${SRC}/Thing.ts`), 0, 'the braced spelling either');
+  // ... but a variable the SAME command sets is knowable, and the file is large
+  assert.equal(call(`R=${REPO}/scripts && cat $R/lint-skills.js`), 2, 'a same-command assignment is expanded and judged');
+  // a leading cd moves the anchor: this relative path resolves nowhere from the project root
+  assert.equal(call(`cd ${path.join(REPO, 'scripts')} && cat lint-skills.js`), 2, 'a cd-anchored relative dump is still caught');
+  assert.equal(call(`cd ${path.join(REPO, 'stack', 'hooks')} && cat instrument-tool-usage.js`), 0, 'and a small one still passes');
+});
+
+test('guard-read-whole-file: a runtime expression that only COUNTS is not a dump', () => {
+  // Measured: a `node -e` whose entire output was `.match(...).length` on a 198-line file - under
+  // the guard's own threshold - was denied, killing a five-probe compound command and costing a
+  // 107k-token retry. The branch tested the extension and nothing else.
+  const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
+  assert.equal(call(`node -e 'console.log(require("fs").readFileSync("${BIG}","utf8").match(/function/g).length)'`), 0, 'a count is not a dump');
+  assert.equal(call(`node -e 'console.log(require("fs").readFileSync("${BIG}","utf8").split("\\n").length)'`), 0, 'nor is a line count');
+  assert.equal(call(`node -e 'console.log(require("fs").readFileSync("${BIG}","utf8"))'`), 2, 'printing the content still is');
+  assert.equal(call(`node -e 'console.log(require("fs").readFileSync("${SMALL}","utf8"))'`), 0, 'and a small file is fine either way, like cat');
+});
+
+test('guard-read-whole-file: a sweep over .md files is a sweep; one named .md file is not', () => {
+  // 84.1KB from 35 SKILL.md files in one call, 120KB from 46 in another - stopped only by the
+  // harness's own output cap. Markdown is not symbol-navigable, so the single-file check still
+  // ignores it: the sweep is the shape that dumps, not the named read.
+  const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
+  assert.equal(call('for f in .claude/skills/*/SKILL.md; do cat "$f"; done'), 2, 'a loop over every SKILL.md is blocked');
+  assert.equal(call(`cat ${path.join(REPO, 'CLAUDE.md')}`), 0, 'one named markdown file is still a fine read');
+  assert.equal(call('find .claude/skills -name SKILL.md -exec cat {} \\;'), 2, 'find -exec over the same set too');
+});
+
+test('guard-read-whole-file: a whole Read of an oversized file is blocked whatever its extension', () => {
+  // A 93KB spill read WHOLE, twice, for 99,277 chars and no hook-block row - the extension was not
+  // on the gated list. A persisted output is by definition over the inline cap.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spill-'));
+  const spill = path.join(dir, 'persisted-output.txt');
+  fs.writeFileSync(spill, 'x'.repeat(70 * 1024));
+  const read = (tool_input) => runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input }, {}).status;
+  assert.equal(read({ file_path: spill }), 2, 'the whole-file shape is blocked');
+  assert.equal(read({ file_path: spill, offset: 1, limit: 50 }), 0, 'a ranged read of the same file passes');
+  const small = path.join(dir, 'small.txt');
+  fs.writeFileSync(small, 'x'.repeat(1024));
+  assert.equal(read({ file_path: small }), 0, 'a small non-source file is untouched');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('guard-read-whole-file: the denial names the call that LOADS the serena tools', () => {
+  // The tools are deferred behind tool search in this harness, so naming them is not having them:
+  // two sessions carried the rule text saying exactly that and still made 100 Bash calls and 0
+  // serena calls. The remedy belongs in the denial the model is already reading.
+  const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG } }, {});
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol/);
 });
 
 test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail its own receipt', () => {
@@ -1267,4 +1450,218 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
     cwd: dir,
   }).status;
   assert.equal(status, 0, 'a conformant receipt under an absolute in-repo docs root passes');
+});
+
+// The generated capabilities rule stamped 'the harness BLOCKS the Skill call' on a slash-only
+// skill into every project, and the harness did not: a user typed the command with a LEADING
+// SPACE (so no `<command-name>` marker fired), and the model reached the flagged skill through a
+// Skill tool call four seconds later - body injected, run started. The assertion is now the gate.
+test('guard-fresh-session-start: a disable-model-invocation skill is denied to the MODEL, never to the user', () =>
+{
+    const root = fs.mkdtempSync(path.join(TMP, 'dmi-'));
+    const write = (name, front) =>
+    {
+        const dir = path.join(root, '.claude', 'skills', name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
+    };
+    write('project-quality-loop', 'disable-model-invocation: true\n');
+    write('project-architecture-analyzer', '');   // deliberately model-invocable so the loop can call it
+    write('csharp', '');
+    const skillCall = (skill) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmi' },
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+
+    const blocked = skillCall('project-quality-loop');
+    assert.equal(blocked.status, 2, 'the model may not call a slash-only skill');
+    assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
+    assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
+    // No threshold involved: this payload carries no transcript at all, so a context-based block
+    // could not have fired. The flag is the whole verdict.
+    assert.equal(skillCall('project-architecture-analyzer').status, 0, 'the unflagged capture stays callable');
+    assert.equal(skillCall('csharp').status, 0, 'an ordinary skill is untouched');
+    assert.equal(skillCall('not-installed-here').status, 0, 'a skill this project does not carry is not this guard\'s business');
+
+    // The USER's own route is a different event and must stay open.
+    const typed = runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/project-quality-loop</command-name>', cwd: root, session_id: 'dmi' },
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+    assert.equal(typed.status, 0, 'the user typing the command is never blocked');
+});
+
+test('guard-fresh-session-start: a SECOND deliberate run is gated on the FIRST one, at any context size', () => {
+    // Measured across three audited sessions: four deliberate flows chained with zero `/clear`
+    // boundary, 199.1k average context per message for well under 30k of real tool output, and the
+    // size trigger fired on none of them - every run STARTED under it and crossed it only while
+    // running. So the second run is judged on the FIRST run's own marker and never on the context,
+    // which is why every transcript here sits at 40k, far under the smallest trigger.
+    // 20k floor, 60k carry: cold by every trigger, and two thirds of the carry is what a resume
+    // would recover, so the recoverable-share rule has nothing to say about these fixtures.
+    const FLOOR = { cache_creation_input_tokens: 20000 };
+    const COLD = { cache_read_input_tokens: 60000 };
+    const userRow = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+    const toolResult = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
+    const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
+    const skillRow = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Skill', input: { skill: name } }], usage: COLD } });
+    const call = (tp, env, skill) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: skill || 'project-quality-loop' }, transcript_path: tp },
+        { env: env || winEnv() });
+
+    // ONE run in flight - its own marker is not a prior run.
+    const first = transcript('chain-first', [cmd('project-quality-loop'), assistantRow('a1', 'working', FLOOR)]);
+    assert.equal(call(first).status, 0, 'the run that is starting is not evidence against itself');
+
+    // A finished run, a human turn, then a second one: the whole measured shape.
+    const second = transcript('chain-second', [
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(),
+      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD),
+    ]);
+    const env = winEnv();
+    const blocked = call(second, env);
+    assert.equal(blocked.status, 2, 'the second deliberate run is blocked on a cold window');
+    assert.match(blocked.stderr, /ALREADY run one/, 'the denial names the reason - the prior run, not the size');
+    assert.match(blocked.stderr, /fresh session/, 'and carries the same offer the size trigger does');
+    // ONCE per session: the user has answered, so the retry must go through.
+    assert.equal(call(second, env).status, 0, 'an answered offer is not asked again');
+
+    // One run re-entering its OWN skill mid-flight is one run, not two - no human turn between.
+    const reentry = transcript('chain-reentry', [
+      cmd('project-quality-loop'), skillRow('a1', 'project-quality-loop'), toolResult(), assistantRow('a2', 'ok', COLD),
+    ]);
+    assert.equal(call(reentry).status, 0, 'a mid-run re-entry is not a second run');
+
+    // Chaining the SAME command twice is still chaining.
+    const twice = transcript('chain-twice', [
+      cmd('project-quality-loop'), assistantRow('a1', 'done', FLOOR), toolResult(),
+      userRow('do it again'), assistantRow('a2', 'ok', COLD),
+    ]);
+    assert.equal(call(twice).status, 2, 'the same run a second time carries the same carried history');
+
+    // The slash route injects, exactly as the size trigger's does - it may never deny.
+    const slashTp = transcript('chain-slash', [
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(),
+      userRow('next'), assistantRow('a2', 'ok', COLD),
+    ]);
+    const slash = runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/project-quality-loop</command-name>', transcript_path: slashTp },
+        { env: winEnv() });
+    assert.equal(slash.status, 0, 'the slash route never denies, on either trigger');
+    assert.match(JSON.parse(slash.stdout).hookSpecificOutput.additionalContext, /ALREADY run one/, '... it injects the same reason');
+
+    // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
+    const plain = transcript('chain-plain', [
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'),
+    ]);
+    assert.equal(call(plain, winEnv(), 'dev-log-convert').status, 0, 'a non-orchestration skill is untouched');
+    // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
+    assert.equal(call(transcript('chain-allfloor', [
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
+      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD),
+    ])).status, 0, 'a second run carrying only the cold floor is not worth a fresh session');
+    assert.equal(call(transcript('chain-off', [
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'),
+    ]), winEnv({ CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })).status, 0,
+        'all three triggers off is the whole off switch - the chained one included');
+});
+
+test('fresh-session offer: what a resume would RECOVER, not the absolute carry - both hooks', () => {
+    // Measured: an 18-minute single-command run that STARTED from `/clear` had a first message of
+    // 103,964 - the install's own standing inventory - and tripped the 150,000 trigger at 159,363
+    // after ~55k of actual conversation. The ask and its close cost two messages and 320,973
+    // context and moved nothing, because a fresh session would have restarted at 103,964 anyway.
+    // The floors measured across the nine audited projects run 87k-134k, so this is not an outlier.
+    const rows = (name, floor, ctx) => transcript(name, [
+        assistantRow(`${name}-floor`, 'the first turn', { cache_creation_input_tokens: floor }),
+        assistantRow(name, 'Applied the change; tests pass.', { cache_read_input_tokens: ctx }),
+    ]);
+    const w200 = () => winEnv({ CLAUDE_CONFIG_DIR: accountDir('recov-200k', 'opus[200k]') });
+    const stop = (tp, env) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env: env || w200() }).status;
+
+    // The measured case itself, on both hooks: past the trigger, but 65% of the carry is floor.
+    const measured = rows('recov-measured', 103964, 159363);
+    assert.equal(stop(measured), 0, 'the offer stays quiet when a resume would recover 34.8% of the carry');
+    assert.equal(askLoop(measured, w200()), 0, '... and the gate agrees - the two hooks share the arithmetic');
+    // Same context, a floor a tenth the size: now the carry IS the conversation.
+    const real = rows('recov-real', 12000, 159363);
+    assert.equal(stop(real), 2, 'the same 159k with a small floor is 92% recoverable - offer it');
+    assert.equal(askLoop(real, w200()), 2, '... and the gate blocks the chained run there');
+    // Exactly at the 40% line, from both sides.
+    assert.equal(stop(rows('recov-40', 120000, 200000)), 2, '40% recoverable is enough');
+    assert.equal(stop(rows('recov-39', 122000, 200000)), 0, '39% is not');
+    // An unreadable floor answers YES - the behaviour that shipped before the rule existed.
+    assert.equal(stop(transcript('recov-nofloor', [assistantRow('nf', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 })]), w200()), 0,
+        'a one-row session is all floor by its own arithmetic');
+    assert.equal(stop(transcript('recov-noutoken', [
+        { type: 'assistant', message: { id: 'x', content: [{ type: 'text', text: 'hi' }] } },
+        assistantRow('nu', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
+    ]), w200()), 0, 'a row carrying no usage is not a billed message - the floor is the first one that is');
+    // The floor is read from the HEAD of the transcript. A session whose first half-megabyte holds
+    // no billed message at all (a giant paste before the first answer) has no readable floor, and
+    // the offer then goes out exactly as it did before this rule existed.
+    const wall = transcript('recov-wall', [
+        { type: 'user', message: { role: 'user', content: 'x'.repeat(600 * 1024) } },
+        assistantRow('w1', 'Applied the change; tests pass.', { cache_read_input_tokens: 190000 }),
+    ]);
+    assert.equal(stop(wall, w200()), 2, 'an unreadable floor answers yes - fail open, never silent');
+});
+
+test('guard-stop-contract: the three block shapes the audit reproduced', () => {
+    const ledger = fs.mkdtempSync(path.join(TMP, 'stopled-'));
+    const logDir = fs.mkdtempSync(path.join(TMP, 'stoplog-'));
+    const close = (text, extra) => runIn('guard-stop-contract.js',
+        { hook_event_name: 'Stop', session_id: 'shapes', cwd: ledger, last_assistant_message: text, ...(extra || {}) },
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: ledger, CLAUDE_STACK_DOCS_PATH: path.join(ledger, 'docs'), CLAUDE_STACK_HOOK_LOG_DIR: logDir } });
+
+    // 1. `your call` inside a NEGATION is not an offer - it says the opposite. Measured: a step-12
+    //    post-check closing 'closure-held, not your call' was blocked, 174,321 cache-read retried.
+    assert.equal(close('The closure is held here, not your call. Everything is committed and green.').status, 0, 'a negated `your call` is not an ask');
+    assert.equal(close('Both work - your call which one ships.').status, 2, '... and the offer itself still blocks');
+    // 1b. An IMPERATIVE offer waits exactly like a question, and a RETROSPECTIVE '(your call)' does
+    //     not (measured: a real decision stalled 11.5 min unheld; a close recording a decision the
+    //     user had already taken was blocked as an ask).
+    assert.equal(close('Confirm you want that dropped, or I can stash it instead (`git stash -u`) to keep it recoverable.').status, 2,
+        'an imperative decision offer is an ask');
+    assert.equal(close('Tell me which one to keep and I will apply it.').status, 2, '... and so is a bare `tell me which`');
+    assert.equal(close('Requirement recorded: 90% line coverage after exclusions (your call). Nothing is pending on this run - these are yours to run when you choose.').status, 0,
+        'a retrospective `(your call)` beside a record verb is a note, not an offer');
+
+    // 2. The background exemption reads the run-state VERB plus a named waiter, not a noun list.
+    //    Measured: 'the integration half is still running and will notify on completion' was
+    //    blocked because the noun was 'half', and the SAME close passed a minute later reworded.
+    assert.equal(close('All 12 files are done. The integration half (~6-7 min) is still running and will notify on completion.').status, 0, 'a verb plus a waiter is a status line');
+    assert.equal(close('All 12 files are done. The integration half (~6-7 min) is still executing and will notify on completion.').status, 0, '... and a synonym of the verb does not decide a block');
+    assert.equal(close('The fix is committed and pushed. Tests are still running in CI.').status, 0, 'the job-noun form still passes');
+    assert.equal(close('The refactor is done. Pushing it is the next step, whenever you are ready.').status, 2, 'a real stall still blocks');
+
+    // 3. The ledger row names the BRANCH and what matched. A block whose cause cannot be
+    //    reconstructed cannot be tuned - this audit hit that wall three times.
+    const rows = fs.readFileSync(path.join(ledger, 'docs', 'hook-blocks', 'shapes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(rows.map((r) => r.detail.branch), ['prose-ask', 'prose-ask', 'prose-ask', 'done-close'], 'each block names its branch');
+    assert.match(rows[0].detail.matched, /your call/, 'and the substring that fired it');
+    assert.match(rows[3].detail.matched, /done \+ next step/, '... both halves, for the two-part branch');
+});
+
+test('guard-stop-contract: a credential the USER pasted demands the rotate ask too', () => {
+    // The one bundle in the audited collection that had to ship with no transcript at all: a live
+    // API key entered that session by PASTE, every close was credential-free, and the shape scan
+    // read only tool results - so the guard covered every route the model can take to a credential
+    // and none of the one route the user takes.
+    const root = fs.mkdtempSync(path.join(TMP, 'paste-'));
+    const shape = 'sntryu_' + '0123456789abcdef'.repeat(2);   // fake by construction - the SHAPE is read, never a value
+    const pasted = transcript('pasted', [
+        { type: 'user', message: { role: 'user', content: `register this: ${shape}` } },
+        assistantRow('p1', 'Registered it; the install is green.'),
+    ]);
+    const clean = transcript('pasted-clean', [
+        { type: 'user', message: { role: 'user', content: 'register the token from my env' } },
+        assistantRow('p2', 'Registered it; the install is green.'),
+    ]);
+    const stop = (tp) => runIn('guard-stop-contract.js',
+        { hook_event_name: 'Stop', session_id: 'paste', cwd: root, transcript_path: tp, last_assistant_message: 'Registered it; the install is green.' },
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: path.join(root, 'docs') } });
+    const blocked = stop(pasted);
+    assert.equal(blocked.status, 2, 'a pasted credential ends the turn in the rotate ask');
+    assert.match(blocked.stderr, /pasted into the chat/, 'and the denial names the route it came in by');
+    assert.ok(!blocked.stderr.includes(shape), 'the value itself is never repeated back');
+    assert.equal(stop(clean).status, 0, 'a turn with no credential shape is untouched');
 });

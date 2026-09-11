@@ -65,6 +65,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -78,7 +82,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 // it controlled. Three numbers, no arithmetic: say when you want to be asked.
 //   CLAUDE_STACK_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
 //   CLAUDE_STACK_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
-//   CLAUDE_STACK_FRESH_SESSION_DEFAULT - the trigger on anything else (default 250,000)
+//   CLAUDE_STACK_FRESH_SESSION_DEFAULT - the trigger on anything else (default 180,000)
 // `0` on any of them turns that case's offer off. NOTE the 1M default sits ABOVE the harness's own
 // auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 / 393,969 / 395,112 / 396,651 /
 // 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
@@ -91,9 +95,14 @@ function freshAt(key, dflt) {
 const FRESH_AT_200K = freshAt('CLAUDE_STACK_FRESH_SESSION_200K', 150000);
 const FRESH_AT_1M = freshAt('CLAUDE_STACK_FRESH_SESSION_1M', 400000);
 // The DEFAULT covers every case that is not one of the two named windows: a window that cannot be
-// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It sits between the
-// two triggers, so an unknown window is neither nagged at 150,000 nor left unreachable at 400,000.
-const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 250000);
+// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It must be REACHABLE
+// on the smallest window it could be applied to, which is why it sits under 200,000. At 250,000 it
+// sat ABOVE a 200k window entirely, so a session on that tier could never trip it and the gate
+// silently did not exist - measured on a session that peaked at 187.2k (93.6% of its window) with
+// both Stop hooks running and neither holding. An unproven window is assumed SMALL on purpose: an
+// offer made a little early is one dismissible ask, re-armed only after 1.5x growth, while an offer
+// that can never fire is no gate at all.
+const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 180000);
 // `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read
 // at all any more - a percentage of a window is not what this gate fires on.
 const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
@@ -135,9 +144,40 @@ function settingsModelWindow() {
   } catch { /* no home and no cwd - fall through to the next layer */ }
   return null;
 }
+// The SECOND source, and the reason this is no longer settings-only: the transcript's own
+// `cost-state` records key `modelUsage` by the FULL model id, suffix intact. Measured across the
+// audited corpus - a session whose settings id carried no suffix still proved a 1M window through
+// `claude-opus-5[1m]` here, and one session carried `[1m]` and a bare id at once, so the LARGEST
+// window any record proves is the one the session could reach. The comment above already called
+// this a second source while the code read only the first.
+function costStateWindow() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return null;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 512 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    let best = null;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"cost-state"')) continue;
+      try {
+        const o = JSON.parse(line);
+        if (o.type !== 'cost-state' || !o.modelUsage) continue;
+        for (const id of Object.keys(o.modelUsage)) {
+          const w = windowFromModelId(id);
+          if (w && (best === null || w > best)) best = w;
+        }
+      } catch { /* partial first line of the tail window - skip */ }
+    }
+    return best;
+  } catch { return null; }   // no transcript, unreadable, or not JSON - the DEFAULT tier covers it
+}
 let _knownWindow;
 function knownWindow() {
-  if (_knownWindow === undefined) _knownWindow = settingsModelWindow() || null;
+  if (_knownWindow === undefined) _knownWindow = settingsModelWindow() || costStateWindow() || null;
   return _knownWindow;
 }
 // The trigger this session is judged against. The two named tiers each own a variable; every
@@ -147,10 +187,54 @@ function knownWindow() {
 // 200k account anything at all.
 function ctxThreshold() {
   const window = knownWindow();
-  const at = window === 200000 ? FRESH_AT_200K
+  let at = window === 200000 ? FRESH_AT_200K
     : window === 1000000 ? FRESH_AT_1M
       : FRESH_AT_DEFAULT;
+  // A trigger at or above the window it applies to can never be reached, and a gate that cannot
+  // fire is the gate not existing. Honour the number that was set up to the point it goes
+  // unreachable, then clamp it back inside the window.
+  if (at > 0 && window && at >= window) at = Math.floor(window * 0.9);
   return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
+}
+// --- what a resume would actually RECOVER: the session's own cold floor ----------------------
+// The trigger is absolute context, and a large share of it can be the INSTALL's own standing
+// inventory - system prompt, CLAUDE.md, the always-on rules, every MCP tool schema - which a fresh
+// session pays again on its first message. Measured across the nine projects in the audited
+// collection that floor runs 87k-134k per message, and one 18-minute single-command run that
+// STARTED from `/clear` (first message 103,964) tripped the 150,000 gate at 159,363 after ~55k of
+// actual conversation: the ask and its close cost two messages and 320,973 context and moved
+// nothing. So the offer also asks what it would BUY - the part of the carry a resume does NOT
+// re-pay - and stays quiet while that is under 40% of what a message now costs. This is not a
+// percentage of the WINDOW (the retired PCT knob, where the clamps decided and the number lied);
+// it is read from this session's own first message, and an unreadable floor answers yes, which is
+// the behaviour that shipped before it. On an install whose floor is most of its window the offer
+// therefore goes quiet by design - a resume that recovers 16k per message is not worth a turn, and
+// the harness's own compaction covers that session.
+const MIN_RECOVERABLE_SHARE = 0.4;
+function coldFloor() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return null;
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(Math.min(fs.statSync(p).size, 512 * 1024));
+    fs.readSync(fd, buf, 0, buf.length, 0);   // the HEAD of the file - message 1, not the tail
+    fs.closeSync(fd);
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"assistant"')) continue;
+      try {
+        const u = JSON.parse(line).message.usage;
+        if (u) return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+      } catch { /* a partial or shapeless row - keep looking */ }
+    }
+    return null;
+  } catch { return null; }
+}
+// True when a resume is worth a turn: the carry MINUS this session's own floor is a real share of
+// what every message now costs. Anything unreadable - no floor, no context figure - answers yes.
+function worthResuming(ctx) {
+  const floor = coldFloor();
+  if (!ctx || floor === null || floor <= 0) return true;
+  return (ctx - floor) >= ctx * MIN_RECOVERABLE_SHARE;
 }
 // How far the context must grow before the fresh-session offer is made again (see below).
 const REOFFER_GROWTH = 1.5;
@@ -161,7 +245,34 @@ const REOFFER_GROWTH = 1.5;
 const FRESH_RE = /fresh session|new session|fresh chat|resume (in|from) a fresh/i;
 // Decision-shaped prose endings measured in the corpus. Deliberately narrow: a plain
 // clarifying question is not matched - only the offer-and-wait shapes that stalled sessions.
-const PROSE_ASK_RE = /\b(say the word|say go|just say so|want me to [^.?!\n]{0,80}\?|shall i [^.?!\n]{0,80}\?|should i [^.?!\n]{0,80}\?|your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision)/i;
+// The object class admits a dot that is NOT sentence-ending (`\.(?!\s|$)`): the plain
+// `[^.?!\n]` excluded every dotted path, so 'Want me to update CLAUDE.md?' and the same offer
+// naming `.gitignore` / `package.json` / `settings.json` / `SKILL.md` all escaped the gate - the
+// offers most likely to be made in THIS repo were exactly the ones it could not see (measured
+// across the audited corpus). A dot followed by space or end still terminates, so the match
+// cannot span a sentence boundary.
+// `your call` carries a negative lookbehind for `not `/`never `: the bare token matched inside a
+// NEGATION, so 'the closure is held here, not your call' - a sentence stating that nothing is
+// being asked - was blocked as an ask (measured: one step-12 post-check, 174,321 cache-read on the
+// retried turn). A negated 'your call' is the opposite of an offer, and this hook's own denial
+// texts prescribe that phrasing.
+// The IMPERATIVE offer is the same stall without a question mark: 'Confirm you want that dropped,
+// or I can stash it instead' held a real decision for 11.5 minutes and matched nothing here, since
+// every shape above is either a question or a hand-back idiom (measured). An imperative addressed
+// to the user, and an 'or I can X instead' alternative, are offers - they wait exactly like a '?'.
+const PROSE_ASK_RE = /\b(say the word|say go|just say so|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|tell me which\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision)/i;
+// A RETROSPECTIVE '(your call)' is a note about a decision the user already took, not an offer of
+// one: 'Requirement recorded: 90% line coverage after exclusions (your call).' was blocked as an
+// ask on a close that held no question at all (measured). The discriminator is narrow on purpose -
+// the parenthetical AND a record verb in the same sentence - so a genuine 'keep both or drop one
+// (your call)' still blocks.
+const RETRO_YOUR_CALL_RE = /\b(record(ed)?|noted?|logged|captured|set|chosen|decided|kept|applied|confirmed)\b[^.\n]{0,120}\(your call\)/i;
+function proseAsk(text) {
+  if (!PROSE_ASK_RE.test(text)) return false;
+  const m = (text.match(PROSE_ASK_RE) || [])[0] || '';
+  if (/^your call$/i.test(m.trim()) && RETRO_YOUR_CALL_RE.test(text)) return false;
+  return true;
+}
 // A close with NO question of any shape: the named step is done and a next action sits
 // un-taken, stated as fact. Measured in 4 projects - the user answers it with 'are you
 // finished?' after 2-22 minutes, so the shape is a stop, not a status line. Both halves must
@@ -176,6 +287,18 @@ const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still
 // catch, resolved in the text itself: nothing waits on the model, so nothing is asked. Narrow on
 // purpose - the disclaimer must name the RUN or the model as the side with nothing pending; a
 // bare 'nothing pending' already passed, and 'pending your review' still stalls.
+// The walks print it CONDITIONALLY - only when their card owes the user nothing. A still-required
+// user action (revoke the old token, fill in a credential, run a rotation) is pending by
+// definition, and a close carrying one goes through the ask instead; measured: one close stated
+// 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message,
+// which is a stall wearing the finished-close sentence.
+// A job the session is WAITING on, and the waiter it names. Both halves must hit for the
+// done-close exemption: a run-state verb alone ('the migration is still running') can still be a
+// stall, and a waiter alone is a promise about nothing. Verbs and waiters are listed as SYNONYM
+// SETS on purpose - 'running' vs 'executing' decided a block once, which is the failure that
+// retired the noun list this replaces.
+const BACKGROUND_RE = /\b((still |currently )?(running|executing|in progress|in flight|queued|processing)|backgrounded|in the background)\b/i;
+const WAITER_RE = /\b(will notify|notify (on|when)|i'?ll (report back|update you|come back|merge|check)|report back|monitor is armed|watching (it|the run|for)|in the background|backgrounded|on completion|when it (finishes|completes|goes green|lands))\b/i;
 const NOTHING_PENDING_RE = /\bnothing(?: (?:else|more))?(?: is)? pending (?:on|from) (?:me|my side|my end|this run|the run|this turn)\b/i;
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
@@ -258,7 +381,15 @@ function askJustAnswered() {
 // is matched, and the denial names the shape alone.
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 const ROTATE_RE = /\b(rotate|revoke|purge|scrub|regenerate)\b[^\n]{0,120}\b(credential|token|secret|key|dsn|password|api[- ]?key|history)\b/i;
-function secretInToolResults() {
+// A third shape, and the one the two above could not see: the USER pastes the credential into
+// chat. Measured on the single bundle in the audited collection that had to ship with NO
+// transcript at all - a live API key entered that session by paste, the run's own closes were
+// credential-free, and every branch of this hook passed. So the shape test runs over USER-role
+// records too, not only over tool results: the guard covered every route the MODEL can take to a
+// credential and none of the one route the USER takes. This is still turn-END detection; catching
+// it at paste time would need a UserPromptSubmit wiring this hook does not have, and the exposure
+// is already on disk by then either way - what matters is that the rotate ask happens at all.
+function secretInSession() {
   try {
     const p = payload.transcript_path;
     if (!p) return false;
@@ -269,8 +400,10 @@ function secretInToolResults() {
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
     for (const line of buf.toString('utf8').split('\n')) {
-      // only USER-role rows carry tool_results; the assistant's own text is judged separately
-      if (!line.includes('"toolUseResult"') && !line.includes('"tool_result"')) continue;
+      // USER-role rows: both the tool_results the model's own reads returned, and the user's own
+      // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
+      if (!line.includes('"toolUseResult"') && !line.includes('"tool_result"')
+        && !/"type"\s*:\s*"user"/.test(line)) continue;
       if (SECRET_SHAPE.test(line)) return true;
     }
     return false;
@@ -336,6 +469,17 @@ function rotateAskAnswered() {
 
 // A silent fail-open is indistinguishable from a clean turn, which is how the misses above
 // stayed invisible across 74 audited bundles. Every path that declines to judge says so.
+// Name the BRANCH that fired and the substring that matched it, in the ledger row AND in the
+// breadcrumb. This hook has four blocking branches and the row carried only the denial's first
+// line, which is the same text for every turn one branch denies - so a block that matched none of
+// the published triggers could not be reconstructed at all (measured: one status turn blocked at
+// 142,455 cache-read, and this audit hit the same wall three times). A block that cannot be
+// explained cannot be tuned, and an untunable gate is the one the model learns to work around.
+function blockDetail(branch, matched) {
+  const detail = { branch, matched: String(matched == null ? '' : matched).slice(0, 120) };
+  global.BLOCK_DETAIL = detail;
+  breadcrumb(`block ${branch}: ${detail.matched}`);
+}
 function breadcrumb(why) {
   try {
     const dir = process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir();
@@ -381,17 +525,27 @@ if (payload.hook_event_name === 'Stop') {
     // spellings a pure status line ('Waiting on CI run <id> in the background - I'll merge when it
     // goes green') was blocked, and the denial's own prescribed escape then tripped PROSE_ASK_RE:
     // one status close, two blocks, from two branches of this hook (measured, 87k re-sent).
+    // The THIRD spelling is the run-state VERB plus a named waiter, with no job noun anywhere: the
+    // two noun-anchored forms above blocked 'the integration half (~6-7 min) is still running and
+    // will notify on completion' only because the noun was 'half', and then passed the SAME close
+    // reworded a minute later - 'still running' is in PENDING_RE and 'still executing' is not
+    // (measured, 121,858 cache-read on the retried turn). A gate a synonym defeats teaches the
+    // model to reword rather than to close properly, so the verb and the waiter are SYNONYM SETS.
     && !/\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b((still )?(running|in progress|queued|pending)|in the background|backgrounded)\b/i.test(tail)
     && !/\b(in the background|backgrounded|i'?ll report back|watching (it|the run|for))\b/i.test(tail)
+    && !(BACKGROUND_RE.test(tail) && WAITER_RE.test(tail))
     // ...and a close that says the run itself has nothing pending is finished, not stalled.
     && !NOTHING_PENDING_RE.test(tail);
   // A live credential that has entered this session outranks every other close: it cannot be
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
-  if (ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered() && (ROTATE_RE.test(prose) || (secretInToolResults() && !secretReadAllowed()))) {
+  if (ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered() && (ROTATE_RE.test(prose) || (secretInSession() && !secretReadAllowed()))) {
+    // Which of the two routes found the credential, in the ledger row - they are tuned separately.
+    blockDetail('rotate-ask', (prose.match(ROTATE_RE) || [])[0] || 'secret shape in a tool result or a pasted message');
     process.stderr.write(
       'A credential appears to have entered this session - either named for rotation in this\n' +
-      'turn, or matched by shape in a tool result. Measured seven times in the audited corpus:\n' +
+      'turn, matched by shape in a tool result, or pasted into the chat. Measured seven times in\n' +
+      'the audited corpus:\n' +
       'the run states it as a closing bullet, the user reads it and does not act (19m, 1h40m,\n' +
       'and one that quit 2m02s later with the token still live). A pasted or printed secret\n' +
       'CANNOT be unsent - it is in the transcript on disk and in every later request - so the\n' +
@@ -403,7 +557,7 @@ if (payload.hook_event_name === 'Stop') {
     );
     process.exit(2);
   }
-  if (!PROSE_ASK_RE.test(tail) && !doneClose && !endsOnQuestion) {
+  if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.
     // Past the window-scaled trigger, ask once per cost step whether to carry on here or resume
     // fresh; a turn that already made the offer, and a session already asked at this cost step,
@@ -414,6 +568,10 @@ if (payload.hook_event_name === 'Stop') {
     // null = this window's trigger is 0, which is the user switching the offer off.
     const _fresh_at = ctxThreshold();
     if (_fresh_at === null || ctx <= _fresh_at) process.exit(0);
+    if (!worthResuming(ctx)) {
+      breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} is mostly this session's own cold floor`);
+      process.exit(0);
+    }
     if (FRESH_RE.test(prose)) process.exit(0); // the OFFER is prose - a fenced example is not one
     const since = lastBlockCtx();
     if (since && ctx < since * REOFFER_GROWTH) {
@@ -421,6 +579,12 @@ if (payload.hook_event_name === 'Stop') {
       process.exit(0);
     }
     recordBlockCtx(ctx);
+    blockDetail('fresh-session', `ctx ${ctx} > trigger ${_fresh_at}`);
+    // The floor is this session's OWN first message when it is readable - the number the user can
+    // check - and the measured range across the audited projects when it is not.
+    const _floor = coldFloor();
+    const floorLine = _floor ? `measured at ~${Math.round(_floor / 1000)}k per message on this session's first turn`
+      : 'measured at 87-134k per message across the projects in the audit';
     process.stderr.write(
       // The old text claimed a resume 'costs roughly a tenth'. Eleven measurements put it at
       // 21.5-59.4% of the carried context, never under 21%, with a measured predecessor/successor
@@ -428,8 +592,9 @@ if (payload.hook_event_name === 'Stop') {
       // option descriptions they then acted on. State the absolute number instead, and the number
       // the model can actually read: this turn's own per-message context.
       `The work in this turn is finished and this session now carries ~${Math.round(ctx / 1000)}k tokens per\n` +
-      `message - every further turn re-sends all of it. A fresh session restarts near this project's\n` +
-      `cold floor, measured at 80-105k per message (NOT a tenth of the carry - quote the two absolute\n` +
+      `message - every further turn re-sends all of it. A fresh session restarts at this\n` +
+      `session's own cold floor, ${floorLine},\n` +
+      `so the resume saves the difference (NOT a tenth of the carry - quote the two absolute\n` +
       `numbers, never a ratio). Before continuing here, put the choice to the user with ONE\n` +
       `AskUserQuestion call: first option 'Resume in a fresh session (Recommended)' carrying those\n` +
       `two numbers, second option continuing here. Say in the description that the harness's own\n` +
@@ -448,7 +613,8 @@ if (payload.hook_event_name === 'Stop') {
     breadcrumb('Stop: an AskUserQuestion was just answered or declined - not re-asking');
     process.exit(0);
   }
-  if (doneClose && !PROSE_ASK_RE.test(tail)) {
+  if (doneClose && !proseAsk(tail)) {
+    blockDetail('done-close', `${(tail.match(DONE_RE) || [])[0]} + ${(tail.match(PENDING_RE) || [])[0]}`);
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
@@ -459,6 +625,8 @@ if (payload.hook_event_name === 'Stop') {
     );
     process.exit(2);
   }
+  blockDetail(proseAsk(tail) ? 'prose-ask' : 'ends-on-question',
+    (tail.match(PROSE_ASK_RE) || [])[0] || tail.trim().slice(-80));
   process.stderr.write(
     'This turn ends on a decision-shaped question in prose. Per baseline-interaction.md a\n' +
     'blocking ask goes through the AskUserQuestion tool - a prose-only question gets skipped\n' +

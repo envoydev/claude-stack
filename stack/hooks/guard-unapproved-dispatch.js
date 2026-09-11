@@ -70,6 +70,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -78,8 +82,14 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 })();
 const input = payload.tool_input || {};
 const seat = String(input.subagent_type || '');
-const GENERIC_SEATS = new Set(['general-purpose', 'claude']);
-const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude']);
+// `fork` belongs in BOTH sets, and it is the seat that most needs to: a fork inherits the ENTIRE
+// parent context, so it is the most expensive dispatch the harness offers and it was the only one
+// no gate looked at (measured: a fork taken for a read-only grep job cost 869,483 cache-read over
+// 6 messages and 4 Bash calls, while a named or read-only seat would have started from its own
+// floor). The gates stay what they are for every generic seat - a symbol question goes back to
+// serena, and a generic dispatch is refused only while a flow is actively stamped.
+const GENERIC_SEATS = new Set(['general-purpose', 'claude', 'fork']);
+const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 const isImplementer = /-implementer$/.test(seat);
 
 // A symbol question routed at a grep-shaped seat: block and send it back to serena.

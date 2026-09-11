@@ -5,13 +5,32 @@ depends on the one before it.
 
 ## 1. Reload the session
 
-Everything the install delivered binds at session start, not mid-session: MCP servers connect at
-launch (`.mcp.json` is read then), skills and agents are inventoried then, the always-on rules and
-`settings.json` (env values, hooks, permissions) inject then. Exit Claude Code and start it again
+Most of what the install delivered binds at session start, not mid-session: MCP servers connect at
+launch (`.mcp.json` is read then), and skills, agents and the always-on rules are inventoried then.
+Two things do NOT wait: the `settings.json` hooks and its `env` values are read per invocation, so
+a newly wired hook fires and a flipped env value applies on the very next tool call (measured in
+one session both ways - a hook installed at 08:12:53 fired at 08:21:15, and an env flip produced
+its first ledger row 7.9 s later, covering 17 of 17 subsequent calls). Exit Claude Code and start it again
 from the project root. `/reload-plugins` is NOT a substitute here - measured, it did not bind a
 freshly installed LSP plugin's tool server (a session ran 64 failed nav calls after that advice);
 only the full restart does. First launch after an install may prompt to trust the project's plugins
-and MCP servers - accept for this project. Until the reload, the stack is on disk but not in play.
+and MCP servers - accept for this project. Until the reload, the MCP servers, skills, agents and rules are on disk but not in play.
+
+**Then check they actually CONNECTED.** Registration is not connection: a stdio server whose
+runtime is missing, slow to fetch, or wrong for this machine fails its 30-second connect budget and
+the session simply runs without it - measured, both stack-seeded stdio servers returned
+`CONNECT_TIMEOUT after 30000ms` on one install and the whole session ran with the mandated symbol
+navigator dead, with nothing reporting it. One command after the restart says so:
+
+```bash
+claude mcp list
+```
+
+Every row should read connected. A timeout on `serena` usually means its first run is still
+fetching the language server (re-run once it settles, or pre-warm with `uvx --from serena-agent
+serena --help`); a timeout on any other stdio server means its runtime is not installed on this
+machine - fix it, or drop that server via `/claude-stack:configure` rather than carrying a dead
+registration whose tool schemas are injected into every session.
 
 ## 2. Git hygiene - keep the machine-local artifacts out of the repo
 

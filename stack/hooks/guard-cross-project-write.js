@@ -72,6 +72,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
           reason: last.split('\n')[0].slice(0, 200),
+          // A hook may name the BRANCH that fired and what matched, when it has more than one
+          // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
+          // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
+          detail: global.BLOCK_DETAIL || undefined,
         }) + '\n');
       } catch { /* telemetry is never allowed to break the gate */ }
     }
@@ -364,6 +368,13 @@ const expandVars = (t) => t.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
 // it never reached the check). A leading-slash token whose body carries a regex metacharacter and
 // which ends in sed command letters is a script; `/abs/path` has no metacharacter and stays a path.
 const SED_SCRIPT = /^\/(?=[^/]*[\^$*+?\[\]\\.])[^/]*\/[a-zA-Z]*$/;
+// The narrow form above only recognizes an address carrying a REGEX metacharacter, so a LITERAL
+// address (`/ApPermissionGuard/d`), a substitution (`s/a/b/`) and a line address (`1,$d`) were all
+// judged as out-of-project PATHS - 3 of 8 cross-write blocks in the audited corpus were sed scripts
+// read that way. This form covers them, and it is applied ONLY to the sed/perl route: on the
+// rm/chmod route those same tokens really are paths. The trailing command letter set is kept to
+// the address commands (`d p q =`) so `/etc/passwd` and `/tmp/file.txt` still read as paths.
+const SED_SCRIPT_ARG = /^(?:\/(?:[^/\\]|\\.)*\/(?:,\/(?:[^/\\]|\\.)*\/)?[dpq=]|(?:\$|\d+)(?:,(?:\$|\d+))?[dpq=]|[sy]\/(?:[^/\\]|\\.)*\/(?:[^/\\]|\\.)*\/[a-zA-Z0-9]*)$/;
 
 // `cd` / `pushd` earlier in the command move the anchor for everything after them. A target
 // that cannot be followed (`cd -`, `cd $DIR`, a relative cd from an unknown place) makes the
@@ -406,10 +417,11 @@ function judge(rawIn, index, what) {
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
   if (!allowed(abs)) block(what, explicit ? raw : abs, abs);
 }
-const judgeAll = (list, index, what) => {
+const judgeAll = (list, index, what, sedish) => {
   for (const tok of shellWords(list)) {
     if (tok.startsWith('-')) continue; // a flag (or `--`), never a path
     if (!tok || SED_SCRIPT.test(tok)) continue; // an empty -i suffix, or a sed address form
+    if (sedish && SED_SCRIPT_ARG.test(tok)) continue; // ...and the script itself, on the sed route only
     judge(tok, index, what);
   }
 };
@@ -430,7 +442,7 @@ const WRITE_PATTERNS = [
   { re: new RegExp(`\\btee\\s+(?:-\\w+\\s+)*${TARGET}`, 'g'), what: 'a `tee` write' },
   // in-place edits: every path argument, not just the last - `sed -i 's/a/b/' ../other/f x`
   // dodged a last-argument rule, and perl's usual `-pi` cluster dodged a literal `-i` (both reproduced)
-  { re: new RegExp(`\\b(?:sed|perl)\\s+((?:${SEG}*?\\s)?-[A-Za-z]*i\\b\\S*\\s${SEG}*)`, 'g'), what: 'an in-place edit', all: true },
+  { re: new RegExp(`\\b(?:sed|perl)\\s+((?:${SEG}*?\\s)?-[A-Za-z]*i\\b\\S*\\s${SEG}*)`, 'g'), what: 'an in-place edit', all: true, sedish: true },
   { re: new RegExp(`\\b(?:cp|mv|ln|install|rsync)\\s+${SEG}*?\\s${TARGET}\\s*(?:;|\\||&|$)`, 'g'), what: 'a copy/move destination' },
   // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x` and `truncate -s 0 ../other/log`
   // all put the out-of-tree path AFTER a non-flag token a first-argument rule stopped at (reproduced)
@@ -441,11 +453,11 @@ const WRITE_PATTERNS = [
   // `git -C <dir> <mutating subcommand>` is a write to that dir even with no path argument
   { re: new RegExp(`\\bgit\\s+-C\\s+${TARGET}\\s+(?:${GIT_MUTATING})(?![\\w-])`, 'g'), what: 'a git write in another checkout' },
 ];
-for (const { re, what, all } of WRITE_PATTERNS) {
+for (const { re, what, all, sedish } of WRITE_PATTERNS) {
   let m;
   while ((m = re.exec(command)) !== null) {
     if (inQuotes(m.index)) continue; // prose inside a quoted string
-    if (all) judgeAll(m[1], m.index, what);
+    if (all) judgeAll(m[1], m.index, what, sedish);
     else judge(unquote(m[1]), m.index, what);
   }
 }
