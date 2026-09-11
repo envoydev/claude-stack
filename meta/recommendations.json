@@ -48,6 +48,7 @@
    "project-architecture-analyzer",
    "project-architecture-quality-loop",
    "project-code-style-analyzer",
+   "project-commit-checkpoint",
    "project-diagnose-failure",
    "project-implementer",
    "project-quality-loop",

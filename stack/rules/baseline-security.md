@@ -6,9 +6,9 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 
 - Crypto / secret / auth / payment / data-access work: review the diff for vulnerabilities before presenting it. **Do the scoped review yourself, first:** compute `git diff HEAD` (or the staged diff, or `git diff <base>..HEAD` for a range) and apply the vulnerability checklist to exactly that - a read-only general-purpose seat where dispatch exists, inline otherwise, and inline inside a stamped flow where the dispatch guard blocks generic seats. Feed it the FULL change set with the reset chained into the SAME call - `git add -N . && git diff HEAD; git reset -q` - so untracked files appear in the diff and the intent-to-add entries never outlive it, because a diff-fed review silently skips brand-new files, which are often the most security-relevant code in the change.
   `/security-review` is the UNBOUNDED route, and the bound is not yours to set: it recomputes a whole-branch diff whatever base it is handed, so an explicit base does not scope it, and a branch level with origin on a clean tree overflows the same way - 'long-lived branch' is not the trigger either. Reach for it only when the whole branch really is the review scope and the diff is small. On these paths the review is
-part of the pre-commit checkpoint: the `COMMIT-GATE` receipt (baseline-git) is written `VERIFIED`
+part of the pre-commit checkpoint: the `COMMIT-GATE` receipt (project-commit-checkpoint) is written `VERIFIED`
 only after it ran - an auth-path diff committed on the code review alone shipped unreviewed to a
-shared branch. A checkpoint exemption in baseline-git (a loop or cross-task gate that
+shared branch. A checkpoint exemption in `project-commit-checkpoint` (a loop or cross-task gate that
 just cleared the diff) skips this half only when that gate carried a security pass - the
 `integration-reviewer` gate does, the quality loop's does not, so a loop diff on these paths still
 runs the review before `VERIFIED`.

@@ -80,6 +80,7 @@ function migrationFields(e)
     if (e.unwire_settings_hook) out.push(['unwire', e.unwire_settings_hook]);
     if (e.rename_settings_env) out.push(['env-rename', `${e.rename_settings_env.from} -> ${e.rename_settings_env.to}`]);
     if (e.remove_settings_env) out.push(['env-remove', e.remove_settings_env.key]);
+    if (e.clear_settings_env) out.push(['env-reset', `${e.clear_settings_env.key}: ${e.clear_settings_env.when_value} -> ${e.clear_settings_env.to}`]);
     return out;
 }
 

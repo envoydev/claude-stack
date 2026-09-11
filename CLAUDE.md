@@ -139,7 +139,9 @@ change made only inside a consuming project is throwaway (see Invariants).
 - `stack/rules/` - eighteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
     are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
     by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
-    (code quality + definition of done), security, git + pre-commit, navigation, docs-root (the
+    (code quality + definition of done), security, git (the pre-commit checkpoint protocol itself is the
+    always-seeded `project-commit-checkpoint` skill, loaded when a commit is the next act instead of
+    on every message - 6.6k chars off the floor), navigation, docs-root (the
     generated-docs root - `CLAUDE_STACK_DOCS_PATH` resolution, what lives under `<docs-path>`; the env var
     is the ONLY lever, no CLAUDE.md restatement - the installers stamp the resolved value over the
     rule's `__DOCS_ROOT__` placeholder on every install/update, and setup/configure re-stamp after
@@ -390,7 +392,7 @@ documented there.
 - **The always-on surface has a BUDGET, and the lint holds it.** Check 33 sums what every session
   pays before a single message: the pathless `baseline-*.md` bodies plus every agent and skill
   DESCRIPTION (the text the harness loads to decide what to invoke), and fails the build over
-  160,000 chars - ~36k tokens today at 145,209. So a rule moved into the baseline set, or a
+  160,000 chars - ~33k tokens today at 132,950. So a rule moved into the baseline set, or a
   description grown by a paragraph, is costed against that ceiling instead of assumed free. Two
   measurements set the bar: standing context was 63.5% of a 164-session collection's whole token
   bill, and nine independent installs floored between 87k and 134k tokens per message. The

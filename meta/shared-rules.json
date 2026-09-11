@@ -1696,9 +1696,9 @@
       ]
     },
     "commit-gate-receipt": {
-      "_note": "The pre-commit checkpoint receipt: <docs-path>/flow/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". baseline-git canonical (lifecycle incl. clearing); verify-code writes it as the checkpoint reviewer; baseline-security binds the security-review pass; the hook enforces.",
+      "_note": "The pre-commit checkpoint receipt: <docs-path>/flow/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". project-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on baseline-git rule in 0.2.71, which now only points at the skill); verify-code writes it as the checkpoint reviewer; baseline-security binds the security-review pass; the hook enforces.",
       "owner": {
-        "file": "stack/rules/baseline-git.md",
+        "file": "stack/skills/project-commit-checkpoint/SKILL.md",
         "marker": "VERIFIED <what was reviewed, one phrase>"
       },
       "sites": [
@@ -1708,7 +1708,7 @@
         },
         {
           "file": "stack/rules/baseline-security.md",
-          "marker": "receipt (baseline-git) is written `VERIFIED`"
+          "marker": "receipt (project-commit-checkpoint) is written `VERIFIED`"
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
@@ -1717,22 +1717,22 @@
       ]
     },
     "commit-gate-trivial-bar": {
-      "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); baseline-git states the same numbers, so a threshold change re-syncs the rule.",
+      "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); the project-commit-checkpoint skill states the same numbers, so a threshold change re-syncs the rule.",
       "owner": {
         "file": "stack/hooks/guard-ungated-commit.js",
         "marker": "<= 2 files and <= 15 changed lines"
       },
       "sites": [
         {
-          "file": "stack/rules/baseline-git.md",
+          "file": "stack/skills/project-commit-checkpoint/SKILL.md",
           "marker": "at most 2 files and 15 changed lines"
         }
       ]
     },
     "commit-gate-authorized-line": {
-      "_note": "The receipt's consent line: authorized: \"<the user's words asking for THIS commit, verbatim>\" - review is not consent. baseline-git canonical; verify-code writes it; the hook presence-checks it (file and atomic paths) and teaches it in stderr.",
+      "_note": "The receipt's consent line: authorized: \"<the user's words asking for THIS commit, verbatim>\" - review is not consent. project-commit-checkpoint canonical; verify-code writes it; the hook presence-checks it (file and atomic paths) and teaches it in stderr.",
       "owner": {
-        "file": "stack/rules/baseline-git.md",
+        "file": "stack/skills/project-commit-checkpoint/SKILL.md",
         "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
       },
       "sites": [
@@ -1747,14 +1747,14 @@
       ]
     },
     "commit-gate-atomic-tolerance": {
-      "_note": "DECISION: the hook ACCEPTS the atomic write+commit shape (blocking it would reject the corpus's dominant conforming pattern); the rule teaches own-call receipts as the discipline and now says plainly that nothing stops the atomic shape mechanically, so the reader knows the rule is the only binding - measured: 9 of 13 commits in one session took the atomic shape, two left the receipt uncleared. A future hook tightening must update both copies.",
+      "_note": "DECISION: the hook ACCEPTS the atomic write+commit shape (blocking it would reject the corpus's dominant conforming pattern); the project-commit-checkpoint skill teaches own-call receipts as the discipline and now says plainly that nothing stops the atomic shape mechanically, so the reader knows the rule is the only binding - measured: 9 of 13 commits in one session took the atomic shape, two left the receipt uncleared. A future hook tightening must update both copies.",
       "owner": {
         "file": "stack/hooks/guard-ungated-commit.js",
         "marker": "Blocking\n// it would reject the receipt discipline this gate exists to enforce"
       },
       "sites": [
         {
-          "file": "stack/rules/baseline-git.md",
+          "file": "stack/skills/project-commit-checkpoint/SKILL.md",
           "marker": "still ACCEPTS the atomic\nwrite+commit shape (blocking it would reject the receipt discipline itself)"
         }
       ]
@@ -2988,14 +2988,14 @@
       ]
     },
     "cross-write-allow-receipt": {
-      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the two always-on rules that describe the ask name the same path. A rename in one place leaves the model writing a receipt the guard never reads.",
+      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the project-commit-checkpoint skill, which describe the ask, name the same path. A rename in one place leaves the model writing a receipt the guard never reads.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'flow', 'CROSS-WRITE-ALLOW'"
       },
       "sites": [
         {
-          "file": "stack/rules/baseline-git.md",
+          "file": "stack/skills/project-commit-checkpoint/SKILL.md",
           "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
         },
         {
@@ -3009,7 +3009,7 @@
       ]
     },
     "cross-project-task-card-home": {
-      "_note": "A change another repo needs is handed off as a task card at <docs-path>/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, baseline-git binds the receipt rule to it, and the three flows that hand off write the card.",
+      "_note": "A change another repo needs is handed off as a task card at <docs-path>/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the project-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'cross-project-tasks', '<other-project>.md'"
@@ -3020,7 +3020,7 @@
           "marker": "a change it must make is a task card in `cross-project-tasks/`"
         },
         {
-          "file": "stack/rules/baseline-git.md",
+          "file": "stack/skills/project-commit-checkpoint/SKILL.md",
           "marker": "its change is a task card under `<docs-path>/cross-project-tasks/`"
         },
         {

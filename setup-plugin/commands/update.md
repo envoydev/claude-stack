@@ -118,7 +118,7 @@ It prints, in order:
   `/project-agent-capabilities` suggestion; the installer's log tail counts every file it
   COPIED, which is all of them on every run, so it can never answer 'what changed'.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
-  followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
+  followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` / `env-reset:` /
   `env-remove:` lines - everything you act on. A detected entry joins the prune list labeled
   `(migration: <why>)`. Do not open the catalog for any of it: an entry that did not fire prints
   nothing, and reading 'just that one entry by id' still pulls the whole file in (measured: 2,182

@@ -38,7 +38,7 @@ can invoke it - a model Skill call is refused, so name the command to the user r
 | `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
 | `.claude/rules/baseline-quality-gates.md` | code-quality bars and the done-claim verification gate |
 | `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
-| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline, the pre-commit checkpoint |
+| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline |
 | `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_STACK_DOCS_PATH` env), what lives under it, the capture-doc lifecycle |
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |

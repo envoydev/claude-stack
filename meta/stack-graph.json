@@ -257,6 +257,10 @@
       "mcps": [],
       "plugins": []
     },
+    "project-commit-checkpoint": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-diagnose-failure": {
       "mcps": [],
       "plugins": [
@@ -941,11 +945,9 @@
     },
     "baseline-git": {
       "skills": [
-        "project-verify-code"
+        "project-commit-checkpoint"
       ],
-      "agents": [
-        "integration-reviewer"
-      ],
+      "agents": [],
       "mcps": [],
       "plugins": [],
       "paths": []
@@ -981,7 +983,9 @@
       "paths": []
     },
     "baseline-security": {
-      "skills": [],
+      "skills": [
+        "project-commit-checkpoint"
+      ],
       "agents": [
         "integration-reviewer"
       ],

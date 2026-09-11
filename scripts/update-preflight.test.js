@@ -152,12 +152,16 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               detect: { settings_env_key: 'CLAUDE_DOCS_PATH' },
               rename_settings_env: { from: 'CLAUDE_DOCS_PATH', to: 'CLAUDE_STACK_DOCS_PATH' },
               why: 'every other variable this stack owns is CLAUDE_STACK_*' },
+            { id: 'reset-one',
+              detect: { settings_env_value: { key: 'CLAUDE_STACK_EXAMPLE', equals: 'old' } },
+              clear_settings_env: { key: 'CLAUDE_STACK_EXAMPLE', when_value: 'old', to: 'new' },
+              why: 'a seeded default that turned out wrong is reset only where it still holds the seed' },
             { id: 'quiet-one',
               detect: { file_exists: '.claude/hooks/never-here.js' },
               why: 'this entry did not fire and must print nothing',
               then: 'nothing' },
         ],
-        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs' } },
+        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs', CLAUDE_STACK_EXAMPLE: 'old' } },
     });
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'inject-code-style.js'), '// legacy');
@@ -169,6 +173,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
     assert.match(out, /^ {2}env-rename: CLAUDE_DOCS_PATH -> CLAUDE_STACK_DOCS_PATH$/m, 'the env edit, on the entry that carries one');
+    assert.match(out, /^ {2}env-reset: CLAUDE_STACK_EXAMPLE: old -> new$/m, 'a seeded default the installers reset, on the entry that carries one');
     assert.doesNotMatch(out, /quiet-one|did not fire/, 'an entry that did not fire costs nothing at all');
     assert.doesNotMatch(out, /xxxx/, 'and the maintainer comment never reaches the caller');
 });

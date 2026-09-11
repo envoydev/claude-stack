@@ -1378,22 +1378,25 @@ function main()
         }
     }
 
-    // 15. Soft warning: an OUTLIER-length SKILL.md description. The house style
-    //     deliberately packs routing into descriptions (Companions + version floor +
-    //     negative scope) so the rich .NET/router skills legitimately run 800-1050;
-    //     warning at 800 fired on half the corpus and just flagged the house norm.
-    //     The cap is set above that norm to catch a genuinely bloated outlier (the
-    //     1300-char case), not the intentional routing prose. Not a failure - a nudge.
-    const DESC_SOFT_LIMIT = 1100;
-    for (const dir of dirs)
+    // 15. A description over 1,000 chars FAILS the build - skills and agents alike. The house
+    //     style deliberately packs routing into descriptions (Companions + version floor + negative
+    //     scope), so the rich .NET/router skills legitimately run 800-1,000; but every description
+    //     is loaded into every session before a single message (check 33 sums them), so past that
+    //     bar the routing prose is paid for on every turn of every install. This was a warning at
+    //     1,100: nine descriptions sat between 1,004 and 1,146 and it fired on none of them.
+    const DESC_LIMIT = 1000;
+    const descriptionFiles = [
+        ...dirs.map(dir => [`skills/${dir}/SKILL.md`, path.join(SKILLS_DIR, dir, 'SKILL.md')]),
+        ...fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).sort().map(f => [`agents/${f}`, path.join(AGENTS_DIR, f)]),
+    ];
+    for (const [label, file] of descriptionFiles)
     {
-        const skillFile = path.join(SKILLS_DIR, dir, 'SKILL.md');
-        if (!fs.existsSync(skillFile))
+        if (!fs.existsSync(file))
         {
             continue;
         }
 
-        const fm = fs.readFileSync(skillFile, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        const fm = fs.readFileSync(file, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
         if (!fm)
         {
             continue;
@@ -1406,12 +1409,12 @@ function main()
         }
         catch
         {
-            continue;   // check 1 already flagged the YAML failure
+            continue;   // checks 1 and 18 already flagged the YAML failure
         }
 
-        if (meta && typeof meta.description === 'string' && meta.description.length > DESC_SOFT_LIMIT)
+        if (meta && typeof meta.description === 'string' && meta.description.length > DESC_LIMIT)
         {
-            warn(`skills/${dir}/SKILL.md description is ${meta.description.length} chars (> ${DESC_SOFT_LIMIT}) - consider tightening`);
+            flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
     }
 

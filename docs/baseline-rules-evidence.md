@@ -8,7 +8,7 @@ The measured anecdotes behind the always-on `stack/rules/baseline-*.md` clauses,
 - **&& git diff HEAD --stat; git reset -q`, ONE Bash call with** - measured: 3 of 4 audited sessions ran the `add -N` and no reset at all, leaving the index dirty for whatever ran next
 - **&& git diff HEAD --stat; git reset -q`, ONE Bash call with** - measured twice: an ask cited a stale stat while the uncommitted set had grown
 
-### Pre-commit checkpoint
+### Pre-commit checkpoint (moved to the `project-commit-checkpoint` skill in 0.2.71)
 - **with no Skill call in the transcript is a replay from memory,** - measured twice
 - **edit, before the commit** - measured: one file edited during review and committed on a stale 'I ran it earlier' broke CI's format check and cost a fixup commit
 - **commit is a red CI run and a fixup commit** - measured

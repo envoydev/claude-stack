@@ -466,7 +466,7 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `The checkpoint (baseline-git.md) runs BEFORE a non-trivial commit: the formatter, then\n` +
+    `The checkpoint (the project-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
     `the house review project-verify-code - plus /security-review when the diff touches\n` +
     `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
     `${c.gate}\n` +
