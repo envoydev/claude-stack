@@ -8,7 +8,11 @@
 // This hook is the mechanization.
 //
 // UserPromptSubmit wiring: appends the answer budget to the turn's context, where it lands LAST -
-//   immediately before the answer is written, not 30 bullets deep in an always-on rule.
+//   immediately before the answer is written, not 30 bullets deep in an always-on rule. It also
+//   carries the FORMAT ASK on a correction streak: the third consecutive short human turn that
+//   follows a long answer gets one line naming the interaction rule's 're-ask on the SAME
+//   deliverable -> ONE format AskUserQuestion' - injection only, never a denial. Measured lost as
+//   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask.
 // Stop wiring: an answer whose prose (code blocks, tables and inline spans excluded) runs past the
 //   hard cap with no depth request in the user's own message is blocked, and the model re-answers
 //   at budget. The answer measured is the payload's `last_assistant_message`; the transcript's
@@ -168,9 +172,67 @@ const BUDGET_TEXT =
         `House voice, same rule, same source: single dashes, never em-dashes, and single quotes in ` +
         `prose - in the answer AND in an AskUserQuestion's own text, which no Stop hook reads.`;
 
+// --- the correction streak: N short human turns in a row, each right after a long answer -----
+// The interaction rule says a re-ask on the SAME deliverable is ONE format AskUserQuestion, not
+// another redraft. It shipped as prose and lost: nine corrections, nine redrafts, 1.64M cache-read,
+// no ask. The detector is tuned on that one session - three short turns (under 200 chars), each
+// following an assistant answer over 1,500 chars of prose - and it only INJECTS a line, so a wrong
+// guess costs one sentence of context, never a turn. Watched for a week before it grows.
+const STREAK_TURNS = 3;
+const STREAK_SHORT = 200;
+const STREAK_LONG = 1500;
+function correctionStreak(currentPrompt) {
+  try {
+    const turns = [];   // in order: { role, len } - assistant rows merged by message.id, prose only
+    let lastId = null;
+    let lastUserText = '';
+    for (const line of tailLines()) {
+      if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      if (!o || !o.message) continue;
+      if (o.type === 'assistant' && Array.isArray(o.message.content)) {
+        const text = o.message.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+        const len = proseOf(text).length;
+        const id = o.message.id;
+        const prev = turns[turns.length - 1];
+        if (id && id === lastId && prev && prev.role === 'assistant') prev.len += len;
+        else turns.push({ role: 'assistant', len });
+        lastId = id || null;
+      } else if (o.type === 'user' && !o.isMeta) {
+        const c = o.message.content;
+        const typed = typeof c === 'string' ? c
+          : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+        // tool results, harness markers and slash commands are not corrections
+        if (!typed.trim() || /^\s*</.test(typed)) continue;
+        lastUserText = typed.trim();
+        turns.push({ role: 'user', len: lastUserText.length });
+      }
+    }
+    // the prompt being submitted is the last turn - unless the transcript already holds it
+    const now = String(currentPrompt || '').trim();
+    if (now && now !== lastUserText && !/^</.test(now)) turns.push({ role: 'user', len: now.length });
+    let streak = 0;
+    for (let i = turns.length - 1; i >= 1; i -= 2) {
+      const u = turns[i];
+      const a = turns[i - 1];
+      if (u.role !== 'user' || a.role !== 'assistant' || u.len === 0 || u.len > STREAK_SHORT || a.len < STREAK_LONG) break;
+      streak += 1;
+    }
+    return streak;
+  } catch { return 0; }
+}
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
+  const streak = correctionStreak(payload.prompt);
+  const extra = streak >= STREAK_TURNS
+    ? ' FORMAT ASK: ' + streak + ' consecutive short turns, each after a long answer. If these are ' +
+      'corrections of the SAME deliverable, the house rule (baseline-interaction) says the next act is ONE ' +
+      'AskUserQuestion on the format - shape, length, language, what to keep - not another redraft ' +
+      '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
+    : '';
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra },
   }));
   process.exit(0);
 }

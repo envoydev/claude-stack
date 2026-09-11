@@ -22,7 +22,7 @@ Audit inline in this chat, the five passes below. On an agents request, dispatch
 Load the plan's target stack skill FIRST, so you check against the right trap list, not a generic one.
 
 1. **Risk coverage - the highest-leverage pass.** Check the plan's `Oriented:` header line first (`project-solution-design` writes it - what oriented the design, which house skills it loaded): a plan missing the line, or naming no house skill with no reason, is itself a MAJOR finding - the design ran blind. Check the CLAIM, not just the field: the line must cite its evidence (the doc range read, the symbol calls made), and where the audit runs in the same session the cited reads must actually exist in it - a filled-in header over reads that never happened passed this gate verbatim while zero orientation occurred (measured: 'ARCHITECTURE.md plus a bounded symbol pass over six surfaces' with no read of the doc anywhere in the session and one symbol call against six claimed). An unevidenced `Oriented:` line is the SAME MAJOR finding as a missing one. Stamp what you verified into the gate line: `Oriented: verified` or `Oriented: MISSING/unevidenced`, so a later scoped re-audit cannot silently inherit the gap (measured: two gate passes over one plan, neither flagged the absent header). Then: does the plan NAME the non-obvious failure modes this feature will hit? Do not carry a generic checklist - load the stack's house skill (the same one your project's convention rules auto-attach for its file types; its router names the specialist siblings) and check the plan against ITS trap list: the data-access, lifecycle, concurrency, and boundary traps that stack actually has. A trap the plan does not name is a trap the build inherits - flag each missing one and where in the plan it belongs.
-2. **Scope match.** The plan covers exactly what was asked - nothing missing, nothing speculative added. A step for a requirement that is not there, or a missing step for one that is, is a finding.
+2. **Scope match.** The plan covers exactly what was asked - nothing missing, nothing speculative added. A step for a requirement that is not there, or a missing step for one that is, is a finding. 'What was asked' is the plan's `Asked:` line - the user's words, verbatim, written under `Oriented:` by `project-solution-design`; a plan without one is judged against the brief and the missing line is a MINOR finding. Read it for what must NOT survive as much as for what must exist: a plan that added a side-by-side path where the ask was to replace the old one is a scope finding (measured: rejected by the user after its whole build window).
 3. **Existence.** Every thing the plan NAMES is checked to exist before the plan passes: a symbol,
    a file, a config key, a CSS or design token, an API the plan calls, a package version floor, a
    capability it assumes a tool or seat has. Check it - `find_symbol`, a read of the config, a
@@ -43,6 +43,7 @@ field, not a sentence about when to write one:
 
 ```
 Oriented:  verified | MISSING/unevidenced
+Asked:     verified | MISSING
 Decisions: <N entries, each with its precedent> | ABSENT
 Scope:     matches | <what is missing or speculative>
 Existence: <N names checked, N unverified> | nothing named

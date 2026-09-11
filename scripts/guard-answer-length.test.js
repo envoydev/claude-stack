@@ -200,3 +200,22 @@ test('the em-dash ban is enforced on the same prose the cap reads', () => {
     assert.match(both.stderr, /also uses 1 em-dash/, 'the length denial carries the voice fix');
     assert.match(both.stderr, /characters of prose/, '... and still names the length');
 });
+
+// The interaction rule's 're-ask on the SAME deliverable -> ONE format AskUserQuestion' shipped as
+// prose and lost: nine corrections, nine redrafts of one report, 1.64M cache-read, no ask
+// (measured). The UserPromptSubmit half now names the ask on the third short turn in a row that
+// follows a long answer - injection only, so a wrong guess costs one sentence, never a turn.
+test('UserPromptSubmit names the format ask after three short turns that each followed a long answer', () => {
+    const long = (id) => ({ type: 'assistant', message: { id, role: 'assistant', content: [{ type: 'text', text: WALL }] } });
+    const short = (t) => ({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: t }] } });
+    const rows = [short('write the report'), long('a1'), short('no, shorter'), long('a2'), short('drop the table'), long('a3')];
+    const write = (name, rs) => { const p = path.join(TMP, name + '.jsonl'); fs.writeFileSync(p, rs.map((r) => JSON.stringify(r)).join('\n') + '\n'); return p; };
+    const ctxOf = (prompt, tp) => JSON.parse(run({ hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }).stdout).hookSpecificOutput.additionalContext;
+    const ctx = ctxOf('and in Ukrainian', write('streak', rows));
+    assert.match(ctx, /FORMAT ASK/, 'the third short correction gets the format-ask line');
+    assert.match(ctx, /3 consecutive short turns/, '... naming the count');
+    assert.match(ctx, /3 sentences/, '... beside the budget, not instead of it');
+    assert.doesNotMatch(ctxOf('and in Ukrainian', write('streak2', rows.slice(0, 4))), /FORMAT ASK/, 'two short turns are a conversation, not a streak');
+    assert.doesNotMatch(ctxOf(WALL, write('streak3', rows)), /FORMAT ASK/, 'a long turn is a brief, not a correction');
+    assert.doesNotMatch(ctxOf('<command-name>/help</command-name>', write('streak4', rows)), /FORMAT ASK/, 'a slash turn is not a correction');
+});

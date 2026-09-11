@@ -228,10 +228,11 @@ if (IS_SKILL_CALL) {
 }
 // --- a `disable-model-invocation` skill is the USER's to type, and this is what enforces it ---
 // Every project's generated capabilities rule used to stamp 'the harness BLOCKS the Skill call'.
-// Measured, it did not: a user typed the command with a LEADING SPACE, so no `<command-name>`
-// marker fired, and the model reached the flagged skill through a `Skill` tool call four seconds
+// Measured BOTH WAYS: one CLI build (2.1.229) denied the model's Skill call on a flagged skill
+// with a tool_use_error, and in another session it did not - a user typed the command with a
+// LEADING SPACE, so no `<command-name>` marker fired, and the model reached the flagged skill through a `Skill` tool call four seconds
 // later - body injected, run started. An ASSERTED harness behaviour is the weakest form of a gate,
-// so the assertion became this gate. Only the MODEL's own Skill call is denied: a slash turn
+// and one that varies by build is no gate at all, so the assertion became this gate. Only the MODEL's own Skill call is denied: a slash turn
 // arrives as UserPromptSubmit and never reaches here, so the user's own route is untouched. No env
 // switch - the verdict is the skill's own frontmatter, not a judgment that can be wrong.
 if (IS_SKILL_CALL && skill) {
@@ -271,7 +272,13 @@ if (EVENT === 'SessionStart') {
         'Before continuing, put the choice to the user as ONE AskUserQuestion: resume in a fresh ' +
         'session (recommended - end this turn with the paste-ready invocation and the state file ' +
         'or plan file it resumes from), or continue here on the summary with the cost stated. If ' +
-        'the remaining work is a single short step, say so and just finish it instead of asking.',
+        'the remaining work is a single short step, say so and just finish it instead of asking. ' +
+        'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
+        'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts (measured: ' +
+        'two sessions switched to English right after compacting). And when a plan or state file is ' +
+        'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
+        'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
+        'opening the plan whose header already named the ranges).',
     },
   }));
   process.exit(0);

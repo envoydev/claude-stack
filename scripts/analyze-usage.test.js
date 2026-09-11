@@ -537,3 +537,90 @@ test('the window tier names its source, and an abandoned session says so', () =>
     assert.match(md, /\*\*Interrupts\*\* 1 - the session ENDS on one/, '... and the same interrupt line');
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// A FORK's transcript opens as a copy of its parent's rows, each still carrying the parent's id
+// under `session_id` (the camel-case `sessionId` is rewritten to the fork's own): two forks of one conversation shared 90-92 assistant ids with their parent and the
+// rollup counted that run three times; the dedupe was done by hand (measured).
+test('fork prefix: rows carrying another session id are counted apart, and the ledger join runs over the tail only', () => {
+  const dir = tmp();
+  const own = '22222222-2222-4222-8222-222222222222';
+  const parent = '11111111-1111-4111-8111-111111111111';
+  const file = path.join(dir, own + '.jsonl');
+  const parentCall = bash('t1', 'echo parent');
+  parentCall.message.usage = usage(1, 0, 5000, 1);
+  const ownCall = bash('t2', 'echo own');
+  ownCall.timestamp = '2026-07-15T07:10:00.000Z';
+  fs.writeFileSync(file, [
+    line({ ...parentCall, sessionId: own, session_id: parent }),
+    line({ ...result('t1'), sessionId: own, session_id: parent }),
+    line({ ...ownCall, sessionId: own, session_id: own }),
+    line({ ...result('t2'), sessionId: own, session_id: own, timestamp: '2026-07-15T07:10:01.000Z' }),
+  ].join(''));
+  const ledger = path.join(dir, 'tools-usage.jsonl');
+  fs.writeFileSync(ledger, line({ ts: '2026-07-15T07:10:00.100Z', tool: 'Bash', detail: 'echo own' }));
+  const out = run([file, '--hook-log', ledger]);
+  assert.deepStrictEqual(out.main.forkPrefix, { rows: 2, msgs: 1, cacheRead: 5000, cacheCreate: 0, output: 1, toolCalls: 1, sessionIds: [parent] });
+  assert.strictEqual(out.main.total.msgs, 2, 'the totals still count the whole file');
+  assert.strictEqual(out.main.total.cacheRead, 5010);
+  const cov = out.hookLog.coverage;
+  assert.strictEqual(cov.calls, 1, 'the join sees the tail only');
+  assert.strictEqual(cov.inWin, 1);
+  assert.strictEqual(cov.outside, 0, "the parent's call is not this ledger's gap");
+  // a plain session file is nobody's fork
+  const plain = fixture(tmp(), [{ ...bash('t1', 'echo'), sessionId: 'not-a-session-id' }, result('t1')]);
+  assert.strictEqual(run([plain]).main.forkPrefix.msgs, 0);
+});
+
+// A call the harness rejects before PreToolUse leaves no ledger row, and a ledger row can have no
+// transcript call (an ask the transcript never wrote). A count-based 'unmatched' cancelled the two
+// into a false 40 vs 40 (measured): the join now lists each side.
+test('hook-log join: unmatched calls and unmatched rows are listed per side, not netted', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo one'), result('t1'), bash('t2', 'echo two'), result('t2')]);
+  const ledger = path.join(dir, 'tools-usage.jsonl');
+  fs.writeFileSync(ledger, [
+    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'echo one' }),
+    line({ ts: '2026-07-15T07:00:00.200Z', tool: 'AskUserQuestion', detail: 'q' }),
+  ].join(''));
+  const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
+  assert.strictEqual(cov.unmatched, 0, 'the netted count says all is well');
+  assert.strictEqual(cov.matchedCalls, 1);
+  assert.strictEqual(cov.unmatchedCallCount, 1, '... one call has no row');
+  assert.strictEqual(cov.unmatchedCalls[0].tool, 'Bash');
+  assert.strictEqual(cov.unmatchedRowCount, 1, '... and one row has no call');
+  assert.strictEqual(cov.unmatchedRows[0].tool, 'AskUserQuestion');
+  assert.strictEqual(run([file, '--hook-log', ledger]).hookLog.rowsIdx, undefined, 'the row index stays out of the dump');
+});
+
+// The bill sees calls the transcript never records - the harness's post-turn recap call is one -
+// so cost-state cache-read exceeded the transcript's by exactly one peak context (694,773 vs
+// 590,045, measured) and nothing said so.
+test('cost-state cache-read above the transcript is reported as untranscribed calls', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1'),
+    { type: 'cost-state', sessionId: 'x', modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, thinkingTokens: 0, cacheReadInputTokens: 22, cacheCreationInputTokens: 0 } } }]);
+  const { main } = run([file]);
+  assert.strictEqual(main.costState.cacheRead, 22);
+  assert.strictEqual(main.total.cacheRead, 10);
+  assert.deepStrictEqual(main.untranscribed, { cacheRead: 12, contexts: 1.1 });
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\*\*Untranscribed calls\*\* cost-state cache-read 22 vs transcript 10 - gap 12/);
+});
+
+// The fork-liveness probe writes a mode: probe row into the same ledger the guards block into; a
+// probe is a measurement, never a block, and the tally must not read it as one.
+test('hook-blocks: a probe row is counted apart from the blocks', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    line({ ts: '2026-07-15T07:00:00.500Z', hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'Blocked: whole-file Read of Big.cs' }),
+    line({ ts: '2026-07-15T07:00:01.500Z', hook: 'guard-cross-project-write.js', event: 'PreToolUse', tool: 'Edit', mode: 'probe', kind: 'fork-liveness', reason: 'probe: Edit of a file while a live sibling session' }),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rows, 1, 'one block');
+  assert.strictEqual(hookBlocks.probes, 1, 'one probe, apart');
+  assert.deepStrictEqual(hookBlocks.probeKinds, { 'fork-liveness': 1 });
+  assert.strictEqual(Object.keys(hookBlocks.byHook).length, 1, 'the probe is not a hook block row');
+});

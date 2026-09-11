@@ -142,8 +142,19 @@ const maskQuoted = (cmd) => String(cmd)
   .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
 
 async function analyzeTranscript(file, window) {
+  // A FORK's transcript opens as a copy of its parent's rows. Each row carries the id TWICE:
+  // `sessionId` is rewritten to the fork's own id on the copy, `session_id` keeps the ORIGINAL
+  // (measured: 387 of 1,093 rows in one fork, 0 by the camel-case key) - two forks of one conversation shared 90-92 assistant ids with their parent and the
+  // rollup counted that run three times (measured; the dedupe was done by hand). Rows whose id is
+  // not the file's own are the prefix: counted apart, and the ledger join runs over the tail.
+  const ownId = path.basename(file, '.jsonl');
+  const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f-]{27}$/;
+  const ownIsSession = SESSION_ID.test(ownId);
   const s = {
     file,
+    forkPrefix: { rows: 0, msgs: 0, cacheRead: 0, cacheCreate: 0, output: 0, toolCalls: 0, sessionIds: [] },
+    costState: null,             // the cost-state record's own totals - the only side that sees the harness's recap calls
+    toolCallIdx: [],             // { ts, tool } per tool_use outside the fork prefix - the per-side ledger join
     total: newTally(),
     byModel: {},                 // model -> tally
     toolCalls: {},               // tool name -> { calls, resultChars, errors }
@@ -238,6 +249,12 @@ async function analyzeTranscript(file, window) {
                                    // protocol sweep (measured: 5 reports stamped PASS over these)
 
   await readJsonl(file, (o, raw) => {
+    const origin = typeof o.session_id === 'string' ? o.session_id : typeof o.sessionId === 'string' ? o.sessionId : null;
+    const foreign = ownIsSession && !!origin && origin !== ownId && SESSION_ID.test(origin);
+    if (foreign) {
+      s.forkPrefix.rows += 1;
+      if (!s.forkPrefix.sessionIds.includes(origin)) s.forkPrefix.sessionIds.push(origin);
+    }
     if (window && o.timestamp) {
       const ts = Date.parse(o.timestamp);
       if ((window.from != null && ts < window.from) || (window.to != null && ts > window.to)) return;
@@ -285,6 +302,11 @@ async function analyzeTranscript(file, window) {
       if (think > s.thinkingTokens) s.thinkingTokens = think;
       for (const id of Object.keys(o.modelUsage)) if (!s.modelIdsFull.includes(id)) s.modelIdsFull.push(id);
       if (o.totalCostUSD != null && (s.totalCostUSD == null || o.totalCostUSD > s.totalCostUSD)) s.totalCostUSD = o.totalCostUSD;
+      // The bill's own totals: the harness's post-turn recap call (`away_summary`) is billed and
+      // written to no transcript row, so this is the only side that sees it.
+      const sum = (k) => Object.values(o.modelUsage).reduce((n, v) => n + ((v && v[k]) || 0), 0);
+      const cr = sum('cacheReadInputTokens');
+      if (!s.costState || cr > s.costState.cacheRead) s.costState = { cacheRead: cr, cacheCreate: sum('cacheCreationInputTokens'), input: sum('inputTokens'), output: sum('outputTokens') };
     }
     if (o.compactMetadata) {
       compactMeta++;
@@ -349,7 +371,7 @@ async function analyzeTranscript(file, window) {
         }
         let r = msgReg.get(m.id);
         if (!r) {
-          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, u: { in: 0, cc: 0, cr: 0, out: 0 } };
+          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, foreign, u: { in: 0, cc: 0, cr: 0, out: 0 } };
           msgReg.set(m.id, r);
           if (activeInvoke) activeInvoke.msgs += 1;
           // context size is fixed at message start, so first sighting is exact for spikes
@@ -390,7 +412,8 @@ async function analyzeTranscript(file, window) {
       if (Array.isArray(m.content)) for (const c of m.content) {
         if (c.type !== 'tool_use' || seenToolUse.has(c.id)) continue;
         seenToolUse.add(c.id);
-        if (o.timestamp) s.toolCallTs.push(o.timestamp);
+        if (foreign) s.forkPrefix.toolCalls += 1;
+        else if (o.timestamp) { s.toolCallTs.push(o.timestamp); s.toolCallIdx.push({ ts: o.timestamp, tool: c.name }); }
         const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0 });
         t.calls += 1;
         if (c.input && typeof c.input.file_path === 'string') {
@@ -679,6 +702,7 @@ async function analyzeTranscript(file, window) {
   for (const r of msgReg.values()) {
     const u = { input_tokens: r.u.in, cache_creation_input_tokens: r.u.cc, cache_read_input_tokens: r.u.cr, output_tokens: r.u.out };
     addUsage(s.total, u);
+    if (r.foreign) { s.forkPrefix.msgs += 1; s.forkPrefix.cacheRead += r.u.cr; s.forkPrefix.cacheCreate += r.u.cc; s.forkPrefix.output += r.u.out; }
     addUsage(s.byModel[r.model] || (s.byModel[r.model] = newTally()), u);
     if (r.skill) {
       const eff = resolveParent(r.skill);
@@ -697,6 +721,14 @@ async function analyzeTranscript(file, window) {
   }
   s.companionOf = companionOf;
   s.compactions = compactMeta > 0 ? compactMeta : compactSummary;
+  // The bill sees calls the transcript never records - the harness's post-turn recap is one - so
+  // cost-state cache-read exceeds the transcript's by whole contexts (measured: 694,773 vs 590,045,
+  // a gap of exactly one peak context). Say so, or the bundle never reconciles to its bill and the
+  // gap gets blamed on the tools.
+  if (s.costState && s.costState.cacheRead > s.total.cacheRead) {
+    const gap = s.costState.cacheRead - s.total.cacheRead;
+    s.untranscribed = { cacheRead: gap, contexts: s.peakCtx ? Math.round((10 * gap) / s.peakCtx) / 10 : null };
+  }
   return s;
 }
 
@@ -749,15 +781,16 @@ async function analyzeSubagents(sessionFile, window) {
 
 async function analyzeHookLog(file) {
   const byTool = {}; let rows = 0; let firstTs = null; let lastTs = null;
+  const rowsIdx = [];   // { ts, tool } per row - the per-side join needs the rows, not their count
   await readJsonl(file, (o) => {
     if (!o.tool) return;
     rows++;
-    if (o.ts) { if (!firstTs || o.ts < firstTs) firstTs = o.ts; if (!lastTs || o.ts > lastTs) lastTs = o.ts; }
+    if (o.ts) { if (!firstTs || o.ts < firstTs) firstTs = o.ts; if (!lastTs || o.ts > lastTs) lastTs = o.ts; rowsIdx.push({ ts: o.ts, tool: o.tool }); }
     const t = byTool[o.tool] || (byTool[o.tool] = { calls: 0, details: {} });
     t.calls += 1;
     if (o.detail) t.details[o.detail] = (t.details[o.detail] || 0) + 1;
   });
-  return { rows, byTool, firstTs, lastTs };
+  return { rows, byTool, firstTs, lastTs, rowsIdx };
 }
 
 // ---------- report ----------
@@ -925,6 +958,8 @@ function readBlockLedger(target, sessionId) {
       let o;
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.hook) continue;
+      // A probe row is a MEASUREMENT, not a block: the fork-liveness probe logs and denies nothing.
+      if (o.mode === 'probe') { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || 'probe'] = (out.probeKinds[o.kind || 'probe'] || 0) + 1; continue; }
       out.rows += 1;
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
@@ -1024,7 +1059,32 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // CALL coverage leads, wall clock follows: a session whose last hour is one idle await_summary
   // reads as 38% time-covered and 100% call-covered, and the second number is the true one.
   const callPct = allTs.length ? Math.round((100 * inWin) / allTs.length) : 100;
-  return { trTools, coverage: { inWin, callPct, pct, outside: trTools - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows) } };
+  // Per-side join. A call the harness rejects before PreToolUse leaves no ledger row, and a ledger
+  // row can have no transcript call (an ask the transcript never wrote) - a count-based 'unmatched'
+  // cancels the two into a false 40 vs 40 (measured). Match each in-window call to the nearest
+  // unused row of the same tool within the latency budget and list the leftovers on each side.
+  const allCalls = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallIdx || []);
+  const rowsIdx = (hookLog.rowsIdx || []).map((r) => ({ ts: r.ts, tool: r.tool, ms: ms(r.ts), used: false }));
+  const unmatchedCalls = [];
+  let matchedCalls = 0;
+  for (const c of allCalls) {
+    const t = ms(c.ts);
+    if (!(t >= firstMs - HOOK_LATENCY_MS && t <= lastMs + HOOK_LATENCY_MS)) continue;
+    let best = null;
+    for (const r of rowsIdx) {
+      if (r.used || r.tool !== c.tool) continue;
+      const d = Math.abs(r.ms - t);
+      if (d <= HOOK_LATENCY_MS && (!best || d < best.d)) best = { r, d };
+    }
+    if (best) { best.r.used = true; matchedCalls += 1; } else unmatchedCalls.push({ ts: c.ts, tool: c.tool });
+  }
+  const unmatchedRows = rowsIdx.filter((r) => !r.used).map((r) => ({ ts: r.ts, tool: r.tool }));
+  return { trTools, coverage: {
+    inWin, callPct, pct, calls: allTs.length, outside: allTs.length - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows),
+    latencyMs: HOOK_LATENCY_MS, matchedCalls,
+    unmatchedCallCount: unmatchedCalls.length, unmatchedCalls: unmatchedCalls.slice(0, 8),
+    unmatchedRowCount: unmatchedRows.length, unmatchedRows: unmatchedRows.slice(0, 8),
+  } };
 }
 
 // The window tier comes from a model id, and the two records that carry one can disagree. The
@@ -1072,6 +1132,8 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     if (il) console.log(il);
   }
   if (main.totalCostUSD != null) console.log(`billed $${Number(main.totalCostUSD).toFixed(2)} (cost-state)`);
+  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
+  if (main.forkPrefix && main.forkPrefix.msgs) console.log('fork prefix: ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix of that transcript, counted there; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read, and the ledger cross-check is judged over that tail only');
   if (main.stopHookBlocks) console.log(`Stop-hook denials ${main.stopHookBlocks} - these arrive as meta user TEXT, not tool results, so they are absent from the hook-blk column below`);
   if (main.harnessDenials) console.log(`Harness denials ${main.harnessDenials} - read as a block (auto-mode classifier, a foreground sleep, a tool-schema failure) but no stack hook ran: excluded from hook-blk, never charge a guard for them`);
   {
@@ -1211,6 +1273,7 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     }
     console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
+  if (blockLedger && blockLedger.probes) console.log('\nPROBES ' + blockLedger.probes + ' row(s), log-only - denied nothing: ' + Object.entries(blockLedger.probeKinds).map(([k, n]) => k + ' x' + n).join(', ') + ' (a probe row is a measurement of how often the gate WOULD fire; judge its rate before it becomes a denial)');
 
   if (main.spikes.length) {
     console.log('\nCONTEXT SPIKES (main session - biggest single-turn context jumps and what landed before them)');
@@ -1228,8 +1291,10 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     const j = hookJoinStats(main, agents, hookLog, agg.tools);
     if (j.coverage) {
       console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
-      console.log(`  cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.trTools} - vs ${hookLog.rows} ledger rows`);
+      console.log(`  cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows`);
       if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook at all and can have no row`);
+      if (j.coverage.unmatchedCallCount) console.log('  ' + j.coverage.unmatchedCallCount + ' in-window call(s) with no ledger row of the same tool within ' + j.coverage.latencyMs + 'ms: ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row');
+      if (j.coverage.unmatchedRowCount) console.log('  ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote');
       if (j.coverage.unmatched > 0) console.log(`  ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap`);
     } else {
       console.log(`  cross-check: transcript saw ${j.trTools} tool calls vs ${hookLog.rows} hook rows (ledger rows carry no timestamps, so window coverage is unavailable)`);
@@ -1257,6 +1322,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     if (il) extraFacts.push(`- **Interrupts** ${il.replace(/^user interrupts /, '')}`);
   }
   if (main.totalCostUSD != null) extraFacts.push(`- **Billed** $${Number(main.totalCostUSD).toFixed(2)} (\`cost-state\`).`);
+  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row.');
+  if (main.forkPrefix && main.forkPrefix.msgs) extraFacts.push('- **Fork prefix** ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix, counted under that transcript; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read.');
   if (main.stopHookBlocks) extraFacts.push(`- **Stop-hook denials** ${main.stopHookBlocks} - meta user TEXT, not tool results, so absent from the \`hook-blk\` column.`);
   if (main.harnessDenials) extraFacts.push(`- **Harness denials** ${main.harnessDenials} - the auto-mode classifier, a foreground \`sleep\`, or a tool-schema failure. They read as a block and no stack hook ran: excluded from \`hook-blk\`, and never charged to a guard.`);
   {
@@ -1424,8 +1491,10 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     out.push('## Hook-log join (identity ledger; tokens come from the transcript)', '');
     if (j.coverage) {
       out.push(`- Coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session.`);
-      out.push(`- Cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.trTools} - vs ${hookLog.rows} ledger rows.`);
+      out.push(`- Cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows.`);
       if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook and can have no row.`);
+      if (j.coverage.unmatchedCallCount) out.push('- ' + j.coverage.unmatchedCallCount + ' in-window call(s) with no ledger row of the same tool within ' + j.coverage.latencyMs + 'ms: ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row.');
+      if (j.coverage.unmatchedRowCount) out.push('- ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote.');
       if (j.coverage.unmatched > 0) out.push(`- ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap.`);
     } else {
       out.push(`- ${j.trTools} transcript tool calls vs ${hookLog.rows} ledger rows (ledger rows carry no timestamps, so window coverage is unavailable).`);
@@ -1522,7 +1591,8 @@ async function main() {
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
     // Fold them into the dump beside the ledger they describe.
     const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, computeAggregates(mainStats, agents).tools) : null;
-    const body = { main: mainStats, agents, hookLog: hookLog && join ? { ...hookLog, ...join.coverage ? { coverage: join.coverage } : {} } : hookLog, hookBlocks: blockLedger };
+    const hl = hookLog ? (({ rowsIdx, ...rest }) => rest)(hookLog) : hookLog;   // the row index is the join's input, not a report field
+    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }
