@@ -1,6 +1,6 @@
 ---
 name: dotnet-grpc
-description: "Use when defining, implementing, or calling a gRPC service in .NET, or weighing gRPC against REST. Conventions where the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Do NOT use for plain REST or minimal APIs - that is dotnet-minimal-api."
+description: "Use when defining, implementing, or calling a gRPC service in .NET, or weighing gRPC against REST. Conventions where the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Do NOT use for plain REST or minimal APIs - that is the minimal-API endpoint skill."
 ---
 
 # .NET gRPC
@@ -84,6 +84,10 @@ Put logging, authentication checks, exception-to-status mapping, validation, and
 ## Health and observability
 - Orchestrator probes speak the standard gRPC health-checking protocol - the opt-in wiring is in `references/optional-surfaces.md`.
 - gRPC integrates with the standard .NET observability stack; emit traces and metrics through it rather than bolting on a parallel logging path. Correlation and the broader telemetry setup belong to the ASP.NET Core cross-cutting hub.
+
+## Prove the contract
+
+Codegen makes a build green without proving a call works. Three lines before any done word: build to regenerate the stubs from the `.proto` and quote the result; call one method with `grpcurl` and quote the status; call it again with an already-expired deadline and quote the `DeadlineExceeded`. A method that never returns `DeadlineExceeded` is a method with no deadline wired.
 
 ## Browsers can't speak raw gRPC
 A browser client needs **gRPC-Web** - the server and CORS wiring, and its streaming limits, are in `references/optional-surfaces.md`.

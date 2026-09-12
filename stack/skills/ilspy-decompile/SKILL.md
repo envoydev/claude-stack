@@ -9,12 +9,13 @@ Decompile a compiled assembly when you need the real implementation - a framewor
 
 ## Tool
 
-`ilspycmd`, via either form (pick whichever the environment has):
+`ilspycmd`. Default to the no-install form:
 
 ```bash
-dnx ilspycmd -h                       # needs the .NET 10 SDK
-dotnet tool install --global ilspycmd # or pin per-repo in .config/dotnet-tools.json
+dnx ilspycmd -h                       # needs the .NET 10 SDK, installs nothing
 ```
+
+Where `dnx` is unavailable, the tool has to be installed, and that is the user's call, never yours. Ask ONE AskUserQuestion before running any install, with these options: pin it per-repo in `.config/dotnet-tools.json` (recommended - the version is committed and the machine stays clean), install it globally (`dotnet tool install --global ilspycmd`), or skip the decompile and report the question UNANSWERED. Where the harness has no AskUserQuestion tool, ask the same three options in plain text and wait. Never install on your own judgement.
 
 Flags vary by version - confirm with `ilspycmd -h`.
 

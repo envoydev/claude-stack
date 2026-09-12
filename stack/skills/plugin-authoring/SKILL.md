@@ -1,6 +1,6 @@
 ---
 name: plugin-authoring
-description: Use when creating or changing a Claude Code plugin - a `.claude-plugin/plugin.json` manifest, a `marketplace.json`, plugin commands / skills / agents / hooks / MCP or LSP config, `${CLAUDE_PLUGIN_ROOT}` paths - or when publishing, versioning or testing one (`claude plugin validate`, `--plugin-dir`, `claude plugin eval`). Covers manifest schema, layout and precedence, distribution, versioning, per-component rules, verification and the security review.
+description: Use when creating or changing a Claude Code plugin - a `.claude-plugin/plugin.json` manifest, a `marketplace.json`, plugin commands / skills / agents / hooks / MCP or LSP config, `${CLAUDE_PLUGIN_ROOT}` paths - or when publishing, versioning or testing one (`claude plugin validate`, `--plugin-dir`, `claude plugin eval`). Covers manifest schema, layout and precedence, distribution, versioning, per-component rules, verification and the security review. Not for a project's own `.claude/` folder, and not for authoring one skill's body.
 ---
 
 # Plugin authoring
@@ -65,18 +65,7 @@ plugin's standing instruction, if it needs one, is a skill or a hook.
 
 ## Loading and precedence
 
-- A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hooks and plugin
-  MCP / LSP config without a restart (an MCP change waits for an interactive terminal).
-- `claude --plugin-dir <path>` loads a local plugin for one session and OVERRIDES an installed
-  plugin of the same name (a managed force-enabled or force-disabled plugin excepted). A `.zip`
-  works too, and a folder of plugins needs Claude Code 2.1.265 or later. This is the test route.
-- A project or user `.claude/agents/<name>.md` overrides a plugin agent of the same name; plugin
-  skills COEXIST with local ones because they are namespaced.
-- A plugin agent cannot declare `hooks`, `mcpServers` or `permissionMode` - those belong to the
-  plugin, not to one seat.
-- A plugin's `settings.json` honours only `agent` and `subagentStatusLine`; permissions, env and
-  hook wiring do not ship through it.
-- Boolean frontmatter accepts `yes`/`no`/`on`/`off`/`1`/`0`/`true`/`false`.
+A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hooks and plugin MCP / LSP config without a restart. `claude --plugin-dir <path>` loads a local plugin for one session and OVERRIDES an installed plugin of the same name - that is the test route. The rest (what overrides what, what a plugin agent may not declare, which `settings.json` keys a plugin honours) is under 'Loading and precedence' in `references/manifest-and-marketplace.md`; read it before wiring a component.
 
 ## Distribution and versioning
 
@@ -112,8 +101,11 @@ plugin's standing instruction, if it needs one, is a skill or a hook.
   the difference that matters is DISPLAY: a plugin command lists namespaced-only, a plugin skill
   named exactly like the plugin lists bare (`/<plugin>`) - choose by what the user should see.
 - **Skills** (`skills/<name>/SKILL.md`): the description is the trigger - third person, what it
-  covers and when to use it, under the harness's description budget, since every installed skill's
-  description is loaded on every message. Body under 500 lines, references one level deep, each
+  covers and when to use it, under the harness's listing budget, since every installed skill's
+  description is loaded on every message: the listing is capped at 1% of the context window by
+  default (`skillListingBudgetFraction`), each entry at 1,536 characters, and over budget the
+  descriptions of the least-used skills are dropped first while the names stay - `/doctor` shows the
+  cost and the biggest contributors. Body under 500 lines, references one level deep, each
   reference over ~100 lines opening with a contents list. `disable-model-invocation: true` makes
   a skill the USER's to type and keeps its description OUT of context (the model cannot see or
   call it); `user-invocable: false` hides it from the slash list and keeps the description in.
@@ -152,18 +144,14 @@ Run these in this order; each is cheap and each catches a class the previous one
 4. `claude plugin eval <plugin-dir>` (Claude Code 2.1.269+) - behavioural cases under `evals/`,
    each run with and without the plugin. The command shapes, the case layout and how to read the
    with / without delta: `references/evals.md`. A `tool_used: Skill` grader that fails on natural
-   phrasing means the description, not the body, is wrong.
+   phrasing means the description, not the body, is wrong. A plugin with NO model-invocable
+   component is still evaluable, and 'nothing here is model-invocable' is not a reason to skip this
+   step: a case's `prompt.md` is a USER turn, which is exactly how a `disable-model-invocation`
+   command is invoked, so a read-only walk makes a valid case whose without-arm cannot resolve the
+   command at all - a clean delta. Reach for a named substitute only where every walk MUTATES a real
+   install, and say so.
 5. The security pass - `references/security-and-governance.md` - before the first publish and
    after any change to hooks, MCP config or dependencies.
 
 A behaviour claim ('the plugin makes X cheaper', 'it still catches Y') ships with the eval delta
 or a measured token number, never asserted.
-
-## Applying it in the claude-stack repo
-
-The repo's `CLAUDE.md` is the authority for its own plugin (`setup-plugin/`): the display-driven
-commands-vs-skill split, the `allowed-tools` decision, catalogs reached through the run's snapshot
-rather than `${CLAUDE_PLUGIN_ROOT}` because `meta/` is not inside the installed package, the
-version parity between plugin.json and the repo-root marketplace that the lint enforces, and the
-`v<version>` release tag. This skill adds the verification loop above; step 1 there is
-`claude plugin validate --strict ./setup-plugin`, and step 3 reads `claude-stack@claude-stack`.

@@ -2,9 +2,8 @@
 
 <!-- Fill-in block - delete once done. The installer seeds this file as .claude/CLAUDE.md when the project has
      none (auto-loaded, same as a root CLAUDE.md; keeps the repo root tidy) - copy it there by hand only when
-     that seed step was skipped. To keep it committed, the project's .gitignore must
-     ignore the .claude contents but track this file: '.claude/*' then '!.claude/CLAUDE.md' (git cannot
-     re-include a file when its parent dir is wholesale-ignored via '.claude/'). Then:
+     that seed step was skipped. To keep it committed, the project's .gitignore must ignore the .claude
+     contents but track this file: `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks the re-include. Then:
 1. Write the project top from the authoring outline in the comment below - replace the
    `__PROJECT_NAME__` H1 with the project's own name, put the sections above ## Rules so the rules
    table stays last - then delete that comment.
@@ -24,7 +23,7 @@ In a monorepo this is the ROOT file - shared conventions only; every package get
 package directory loads that file plus the root, never a sibling's), so anything two packages share
 belongs here, and `claudeMdExcludes` in settings.json keeps another team's ancestor file out.
 This file auto-injects every session and into every custom subagent (the built-in Explore / Plan
-seats load none of it) - keep it lean and route work by an
+seats load none of it) - keep it lean (target: under 200 live lines) and route work by an
 observable trigger (an artifact, a command, a checkpoint). The test for every line you add: would removing it make Claude make a mistake? If not, cut it - what Claude can read from the code, standard language conventions, file-by-file tours, rules the formatter already owns (.editorconfig, ESLint, Prettier, dotnet format) and 'write clean code' never earn their tokens; Bash commands it cannot guess, conventions that differ from defaults, gotchas and repository etiquette do.
 Five shapes to keep out, whatever they cost: the aspiration document (vague wishes), the wishlist
 (conventions the author wants instead of the ones the code enforces - an inherited codebase's own
@@ -34,27 +33,6 @@ Prune it when things go wrong, and test a change by watching whether behaviour s
 are NOT here: they load from the always-on baseline rules in .claude/rules/ (installer-managed,
 refreshed on update) - never restate them in this file. (HTML comment: stripped from injection,
 so an unfilled template pays nothing for this block.) -->
-
-## Rules
-
-The always-on baseline set in `.claude/rules/`, all loaded every session; this table maps where each
-behavior rule lives. Path-scoped rules in the same directory attach on a matching file touch - their
-own `paths:` frontmatter says when. In GENERATED rows, `user-run` marks a slash-only capture
-(`disable-model-invocation`): only the user can invoke it - a model Skill call is refused, so name
-the command to the user rather than running it.
-
-| Rule | What it governs |
-|---|---|
-| `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/baseline-quality-gates.md` | code-quality bars and the done-claim verification gate |
-| `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
-| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |
-| `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
-| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_STACK_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
-| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
-| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
-| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/project-code-style.md` (GENERATED - user-run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |
 
 <!-- Authoring outline - write these sections into the project-specific top of this file, in the
 numbered order below, with ## Rules left last: a fixed order means every filled file keeps the same
@@ -83,9 +61,32 @@ outline costs nothing even while it sits here.
 8. Secrets + config - where this project's secrets / env config live (the globs); mirror them into
    permissions.deny in .claude/settings.json - the installer seeds only the generic .env* / key /
    cert blocks.
-9. Code conventions - the house-style skill for each file type (auto-attached by the path-scoped rules above).
+9. Code conventions - only where this project DEPARTS from the house-style skill the path-scoped
+   rules attach for that file type; a line that repeats the skill is a duplicate.
 10. Testing approach - per-layer strategy, what's excluded, the integration / regression net.
 11. Load by artifact - a table mapping this repo's concrete files / types / constructs to the skills
     that cover them but never fire on their own keywords, typically an installed plugin's skills
     (the house-style ones self-fire through the path-scoped rules above, so they are not in it).
 -->
+
+## Rules
+
+The always-on baseline set in `.claude/rules/`, all loaded every session. Path-scoped rules in the
+same directory attach on a matching file touch - their own `paths:` frontmatter says when.
+
+In GENERATED rows, `user-run` marks a slash-only capture (`disable-model-invocation`): only the
+user can invoke it - a model Skill call is refused, so name the command to the user rather than
+running it.
+
+| Rule | What it governs |
+|---|---|
+| `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
+| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the done-claim verification gate, and claims about the outside world checked through `context7` |
+| `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
+| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |
+| `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
+| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_STACK_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
+| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture awareness - the micro-summary plus the read-the-map trigger into `<docs-path>/architecture/` |
+| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/project-code-style.md` (GENERATED - user-run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/PROJECT-CODE-STYLE.md` |

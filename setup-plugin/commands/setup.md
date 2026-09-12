@@ -145,7 +145,7 @@ The slug is passed to the installer as `--sentry-slug` at step 11 (it seeds the 
 
 ## 9. Plugins
 
-Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure; `superpowers` and `ponytail` arrive via the skills and agents that cite them); recommended = the always-baseline plugin set (`superpowers`, `claude-md-management`, `security-guidance`, `claude-hud`, `ponytail` - the five that belong in every install regardless of stack) plus the confirmed stacks' plugin seeds. The rest of `catalog.plugins` is freely addable.
+Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure; `superpowers` arrives via the skills and agents that cite it); recommended = the always-baseline plugin set (`superpowers`, `security-guidance`, `claude-hud` - the three that belong in every install regardless of stack) plus the confirmed stacks' plugin seeds. The rest of `catalog.plugins` is freely addable.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,

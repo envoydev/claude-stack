@@ -1,6 +1,6 @@
 ---
 name: postgres
-description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database conventions. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index/pooling decision. Covers identifier folding and idempotent DDL, index-type selection (B-tree/GIN/GiST/BRIN/hash), JSONB and full-text indexing, SARGable predicate rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum/ANALYZE, work_mem), connection pooling modes, RLS policy performance, and array-batching/ON CONFLICT/COPY. Not the cross-engine schema and transaction rules - the cross-engine database hub owns those, load it first where the install has it - not the ORM / EF Core side, which is its own skill, and not another engine's SQL."
+description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database conventions. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index / pooling / RLS decision. Not the cross-engine schema and transaction rules - the cross-engine database hub owns those, load it first where the install has it - not the ORM / EF Core side, which is its own skill, not another engine's SQL, and not an analytics or columnar workload, where this tuning advice inverts."
 ---
 
 # postgres (engine specialist)
@@ -104,25 +104,10 @@ ANALYZE orders;
 - Size `max_connections` to RAM (100-200), not to peak client count - that is the pooler's job, and `work_mem * max_connections` must stay bounded.
 - Behind a transaction pooler, disable driver-side prepared statements: Npgsql `Max Auto Prepare=0` (the ORM-side skill covers the EF Core wiring), postgres.js `{ prepare: false }`, JDBC `prepareThreshold=0`.
 
-## Full-text search
+## The two specialist sections, deferred
 
-`LIKE '%term%'` cannot use an index. Store a generated `tsvector`, index it with GIN, query with `@@`:
-
-```sql
-ALTER TABLE articles ADD COLUMN search_vector tsvector GENERATED ALWAYS AS
-  (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,''))) STORED;
-CREATE INDEX articles_search_idx ON articles USING GIN (search_vector);
-SELECT * FROM articles WHERE search_vector @@ to_tsquery('english', 'postgres & performance');
-```
-
-- The generated `STORED` column keeps the vector consistent with its source columns - no trigger to forget.
-- `to_tsquery` operators: `&` AND, `|` OR, `:*` prefix. For raw user input prefer `websearch_to_tsquery`, which parses free text safely instead of erroring on syntax.
-- Rank with `ts_rank(search_vector, query)` in `ORDER BY`; keep the language configuration (`'english'`) identical between the stored vector and the query or nothing matches.
-
-## RLS policy performance
-
-Only when RLS is the tenancy mechanism (policy *basics* - creating and enabling policies, least-privilege logins - are the data-layer security skill's):
-
-- Wrap a function call in a scalar sub-select so it evaluates once per query, not per row: `USING ((SELECT current_setting('app.user_id')::bigint) = user_id)`. A bare `current_setting(...)` in the policy re-runs on every candidate row.
-- Always index the column a policy filters on - the policy predicate is appended to every query against the table, so an unindexed policy column turns every read into a scan.
-- For complex checks, use a `SECURITY DEFINER` helper function in a non-exposed schema, with an explicit caller-identity check inside and `EXECUTE` revoked from public - the planner can treat it as stable, and the check logic stays in one audited place.
+`references/fts-and-rls.md` carries the two blocks a Postgres session needs only when the work is
+actually there: FULL-TEXT SEARCH (the generated `tsvector` + GIN shape, the query operators, and
+the language-configuration trap) and RLS POLICY PERFORMANCE (the scalar sub-select wrap, indexing
+the policy column, and the `SECURITY DEFINER` helper). Read it when a query is a text search, or
+when RLS is this project's tenancy mechanism - not otherwise.

@@ -50,6 +50,12 @@ If `evals/` is taken, set `"experimental": { "evals": "quality/evals" }` in plug
 | `llm` | `criteria`, `focus` | a judge votes PASS in at least two of three votes |
 | `baseline` | `baseline_file`, `criteria` | a judge finds the run at least as good as a reference transcript |
 
+`target` is an ENUM the case loader validates, not free text - measured on 2.1.269, `last_message`
+(the default, and what a failure reports as `pattern not found in last_message`) and `files` load,
+while a plausible spelling like `final_message` fails the whole case with
+`graders.N.target: Invalid input` before any run. Omit it for the answer text; a wrong value costs
+the case, not a grader.
+
 Habits that keep scores stable: one grader on the RESULT (final message or a produced file) plus
 one on the ROUTE (`tool_used` / `tool_order`); `regex` over long output, `llm` for short text
 only; `--judge-model sonnet` for a nuanced rubric. `tool_used: Skill` graders and any grader

@@ -1,6 +1,6 @@
 ---
 name: dotnet-winforms
-description: "WinForms conventions for maintenance and modernization. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> the hosted-worker and Windows-Service (SCM) skills where installed."
+description: "WinForms conventions for maintenance and modernization. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno."
 ---
 
 # WinForms conventions
@@ -23,9 +23,7 @@ runtime you are on; the version-specific mechanics live in the references.
 Out of scope, by design: the async / nullable / mapping baseline -> `csharp`; deeper MVP, command,
 observer, and memento orchestration -> `csharp-design-patterns`; test framework + UI-automation
 mechanics -> `dotnet-testing`; the upgrade safety playbook (baseline, staged, rollback) ->
-`dotnet-migrate`; SDK-style project shape and packaging -> `dotnet-project-setup`; general
-managed-memory profiling -> `dotnet-diagnostics`; general perf and type design ->
-`dotnet-performance`; a paired Windows-Service half -> the hosted-worker skill plus the Windows Service (SCM layer) skill, where installed.
+`dotnet-migrate`.
 
 ## Logic out of code-behind - the one rule everything rests on
 
@@ -144,6 +142,9 @@ a dynamically created control or component, and whenever you are hunting a handl
 the per-case rules (which system objects are cached and must NOT be disposed, the `DataGridView`
 per-cell font trap, where automatic container disposal stops) and the flat-handle-count acceptance
 bar that gates a ship or a migration.
+
+Before any done word on a UI change: build the app, open and close the affected form twenty times, and quote the GDI and USER
+handle counts from Task Manager at the start and the end. A count that keeps climbing is the leak, whatever the code review said.
 
 ## Performance: batch, virtualize, bind
 

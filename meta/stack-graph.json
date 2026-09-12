@@ -134,7 +134,9 @@
       "plugins": []
     },
     "dotnet-openapi": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "dotnet-performance": {
@@ -291,9 +293,7 @@
     },
     "project-solve-cross-task": {
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "project-solve-task": {
       "mcps": [],
@@ -374,9 +374,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "aspnet-solution-designer": {
       "skills": [
@@ -414,9 +412,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "browser-extension-solution-designer": {
       "skills": [
@@ -470,9 +466,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "console-solution-designer": {
       "skills": [
@@ -510,9 +504,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "data-solution-designer": {
       "skills": [
@@ -545,9 +537,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "devops-solution-designer": {
       "skills": [
@@ -612,9 +602,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "ionic-angular-solution-designer": {
       "skills": [
@@ -695,14 +683,11 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "web-angular-solution-designer": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "angular-testing",
         "project-solution-design"
       ],
@@ -735,9 +720,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "windows-service-solution-designer": {
       "skills": [
@@ -776,13 +759,10 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "winforms-solution-designer": {
       "skills": [
-        "csharp",
         "csharp-design-patterns",
         "dotnet-testing",
         "dotnet-winforms",
@@ -810,20 +790,16 @@
     "wpf-implementer": {
       "skills": [
         "csharp",
-        "csharp-design-patterns",
         "dotnet-testing",
         "dotnet-wpf"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "wpf-solution-designer": {
       "skills": [
-        "csharp",
         "csharp-design-patterns",
         "dotnet-testing",
         "dotnet-wpf",
@@ -942,7 +918,6 @@
       "agents": [],
       "mcps": [],
       "plugins": [
-        "ponytail",
         "superpowers"
       ],
       "paths": []
@@ -971,9 +946,7 @@
       "skills": [
         "project-commit-checkpoint"
       ],
-      "agents": [
-        "integration-reviewer"
-      ],
+      "agents": [],
       "mcps": [],
       "plugins": [],
       "paths": []
@@ -1126,7 +1099,6 @@
       "claude-hud",
       "claude-md-management",
       "csharp-lsp",
-      "ponytail",
       "security-guidance",
       "superpowers",
       "typescript-lsp"

@@ -10,7 +10,8 @@ recall. Name the skill you loaded, or say it was already in context - the receip
 load happen.
 
 Covers Dockerfiles, compose files, GitHub Actions workflows and `deploy*.sh` / `deploy*.ps1` - the
-delivery surface. The deploy-script globs are a deliberate widening: a session that edits only a
-deploy script touches no Dockerfile, so the rule that names the concern could never reach it.
+delivery surface. Skip one-line tweaks.
 
-Skip one-line tweaks.
+<!-- Maintainer note: the deploy-script globs are a deliberate widening - a session that edits only a
+     deploy script touches no Dockerfile, so the rule that names the concern could never reach it. -->
+

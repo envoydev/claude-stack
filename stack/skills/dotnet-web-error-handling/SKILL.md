@@ -42,13 +42,12 @@ A `Result<T>` carries either the value or one such `Error`; the handler ends wit
 
 ## ProblemDetails is the only error body (RFC 9457)
 - Every non-2xx response is a `ProblemDetails`, or a `ValidationProblemDetails` for field-level errors - `type`, `title`, `status`, `detail`, `instance`, and an `errors` map where relevant. No bespoke `{ error: ... }` envelope, anywhere.
-- Register `AddProblemDetails()` (.NET 7+) so framework-generated failures (binding 400s, 404s, 415s) emerge in the same shape as the ones you write. In its customization callback, attach a `traceId` extension so a client-side error can be traced back to the logs - the trace/correlation source itself is `dotnet-web-backend`.
+- Register `AddProblemDetails()` (.NET 7+) so framework-generated failures (binding 400s, 404s, 415s) emerge in the same shape as the ones you write. In its customization callback, attach a `traceId` extension so a client-side error can be traced back to the logs - the trace/correlation source itself is the ASP.NET Core cross-cutting hub's.
 - Emit from handlers with `TypedResults.Problem(...)` and `TypedResults.ValidationProblem(errors)`; never assemble the JSON by hand.
 - This contract is transport-shared: a controller-based API reuses the same `AddProblemDetails()`, the same global `IExceptionHandler`, and the same FluentValidation filter - it emits via the `ControllerBase.Problem(...)`/`ValidationProblem(...)` helpers instead of `TypedResults`, but the envelope and the handler are identical. Do not re-shape errors per transport.
 
 ## One global handler for the unexpected
 - **.NET 8+ (preferred):** implement `IExceptionHandler.TryHandleAsync`, register with `AddExceptionHandler<T>()` next to `AddProblemDetails()`, and switch it on with `app.UseExceptionHandler()`. Register several handlers in order if you want known-exception-to-status mapping ahead of a final catch-all.
-- **.NET 7 and earlier:** one `app.UseExceptionHandler(b => b.Run(...))` lambda reading `IExceptionHandlerFeature`.
 - Either way the handler must: log the exception once with structured context (route, trace ID), default to 500 but map recognized exception types to their status, suppress `detail` and stack traces outside `Development`, and still answer in RFC 9457. It is the single `catch` for unexpected errors in the whole application.
 
 ```csharp

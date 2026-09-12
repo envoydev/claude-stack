@@ -227,8 +227,9 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   on an install predating its catalog entry (measured: a v0.1.23-era install upgraded to
   v0.2.17 had no guided route to the instrument hook until this entry existed).
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
-  The five always-baseline plugins (`superpowers`, `claude-md-management`, `security-guidance`,
-  `claude-hud`, `ponytail`) show MISSING on any install that lacks them, whatever the stack.
+  The three always-baseline plugins (`superpowers`, `security-guidance`, `claude-hud`) show
+  MISSING on any install that lacks them, whatever the stack. `claude-md-management` is in the
+  `general` opt-in list - offered, never seeded, and never flagged missing or redundant.
   Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a

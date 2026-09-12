@@ -69,7 +69,8 @@ this.router.navigateByUrl(
 
 ## Dependencies and supply chain
 
-- `npm audit` and the lockfile: a known-CVE package version is a finding. Pin versions, review transitive pulls, and watch for typosquatted package names. A compromised build-time dependency runs with your build's privileges.
+- Run `npm audit --omit=dev` and quote the high and critical counts; a known-CVE package version at either level is a finding. An audit you did not run is reported UNVERIFIED, never as a pass.
+- Pin versions, review transitive pulls, and watch for typosquatted package names. A compromised build-time dependency runs with your build's privileges.
 
 ## Sensitive-data hygiene
 

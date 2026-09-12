@@ -59,3 +59,9 @@ examples/**/VERIFY-REPORT.md
 # docs/usefull/: locally saved copies of third-party pages (token-optimization articles, the
 # official best-practices page) read by the audits - reference material, never redistributed.
 docs/usefull/
+
+# setup-plugin/evals/: the cases and graders are tracked; a RUN's output is machine-local and
+# large (per-run transcripts plus a self-contained HTML report), and every run re-dates its
+# directory - the number worth keeping is the with / without delta, which goes in the eval
+# README, not the artifact.
+setup-plugin/evals/results/

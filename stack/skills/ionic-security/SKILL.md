@@ -1,11 +1,11 @@
 ---
 name: ionic-security
-description: "Ionic / Capacitor mobile security hardening - the native attack surface a WebView app adds beyond its web risks. Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Covers secret storage in the Keychain / Keystore (never localStorage or Preferences - plaintext on-device), deep links as untrusted input, least-privilege native permissions, cleartext traffic and WebView debugging off in release, an allowNavigation allowlist and no live-reload server.url in production, FLAG_SECURE and backgrounding snapshots, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Do NOT load for non-security work."
+description: "Ionic / Capacitor mobile security hardening - the native attack surface a WebView app adds beyond its web risks. Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Covers Keychain / Keystore secret storage (never localStorage or Preferences), deep links as untrusted input, least-privilege native permissions, release-build WebView settings, navigation allowlisting, screen-capture and backgrounding, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Do NOT load for non-security work."
 ---
 
 # Ionic / Capacitor mobile security
 
-An Ionic app is an Angular app running in a native WebView with a bridge to native code. It inherits **every** web risk (see `angular-security` - XSS, CSP, token storage, CSRF) **plus** a native attack surface the browser does not have: on-device storage an attacker with the device can read, deep links other apps can fire, native permissions, and the WebView container itself. This is the native map. Assume the device may be lost, rooted, or shared, and that another app on it is hostile.
+An Ionic app is an Angular app running in a native WebView with a bridge to native code. It inherits **every** web risk (see the skill covering Angular web hardening - XSS, CSP, token storage, CSRF) **plus** a native attack surface the browser does not have: on-device storage an attacker with the device can read, deep links other apps can fire, native permissions, and the WebView container itself. This is the native map. Assume the device may be lost, rooted, or shared, and that another app on it is hostile.
 
 ## Secret and token storage
 

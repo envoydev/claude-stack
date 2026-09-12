@@ -273,7 +273,7 @@ Presence, never the value - run this and paste its lines as-is:
 ## 8. Plugins
 
 Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure;
-`superpowers` and `ponytail` arrive via the skills and agents that cite them); the rest of the
+`superpowers` arrives via the skills and agents that cite it); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept

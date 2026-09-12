@@ -476,9 +476,48 @@ $Skills = @(
 )
 
 # (2) Plugins "<plugin>@<marketplace>" (non-default marketplaces added first).
+#     What each one EXECUTES, read from the packages on 2026-09-12 - the trust decision belongs
+#     beside the manifest, not in an audit nobody re-opens:
+#       superpowers        1 SessionStart hook, no timeout (600s default), prints its own SKILL.md
+#                          as additionalContext. No network, no credential, no bin/, no deps. The
+#                          plugin.json version is what actually pins an update (a marketplace entry
+#                          version is ignored when both exist) - and on one machine that single
+#                          version had carried THREE different source commits, so the version
+#                          identifies the release, never the code that ran. ACCEPTED COST, stated
+#                          rather than fixed: that injected SKILL.md (3,108 chars every session)
+#                          tells the model to invoke a skill before ANY response, which is the
+#                          opposite of the house capabilities rule's 'load a skill for the work at
+#                          hand, never to answer a question'. It arrives by hook, so not invoking
+#                          the skill does not avoid it and no house-side edit can win; the four
+#                          methods the house actually cites (plan, TDD, debug, verify-before-done)
+#                          are worth the collision. Revisit by dropping the plugin and inlining
+#                          those four, the way the seat disciplines are already inlined.
+#       claude-md-management  no hooks, no MCP, no deps. Both components EDIT CLAUDE.md and neither
+#                          carries `disable-model-invocation`, so a side-effect entry is
+#                          model-invocable; guard-cross-project-write.js covers writes outside the
+#                          root, not an in-root rewrite of the instruction file itself.
+#       csharp-lsp /       the packages hold a LICENSE and a README and nothing else. The whole
+#       typescript-lsp     definition lives on the MARKETPLACE ENTRY under `strict: false` (which
+#                          makes the entry the entire definition and a package plugin.json a
+#                          load-failing conflict), including the `lspServers` block. An EMPTY plugin
+#                          cache directory is therefore the correct install, not a failed one.
+#                          The only executable is the language server the user installs by hand.
+#       security-guidance  12 hook entries. Its SessionStart (timeout 180) creates a venv and runs
+#                          `pip install claude-agent-sdk` - network egress to PyPI on every session
+#                          start, no lockfile, no --ignore-scripts. Its Stop, SubagentStop and seven
+#                          PostToolUse Bash entries spawn an inner model call through the Agent SDK,
+#                          which is BILLED; ten of them are asyncRewake so they wake the model in the
+#                          background rather than blocking the turn. No settings write, no egress
+#                          beyond PyPI and api.anthropic.com.
+#       claude-hud         no hooks, no MCP, no bin/. Its own /claude-hud:setup writes a statusLine
+#                          into the ACCOUNT settings.json - user-invoked, not a hook. Ships ~41MB of
+#                          node_modules. Third-party marketplace, so auto-update is OFF and this
+#                          installer's update pass is the only thing that moves it.
+#     Costs nothing here counts: a plugin's SessionStart injection and its skill descriptions are
+#     always-on context that lint check 33 cannot see (it reads this repo, not the plugin cache) -
+#     `/claude-stack:status` reports the installed number.
 $ExtraMarketplaces = @(
   'jarrodwatts/claude-hud'
-  'DietrichGebert/ponytail'
 )
 $Plugins = @(
   'superpowers@claude-plugins-official'       # workflow skills: plan, TDD, debug, verify-before-done
@@ -487,7 +526,6 @@ $Plugins = @(
   'typescript-lsp@claude-plugins-official'  # same for Angular/TS work
   'security-guidance@claude-plugins-official' # security hooks: pattern warnings + LLM diff review on Stop/commit
   'claude-hud@claude-hud'                       # statusline HUD (global/user scope)
-  'ponytail@ponytail'                           # 'lazy senior dev' decision ladder: minimal-code default, cuts generated code/latency/cost
 )
 
 # (3) MCP servers "name|args"; scope follows $Scope. SINGLE-QUOTED so ${...} stays LITERAL ->
@@ -664,21 +702,21 @@ $Mcps = @(
 #     (bash-like) hook shell; under the PowerShell hook-shell opt-in it fails as a non-blocking error
 #     and records nothing.
 $Hooks = @(
-  'guard-protected-force-push.js::Bash::'         # block force-push to main/master/develop
-  'guard-catastrophic-rm.js::Bash::'              # block recursive rm of /, ~, $HOME, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once
+  'guard-protected-force-push.js::Bash|PowerShell::'         # block force-push to main/master/develop
+  'guard-catastrophic-rm.js::Bash|PowerShell::'              # block recursive rm of /, ~, $HOME, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once
   'guard-read-whole-file.js::Read::'              # block whole-file Read of a >200-line source file - locate via serena first; caps cumulative half-split reconstruction
-  'guard-read-whole-file.js::Bash::'              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
+  'guard-read-whole-file.js::Bash|PowerShell::'              # same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell
   'guard-secret-value.js::Read::'                 # block a Read of a file that HOLDS a credential (content-judged: a JSON/dotenv key matching environment.json's secret_key_pattern with a live value) - presence only via `node guard-secret-value.js --presence <file> [KEY ...]`
-  'guard-secret-value.js::Bash::'                 # same gate on Bash: cat/jq/grep/an inline node read of such a file, `echo $SECRET`, a bare `env`, or a credential-shaped literal in the command - a prose rule that failed live (a JSON.stringify(s.env) printed a token)
+  'guard-secret-value.js::Bash|PowerShell::'                 # same gate on Bash: cat/jq/grep/an inline node read of such a file, `echo $SECRET`, a bare `env`, or a credential-shaped literal in the command - a prose rule that failed live (a JSON.stringify(s.env) printed a token)
   'guard-secret-value.js::Grep::'                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
-  'guard-ungated-commit.js::Bash::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
+  'guard-ungated-commit.js::Bash|PowerShell::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
   'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
   'guard-stop-contract.js::AskUserQuestion::'  # PreToolUse AskUserQuestion: INJECT context into the ask being built - stale scope (an option naming repo/remote/job state with no fresh read this turn), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for a flow whose every stop is a tool call, a live credential, and the house voice in the ask's own text. Presence only, never denies
   'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   'guard-fresh-session-start.js::@UserPromptSubmit::'   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
   'guard-fresh-session-start.js::@SessionStart:compact::'  # the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too
-  'guard-cross-project-write.js::Write|Edit|NotebookEdit|Bash::'  # one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card
+  'guard-cross-project-write.js::Write|Edit|NotebookEdit|Bash|PowerShell::'  # one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@SessionStart::'     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
   'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
@@ -2030,10 +2068,16 @@ function Set-HookSettings {
     }
   }
   # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
-  # still exactly that seed - a value the user set by hand is theirs and is never touched. The list
-  # is EMPTY today (CLAUDE_STACK_CONTEXT_WINDOW was the only entry and the key is retired); keep the
-  # shape, and keep any entry identical in both installer twins and in meta/migrations.json.
-  foreach ($reset in @()) {
+  # still exactly that seed - a value the user set by hand is theirs and is never touched. Keep any
+  # entry identical in both installer twins and in meta/migrations.json.
+  # CLAUDE_STACK_FRESH_SESSION_DEFAULT: seeded 250000 until 0.2.67. That trigger sat ABOVE a 200k
+  # window entirely, so on the tier this DEFAULT case exists for - a window that cannot be read at
+  # all - the gate could never fire and silently did not exist. The seed is absent-only and
+  # ctxThreshold() clamps a too-large trigger only when the window is KNOWN, which by definition it
+  # is not here, so nothing else will ever correct an install carrying it (measured 2026-09-12: 3 of
+  # 3 current-shape installs still on 250000).
+  foreach ($reset in @(
+      @{ key = 'CLAUDE_STACK_FRESH_SESSION_DEFAULT'; seed = '250000'; to = '180000' })) {
     if ($data.env.PSObject.Properties[$reset.key] -and [string]$data.env.($reset.key) -eq $reset.seed) {
       $data.env.($reset.key) = $reset.to
       $changed = $true
@@ -2140,6 +2184,17 @@ $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'an
 # the stack still SHIPS but this project no longer needs is a different question - that is
 # /claude-stack:validate's whole-stack-absent pass, not a retirement.
 $RetiredMcps = @()
+# Plugins this stack no longer ships AT ALL. Empty today, and as with $RetiredMcps it is the
+# MECHANISM that matters: skills, agents, rules, hooks and MCPs each have a retired list and plugins
+# had none, so a plugin the stack dropped stayed installed AND ENABLED on every existing machine
+# forever - the same re-injection cost class the MCP list was created to fix, and worse, because a
+# plugin can ship a SessionStart hook that injects thousands of characters into every session and
+# every subagent (measured 2026-09-12: two curated plugins injecting 8,337 chars per session, one of
+# them 5,229 more per subagent, none of it visible to `claude plugin details`, to the always-on lint
+# budget, or to /claude-stack:status). Entries are the bare plugin NAME, without the @marketplace
+# suffix the $Plugins block carries. A plugin the stack still SHIPS but this project does not need is
+# a different question - that is /claude-stack:validate's whole-stack-absent pass, not a retirement.
+$RetiredPlugins = @()
 
 function Remove-Skills {
   # rm the manifest skills under the scope dest, so update starts from a clean slate.
@@ -2226,10 +2281,26 @@ function Get-InstalledPluginMap {
   return $map
 }
 
+function Remove-RetiredPlugins {
+  # UPDATE: uninstall the known retired plugin names ($RetiredPlugins above) at the scope the
+  # listing says each is installed at - `claude plugin uninstall --scope <other>` is the same silent
+  # no-op the update path already works around.
+  param($Listing)
+  foreach ($name in $RetiredPlugins) {
+    if (-not ($Listing.ContainsKey($name))) { continue }          # not installed here - nothing to do
+    $pScope = if ($Listing[$name].scope) { $Listing[$name].scope } else { $ClaudeScope }
+    try {
+      & claude plugin uninstall $name --scope $pScope -y 2>$null | Out-Null
+      Log "  plugin pruned (retired upstream) [$pScope]: $name"
+    } catch {}
+  }
+}
+
 function Update-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   try { & claude plugin marketplace update 2>$null } catch {}   # refresh marketplaces first
   $before = Get-InstalledPluginMap
+  Remove-RetiredPlugins -Listing $before
   foreach ($p in $Plugins) {
     $name = ($p -split '@')[0]
     # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a

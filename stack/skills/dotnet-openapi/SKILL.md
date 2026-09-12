@@ -1,6 +1,6 @@
 ---
 name: dotnet-openapi
-description: "Use before adding API docs, editing the generated spec, declaring a security scheme, or standing up a docs UI on an ASP.NET Core service. Covers how a service emits a correct, generated OpenAPI document and serves a browsable UI from it: picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Skip it for non-HTTP code and internal APIs with no published contract."
+description: "Use before adding API docs, editing the generated spec, declaring a security scheme, or standing up a Swagger / Scalar docs UI on an ASP.NET Core service. Covers how a service emits a correct, generated OpenAPI document and serves a browsable UI from it: picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Skip it for non-HTTP code and internal APIs with no published contract."
 ---
 
 # ASP.NET Core OpenAPI - the document and the docs UI
@@ -44,7 +44,7 @@ A document is only as good as the type information it can see, and most thin spe
 
 - Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the house minimal-API default, so it usually comes for free.
 - Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails`, owned by the skill covering HTTP error handling; the metadata here just advertises which statuses appear.
-- Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in the project file and write XML doc comments (`<summary>`, `<param>`, `<returns>`) so operation summaries and parameter descriptions land in the spec. The XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
+- Write XML doc comments (`<summary>`, `<param>`, `<returns>`) and set `<GenerateDocumentationFile>true</GenerateDocumentationFile>`, then wire the generator to read them - the property alone only writes the XML file, it does not put anything in the spec. On Swashbuckle (.NET 8) the wiring is `o.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"))` inside `AddSwaggerGen`. The built-in `Microsoft.AspNetCore.OpenApi` generator reads XML comments from .NET 10; on .NET 9 the file is produced and ignored, so the summaries never reach the document. Confirm the current gate through `context7` before relying on it. Either way the XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
 
 ## Shape the document with transformers
 
@@ -52,7 +52,7 @@ When the generated spec needs adjusting - a server URL, a global response, consi
 
 - **Built-in (.NET 9+):** three composable hooks. `IOpenApiDocumentTransformer` (or `.AddDocumentTransformer(...)`) for whole-document edits like info, servers, and security; operation transformers via `.AddOperationTransformer(...)` for per-endpoint tags and shared responses; schema transformers for type-level adjustments. They run in registration order and stack cleanly.
 - **Swashbuckle (.NET 8):** the same three levels are `IDocumentFilter`, `IOperationFilter`, and `ISchemaFilter`, registered inside `AddSwaggerGen(o => o.DocumentFilter<...>())`.
-- The per-endpoint `.WithOpenApi(...)` modifier is deprecated under the built-in generator - move that logic into an operation transformer so the customization lives in one place instead of scattered across route registrations.
+- The per-endpoint `.WithOpenApi(...)` modifier is deprecated from .NET 10 under the built-in generator (`ASPDEPR002`); it still works on .NET 9. Move that logic into an operation transformer so the customization lives in one place instead of scattered across route registrations.
 
 ## Declare security schemes in the document
 
@@ -75,6 +75,10 @@ When the API carries more than one version, or you want public and internal surf
 - Add the `Scalar.AspNetCore` package and call `app.MapScalarApiReference()` (UI at `/scalar`) pointing at the document endpoint. Scalar runs on .NET 8 and up, so it's the recommended UI regardless of generator. The floor fallback, when a project is committed to the Swashbuckle stack and wants the familiar surface, is Swagger UI via `UseSwaggerUI()`.
 - Gate the UI: either wrap it in `if (app.Environment.IsDevelopment())` or attach `.RequireAuthorization()` in production. A docs page is a map of the internal surface - parameter names, status codes, schema shapes - and shipping it open invites scanning.
 - Theme with `.WithTheme(...)`. For convenience during local testing, prefill auth with `AddHttpAuthentication`, but only ever with a throwaway dev token - the UI renders credentials into the browser, so a real or production token there is leaked the moment the page loads. For a sensitive API, do not route the UI's calls through a request proxy - leave `.WithProxyUrl(...)` unset (the Aspire Scalar integration enables its own proxy by default; `DisableDefaultProxy()` turns it off there) - a proxy relays every call through another host.
+
+## Prove the document
+
+A generator that is wired is not a document that is right. Run the app, fetch `/openapi/v1.json` (or the Swashbuckle path), and quote two results: the count of `paths` against the endpoint list you expected, and one operation's `summary` and response schema. An empty `summary` block is the XML gate above not being wired; a missing path is an endpoint the generator cannot see.
 
 ## Anti-patterns
 

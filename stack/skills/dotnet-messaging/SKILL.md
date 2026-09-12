@@ -1,6 +1,6 @@
 ---
 name: dotnet-messaging
-description: "Use when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing in .NET - or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Conventions for broker-backed, event-driven communication between modules and services using Wolverine (recommended) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Do NOT use for in-process reactive streams or for synchronous request/response over HTTP."
+description: "Use when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing in .NET - or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Conventions for broker-backed, event-driven communication between modules and services using Wolverine (recommended) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Do NOT use for in-process reactive streams or for synchronous request/response over HTTP; the consumer's host process itself is the hosted-worker skill's."
 ---
 
 # .NET messaging - event-driven communication
@@ -96,6 +96,6 @@ public static class OrderPlacedHandler
 - `.AutoProvision()` is fine for declaring queues and exchanges on startup in dev. Auto-purge is dev-only; never wipe a queue outside local. Do not auto-provision blindly into a shared environment where topology is owned by infrastructure.
 - Run the broker as an Aspire resource for local orchestration when the project uses Aspire, per the skill covering Aspire orchestration - it gives you the container, the connection wiring, and the dashboard without a hand-managed `docker run`.
 
-## Anti-patterns
+## Prove the consumer is idempotent
 
-Every one is the inverse of a rule stated above with its reason - non-idempotent consumers (§Idempotent consumers), unbounded retries with no dead-letter path (§Bounded retries), fat or mutable contracts (§Message contracts), and hardcoded broker connection strings (§Transports). Re-read the section rather than the label when one of them shows up in review.
+At-least-once delivery means the second copy is not hypothetical. Deliver the same message twice - re-publish it, or replay it from the dead-letter queue - and assert one effect: one row, one email, one balance change. Quote the count. A consumer whose duplicate has never been delivered in a test is a consumer nobody has proved idempotent, whatever the deduplication code says.

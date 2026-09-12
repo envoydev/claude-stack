@@ -1,6 +1,6 @@
 ---
 name: project-solve-cross-task
-description: "The entry-point router for multi-agent engineering work - scope the task IN-SESSION (the generated awareness rules + a bounded serena pass), ask session-or-agents up front (an invocation naming the mode is the answer) and route to the smallest safe execution mode: single-chat, one implementer, a single-stack design-build-verify trio, or a producer-first cross-domain run where the producer designer's interface IS the contract and the integration-reviewer gates the assembled feature. Triggers on how should I build or route this work, plan the agents for this, this spans backend and frontend, or investigate-and-fix a bug across the stack; name the stack ('frontend only', 'just the API') to pin routing to it. It scopes and routes - never designs or writes code - and runs in the MAIN session only: a dispatched seat never re-fires it. NOT for greenfield (project-build-from-scratch) or a deliberate architecture re-capture (project-architecture-analyzer)."
+description: "Use when work spans backend and frontend, or when you want the agent seats routed for a task - the entry-point router for multi-agent engineering work. It scopes the task IN-SESSION (the generated awareness rules + a bounded serena pass), asks session-or-agents up front, and routes to the smallest safe execution mode: single-chat, one implementer, a single-stack design-build-verify trio, or a producer-first cross-domain run where the producer's interface IS the contract and the integration-reviewer gates the assembly. Also triggers on plan the agents for this, how should I route this work, or investigate-and-fix a bug across the stack; name the stack ('frontend only', 'just the API') to pin routing to it. It scopes and routes - never designs or writes code - and runs in the MAIN session only. NOT for greenfield (project-build-from-scratch) or a deliberate architecture re-capture (project-architecture-analyzer)."
 disable-model-invocation: true
 ---
 
@@ -31,7 +31,7 @@ Before you scope a feature or dispatch any designer, settle whether the requirem
 Scoping is yours, not a seat's. Establish the task's true blast radius from what is already in context, plus a bounded look at the code:
 
 1. **Read what is pre-loaded.** The generated awareness rules carry the map: `baseline-project-architecture` (project type, style, modules) and `baseline-project-related-context` (the sibling entries with `relation` and `seam` - the dependency directions); follow into `<docs-path>/architecture/ARCHITECTURE.md` for the area the task names.
-2. **Locate, bounded.** Verify the touched symbols and their one-level callers with serena - **hard cap: 2 locating passes**; past that, dispatch architecture-analyzer (sonnet/low) for a digest instead of reading on - the cheap seat absorbs the reads, you keep the judgment, and the orchestrator context never holds a whole-module read.
+2. **Locate, bounded.** Verify the touched symbols and their one-level callers with serena - **hard cap: 2 locating passes**; past that, dispatch architecture-analyzer (sonnet/medium) for a digest instead of reading on - the cheap seat absorbs the reads, you keep the judgment, and the orchestrator context never holds a whole-module read.
 3. **Walk the seam catalog.** Read `references/seam-catalog.md` - the stack-keyed traps that turn a 'local' task cross-domain (a shared DTO edit, a migration, an app-wide singleton service, an event contract); a discovered shared-interface edit is itself the cross-domain signal.
 4. **State the verdict:** the affected domains, the dependency direction (who produces, who consumes - from the related-context entries or the map), the risks the plan must absorb, and open questions (back to the clarify gate). The verdict CARRIES the seam check - one line naming the catalog traps the task touches, or 'no catalog trap applies - <why>'; a verdict without that line skipped step 3, not summarized it.
 
@@ -43,7 +43,7 @@ When dispatch is available, the scoping verdict IS the mode ask - one atomic ste
 - **A mode already named IS the answer.** An invocation that already names the mode (an agents opt-in, an explicit 'inline') is never re-asked - record it and continue. No dispatch capability is the current session without asking.
 - **Cross-domain carries its own recommendation.** The dispatched producer-first recommendation goes inside the ask; the user's pick stands.
 - **The recommended slot follows the session's state, not habit.** The smallest safe mode normally; past a chained-run trigger (a prior plan approval, APPROVAL stamp, or cycle/run ledger from THIS session is in context - the finished cycle's carried context compounds into every dispatch and re-send) or the install's fresh-session trigger for its context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window), the fresh-session hand-off TAKES the recommended slot - and every ask this skill fires past that trigger carries the fresh-session option (the stop contract's construction check - this skill's job per ask; the hook backs it only at a clean close).
-- **Read the routing policy before you pick.** Dispatch is explicit-only house-wide; the seat pins, the 3-implementer fan-out cap, the decision ladder and the escalation guardrails are `references/execution-modes.md` - Read it before you pick, then pick the smallest mode:
+- **Read the routing policy before you pick.** Dispatch is explicit-only house-wide; the seat pins, the 3-implementer fan-out cap, the decision ladder and the escalation guardrails are `references/execution-modes.md` - Read it before you pick, then pick the smallest mode. Read `references/model-routing.md` with it when the pick lands on a dispatching mode: task class and risk -> the seat and effort to dispatch, the frontmatter pins as the defaults, and when to escalate:
 
 | Mode | Flow |
 |---|---|
@@ -98,7 +98,7 @@ Keep a durable ledger - a short file, not just in-context notes - so a mid-run c
 
 ## Policies - the shared home every seat references
 
-Each reference named at its step above is that policy's shared home - route seats to it, never restate it in a brief. `references/model-routing.md` (task class and risk -> the seat and effort to dispatch; the frontmatter pins are the defaults, it says when to escalate) is the one no step names.
+Each reference named at its step above is that policy's shared home - route seats to it, never restate it in a brief. `references/model-routing.md` is named at the mode pick, and its per-task stamps are read again at fan-out.
 
 ## Rules
 

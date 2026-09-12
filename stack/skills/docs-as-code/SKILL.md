@@ -1,6 +1,6 @@
 ---
 name: docs-as-code
-description: "Load before writing or reviewing ANY documentation artifact of these types, whatever the subject - a sequence, ER or C4 diagram in Markdown, an ADR or decision-log entry, or a diagram-tooling choice (Mermaid vs DBML vs Structurizr). Authoring conventions for documentation as versioned text artifacts - the docs-as-code practice: Mermaid diagrams, decision records (ADR - Nygard + MADR 4), and C4 model views. Routes per doc type to references/. Triggers on sequence diagram, ER diagram, entity relationship, ADR, decision record, decision log, C4, container diagram, context diagram, docs-as-code - and on mermaid for those diagram types (other Mermaid forms get only the generic ground rules here). NOT the repo's committed architecture capture (`project-architecture-analyzer` owns <docs-path>/architecture/), not Markdown prose style, and not database design itself."
+description: "Load before writing or reviewing ANY documentation artifact of these types, whatever the subject - a sequence, ER or C4 diagram in Markdown, an ADR or decision-log entry, or a diagram-tooling choice (Mermaid vs DBML vs Structurizr). NOT the repo's committed architecture capture (`project-architecture-analyzer` owns <docs-path>/architecture/), not Markdown prose style, and not database design itself. Authoring conventions for documentation as versioned text - Mermaid diagrams, decision records (ADR - Nygard + MADR 4) and C4 model views, routed per doc type to references/."
 ---
 
 # Docs as Code - documentation artifacts as versioned text
@@ -30,8 +30,10 @@ the ADR names the why, the diagram shows the outcome, each links the other.
 
 - Fence with the language id exactly `mermaid` - renders natively on GitHub, GitLab, Azure
   DevOps, and the VS Code preview, no plugins. Standalone diagrams are `.mmd` files.
-- Renderers lag the library (GitLab and wiki plugins run older majors) - preview on mermaid.live,
-  then validate on the actual target platform before relying on newer syntax.
+- Renderers lag the library (GitLab and wiki plugins run older majors). Before relying on newer
+  syntax: (1) preview on mermaid.live, (2) render on the actual target platform, (3) quote the
+  result of that render - or say plainly that it was not rendered. A diagram that has only ever
+  been previewed is UNVERIFIED on the platform it ships to.
 - Never hardcode a theme in an init directive - it breaks the reader's dark/light mode on GitHub.
   Prefer YAML frontmatter (`title:` + `config:`) over the deprecated init directive.
 - Accessibility: `accTitle:` + `accDescr:` inside the diagram, plus one plain-text sentence in

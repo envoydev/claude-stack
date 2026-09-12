@@ -1,6 +1,6 @@
 ---
 name: project-related-context
-description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc under `<docs-path>/related-context/`, the one home for all sibling-repo docs. Re-run to refresh - entries upserted per passed sibling, unlisted entries kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (they belong in the MCP that holds cross-project recall, where one is registered)."
+description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc under `<docs-path>/related-context/`. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (they belong in the MCP that holds cross-project recall, where one is registered)."
 disable-model-invocation: true
 ---
 
@@ -36,71 +36,30 @@ Dispatch all seats in a single message. Each dispatch prompt carries: the HOST p
 Create `<docs-path>/related-context/` when absent. Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting at the docs root itself (the pre-folder home) is MOVED into the folder first and reconciled there - never left behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a quick reference. Shape:
 
 1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the MCP that holds cross-project recall, never here (none registered: they stay session-local). Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
-2. **The entries** - one `related_projects:` YAML block, the house schema per sibling:
-```yaml
-related_projects:
-  - name:     <sibling name>
-    location: <path or git URL>
-    relation: consumes | provides-to | peer | depends-on | embeds
-    first_read: [<docs-path-from-sibling-root-to-read-before-working-a-seam>]
-    seam:     <the shared surface a change here can break there - API, package, schema>
-    captured: <branch>@<short-sha>, <date>
-```
-3. **Per sibling** - a short evidence note under its own heading: what grounds the relation and seam (the located files, both sides), plus any uncertainty or UNVERIFIED marker carried over verbatim. Keep each note lean - orientation, not an audit.
+2. **The entries** - one `related_projects:` YAML block, the house schema per sibling (name,
+   location, relation, first_read, seam, and its own `captured:` stamp).
+3. **Per sibling** - a short evidence note under its own heading: what grounds the relation and
+   seam (the located files, both sides), plus any uncertainty or UNVERIFIED marker carried over
+   verbatim. Keep each note lean - orientation, not an audit.
 
-A filled entry looks like:
-
-```yaml
-related_projects:
-  - name:     acme-billing-api
-    location: ../acme-billing-api
-    relation: provides-to
-    first_read: [docs/architecture/ARCHITECTURE.md]
-    seam:     the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
-    captured: develop@a1b2c3d, 2026-07-24
-```
-
-Each entry carries its own `captured: <branch>@<short-sha>, <date>` - entries are upserted at
-different times, so provenance is PER ENTRY here; the doc-wide stamp from point 1 only records
-the LAST run, never stands in for an entry's own. It matters most for a relationship
-born on a feature branch (the seam code exists only there): on any other branch that entry is a
-claim from elsewhere - verify the seam exists before relying on it. Re-running the capture for
-that sibling after the branch merges refreshes the entry with the base branch's stamp.
+`references/artifact-shapes.md` carries both shapes verbatim - the entry schema with a filled
+example, and the generated rule below - plus the per-entry provenance rule that makes a
+branch-born seam readable. Read it before writing either file.
 
 ### 4. RULE - write .claude/rules/baseline-project-related-context.md
 The awareness tier, generated from the same entries - a valid PATHLESS rule (frontmatter with a `description:` and NO `paths:`, so it is always-on). Keep it to the awareness minimum; describe edges, not roles:
 
-```markdown
----
-description: Related projects awareness - generated by /project-related-context; edit via a re-run, not by hand.
----
-
-# Related projects
-
-This repo is one of several that make up a product. The siblings, the edges that bind them:
-
-<related_projects yaml block - name / location / relation / seam per sibling (NO first_read - that
-detail is the doc's job); an entry captured on a branch OTHER than this repo's base branch gets one
-trailing marker `(captured on <branch>)` - dropped when a base-branch re-capture refreshes it - so
-a session on another branch knows that edge may not exist in its code>
-
-- Everything past awareness - first_read, the evidence behind each seam - lives in
-  `<docs-path>/related-context/PROJECT-RELATED-CONTEXT.md`; read it when a task touches a seam.
-  The same `<docs-path>/related-context/` folder holds every other sibling-repo doc (cross-repo
-  plans, change requests, run recipes) - check it before re-deriving sibling state, and file
-  new sibling-repo docs there, never elsewhere.
-- serena binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
-  context rooted there.
-- Dynamic cross-repo findings go to the MCP that holds cross-project recall, never a committed
-  file; with no such server registered they stay session-local.
-```
+The body is the copy target in `references/artifact-shapes.md` - take it verbatim and fill only
+the entry block: name / location / relation / seam per sibling, NO `first_read` (that detail is
+the doc's job), and the trailing `(captured on <branch>)` marker where an entry was captured off
+the base branch.
 
 Create `.claude/rules/` when absent. The rule is regenerate-only: entries come from the reports, the three closing bullets are fixed - never hand-edit the copy, never let the rule grow evidence or first_read detail (always-on tokens are paid every session and every subagent; the fat stays in the doc).
 
 **Re-run is an upsert, keyed by `location`, in BOTH files.** A sibling passed this run: its entry (and doc note) rewritten from the fresh report. An existing entry whose location was NOT passed: kept exactly as-is (removal is a manual edit - report which entries you left untouched so stale ones are visible). Both files converge; they never accumulate duplicates, and their entry sets never drift apart - the same run writes both.
 
 ### 5. REPORT
-Confirm both artifacts (rule created/refreshed + entry count; doc created/refreshed + entries rewritten vs kept; any location skipped as invalid or UNVERIFIED). State where each landed - machine-local under the default layout, shipped with the repo only when the project set a committed docs root. No re-paste of either body - point to the files.
+Verify before reporting: the generated rule's frontmatter parses and carries no `paths:` key, and every `first_read` path in the doc resolves in the sibling it names - a first_read never lists a doc that was not verified to exist. Then confirm both artifacts (rule created/refreshed + entry count; doc created/refreshed + entries rewritten vs kept; any location skipped as invalid or UNVERIFIED). State where each landed - machine-local under the default layout, shipped with the repo only when the project set a committed docs root. No re-paste of either body - point to the files.
 
 ## Handing work to a sibling project
 

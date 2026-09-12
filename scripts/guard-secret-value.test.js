@@ -556,3 +556,20 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
     fs.rmSync(receipt, { force: true });
   }
 });
+
+// The PowerShell route. This guard matched `Bash` alone until 2026-09-12; a hook audit measured 122
+// PowerShell tool calls in a 115-session corpus, carrying `tool_input.command` exactly as Bash does.
+// The three shell verdicts are pinned again under the second tool name: the shape is the same, so a
+// widened matcher that changed no verdict would be the bug.
+test('guard-secret-value: the PowerShell tool is the same shell route', () => {
+  const f = fixtures();
+  const pwsh = (command, env) => verdict(run({ tool_name: 'PowerShell', tool_input: { command }, session_id: 'suite' }, env));
+  const pwshOut = (command, env) => updatedCommand(run({ tool_name: 'PowerShell', tool_input: { command }, session_id: 'suite' }, env));
+  assert.equal(pwsh(`cat ${f.secret}`), REWRITE, 'a dump of a credential-bearing file is redacted, not blocked');
+  const out = pwshOut(`cat ${f.secret}`);
+  assert.ok(out && out.includes('--redacted'), 'the rewrite routes through the redacted view');
+  assert.ok(!String(out).includes(FAKE_TOKEN), 'the value never appears in the rewritten command');
+  assert.equal(pwsh('echo $SENTRY_ACCESS_TOKEN'), REWRITE, 'an echo of a credential variable becomes its presence line');
+  assert.equal(pwsh(`cat ${f.clean}`), 0, 'a file with no credential passes untouched');
+  assert.equal(pwsh(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`), 2, 'a credential-shaped literal in the command is blocked');
+});

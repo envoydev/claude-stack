@@ -233,7 +233,15 @@ test('every shipped plugin is reachable from a seed closure - validate cannot fl
     // security gate, and a validate run reported nothing missing while it was not installed.
     const reachable = new Set(computeClosure(graph, recs.always).plugins || []);
     for (const sel of Object.values(recs.stacks)) for (const p of computeClosure(graph, sel).plugins || []) reachable.add(p);
-    for (const name of shipped) assert.ok(reachable.has(name), `${name} is reachable from a seed closure`);
+
+    // The `general` list is the DELIBERATE third route, the same treatment the memory MCP got at
+    // zero measured use: offered in the plugins table, never pre-selected, and never flagged
+    // missing OR redundant by validate (stack-select.js skips a general name in both directions).
+    // So a general plugin is not invisible by accident - it is a decision, and it has to be in
+    // this list to be one. claude-md-management moved here at 1 use in 115 sessions.
+    const general = new Set((recs.general || {}).plugins || []);
+    for (const name of general) assert.ok(shipped.includes(name), `${name} is on the general list but the installer does not ship it`);
+    for (const name of shipped) assert.ok(reachable.has(name) || general.has(name), `${name} is reachable from a seed closure, or deliberately on the general opt-in list`);
 });
 
 test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {

@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: "Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing questions in checked .js files - the TypeScript type layer over the `javascript` baseline. Lean on the compiler (full strict plus the extra safety flags), model data with types, narrow unknown instead of any, brand look-alike primitives, and treat plain JS as checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load `javascript` with it, the base-language layer this stacks on; in an Angular project also load the Angular framework-conventions skill, when your skill list has one. Not for base-language rules alone (javascript) or C#/.NET."
+description: Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing questions in checked .js files - the TypeScript type layer over the `javascript` baseline. Lean on the compiler (full strict plus the extra safety flags), model data with types, narrow unknown instead of any, brand look-alike primitives, and treat plain JS as checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load `javascript` with it, the base-language layer this stacks on; in an Angular project also load the Angular framework-conventions skill, when your skill list has one - Angular template type-checking and component typing belong there, not here. Not for base-language rules alone (javascript) or C#/.NET.
 ---
 
 # TypeScript conventions - the type layer

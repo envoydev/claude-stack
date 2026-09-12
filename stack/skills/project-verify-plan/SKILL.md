@@ -1,6 +1,6 @@
 ---
 name: project-verify-plan
-description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (which creates the plan) and precedes project-verify-code (which reviews the built code). Trigger on review this plan, is this design sound, does the plan miss anything, before I build. NOT the built-code review - that is project-verify-code, after the build - and not writing the plan itself.
+description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Trigger on review this plan, is this design sound, does the plan miss anything, before I build. NOT the built-code review - that is project-verify-code, after the build - and not writing the plan itself.
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build
@@ -28,12 +28,10 @@ Load the plan's target stack skill FIRST, so you check against the right trap li
    capability it assumes a tool or seat has. Check it - `find_symbol`, a read of the config, a
    context7 lookup for the external ones - and mark anything you could not confirm `unverified` in
    the finding, never in the plan's prose as fact. This pass exists because asserted existence is
-   the most expensive defect class in the corpus: an invented CSS token plus two wrong test
-   predictions cost 2,663,771 tokens to repair, and a false capability claim propagated through a
-   DURABLE doc over six escalating hops (790,759 tokens of recovery) after being certified twice by
-   a report that never checked it.
+   the most expensive defect class in the corpus - two repairs measured in millions of tokens,
+   written up in `references/evidence.md`, both from a name that was asserted rather than looked up.
 4. **Edges + safety.** Boundary, empty, and error cases are named, not assumed. Any auth / migration-order / data-loss / concurrency surface is called out WITH its safeguard. Silence on a safety-critical edge is a finding.
-5. **Soundness.** The approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement - and its seams pass the design rules `project-solution-design` decides against: a task boundary that splits one axis of change across two tasks, an interface with one implementation and no credible second, a pattern with no trigger yet in the code, a task whose failure exits name no `log_points` (a silent failure designed in) - each a finding against the PLAN, with the breakage named, never a letter of SOLID alone.
+5. **Soundness.** A plan that is really a BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major - is a finding of its own before anything else is judged: that is the staged upgrade flow (`project-version-upgrade`), with a green gate after every stage, not a feature plan. Otherwise: the approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement - and its seams pass the design rules `project-solution-design` decides against: a task boundary that splits one axis of change across two tasks, an interface with one implementation and no credible second, a pattern with no trigger yet in the code, a task whose failure exits name no `log_points` (a silent failure designed in) - each a finding against the PLAN, with the breakage named, never a letter of SOLID alone.
 
 ## Output
 

@@ -13,7 +13,6 @@ The files that configure every project in a solution at once - the layout, `.sln
 - Analyzers, `TreatWarningsAsErrors`, `.editorconfig`, the CI quality gate -> `dotnet-code-quality`. Do not put these in `Directory.Build.props` here.
 - CI workflows, container / `dotnet pack` packaging, SourceLink -> the CI-and-deploy skill.
 - The dotnet-ef tool's migration workflow (add / apply migrations) -> `dotnet-migrate`.
-- Every other .NET work area -> the `dotnet` router (parent).
 
 ## Canonical layout
 

@@ -4,6 +4,7 @@ Checked against the Claude Code plugins reference and marketplaces pages on 2026
 a field through context7 before relying on a detail that is not in the body of this file.
 
 Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#marketplacejson) -
+[Loading and precedence](#loading-and-precedence) -
 [Source kinds](#source-kinds) - [Reserved names and governance](#reserved-names-and-governance) -
 [Where things live on disk](#where-things-live-on-disk) - [CLI](#cli)
 
@@ -81,6 +82,29 @@ Required: `name`, `owner.name`, and per plugin `name` + `source`. `metadata.plug
 removed. A setting still naming the old name is rewritten to the new one with a one-line notice.
 Never set `version` in both plugin.json and the marketplace entry - plugin.json wins silently.
 
+An ENTRY may carry any field of the plugin manifest schema alongside the marketplace-specific ones,
+so it can declare `lspServers`, `mcpServers`, `hooks`, `commands`, `agents` or `skills` itself. That
+is how a published plugin can hold nothing but a LICENSE and a README - the entry IS the plugin.
+`strict` (default `true`) decides who owns the definition: leave it true and the package's own
+`plugin.json` is authoritative; set it `false` and the ENTRY becomes the entire definition, at which
+point a package that also declares components is a load-failing conflict. So a component-carrying
+entry ships either an empty package or `strict: false`, never both halves declaring.
+
+## Loading and precedence
+
+- A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hooks and plugin
+  MCP / LSP config without a restart (an MCP change waits for an interactive terminal).
+- `claude --plugin-dir <path>` loads a local plugin for one session and OVERRIDES an installed
+  plugin of the same name (a managed force-enabled or force-disabled plugin excepted). A `.zip`
+  works too, and a folder of plugins needs Claude Code 2.1.265 or later. This is the test route.
+- A project or user `.claude/agents/<name>.md` overrides a plugin agent of the same name; plugin
+  skills COEXIST with local ones because they are namespaced.
+- A plugin agent cannot declare `hooks`, `mcpServers` or `permissionMode` - those belong to the
+  plugin, not to one seat.
+- A plugin's `settings.json` honours only `agent` and `subagentStatusLine`; permissions, env and
+  hook wiring do not ship through it.
+- Boolean frontmatter accepts `yes`/`no`/`on`/`off`/`1`/`0`/`true`/`false`.
+
 ## Source kinds
 
 | `source` | Shape | Pin |
@@ -123,7 +147,9 @@ Never set `version` in both plugin.json and the marketplace entry - plugin.json 
 claude plugin init [dir]                      # scaffold a manifest + folders
 claude plugin validate <dir> [--strict]       # schema + paths; --strict fails on warnings
 claude plugin install <name>@<marketplace>    # also: --scope user|project|local
-claude plugin update|uninstall|enable|disable|prune|list [--json]
+claude plugin update|uninstall|enable|disable|prune
+claude plugin list [--json [--available]]       # --available lists marketplace plugins too
+claude plugin tag [path]                      # cut a release git tag from the manifest version
 claude plugin details <name>@<marketplace>    # installed copy: components + always-on / on-invoke token cost
 claude --plugin-dir <dir> plugin details <name>  # the same for a working tree (commands are not inventoried)
 claude plugin eval <dir> ...                  # behavioural suite (evals.md)

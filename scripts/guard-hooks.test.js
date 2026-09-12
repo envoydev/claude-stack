@@ -207,14 +207,39 @@ test('guard-stop-contract: one turn split across rows sharing a message.id is ju
 test('guard-fresh-session-start: gates orchestration runs only, and only past the threshold', () => {
   // 450k PROVES the 1M tier (no request holds more input tokens than the window), which resolves
   // the window and puts it past that tier's 400k trigger. 180k would prove nothing and make no offer.
-  const hot = transcript('hot', ctxRows('m6', 450000));
+  // One transcript per gated assertion: the size offer is made once per SESSION and then honoured
+  // until the context grows 1.5x, so replaying three names against one transcript would measure the
+  // re-arm, not the gate. Three sessions, each starting an orchestration run on carried history.
+  const hot = (n) => transcript(`hot-${n}`, ctxRows(`m6-${n}`, 450000));
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
-  assert.equal(call('project-quality-loop', hot), 2, 'orchestration run on carried history');
-  assert.equal(call('claude-stack:project-quality-loop', hot), 2, 'namespaced form');
-  assert.equal(call('project-diagnose-failure', hot), 2, 'the gated diagnosis flow chained onto carried history');
+  assert.equal(call('project-quality-loop', hot('a')), 2, 'orchestration run on carried history');
+  assert.equal(call('claude-stack:project-quality-loop', hot('b')), 2, 'namespaced form');
+  assert.equal(call('project-diagnose-failure', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
   assert.equal(call('project-quality-loop', cold), 0, 'under the threshold');
-  assert.equal(call('csharp', hot), 0, 'an ordinary skill is never gated');
+  assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
+});
+
+test('guard-fresh-session-start: the size offer is answerable - the retry passes, growth re-arms it', () => {
+  // The denial mandates an AskUserQuestion whose second answer is 'run it here anyway with the cost
+  // stated', and until 0.2.74 nothing honoured that answer: no receipt, no state, no re-arm, so the
+  // retry re-blocked on the identical call (measured 2026-09-12: replayed twice, exit 2 both times).
+  // A guard that denies the route its own denial offers is the failure DISCARD-ALLOW was bought for
+  // on the rm guard; the sibling Stop-route offer already re-arms on 1.5x growth, so this does too.
+  const logDir = fs.mkdtempSync(path.join(TMP, 'fresh-rearm-'));
+  const env = { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } };
+  // ONE transcript throughout: the offer is remembered per session, so growth has to be written
+  // into the same file a real session would grow.
+  const tp = transcript('rearm', ctxRows('rearm', 450000));
+  const grow = (ctx) => fs.writeFileSync(tp, ctxRows('rearm', ctx).map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const call = () => runIn('guard-fresh-session-start.js',
+    { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp }, env).status;
+  assert.equal(call(), 2, 'the offer is made once');
+  assert.equal(call(), 0, 'the identical retry passes - the answer is honoured');
+  grow(500000);
+  assert.equal(call(), 0, 'still inside 1.5x of the offered context');
+  grow(700000);
+  assert.equal(call(), 2, 'past 1.5x growth the number changed, so the question is new');
 });
 
 // The trigger is an absolute token count PER WINDOW TIER, one environment variable each. The
@@ -1386,6 +1411,36 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   assert.equal(blocked.status, 2, 'a whole-file dump of a large .js file is still blocked');
   assert.equal(ctxOf(blocked), '', 'and announces nothing');
   assert.match(ctxOf(call(`cp x.js ${BIG}`, s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
+  // The Angular row is the twin of angular-conventions.md's `paths:`, and that rule matches
+  // `**/src/app/**/*.ts` because the Angular style guide now recommends suffix-less names. Matching
+  // only the .component/.service/... suffixes announced a `src/app/user-profile.ts` write as
+  // typescript-conventions.md alone, so the Angular rule was unreachable from the shell route for
+  // every file written the current way.
+  const s6 = `m5-${Math.random().toString(36).slice(2)}`;
+  const ngCtx = ctxOf(call("sed -i '' 's/a/b/' src/app/user-profile.ts", s6));
+  assert.match(ngCtx, /angular-conventions\.md/, 'a suffix-less file under src/app names the Angular rule');
+  assert.match(ngCtx, /typescript-conventions\.md/, '... and the TypeScript baseline beside it');
+  const s7 = `m5-${Math.random().toString(36).slice(2)}`;
+  const plainTs = ctxOf(call("sed -i '' 's/a/b/' tools/build/util.ts", s7));
+  assert.doesNotMatch(plainTs, /angular-conventions\.md/, 'a .ts file outside src/app or src/lib is not Angular');
+  assert.match(plainTs, /typescript-conventions\.md/, '... it is plain TypeScript');
+});
+
+test('guard-read-whole-file: the ungoverned docs root is RESOLVED, not assumed to be .claude', () => {
+  // markdown-docs.md says every document under the generated docs root is not governed by it. The
+  // test that dropped the announcement hard-coded `.claude/`, so with CLAUDE_STACK_DOCS_PATH=docs -
+  // the committed-root case the docs-root rule itself describes - a write to
+  // docs/architecture/ARCHITECTURE.md still drew an announcement the rule says does not apply.
+  const call = (command, session_id, docsRoot) => runIn('guard-read-whole-file.js',
+    { tool_name: 'Bash', tool_input: { command }, session_id },
+    { env: { ...process.env, CLAUDE_STACK_DOCS_PATH: docsRoot } });
+  const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+  const sid = () => `md6-${Math.random().toString(36).slice(2)}`;
+  assert.equal(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), 'docs')), '', 'a custom docs root is ungoverned');
+  assert.match(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), '.claude/docs')), /markdown-docs\.md/,
+    'the same path IS governed when it is not the docs root');
+  assert.equal(ctxOf(call('tee .claude/docs/loops/RUN-STATE.md < in', sid(), '.claude/docs')), '', 'the default root still drops');
+  assert.match(ctxOf(call('tee README.md < in', sid(), 'docs')), /markdown-docs\.md/, 'a tracked doc still announces');
 });
 
 test('guard-read-whole-file: an unexpanded $VAR is judged by nobody, and a leading cd moves the anchor', () => {
@@ -1734,4 +1789,34 @@ test('guard-cross-project-write: the fork-liveness probe logs a mutating call be
   fs.utimesSync(path.join(dir, ids.sib + '.jsonl'), old, old);
   assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'b.cs') } }, ids.own), 0);
   assert.equal(ledger(ids.own).length, 2, 'a quiet sibling is not live');
+});
+
+// ---------------------------------------------------------------------------
+// The PowerShell route. Every shell guard matched `Bash` alone until 2026-09-12,
+// when a hook audit measured 122 PowerShell tool calls in a 115-session corpus -
+// the same shapes, a second spelling, and no gate on any of them. The analyzer had
+// read PowerShell as a shell route since 34 of 38 test runs in one collection
+// arrived that way, so the blind half was the guards. The payload is identical:
+// `tool_input.command`. One case per guard, each the Bash case this file already
+// pins, re-sent under the other tool name - a matcher widened with no case behind
+// it is a claim, not a gate.
+// ---------------------------------------------------------------------------
+const pwsh = (hook, command) => run(hook, { tool_name: 'PowerShell', tool_input: { command } });
+
+test('PowerShell route: the shell guards judge the second spelling of the same call', () => {
+  assert.equal(pwsh('guard-protected-force-push.js', 'git push --force origin main'), 2, 'force-push to a protected branch');
+  assert.equal(pwsh('guard-protected-force-push.js', 'echo "git push --force origin main"'), 0, 'the same text quoted is prose');
+  assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf $HOME'), 2, 'recursive rm of an unrecoverable target');
+  assert.equal(pwsh('guard-catastrophic-rm.js', 'rm -rf bin obj node_modules'), 0, 'named build dirs pass');
+  assert.equal(pwsh('guard-read-whole-file.js', `cat ${BIG}`), 2, 'whole-file dump of a large source');
+  assert.equal(pwsh('guard-read-whole-file.js', `sed -n 1,40p ${BIG}`), 0, 'a ranged read passes');
+  assert.equal(pwsh('guard-ungated-commit.js', 'git push origin develop'), 2, 'a push with no PUSH-GATE receipt');
+  assert.equal(pwsh('guard-ungated-commit.js', 'git push --dry-run origin develop'), 0, 'a dry run publishes nothing');
+});
+
+test('PowerShell route: the cross-project write guard resolves the same target', () => {
+  const outside = path.join(path.dirname(XP_ROOT), 'not-this-project-pwsh', 'f.txt');
+  assert.equal(pwsh('guard-cross-project-write.js', `echo hi > ${outside}`), 2, 'a redirection outside the project root');
+  assert.equal(run('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `echo hi > ${outside}` } }), 2, 'and the Bash spelling agrees');
+  assert.equal(pwsh('guard-cross-project-write.js', 'echo hi > README.md'), 0, 'an in-project relative target passes');
 });

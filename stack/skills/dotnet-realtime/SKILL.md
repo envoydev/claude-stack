@@ -1,6 +1,6 @@
 ---
 name: dotnet-realtime
-description: "Use for chat, notifications, live dashboards, or any real-time server push in .NET - or when the user names SignalR, hub, server-side WebSocket push, or live updates. ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable, covering strongly-typed Hub<TClient>, sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service). Floors at .NET 8 / C# 12. Do NOT use for broker-backed durable messaging (dotnet-messaging), plain request/response HTTP, in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket."
+description: "Use for chat, notifications, live dashboards, or any real-time server push in .NET - or when the user names SignalR, hub, server-side WebSocket push, or live updates. ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable, covering strongly-typed Hub<TClient>, sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service). Floors at .NET 8 / C# 12. Do NOT use for broker-backed durable messaging (that is the broker-messaging skill), plain request/response HTTP, in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket."
 ---
 
 # .NET real-time - ASP.NET Core SignalR
@@ -96,7 +96,9 @@ Running more than one server instance? A message sent from server A never reache
 
 ## Anti-patterns
 
-Each of the classic SignalR mistakes is the inverse of a rule already stated with its reason - hub state and injecting a `Hub` instead of `IHubContext` (§Hubs, §The seam with messaging), groups after a reconnect (§Reconnection), a missing backplane or sticky sessions (§Scale-out), trusting a connection past its initial auth (§Auth), and bulk or unthrottled payloads over the hub (§Payloads, throughput, transport). Two more have no rule of their own:
-
 - Not `await`ing a send, so the hub method returns before the message goes out and an exception surfaces on no caller.
 - Exposing ORM entities directly as hub payloads - over-serialization and leak risk; send an explicit DTO instead.
+
+## Prove the push
+
+Connect two clients, send to a group holding both, and quote what each received. Then drop one connection, reconnect it, send again and quote the result - a client that stops receiving after a reconnect is the group membership that was never re-added, and it is invisible to any test with one client.

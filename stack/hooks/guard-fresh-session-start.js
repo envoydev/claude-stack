@@ -405,12 +405,34 @@ function priorOrchestrationRun() {
   }
 }
 // ONE chained offer per session: once the user has answered it, a retry of the same run goes
-// through. The size trigger keeps its own re-arm (it escalates with the context it measures);
-// this one has no number to grow, so repeating it would only print an answered question again.
+// through. This trigger has no number to grow, so repeating it would only print an answered
+// question again.
 function chainedOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
+}
+// The SIZE offer's re-arm. The denial mandates an AskUserQuestion whose second answer is 'run it
+// here anyway with the cost stated' - and until 0.2.74 nothing honoured that answer: no receipt, no
+// state, no re-arm, so the retry re-blocked on the identical call and the route the guard itself
+// offered was a route the guard denied (measured 2026-09-12: the same Skill call replayed twice,
+// exit 2 both times). That is the failure DISCARD-ALLOW was bought for on the rm guard and
+// CROSS-WRITE-ALLOW on the cross-project guard. The sibling `guard-stop-contract.js` already solved
+// it for its own fresh-session offer with exactly this shape, so this is the shape used here:
+// record the context the offer was made at, and stay silent until the context has grown REOFFER_GROWTH
+// times past it. An answered question is not re-asked; a run that has since doubled its carry is a
+// new question, because the number the offer is about has changed.
+const REOFFER_GROWTH = 1.5;
+function sizeOfferFile() {
+  const os = require('os');
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-size-${key}.offered`;
+}
+function sizeOfferedAt() {
+  try { return parseInt(fs.readFileSync(sizeOfferFile(), 'utf8'), 10) || 0; } catch { return 0; }
+}
+function recordSizeOffer(ctx) {
+  try { fs.writeFileSync(sizeOfferFile(), String(ctx)); } catch { /* never let state break the gate */ }
 }
 
 const usage = lastUsage();
@@ -421,13 +443,18 @@ const ctx = usage
 const FRESH_AT = ctxThreshold();   // null = this window's trigger is switched off
 // Both triggers are subject to the same question - what a resume would actually recover - so the
 // gate and the offer can never sit on different arithmetic in one session.
-const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResuming(ctx);
+const sizeAlreadyOffered = sizeOfferedAt();
+const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResuming(ctx)
+  && (!sizeAlreadyOffered || ctx >= sizeAlreadyOffered * REOFFER_GROWTH);
 const chained = !FRESH_OFF && !overSize && worthResuming(ctx)
   && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
 if (!overSize && !chained) process.exit(0);
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
 }
+// Written on BOTH routes. The slash route injects rather than denies, but it is the same offer to
+// the same user about the same number, so answering it there must silence the Skill route too.
+if (overSize) recordSizeOffer(ctx);
 
 const why = chained
   ? `is a deliberate orchestration run and this session has ALREADY run one - every turn of the\n`

@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: "Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). The always-load baseline underneath the specialist areas. Do NOT load it INSTEAD of one: architectural style choices, EF query shaping, ASP.NET request-pipeline work and performance tuning route out through the .NET router where the install has one."
+description: "Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. C# conventions (.NET 8 / C# 12 floor) - style and structure plus runtime behavior, with the per-area deltas in `references/`. The always-load baseline underneath the specialist areas. Do NOT load it INSTEAD of one: architectural style choices, EF query shaping, ASP.NET request-pipeline work and performance tuning route out through the .NET router where the install has one."
 ---
 
 # C# Conventions
@@ -125,21 +125,7 @@ Routing note: when a convention here drives a package change - adding, removing,
 
 ## Documentation
 - Every public API surface has XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
-- Write them in the expanded multi-line form: open and close each tag on its own line with the text on separate `///` lines, in full descriptive sentences - what the member does plus the context a caller needs - never a terse fragment collapsed onto a single `/// <summary>...</summary>` line. Give `<returns>` and every `<param>` the same expanded treatment, not only `<summary>`.
-
-```csharp
-// Good - expanded block, full descriptive sentences, <returns> documented:
-/// <summary>
-/// Retrieves the feature flags that govern checkout from the current database session.
-/// These flags decide which payment providers are enabled for the request.
-/// </summary>
-/// <returns>
-/// A read-only list of FeatureFlag entries keyed by name for the checkout module.
-/// </returns>
-
-// Avoid - collapsed onto one line, terse, no <returns>:
-/// <summary>Loads the checkout feature flags.</summary>
-```
+- Write them in the expanded multi-line form - each tag opened and closed on its own line, full descriptive sentences, `<returns>` and every `<param>` given the same treatment as `<summary>`, never a fragment collapsed onto one `///` line. The worked good-versus-avoid pair is section 5 of `references/csharp-style.md`; open it before documenting a new public surface.
 
 ---
 

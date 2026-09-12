@@ -9,7 +9,7 @@ For engine-specific syntax or feature support not pinned down here, resolve it w
 
 A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening; the deep, engine-specific work routes to the companions cited per section.
 
-**SQL writing style is authoritative in `references/sql-style.md`** - casing, formatting and layout, naming style, query construction, data-type choice, NULL handling, dialect portability, and the per-engine cheat-sheet (PostgreSQL / SQL Server / SQLite). This SKILL.md owns schema design and operational safety (schema, migrations, indexes, transactions, connections); where the two overlap on naming, query safety, or engine data types, the style reference wins. **Above both, a project's own SQL style - a co-located `SQL_STYLE.md` or its `<docs-path>/PROJECT-CODE-STYLE.md` - is higher priority: where a project diverges from these general conventions, follow the project.**
+**SQL writing style is authoritative in `references/sql-style.md`** - casing, formatting and layout, naming style, query construction, data-type choice, NULL handling, dialect portability, and the per-engine cheat-sheet (PostgreSQL / SQL Server / SQLite). This SKILL.md owns schema design and operational safety (schema, migrations, indexes, transactions, connections); where the two overlap on naming, query safety, or engine data types, the style reference wins. **Above both, a project's own SQL style - a co-located `SQL_STYLE.md` and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority - follow the project where it diverges.**
 
 ## Choosing a store
 
@@ -26,12 +26,15 @@ The schema is the one place integrity is cheap to enforce and expensive to retro
 
 ## Engine-specific routing
 
-The rules here hold across engines; the deep mechanics live with the engine skills.
+The rules here hold across engines; the deep mechanics live with the engine skills. One rule holds on every one of them: money and
+exact quantities are `decimal` / `NUMERIC(p,s)`, never `float` or `double` - binary floats cannot represent decimal fractions and
+drift silently on sums. Each bullet below closes with the trap worth repeating because the obvious choice is the wrong one; the
+full per-engine data-type tables (text, numbers, boolean, date/time, UUID) are in `references/sql-style.md`.
 
-- **PostgreSQL** - the Postgres engine skill (index-type selection, JSONB/full-text, SARGable rewrites, the planner - EXPLAIN / pg_stat_statements / autovacuum - and connection pooling), installed on Npgsql / pg evidence; without it, the rules here plus `references/sql-style.md`'s PostgreSQL columns are the whole guidance.
-- **SQLite** - the SQLite engine skill (the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, connection-per-thread), installed on SQLite provider evidence; without it, `references/sql-style.md`'s SQLite columns plus the pitfalls below.
-- **SQL Server / T-SQL** - no dedicated engine skill; the engine-neutral rules here, plus `references/sql-style.md`'s T-SQL style and dialect gotchas (`TOP`/`OFFSET-FETCH`, `MERGE`, `THROW`, `IDENTITY`, `TRY/CATCH`), plus its SARGability section, cover most of it.
-- **MongoDB / document stores** - no dedicated skill; apply document-modeling care. Embed versus reference by access pattern, index every queried field path, bound array growth, and never run an unbounded `$lookup`.
+- **PostgreSQL** - the Postgres engine skill (index-type selection, JSONB/full-text, SARGable rewrites, the planner - EXPLAIN / pg_stat_statements / autovacuum - and connection pooling), installed on Npgsql / pg evidence; without it, the rules here plus `references/sql-style.md`'s PostgreSQL columns are the whole guidance. Trap: `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap.
+- **SQLite** - the SQLite engine skill (the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, connection-per-thread), installed on SQLite provider evidence; without it, `references/sql-style.md`'s SQLite columns are the whole guidance. Trap: foreign keys are OFF by default - `PRAGMA foreign_keys = ON` on every connection.
+- **SQL Server / T-SQL** - no dedicated engine skill; the engine-neutral rules here, plus `references/sql-style.md`'s T-SQL style and dialect gotchas (`TOP`/`OFFSET-FETCH`, `MERGE`, `THROW`, `IDENTITY`, `TRY/CATCH`), plus its SARGability section, cover most of it. Traps: `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode survives, and `DATETIME2` (or `DATETIMEOFFSET` when the value is timezone-aware) over `DATETIME`.
+- **MongoDB / document stores** - no dedicated skill; apply document-modeling care. Embed versus reference by access pattern, index every queried field path, bound array growth, and never run an unbounded `$lookup`. Traps: the 16 MB document limit is a hard ceiling, so design to sit well under it, and `ObjectId` already embeds a creation timestamp - read it from there rather than duplicating a created-at field.
 
 ## Query safety
 
@@ -69,6 +72,7 @@ The migration *workflow* - previewing the generated SQL, carrying a rollback, re
 - **Idempotent at deploy time** - running the migration twice produces the same schema, so a re-run after a partial deploy is safe.
 - **Backfills run separately from schema changes** when the row count is large. Reshape the schema in one step and move the data in batches in another, so neither holds a long table lock.
 - **Production migrations are reviewed for lock impact** before they ship: an `ALTER TABLE` or an index rebuild on a large table can lock it for the duration, and that is a downtime decision, not an afterthought.
+- **Prove the idempotence, do not assert it.** Run the migration, run it a second time against the same database, and quote both exit lines. A second run that errors is a migration that cannot survive a partial deploy.
 
 ## Naming
 
@@ -106,13 +110,3 @@ A connection string is a credential. It comes from configuration or a secret sto
 ## Stored procedures and views
 
 Default to keeping logic in the application, where it is testable, diffable, and version-controlled with the rest of the code. Reach for a stored procedure only when set-based work in the engine genuinely beats application-side composition - a bulk operation that would otherwise round-trip per row. Use views for stable read projections, and a materialized view when the refresh cost is acceptable for the staleness it buys. Keep business logic out of triggers entirely: a trigger is reserved for auditing or for an integrity rule the schema itself cannot express, never for behavior a reader of the application code would never think to look for.
-
-## Engine pitfalls
-
-The full per-engine data-type tables (text, numbers, boolean, date/time, UUID) are in `references/sql-style.md`. The defaults above are engine-neutral; these are the per-engine traps worth repeating here because the obvious choice is the wrong one.
-
-- **Money and exact quantities** - store as `decimal` / `NUMERIC(p,s)` on every engine, never `float` or `double`, since binary floats cannot represent decimal fractions and drift silently on sums.
-- **PostgreSQL** - `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap - the Postgres engine skill owns the full delta.
-- **SQL Server** - use `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode is preserved. Avoid `DATETIME`; use `DATETIME2` for higher precision and a sane range, or `DATETIMEOFFSET` when the value is timezone-aware.
-- **SQLite** - foreign keys are off by default: `PRAGMA foreign_keys = ON` on every connection - the SQLite engine skill owns the rest (type affinity, boolean/date idioms).
-- **MongoDB** - the 16 MB document limit is a hard ceiling, so design to sit well under it rather than near it. The `ObjectId` already embeds a creation timestamp - read it from there instead of duplicating a separate created-at field.

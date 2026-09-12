@@ -1,6 +1,6 @@
 ---
 name: project-diagnose-failure
-description: "Use to investigate a failure of any kind in THIS chat, from whatever evidence you actually have - a pasted Sentry event, one log file, several log sources at once, a red CI run, a stack trace, a screenshot, or nothing but a customer saying checkout is slow. Four gated steps: triage the evidence to a tier, gather (inline or evidence-gatherer seats), prove the root cause, then a user fork - write a report, plan the fix as contracted tasks, or add log points and re-run. Read-only throughout: it never writes the fix. Trigger on investigate this bug, diagnose this failure, what is causing this, look into this incident, triage this report. Not the fix build (project-solve-task takes the tasks from here), not a signature lookup you already have the answer for."
+description: "Use to investigate a failure of any kind in THIS chat, from whatever evidence you actually have - a pasted error-monitor event, one log file, several log sources at once, a red CI run, a stack trace, a screenshot, or nothing but a customer saying checkout is slow. Four gated steps: triage the evidence to a tier, gather (inline or evidence-gatherer seats), prove the root cause, then a user fork - write a report, plan the fix as contracted tasks, or add log points and re-run. Read-only throughout: it never writes the fix. Trigger on investigate this bug, diagnose this failure, what is causing this, triage this report. Not the fix build (project-solve-task takes the tasks from here), not a signature lookup you already have the answer for."
 disable-model-invocation: true
 ---
 
@@ -14,31 +14,15 @@ so no approval stamp and no commit gate come into play.
 ## Evidence tiers - name the tier, carry it as the confidence label
 
 The tier is the first thing this skill establishes and the last thing its verdict is qualified
-by. No source is a lower tier, never a blocker:
+by - tier 1 a stack trace or failing test, 2 a log window / red CI run / monitoring event, 3
+written repro steps, 4 a screenshot or a prose report. No source is a lower tier, never a
+blocker. A tier-4 report is the DEFAULT case, not an edge case, and a conclusion drawn there is
+labelled as such, never presented with tier-1 confidence.
 
-| Tier | What you have | What it buys |
-|---|---|---|
-| 1 | stack trace / exception with a frame, or a failing test | a symbol to start at |
-| 2 | a log window around the failure, a red CI run, a monitoring event | a time-ordered sequence |
-| 3 | reproducible steps a human wrote down | a repro you can run |
-| 4 | a screenshot, a single symptom line, a prose report from a client | a behaviour to locate in code |
-
-A tier-4 report is the DEFAULT case, not an edge case: most projects have no CI, no error
-monitoring, and no retained logs. There, step 2 turns prose into an observable and works
-code-first - locate the named behaviour, read the paths that could produce the symptom, try to
-reproduce - and the verdict says plainly which tier it rests on. A conclusion drawn at tier 4
-is labelled as such; it is never presented with tier-1 confidence.
-
-## Sources - what this skill can reach
-
-- **In reach, always:** files and logs on disk, the repo's own history, anything the user pastes
-  into the chat, and the app itself when it can be run locally.
-- **In reach when the project has it:** the `gh` CLI for a red pipeline; an error-monitoring MCP
-  where the project registered one (the baseline comments out the MCPs a project does not need,
-  so it can simply be absent from your tool list here).
-- **Never in reach:** a LINK. A monitoring-issue URL, a private dashboard, a ticket - if no tool
-  in this session can fetch it, say so in one line and ask the user to paste the event, rather
-  than guessing what it contained.
+`references/evidence-tiers.md` carries the table (what each tier buys, and the code-first path a
+tier-4 report takes) plus what this skill can and cannot reach - files, logs, the repo history,
+the app itself, `gh` and an error-monitoring MCP where the project has one, and never a LINK.
+Read it at step 1, before the tier is named.
 
 ## State - two layers, split by durability
 
@@ -56,7 +40,7 @@ mid-flight resumes at its cursor - never re-run a step already stamped. A run be
 and 3 looks like:
 
 ```
-findings .claude/docs/diagnoses/orders-sync-disposed.md:
+findings <docs-path>/diagnoses/orders-sync-disposed.md:
   Observable: nightly order sync stops after the first batch; expected all batches
   Tier: 1 (ObjectDisposedException, frame OrderSyncJob.ExecuteAsync) | Gathered: 2 sources agree
   Cause: <pending>
@@ -94,7 +78,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
 
 1. **TRIAGE** - read the evidence in whatever form it arrived (`Read` opens a screenshot as
    readily as a log), restate the failure as an OBSERVABLE - what happened, where, what should
-   have happened instead - and name the tier from the table above. Then load the signature
+   have happened instead - and name the tier, per `references/evidence-tiers.md`. Then load the signature
    catalogue that matches the failure's origin, matched from YOUR skill list by what each skill
    says it covers, never by a remembered name: the one covering local-runtime crash signatures
    (null-reference, DI resolution, async deadlock, race, disposed lifecycle, config drift) for a

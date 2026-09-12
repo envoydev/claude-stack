@@ -21,9 +21,20 @@ Only serena is locked into every install. The rest of the baseline's servers - t
 ## Cross-cutting disciplines
 
 - **The library docs before a library API, always.** A wrong package or framework version is a common rework trigger; the current signature from the docs MCP (context7 where the project kept it) is cheaper than the failed build it prevents. Never write against a recalled version - where no docs source is reachable, the claim is marked unverified in the report, not asserted. This extends past API signatures to framework runtime semantics - signal / computed reactivity, change-detection, lifecycle order: cite context7 or the house convention skill before resting correctness on a recalled semantic, never a guess.
-- **superpowers on ambiguity.** Route the brainstorm discipline in before freezing a contract on genuinely ambiguous design; route the verify-before-done discipline to the closing seat (the domain verifier or the integration reviewer).
-- **claude-md-management keeps the shared context sharp.** A flow that depends on a stale CLAUDE.md pays for it in every seat that loads it - audit and revise it with that tool rather than letting each seat work around drift.
-- **ponytail and report terseness** are the token-reduction disciplines, per `token-reduction.md` - the discipline, not the wiring, is what each role runs.
+- **superpowers on ambiguity.** Route the brainstorm discipline in before freezing a contract on genuinely
+  ambiguous design; route the verify-before-done discipline to the closing seat (the domain verifier or the
+  integration reviewer). Its two DISPATCH skills - the parallel-agents one and the subagent-driven one - are
+  superseded here and are not a second route in: this skill is the single entry point for multi-agent work, the
+  capabilities rule says dispatch is explicit and never automatic, and the house dispatch guard denies a run
+  started any other way. So the phrasing that fires them ('two independent tasks', 'execute this plan in
+  parallel') lands on this skill, and their firing costs a denial and a retried turn.
+- **Keep the shared instruction file sharp.** A flow that depends on a stale CLAUDE.md pays for it in every seat
+  that loads it. Where the install has the tool that audits and revises an instruction file from what a session
+  learned, use it rather than letting each seat work around the drift; it is an opt-in, so a project without it
+  fixes the file by hand instead.
+- **Minimal-code and report terseness** are the token-reduction disciplines, per `token-reduction.md`. Each seat
+  carries its own rung inline - designers 'ultra', implementers and repair resolvers 'full', verifiers 'review' -
+  so the discipline is the seat's, never a plugin's; the stack ships no plugin for it.
 
 ## Redundant reads
 

@@ -644,8 +644,14 @@ function printsKeysOnly(stage) {
   });
 }
 
-// ---- Bash matcher ----
-if (payload.tool_name === 'Bash') {
+// ---- Shell matcher ----
+// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
+// `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
+// since 34 of 38 test runs in one collection arrived that way, and the hooks docs name the matcher
+// `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
+// (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
+const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+if (isShellTool(payload.tool_name)) {
   const raw = String(input.command || '');
   // A credential-shaped literal typed into a command is already in the transcript as the call's own
   // input; blocking still keeps it out of a file, a header and a remote, and names the rule. Judged

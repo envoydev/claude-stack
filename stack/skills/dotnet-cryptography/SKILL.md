@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET. Conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Secret STORAGE belongs to your secrets/config layer, never source. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, or for the OWASP category checklist - those are the authentication and security-hardening skills."
+description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET. Conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way; the full roster, the dead-algorithm list and the post-quantum ML-KEM / ML-DSA opt-in are in the body. Floors at .NET 8 / C# 12. Secret STORAGE belongs to your secrets/config layer, never source. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, or for the OWASP category checklist - those are the authentication and security-hardening skills."
 ---
 
 # .NET cryptography
@@ -53,6 +53,8 @@ using var aes = new AesGcm(key, tagSizeInBytes: 16);
 aes.Encrypt(nonce, plaintext, ciphertext, tag, associatedData);
 // persist nonce + ciphertext + tag together; Decrypt throws on any tamper
 ```
+
+Prove it in two lines before any done word: encrypt then decrypt and quote the round-trip result, then flip one ciphertext byte, decrypt again and quote the exception. A decrypt that succeeds on the tampered bytes means the tag is not being checked, which is the whole point of GCM gone.
 
 Do not reach for raw `Aes` in CBC/ECB mode. **ECB is never acceptable** - it reveals structure in the plaintext. Plain CBC is unauthenticated and invites padding-oracle attacks; only if a fixed external format forces CBC, apply encrypt-then-MAC with an independent HMAC key and verify the MAC (constant-time) before decrypting. GCM exists precisely so you never have to hand-roll that.
 

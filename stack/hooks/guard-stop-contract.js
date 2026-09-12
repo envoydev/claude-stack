@@ -440,7 +440,7 @@ function secretReadAllowed() {
 // messages'). An answered rotate ask (the harness's own 'Your questions have been answered' row
 // naming rotation, or the defer option) covers every credential shape that entered the session
 // BEFORE it - tool results and the user's own pastes alike; only a shape that arrives after it asks
-// again. Judged over the same 256KB tail secretInToolResults reads, and fail-open like it.
+// again. Judged over the same 256KB tail secretInSession reads, and fail-open like it.
 // CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
 const ROTATE_ASK_ON = process.env.CLAUDE_STACK_ROTATE_ASK !== '0';
@@ -740,7 +740,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     }
 
     // 4. CREDENTIAL.
-    if (secretInToolResults()) {
+    if (secretInSession()) {
       notes.push('A credential-shaped value has already entered this session\'s tool results. It ' +
         'cannot be unsent. If this ask closes the turn, one of its questions must be whether to ' +
         'rotate it now - name the key and its shape only, never the value.');

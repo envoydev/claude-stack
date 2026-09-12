@@ -1,6 +1,6 @@
 ---
 name: dotnet-wpf
-description: "WPF conventions - strict MVVM on the data-binding engine. Load before editing any XAML, code-behind, or ViewModel. Covers the one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks; orchestration routes to csharp-design-patterns, tests to dotnet-testing, and a paired Windows-Service worker to the hosted-worker skill where installed."
+description: "WPF conventions - strict MVVM on the data-binding engine. Load before editing any XAML, code-behind, or ViewModel. Covers the one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks."
 ---
 
 # WPF conventions
@@ -184,7 +184,9 @@ subscribing to `PropertyChanged` and checking the fired property name; test a co
 `Execute(...)` and asserting state or a mocked side effect, with `CanExecute(...)` asserted
 separately. Inject every collaborator (`INavigationService`, `IDialogService`, repositories) so the
 test substitutes them - a ViewModel never does `new Window().Show()`. Framework, fakes and assertion
-mechanics are the `dotnet-testing` skill's.
+mechanics are the `dotnet-testing` skill's. The check is the test run itself: a ViewModel test that needs a `Dispatcher`
+to pass is the failure - it proves the View-knows-ViewModel line was crossed - so quote the run and the first failure
+rather than asserting the layering holds.
 
 ## Styling and theming
 

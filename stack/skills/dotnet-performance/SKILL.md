@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: "Use when a .NET type sits on a hot path or a high-throughput loop, or when choosing how bytes cross a process boundary. Performance-aware design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here. Type design: struct vs class, readonly struct, seal by default, fewer allocations, `Span`, `ValueTask`, frozen/immutable returns. Serialization: pick the format - `System.Text.Json` source-gen for JSON, Protobuf for wire, MessagePack for cache/messaging. Do NOT start here for 'my app is slow' - that is usually a bad query or an N+1: measure first with `dotnet-diagnostics`."
+description: "Use when a .NET type sits on a hot path or a high-throughput loop, or when choosing how bytes cross a process boundary. Performance-aware design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here. Two calls, each routed to its own reference - type design (struct versus class, allocations, `Span`, `ValueTask`) and serialization format (JSON, Protobuf, MessagePack). Do NOT start here for 'my app is slow' - that is usually a bad query or an N+1: measure first with `dotnet-diagnostics`."
 ---
 
 # dotnet-performance (decision layer)
@@ -10,8 +10,6 @@ Two performance-aware design calls that are cheap to get right up front and expe
 - Type allocation / memory layout -> `references/type-design.md`
 - Serialization-format choice -> `references/serialization.md`
 - .NET Framework 4.8 caveats (the 'slow span', NuGet-only fast-path packages) -> `references/net-framework-48.md`
-
-The language baseline (naming, async, records, disposal, DI) is `csharp`; the full .NET map is `dotnet`.
 
 ## Measure first
 

@@ -1,14 +1,12 @@
 ---
 name: project-build-from-scratch
-description: "Build a new application or major module from scratch. Use when the user asks to build from scratch, start a new project or app, go greenfield, or scaffold - before any code exists; manual, /-only. It runs greenfield design, scaffolding, and build orchestration. DESIGN runs IN-SESSION on Opus (checked at run start, not pinned): the spec becomes 2-3 reasoned architecture options and the user picks - nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice - through the domain seats or in-session, per the run-start ask. Not for changing an existing codebase - a feature inside a live app is `project-solve-cross-task`, a new module in an existing repo is the project-architecture-analyzer capture plus that stack's solution-designer."
+description: "Build a new application or major module from scratch. Use when the user asks to build from scratch, start a new project or app, go greenfield, or scaffold - before any code exists; manual, /-only. DESIGN runs IN-SESSION on Opus (checked at run start - a frontmatter pin lasts one turn): the spec becomes 2-3 reasoned architecture options and the user picks, and nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice, through the domain seats or in-session per the run-start ask. Not for changing an existing codebase - a feature inside a live app is `project-solve-cross-task`, a new module in an existing repo is the project-architecture-analyzer capture plus that stack's solution-designer."
 disable-model-invocation: true
-model: opus
-effort: xhigh
 ---
 
 # Project Build From Scratch - Greenfield Design, Scaffold, Build
 
-Use this skill to build a new application or a major new module from scratch, before code exists. The design happens here, in-session - there is no dispatched greenfield seat: with no code to read, a design pass reasons from the spec that is already in this conversation, and its options come back to the user anyway. The frontmatter names `opus`/`xhigh` for that DESIGN turn, but a skill-level model pin is not reliably honored for main-session turns (measured: invocations ran on the session model despite it, while agent-level pins in the same session held exactly), so check the session model at run start: when it is not Opus, say so in the opening line, so the switch to `/model` Opus can happen before the options are reasoned. After the user's pick the session can drop to a cheaper model, which is fine: scaffold and build are dispatch mechanics.
+Use this skill to build a new application or a major new module from scratch, before code exists. The design happens here, in-session - there is no dispatched greenfield seat: with no code to read, a design pass reasons from the spec that is already in this conversation, and its options come back to the user anyway. This skill carries NO `model` pin for that DESIGN turn, deliberately: a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings, so a multi-turn run returns to the session model (measured: invocations ran on the session model, while agent-level pins in the same session held exactly), so check the session model at run start: when it is not Opus, say so in the opening line, so the switch to `/model` Opus can happen before the options are reasoned. After the user's pick the session can drop to a cheaper model, which is fine: scaffold and build are dispatch mechanics.
 
 ## Steps
 
@@ -66,7 +64,7 @@ Every count comes from the command that produced it, never a hand tally. The two
 Brief: 'Start a new Angular admin dashboard.'
 1. **DESIGN** in-session: three options - standalone + signals with feature folders; NgRx-backed modular; minimal-shell MVP - each with routing, state tier, folder shape, and the tradeoff that decides it.
 2. **THE PICK**: the user chooses option one.
-3. **SCAFFOLD**: `ng new admin`, structure per `angular-conventions`, wire lint/format config, a test setup, the core routing shell.
+3. **SCAFFOLD**: `ng new admin`, structure per the Angular framework-conventions skill, wire lint/format config, a test setup, the core routing shell.
 4. **BUILD**: first slice (the auth shell) - dispatch the web-Angular stack's own trio in order, its solution-designer, then its implementer(s), then its verifier; loop the punch-list. Repeat per slice to the first milestone.
 5. **HANDOFF**: suggest the captures so the repo gets its map and style artifacts.
 

@@ -1,6 +1,6 @@
 ---
 name: devops
-description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost. DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, digest-pinned base images), Compose local topology, GitHub Actions CI/CD (SHA-pinned actions, masked secrets, least-privilege permissions, OIDC, real service containers), and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code."
+description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost. DevOps reference scoped to .NET / Angular / SQL delivery surfaces - on another runtime take the container and pipeline rules and treat the examples as illustrative - organized by the surface a change touches: container builds, Compose local topology, GitHub Actions CI/CD, and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code."
 ---
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
@@ -57,6 +57,10 @@ ENTRYPOINT ["dotnet", "App.dll"]
 - Set timeout-minutes on every job so a hung step is killed in minutes instead of burning the runner's full default budget.
 - Add a concurrency group keyed on workflow + ref with cancel-in-progress: true, so a fast follow-up push cancels the now-stale run instead of queueing behind it.
 - Upload diagnostic artifacts on failure only (if: failure()) - test results and logs with a short retention - so a red run is debuggable without a rerun.
+
+## Prove the pipeline change
+
+A workflow that parses is not a workflow that runs. Before any done word on a change here, quote three result lines: `docker build` on the Dockerfile you touched (an image that does not build is the whole finding), the workflow linter on the workflow you touched, and the secret scanner over the diff. Where one of the three is not installed, say which and report that leg UNVERIFIED rather than skipping it silently.
 
 ## Deploy and release - reversible and health-gated
 

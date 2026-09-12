@@ -45,6 +45,10 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 - Audit who-changed-what on sensitive tables - temporal (system-versioned) tables, an audit trigger, or `created/modified by+at` columns - but the audit record must **never** store the secret it is tracking (log the fact of a password change, not the password).
 - A migration or seed that inserts a default admin credential, grants a broad role, or disables a constraint is a finding - flag it (safe migration mechanics are `dotnet-migrate`).
 
+## Probe before you report
+
+Two checks turn this from an opinion into a finding, and both are one query. List the runtime login's grants and quote the result - a login that can `CREATE`, `DROP` or read another schema is the finding, whatever the queries look like. Then confirm row-level security is enabled on every tenant-scoped table and quote the policy count; zero policies on a tenant table is the IDOR. A check you did not run is reported UNVERIFIED.
+
 ## Review output
 
 Report findings as `surface | risk | fix`, ordered by risk - e.g. `runtime login is db_owner | any injection becomes schema-level compromise | split a CRUD-only runtime login from the migration login`. Findings on the app-layer EF/access-control surface route to the .NET application-security hardening skill, crypto-primitive misuse to the .NET cryptography-primitives skill - name whichever the install has as the route, do not restate their content here; when neither is installed, keep the finding here with its fix stated in full.

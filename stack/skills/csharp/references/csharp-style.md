@@ -11,7 +11,8 @@ Language version assumption: `<LangVersion>` set to `latest` or pinned per targe
 2. Formatting
 3. Naming
 4. Language feature usage
-5. Canonical `.editorconfig`
+5. XML documentation
+6. Canonical `.editorconfig`
 
 ---
 
@@ -280,7 +281,28 @@ using var stream = File.OpenRead(path);
 
 ---
 
-## 5. Canonical `.editorconfig`
+## 5. XML documentation
+
+- Every public API surface carries XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
+- Write them in the expanded multi-line form: open and close each tag on its own line with the text on separate `///` lines, in full descriptive sentences - what the member does plus the context a caller needs - never a terse fragment collapsed onto a single `/// <summary>...</summary>` line. Give `<returns>` and every `<param>` the same expanded treatment, not only `<summary>`.
+
+```csharp
+// Good - expanded block, full descriptive sentences, <returns> documented:
+/// <summary>
+/// Retrieves the feature flags that govern checkout from the current database session.
+/// These flags decide which payment providers are enabled for the request.
+/// </summary>
+/// <returns>
+/// A read-only list of FeatureFlag entries keyed by name for the checkout module.
+/// </returns>
+
+// Avoid - collapsed onto one line, terse, no <returns>:
+/// <summary>Loads the checkout feature flags.</summary>
+```
+
+---
+
+## 6. Canonical `.editorconfig`
 
 Drop this at the repo root. It encodes the rules above for both the compiler analyzers and Rider.
 

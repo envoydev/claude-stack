@@ -1,6 +1,6 @@
 ---
 name: dotnet-mvc-controllers
-description: "Use before writing or editing ASP.NET Core API controllers and action filters. Controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs - covering the ApiController attribute, attribute routing, ActionResult of T versus IActionResult versus typed HttpResults, suppressing the automatic 400 filter (ApiBehaviorOptions, SuppressModelStateInvalidFilter) for the house FluentValidation-in-a-filter convention, binding-source inference and explicit From-attributes, IAsyncActionFilter ordering, and thin controllers delegating to services. Floors at .NET 8 / C# 12; 9/10 deltas flagged optional. Do NOT use for minimal APIs (that is dotnet-minimal-api), MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
+description: "Use before writing or editing ASP.NET Core API controllers and action filters. Controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs - covering the ApiController attribute, attribute routing, ActionResult of T versus IActionResult versus typed HttpResults, suppressing the automatic 400 filter (ApiBehaviorOptions, SuppressModelStateInvalidFilter) for the house FluentValidation-in-a-filter convention, binding-source inference and explicit From-attributes, IAsyncActionFilter ordering, and thin controllers delegating to services. Floors at .NET 8 / C# 12; 9/10 deltas flagged optional. Do NOT use for minimal APIs (that is the minimal-API endpoint skill), MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
 ---
 
 # ASP.NET Core controllers - API controller mechanics
@@ -68,7 +68,7 @@ Serialize DTOs, never domain entities or EF Core models - a `record` request and
 
 This is the section that matters most for the house style. `[ApiController]` installs `ModelStateInvalidFilter`, which inspects `ModelState` immediately before the action body and, if invalid, short-circuits with an automatic HTTP 400 carrying a `ValidationProblemDetails` body. So `if (!ModelState.IsValid) return BadRequest(ModelState);` is dead code under `[ApiController]` - never write it.
 
-The house convention validates with FluentValidation inside a filter (owned by `dotnet-web-error-handling`), not with data annotations on the DTO. That filter is the single validation authority. The problem: the built-in `ModelStateInvalidFilter` still fires on any data-annotation or binding `ModelState` error, so you can end up with two competing 400 shapes - the framework's `ValidationProblemDetails` and the filter's `ProblemDetails` - racing for the same failure. Make the FluentValidation filter the only voice by suppressing the built-in filter:
+The house convention validates with FluentValidation inside a filter (owned by the HTTP error-handling skill), not with data annotations on the DTO. That filter is the single validation authority. The problem: the built-in `ModelStateInvalidFilter` still fires on any data-annotation or binding `ModelState` error, so you can end up with two competing 400 shapes - the framework's `ValidationProblemDetails` and the filter's `ProblemDetails` - racing for the same failure. Make the FluentValidation filter the only voice by suppressing the built-in filter:
 
 ```csharp
 builder.Services.Configure<ApiBehaviorOptions>(options =>
@@ -83,7 +83,7 @@ With it suppressed, the FluentValidation filter runs and produces the one canoni
 - `SuppressMapClientErrors` - stops `[ApiController]` from converting bare error status codes (a `NotFound()` with no body) into `ProblemDetails`. Leave it off; the mapping is what gives every 4xx/5xx an RFC-shaped body for free.
 - If you do keep model-state validation on a given action and need a *custom* 400 that matches the automatic one, call `ValidationProblem()` (which returns a `ValidationProblemDetails`), never `BadRequest(...)` with an ad-hoc object - that is how the two paths stay shape-consistent.
 
-Do not assemble the error body, the envelope, or the `ProblemDetails` shape here. That contract is owned by `dotnet-web-error-handling`; this skill only decides where the validation gate sits and how to stop the framework from competing with it.
+Do not assemble the error body, the envelope, or the `ProblemDetails` shape here. That contract is owned by the HTTP error-handling skill; this skill only decides where the validation gate sits and how to stop the framework from competing with it.
 
 ## Parameter binding sources
 
@@ -152,16 +152,11 @@ Errors leave a controller as RFC-shaped `ProblemDetails`. `[ApiController]` alre
 
 ## Controllers or minimal APIs - the decision
 
-Both produce the same HTTP service; the choice is about fit, not capability.
+Both produce the same HTTP service; the choice is about fit, not capability. Greenfield defaults to minimal APIs; reach for controllers when something concrete calls for them - an existing controller-based codebase, MVC views or Razor on the same base, or tooling convention-bound to controllers (OData, attribute-based API versioning). One default per repo, a controller slice only where one of those reasons names itself; the full argument is `references/controllers-or-minimal-apis.md`.
 
-- **Greenfield, default to minimal APIs.** Less ceremony, the endpoint contract reads in one place, `TypedResults` and `Results<>` are first-class, and the per-endpoint filter model is lighter than the filter pipeline. For a new service with no constraint pulling the other way, that is the recommendation.
-- **Reach for controllers when something concrete calls for them:**
-  - An **existing controller-based codebase** - match it exactly. A repo with both styles has neither; the established pattern wins - the pick-one-architecture rule the web hub owns.
-  - **MVC views or Razor alongside the API** - the controller already exists for the view; the API actions belong on the same base.
-  - A feature whose tooling is **convention-bound to controllers** - OData, or an attribute-and-convention API-versioning setup that targets controllers and actions.
-  - A team or codebase standard that mandates the controller idiom - the filter pipeline, `[ApiController]` inference, and per-action attributes are familiar ground for an MVC-trained team.
+## Prove the pipeline
 
-Do not run a third pattern in one repo to get one feature. If the bulk is minimal APIs and one slice needs OData, that is a real reason to add controllers there - a deliberate, scoped exception, not a free-for-all.
+A controller that compiles is not a controller that behaves. Before any done word, call the action three ways and quote each result: a valid request returns the expected 2xx and body; an invalid one returns a single 400 in the canonical envelope (two competing shapes means the built-in filter was never suppressed); and an unauthorized one returns 401 or 403 rather than falling through to the action.
 
 ## Anti-patterns
 

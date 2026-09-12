@@ -1,6 +1,6 @@
 ---
 name: dotnet-web-backend
-description: "Use first for any ASP.NET Core, Web API, minimal API or microservice work - this is the .NET web hub, loaded ahead of the focused companion that covers the how. Owns the architecture-neutral cross-cutting baseline every ASP.NET Core service shares: IHttpClientFactory, FluentValidation, resilience via Microsoft.Extensions.Http.Resilience, API versioning, OpenAPI, typed options with startup validation (IOptions / ValidateOnStart), observability (structured logging, OpenTelemetry to OTLP, correlation IDs, health checks), and caching (IMemoryCache, HybridCache, Redis). It owns the 'pick exactly one architecture' rule but mandates no specific one. Floors at .NET 8 / C# 12. Do NOT use for console binaries, CLI tools, desktop apps, WPF/MAUI, daemons, or message-only consumers."
+description: "Use first for any ASP.NET Core, Web API, minimal API or microservice work - this is the .NET web hub, loaded ahead of the focused companion that covers the how. Owns the architecture-neutral cross-cutting baseline every ASP.NET Core service shares: IHttpClientFactory, FluentValidation, resilience via Microsoft.Extensions.Http.Resilience, API versioning, typed options with startup validation (IOptions / ValidateOnStart), observability (structured logging, OpenTelemetry to OTLP, correlation IDs, health checks), and caching (IMemoryCache, HybridCache, Redis). It owns the 'pick exactly one architecture' rule but mandates no specific one. Floors at .NET 8 / C# 12. Do NOT use for console binaries, CLI tools, desktop apps, WPF/MAUI, daemons, or message-only consumers."
 ---
 
 # .NET Web / HTTP Service Conventions
@@ -112,14 +112,9 @@ builder.Services.AddOptions<SmtpSettings>()
     .ValidateOnStart();
 ```
 
-`.ValidateOnStart()` is the load-bearing call - without it validation runs lazily on first access, which defeats the point. Put simple rules on the class as data-annotation attributes (`[Required]`, `[Range]`). For anything an attribute cannot express - cross-property rules, conditional rules, or rules that depend on `IHostEnvironment` - implement `IValidateOptions<T>`, register it as a singleton, collect every failure into a list and return `ValidateOptionsResult.Fail`; never throw from a validator, as that breaks the chain. Use `PostConfigure` to normalize a bound value (append a trailing slash, apply a default) after binding but before validation.
+`.ValidateOnStart()` is the load-bearing call - without it validation runs lazily on first access, which defeats the point. Simple rules go on the class as data-annotation attributes. Anything an attribute cannot express, the choice between `IOptions` / `IOptionsSnapshot` / `IOptionsMonitor`, and the anti-patterns are `references/options.md` - read it before binding a section whose value changes at runtime.
 
-Pick the lifetime by how the value changes: `IOptions` is a singleton read once at startup - the default for static config; `IOptionsSnapshot` is scoped and re-reads per request; `IOptionsMonitor` is a singleton that reloads on change and fires an `OnChange` callback, so it is the one for background services and hot reload.
-
-Anti-patterns:
-- Injecting `IOptions` where the value must track config changes - that read-once wants `IOptionsMonitor` instead.
-- Reading raw `IConfiguration` (`config["Smtp:Host"]`) in a service - it skips binding and validation and resists testing; inject the typed options.
-- Validating in a constructor or on first use - that is runtime, not startup; move the rule into a validator behind `ValidateOnStart`.
+Prove it once: blank a required setting, start the service, and quote the startup failure naming the section; restore it, start clean, and quote the health-check response. Validation that has never been seen to fail is validation nobody has wired.
 
 ## Tooling
 
@@ -132,7 +127,7 @@ This skill is the cross-cutting baseline; load the focused companion for the *ho
 
 **Availability** - the rows below name specialists installed only where the project's stack or evidence shows the area; a row whose skill is not in your skill list means the area is absent here - work from this hub and skip the row.
 
-Default a new HTTP surface to minimal APIs; the full minimal-vs-controllers decision - when controllers earn their place, chosen per surface, not per repo - is owned by `dotnet-mvc-controllers` (its decision section).
+Default a new HTTP surface to minimal APIs: one default per repo, a controller slice only where the decision section names the reason. That decision - when controllers earn their place - is owned by the controller-based Web API skill.
 
 - Endpoint mechanics (MapGroup, TypedResults, filters, binding, uploads) -> `dotnet-minimal-api`
 - Controller-based Web API ([ApiController], attribute routing, action filters) -> `dotnet-mvc-controllers`

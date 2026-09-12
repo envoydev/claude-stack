@@ -466,3 +466,79 @@ test('check 41: a long reference opens with a table of contents', () => {
     assert.match(findings[0], /a\/references\/no-toc\.md: 12[0-9] lines with no table of contents/);
     fs.rmSync(root, { recursive: true, force: true });
 });
+
+// 42. An ENUMERATED component array and its directory are two lists that must say the same thing.
+test('check 42: the plugin manifest\'s commands array equals the commands directory', () => {
+    const { lintPluginComponents } = require('./lint-skills.js');
+    const onDisk = { commands: ['setup.md', 'status.md', 'update.md'] };
+
+    const clean = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md', './commands/update.md'] }, onDisk);
+    assert.deepStrictEqual(clean, [], clean.join('\n'));
+
+    const missing = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md', './commands/update.md', './commands/gone.md'] }, onDisk);
+    assert.strictEqual(missing.length, 1, missing.join('\n'));
+    assert.match(missing[0], /names 'commands\/gone\.md', which is not on disk/);
+
+    const dead = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md'] }, onDisk);
+    assert.strictEqual(dead.length, 1, dead.join('\n'));
+    assert.match(dead[0], /setup-plugin\/commands\/update\.md is not in plugin\.json's `commands` array/);
+    assert.match(dead[0], /ships dead in every install/, 'the message says what the cost of the miss is');
+
+    // A field the manifest leaves out is the default directory scan - nothing to reconcile.
+    assert.deepStrictEqual(lintPluginComponents({}, onDisk), []);
+    // The `./` prefix is the manifest's own spelling, not a difference.
+    assert.deepStrictEqual(lintPluginComponents({ commands: ['commands/setup.md', 'commands/status.md', 'commands/update.md'] }, onDisk), []);
+});
+
+// 37 (extension). A BARE plugin name is the same class as a bare plugin skill, one level up.
+test('check 37: a backticked bare plugin name needs the clause saying what it gives', () => {
+    const { lintPluginCites } = require('./lint-skills.js');
+    const plugins = new Set(['superpowers', 'claude-md-management', 'csharp-lsp']);
+
+    const flagged = lintPluginCites('skills/x/references/capability-reuse.md', 'Wire the `csharp-lsp` plugin in.\n', plugins);
+    assert.strictEqual(flagged.length, 1, flagged.join('\n'));
+    assert.match(flagged[0], /names the plugin `csharp-lsp` BARE/);
+
+    // The same content clause that clears a `plugin:skill` cite clears a bare one, either side.
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Wire `csharp-lsp` - inline Roslyn diagnostics as each edit lands - into the seat.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `claude-md-management` (the audit-and-revise pass over the instruction file) here.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Drift in the instruction file is paid for by every seat - keep it current with `claude-md-management`.\n', plugins), []);
+
+    // Unbackticked prose is not a cite: stack-graph.js reads the backticked token, and the word
+    // 'superpowers' is English before it is a plugin.
+    assert.deepStrictEqual(lintPluginCites('f.md', 'You have superpowers in this session.\n', plugins), []);
+    // A qualified cite is judged once, by the qualified rule, not twice.
+    assert.strictEqual(lintPluginCites('f.md', 'Follow `superpowers:writing-plans`.\n', plugins).length, 1);
+});
+
+// 28. The verified note must name the plugin its keys were read from, not just any version.
+test('check 28: a verified note copied from another plugin is a finding', () => {
+    const { lintPluginSettings } = require('./lint-skills.js');
+    const roster = new Set(['claude-hud', 'superpowers']);
+    const row = (verified) => ({ plugins: { 'claude-hud': { verified, scope: 'account', targets: [{ file: 'plugins/claude-hud/config.json', settings: { display: { a: 1 } }, why: { display: 'x' } }] } } });
+
+    assert.deepStrictEqual(lintPluginSettings(row('claude-hud 0.8.0 - dist/config.js DEFAULT_CONFIG'), roster), []);
+    const wrongPlugin = lintPluginSettings(row('superpowers 6.3.0 - dist/config.js'), roster);
+    assert.strictEqual(wrongPlugin.length, 1, wrongPlugin.join('\n'));
+    assert.match(wrongPlugin[0], /opening with 'claude-hud <version>'/);
+    assert.strictEqual(lintPluginSettings(row('0.8.0'), roster).length, 1, 'a bare version does not say which plugin');
+});
+
+// 35b. The load verb can come AFTER the name, and only a back-reference makes it a directive.
+test('check 35: a trailing load verb with a back-reference is a directive too', () => {
+    const { lintOptionalCites } = require('./lint-skills.js');
+    const optional = new Set(['dotnet-aspire', 'angular-security']);
+    const fires = (t) => lintOptionalCites('x.md', t + '\n', optional).length;
+
+    // The two shapes the 2026-09-12 skills audit measured walking past the scan.
+    assert.strictEqual(fires('The boundary rules belong to `dotnet-aspire` - load both alongside this one.'), 1);
+    assert.strictEqual(fires('That surface is owned by `angular-security`; reach for it before the edit.'), 1);
+
+    // A pointer is still a pointer: no verb, or a verb whose object is something else.
+    assert.strictEqual(fires('Boundary rules live in `dotnet-aspire`.'), 0);
+    assert.strictEqual(fires('Mechanics live in `dotnet-aspire`. Load the migration tool first.'), 0,
+        'a fresh object in the NEXT sentence is a different artifact, not a back-reference');
+
+    // And the leading form is untouched.
+    assert.strictEqual(fires('Load `angular-security` before the edit.'), 1);
+});

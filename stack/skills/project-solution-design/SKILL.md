@@ -1,6 +1,6 @@
 ---
 name: project-solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit; not the multi-agent flow with its own verifier and fan-out (that is project-solve-cross-task) - in-session it keeps the whole design in your context so you check each step; the run-start ask (or your named mode) decides the designer seat.
+description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit, not a breaking framework or runtime major (project-version-upgrade), and not the multi-agent flow with its own verifier and fan-out (that is project-solve-cross-task) - in-session it keeps the whole design in your context so you check each step; the run-start ask (or your named mode) decides the designer seat.
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
@@ -29,50 +29,26 @@ Three questions on every seam you draw: is this the right TIME for the abstracti
 for the code, and can it lie to a reader or hold a bad state? The plan answers them before an
 implementer inherits the answer.
 
-1. **YAGNI + rule of three.** Design the direct solution; the seam goes in at the third occurrence,
-   split on what actually varied. An extension point the requirement has not asked for twice is
-   indirection someone pays for now for flexibility that usually never arrives - a strategy
-   interface with one implementation forever is the classic shape.
-2. **High cohesion, low coupling - the placement test.** Everything a task owns changes for the same
-   reason. A task boundary that splits one axis of change across two seats, or bundles two axes into
-   one, is the wrong boundary - redraw it before the build starts, not after.
-3. **Program to an interface at boundaries ONLY.** A seam belongs where one really exists: an
-   external system, something the tests mock, something with two implementations or a credible
-   second. An interface mirroring every class is ceremony, and a fat interface whose consumers use a
-   fraction of it is the same failure from the other side.
-4. **Illegal states unrepresentable where cheap, fail fast everywhere else.** Constructor validation,
-   required fields, closed hierarchies for domain state, enums over strings; where the type system
-   will not help, validate at the boundary and throw. Default to composition - inherit only for true
-   substitutability, and a subtype that cannot stand in for its base is a design defect, not an
-   implementation detail.
-5. **Command-query separation.** A method either mutates or answers, never both.
-6. **Least astonishment.** The name is the contract - a seam that does more than its name says means
-   fixing one of the two, in the plan, before it ships.
-7. **Patterns are refactored TOWARD, never started from.** Where the trigger is already in the code
-   (the same change hitting three places, a switch growing per feature, a test that needs half the
-   system), name the established pattern rather than inventing a bespoke shape - and absent a
-   trigger, the simpler structure wins. A pattern the language absorbed (first-class functions,
-   generics, pattern matching) is a keyword now, not a structure to build.
+1. **YAGNI + rule of three** - design the direct solution; the seam goes in at the third occurrence, split on what actually varied.
+2. **High cohesion, low coupling** - everything a task owns changes for the same reason; a boundary that splits one axis of change across two seats is the wrong boundary.
+3. **Program to an interface at boundaries ONLY** - an external system, something the tests mock, something with a credible second implementation.
+4. **Illegal states unrepresentable where cheap, fail fast everywhere else** - and composition by default, since a subtype that cannot stand in for its base is a design defect.
+5. **Command-query separation** - a method either mutates or answers, never both.
+6. **Least astonishment** - the name is the contract.
+7. **Patterns are refactored TOWARD, never started from** - absent a trigger already in the code, the simpler structure wins.
+
+`references/design-rules.md` carries all seven in full, each with the failure shape it prevents,
+plus the observability spec below - Read it at method step 4, before the decomposition is written.
 
 SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast comment - never the
 justification on a task card: a design decision whose only support is a letter of the acronym, with
 no breakage named, has not been argued.
 
 **Observability is designed at the seams, never sprinkled by the implementer.** Stamp each task
-card with `log_points` - where a line goes, at what level, carrying which identifiers: the boundary
-crossings the task owns (an inbound request, message or job run's start and outcome; an outbound call
-to an external system; a persistence write), the decision points a reader would need to reconstruct
-the path (a retry, a fallback, a rejected input, a state transition), and every failure exit. Level by
-who acts: error means someone acts now, warning means degraded but handled, information means a
-business-significant event, debug means investigation only. The message carries the join keys an
-investigator needs - the correlation or trace id, the entity id - and never a secret, a token, a
-payload, or personal data beyond the project's policy. A failure is logged ONCE, at the boundary that
-handles it, never log-and-rethrow at each layer; a background job, a fire-and-forget or a swallowed
-catch with no log point is a silent failure, and a design defect. Where the framework already emits
-the event (request logging, client logging) the card says so instead of duplicating it. A task with
-no failure exit of its own stamps `log_points: none - <reason>` - an absent field and a considered
-none must never look alike. Every point goes through the repo's existing logging seam and message
-convention - name the precedent on the card, never a second logger.
+card with `log_points` - where a line goes, at what level, carrying which identifiers - or
+`log_points: none - <reason>`, since an absent field and a considered none must never look alike.
+Which crossings and decision points earn a line, the level ladder, the join keys a message carries,
+and the log-once rule are in the reference.
 
 **Every judgment call lands on the plan with its precedent.** The plan carries a `## Decisions`
 ledger - one line per call the design made where the requirement left two defensible shapes (a
@@ -100,7 +76,9 @@ Two header lines open the plan file, both required fields and not niceties:
 
 ## Write and hand off
 
-Write the plan to `<docs-path>/superpowers/plans/<feature>.md` before handing off - the FILE is the handoff artifact: it survives compaction and a fresh session, where the chat copy does not. A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it. Then hand off: gate the plan with `project-verify-plan` before building, build each task with `project-implementer` under the stack skill, and review the built code with `project-verify-code` (`project-solve-task` drives this whole chain with a user gate between every step).
+Write the plan to `<docs-path>/superpowers/plans/<feature>.md` before handing off - the FILE is the handoff artifact: it survives compaction and a fresh session, where the chat copy does not. A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it. Then verify the write, in the same turn: `wc -l` the plan file (it exists and is not empty) and grep it for `Oriented:` and `Asked:` - the two header lines `project-verify-plan` fails a plan without - plus one anchor from the first task, which proves the located `file:symbol` references survived the write. Quote the three results. A plan nobody can find, or one missing a header, is a design run with no output.
+
+Then hand off: gate the plan with `project-verify-plan` before building, build each task with `project-implementer` under the stack skill (a task the build proves wrong comes back here only through that skill's user ask, never on its own), and review the built code with `project-verify-code` (`project-solve-task` drives this whole chain with a user gate between every step).
 
 ## Plan format
 

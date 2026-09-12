@@ -460,7 +460,11 @@ function lintPluginSettings(catalog, pluginRoster)
     for (const [name, entry] of Object.entries(catalog.plugins || {}))
     {
         if (!pluginRoster.has(name)) out.push(`plugin-settings.json names plugin '${name}', which is not in the plugins roster - its settings would never be offered`);
-        if (!/\S+ \d+\.\d+\.\d+/.test(String(entry.verified || ''))) out.push(`plugin-settings.json '${name}' needs a \`verified\` note naming the plugin VERSION its keys were read from - a key the plugin does not read is a silent no-op`);
+        // The note must name THIS plugin and a version - a row copied from a sibling keeps the
+        // sibling's name and reads as verified while pointing at the wrong package's keys. The
+        // INSTALLED version cannot be compared here: the PLUGINS manifest pins no version (it
+        // installs newest), so that half is the walk's job, where `claude plugin list` is readable.
+        if (!new RegExp(`^${escapeRe(name)} \\d+\\.\\d+\\.\\d+`).test(String(entry.verified || ''))) out.push(`plugin-settings.json '${name}' needs a \`verified\` note opening with '${name} <version>' - the exact plugin and version its keys were read from, since a key the plugin does not read is a silent no-op and a row copied from another plugin reads as verified`);
         if (!Array.isArray(entry.targets) || !entry.targets.length) { out.push(`plugin-settings.json '${name}' has no targets`); continue; }
         for (const t of entry.targets)
         {
@@ -684,6 +688,14 @@ const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|
 // names something most installs do not have. `routes to` is included beside the brief's
 // `routes through` because the measured miss uses it.
 const DIRECTIVE_SHAPE = /(?:\bcompanions?(?:\s+skills?)?\s*:|\bpoints?\s+at\b|\broutes?\s+(?:to|through)\b|\bthat\s+mechanism\s+is\b|\bhands?\s+off\s+to\b|\bdispatch(?:es|ed|ing)?\b)/i;
+// 35b. The verb can also come AFTER the name, and the scan above only ever read the text BEFORE
+// it - so two live directives walked straight past: 'belongs to `x` ... load both alongside this'
+// and 'is owned by `x`; reach for it'. Both name a skill the citing install can lack. The trailing
+// form is deliberately NARROW - the verb must be followed by a back-reference (both / it / them /
+// the pair) rather than a fresh object - because a plain trailing verb turns every pointer into a
+// directive ('mechanics live in `x`. Load the migration tool' is two different artifacts), and the
+// pointer-versus-directive line is the whole thing this scan protects.
+const TRAILING_DIRECTIVE = /\b(?:load|loads|invoke|invokes|reach for|pull in|consult|re-enter|re-invoke)\s+(?:both|it|them|that one|those|the (?:one|pair|two)\b)/i;
 const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never installed|is absent|are absent|installed only (?:where|when|if)|(?:when|where|if) installed)\b/i;
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
 // '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
@@ -840,7 +852,10 @@ function lintOptionalCites(file, text, optional, opts = {})
             const inLoadCell = cells !== null && [...loadCols].some(idx => cellRe.test(cells[idx] || ''));
             const before = line.slice(0, m.index);
             const sentence = before.slice(before.lastIndexOf('. ') + 1);
-            if (!inLoadCell && !LOAD_VERB.test(sentence) && !DIRECTIVE_SHAPE.test(sentence)) continue;
+            const rest = line.slice(m.index + name.length);
+            const restOfSentence = rest.split(/\.\s/)[0];
+            if (!inLoadCell && !LOAD_VERB.test(sentence) && !DIRECTIVE_SHAPE.test(sentence)
+                && !TRAILING_DIRECTIVE.test(restOfSentence)) continue;
 
             const what = isAgent ? 'seat' : 'skill';
             const where = opts.absentIn
@@ -867,12 +882,20 @@ function lintOptionalCites(file, text, optional, opts = {})
 // content clause is a dash, colon or parenthetical clause opening straight after the token, or a
 // dash clause closing straight before it. The namespaces come from the installers' own PLUGINS
 // block, so a plugin added there is covered without touching this check.
+//
+// The BARE plugin name is the same class one level up, and the 2026-09-12 plugins audit found four
+// of them uncovered: a body naming `csharp-lsp` or `claude-md-management` on its own is naming a
+// per-install, droppable plugin, so a seat on an install that dropped it reads a name and nothing
+// else. Only the BACKTICKED spelling is judged - that is the token stack-graph.js reads to emit the
+// dependency edge, so backticking a cite is what puts it in the graph, while the unbackticked word
+// is prose ('superpowers' is an English word before it is a plugin). Same content-clause test.
 function lintPluginCites(file, text, pluginNames)
 {
     const findings = [];
     if (!pluginNames || pluginNames.size === 0) return findings;
     const alts = [...pluginNames].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
     const token = new RegExp(`(?<![A-Za-z0-9_./-])(${alts}):([a-z][a-z0-9-]*)(?![A-Za-z0-9_-]|\\.[A-Za-z0-9]|/)`, 'g');
+    const bare = new RegExp('`(' + alts + ')`', 'g');
     const lines = text.split(/\r?\n/);
     const skipFm = frontmatterSkipLines(lines);
     for (let i = 0; i < lines.length; i++)
@@ -890,6 +913,17 @@ function lintPluginCites(file, text, pluginNames)
                 + `without it reads a name and nothing else. Pair the name with what it contains in the same sentence `
                 + `(the shape baseline-quality-gates.md uses: the name, then ' - ' and the one clause that says what `
                 + `the method demands), so the rule still stands where the plugin is absent`);
+        }
+
+        for (const m of lines[i].matchAll(bare))
+        {
+            const after = lines[i].slice(m.index + m[0].length);
+            const sentenceBefore = lines[i].slice(0, m.index).slice(lines[i].slice(0, m.index).lastIndexOf('. ') + 1);
+            if (/^\s*[-:(]\s*\S[^\n]{11,}/.test(after) || /\s-\s[^-]{12,}$/.test(sentenceBefore)) continue;
+            findings.push(`${file}:${i + 1} names the plugin \`${m[1]}\` BARE - it is per-install and droppable, `
+                + `so a seat on an install without it reads a name and nothing else. Say what it GIVES in the same `
+                + `sentence (the name, then ' - ' and the one clause that says what it provides), so the guidance `
+                + `still stands where the plugin is absent`);
         }
     }
 
@@ -1058,6 +1092,35 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
             findings.push(`${d}/references/${r}: ${lines.length} lines with no table of contents in its first 15 - `
                 + `open it with a Contents list of its own section anchors, so a seat can see what is in the file `
                 + `without reading all of it`);
+        }
+    }
+
+    return findings;
+}
+
+// 42. A plugin manifest that ENUMERATES a component directory owns two lists that must say the same
+// thing. Claude Code loads exactly what the array names, so a file added to `commands/` and not to
+// the array ships DEAD - it is in the package, downloaded by every install, and invisible to the
+// user - while an array row whose file is gone fails the plugin's load. Neither is visible from
+// either list alone, and the package has no test that would notice. A field the manifest leaves out
+// is the default directory scan and has nothing to reconcile, so it is skipped rather than flagged.
+function lintPluginComponents(manifest, listings)
+{
+    const findings = [];
+    const norm = (v) => String(v).replace(/^\.\//, '').replace(/\\/g, '/');
+    for (const [field, actual] of Object.entries(listings))
+    {
+        if (!Array.isArray(manifest[field])) continue;
+        const declared = new Set(manifest[field].map(norm));
+        const onDisk = new Set(actual.map(f => `${field}/${f}`));
+        for (const d of [...declared].sort())
+        {
+            if (!onDisk.has(d)) findings.push(`setup-plugin/.claude-plugin/plugin.json \`${field}\` names '${d}', which is not on disk - the plugin fails to load`);
+        }
+
+        for (const a of [...onDisk].sort())
+        {
+            if (!declared.has(a)) findings.push(`setup-plugin/${a} is not in plugin.json's \`${field}\` array - an enumerated field is the WHOLE list, so this file ships dead in every install`);
         }
     }
 
@@ -1829,6 +1892,16 @@ function main()
         flag(`version drift: setup-plugin plugin.json '${pluginManifest.version}' vs .claude-plugin/marketplace.json metadata '${marketplaceVersion}' - the plugin, the marketplace, and the release must carry ONE version`);
     }
 
+    // 42. What the manifest ENUMERATES must equal what is on disk - see lintPluginComponents.
+    const pluginComponentDirs = {};
+    for (const field of ['commands', 'agents', 'hooks'])
+    {
+        const dir = path.join(ROOT, 'setup-plugin', field);
+        if (fs.existsSync(dir)) pluginComponentDirs[field] = fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort();
+    }
+
+    for (const finding of lintPluginComponents(pluginManifest, pluginComponentDirs)) flag(finding);
+
     // 22. The evidence catalog names only real artifacts, and every regex signal
     //     carries a display label. Rosters: skill dirs; MCPs/plugins from the
     //     installer blocks (active + commented - a commentable entry is still real).
@@ -1897,8 +1970,14 @@ function main()
         try
         {
             const dashed = [];
+            // A RUN's own output is not shipped text: `setup-plugin/evals/results/` holds the eval
+            // report and its aggregate JSON, written by Claude Code with its own punctuation and
+            // re-dated on every run (gitignored for the same reason). Sweeping it made the house
+            // voice check fail on a file the house did not write.
+            const GENERATED = new Set(['setup-plugin/evals/results']);
             const sweep = (dir, rel) =>
             {
+                if (GENERATED.has(rel)) return;
                 for (const e of fs.readdirSync(dir, { withFileTypes: true }))
                 {
                     if (e.name.startsWith('.')) continue;
@@ -2300,6 +2379,7 @@ module.exports = {
     localSkillDirs,
     lintEvidenceCatalog,
     lintPluginSettings,
+    lintPluginComponents,
     lintOrchestrationRoster,
     lintCapabilityClaims,
     lintJudgmentCatalog,

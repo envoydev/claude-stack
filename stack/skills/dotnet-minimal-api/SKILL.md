@@ -1,6 +1,6 @@
 ---
 name: dotnet-minimal-api
-description: "Use before writing or editing ASP.NET Core minimal API endpoints - MapGet, MapPost, MapGroup, endpoint filters. Covers how an endpoint is shaped and wired, not what surrounds it: feature-grouped registration via extension methods and MapGroup, TypedResults and Results<> outcome unions, IEndpointFilter for per-endpoint cross-cutting, parameter binding (AsParameters, explicit From-attributes, custom BindAsync/TryParse), endpoint metadata, and hardened IFormFile uploads. Floors at .NET 8 / C# 12; later additions are flagged optional. Do NOT use for MVC or API controllers (that is dotnet-mvc-controllers), gRPC, SignalR, or non-HTTP code."
+description: "Use before writing or editing ASP.NET Core minimal API endpoints - MapGet, MapPost, MapGroup, endpoint filters. Covers how an endpoint is shaped and wired, not what surrounds it: MapGroup registration, TypedResults and Results<> outcome unions, IEndpointFilter, parameter binding, endpoint metadata, and hardened IFormFile uploads. Floors at .NET 8 / C# 12; later additions are flagged optional. Do NOT use for MVC or API controllers (that is the controller-based Web API skill), gRPC, SignalR, or non-HTTP code."
 ---
 
 # ASP.NET Core minimal API - endpoint mechanics
@@ -117,6 +117,10 @@ Bind an upload with `IFormFile` (or `IFormFileCollection` for several). For a la
 - **Keep antiforgery on.** An upload is a form post, so `UseAntiforgery()` applies. Only `.DisableAntiforgery()` on an endpoint that is genuinely not cookie/CSRF-exposed (for instance a bearer-token API), and know why before you do.
 
 The error/`ProblemDetails` shape for a rejected upload stays with the HTTP error-handling skill; auth posture with the authentication skill.
+
+## Prove the endpoint
+
+A route that compiles is not a route that answers. Call it three ways before any done word and quote each result: a valid request returns the declared status and body shape; an invalid one returns the canonical 400 envelope; and a cancelled request stops the work rather than running on. An endpoint whose `CancellationToken` was never exercised is an endpoint that keeps working after the client has hung up.
 
 ## Anti-patterns
 

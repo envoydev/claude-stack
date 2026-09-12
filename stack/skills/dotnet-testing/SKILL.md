@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: "Use before writing, modifying, or reviewing .NET tests, auditing test quality or smells, running mutation testing, or configuring coverage - do not rely on recall. The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library - AAA structure, a test strategy keyed off responsibility, coverage mechanics (the exclusion catalog + after-exclusions semantics; the % bar itself is user-set via project-test-coverage-analyzer), and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular or Ionic tests, or for plain TS/JS outside a framework harness - the Angular and the TypeScript/JavaScript testing skills own those."
+description: "Use before writing, modifying, or reviewing .NET tests, auditing test quality or smells, running mutation testing, or configuring coverage - do not rely on recall. The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library. Defaults are xUnit, NSubstitute and FluentAssertions 7.x; coverage mechanics, library routing, Testcontainers, Aspire integration and snapshot testing are in `references/`. Floors at .NET 8 / C# 12. Do NOT load for Angular or Ionic tests, or for plain TS/JS outside a framework harness - the Angular and the TypeScript/JavaScript testing skills own those."
 ---
 
 # .NET Testing Approach
@@ -47,43 +47,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 
 ## Library choices
 
-Runner, substitute library, and assertion library are project-level decisions. Pick one per category and stay consistent across the test project.
-
-### Test runners
-
-| Runner | When to pick |
-|---|---|
-| **xUnit** | Default for new projects. `[Fact]` / `[Theory]` + `[InlineData]` / `[MemberData]` / `[ClassData]`. No `[SetUp]` / `[TearDown]` - use constructor + `IDisposable` / `IAsyncLifetime`. Parallel by default. |
-| **NUnit** | When the project already uses it, or for parameterized-test ergonomics (`[TestCase]`, `[TestCaseSource]`, `[Values]`, `[ValueSource]`). |
-| **MSTest** | When the project ships with it (Visual Studio templates, internal Microsoft tooling). `[TestClass]` / `[TestMethod]` / `[DataRow]` / `[DynamicData]`. |
-
-Do not mix runners in one project. Migrate, don't blend.
-
-### Substitute / mock libraries
-
-| Library | API style | When to pick |
-|---|---|---|
-| **NSubstitute** | Substitutes (`Substitute.For<T>()`); record/replay-free, terse syntax (`x.M(Arg.Any<int>()).Returns(...)`); loose by default - unconfigured members return defaults; `Received()` throws only when an expected call was not made. | Default for new projects. Fluent, readable in AAA. |
-| **Moq** | Mocks (`new Mock<T>()`); `.Setup(...).Returns(...)`, `.Verify(...)`. Loose by default; `MockBehavior.Strict` opts into strict. | When project already uses Moq, or when tooling/team familiarity argues for it. |
-| **FakeItEasy** | Fakes (`A.Fake<T>()`); `A.CallTo(() => fake.M(...)).Returns(...)`, `A.CallTo(...).MustHaveHappened()`. | Project preference; mature alternative with natural English DSL. |
-
-Same project = one substitute library. Don't half-port.
-
-Common rules regardless of library:
-- Substitute only what you cannot construct (external services, ports, infrastructure). Prefer real instances for value objects, records, simple aggregates.
-- Default to loose / non-strict; only assert calls that are part of the contract under test.
-- Do not call `Received()` / `Verify()` / `MustHaveHappened()` on every interaction - verify the boundary that matters, leave the rest implicit.
-
-### Assertion libraries
-
-| Library | When to pick |
-|---|---|
-| **FluentAssertions 7.x** | Default. Rich diff output, structural equality, async support. Stay on 7.x: v8+ is free only for open-source and non-commercial use and needs a paid license for commercial projects (v7 stays Apache-2.0) - upgrading a client project is a licensing decision, not a routine bump. |
-| **AwesomeAssertions** | Apache-2.0 community fork taken from FluentAssertions' last Apache-licensed release (v7) and developed forward independently. Drop-in choice when you want a permissive license and ongoing fixes without FA v8's commercial terms. |
-| **Shouldly** | Project preference. Simpler API; good when FA's surface area feels heavy. |
-| **xUnit/NUnit/MSTest built-in `Assert`** | When the project has no FA/Shouldly dependency and stays minimal. |
-
-Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
+Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **FluentAssertions 7.x** assertions (v8+ needs a paid commercial licence, so an upgrade is a licensing decision, not a routine bump; the Apache-2.0 fork AwesomeAssertions is the permissive way forward). One runner, one substitute library and one assertion library per project - migrate, never blend. When the project has already picked, or is picking now, the alternatives and the reason for each are `references/library-routing.md`. Substitute only what you cannot construct, stay loose rather than strict, and verify the boundary that matters instead of every interaction. Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
 
 ### Coverage collection
 

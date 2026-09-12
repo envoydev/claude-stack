@@ -1,6 +1,6 @@
 ---
 name: dotnet-security
-description: "Use when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities in a .NET service. The application-security hardening reference, organized by the OWASP Top 10 (2021) mapped to concrete ASP.NET Core / .NET 8 mitigations: broken access control (fallback authz policy, resource-based ownership checks against IDOR, CORS lockdown), injection and XSS, cryptographic and integrity failures, insecure deserialization, misconfiguration, vulnerable dependencies, SSRF, and security logging. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Do NOT use for building the sign-in flow itself or for picking a crypto primitive - this skill reviews and hardens; the authentication and cryptography skills build."
+description: "Use when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities in a .NET service. The application-security hardening reference: the OWASP Top 10 mapped to concrete ASP.NET Core / .NET 8 mitigations - access control and IDOR, injection and XSS, CORS, crypto and integrity, deserialization, misconfiguration, vulnerable dependencies, SSRF, security logging - reported as a `category | surface | risk | fix` findings table. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Do NOT use for building the sign-in flow itself or for picking a crypto primitive - this skill reviews and hardens; the authentication and cryptography skills build."
 ---
 
 # .NET application security - the OWASP Top 10, applied
@@ -77,52 +77,21 @@ The framework's defaults are mostly safe; the failures come from turning them of
 - **Trim what you expose.** Disable Swagger/OpenAPI and detailed health-check payloads in production unless they sit behind auth, and remove sample or debug endpoints before ship.
 - **Keep environments honest.** `ASPNETCORE_ENVIRONMENT` must be `Production` in production - the developer exception page, verbose logging, and relaxed settings are all gated on it, and a misset environment is itself the vulnerability.
 
-## A06 - Vulnerable and outdated components
+## A06-A10 - the second half, in one bullet each
 
-Most of the code in a service is other people's, and that code has its own published vulnerabilities.
+The mechanics for these five categories are `references/owasp-a06-a10.md` - open the category you are reviewing. The obligation that must hold whatever the install looks like is here:
 
-- **Audit dependencies in CI, not by hand.** `dotnet list package --vulnerable --include-transitive` fails the build when a known-bad package (direct or pulled in beneath one) is present; transitive coverage matters because the flaw is usually two levels down.
-- **Patch on a schedule, not on incident.** Keep packages current and the runtime supported - a framework past end-of-life stops getting security fixes entirely.
-- **Pin and verify.** Lock files plus package source mapping (a nuget.config `packageSourceMapping` section) stop a dependency-confusion swap, where a malicious public package shadows an internal one:
+- **A06, vulnerable and outdated components.** `dotnet list package --vulnerable --include-transitive` runs in CI and fails the build; packages and the runtime stay on supported versions; a lock file plus `packageSourceMapping` closes the dependency-confusion swap.
+- **A07, identification and authentication failures.** Signature, issuer, audience and expiry are all validated with tight clock skew and none of them switched off; session cookies are `HttpOnly` + `Secure` + `SameSite`; credential flows carry lockout or throttling and leak no user enumeration.
+- **A08, software and data integrity failures.** Never deserialize untrusted input with a type-permissive formatter - `BinaryFormatter` is unsafe by design and any working call on the .NET 8 floor is a deliberate opt-in to delete; verify a signature or hash on anything you load, and treat the build chain as in-scope.
+- **A09, security logging and monitoring failures.** Log authentication success and failure, authorization denials and high-value actions with a correlation id; never log a secret or PII; alert on the attack patterns, because a log nobody watches is not monitoring.
+- **A10, server-side request forgery.** Any URL built from user input is checked against an allowlist of hosts or schemes, loopback / link-local / private / cloud-metadata ranges are rejected resolve-then-check, and the fetch runs on a dedicated `HttpClient` with redirects disabled and a tight timeout.
 
-```xml
-<packageSourceMapping>
-  <packageSource key="nuget.org"><package pattern="*" /></packageSource>
-  <packageSource key="internal"><package pattern="Contoso.*" /></packageSource>
-</packageSourceMapping>
-```
+## Review output
 
-## A07 - Identification and authentication failures
+When this skill is used to review rather than to write, the deliverable is a findings table, not prose:
 
-How tokens, cookies, and sessions are actually issued and validated belongs to the skill covering .NET authentication. The security obligations that sit on top of that machinery are these, and they hold with or without it:
-
-- **Validate tokens completely.** Signature, issuer, audience, and expiry all checked; clock skew kept tight. Writing that configuration belongs to the authentication skill; the requirement that none of those validations is switched off is here.
-- **Harden cookies.** Session cookies are `HttpOnly`, `Secure`, and `SameSite` - that combination is what blunts session theft and CSRF.
-- **Defend the credential flows.** Lockout or throttling on repeated failures, no enumeration (the response for an unknown user matches the one for a wrong password), and password rules that lean on length over forced complexity.
-
-## A08 - Software and data integrity failures
-
-This category is where insecure deserialization lives - the moment untrusted bytes are turned back into objects that can carry behavior.
-
-- **Never deserialize untrusted input with a type-permissive formatter.** `BinaryFormatter` is unsafe by design - a crafted payload reaches gadget chains during deserialization and executes. Calling it became a compile error in .NET 7, the methods throw by default at runtime from .NET 8, and the in-box implementation was removed in .NET 9 (a legacy-compat package is the only way back). On the .NET 8 floor the type is present but throws, so any working call had to opt back in deliberately - treat that opt-in as the vulnerability and delete it. Use System.Text.Json with a known, constrained set of types; do not enable polymorphic deserialization over data you did not produce, and bind to concrete DTOs rather than `object` or `dynamic`.
-- **Verify what you load.** Check integrity (a signature or hash) on plugins, updates, and serialized state before trusting them, and pull build dependencies only from sources you control.
-- **Treat the supply chain as in-scope.** A compromised build step or unverified artifact is an integrity failure even when your own code is clean.
-
-## A09 - Security logging and monitoring failures
-
-You cannot respond to what you never recorded, and you cannot trust logs that leak what they were meant to protect.
-
-- **Log the security-relevant events.** Authentication success and failure, authorization denials, and high-value actions, each carrying a correlation/trace id so a single request can be reconstructed end to end. The observability wiring - Serilog, the correlation id, structured fields - belongs to the skill covering the ASP.NET Core cross-cutting baseline; this skill says which events are worth logging, and the list stands whatever sink you have.
-- **Never log a secret or PII.** Passwords, tokens, keys, full card or account numbers, and identifying data stay out of logs - redact or omit them at the source, because a log aggregator is a far softer target than the database.
-- **Make logs actionable.** Alert on the patterns that signal an attack (a spike of authorization denials, repeated login failures from one source); a log nobody watches is not monitoring.
-
-## A10 - Server-side request forgery (SSRF)
-
-When the server fetches a URL the user influenced, the attacker can aim that fetch at the internal network - cloud metadata endpoints, internal admin panels, anything the server can reach but the user cannot.
-
-- **Allowlist outbound destinations.** Any URL built from user input (webhooks, image fetches, link previews) is validated against an allowlist of permitted hosts or schemes before the request goes out; an allowlist is the control, a denylist of bad hosts is not.
-- **Block the internal ranges.** Reject loopback, link-local, private, and cloud-metadata addresses, and resolve-then-check so a DNS name cannot rebind to an internal IP after validation.
-- **Constrain the client itself.** A dedicated `HttpClient` with redirects disabled and a tight timeout stops a 302 from bouncing an allowlisted host to an internal one.
+`category | surface | risk | fix` - one row per finding, ordered by risk, the category naming the A0x above. Name the route a fix belongs to by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that wiring. State what you did NOT check as plainly as what you did - a category you never looked at is UNVERIFIED, never a pass.
 
 ## Do not use - dead but still tempting
 

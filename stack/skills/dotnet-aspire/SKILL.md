@@ -15,9 +15,9 @@ The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check pr
 
 ## What Aspire is and is not
 
-- It orchestrates a **local development run**. It is not a deployment system. The graph you write here drives `dotnet run` on the AppHost; getting the app onto a server is a separate concern that belongs to your CI and container tooling, and is out of scope for this skill.
-- It does not change how your services are written. A service still reads a connection string from configuration and constructs its clients the ordinary way - the AppHost is what hands it that connection string. Keep Aspire's client packages and resource types out of business logic; if you find yourself reaching for an Aspire type inside a handler, the wiring has leaked into the wrong layer.
-- Prefer the first-party integrations - Postgres, Redis, RabbitMQ, SQL Server, and the rest - over standing up a bare container and configuring it yourself. Each integration package handles the connection string, registers a health check, and emits traces, so you inherit observability and readiness for free instead of bolting them on.
+- **Local run only, never a deployment system.** The graph drives `dotnet run` on the AppHost; getting the app onto a server belongs to CI and container tooling.
+- **No Aspire type inside business logic.** A service reads its connection string from configuration as usual; the AppHost is only what hands it over. An Aspire type in a handler means the wiring leaked a layer.
+- **First-party integration over a bare container.** Postgres, Redis, RabbitMQ, SQL Server and the rest each bring the connection string, a health check and traces; a hand-configured container brings none of them.
 
 ## The AppHost owns the topology
 
@@ -89,7 +89,7 @@ Pair the registration with `MapDefaultEndpoints()`, which maps the health endpoi
 
 ## The dashboard
 
-A local run launches the Aspire dashboard automatically. Lean on it instead of standing up Seq, Jaeger, or a local Grafana for the inner loop - it consumes the same OTLP that ServiceDefaults already exports, so traces, structured logs, and metrics for every resource are there with zero extra setup. Use it to follow a request across services, watch a resource's health flip, and read environment variables and console output per process. It is a development tool only; do not treat it as a production observability backend.
+A local run launches the dashboard automatically, consuming the same OTLP ServiceDefaults already exports - use it for cross-service traces, health flips, and per-process environment and console output instead of standing up Seq, Jaeger or Grafana for the inner loop. Development tool only; never a production observability backend.
 
 Prove the graph before calling the wiring done: `dotnet run` the AppHost, confirm every resource reaches Running in the dashboard and that each service resolved its injected connection string, and quote both. A topology that compiles but never starts is the failure this skill exists to prevent.
 

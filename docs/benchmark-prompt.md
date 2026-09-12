@@ -20,7 +20,7 @@ project: ~53 house **skills**, 32 **agents** (a `cross-stack-agents-flow` router
 cutting `architecture-analyzer`, `task-analyzer`, `runtime-failure-diagnoser`, `ci-failure-diagnoser`,
 `cross-stack-contract-designer`, `integration-reviewer`, `security-auditor`, four build/test resolvers,
 and a read-only `evidence-gatherer` the diagnosers dispatch), 3 **hooks**, 8 path-scoped **rules**, 8
-**plugins** (incl. `ponytail` minimal-code and `caveman` terse-output), and 7 **MCPs** (`serena`,
+**plugins** (incl. `caveman` terse-output), and 7 **MCPs** (`serena`,
 `context7`, `memory`, `playwright`, `angular-cli`, `chrome-devtools`, `appium-mcp`).
 
 **Read these before you start** (do not skip - they define the flow you are measuring):
@@ -199,11 +199,12 @@ many `evidence-gatherer` runs the diagnoser dispatches (1..N) and how much each 
 (Requirement 5's list repeats "small issue per project" - treat that as the small x2 + hard x2 + hard
 cross-project set above; note the dedup in your report.)
 
-### Family E - Ablation: how much do ponytail / caveman / nx help (Requirement 6)
+### Family E - Ablation: how much do caveman / nx help (Requirement 6)
 
 Re-run two representative cells (recommend **B3** big-task and **D2** hard-investigation) with one
 capability removed at a time, comparing tokens and behaviour against the baseline run:
-- **ponytail off** - disable the plugin (`.claude/settings.json` -> `"ponytail@...": false`, restart).
+- **the minimal-code discipline off** - it is no longer a plugin: since 0.2.74 the ladder lives inline
+  in the seat bodies, so ablate it by dispatching a seat whose discipline paragraph is stripped.
   Measure diff size / over-build (did the implementer add abstractions or dependencies it did not need?)
   and token delta.
 - **caveman off** - disable it. Measure output-token delta (report/punch-list verbosity), not input.
@@ -227,7 +228,7 @@ Write two files at the benchmark root.
    outcome. Subtotal per family and a grand total.
 4. **Flow metrics** - mode-ladder distribution (how often each mode fired), verifier catch rate +
    punch-list cycles, evidence-gatherer fan-out per investigation cell.
-5. **Ablation deltas** - baseline vs ponytail-off vs caveman-off token + behaviour comparison; the nx
+5. **Ablation deltas** - baseline vs minimal-code-off vs caveman-off token + behaviour comparison; the nx
    N/A note.
 
 ### `BENCHMARK-ANALYSIS.md` (MEASURED-grounded judgement)

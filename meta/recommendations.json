@@ -25,10 +25,8 @@
   ],
   "plugins": [
    "superpowers",
-   "claude-md-management",
    "security-guidance",
-   "claude-hud",
-   "ponytail"
+   "claude-hud"
   ],
   "hooks": [
    "guard-protected-force-push",
@@ -75,6 +73,9 @@
   ],
   "mcps": [
    "memory"
+  ],
+  "plugins": [
+   "claude-md-management"
   ]
  },
  "stacks": {

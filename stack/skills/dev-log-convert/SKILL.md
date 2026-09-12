@@ -83,35 +83,19 @@ Total time: <sum across all groups>.
 - If time is not provided for a task, write `(time not specified)`.
 - DERIVED time is never invented: when the input gives a total or an estimate that the output shape must SPLIT per day or per task, stop and ask (AskUserQuestion) for the real split before drafting any dated log (measured: an unasked 8h/8h/5h+3h/8h split cost four correction round-trips, with the ask finally firing after the third). A task with no time given at all simply takes `(time not specified)` - the placeholder covers a missing figure, the ask covers an invented split.
 - Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask via AskUserQuestion (measured: a two-ticket day drafted per-ticket was rejected for merged wording).
-- Self-check before output: run the drafted task lines of each day through `scripts/total-time.js` (`node scripts/total-time.js < lines.txt` - Node.js built-ins only, nothing to install) and confirm its total equals the printed `Total time`; it normalizes the h/m, Ukrainian and decimal-hour spellings and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where the script cannot be run, re-add the times by hand and say the check was manual.
+- Self-check before output: write the drafted task lines of each day to a file inside the session's own scratch directory (never the project tree, never outside it), then run them through `scripts/total-time.js` (`node scripts/total-time.js < <that file>` - Node.js built-ins only, nothing to install) and confirm its total equals the printed `Total time`; it normalizes the h/m, Ukrainian and decimal-hour spellings and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where the script cannot be run, re-add the times by hand and say the check was manual.
 
 **Task grouping within a day**
 - Keep only the main points - no extra explanations, no step-by-step process.
 - Merge or group similar items so each day has only the key tasks.
 - If the same ticket appears multiple times in one day, keep separate lines if they represent different work blocks or branches; otherwise merge them and sum the time.
-
-**Completion signals**
-- If context indicates a task was tested/verified but not yet merged, append `Testing.` - only if the summary does not already mention testing or verification.
-- If context indicates a task is fully done and merged, append `Testing. Merged changes.` - only if the summary does not already mention those actions.
-- Other status markers that may appear when context warrants: `In progress.`, `Created merge request.`, `Code review.`. Use only when the input clearly signals that state; do not invent them.
-- Do not append a signal that duplicates information already present in the summary.
-
-**Implicit investigation**
-- If a task was fully completed within the day (a fix applied or a feature fully implemented in that single day) and the input contains no mention of investigation, analysis, or research, open the summary with `Investigated <brief topic>.` followed by the fix/implementation sentence - a task diagnosed and fixed inside one day always began with finding the cause, and the log should credit that work even when the notes skip it.
-- Do not add this when: the task is ongoing across multiple days, the summary already starts with an investigation verb, or the input explicitly mentions investigation/analysis.
+- Pure non-work entries that aren't a ticket and aren't a recurring item (lunch, coffee break): omit entirely. Private life is not in the log.
+- Before drafting the first day, read `references/edge-cases.md` - the completion signals, the implicit-investigation sentence, and the edge cases (relative dates, a ticket spanning days, a day off, a time mismatch). They fire on the shape of the input, so a run that skips them drafts the wrong shape and gets corrected.
 
 **Multiple days**
 - If input contains multiple days, output each day as a separate section in the same response.
 - Each day's section title carries that day's own resolved date - the today's-date title rule applies to single-day input only.
 - If a day of week is not provided, write `Day not specified`.
-
-**Edge cases**
-- Relative dates (`today`, `yesterday`, `сьогодні`, `вчора`): resolve to absolute `dd.mm.yyyy` using today's date (Mon-Sun, no weekend skip).
-- Same ticket spanning multiple days: write a separate line under each day with that day's time only. Do not sum across days.
-- Day with no work (vacation, sick leave, public holiday): output the day header followed by a single line `Off (<reason>).` and skip `Total time`.
-- Input mentions a task but provides no action verb: prefix with `Worked on` (English) or `Працював над` (Ukrainian).
-- Time mismatch (bullets sum to a different total than the input's stated total): trust the bullets, recompute `Total time` from them, do not echo the input's total.
-- Pure non-work entries that aren't a ticket and aren't a recurring item (lunch, coffee break): omit entirely. Private life is not in the log.
 
 ## When the raw material is a repo, not notes
 

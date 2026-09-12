@@ -80,6 +80,16 @@ standing floor was 63.5% of one 164-session collection's entire token bill, and 
 installs floored between 87k and 134k tokens per message - of which the stack's own always-on
 text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matching touch.
 
+Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
+can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
+machine): for each enabled plugin, total its skill and command DESCRIPTION frontmatter plus the
+static text any `SessionStart` or `SubagentStart` hook injects, and render `plugin floor: <N>
+chars (~<N/4000>k tokens) across <n> enabled plugins - <m> of it per SUBAGENT as well`. A plugin
+whose injection is computed rather than a literal is counted as unknown and named, never guessed
+at. Report and judge nothing, same as the line above. It matters because a SessionStart injection
+is invisible everywhere else - `claude plugin details` does not show it, and one measured install
+paid 8,337 injected chars a session for two plugins on top of their descriptions.
+
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for
 the capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack`
 otherwise, `user-authored` when clearly neither.

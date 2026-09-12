@@ -1,6 +1,6 @@
 ---
 name: npm
-description: "Professional npm usage for consuming and publishing packages. Fires on package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'. Covers lockfile + npm ci discipline, the supply-chain baseline (ignore-scripts, the min-release-age cooldown, allow-git=none, OIDC publishing, scoped internal packages), honest npm-audit gating, overrides vs --legacy-peer-deps, exports maps and ESM-first publishing, update-bot cooldowns. NOT for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground."
+description: "Professional npm usage for consuming and publishing packages. Fires on package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'. Covers lockfile and npm ci discipline, the supply-chain baseline (ignore-scripts, min-release-age, allow-git, OIDC publishing), honest npm-audit gating, peer-conflict resolution, and ESM-first publishing. NOT for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground."
 ---
 
 # npm - professional consuming, securing, publishing

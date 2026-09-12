@@ -30,4 +30,10 @@ If you do author one, the rules below are not stylistic - violating them produce
 
 ## Testing
 
-Snapshot-test the generator: it is the only way to see exactly what it emits and to catch drift. Run it over a known input with `CSharpGeneratorDriver`, then verify both the generated sources and the reported diagnostics - Verify.SourceGenerators makes the result a reviewable `.verified.cs` file that fails the test on any change. Assert diagnostics explicitly, including the case where the generator should stay silent. The broader test-project setup belongs to the .NET testing hub.
+Snapshot-test the generator: it is the only way to see exactly what it emits and to catch drift. Three steps, in order:
+
+1. Run the generator over a known input with `CSharpGeneratorDriver` and quote the run result.
+2. Verify BOTH the generated sources and the reported diagnostics - Verify.SourceGenerators turns the result into a reviewable `.verified.cs` that fails the test on any change. The `.verified.cs` diff is the evidence; quote it when the output changed.
+3. Assert diagnostics explicitly, including the case where the generator should stay silent.
+
+The broader test-project setup belongs to the .NET testing hub.

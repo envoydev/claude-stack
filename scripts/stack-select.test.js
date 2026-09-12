@@ -43,7 +43,10 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     }
     assert.strictEqual(graph.agents['aspnet-implementer'].suggests, undefined, 'the suggests edge is removed from the graph');
     assert.ok(!impl.skills.includes('dotnet-minimal-api'), 'a per-task surface pick named in the body is not pulled');
-    assert.ok(impl.plugins.includes('ponytail'), 'aspnet-implementer still pulls the ponytail plugin');
+    // The minimal-code plugin was dropped from the stack in 0.2.74 (a standing contradiction with
+    // the house no-marker rule, 0 invocations in 115 sessions, and its ladder already inline in 34
+    // agent bodies), so the seat's discipline paragraph is now its only home and pulls no plugin.
+    assert.deepStrictEqual(impl.plugins, [], 'the implementer carries its discipline inline and pulls no plugin');
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
     assert.deepStrictEqual(resolver.skills, [], 'a body-sourced agent locks no skills');
 });
@@ -210,12 +213,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 test('emitSelectionFile produces Component B selection lines', () => {
-    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['ponytail'] });
+    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['csharp-lsp'] });
     const lines = text.trim().split('\n');
     assert.ok(lines.includes('skill csharp'));
     assert.ok(lines.includes('agent aspnet-implementer'));
     assert.ok(lines.includes('mcp serena'));
-    assert.ok(lines.includes('plugin ponytail'));
+    assert.ok(lines.includes('plugin csharp-lsp'));
     assert.ok(lines.includes('rule csharp-conventions'));
 });
 

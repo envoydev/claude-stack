@@ -8,5 +8,5 @@ precede its own trigger) - skip the load when it is already in context (some sea
 conventions are the source of truth, not recall. Name the skill you loaded, or say it was already in
 context - the receipt is what makes the load happen.
 
-Hand-written `.sql` only; ORM / EF query logic lives in a `.cs` file and routes through `csharp` and
-`dotnet-data-access` instead. Skip one-line tweaks.
+Hand-written `.sql` only; ORM / EF query logic lives in a `.cs` file and routes through the C#
+baseline and the ORM / data-access skill instead. Skip one-line tweaks.

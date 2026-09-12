@@ -1,6 +1,6 @@
 ---
 name: angular-testing
-description: "Load before writing, modifying, or reviewing Angular tests, auditing suite quality, running mutation testing, or configuring Angular coverage - do not rely on recall. Angular testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): TestBed + component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing (whichever the workspace already runs - Karma/Jasmine, Jest, or Vitest - detect, never install), HttpTestingController, fakeAsync vs real-async timing, and the Angular exclusion catalog. Ionic/Capacitor apps share it. Do NOT load for .NET tests - the .NET testing skill owns those - or for plain TS/JS outside a framework harness, which belongs to the TypeScript/JavaScript testing skill."
+description: "Load before writing, modifying, or reviewing Angular tests. Do NOT load for .NET tests, or for plain TS/JS outside a framework harness - the .NET and the TypeScript/JavaScript testing skills own those. The Angular testing hub, practices and tooling only: TestBed and component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing across Karma/Jasmine, Jest and Vitest, HttpTestingController, and fakeAsync versus real-async timing. Ionic/Capacitor apps share it. Do not rely on recall."
 ---
 
 # Angular Testing
@@ -11,7 +11,8 @@ is how to write tests worth counting and which code coverage cannot meaningfully
 
 Ionic/Capacitor apps share everything here; their extra layer - testing the native seams (the
 plugin's typed wrapper mocked, the web-fallback and permission-denied paths asserted, the honest
-jsdom boundary) - lives in the `ionic` skill's 'Testing the native seams' section, and real-device
+jsdom boundary) - lives in the skill covering the Ionic / Capacitor layer; with none installed, mock the plugin
+wrapper here and mark the native paths UNVERIFIED. Real-device
 E2E belongs to the MCP that drives the native mobile shell, not a unit suite - with no such server
 registered, report those flows as UNVERIFIED rather than faking them in jsdom.
 
@@ -101,6 +102,9 @@ assertion-free / always-true, coverage-touching, tautological, missing-await,
 swallowed-exception, disabled assertions.
 
 ## E2E
+
+These are the house rules for a browser E2E runner (Playwright or Cypress), owned here because no other
+Angular skill covers them; the native-shell equivalent belongs to the skill covering the Ionic / Capacitor layer.
 
 Select by role, label, or test-id - never a CSS class - and never a fixed `waitForTimeout`:
 lean on auto-waiting web-first assertions and `waitForResponse`. Trace retain-on-failure,

@@ -164,9 +164,9 @@ Hash with `SHA256.HashData` (an API key is high-entropy, so a fast hash is enoug
 
 ## Where secrets live
 
-The signing key, client secret, and connection strings are secrets and must never touch a tracked file. The dev-vs-prod placement rule is owned by `dotnet-security`; reach for it rather than restating it here.
+The signing key, client secret, and connection strings are secrets and must never touch a tracked file. Where they live in dev versus prod is the .NET application-security hardening skill's - reach for it where the install has one; without it, the rule here is the whole guidance: the signing key and client secret come from configuration or a secret store, never a tracked file.
 
-The broader access-control and SSRF threat model - what an attacker does once past the front door - is also owned by `dotnet-security`.
+The broader access-control and SSRF threat model - what an attacker does once past the front door - belongs to the skill covering OWASP-mapped .NET hardening.
 
 ## Prove the wiring
 

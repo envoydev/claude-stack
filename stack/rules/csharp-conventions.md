@@ -5,7 +5,7 @@ paths: ["**/*.cs"]
 Editing C# - the FIRST action after this rule attaches is the `csharp` Skill call, before the NEXT
 edit lands (a path-scoped rule attaches ON the touch, so it can never precede its own trigger -
 measured 9.9-22 s late; and a run working through the shell gets no attach at all until it uses a
-file tool, which is why `guard-read-whole-file.js` names this rule on the first shell touch) - even
+file tool, which is why `guard-read-whole-file.js` names this rule on the first shell write) - even
 when the `.cs` touch is incidental to the session's main thread (measured: two sessions edited `.cs`
 files with this rule attached and never loaded it; the sessions whose focus WAS the C# work loaded it
 on cue). Name the skill you loaded, or say it was already in context - the receipt is what makes the

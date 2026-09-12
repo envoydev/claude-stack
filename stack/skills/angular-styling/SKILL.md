@@ -47,7 +47,9 @@ If a third-party component gives you none of these, a global rule scoped under a
 
 ## Design tokens as CSS custom properties
 
-Beyond Material's `--mat-sys-*` tokens (owned by the skill covering the Angular Material component library), define the app's own design tokens as CSS custom properties on `:root` - spacing scale, radii, semantic colors, z-index layers, font stacks. Reference them everywhere (`gap: var(--space-3)`) so a value changes in one place and tokens cross every encapsulation boundary for free. Light/dark and brand variants are a second token block under a `[data-theme="dark"]` or `.dark` selector, or driven by the prefers-color-scheme media feature, re-binding the same names - never a forked stylesheet. Use Sass variables only for build-time constants that never vary at runtime (a breakpoint map consumed by a mixin); anything a theme can change at runtime is a CSS custom property, not a Sass `$variable`.
+**Defining a token.** Beyond Material's `--mat-sys-*` tokens (owned by the skill covering the Angular Material component library), define the app's own design tokens as CSS custom properties on `:root` - spacing scale, radii, semantic colors, z-index layers, font stacks. Reference them everywhere (`gap: var(--space-3)`) so a value changes in one place and tokens cross every encapsulation boundary for free. Use Sass variables only for build-time constants that never vary at runtime (a breakpoint map consumed by a mixin); anything a theme can change at runtime is a CSS custom property, not a Sass `$variable`.
+
+**Theming a token.** Light/dark and brand variants are a second token block under a `[data-theme="dark"]` or `.dark` selector, or driven by the prefers-color-scheme media feature, re-binding the same names - never a forked stylesheet. A variant that adds a new name instead of re-binding an existing one is the fork arriving by another route.
 
 ## Responsive strategy: mobile-first, container queries, fluid type
 
@@ -72,3 +74,4 @@ The house default is **scoped component SCSS plus the CSS-custom-property token 
 - **Respect the prefers-reduced-motion media feature.** Wrap non-essential transitions and animations so they are reduced or removed under `@media (prefers-reduced-motion: reduce)`. This includes route View Transitions (`withViewTransitions()`, from `angular-conventions`): disable or soften the `::view-transition-*` animations under the query rather than shipping motion to users who opted out.
 - **Meet contrast.** Text clears WCAG AA - 4.5:1 normal, 3:1 large; do not encode a foreground/background pair that fails it. Non-text UI (focus rings, control borders) needs 3:1.
 - **Do not convey state by color alone** in CSS - pair a color change with an icon, weight, underline, or text so it survives color-blindness and forced-colors mode.
+- **Prove it, do not eyeball it.** Read the computed contrast ratio of the foreground/background pair you changed and quote it against the 4.5:1 / 3:1 bar. Then run the workspace's stylelint and quote its exit line. A CSS change with no measured ratio and no lint result is unverified, however careful the diff looks.

@@ -10,8 +10,6 @@ description: "House baseline - quality gates: code quality and the done-claim ga
 - Unit tests for new code; integration tests for DB / external service.
 - Keep it simple: no speculative abstractions; touch only what the task requires.
 - Inline comments explain *why*, not *what*.
-- **A command's exit status is read immediately or it is gone.** Capture `$?` (or `${PIPESTATUS[0]}` when the command you care about is not the last in a pipe) on the very next line. And never write `<cmd> || echo none`: the fallback launders a FAILURE into the same output an empty result gives. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
-- Throwaway probe/scratch code (a diagnostic dump, a hypothesis check) is written OUTSIDE the tracked tree - the harness scratchpad (the OS temp dir - the outside tree the cross-project write guard keeps open for scratch) or a gitignored dir inside the repo - never into the project's source or test folders. One known trap: an ESM scratch script cannot `import` the project's `node_modules` from outside the repo (NODE_PATH is ignored by ESM) - the fallback is a GITIGNORED dir inside the repo, never the tracked root. And an interrupted compound write (heredoc, chained command) may have already executed before the interrupt - existence-check the target instead of trusting the rejection.
 
 ## Definition of done
 
@@ -52,9 +50,8 @@ one option each, recommendation marked (a prose-only ask gets skipped).
 
 A wait measured in MINUTES is not a foreground command. A CI run, a container build, a full suite,
 an emulator boot: start it in the background and go on with work that does not depend on it, rather
-than blocking the turn on it. Arm the blocking wait at the moment you background the job, not after
-polling it: the harness's own wait tool is DEFERRED, so it takes a `ToolSearch` load first, and a
-run that discovers this mid-wait has already paid for the polls it replaces. A polling wait or a
+than blocking the turn on it. Arm the blocking wait when you background the job, not after polling
+it - the wait tool is DEFERRED, so `ToolSearch` loads it first. A polling wait or a
 'what is running' answer keys on a specific PID, marker file, or output sentinel - never a bare
 process-name grep (`pgrep -f 'dotnet test'` matches a sibling project's run). Task lists track
 created tasks only, never background shells - check the shell's own PID and listening ports before

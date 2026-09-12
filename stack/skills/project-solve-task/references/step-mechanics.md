@@ -1,8 +1,9 @@
 # Solve Task - step mechanics
 
 Read by `project-solve-task` at step 3 APPROVE, before the approve ask is built; complete on its own.
-Four rules live here, each applied at the step named: the mode-fit rule (step 3), the build bar
-(step 4), the reviewer-fit rule (the step-4 stop) and the doc-drift surface list (step 6). The
+Five rules live here, each applied at the step named: the mode-fit rule (step 3), the APPROVAL
+stamp's write mechanics and lifetime (step 3 onward), the build bar (step 4), the reviewer-fit
+rule (the step-4 stop) and the doc-drift surface list (step 6). The
 step-3 stop's `Result:` line carries `mechanics: read` - the line that proves this file was loaded
 this cycle, not remembered from an earlier one.
 
@@ -19,6 +20,23 @@ Two build modes, the recommendation decided per plan, the reason in the option's
 
 A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
 available; where it is not, the ask offers session only and says so.
+
+## The APPROVAL stamp - writing it, and its lifetime
+
+The stamp's path, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
+are in `SKILL.md`; these are the mechanics around them.
+
+- `.claude/` is a protected path, so the first write in a session prompts: take the prompt's
+  'allow Claude to edit its own settings for this session' option and the rest of the run is free.
+  No settings key can pre-approve it - `permissions.allow` is not consulted for protected paths.
+- A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces
+  because the guard reads the absolute path.
+- If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
+  stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline)
+  rather than retrying blind or dispatching around the gate.
+- **Lifetime.** The AUTO stamp lives until step 6's close deletes it. Step 4's
+  delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
+  re-dispatch under AUTO rides the still-live waiver.
 
 ## The build bar - both modes
 

@@ -1,6 +1,6 @@
 ---
 name: webpack
-description: "Webpack 5 build engineering, library-in-monorepo focus (TS + JS): the transpile/type-check split (swc-loader + fork-ts-checker + tsc --emitDeclarationOnly), externals from package.json, the tree-shaking preconditions, ESM output state and the fullySpecified/extensionAlias resolution traps, filesystem-cache pitfalls, the shared config-factory pattern. Fires on webpack.config work, loader/plugin choices, 'bundle this library', tree-shaking or 'failed to resolve as fully specified' errors, slow webpack builds. NOT for Vite/Rollup projects, Angular CLI builds (angular-conventions), or package publishing mechanics (npm skill)."
+description: "Use when working on a webpack config, bundling a library, or debugging a tree-shaking, ESM-output or 'failed to resolve as fully specified' failure - also loader/plugin choices and slow webpack builds. Webpack 5 build engineering with a library-in-monorepo focus (TS + JS): the transpile/type-check split, externals computed from package.json, the tree-shaking preconditions, ESM library output, the resolution traps, filesystem-cache pitfalls, the shared config-factory pattern, and how a library build is verified. NOT for Vite/Rollup projects, Angular CLI builds (the Angular framework-conventions skill), or package publishing mechanics (the npm packaging skill)."
 ---
 
 # Webpack 5 - library builds that stay fast and correct
@@ -21,7 +21,21 @@ Webpack earns its keep where its loader/plugin ecosystem, Module Federation, or 
 
 ## Output for libraries
 
-ESM primary: `output.library.type: 'module'` + `experiments.outputModule` - **still experimental** (the roadmap says so; sharp edges around ESM externals and splitChunks) - so pin `~5.108` and test the published tarball in a real ESM and bundler consumer before trusting it; fall back to `commonjs2` (boring, solid) if consumers break. Add a CJS build via a multi-compiler array only when a real CJS consumer exists - the exports-map shape and the dual-vs-ESM-only decision are the house npm skill's publishing reference, when your skill list has one. Ship real source maps (`devtool: 'source-map'`; `hidden-source-map` for error-reporting-only). Keep Terser for a published library (best bytes); switch to `swcMinify` only when minification dominates CI time.
+- **ESM output is the primary target, and it is still experimental.** `output.library.type: 'module'` needs `experiments.outputModule` and carries sharp edges around ESM externals and splitChunks - so the tilde pin above is not optional here, and the output is proven against real consumers (below) before it is trusted.
+- **Prefer the `'modern-module'` library type where the consumer bundles you.** `output.library.type: 'modern-module'` (webpack 5.93.0+, same `experiments.outputModule` requirement, no `output.library.name`) emits ES Modules the consumer's own bundler can still tree-shake, where plain `module` output hands it a finished bundle. Verified against the webpack output docs, 2026-09-12.
+- **Fall back to `commonjs2`** (boring, solid) when consumers break on either module type - a working CJS publish beats an ESM one nobody can import.
+- **A second CJS build** goes in a multi-compiler array only when a real CJS consumer exists - the exports-map shape and the dual-vs-ESM-only decision are the house npm packaging skill's publishing reference, when your skill list has one.
+- **Ship real source maps**: `devtool: 'source-map'`, or `hidden-source-map` where they exist only for error reporting.
+- **Keep Terser for a published library** (best bytes); switch to `swcMinify` only when minification dominates CI time.
+
+### Verify the library build
+
+Webpack exiting 0 says nothing about what the consumer gets. In order, each step quoting its own output:
+
+1. `npm pack` and list the tarball (`tar -tf`) - the built files and the `.d.ts` are in, sources and configs are out.
+2. Install that tarball into a throwaway ESM consumer (`"type": "module"`) and import the package entry: it resolves and runs.
+3. Install it into a real bundler consumer too (Vite or webpack) and build: the build is green and an unused export is ABSENT from the consumer bundle - where it survives, `stats.optimizationBailout` names why.
+4. `tsc --noEmit` in that consumer against the published types - a `.d.ts` that only compiles inside the source tree is a broken publish.
 
 ## Structure and speed
 

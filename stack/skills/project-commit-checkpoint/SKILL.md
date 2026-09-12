@@ -13,14 +13,14 @@ The protocol `baseline-git.md` points at: what runs before a non-trivial commit,
 On any non-trivial diff, before committing or presenting: run the formatter, then the house
 review `project-verify-code` - model-invocable, so the gate holds in autonomous flows too
 (`/code-review` is a user-run parallel sweep, not this gate; `/simplify` applies its quality
-findings in place) - plus `/security-review` when the diff touches auth, crypto, secrets,
-payment or data-access paths (`baseline-security.md` owns that call), plus any diff gates named
+findings in place) - plus the security review below when the diff touches auth, crypto, secrets,
+payment or data-access paths (`baseline-security.md` owns the trigger), plus any diff gates named
 in the project's `CLAUDE.md` - then satisfy the Definition-of-done gate. Findings caught here land in the same
 commit; found later they become fixup noise or shipped defects. Skip for typos / one-line /
 formatting-only diffs - and for a diff an equivalent-or-stronger check just cleared: the active
 quality-loop's own dispatched re-verify plus final gate, or the cross-task flow's domain-verifier
 sign-offs plus the integration-reviewer final gate (a self-granted skip on any other reasoning
-is not this exemption; the security-review half follows `baseline-security.md`'s own carve-out). The review half may also run as a DISPATCHED domain-verifier pass over
+is not this exemption; the security half has its own narrower carve-out, below). The review half may also run as a DISPATCHED domain-verifier pass over
 exactly this diff - the right call when the session's carried context is already heavy, since the
 seat reviews from a clean context - and its sign-off satisfies the checkpoint the same way. Either
 way the review is a real invocation THIS session: a receipt claiming 'project-verify-code inline'
@@ -30,6 +30,25 @@ edit, before the commit. One unformatted
 commit is a red CI run and a fixup commit. A quality-loop stage-boundary commit may
 exceed the one-logical-change size guidance when its stages share touched files - name the stages
 in the commit body rather than splitting an unverifiable diff.
+
+### The security half
+
+`baseline-security.md` owns the trigger (crypto / secret / auth / payment / data-access work), the
+honesty rules and the `VERIFIED` bar; this is how the review runs. **Do the scoped review yourself,
+first:** compute `git diff HEAD` (or the staged diff, or `git diff <base>..HEAD` for a range) and
+apply the vulnerability checklist to exactly that - a read-only general-purpose seat where dispatch
+exists, inline otherwise, and inline inside a stamped flow where the dispatch guard blocks generic
+seats. Feed it the FULL change set with the reset chained into the SAME call, the spelling that rule
+carries, so untracked files appear in the diff and the intent-to-add entries never outlive it.
+
+`/security-review` is the UNBOUNDED route, and the bound is not yours to set: it recomputes a
+whole-branch diff whatever base it is handed, so an explicit base does not scope it, and a branch
+level with origin on a clean tree overflows the same way - 'long-lived branch' is not the trigger
+either. Reach for it only when the whole branch really is the review scope and the diff is small.
+
+The checkpoint exemption above skips this half only when the gate that cleared the diff carried a
+security pass - the integration-reviewer gate does, the quality loop's does not, so a loop diff on
+these paths still runs the review before `VERIFIED`.
 
 The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, five lines -
 
@@ -70,6 +89,13 @@ as an option in an ask of the run's own making. The one place it IS offered is t
 denial - 'Allow writes into <root> for this session', never the recommended option - and only
 because that answer is honoured: it writes the `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt (one
 root per line; this session's own, under 8h) that the guard reads before it judges.
+
+**Discarding uncommitted work has the same receipt shape.** `git checkout --` / `restore` /
+`reset --hard` / `clean -f` over a DIRTY path is blocked, and the denial's three-option ask (keep,
+recommended / discard / narrow to one file) is the user's to answer - never yours. Only after they
+answer 'Discard it', never pre-emptively, write `<docs-path>/flow/DISCARD-ALLOW` - one path per line
+spelled exactly as the blocked command spells them, or a single `*` for everything; this session's
+own, under 8h - and then retry the SAME command.
 
 **Publishing has the same ceremony.** `git push` and `gh pr merge` are where the work leaves this
 machine - other people and CI get it, and a shared branch cannot be un-pushed quietly - so they

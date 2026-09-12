@@ -1,6 +1,6 @@
 ---
 name: project-code-style-analyzer
-description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh. It fans out code-style-analyzer agents (one per detected language), merges their reports into <docs-path>/PROJECT-CODE-STYLE.md, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. A re-run repeats the analysis, reconciles the doc in place, and regenerates the rule from the fresh reports. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh in place. It fans out code-style-analyzer agents (one per detected language), merges their reports into <docs-path>/PROJECT-CODE-STYLE.md, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
 disable-model-invocation: true
 ---
 
@@ -28,15 +28,7 @@ A cheap Glob scan, in-session: `*.cs`, `*.xaml`, `*.ts`, `*.html`, `*.scss`/`*.c
 Dispatch all seats in a single message. Each dispatch prompt names its language-family scope and nothing else - the agent reads its config + representative code and returns the structured report (project type, observed extensions, enforcement map, enforced rules, idioms, uncertain/inconsistent). The agents write no files; their final messages are your merge input.
 
 ### 3. MERGE - write <docs-path>/PROJECT-CODE-STYLE.md
-Consolidate the reports into one doc - apply the `markdown-style` skill so it reads as a quick reference, not a wall of prose. Shape:
-
-1. One opening line - the project's actual style; configs stay enforced; this captures what they cannot; where this doc and a house convention skill disagree, THIS doc wins.
-2. **Project type** - the consolidated verdict from the seats' evidence.
-3. **Enforcement map** - one table across languages: language -> config file(s) -> what runs them.
-4. **Per language** - each seat's Enforced + Idioms sections, merged faithfully: keep every 'uncertain'/'inconsistent' marker, never smooth one over, and keep the divergence-from-house-skill flags - they are the useful signal.
-5. **Cross-cutting idioms** - what spans languages: file/folder organization, test structure and naming, comment density.
-
-Re-run: reconcile the existing doc against the fresh reports - correct what drifted, add what is new, drop what is gone.
+Consolidate the reports into one doc - apply the `markdown-style` skill so it reads as a quick reference, not a wall of prose. Five sections, in order: the opening line, **Project type**, the **Enforcement map** table, **Per language**, **Cross-cutting idioms**. Read `references/doc-shape.md` before writing - it says what each section carries and what a re-run reconciles.
 
 ### 4. RULE - regenerate .claude/rules/project-code-style.md
 Build the extension union from the agents' **Language + extensions** sections ONLY - never pad it from assumption (a WPF repo gets `cs|xaml`, an Angular repo `ts|html|scss`, an ASP.NET repo `cs` - plus whatever else was genuinely observed, e.g. `sql`). Then generate from `references/code-style-rule.template.md`:

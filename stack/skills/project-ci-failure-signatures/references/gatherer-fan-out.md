@@ -14,10 +14,12 @@ lacks the tool) and stay inline on an inline answer. A shape that stays inline n
 
 ## The shapes
 
-- **Dispatch gatherers** (parallel, one per failing job) when any of these holds: more than one
-  job or matrix leg is red; the failed step's log is huge, or `--log-failed` came back empty so
-  the full step log must be walked; the triage needs a comparison (first bad run vs last good)
-  or a local repro attempt alongside the log read.
+- **Dispatch gatherers** (parallel, one per failing job) when any of these holds: the evidence
+  spans two or more independent sources (more than one job or matrix leg is red, or a step log
+  AND a re-run); the failed step's log is huge, or `--log-failed` came back empty so the full
+  step log must be walked; the triage is a matrix (first bad run vs last good, or several
+  re-runs to separate a flake from a real defect); or proving a fact means a local repro run
+  while the log read continues here.
 - **Stay inline** when one job failed and its failed-step log is short - pull it and read it
   here; a gatherer would cost more than it saves.
 

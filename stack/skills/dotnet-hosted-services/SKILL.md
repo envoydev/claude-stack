@@ -1,6 +1,6 @@
 ---
 name: dotnet-hosted-services
-description: "Use when writing a worker service, a `BackgroundService` or `IHostedService`, a periodic job, a bot or daemon host, or any in-process background task hung off the generic host. .NET hosted-service and worker conventions covering the host shapes (worker binary, in-web-app task, Windows Service), IHostedService versus BackgroundService versus IHostedLifecycleService, the ExecuteAsync exception trap, scoped services from the singleton host, PeriodicTimer over Task.Delay, graceful shutdown, and System.Threading.Channels queues - plus references/ for 24/7 I/O hardening, scheduling/leader election, deployment/signals. Floors at .NET 8 / C# 12. Do NOT use for the broker side of a consumer - the delivery contract, idempotency and retry policy are the messaging skill's, though the consumer's host process is still this skill - nor for HTTP endpoints or reactive in-memory streams."
+description: "Use when writing a worker service, a `BackgroundService` or `IHostedService`, a periodic job, a bot or daemon host, or any in-process background task hung off the generic host. .NET hosted-service and worker conventions, floored at .NET 8 / C# 12, with the 24/7 detail in `references/`. Do NOT use for the broker side of a consumer - the delivery contract, idempotency and retry policy are the messaging skill's, though the consumer's host process is still this skill - nor for HTTP endpoints or reactive in-memory streams."
 ---
 
 # .NET hosted services - background work on the generic host
@@ -132,7 +132,7 @@ Shutdown is cooperative - the host signals, your code must respond. Honor the si
 
 The contract is simple: cancel propagates in, the work drains within the timeout, the host exits. Code that does not observe the token is the reason a shutdown hangs.
 
-- **`HostOptions` also bounds and parallelizes the lifecycle.** On the .NET 8 floor it exposes `StartupTimeout` - the mirror of `ShutdownTimeout`, bounding total start time - and `ServicesStartConcurrently`/`ServicesStopConcurrently`, which start and stop hosted services in parallel instead of the default sequential registration order. Reach for the concurrent options only when several services each have a slow `StartAsync`/`StopAsync` and the serial sum stalls the host; parallel start drops the ordering guarantee, so leave them off otherwise.
+Verify it, do not assume it: stop the host and confirm the loop exits before `ShutdownTimeout` elapses - quote the elapsed time and the exit code. A hang here is the stopping token not being observed. The remaining `HostOptions` lifecycle knobs (`StartupTimeout`, `ServicesStartConcurrently`/`ServicesStopConcurrently`) are `references/deployment-and-observability.md`.
 
 ## Queue-backed work with Channels
 

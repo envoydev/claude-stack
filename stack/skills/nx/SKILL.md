@@ -1,6 +1,6 @@
 ---
 name: nx
-description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Draws the line against serena - Nx answers project-graph and affected questions, serena answers symbol-level code questions. For a framework's own code conventions reach for that framework's conventions skill where the project has one; this is the workspace/monorepo layer above them.
+description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, serena answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them.
 ---
 
 # Nx Monorepo

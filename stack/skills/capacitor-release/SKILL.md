@@ -1,6 +1,6 @@
 ---
 name: capacitor-release
-description: "Load when cutting a release, wiring signing, or building the release CI for an Ionic / Capacitor app. Release-pipeline conventions for an Ionic / Capacitor app - the gap from a feature-complete build to a signed store submission: cap sync and native build artifacts (.ipa, .aab), iOS and Android code signing, store submission (TestFlight, Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, and the Fastlane / GitHub Actions CI shape with secrets handling and dSYM / sourcemap upload. Targets Capacitor 6+ (8 current). Every build or upload step runs only under the approval this skill asks for first. Do NOT load for in-app feature work with no release or signing concern."
+description: "Load when cutting a release, wiring signing, or building the release CI for an Ionic / Capacitor app. Release-pipeline conventions for an Ionic / Capacitor app - the gap from a feature-complete build to a signed store submission: native artifacts (.ipa, .aab), iOS and Android signing, TestFlight and Play submission, OTA updates, version sync, and the Fastlane / Actions CI shape. Targets Capacitor 6+ (8 current). Every build or upload step runs only under the approval this skill asks for first. Do NOT load for in-app feature work with no release or signing concern."
 ---
 
 # Capacitor release pipeline
@@ -78,4 +78,3 @@ end
 
 Report in this order: the mode picked at step 0; the marketing version and build number written to every sink; the artifact path and the command that produced it with its result line; and, when an upload ran, the store's own confirmation (the TestFlight build state, or the Play track plus the version code it accepted) and the dSYM / sourcemap upload result. A release claimed without the store's own line is UNVERIFIED - quote the line, never the claim.
 
-<!-- House release-pipeline conventions for Ionic/Capacitor; the app under release is `ionic`, signing + store mechanics in references/signing.md, per-plugin mechanics fetched live via context7 / the plugin README. -->

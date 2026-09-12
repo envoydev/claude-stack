@@ -89,13 +89,6 @@ Report the command and its result line for each, never the claim alone. A gate y
 
 The recurring ways a change fakes a green build instead of earning it - reject each in review, whoever wrote it. Most are gated above or in a sibling skill; this is the one consolidated list to check a diff against before claiming done.
 
-| Shortcut | Instead |
-|---|---|
-| Disabled or skipped test (`[Fact(Skip=...)]`, `[Ignore]`, `#if false`, or deleting a failing test) | fix the defect the test caught (`dotnet-testing`) |
-| Weakened assertion, `[ExcludeFromCodeCoverage]` on logic-bearing code (anything outside the testing hub's exclusion catalog), or a lowered coverage threshold | fix the code, keep the bar (`dotnet-testing`) |
-| `#pragma warning disable`, `<NoWarn>`, or an `.editorconfig` severity downgrade to clear a promoted warning | fix the code, or defer the ID explicitly (above) |
-| Empty or exception-swallowing `catch` | handle it or let it propagate (`csharp`) |
-| `Task.Delay` / `Thread.Sleep` to mask a race or flaky timing | inject the clock, await the real signal (`csharp`, `dotnet-testing`) |
-| Inline `Version=` / `VersionOverride` bypassing central package management, or downgrading a package to dodge a conflict | keep versions central, fix the conflict (`dotnet-project-setup`) |
+The shortcut-by-shortcut table is `references/reward-hacking.md` - read it before claiming a change is done.
 
 The build gate above catches the warning-suppression rows automatically; the rest are a review discipline. A check that only notices them after merge has already paid for the slop.

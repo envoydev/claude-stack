@@ -364,7 +364,13 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'NotebookEdit') {
   process.exit(0);
 }
 
-if (tool !== 'Bash') process.exit(0);
+// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
+// `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
+// since 34 of 38 test runs in one collection arrived that way, and the hooks docs name the matcher
+// `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
+// (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
+const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+if (!isShellTool(tool)) process.exit(0);
 
 // A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and
 // matching it blocks a document write for its own prose. Blank the body, keep the length. The

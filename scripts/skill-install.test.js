@@ -315,7 +315,7 @@ function shArray(src, name) {
     return [...block[1].matchAll(/^\s*"([^"]*)"/gm)].map(m => m[1]);
 }
 
-test('sh wiring: the read guard is wired under BOTH Read and Bash, and a rerun is a no-op', { skip: skipNoPython }, () => {
+test('sh wiring: the read guard is wired under BOTH Read and the shell matcher, and a rerun is a no-op', { skip: skipNoPython }, () => {
     const src = fs.readFileSync(SH, 'utf8');
     const prog = /prog=\$\(cat <<'PY'\n([\s\S]*?)\nPY\n/.exec(src);
     assert.ok(prog, 'embedded wiring program found');
@@ -332,7 +332,7 @@ test('sh wiring: the read guard is wired under BOTH Read and Bash, and a rerun i
         const wired = JSON.parse(fs.readFileSync(settings, 'utf8'));
         const under = (event, matcher) => (wired.hooks[event] || []).filter(e => (e.matcher || '') === matcher).flatMap(e => e.hooks.map(h => h.command));
         assert.ok(under('PreToolUse', 'Read').some(c => c.includes('guard-read-whole-file.js')), 'read guard under Read');
-        assert.ok(under('PreToolUse', 'Bash').some(c => c.includes('guard-read-whole-file.js')), 'read guard under Bash (the matcher the command-only dedupe dropped)');
+        assert.ok(under('PreToolUse', 'Bash|PowerShell').some(c => c.includes('guard-read-whole-file.js')), 'read guard under the shell matcher (the matcher the command-only dedupe dropped; PowerShell joined it 2026-09-12)');
         assert.ok(under('Stop', '').some(c => c.includes('guard-stop-contract.js')), 'stop contract on Stop');
         assert.ok(under('UserPromptSubmit', '').some(c => c.includes('guard-answer-length.js')), 'answer budget on UserPromptSubmit');
         const before = fs.readFileSync(settings, 'utf8');
