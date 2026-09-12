@@ -1,6 +1,6 @@
 ---
 name: dotnet-windows-service
-description: "Windows Service conventions - the Service Control Manager layer over the .NET generic host: AddWindowsService and the dual-mode binary, SCM start/stop budgets, non-zero exit codes so recovery actions actually fire, the System32 working-directory trap, scripted sc.exe install with recovery actions, gMSA / least-privilege service accounts, unquoted-path and ACL hardening, event-log source registration, and the maintained .NET Framework ServiceBase shape + migration path. Load when building, installing, hardening, or migrating a Windows Service - AddWindowsService / UseWindowsService, sc.exe, ServiceBase, installutil, service accounts, SCM errors like 1053. Companions: dotnet-hosted-services (the host model this stacks on), csharp. Do NOT load for the generic worker/host model itself with no SCM target (dotnet-hosted-services), Linux daemons/systemd, or containerized workers."
+description: "Windows Service conventions - the Service Control Manager layer over the .NET generic host. Load when building, installing, hardening, or migrating a Windows Service - AddWindowsService / UseWindowsService, sc.exe, ServiceBase, installutil, service accounts, SCM errors like 1053. Covers the dual-mode binary, SCM start/stop budgets, non-zero exit codes so recovery actions actually fire, the System32 working-directory trap, scripted sc.exe install with recovery actions, gMSA / least-privilege service accounts, unquoted-path and ACL hardening, event-log source registration, and the maintained .NET Framework ServiceBase shape + migration path. Stacks on dotnet-hosted-services (the host model) and csharp. Do NOT load for the generic worker/host model itself with no SCM target (dotnet-hosted-services), Linux daemons/systemd, or containerized workers."
 ---
 
 # Windows Services - the SCM layer
@@ -32,6 +32,15 @@ The full scripted install, upgrade flow, secrets ranking, and diagnostics are `r
 - **Unquoted service path** is a real privilege-escalation class: a binpath with spaces and no quotes lets `C:\Program.exe` run with service privileges. Always quote; keep the install directory non-writable by non-admins; check `sc sdshow` that non-admins cannot reconfigure the service.
 - **Event-log source registered at install time** - creating one needs admin rights, so first-log-write registration fails under a least-privilege account.
 - No plaintext secrets in config, source control, or environment variables (env vars are unencrypted and land in crash dumps) - the ranked options (Key Vault, Data Protection with explicit key encryption, DPAPI LocalMachine) are in the operations reference.
+
+**Verify the install landed** by reading the SCM's own record back - the install script's exit code proves only that `sc.exe` parsed its arguments:
+
+```text
+sc qc <name>        -> BINARY_PATH_NAME quoted, SERVICE_START_NAME the intended account, START_TYPE 2 DELAYED
+sc qfailure <name>  -> the recovery actions you scripted, not "RESTART -- Delay = 0 msec" defaults
+```
+
+Either output missing its expected line means the install did not take - fix the script and re-run before hardening anything else.
 
 ## A service that is RUNNING but stuck
 

@@ -865,6 +865,10 @@
         {
           "file": "stack/agents/architecture-analyzer.md",
           "marker": "Report lean.** Dense and factual - every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
+          "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         }
       ]
     },
@@ -918,17 +922,13 @@
     "capture-doc-stamp": {
       "_note": "The capture-doc lifecycle stamp format - the docs-root rule owns reader semantics; each capture skill restates the format it writes.",
       "owner": {
-        "file": "stack/rules/baseline-docs-root.md",
-        "marker": "Captured: <branch>@<short-sha>, <date>"
+        "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+        "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
       },
       "sites": [
         {
-          "file": "stack/skills/project-architecture-analyzer/SKILL.md",
-          "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
-        },
-        {
-          "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
-          "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
+          "file": "stack/rules/baseline-docs-root.md",
+          "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
           "file": "stack/skills/project-code-style-analyzer/SKILL.md",
@@ -937,6 +937,10 @@
         {
           "file": "stack/skills/project-related-context/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
+        },
+        {
+          "file": "stack/skills/project-test-coverage-analyzer/references/doc-shape.md",
+          "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         }
       ]
     },
@@ -1226,7 +1230,7 @@
     "dotnet10-executeasync-thread": {
       "_note": "The .NET 10 ExecuteAsync-on-background-thread fact - hosted-services owns the full note, windows-service carries the surface-specific one-liner.",
       "owner": {
-        "file": "stack/skills/dotnet-hosted-services/SKILL.md",
+        "file": "stack/skills/dotnet-hosted-services/references/newer-versions.md",
         "marker": "The classic `await Task.Yield()` at the top of `ExecuteAsync` is no longer needed"
       },
       "sites": [
@@ -1439,7 +1443,7 @@
     "serena-csharp-overview-depth": {
       "_note": "get_symbols_overview's language-specific depth default resolves to 0 for C#, whose top-level symbol is the namespace - so the default hides every type/member; depth 2 is the C# floor (measured 2026-07-29, serena-agent 1.6.1). Owned by the navigation baseline; restated at architecture-analyzer's operative overview step because its module digest silently degrades without it.",
       "owner": {
-        "file": "stack/rules/baseline-navigation.md",
+        "file": "stack/rules/csharp-conventions.md",
         "marker": "C# pass `depth: 2`"
       },
       "sites": [
@@ -1556,6 +1560,10 @@
         },
         {
           "file": "stack/agents/wpf-verifier.md",
+          "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
           "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
         }
       ]
@@ -1677,7 +1685,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
+          "file": "stack/skills/project-test-coverage-analyzer/references/doc-shape.md",
           "marker": "never a per-claim edit stream"
         }
       ]
@@ -2217,6 +2225,10 @@
         {
           "file": "stack/skills/project-test-coverage-loop/SKILL.md",
           "marker": "memories purged: <names|none>"
+        },
+        {
+          "file": "stack/skills/project-solve-cross-task/SKILL.md",
+          "marker": "memories purged: <names|none>"
         }
       ]
     },
@@ -2304,16 +2316,16 @@
       },
       "sites": [
         {
-          "file": "stack/skills/project-test-coverage-analyzer/SKILL.md",
-          "marker": "all four questions answered explicitly"
-        },
-        {
           "file": "stack/skills/project-architecture-analyzer/SKILL.md",
           "marker": "all four questions answered explicitly"
         },
         {
-          "file": "stack/skills/project-quality-loop/SKILL.md",
+          "file": "stack/skills/project-quality-loop/references/rules.md",
           "marker": "all four are answered explicitly"
+        },
+        {
+          "file": "stack/skills/project-test-coverage-analyzer/references/weak-points.md",
+          "marker": "all four questions answered explicitly"
         }
       ]
     },
@@ -2738,10 +2750,6 @@
           "marker": "your skill list has"
         },
         {
-          "file": "stack/skills/mobile/SKILL.md",
-          "marker": "in your skill list"
-        },
-        {
           "file": "stack/skills/angular-conventions/SKILL.md",
           "marker": "skill list by what"
         },
@@ -2772,6 +2780,10 @@
         {
           "file": "stack/skills/project-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
+        },
+        {
+          "file": "stack/agents/aspnet-solution-designer.md",
+          "marker": "what it says it covers, never by a remembered name"
         }
       ]
     },
@@ -3024,16 +3036,16 @@
           "marker": "its change is a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/project-related-context/SKILL.md",
-          "marker": "Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`"
-        },
-        {
           "file": "stack/skills/project-diagnose-failure/SKILL.md",
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
           "file": "stack/skills/project-solve-task/SKILL.md",
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
+        },
+        {
+          "file": "stack/skills/project-related-context/references/sibling-handoff.md",
+          "marker": "Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`"
         }
       ]
     },
@@ -3187,6 +3199,18 @@
         },
         {
           "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
+        },
+        {
+          "file": "stack/skills/project-diagnose-failure/SKILL.md",
+          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
+        },
+        {
+          "file": "stack/skills/project-solve-task/SKILL.md",
+          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
+        },
+        {
+          "file": "stack/skills/project-solve-cross-task/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
         }
       ]
@@ -3487,6 +3511,10 @@
         {
           "file": "stack/agents/wpf-implementer.md",
           "marker": "A judgment call the card left open - two idiomatic shapes, a placement, a name at a seam - is decided here, never bounced back"
+        },
+        {
+          "file": "stack/skills/project-solution-design/SKILL.md",
+          "marker": "one line per call the design made where the requirement left two defensible shapes"
         }
       ]
     },
@@ -3872,44 +3900,44 @@
       "_note": "Each task is gated against its acceptance criterion by this session's run, and against the CURRENT contract_version - a divergence is CONTRACT_MISMATCH. Restated in every *-verifier.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+        "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion` prescribes"
+          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
         }
       ]
     },
@@ -4482,6 +4510,197 @@
         {
           "file": "stack/skills/dotnet-mvc-controllers/SKILL.md",
           "marker": "Serialize DTOs, never domain entities or EF Core models"
+        }
+      ]
+    },
+    "post-install-capture-order": {
+      "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run architecture -> code-style -> related-context (only where the project has siblings) -> agent-capabilities LAST, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in four homes because each one reaches a different reader at a different moment - the reference the guided walks open, the seeded CLAUDE.md the adopter fills in, and the two installers' own next-steps log - so a reorder must move all four.",
+      "owner": {
+        "file": "setup-plugin/references/post-install.md",
+        "marker": "`/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory"
+      },
+      "sites": [
+        {
+          "file": "stack/CLAUDE.template.md",
+          "marker": "/project-agent-capabilities LAST, so its generated inventory reflects the final install"
+        },
+        {
+          "file": "scripts/os/claude-stack.sh",
+          "marker": "run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md"
+        },
+        {
+          "file": "scripts/os/claude-stack.ps1",
+          "marker": "run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md"
+        }
+      ]
+    },
+    "convention-rule-framework-deferral": {
+      "_note": "The baseline convention rules (csharp, typescript) defer the FIRST action to the framework/surface rule that attached on the same touch - the fix for two rules each declaring themselves first (angular over typescript on a .component.ts, winforms over csharp on a *Form.cs). Verbatim in both baseline rules because either can ship without the other; the winning surface rules state the mirror in their own words.",
+      "owner": {
+        "file": "stack/rules/typescript-conventions.md",
+        "marker": "its skill loads in that SAME first action, on top of this baseline, and that rule's list is the authority on what to load"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/csharp-conventions.md",
+          "marker": "its skill loads in that SAME first action, on top of this baseline, and that rule's list is the authority on what to load"
+        }
+      ]
+    },
+    "resolver-systematic-debugging-method": {
+      "_note": "The four build/test resolvers drive localization with the superpowers systematic-debugging method, cited as NAME + its content clause so the rule still stands where the plugin is absent, and each skips the method's Phase-4 write-a-test beat (out of a resolver's scope) and questions the design after 3 fixes that each surface a new failure. The head is byte-identical across the four; the Phase-4 clause and the noun (error / failure, tests / specs) are per-stack.",
+      "owner": {
+        "file": "stack/agents/dotnet-build-error-resolver.md",
+        "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
+        }
+      ]
+    },
+    "resolver-wall-clock-bound": {
+      "_note": "The cycle cap is not a resolver's only bound: a single build or test run that goes unusually long ends the pass on what it has. Byte-identical tail across the four resolvers; the leading condition names the per-stack command and, in the two test resolvers, the filter-first step.",
+      "owner": {
+        "file": "stack/agents/dotnet-build-error-resolver.md",
+        "marker": "stop and report what you have rather than burning wall-clock on repeated full runs"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "stop and report what you have rather than burning wall-clock on repeated full runs"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "stop and report what you have rather than burning wall-clock on repeated full runs"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "stop and report what you have rather than burning wall-clock on repeated full runs"
+        }
+      ]
+    },
+    "bind-dto-not-entity": {
+      "_note": "Bind the request to a DTO, never onto an entity - the mass-assignment / over-posting control. Three homes because each can install alone: the minimal-API surface owns it, the security hardening reference states it as an A04 design control, and the MVC 4.8 reference states the MVC 5 form. Sibling of serialize-dtos-not-entities, which is the outbound half.",
+      "owner": {
+        "file": "stack/skills/dotnet-minimal-api/SKILL.md",
+        "marker": "Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-security/SKILL.md",
+          "marker": "Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted."
+        },
+        {
+          "file": "stack/skills/dotnet-mvc-controllers/references/net-framework-48.md",
+          "marker": "Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted."
+        }
+      ]
+    },
+    "generated-rule-write-protocol": {
+      "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): project-code-style-analyzer previously mandated delete-first.",
+      "owner": {
+        "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+        "marker": "REPLACE it, never delete it"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-agent-capabilities/SKILL.md",
+          "marker": "Do NOT `rm` it first"
+        },
+        {
+          "file": "stack/skills/project-code-style-analyzer/SKILL.md",
+          "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
+        }
+      ]
+    },
+    "push-gate-receipt": {
+      "_note": "The publish half of the commit ceremony: <docs-path>/flow/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. baseline-git names it, project-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
+      "owner": {
+        "file": "stack/rules/baseline-git.md",
+        "marker": "same-shaped `<docs-path>/flow/PUSH-GATE` receipt"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-commit-checkpoint/SKILL.md",
+          "marker": "their own receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape"
+        },
+        {
+          "file": "stack/hooks/guard-ungated-commit.js",
+          "marker": "its own file (<docs-root>/flow/PUSH-GATE), and CLAUDE_STACK_PUSH_GATE=0 turns"
+        }
+      ]
+    },
+    "verifier-output-named-fields": {
+      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. project-verify-code carries five, project-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
+      "owner": {
+        "file": "stack/skills/project-verify-code/SKILL.md",
+        "marker": "named fields, every run, each with a value"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-verify-plan/SKILL.md",
+          "marker": "named fields, every run, each with a value"
+        }
+      ]
+    },
+    "resume-recovery-figures": {
+      "_note": "The measured resume-recovery range a fresh-session offer quotes: a resume restarts at 21.5-59.4% of the carried context with nothing lost, and the two ABSOLUTE numbers are stated to the user, never the ratio. Two flows quote it; a re-measurement moves both.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/SKILL.md",
+        "marker": "21.5-59.4% of its carried context with nothing lost (never under 21%; quote those absolute numbers to the user, never a ratio)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-solve-task/SKILL.md",
+          "marker": "21.5-59.4% of the carried context with zero re-work - state those two absolute numbers to the user, never a ratio"
+        }
+      ]
+    },
+    "delegated-inline-keys-on-capability": {
+      "_note": "DELEGATED vs INLINE keys on dispatch CAPABILITY, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. Canonical in the execution-modes reference; the two skills that must run without that file installed carry their own inline copy.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/execution-modes.md",
+        "marker": "Detection keys on dispatch capability, not file presence"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-quality-loop/SKILL.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        },
+        {
+          "file": "stack/skills/project-related-context/SKILL.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        },
+        {
+          "file": "stack/skills/project-code-style-analyzer/SKILL.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        }
+      ]
+    },
+    "never-weaken-the-bar": {
+      "_note": "Never weaken, skip or delete a check, test or assertion to make a bar appear met - a fix that would break a test is a finding, not a fix. The quality loop's run rules own it; the upgrade flow restates it for its stage gates. project-architecture-quality-loop carries a third copy (handed off to the rules/architecture seat to add as a site).",
+      "owner": {
+        "file": "stack/skills/project-quality-loop/references/rules.md",
+        "marker": "Never weaken, skip, or delete a check, test, or assertion to make a bar appear met"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-version-upgrade/SKILL.md",
+          "marker": "Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green"
+        },
+        {
+          "file": "stack/skills/project-architecture-quality-loop/SKILL.md",
+          "marker": "Never weaken a test or delete an assertion to make a con look resolved"
         }
       ]
     }

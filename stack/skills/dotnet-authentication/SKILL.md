@@ -1,6 +1,6 @@
 ---
 name: dotnet-authentication
-description: "ASP.NET Core auth conventions covering both halves - authentication (who the caller is) and authorization (what they may do). Pick the scheme by surface: JWT bearer for stateless APIs, cookies for server-rendered apps, OpenID Connect for delegated SSO. Validate every token field, lean on ASP.NET Identity as the user store, and gate access with named policies and authorization handlers rather than scattered role strings. Floors at .NET 8 / C# 12. Load before standing up a sign-in flow, wiring JWT or OIDC, writing an authorization policy, or protecting an endpoint. Companions: csharp, dotnet-minimal-api, dotnet-web-backend, dotnet-cryptography, dotnet-security. Do NOT load for the OWASP hardening sweep or secret placement (dotnet-security) or crypto primitives (dotnet-cryptography)."
+description: "Load before standing up a sign-in flow, wiring JWT or OIDC, writing an authorization policy, or protecting an endpoint. ASP.NET Core auth conventions covering both halves - authentication (who the caller is) and authorization (what they may do). Pick the scheme by surface: JWT bearer for stateless APIs, cookies for server-rendered apps, OpenID Connect for delegated SSO. Validate every token field, lean on ASP.NET Identity as the user store, and gate access with named policies and authorization handlers rather than scattered role strings. Floors at .NET 8 / C# 12. Do NOT load for the OWASP hardening sweep, secret placement, or crypto primitives - the .NET application-security and cryptography skills own those."
 ---
 
 # ASP.NET Core authentication and authorization
@@ -167,6 +167,10 @@ Hash with `SHA256.HashData` (an API key is high-entropy, so a fast hash is enoug
 The signing key, client secret, and connection strings are secrets and must never touch a tracked file. The dev-vs-prod placement rule is owned by `dotnet-security`; reach for it rather than restating it here.
 
 The broader access-control and SSRF threat model - what an attacker does once past the front door - is also owned by `dotnet-security`.
+
+## Prove the wiring
+
+Auth that compiles is not auth that holds. Before any done word, run the three checks and quote the result of each: a protected endpoint returns 401 with no token and 403 with a token that fails the policy; a valid token returns 200 and the handler reads the expected claim; and an integration test pins all three so the next change cannot silently open the endpoint. A validation flag turned off to make one of them pass is the failure this section exists to catch.
 
 ## Anti-patterns
 

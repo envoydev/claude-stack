@@ -83,7 +83,7 @@ Total time: <sum across all groups>.
 - If time is not provided for a task, write `(time not specified)`.
 - DERIVED time is never invented: when the input gives a total or an estimate that the output shape must SPLIT per day or per task, stop and ask (AskUserQuestion) for the real split before drafting any dated log (measured: an unasked 8h/8h/5h+3h/8h split cost four correction round-trips, with the ask finally firing after the third). A task with no time given at all simply takes `(time not specified)` - the placeholder covers a missing figure, the ask covers an invented split.
 - Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask via AskUserQuestion (measured: a two-ticket day drafted per-ticket was rejected for merged wording).
-- Self-check before output: re-add each day's task times and confirm the sum equals the printed `Total time` (a `(time not specified)` line counts as zero); on a mismatch, recompute the total from the task lines - never print an unverified sum.
+- Self-check before output: run the drafted task lines of each day through `scripts/total-time.js` (`node scripts/total-time.js < lines.txt` - Node.js built-ins only, nothing to install) and confirm its total equals the printed `Total time`; it normalizes the h/m, Ukrainian and decimal-hour spellings and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where the script cannot be run, re-add the times by hand and say the check was manual.
 
 **Task grouping within a day**
 - Keep only the main points - no extra explanations, no step-by-step process.

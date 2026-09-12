@@ -1,6 +1,6 @@
 ---
 name: dotnet-architecture
-description: "Choose and hold a .NET application architecture - the decision layer here, each style's depth in references/. Two axes plus one additive: topology (single deployable -> modular-monolith -> microservices), internal organization (clean-architecture vs vertical-slice), and DDD tactical patterns layered on when the domain has real invariants. Load when deciding where code belongs, structuring a new app or module, picking a layering/slicing style, drawing a service or module boundary, reviewing architecture drift, or when the user says clean architecture, vertical slice, DDD, modular monolith, microservices, or bounded context. Companions: dotnet-architecture-tests, dotnet-web-backend, dotnet-messaging, csharp. Do NOT load for encoding the boundaries as build-failing tests (dotnet-architecture-tests) or raw SQL / query tuning (postgres)."
+description: "Load when deciding where code belongs, structuring a new app or module, picking a layering or slicing style, drawing a service or module boundary, reviewing architecture drift, or when the user says clean architecture, vertical slice, DDD, modular monolith, microservices, or bounded context. Choose and hold a .NET application architecture - the decision layer here, each style's depth in references/. Two axes plus one additive: topology (single deployable -> modular-monolith -> microservices), internal organization (clean-architecture vs vertical-slice), and DDD tactical patterns layered on when the domain has real invariants. Do NOT load for encoding the boundaries as build-failing tests, or for raw SQL and query tuning - those are their own skills."
 ---
 
 # dotnet-architecture (decision hub)
@@ -18,6 +18,7 @@ Decide the shape, then load the one style you chose. **Per-style depth lives in 
 - **One internal style per codebase (or per module).** Clean and vertical-slice side by side means neither - a reader can't predict where anything lives.
 - **In an established codebase the existing architecture wins.** Match it exactly; never introduce a 'better' second pattern.
 - **Greenfield is a deliberate choice.** Load one style reference and build to it.
+- **Record the choice where the project keeps decisions** - the style picked, the two alternatives rejected, and why - so the next reader inherits the reason and not just the folder layout. An architecture decision nobody wrote down is re-litigated at the next module.
 
 ## Decide on two axes (plus one additive)
 

@@ -7,7 +7,7 @@ Every bot below is a long-running gateway client that runs *inside* a `Backgroun
 Two receive modes, one per bot token at a time:
 
 - **Long polling** (`StartReceiving`) - no public URL needed, fits a `BackgroundService` directly. The simplest choice and the right default for most bots.
-- **Webhooks** - an ASP.NET Core endpoint the Telegram servers call; scales better and cuts latency, but needs a public HTTPS URL (so it is a web app, not a pure console host - `dotnet-web-backend`).
+- **Webhooks** - an ASP.NET Core endpoint the Telegram servers call; scales better and cuts latency, but needs a public HTTPS URL (so it is a web app, not a pure console host - the ASP.NET Core hub owns that surface).
 
 Throttling (honor `429` + Retry-After, cap outbound sends) is the hosted-worker skill's standard treatment; the Telegram-specific part is that limits apply per chat, so partition any rate limiter by chat id.
 

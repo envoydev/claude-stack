@@ -1,11 +1,11 @@
 ---
 name: project-commit-checkpoint
-description: "Use before any non-trivial git commit, git push or gh pr merge - the house pre-commit checkpoint and the publish ceremony: the formatter re-run after the last edit, the project-verify-code review (or a dispatched verifier pass over the same diff), /security-review on auth/crypto/secrets/payment/data-access paths, the exemptions (trivial diffs, a quality-loop or cross-task gate that just cleared the diff), then the five-line <docs-path>/flow/COMMIT-GATE receipt (VERIFIED or WAIVED, authorized:, head:, spec:, live-probe:) written as its own tool call and cleared once the commit lands - and the same-shaped PUSH-GATE receipt before a publish. Triggers on commit this, ready to commit, push it, open the PR, or the guard-ungated-commit denial naming this skill. NOT the review itself (project-verify-code), the commit-message shape (baseline-git owns it), or a trivial diff the hook already lets through."
+description: "Use before any non-trivial git commit, git push or gh pr merge - the house pre-commit checkpoint and the publish ceremony: what runs over the diff first (a fresh formatter run, the project-verify-code review, /security-review on auth/crypto/secrets/payment/data-access paths), which diffs are exempt, and the COMMIT-GATE and PUSH-GATE receipts the guard-ungated-commit hook reads. Triggers on commit this, ready to commit, push it, open the PR, or that hook's denial naming this skill. NOT the review itself (project-verify-code), the commit-message shape (baseline-git owns it), or a trivial diff the hook already lets through."
 ---
 
 # Commit checkpoint - the gate before a commit or a publish
 
-The protocol `baseline-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads at commit time, and the same ceremony for `git push` / `gh pr merge`. It lived inside the always-on rule until 0.2.71 and every session paid its 6.6k chars on every message; now it loads when a commit or a publish is the next act, or when the hook's denial names it. The commit-message shape and the branch discipline stay in the rule.
+The protocol `baseline-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads at commit time, and the same ceremony for `git push` / `gh pr merge`. It lived inside the always-on rule until 0.2.71 and every session paid its 6.6k chars on every message; now it loads when a commit or a publish is the next act, or when the hook's denial names it. The commit-message shape and the branch discipline stay in the rule. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## Pre-commit checkpoint
 
@@ -45,11 +45,9 @@ live-probe: <what was actually run, or NOT RUN - <reason>>
 `WAIVED - "<the user's words, verbatim>"` alone on their explicit waiver - 'commit it' is an
 instruction to commit, never a waiver of the review. Each line answers a way the receipt once
 passed while recording nothing: the VERIFIED line proves the review ran, `authorized:`
-proves the user asked (a self-written VERIFIED receipt once cleared a commit no user had
-requested), `head:` proves it reviewed THIS tree, `spec:` proves it covered the whole diff (one
-receipt asserted a 17-file review in which 9 files had been read) and `live-probe:` proves it ran
-the thing (one asserted a passing review with no build or test output at all). The quoted words
-must carry a commit verb - `authorized: "what time is it?"` used to pass - and must not be an
+proves the user asked, `head:` proves it reviewed THIS tree, `spec:` proves it covered the whole
+diff and `live-probe:` proves it ran the thing. The quoted words
+must carry a commit verb and must not be an
 option label this run wrote: consent given by picking an option is spelled `answered: <the chosen
 label>` instead, which is a different claim and reads as one. A review carried from an earlier
 cycle says so: `carried: <cycle id>, reviewed <date>`.
@@ -57,8 +55,7 @@ Write the receipt as its OWN tool call, before the call that runs `git commit` -
 hook checks the file at commit time, so a receipt written inside the same compound command is
 invisible to a stricter gate and unauditable in the ledger. The shipped hook still ACCEPTS the atomic
 write+commit shape (blocking it would reject the receipt discipline itself), so nothing stops you
-mechanically - which is exactly why the rule is the binding one: 9 of 13 commits in one audited
-session took the atomic shape and two of those left the receipt uncleared. Own-call receipt, then
+mechanically - which is exactly why the rule is the binding one. Own-call receipt, then
 the commit, then clear it. The `guard-ungated-commit` hook
 blocks a non-trivial `git commit` without a fresh receipt. The hook
 judges 'trivial' mechanically - at most 2 files and 15 changed lines - so a prose-exempt diff
@@ -72,10 +69,7 @@ here - its change is a task card under `<docs-path>/cross-project-tasks/`, and i
 as an option in an ask of the run's own making. The one place it IS offered is the guard's own
 denial - 'Allow writes into <root> for this session', never the recommended option - and only
 because that answer is honoured: it writes the `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt (one
-root per line; this session's own, under 8h) that the guard reads before it judges. Measured
-before the receipt existed: an ask presented a sibling-repo commit + push + PR as its
-`(Recommended)` option, the user took it, and `guard-cross-project-write.js` denied it at the first
-git verb - the run recommended a route the stack bans.
+root per line; this session's own, under 8h) that the guard reads before it judges.
 
 **Publishing has the same ceremony.** `git push` and `gh pr merge` are where the work leaves this
 machine - other people and CI get it, and a shared branch cannot be un-pushed quietly - so they

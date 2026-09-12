@@ -1,6 +1,6 @@
 ---
 name: database-conventions
-description: "database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Deeper work routes out: engine tuning to `postgres` / `sqlite`, .NET data access to `dotnet-data-access`, migration mechanics to `dotnet-migrate`, security posture to `database-security`. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
+description: "Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Deeper work routes out per engine and per stack - the body names each route and what to do when the project installed none of them. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
 ---
 
 # Database conventions
@@ -96,22 +96,8 @@ Integrity belongs in the schema, where it cannot be bypassed, not in application
 - Declare `ON DELETE` and `ON UPDATE` behavior explicitly on every foreign key - `RESTRICT`, `CASCADE`, or `SET NULL` per the business rule - because the engine default varies and leaning on it is a silent bug. Index every foreign-key column: an unindexed FK turns every join and every 'find the children of X' into a full scan at production volume.
 - Never store a derived value that can drift from its inputs (an order `total` kept beside its `subtotal` and `tax`): compute it in the query or a view, or materialize it as a generated column the engine keeps consistent, so the stored copy can never disagree with its source.
 
-## Transactions
-
-- Scope a transaction to exactly one unit of work - one request or use-case - opened at the boundary, committed on success, rolled back on exception.
-- The cardinal mistake is holding a transaction open across external I/O: a transaction that waits on an HTTP call or a message bus holds its locks for the duration of a network round trip. Read what you need first, then open the transaction, do the writes, and close it.
-- Design writes to be idempotent - an `UPSERT` or `MERGE` keyed on a natural or supplied id - so a retry after a timeout re-applies the same write instead of duplicating it.
-- When two transactions can race to modify the same row - a balance transfer, an inventory decrement, an oversell guard - take a pessimistic row lock (`SELECT ... FOR UPDATE`) on the rows you are about to change rather than reading them optimistically and hoping; the unlocked read-then-write window is exactly where the lost update lives.
-- When a single transaction locks several rows, take them in a consistent order (`WHERE id IN (...) ORDER BY id FOR UPDATE`) or in one set-based statement - an inconsistent lock order between two transactions is precisely what produces a deadlock.
-- Database-backed work queue: claim a row atomically with `FOR UPDATE SKIP LOCKED LIMIT 1` (SQL Server: `WITH (UPDLOCK, READPAST, ROWLOCK)`) so competing workers take different rows instead of blocking on the same one.
-- A job that must run on a single instance coordinates through an application-level lock - Postgres `pg_advisory_xact_lock` / `pg_try_advisory_lock`, SQL Server `sp_getapplock` - rather than a dummy row `SELECT ... FOR UPDATE`.
-
-## Connection management
-
-- Let the driver pool connections, which it does by default, and tune the pool to expected concurrency rather than the largest number the server will accept - an oversized pool just moves contention from the application to the database.
-- Connections are scarce and must always be released: rely on `using` / `Dispose` (ORMs handle this for you) and, for raw access, scope the connection explicitly so it cannot leak on an exception path. Keep connections short-lived - one per unit of work - and never hold a long-lived shared connection, which serializes work behind it and survives the failures that a fresh connection would surface.
-- Set a server-side `idle_in_transaction_session_timeout` alongside `statement_timeout` (SQL Server `LOCK_TIMEOUT`) so an abandoned client cannot pin a connection and keep holding its locks - a separate guard from the driver's pool idle timeout.
-- Server-side prepared statements break behind a transaction-mode pooler (PgBouncer, RDS Proxy) because the next call lands on a different backend - disable them driver-side or run session-mode pooling; the per-driver switches live with the Postgres engine skill.
+## Transactions and connections
+Read `references/transactions-and-connections.md` before opening a transaction, tuning a pool, or wiring a database-backed work queue: it holds the one-unit-of-work scope rule, the lock-ordering and `FOR UPDATE SKIP LOCKED` claims, the timeout settings and the pooler caveats. Placement decision: those fire when application code drives the database, not on every `.sql` touch this skill is attached to, so they sit one hop out while the schema, query-safety, index and migration rules a routine edit needs stay inline here.
 
 ## Secrets
 

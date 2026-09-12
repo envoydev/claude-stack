@@ -1,6 +1,6 @@
 ---
 name: dotnet-data-access
-description: "The .NET ORM / data-access layer (.NET 8 floor) - ORM-agnostic access principles here, per-ORM mechanics in references/: session or context lifetime and thread-safety, change tracking, loading strategy and N+1, projection to read models, bounded results and no-generic-repository, and the full-ORM-for-writes + micro-ORM-for-reads split. Load when you configure a DbContext or ISession, write or review an ORM query, pick a loading strategy, or design a read/write store; then use references/efcore.md for EF Core or references/nhibernate.md for NHibernate. Not the engine side (raw SQL, index, planner -> postgres / sqlite) nor the migration playbook (-> dotnet-migrate). Companions: csharp (async, mapping), dotnet-testing (integration tests)."
+description: "Use when configuring a DbContext or ISession, writing or reviewing an ORM query, picking a loading strategy, or designing a read/write store in .NET. The ORM / data-access layer (.NET 8 floor) - ORM-agnostic access principles here, per-ORM mechanics in references/: session or context lifetime and thread-safety, change tracking, loading strategy and N+1, projection to read models, bounded results and no-generic-repository, and the full-ORM-for-writes + micro-ORM-for-reads split. Read references/efcore.md for EF Core or references/nhibernate.md for NHibernate. Do NOT use for the engine side - raw SQL, indexes, the query planner - nor for the migration playbook, which is dotnet-migrate."
 ---
 
 # dotnet-data-access (ORM hub)
@@ -11,7 +11,7 @@ Owns the .NET side of talking to a database, the part that is the same whichever
 - NHibernate -> `references/nhibernate.md`
 - .NET Framework 4.8 (EF Core 3.1 vs EF6, DbContext-per-request) -> `references/net-framework-48.md`
 
-Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (Postgres or SQLite); the migration safety playbook (expand-contract, backfill, rollback, never edit an applied migration) -> `dotnet-migrate`; async / `CancellationToken` / hand-mapping -> `csharp`; real-DB integration tests -> `dotnet-testing`.
+Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (Postgres or SQLite); the migration safety playbook (expand-contract, backfill, rollback, never edit an applied migration) -> `dotnet-migrate`; async / `CancellationToken` / hand-mapping -> `csharp`; real-DB integration tests -> `dotnet-testing`. Where an install lacks one of those, the access rules below still hold - do not absorb the missing area into this layer.
 
 ## Session lifetime and thread-safety
 
@@ -31,9 +31,21 @@ Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (P
 
 ## Projection and read models
 
-- Project to a DTO instead of materializing entities - fetches only the needed columns, skips tracking, and sidesteps explosion.
+- Project to a DTO instead of materializing entities - fetches only the needed columns, skips tracking, and sidesteps explosion. The shape, ORM-agnostic: select into the DTO in the query, bound and no-tracking, never a `ToList()` then a `Select` in memory.
+
+```csharp
+// one query, three columns, no tracked entities, bounded
+public Task<List<OrderSummary>> RecentAsync(Guid customerId, int limit, CancellationToken ct) =>
+    _db.Orders
+       .AsNoTracking()
+       .Where(o => o.CustomerId == customerId)
+       .OrderByDescending(o => o.PlacedAt)
+       .Take(limit)                                     // required, never unbounded
+       .Select(o => new OrderSummary(o.Id, o.PlacedAt, o.Total))
+       .ToListAsync(ct);
+```
 - Separate read and write stores (CQRS-lite): read stores return denormalized projections with no tracking; write stores take commands and return minimal data (the new id, or void).
-- Every read method takes a required `limit` / `Take` - never return unbounded. Keyset pagination for large sets (the SQL + supporting index is `database-conventions`'s, with engine deltas in `postgres` / `sqlite`); offset paging otherwise with a separate count.
+- Every read method takes a required `limit` / `Take` - never return unbounded. Keyset pagination for large sets (the SQL and its supporting index belong to the database-conventions and per-engine skills, where the project installed them - without one, write the keyset predicate and add the covering index yourself rather than falling back to offset paging); offset paging otherwise with a separate count.
 - Do not build generic repositories (`IRepository<T>.GetAll()`) - they can't enforce limits, can't optimize a query, and hide N+1. Use purpose-built stores with named, intentful methods.
 
 ## Bulk operations

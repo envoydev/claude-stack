@@ -47,4 +47,4 @@ Report the structure that exists, not the one the names imply - every dependency
 ## Report
 **Report lean.** Dense and factual - every substantive item this section requires and nothing more: no prose recap, no narration of steps taken, no restating the task. Keep the located symbols, edges, and quoted lines verbatim; cut the filler around them.
 
-End with: the area as handed, then the five-part verdict specified above - every item tied to its located symbol, the uncertain flagged as uncertain. Name any part of the area you could not characterize and what would settle it.
+Open with a literal `status: CHARACTERIZED | PARTIAL | BLOCKED` line - a capture fanning one dispatch out per module branches on that word, and a prose verdict is unroutable - then the area as handed, then the five-part verdict specified above - every item tied to its located symbol, the uncertain flagged as uncertain. Name any part of the area you could not characterize and what would settle it.

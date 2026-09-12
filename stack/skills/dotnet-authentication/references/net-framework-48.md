@@ -1,8 +1,8 @@
 # Auth on .NET Framework 4.8 (OWIN / Katana)
 
 SKILL.md is ASP.NET Core auth. On .NET Framework 4.8 the modern backbone is the OWIN / Katana middleware
-pipeline, not the old `SqlMembershipProvider` / `FormsAuthentication` stack. Load `dotnet-web-backend`'s
-`references/net-framework-48.md` for the OWIN pipeline itself.
+pipeline, not the old `SqlMembershipProvider` / `FormsAuthentication` stack. The OWIN pipeline itself belongs to the skill covering the ASP.NET Core web surface, which carries its own
+.NET Framework reference; with none installed, wire the pipeline from the OWIN docs and treat the shape below as the auth half only.
 
 ## The OWIN auth stack
 

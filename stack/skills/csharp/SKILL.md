@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: "C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. The always-load baseline; specialist areas (performance, EF, web, messaging, hosted workers) route out through the .NET companion router when your skill list has one, not here."
+description: "Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. C# conventions (.NET 8 / C# 12 floor) - style/structure (file layout, naming, member/ctor ordering, methods, types, visibility, design-pattern (GoF) awareness, modern C# 12/13/14 syntax, forbidden patterns, XML doc) and runtime behavior (DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, decoupling + DI lifetimes). The always-load baseline underneath the specialist areas. Do NOT load it INSTEAD of one: architectural style choices, EF query shaping, ASP.NET request-pipeline work and performance tuning route out through the .NET router where the install has one."
 ---
 
 # C# Conventions
@@ -110,7 +110,7 @@ Reach for the framework-native construct before hand-rolling a pattern - most Go
 
 The modern-feature style - primary constructors, collection expressions, raw strings, `required` members, the `field` keyword, pattern matching, switch expressions - is authoritative in `references/csharp-style.md` (language feature usage). Two house preferences that document does not name: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (C# 13) for new lock objects (do not retrofit existing `lock(object)` sites).
 
-Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `ArrayPool<T>`, collection choice) belong with the `dotnet-performance` skill.
+Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `ArrayPool<T>`, collection choice) belong to the skill covering .NET performance and memory layout, when your skill list has one; without it, prefer the framework default and measure before optimizing.
 
 ## Forbidden patterns
 - No `#region` blocks - a file that needs regions to navigate is too big; split it instead.
@@ -121,7 +121,7 @@ Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `Arra
 - No `dynamic` - use `object` + pattern matching or a typed interface.
 - No top-level statements outside `Program.cs`.
 
-Routing note: when a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself follows `dotnet-project-setup`: use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
+Routing note: when a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself belongs to the skill covering .NET solution and package setup, where the install has it; either way use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
 
 ## Documentation
 - Every public API surface has XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
@@ -153,17 +153,8 @@ Behavior, I/O, and composition rules.
 - Never call `DateTime.Now` or `DateTime.UtcNow` directly in business logic. Inject `TimeProvider` - in-box on the floor, and `Microsoft.Bcl.TimeProvider` back-ports it to .NET Framework 4.6.2+ / .NET Standard 2.0 - so a test drives time with `FakeTimeProvider`; a hand-rolled `IClock` stays only where the codebase already has one.
 - Never call `DateTime.Now` for measurements - use `Stopwatch`.
 
-## Async
-The async baseline - async all the way with no `.Result` / `.Wait()` / `.GetAwaiter().GetResult()`, no `async void` outside event handlers, `ValueTask` only where benchmarks justify it and never awaited twice, `await foreach` for async streams - is authoritative in `references/csharp-style.md`; the applied concurrency mechanics - deadlock avoidance, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>` basics, bounded parallelism - are `references/concurrency.md`. House additions:
-- Always pass and forward `CancellationToken` for I/O-bound or long-running operations.
-- Use `ConfigureAwait(false)` in library code; ignore it in ASP.NET Core application code (no sync context).
-- Return `IAsyncEnumerable<T>` for streaming results (paged DB reads, long-running enumerations); annotate the `CancellationToken` parameter with `[EnumeratorCancellation]`.
-
-## Dispose pattern
-- Use `using` declarations (`using var x = ...;`) over `using` blocks where scope allows.
-- Implement `IAsyncDisposable` for types holding async resources. Implement both `IDisposable` and `IAsyncDisposable` when both sync and async disposal paths are realistic.
-- Never call `Dispose()` on injected dependencies - the DI container owns their lifetime.
-- Use the full Dispose pattern (`protected virtual Dispose(bool disposing)`) only for unmanaged resources or when inheritance is in play. Otherwise a simple `Dispose()` is enough.
+## Async, disposal, and JSON
+Read `references/runtime-behavior.md` before writing async or cancellation code, a type that owns a resource, or `System.Text.Json` configuration: it carries the house additions to the async baseline, the dispose rules and the JSON defaults. When the change is genuinely concurrent rather than merely async - deadlock avoidance, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>`, bounded parallelism - open `references/concurrency.md` instead. Placement decision: those three fire on a specific kind of edit, not on every `.cs` touch this skill is attached to, so they sit one hop out while every rule a routine edit needs stays inline here.
 
 ## Exception handling and Result pattern
 - Distinguish expected outcomes from exceptional failures. Validation, not-found, and business-rule failures are expected - return a result type rather than throwing. Prefer a domain-specific result (a sealed record with `Success` / `Failed` factory methods and an error-code enum, e.g. `CreateOrderResult`) over a generic `Result<T>` / `OneOf<,>` when the operation's failure modes are known.
@@ -192,13 +183,6 @@ Typed options binding (`IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<
 Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:
 - No more than 4-5 chained operators without an intermediate variable with a descriptive name.
 - Materialize queries (`ToList`, `ToArray`) before returning from a method that owns the DbContext or connection lifetime.
-
-## JSON serialization
-- `System.Text.Json` is the default. Newtonsoft.Json only for legacy compatibility or features missing from STJ (e.g. polymorphic serialization in older runtimes).
-- Configure `JsonSerializerOptions` once and reuse - never construct per call.
-- Naming policy: `JsonNamingPolicy.CamelCase` for external APIs unless a contract requires otherwise.
-- Reach for source-generated `JsonSerializerContext` on hot paths and under AOT - the source-gen mechanics and the wire-format choice (Protobuf / MessagePack vs JSON) belong to the .NET performance skill, when your skill list has one.
-- Never deserialize untrusted JSON without size and depth limits.
 
 ## Decoupling and DI lifetimes
 - Never call `new` on service-layer or infrastructure types inside a class body - use factories or DI.

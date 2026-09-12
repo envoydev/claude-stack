@@ -9,7 +9,7 @@ test('agent skill edges come from the declared skills: frontmatter', () => {
     const a = graph.agents['aspnet-solution-designer'];
     assert.ok(a, 'aspnet-solution-designer must be in the graph');
     assert.strictEqual(a.skillsSource, 'frontmatter');
-    for (const s of ['dotnet', 'dotnet-web-backend', 'dotnet-testing', 'project-solution-design'])
+    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing', 'project-solution-design'])
     {
         assert.ok(a.skills.includes(s), `expected agent->skill edge to ${s}`);
     }

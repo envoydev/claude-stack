@@ -362,6 +362,7 @@ SKILLS=(
   "envoydev/claude-stack|project-runtime-failure-signatures" # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
   "envoydev/claude-stack|project-ci-failure-signatures"        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures
   "envoydev/claude-stack|project-stack-usage-analyzer" # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
+  "envoydev/claude-stack|plugin-authoring"   # Claude Code plugin authoring: manifest + marketplace schema, layout and precedence, plugin root vs data paths, per-component rules, the validate / plugin-dir / details / eval loop, security review
   "envoydev/claude-stack|devops"           # DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost
   "envoydev/claude-stack|database-conventions" # cross-engine DB conventions + per-engine skill routing
   "envoydev/claude-stack|database-security"    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
@@ -376,8 +377,6 @@ SKILLS=(
   "envoydev/claude-stack|angular-material"   # Angular Material + CDK: selective imports, M3 theming, CDK primitives, harnesses
   "envoydev/claude-stack|angular-styling"    # Angular CSS/styling: ViewEncapsulation, :host, ::ng-deep ways-out, design tokens, responsive, a11y styling
   "envoydev/claude-stack|angular-security"   # Angular/web frontend security: XSS/DomSanitizer bypass, CSP, CSRF, no-secrets-in-bundle, token storage, SSR/TransferState
-  "envoydev/claude-stack|frontend"         # web frontend router: Angular/TS + in-skill design-quality guidance -> mobile
-  "envoydev/claude-stack|mobile"           # Ionic/Capacitor router/index over the Angular (angular-conventions) + TypeScript baselines
   "envoydev/claude-stack|ionic"            # house Ionic/Capacitor conventions: UI, nav, lifecycle, permissions, plugin sourcing + wrapping
   "envoydev/claude-stack|capacitor-release" # Ionic/Capacitor release pipeline: cap sync/build, iOS+Android signing, store submission, OTA, versioning, CI, symbols
   "envoydev/claude-stack|ionic-security"   # Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening
@@ -1472,7 +1471,16 @@ seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the tem
   src="$STACK_SRC/stack/CLAUDE.template.md"
   [ -f "$src" ] || { note_failure "CLAUDE.template.md not found in $STACK_REPO_URL"; return 0; }
   dest="$root/.claude/CLAUDE.md"; mkdir -p "$root/.claude"
-  cp "$src" "$dest"; log "  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/CLAUDE.md' gitignore lines so it stays committed"
+  cp "$src" "$dest"
+  # Stamp the H1 placeholder with the repo folder name - the same __TOKEN__ convention as
+  # stamp_docs_root_rule, and the seed runs once, so a hand-written title is never clobbered.
+  python3 - "$dest" "$(basename "$root")" <<'PY' 2>/dev/null || log "  !! CLAUDE.md: project-name stamp failed - replace the __PROJECT_NAME__ H1 by hand"
+import sys
+dest, name = sys.argv[1], sys.argv[2]
+s = open(dest, encoding="utf-8").read()
+open(dest, "w", encoding="utf-8").write(s.replace("__PROJECT_NAME__", name))
+PY
+  log "  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/CLAUDE.md' gitignore lines so it stays committed"
 }
 
 # INSTALL + UPDATE: seed .serena/project.yml with the languages actually in this repo.
@@ -1887,7 +1895,7 @@ PY
 # once installed; an absent one is a no-op. The guided /claude-stack:update prunes from the stamp
 # compare instead - these lists are the script path's equivalent. Unquoted on purpose: the parity lint
 # reads the quoted manifest blocks only.
-RETIRED_SKILLS=(project-task-flow project-task-cycle project-capabilities project-failure-signatures typescript-testing data-security dotnet-error-handling mobile-security)
+RETIRED_SKILLS=(frontend mobile project-task-flow project-task-cycle project-capabilities project-failure-signatures typescript-testing data-security dotnet-error-handling mobile-security)
 RETIRED_RULES=(baseline-agents-skills.md baseline-code-quality.md baseline-communication.md baseline-definition-of-done.md baseline-evaluating-proposals.md baseline-mcp-tools.md baseline-planning.md baseline-related-projects.md house-baseline.md web-conventions.md aspnet-conventions.md)
 RETIRED_HOOKS=(require-convention-skill.js inject-code-style.js)
 RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-verifier.md mobile-solution-designer.md mobile-implementer.md mobile-verifier.md dotnet-windows-service-solution-designer.md dotnet-windows-service-implementer.md dotnet-windows-service-verifier.md code-analyzer.md issue-diagnoser.md)

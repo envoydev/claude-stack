@@ -62,9 +62,10 @@ security is the strongest reason to move - hardening it in place is the interim.
 
 - `dotnet list package --vulnerable --include-transitive` and NuGet Audit (automatic during restore,
   warnings NU1901-NU1904) both effectively require the PackageReference format - a `packages.config`
-  project cannot run the CLI audit. Converting is `dotnet-project-setup`'s `references/net-framework-48.md`;
-  both then work even for a net48 target, checking the GitHub Advisory Database.
+  project cannot run the CLI audit. The conversion itself belongs to the skill covering the solution build
+  spine, in its own 4.8 notes; both commands then work even for a net48 target, checking the GitHub
+  Advisory Database.
 
-Algorithm choice and the Framework crypto defaults (PBKDF2's SHA-1 default, the RNG API) are
-`dotnet-cryptography`'s `references/net-framework-48.md`; general secret placement is SKILL.md's, and the
-classic-ASP.NET web.config mechanics are above.
+Algorithm choice and the Framework crypto defaults (PBKDF2's SHA-1 default, the RNG API) belong to the
+skill covering .NET crypto primitives, in its own 4.8 notes; general secret placement is SKILL.md's, and
+the classic-ASP.NET web.config mechanics are above.

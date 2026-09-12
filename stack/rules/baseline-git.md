@@ -30,8 +30,9 @@ PROJ-142
 ## Pre-commit checkpoint and publishing
 
 On any non-trivial diff the checkpoint runs BEFORE the commit - the formatter fresh after the last
-edit, the house review, `/security-review` on the paths `baseline-security.md` names - and ends by
-writing the `<docs-path>/flow/COMMIT-GATE` receipt; `git push` and `gh pr merge` carry the
+edit, the house review, and the security review `baseline-security.md` defines for its paths (that
+rule owns which review runs and how it is bounded) - and ends by writing the
+`<docs-path>/flow/COMMIT-GATE` receipt; `git push` and `gh pr merge` carry the
 same-shaped `<docs-path>/flow/PUSH-GATE` receipt. The protocol - what runs, the exemptions, the
 receipt's five lines and when it is cleared - is the `project-commit-checkpoint` skill: load it when
 a commit or a publish is the next act. `guard-ungated-commit` blocks both verbs without a fresh

@@ -11,8 +11,8 @@ sharper per-area deltas route out below.
   context at a time. Blocking on an incomplete `Task` (`.Result` / `.Wait()` /
   `.GetAwaiter().GetResult()`) on the request thread deadlocks - the continuation is queued to the
   context the blocked thread holds. This is the defining 4.8 web footgun; it is safe on ASP.NET Core
-  only because Core has no context. The mechanism and the library-code `ConfigureAwait(false)` rule are
-  `csharp`'s `references/net-framework-48.md` and its `references/concurrency.md`.
+  only because Core has no context. The mechanism and the library-code `ConfigureAwait(false)` rule are the
+  `csharp` language baseline's, in its own 4.8 and concurrency notes.
 - **Set `<httpRuntime targetFramework="4.8" />` in web.config.** Without it ASP.NET runs in 4.0 quirks
   mode where async/await behavior is undefined - the number-one silent async bug on the full framework.
 - Go async all the way: MVC 5 actions return `Task<ActionResult>`, Web API 2 `Task<IHttpActionResult>`.
@@ -38,7 +38,7 @@ sharper per-area deltas route out below.
   web-farm shared cache; `System.Web.Optimization` bundles and minifies, though a real front-end build
   ports more cleanly.
 - There is no headers middleware; add security headers via `<customHeaders>` or the NWebsec library -
-  the header set and the TLS story are `dotnet-security`'s `references/net-framework-48.md`.
+  the header set and the TLS story belong to the .NET security-hardening skill's own 4.8 notes.
 - Use the OWIN / Katana middleware pipeline (`OwinStartup`) for cross-cutting concerns - the classic
   analog to Core middleware, and the natural home for auth.
 
@@ -49,6 +49,6 @@ sharper per-area deltas route out below.
 DI resolvers and controller mechanics -> `dotnet-mvc-controllers`; auth (OWIN / Identity / OAuth) ->
 `dotnet-authentication`; ViewState / machineKey / secrets hardening -> `dotnet-security`; EF on 4.8 ->
 `dotnet-data-access`; OWIN integration testing -> `dotnet-testing`; the migration path (System.Web
-Adapters + YARP) -> `dotnet-migrate`. Each as that owner's `references/net-framework-48.md`. Do not
+Adapters + YARP) -> `dotnet-migrate`. Each keeps its own 4.8 notes. Do not
 invest in Web Forms for greenfield - it was never ported to modern .NET and any move there is a UI
 rewrite.

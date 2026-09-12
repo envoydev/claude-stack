@@ -4,6 +4,12 @@ Owns hand-authored spans and metrics - the layer beyond the provider wiring. Pro
 
 In .NET the instrumentation API is the framework's own `System.Diagnostics` types - `ActivitySource` / `Activity` for traces, `Meter` plus instruments for metrics. OpenTelemetry is only the collection / export layer. A library emits telemetry with `System.Diagnostics.*` and takes no OpenTelemetry package; the consuming app wires the export (that wiring is `dotnet-web-backend`). Never let a telemetry call throw into business logic - `activity?.` guards every access.
 
+## Contents
+
+- Custom spans
+- Choosing a metric instrument
+- Manual context propagation
+
 ## Custom spans
 
 ```csharp

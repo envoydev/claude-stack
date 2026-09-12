@@ -27,6 +27,7 @@ When the user asks for help with patterns:
     - `references/behavioral.md` - Chain of Responsibility, Command, Interpreter, Iterator, Mediator, Memento, Observer, State, Strategy, Template Method, Visitor
 4. Implement using the modern .NET form from the reference. Include the classic form only on request.
 5. State the tradeoff and, where relevant, the simpler alternative that was rejected.
+6. On WPF/MVVM, `ICommand` and `[RelayCommand]` specifics are the WPF conventions skill's where the install has one - implement the pattern here, take the command plumbing from there, and with no such skill installed follow the pattern's reference form and say so.
 
 ## Pattern selection table
 
@@ -77,9 +78,3 @@ When recommending a pattern, structure the answer as:
 5. **Simpler alternative considered** (when one exists)
 
 For 'explain pattern X' requests, follow the refactoring.guru structure instead: Intent, Problem, Solution, C# example (modern form first, classic on request), Applicability, Pros and cons, Relations with other patterns.
-
-## Related skills
-
-- `csharp` (its `references/dependency-injection.md`) - registration mechanics (keyed services, `Add*` extensions, factories) when a pattern collapses into DI, as Factory/Strategy/Singleton usually do.
-- `csharp` (its `references/concurrency.md`) - when Observer or Mediator turns into producer-consumer flows (`Channel<T>`, backpressure); the worker host around such a flow is the hosted-worker skill's (BackgroundService lifecycle), where installed.
-- The WPF conventions skill, where installed - `ICommand`/`[RelayCommand]` specifics when Command or Observer lands in WPF/MVVM.

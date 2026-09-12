@@ -1,6 +1,6 @@
 ---
 name: project-related-context
-description: "The deliberate related-projects capture: given paths or git URLs to sibling repos, fan out related-project-analyzer agents (one per sibling, parallel) and write BOTH tiers from their entries - the always-on awareness rule .claude/rules/baseline-project-related-context.md (lean name / location / relation / seam per sibling) and <docs-path>/related-context/PROJECT-RELATED-CONTEXT.md (the on-demand orientation doc; its related-context/ folder is the one home for ALL sibling-repo docs - cross-repo plans, change requests, run recipes). Re-run to refresh: entries upserted per passed sibling, unlisted entries kept. Args-driven - it analyzes the locations you name, it never scans for siblings. Triggers on 'capture the related projects' or 'map the sibling repos'. NOT for this repo's own architecture (project-architecture-analyzer) or dynamic cross-repo findings (the memory MCP)."
+description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc under `<docs-path>/related-context/`, the one home for all sibling-repo docs. Re-run to refresh - entries upserted per passed sibling, unlisted entries kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (they belong in the MCP that holds cross-project recall, where one is registered)."
 disable-model-invocation: true
 ---
 
@@ -16,10 +16,10 @@ Both are generated files; a re-run refreshes both in place. The rule's name is d
 **Args-driven, never a scan.** The user names the related projects - local paths or git URLs, optionally with a relation hint each (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too: `./server`, `./client` in a monorepo are valid locations, and their entries give project-solve-cross-task the dependency direction for producer-first ordering. No args: ask for them via AskUserQuestion (free text via Other - never options scraped from a filesystem scan; a plain-text ask where the harness lacks the tool) and stop. Do not guess at siblings from the filesystem.
 
 ## Execution modes
-DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available (and the seat exists), ask ONE question before the fan-out, via AskUserQuestion - characterize the siblings via related-project-analyzer seats (recommend it: the seats absorb the reads), or in-session? - then pick once, hold for the run:
+DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available (and the seat exists), ask ONE question before the fan-out, via AskUserQuestion - characterize the siblings via the read-only seats that characterize one sibling repo each (recommend it: the seats absorb the reads), or in-session? - then pick once, hold for the run:
 
 - **DELEGATED** (the user chose seats) - fan out related-project-analyzer per sibling as below; you merge and write.
-- **INLINE** (chosen - or forced, no question asked: no dispatch (Cursor), or the related-project-analyzer seat is absent, which this opt-in capture must tolerate: it ships outside the always-installed baseline, so a project can carry the skill without the seat) - do the same characterization in-session, one sibling at a time, honoring the agent's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes, UNVERIFIED over fabrication; a URL sibling is shallow-cloned to scratch and removed after) - then continue at MERGE identically.
+- **INLINE** (chosen - or forced, no question asked: no dispatch (Cursor), or that seat is absent, which this opt-in capture must tolerate: it ships outside the always-installed baseline, so a project can carry the skill without the seat) - do the same characterization in-session, one sibling at a time, honoring the agent's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes, UNVERIFIED over fabrication; a URL sibling is shallow-cloned to scratch and removed after) - then continue at MERGE identically.
 
 ## The run
 
@@ -29,7 +29,7 @@ Resolve the Execution modes question above NOW, via AskUserQuestion, before anyt
 ### 1. VALIDATE - the arg list
 For each location: a path must exist (relative resolved from the project root), a URL must look like a git remote. An invalid location is reported and skipped, never silently dropped. Note each relation hint - it travels to the agent as a prior, not a verdict.
 
-### 2. FAN OUT - one related-project-analyzer per sibling, in parallel
+### 2. FAN OUT - one analyzer seat per sibling, in parallel
 Dispatch all seats in a single message. Each dispatch prompt carries: the HOST project's root and identity (name + package/assembly ids - read them once from the manifest files first), ONE sibling location, and its hint if given. The agents write no files; their final messages - one YAML entry + evidence + uncertainty each - are your merge input. An agent returning UNVERIFIED fields is a valid result: both tiers record what could not be read.
 
 ### 3. MERGE - write <docs-path>/related-context/PROJECT-RELATED-CONTEXT.md
@@ -104,25 +104,9 @@ Confirm both artifacts (rule created/refreshed + entry count; doc created/refres
 
 ## Handing work to a sibling project
 
-A session belongs to ONE project. When work here needs a change THERE - a sibling repo, a consumed
-package, a related service - investigate freely (read its code, run its tests read-only, find the
-exact symbol) and then HAND IT OFF: `guard-cross-project-write.js` blocks the write, and the reason
-is not tidiness. A change applied from here skips that repo's tests, conventions, review and
-release, and the project that owns it never sees it happen.
-
-Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`, appending to it rather than
-replacing it, one section per task:
-
-- **What must change, and where** - the file and symbol you located, not 'somewhere in the auth
-  layer'. This is what the investigation is for.
-- **Why this project needs it** - the concrete failure or limitation on this side.
-- **The contract** - the shape both sides must agree on (a signature, an endpoint, a payload, a
-  version floor). If it is not stated here, both sides will guess differently.
-- **How that side verifies it** - the test or check that proves it landed.
-
-Then finish YOUR side against the other project's CURRENT behaviour, or state plainly what stays
-blocked until the card is done. Do not leave this project half-changed against a version of the
-sibling that does not exist yet.
+A session belongs to ONE project: a change the capture shows a sibling must make is handed off as a
+task card, never written into that repo. At REPORT, when the capture surfaced work the other side
+owns, Read `references/sibling-handoff.md` and write the card as it says.
 
 ## Don't game it
 Every entry is grounded in the agent's located evidence or carries its UNVERIFIED marker into both tiers - a relation is never smoothed over, a hint never overrides contradicting evidence silently (the contradiction is reported), a first_read never lists a doc that was not verified to exist. Unreachable siblings stay in both files as UNVERIFIED entries, not silently dropped - the reader deserves to know a seam exists even when it could not be read.

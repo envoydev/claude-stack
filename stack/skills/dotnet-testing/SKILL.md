@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: ".NET testing hub - the architecture-neutral approach for unit / integration / E2E tests, not a single library: AAA structure, a test strategy keyed off responsibility, coverage mechanics (the exclusion catalog + after-exclusions semantics; the % bar itself is user-set via project-test-coverage-analyzer), and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Load before writing, modifying, or reviewing .NET tests, auditing test quality / smells, running mutation testing, or configuring coverage - do not rely on recall. Companions: csharp, dotnet-web-error-handling; Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular/Jasmine/Karma/Jest (angular-testing) or plain TS/JS suites (ts-js-testing)."
+description: "Use before writing, modifying, or reviewing .NET tests, auditing test quality or smells, running mutation testing, or configuring coverage - do not rely on recall. The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library - AAA structure, a test strategy keyed off responsibility, coverage mechanics (the exclusion catalog + after-exclusions semantics; the % bar itself is user-set via project-test-coverage-analyzer), and runner / substitute / assertion library routing (xUnit, NSubstitute, FluentAssertions 7.x as defaults). Floors at .NET 8 / C# 12. Testcontainers, Aspire-orchestrated integration, and Verify/snapshot testing are folded in here as references/. Do NOT load for Angular or Ionic tests, or for plain TS/JS outside a framework harness - the Angular and the TypeScript/JavaScript testing skills own those."
 ---
 
 # .NET Testing Approach
@@ -89,7 +89,7 @@ Snapshot / Verify assertions - approving serialized output instead of hand-writt
 
 - **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
 - Reports via `ReportGenerator` for HTML / Cobertura / OpenCover formats.
-- For CRAP-score risk hotspots (cyclomatic complexity weighed against coverage), pair the report with the .NET code-quality skill's `references/crap-analysis.md`; with no such skill installed, rank by uncovered branches alone.
+- For CRAP-score risk hotspots, pair the coverage report with a complexity pass: CRAP = cyclomatic complexity weighed against that method's coverage, so a long, branchy, thinly-covered method ranks above a simple uncovered one. ReportGenerator emits complexity per method beside coverage, which is enough to rank; where the repo has a dedicated analysis for it, use that instead, and with neither, rank by uncovered branches alone.
 
 ## Test project conventions
 
@@ -124,8 +124,8 @@ The rules above are for *writing* tests; reviewing an existing suite is its own 
 
 ## Routing (cross-skill)
 
-**Availability** - a row whose skill is not in your skill list means the area is absent here, not a broken pointer.
+These areas sit outside this skill. Where your skill list has nothing covering one, the note beside it is what to do instead.
 
-- Performance microbenchmarks -> `dotnet-diagnostics` (its `references/microbenchmarking.md`); crash / hang dump capture -> `dotnet-diagnostics` (its `references/dumps.md`).
-- Reward-hacking / coverage-gaming check before 'done' -> `dotnet-code-quality`; CRAP-score risk hotspots -> its `references/crap-analysis.md` (paired at §Coverage above).
-- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`; exception / Result shapes under assertion -> `dotnet-web-error-handling`. Full .NET index: `dotnet`.
+- Performance microbenchmarks and crash / hang dump capture belong to the skill covering live-process measurement (BenchmarkDotNet, dotnet-dump, dotnet-gcdump). A test is not a benchmark: without that skill, keep timing assertions out of the suite entirely rather than approximating one.
+- The reward-hacking / coverage-gaming check before any 'done' belongs to the skill covering .NET analyzers and build-gate enforcement; the CRAP ranking is paired at §Coverage above. Without it, the shortcuts to refuse are still the obvious ones: a skipped test, a weakened assertion, a lowered threshold.
+- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`. Exception and Result shapes under assertion belong to the skill covering HTTP error handling; without it, assert the shape the production code already returns rather than inventing an envelope.

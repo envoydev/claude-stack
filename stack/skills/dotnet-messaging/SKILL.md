@@ -1,19 +1,19 @@
 ---
 name: dotnet-messaging
-description: ".NET asynchronous messaging conventions - broker-backed, event-driven communication between modules and services using Wolverine (recommended) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Load when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing, or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Companions: dotnet-hosted-services (the consumer's host), dotnet-realtime, dotnet-aspire, csharp. Do NOT load for in-process reactive streams or synchronous request/response over HTTP (dotnet-web-backend)."
+description: "Use when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing in .NET - or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Conventions for broker-backed, event-driven communication between modules and services using Wolverine (recommended) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Do NOT use for in-process reactive streams or for synchronous request/response over HTTP."
 ---
 
 # .NET messaging - event-driven communication
 
 This is about durable, broker-backed messages crossing a process or module boundary asynchronously. The defining traits: the sender does not wait for the receiver, the broker persists the message, and delivery is at-least-once. Everything here exists to make that delivery model safe.
 
-Floor is .NET 8 / C# 12. What this skill does NOT cover: in-memory reactive streams (Rx / System.Reactive), and synchronous in-process cross-cutting concerns - HTTP, mediation, resilience pipelines - which are `dotnet-web-backend`. If the caller is awaiting a reply right now, it is not messaging. This skill owns the broker and the consumer contract - delivery, idempotency, retries; the generic *host* a consumer runs inside (the `BackgroundService`/worker process, its lifecycle and shutdown) is `dotnet-hosted-services`. Pushing a handled message's outcome to connected clients in real time (SignalR) is the server-to-client last hop, not broker delivery - that is `dotnet-realtime`.
+Floor is .NET 8 / C# 12. What this skill does NOT cover: in-memory reactive streams (Rx / System.Reactive), and synchronous in-process cross-cutting concerns - HTTP, mediation, resilience pipelines - which belong to the ASP.NET Core cross-cutting hub. If the caller is awaiting a reply right now, it is not messaging. This skill owns the broker and the consumer contract - delivery, idempotency, retries; the generic *host* a consumer runs inside (the `BackgroundService`/worker process, its lifecycle and shutdown) belongs to the hosted-worker skill. Pushing a handled message's outcome to connected clients in real time (SignalR) is the server-to-client last hop, not broker delivery - that belongs to the real-time push skill.
 
 ## Pick the library: Wolverine
 
-Default to Wolverine. Its core is MIT (open-core; the CritterWatch monitoring console is the only commercial piece, and you do not need it to ship), and it folds the in-process mediator and the out-of-process message bus into one programming model, so a handler that today runs inline can be moved onto a queue by changing routing, not code. The outbox, sagas, scheduled messages, and convention-discovered handlers are all in the box.
+Default to Wolverine. Its core is MIT open-core, and it folds the in-process mediator and the out-of-process message bus into one programming model, so a handler that today runs inline can be moved onto a queue by changing routing, not code. The outbox, sagas, scheduled messages, and convention-discovered handlers are all in the box.
 
-MassTransit is mature and well-documented, but v9 onward is commercially licensed; v8 stays open source and loses official maintenance after 2026, so a v8 estate is on a clock. The house rule is OSS-first, so reach for MassTransit only when there is a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine.
+MassTransit is mature and well-documented but is no longer OSS-first, so reach for it only with a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine. Before quoting a licence term or an end-of-maintenance date to anyone, read `references/library-licensing.md` and re-check it: those terms move, and a stale one is a commercial decision made on bad information.
 
 ```csharp
 builder.Host.UseWolverine(opts =>
@@ -58,7 +58,7 @@ A message that has left the process is a published interface - other deployables
 - Define message types as immutable `record`s of primitive and simple types. Put them in a dedicated Contracts assembly that producers and consumers both reference; do not let a consumer reach into the producer's internal model.
 - Version additively. Add optional fields; never repurpose, retype, or remove an existing one - an old consumer may still be reading the old shape from a queue. When a breaking change is unavoidable, publish a new versioned message type alongside the old.
 - Carry identifiers and the minimum facts the consumer needs, not whole domain entities. A fat contract welds two services' models together and breaks the moment one evolves.
-- Timestamps come from an injected `TimeProvider`, never `DateTime.Now` - see `csharp`. This keeps message-stamping testable and timezone-correct.
+- Timestamps come from an injected `TimeProvider`, never `DateTime.Now` - the clock-seam rule is the C# baseline's. This keeps message-stamping testable and timezone-correct.
 
 ```csharp
 public sealed record OrderPlaced(
@@ -94,11 +94,8 @@ public static class OrderPlacedHandler
 - RabbitMQ or Azure Service Bus is the broker. RabbitMQ is the default for self-hosted and local; Azure Service Bus when the platform is already on Azure and you want a managed queue with sessions and dead-lettering built in.
 - The host and connection string come from configuration via the options pattern - never a literal in code. Different environments point at different brokers with no recompile.
 - `.AutoProvision()` is fine for declaring queues and exchanges on startup in dev. Auto-purge is dev-only; never wipe a queue outside local. Do not auto-provision blindly into a shared environment where topology is owned by infrastructure.
-- Run the broker as an Aspire resource (`dotnet-aspire`) for local orchestration when the project uses Aspire - it gives you the container, the connection wiring, and the dashboard without a hand-managed `docker run`.
+- Run the broker as an Aspire resource for local orchestration when the project uses Aspire, per the skill covering Aspire orchestration - it gives you the container, the connection wiring, and the dashboard without a hand-managed `docker run`.
 
 ## Anti-patterns
 
-- Non-idempotent consumers that assume exactly-once and break on the inevitable redelivery.
-- Unbounded or infinite retries with no dead-letter queue - a poison message that spins forever.
-- Fat contracts carrying domain entities or mutable message classes; both couple services that should be independent.
-- Brokers wired with hardcoded connection strings instead of configuration.
+Every one is the inverse of a rule stated above with its reason - non-idempotent consumers (§Idempotent consumers), unbounded retries with no dead-letter path (§Bounded retries), fat or mutable contracts (§Message contracts), and hardcoded broker connection strings (§Transports). Re-read the section rather than the label when one of them shows up in review.

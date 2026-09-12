@@ -34,7 +34,13 @@
 //      skill that is not there and take an 'Unknown skill' error;
 //  11. the CROSS-STACK case of the same defect - a load directive naming a skill
 //      absent from a stack the CITING artifact itself ships into (an always-on
-//      agent naming `angular-security`, which a .NET-only install never has).
+//      agent naming `angular-security`, which a .NET-only install never has);
+//  12. the four classes of named cite that same machinery used to walk past - a
+//      directive with no load verb (`Companions:`, `Points at`, `routes to`), an
+//      AGENT name, a bare `<plugin>:<skill>` name, and any cite in a file whose
+//      one `**Availability**` callout was blanketing sections it never spoke for;
+//  13. an agent `tools:` entry that is not a real tool name (a dead grant is silent),
+//      and a reference over 100 lines that opens with no table of contents.
 // Also verifies that every NON_SKILL_TOKENS allowlist entry is still actually used (no dead
 // config), that rules/*.md + agents/*.md frontmatter parses as
 // strict YAML with the required keys (an unquoted ': ' scalar breaks GitHub
@@ -93,6 +99,11 @@ const NON_SKILL_TOKENS = new Set([
     'default-days',
     'run-s',
     'run-p',
+    // a command frontmatter field and the reserved marketplace names named in the plugin-authoring skill - identifiers, not skills.
+    'allowed-tools',
+    'claude-plugins-official',
+    'claude-community',
+    'anthropic-plugins',
     // CSP directive + npm package named in the browser-extension skill - identifiers, not skills.
     'unsafe-eval',
     'chrome-types',
@@ -556,27 +567,61 @@ function seedClosures(recs, graph)
     return out;
 }
 
+// The agents an install can legitimately LACK - the same computation as optionalSkills, one layer
+// out. `related-project-analyzer` is the live case: it sits in recommendations.json's `general`
+// list, so no stack seeds it and a project can carry the skill that names it without the seat.
+function optionalAgents(recs, graph, agentNames)
+{
+    const reachable = new Set();
+    for (const [, c] of Object.entries(seedClosures(recs, graph)))
+    {
+        for (const a of c.agents) if (agentNames.has(a)) reachable.add(a);
+    }
+
+    return new Set([...agentNames].filter(a => !reachable.has(a)));
+}
+
 // The stacks a given artifact is installed in. ALWAYS means every project, so an artifact
 // seeded there may cite only skills that are ALSO everywhere.
+// 39. An artifact NO seed installs (opt-in, evidence-gated, the `general` list) used to return an
+// empty host set, which exempted it from the cross-stack check entirely - a citer with no closure
+// was the one shape that could name anything. It is the opposite case: such an artifact can land in
+// ANY project, so only what ships everywhere is guaranteed beside it. Its host is every stack.
 function hostStacks(closures, kind, name)
 {
     const stacks = Object.keys(closures).filter(t => t !== 'ALWAYS');
     if ((closures.ALWAYS[kind] || new Set()).has(name)) return new Set(stacks);
 
-    return new Set(stacks.filter(t => closures[t][kind].has(name)));
+    const seeded = stacks.filter(t => closures[t][kind].has(name));
+
+    return new Set(seeded.length > 0 ? seeded : stacks);
 }
 
-// The skills a given artifact must NOT direct a load of without a guard: those missing from at
-// least one stack the artifact itself ships into. This is the general case of optionalSkills -
+// The artifacts a given citer must NOT direct a load of without a guard: those missing from at
+// least one stack the citer itself ships into. This is the general case of optionalSkills -
 // a cross-cutting seat (the always-on agents) citing a stack skill is the same defect as citing
 // an evidence-gated one, and it is the shape that actually bit: `angular-security` named by an
 // agent installed in every project, .NET-only ones included.
-function absentSkillsFor(closures, kind, name, skillDirs)
+// `layer` picks which roster the candidates come from: 'skills' (check 26) or 'agents' (check 36).
+function absentFor(closures, kind, name, candidates, layer)
 {
     const host = hostStacks(closures, kind, name);
-    if (host.size === 0) return new Set();          // artifact itself is opt-in - nothing to prove
 
-    return new Set([...skillDirs].filter(s => [...host].some(t => !closures[t].skills.has(s))));
+    return new Set([...candidates].filter(c => [...host].some(t => !closures[t][layer].has(c))));
+}
+
+function absentSkillsFor(closures, kind, name, skillDirs)
+{
+    return absentFor(closures, kind, name, skillDirs, 'skills');
+}
+
+// 36. The same rule, for SEAT names. An agent name is cited exactly like a skill name and breaks the
+// same way: project-architecture-quality-loop (ALWAYS) routes a red to four per-stack resolvers, so
+// every install is missing at least two of them, and the optional-cite machinery scanned skill names
+// only. A name inside the citer's own stack closure passes; anything else is described, not named.
+function absentAgentsFor(closures, kind, name, agentNames)
+{
+    return absentFor(closures, kind, name, agentNames, 'agents');
 }
 
 // 27. No artifact may put a skill into a project's install by NAMING it. The `suggests:`
@@ -629,6 +674,16 @@ function lintSuggestionEdges(label, text)
 // always-on skills). `run` / `runs` / `see` were tried and rejected: 'Run migrations (mechanics in
 // `x`)' and 'see `x`' are pointers, and the trial flagged 11 of them for zero directives.
 const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|open|re-enter|re-invoke)\b/i;
+// 35. A load verb is not the only shape a directive takes. Five more route the reader BY NAME with
+// no verb at all, and the 2026-09-12 audits measured them walking straight past this scan: a
+// `Companions:` list in a description (dotnet-architecture-tests:3, postgres:3), a `Points at ...`
+// routing line (devops:3, ionic-security:3), a `routes to` / `routes through` sentence
+// (project-architecture-quality-loop:34, four resolver seats named in an ALWAYS skill), a
+// `hands off to` / `dispatches` hand-over, and a `that mechanism is x` pointer. Each one tells the
+// reader which artifact owns the next step, which is a directive whatever the verb - and each one
+// names something most installs do not have. `routes to` is included beside the brief's
+// `routes through` because the measured miss uses it.
+const DIRECTIVE_SHAPE = /(?:\bcompanions?(?:\s+skills?)?\s*:|\bpoints?\s+at\b|\broutes?\s+(?:to|through)\b|\bthat\s+mechanism\s+is\b|\bhands?\s+off\s+to\b|\bdispatch(?:es|ed|ing)?\b)/i;
 const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never installed|is absent|are absent|installed only (?:where|when|if)|(?:when|where|if) installed)\b/i;
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
 // '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
@@ -638,42 +693,203 @@ const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never 
 // a fresh unguarded load directive added to a blanketed file was not flagged.
 const AVAILABILITY_BLANKET = /\*\*Availability\b/;
 
-function lintOptionalCites(file, text, optional)
+// 38. The blanket covers the callout's OWN SECTION, never the whole file. The router hubs put the
+// callout at the top of the routing table it speaks for, and a whole-file blanket then silenced
+// every other cite in the file - project-build-from-scratch's line-22 setup-skill names sit ten
+// lines above a callout that speaks only for the per-stack scaffolding table, and
+// dotnet-web-backend's runs from `## Deep specialists` at the bottom yet covered all 147 lines
+// above it. Coverage runs from the callout to the next heading of the SAME or a HIGHER level than
+// the heading the callout sits under: a hub whose callout sits under the file's `# title` still
+// blankets the whole file, which is what keeps `dotnet` / `frontend` green.
+function availabilityCoverage(lines)
 {
-    const findings = [];
-    const lines = text.split(/\r?\n/);
-    const blanket = lines.some(l => AVAILABILITY_BLANKET.test(l) && AVAILABILITY_GUARD.test(l));
-    if (blanket) return findings;
-
-    let loadColumn = false;   // inside a table whose last header cell is 'Load'
+    const covered = new Array(lines.length).fill(false);
+    const levelOf = (l) => (/^(#{1,6})\s/.exec(l) || [, ''])[1].length;
     for (let i = 0; i < lines.length; i++)
     {
+        if (!AVAILABILITY_BLANKET.test(lines[i]) || !AVAILABILITY_GUARD.test(lines[i])) continue;
+        let level = 1;
+        for (let j = i; j >= 0; j--)
+        {
+            const l = levelOf(lines[j]);
+            if (l) { level = l; break; }
+        }
+
+        for (let k = i; k < lines.length; k++)
+        {
+            if (k > i && levelOf(lines[k]) && levelOf(lines[k]) <= level) break;
+            covered[k] = true;
+        }
+    }
+
+    return covered;
+}
+
+// A markdown row's cells, in order and WITHOUT dropping empty ones - the column index is what a
+// header cell's meaning attaches to, so a blank cell may not shift its neighbours left.
+function tableCells(line)
+{
+    const t = line.trim();
+    if (!t.startsWith('|')) return null;
+    const parts = t.split('|');
+    parts.shift();
+    if (parts.length > 0 && parts[parts.length - 1].trim() === '') parts.pop();
+
+    return parts.map(c => c.trim());
+}
+
+// The names a citer is GUARANTEED to have beside it whatever the install: its own frontmatter
+// `skills:` preload. Naming those is sanctioned by the house rule, so they never carry a finding.
+function frontmatterPreloads(text)
+{
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || '');
+    const out = new Set();
+    if (!fm) return out;
+    try
+    {
+        const meta = yaml.load(fm[1]);
+        if (meta && Array.isArray(meta.skills)) for (const s of meta.skills) out.add(String(s).split(':').pop());
+    }
+    catch
+    {
+        // broken frontmatter is check 18's finding, not this one's
+    }
+
+    return out;
+}
+
+// Which lines of the frontmatter block NO cite check may scan: every key except `description:` and
+// its continuation. The other keys ARE the artifact's own registration - `name:`, and above all the
+// `skills:` preload list, which is the house's sanctioned GUARANTEE shape: the skill is injected
+// whole at seat start, so a name there is a declaration that it is present, the opposite of an
+// unguarded cite. Two seats were permanently red on a YAML list item that cannot carry a content
+// clause and has nothing to teach, since the seat already holds the skill. The `description` stays
+// in scope: it is shipped prose a router reads, and it is where the measured `Companions:` and
+// `Points at` cites live.
+function frontmatterSkipLines(lines)
+{
+    const skip = new Set();
+    if (lines[0] !== '---') return skip;
+    let inDesc = false;
+    for (let i = 1; i < lines.length; i++)
+    {
+        if (lines[i] === '---') break;
+        if (/^description\s*:/.test(lines[i])) { inDesc = true; continue; }
+        if (/^[A-Za-z][\w-]*\s*:/.test(lines[i])) inDesc = false;
+        if (!inDesc) skip.add(i);
+    }
+
+    return skip;
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+
+// A cite is matched backticked OR bare: every measured miss in the descriptions is bare
+// (`Companions: dotnet-testing (the test-suite host)`), and a description is where a name costs the
+// most - it is read by a model choosing between installed skills. A path or a longer identifier is
+// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__serena__find_symbol`).
+// A BARE match is taken only for a HYPHENATED name, though: single-word rosters entries (`mobile`,
+// `dotnet`, `npm`, `frontend`) are ordinary English, and the trial flagged 14 sentences that merely
+// used the word - 'the mobile stack', 'npm audit'. Those still count backticked, which is how the
+// house writes a real cite.
+function citeMatcher(names)
+{
+    if (names.length === 0) return null;
+    const alts = [...names].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+
+    return new RegExp(`(?<![A-Za-z0-9_./-])(${alts})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9]|/)`, 'g');
+}
+
+function lintOptionalCites(file, text, optional, opts = {})
+{
+    const findings = [];
+    const agents = opts.agents || new Set();
+    const lines = text.split(/\r?\n/);
+    const covered = availabilityCoverage(lines);
+    const skipFm = frontmatterSkipLines(lines);
+    const guaranteed = frontmatterPreloads(text);
+    const candidates = [...optional, ...agents]
+        .filter(n => n !== opts.self && !guaranteed.has(n));
+    const matcher = citeMatcher(candidates);
+    if (!matcher) return findings;
+
+    let loadCols = new Set();   // column indices whose header cell ends in 'load' or 'route'
+    for (let i = 0; i < lines.length; i++)
+    {
+        if (covered[i] || skipFm.has(i)) continue;
         const line = lines[i];
-        const cells = line.trim().startsWith('|') ? line.split('|').map(c => c.trim()).filter(Boolean) : null;
+        const cells = tableCells(line);
         if (!cells)
         {
-            loadColumn = false;
+            loadCols = new Set();
         }
-        else if (/^\|?[\s:-]+\|/.test(line.trim()) === false && /(?:^|\s)load$/i.test(cells[cells.length - 1] || ''))
+        else if (!/^[\s:|-]+$/.test(line.trim()))
         {
-            loadColumn = true;
+            const cols = new Set();
+            cells.forEach((c, idx) => { if (/(?:^|\s)(?:load|route|routes)$/i.test(c)) cols.add(idx); });
+            if (cols.size > 0) loadCols = cols;
         }
 
-        for (const m of line.matchAll(/`([a-z][a-z0-9-]*)`/g))
+        for (const m of line.matchAll(matcher))
         {
-            if (!optional.has(m[1])) continue;
-
-            const lastCell = cells ? cells[cells.length - 1] : '';
-            const inLoadCell = loadColumn && cells && lastCell.includes('`' + m[1] + '`');
+            const name = m[1];
+            const backticked = line[m.index - 1] === '`' && line[m.index + name.length] === '`';
+            if (!backticked && !name.includes('-')) continue;
+            const isAgent = agents.has(name) && !optional.has(name);
+            const cellRe = new RegExp(`(?<![A-Za-z0-9_./-])${escapeRe(name)}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9]|/)`);
+            const inLoadCell = cells !== null && [...loadCols].some(idx => cellRe.test(cells[idx] || ''));
             const before = line.slice(0, m.index);
             const sentence = before.slice(before.lastIndexOf('. ') + 1);
-            if (inLoadCell || LOAD_VERB.test(sentence))
-            {
-                findings.push(`${file}:${i + 1} directs a load of \`${m[1]}\` BY NAME, and that skill can be absent here `
-                    + `(evidence-gated or opt-in). Describe what the skill covers instead, so it is matched from the `
-                    + `installed inventory and a project without it still knows what to do - or open the file with an `
-                    + `'**Availability**' callout if it is a router hub`);
-            }
+            if (!inLoadCell && !LOAD_VERB.test(sentence) && !DIRECTIVE_SHAPE.test(sentence)) continue;
+
+            const what = isAgent ? 'seat' : 'skill';
+            const where = opts.absentIn
+                ? `and it is absent in ${opts.absentIn(name, isAgent ? 'agents' : 'skills').join(', ')}, where this ${opts.citerKind || 'artifact'} is still installed`
+                : `and that ${what} can be absent here (evidence-gated or opt-in)`;
+            findings.push(`${file}:${i + 1} directs a load of \`${name}\` BY NAME, ${where}. `
+                + `Describe what the ${what} covers instead, so it is matched from the installed inventory `
+                + `and a project without it still knows what to do - or open the section with an `
+                + `'**Availability**' callout if it is a router hub`);
+        }
+    }
+
+    return findings;
+}
+
+// 37. A plugin-qualified name (`superpowers:verification-before-completion`) is a cite of a skill
+// the stack does not own and cannot guarantee: the plugin is per-install on Claude Code and
+// documented OPTIONAL on the cursor-stack twin. Naming it BARE teaches a seat without the plugin
+// nothing at all - the 2026-09-12 agent audits found 10 verifiers plus security-auditor resting the
+// whole done gate on a bare `superpowers:verification-before-completion`, and 4 resolvers resting
+// their whole method on a bare `superpowers:systematic-debugging`. The house form pairs the name
+// with what it CONTAINS in the same sentence, as baseline-quality-gates.md already does: 'satisfy
+// `superpowers:verification-before-completion` - build + relevant tests run, output quoted'. A
+// content clause is a dash, colon or parenthetical clause opening straight after the token, or a
+// dash clause closing straight before it. The namespaces come from the installers' own PLUGINS
+// block, so a plugin added there is covered without touching this check.
+function lintPluginCites(file, text, pluginNames)
+{
+    const findings = [];
+    if (!pluginNames || pluginNames.size === 0) return findings;
+    const alts = [...pluginNames].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+    const token = new RegExp(`(?<![A-Za-z0-9_./-])(${alts}):([a-z][a-z0-9-]*)(?![A-Za-z0-9_-]|\\.[A-Za-z0-9]|/)`, 'g');
+    const lines = text.split(/\r?\n/);
+    const skipFm = frontmatterSkipLines(lines);
+    for (let i = 0; i < lines.length; i++)
+    {
+        if (skipFm.has(i)) continue;   // a `skills:` preload is the guarantee, not a cite
+        for (const m of lines[i].matchAll(token))
+        {
+            const after = lines[i].slice(m.index + m[0].length).replace(/^`/, '');
+            const before = lines[i].slice(0, m.index).replace(/`$/, '');
+            const sentenceBefore = before.slice(before.lastIndexOf('. ') + 1);
+            const clauseAfter = /^\s*[-:(]\s*\S[^\n]{11,}/.test(after);
+            const clauseBefore = /\s-\s[^-]{12,}$/.test(sentenceBefore);
+            if (clauseAfter || clauseBefore) continue;
+            findings.push(`${file}:${i + 1} cites \`${m[1]}:${m[2]}\` BARE - the plugin is per-install, so a seat `
+                + `without it reads a name and nothing else. Pair the name with what it contains in the same sentence `
+                + `(the shape baseline-quality-gates.md uses: the name, then ' - ' and the one clause that says what `
+                + `the method demands), so the rule still stands where the plugin is absent`);
         }
     }
 
@@ -780,6 +996,68 @@ function lintPreloadClaims(agentFile, text, skillDirs)
         for (const m of bodyLine.matchAll(/\bpreloaded\s+`([a-z][a-z0-9-]*)`/gi))
         {
             claimed(m[1]);
+        }
+    }
+
+    return findings;
+}
+
+// 40. Every name in an agent's `tools:` allowlist must be a tool that exists. A dead entry is a
+// SILENT no-op - the seat launches, the grant does nothing, and only a list where NOTHING resolves
+// fails loudly - so a rename upstream or a typo here rots with no signal (the 2026-09-12 agents
+// audit left `LSP` as an open verification item for exactly this reason: nothing in the repo could
+// answer it). Verified against the Claude Code tools reference,
+// https://code.claude.com/docs/en/tools-reference (fetched 2026-09-12): 'The tool names are the
+// exact strings you use in permission rules'. `LSP` is in that table and is real. MCP grants are the
+// documented `mcp__<server>`, `mcp__<server>__<tool>` and `mcp__<server>__*` shapes
+// (https://code.claude.com/docs/en/sub-agents). Legacy spellings the reference no longer lists
+// (`Task`, `MultiEdit`, `BashOutput`, `KillShell`, `SlashCommand`) are findings, not aliases.
+const TOOL_NAMES = new Set([
+    'Agent', 'Artifact', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit',
+    'EndConversation', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob',
+    'Grep', 'ListAgents', 'ListMcpResourcesTool', 'LSP', 'Monitor', 'NotebookEdit', 'PowerShell',
+    'PushNotification', 'Read', 'ReadMcpResourceTool', 'RemoteTrigger', 'ReportFindings',
+    'ScheduleWakeup', 'SendFeedback', 'SendMessage', 'SendUserFile', 'ShareOnboardingGuide', 'Skill',
+    'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'TodoWrite',
+    'ToolSearch', 'WaitForMcpServers', 'WebFetch', 'WebSearch', 'Workflow', 'Write',
+]);
+const MCP_GRANT = /^mcp__[a-z0-9][a-z0-9_-]*(?:__(?:\*|[A-Za-z0-9_-]+))?$/;
+
+function lintAgentTools(label, text)
+{
+    const line = /^tools:\s*(.+)$/m.exec(text || '');
+    if (!line) return [];
+
+    return line[1].split(',').map(t => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+        .filter(t => !TOOL_NAMES.has(t) && !MCP_GRANT.test(t))
+        .map(t => `${label} grants tool '${t}', which is not a Claude Code tool name or an `
+            + `mcp__<server>[__<tool>] grant - a dead entry grants nothing and fails silently; fix the `
+            + `spelling or drop it (tool names: https://code.claude.com/docs/en/tools-reference)`);
+}
+
+// 41. A reference over 100 lines opens with a table of contents, inside the first 15 lines. Without
+// one a seat has to read the whole file to find out whether the answer is in it, which is the exact
+// cost a reference exists to avoid - and the 2026-09-12 audits counted 21 such files across the
+// collection, the largest at 288 lines. A heading or bold line saying Contents / TOC / Table of
+// contents counts, and so does a bare anchor list (two or more `[...](#...)` links).
+function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
+{
+    const findings = [];
+    for (const d of skillDirs)
+    {
+        const refDir = path.join(skillsDir, d, 'references');
+        if (!fsLike.existsSync(refDir)) continue;
+        for (const r of fsLike.readdirSync(refDir).filter(f => f.endsWith('.md')))
+        {
+            const lines = fsLike.readFileSync(path.join(refDir, r), 'utf8').split('\n');
+            if (lines.length <= 100) continue;
+            const head = lines.slice(0, 15);
+            const named = head.some(l => /^(?:#{1,6}\s|\s*\*\*).*\b(?:contents|toc|table of contents)\b/i.test(l));
+            const anchors = head.filter(l => /\[[^\]]+\]\(#[^)]+\)/.test(l)).length;
+            if (named || anchors >= 2) continue;
+            findings.push(`${d}/references/${r}: ${lines.length} lines with no table of contents in its first 15 - `
+                + `open it with a Contents list of its own section anchors, so a seat can see what is in the file `
+                + `without reading all of it`);
         }
     }
 
@@ -1432,6 +1710,9 @@ function main()
             {
                 flag(`agents/${agentFile} tells the agent to invoke the Skill tool but 'Skill' is not in its tools: allowlist - it would deadlock on the convention gate`);
             }
+
+            // 40. ... and every name in that allowlist resolves to a real tool.
+            for (const finding of lintAgentTools(`agents/${agentFile}`, text)) flag(finding);
         }
     }
 
@@ -1787,8 +2068,13 @@ function main()
         const recs = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8'));
         const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8'));
         const skillDirs = new Set(dirs);
+        const agentNames = new Set(fs.existsSync(AGENTS_DIR)
+            ? fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''))
+            : []);
         const optional = optionalSkills(recs, graph, skillDirs);
+        const optionalSeats = optionalAgents(recs, graph, agentNames);
         const closures = seedClosures(recs, graph);
+        const pluginNames = new Set([...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]);
         // each scanned file with the artifact that OWNS it, so check 26 can ask which stacks
         // ship it: a skill's references belong to the skill, an agent/rule to itself.
         const scanned = [];
@@ -1827,26 +2113,35 @@ function main()
         for (const [label, file, kind, owner] of scanned)
         {
             const text = fs.readFileSync(file, 'utf8');
-            for (const finding of lintOptionalCites(label, text, optional)) flag(finding);
+            for (const finding of lintOptionalCites(label, text, optional, { agents: optionalSeats, self: owner }))
+            {
+                flag(finding);
+            }
 
             // 27. No install edge from a name: the removed `suggests:` frontmatter must not return.
             for (const finding of lintSuggestionEdges(label, text)) flag(finding);
 
-            // 26. Cross-stack coupling: a load directive naming a skill that is absent from at
-            //     least one stack the CITING artifact itself ships into. Check 25 is the special
-            //     case where the skill reaches no stack at all; this is the one that bit in
-            //     practice - a cross-cutting agent installed in every project naming
+            // 37. A plugin-qualified name carries its content clause or it teaches nothing.
+            for (const finding of lintPluginCites(label, text, pluginNames)) flag(finding);
+
+            // 26 + 36. Cross-stack coupling: a load directive naming a skill (26) or a seat (36)
+            //     that is absent from at least one stack the CITING artifact itself ships into.
+            //     Check 25 is the special case where the target reaches no stack at all; this is the
+            //     one that bit in practice - a cross-cutting agent installed in every project naming
             //     `angular-security`, which a .NET-only install never has.
             if (!kind) continue;
             const absent = absentSkillsFor(closures, kind, owner, skillDirs);
             for (const s of absent) if (optional.has(s)) absent.delete(s);   // already reported above
-            for (const finding of lintOptionalCites(label, text, absent))
-            {
-                flag(finding.replace(/ BY NAME[\s\S]*$/,
-                    ` BY NAME, and it is absent in ${[...hostStacks(closures, kind, owner)].filter(t => !closures[t].skills.has(finding.match(/`([a-z0-9-]+)`/)[1])).join(', ')}, `
-                    + `where this ${kind === 'skills' ? 'skill' : kind.replace(/s$/, '')} is still installed. Describe what the skill `
-                    + `covers instead of naming it, so it is matched from the installed inventory`));
-            }
+            const absentSeats = absentAgentsFor(closures, kind, owner, agentNames);
+            for (const a of absentSeats) if (optionalSeats.has(a)) absentSeats.delete(a);
+            const host = [...hostStacks(closures, kind, owner)];
+            const opts = {
+                agents: absentSeats,
+                self: owner,
+                citerKind: kind === 'skills' ? 'skill' : kind.replace(/s$/, ''),
+                absentIn: (name, layer) => host.filter(t => !closures[t][layer].has(name)),
+            };
+            for (const finding of lintOptionalCites(label, text, absent, opts)) flag(finding);
         }
     }
     catch (err)
@@ -1868,6 +2163,9 @@ function main()
     //     it, or some skill folder for a capability-described owner. A sibling rename used to dangle
     //     these locating pointers silently (surface-4 audit: 69 cross-skill pointers, none checked).
     for (const finding of lintReferencePointers(SKILLS_DIR, localSkillDirs())) flag(finding);
+
+    // 41. A reference over 100 lines opens with a table of contents in its first 15.
+    for (const finding of lintReferenceContents(SKILLS_DIR, localSkillDirs())) flag(finding);
 
     // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
     //     is re-sent on EVERY message of every session and every subagent of an install that takes
@@ -2009,12 +2307,19 @@ module.exports = {
     lintSharedRules,
     lintPreloadClaims,
     lintOptionalCites,
+    lintPluginCites,
+    lintAgentTools,
     lintReferencePointers,
+    lintReferenceContents,
     optionalSkills,
+    optionalAgents,
     lintSuggestionEdges,
     seedClosures,
     hostStacks,
     absentSkillsFor,
+    absentAgentsFor,
+    availabilityCoverage,
+    TOOL_NAMES,
     NON_SKILL_TOKENS,
 };
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-project-setup
-description: "Set up a new .NET solution's build spine - the canonical src / tests / .config layout, .slnx solution files, Directory.Build.props shared build properties, global.json SDK pinning + rollForward, central package management via Directory.Packages.props, and pinning a dotnet tool in .config/dotnet-tools.json. Load to set up a new .NET solution, add a NuGet package, add a project, or pin a dotnet tool; trigger files .slnx, Directory.Build.props, Directory.Packages.props, global.json, .config/dotnet-tools.json. Companions, where the project installed them: the .NET router, the .NET analyzer/quality-gate skill, the CI-and-deploy skill; schema and version migrations belong to the EF migration skill. Do NOT load for analyzers / TreatWarningsAsErrors / .editorconfig (the .NET quality-gate skill) or CI workflows / packaging / SourceLink (the CI-and-deploy skill)."
+description: "Use to set up a new .NET solution, add a NuGet package, add a project, or pin a dotnet tool - and when a change touches .slnx, Directory.Build.props, Directory.Packages.props, global.json or .config/dotnet-tools.json. Owns the solution build spine: the canonical src / tests / .config layout, .slnx solution files, Directory.Build.props shared build properties, global.json SDK pinning + rollForward, central package management via Directory.Packages.props, and pinning a dotnet tool in .config/dotnet-tools.json. Do NOT use for analyzers / TreatWarningsAsErrors / .editorconfig (the .NET quality-gate skill) or CI workflows / packaging / SourceLink (the CI-and-deploy skill)."
 ---
 
 # dotnet-project-setup (build spine)
@@ -42,13 +42,19 @@ MySolution/
 
 ## Solution file - .slnx
 
-`.slnx` is the XML solution format: the default from `dotnet new sln` on .NET 10, and opt-in on SDK 9.0.200+ with `--format slnx`. Prefer it - it diffs and merges without the GUID churn of a `.sln`, and any editor can read it. Keep exactly one solution file: after `dotnet sln migrate`, delete the old `.sln` so solution auto-detection stays unambiguous.
+`.slnx` is the XML solution format: the default from `dotnet new sln` on .NET 10, and opt-in on SDK 9.0.200+ with `--format slnx`. Prefer it - it diffs and merges without the GUID churn of a `.sln`, and any editor can read it. Keep exactly one solution file, so solution auto-detection stays unambiguous - but the old `.sln` is deleted by the user, never silently by the run.
 
 ```bash
 dotnet new sln --format slnx --name MySolution   # .NET 10 defaults to .slnx
 dotnet sln add src/MyApp/MyApp.csproj
-dotnet sln migrate                               # convert an existing .sln, then delete it
+dotnet sln migrate                               # writes MySolution.slnx, LEAVES MySolution.sln in place
 ```
+
+After `dotnet sln migrate`, check then ask - never delete first:
+
+1. Confirm the new file exists and lists every project the old one did (`dotnet sln MySolution.slnx list` against `dotnet sln MySolution.sln list` - the two lists must match exactly).
+2. Confirm the build still resolves against it: `dotnet build MySolution.slnx`.
+3. Only with both green, put the removal to the user through ONE AskUserQuestion: delete the old `.sln` now (recommended - two solution files make auto-detection ambiguous), keep both for one commit and delete it after CI is green, or keep the `.sln`. Never delete on your own judgement, and never before steps 1 and 2 have passed.
 
 ```xml
 <Solution>

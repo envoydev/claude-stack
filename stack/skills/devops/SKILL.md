@@ -1,13 +1,13 @@
 ---
 name: devops
-description: "DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, digest-pinned base images), Compose local topology, GitHub Actions CI/CD (SHA-pinned actions, masked secrets, least-privilege permissions, OIDC, real service containers), and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost - or when the devops vertical or security-auditor sweeps the delivery stack. Points at dotnet-aspire, dotnet-migrate, and dotnet-security / database-security. Do NOT load for application or schema code."
+description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost. DevOps reference for the .NET/Angular house, by the delivery surface a change touches: container builds (multi-stage, cache-ordered layers, non-root, digest-pinned base images), Compose local topology, GitHub Actions CI/CD (SHA-pinned actions, masked secrets, least-privilege permissions, OIDC, real service containers), and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code."
 ---
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
 For any action, image, or tool flag not pinned down here, resolve it with the `context7` MCP rather than memory (the routing lesson from a sibling leaf: the MCP sat live and unused because the routing line lived only in a router skill this leaf never loads).
 
-The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with `dotnet-aspire` (orchestration), `dotnet-migrate` (migration mechanics), and `dotnet-security` / `database-security` (secret handling; the crypto primitives are `dotnet-cryptography`). The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
+The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with whichever of these the project installed - the skill covering local cloud-native orchestration, the one covering the .NET migration workflow, and the ones covering application- and data-layer hardening (crypto primitives are a fourth). With none of them present, the rules here are the whole guidance and any check they would have run is reported UNVERIFIED. The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 
 ## Docker - reproducible, minimal, non-root
 
@@ -44,7 +44,7 @@ ENTRYPOINT ["dotnet", "App.dll"]
 
 - Express service dependencies with a health condition, and give every backing service (Postgres, SQL Server, Redis) its own healthcheck, so a dependent waits for ready and not merely started.
 - Keep state in named volumes; never bind-mount or inline a secret in the compose file - pull it from a gitignored env-file that never enters source control.
-- Segment the network - put backing services on an `internal: true` network with no published host ports, expose only the edge service and bind its port to `127.0.0.1` rather than `0.0.0.0`, and give each service only the networks it needs - two services that never talk share no network (Compose has no `icc` key; the bridge driver option `com.docker.network.bridge.enable_icc: "false"` under a network's `driver_opts` cuts every peer on that network, so it fits only a network of mutually isolated services, and daemon.json's `icc` covers just the default bridge) - so a compromised service cannot reach the rest.
+- Segment the network - put backing services on an `internal: true` network with no published host ports, expose only the edge service and bind its port to `127.0.0.1` rather than `0.0.0.0`, and give each service only the networks it needs - two services that never talk share no network - so a compromised service cannot reach the rest. Before reaching for a driver-level switch to do it, read the inter-container-traffic section of `references/docker-hardening.md`: the obvious knobs do not mean what they look like.
 
 ## GitHub Actions - the CI/CD contract
 
@@ -61,10 +61,10 @@ ENTRYPOINT ["dotnet", "App.dll"]
 ## Deploy and release - reversible and health-gated
 
 - Promote one immutable artifact through the environments (with required reviewers on prod); never rebuild per environment, or you ship something you never tested.
-- Run migrations as a discrete, gated step BEFORE the app rolls, expand-then-contract so the old and new app versions both work mid-deploy (mechanics in `dotnet-migrate`); every deploy carries a rollback path.
+- Run migrations as a discrete, gated step BEFORE the app rolls, expand-then-contract so the old and new app versions both work mid-deploy (mechanics belong to the skill covering the .NET migration workflow, where the install has it; without it, keep the step gated and reversible from here); every deploy carries a rollback path.
 - Cut over health-gated - blue-green, or a rolling update behind readiness checks, never a big-bang replace that routes traffic to a not-ready instance.
-- Pull config and secrets at runtime from the store (Key Vault, an OIDC-federated secret) - never bake them into the image (see `dotnet-security`, `database-security`).
+- Pull config and secrets at runtime from the store (Key Vault, an OIDC-federated secret) - never bake them into the image (the app- and data-layer hardening skills own the placement rule where installed; without them, this line is the rule).
 
 ## .NET Aspire - orchestration
 
-- The Aspire AppHost is the composition root for the local run and the deployment manifest; service discovery and connection strings flow through it, not hardcoded per service. Depth in `dotnet-aspire`.
+- The Aspire AppHost is the composition root for the local run and the deployment manifest; service discovery and connection strings flow through it, not hardcoded per service. Depth belongs to the skill covering local cloud-native orchestration, where the install has it; without it, the rules in this section are the whole guidance.

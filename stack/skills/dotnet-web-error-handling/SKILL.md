@@ -1,6 +1,6 @@
 ---
 name: dotnet-web-error-handling
-description: "ASP.NET Core error-handling conventions - keep the two failure channels apart (Result/typed errors for expected outcomes, exceptions caught once for the genuinely unexpected), surface everything as RFC 9457 ProblemDetails, centralize one error-to-status map, install a global IExceptionHandler (.NET 8+), and validate input in an endpoint filter with FluentValidation. Floors at .NET 8 / C# 12. Load before deciding how an API reports failures, adding a global handler, shaping error bodies, or wiring request validation, or when the user says ProblemDetails, IExceptionHandler, UseExceptionHandler, Result type, or error envelope. Companions: csharp (the throw-vs-return baseline), dotnet-minimal-api, dotnet-web-backend. Do NOT load for non-HTTP code - model expected failures with the Result half in csharp instead."
+description: "Use before deciding how an API reports failures, adding a global handler, shaping error bodies, or wiring request validation - or when the user says ProblemDetails, IExceptionHandler, UseExceptionHandler, Result type, or error envelope. ASP.NET Core error-handling conventions: keep the two failure channels apart (Result/typed errors for expected outcomes, exceptions caught once for the genuinely unexpected), surface everything as RFC 9457 ProblemDetails, centralize one error-to-status map, install a global IExceptionHandler (.NET 8+), and validate input in an endpoint filter with FluentValidation. Floors at .NET 8 / C# 12. Do NOT use for non-HTTP code - model expected failures with the Result half in csharp instead."
 ---
 
 # ASP.NET Core error handling
@@ -44,7 +44,7 @@ A `Result<T>` carries either the value or one such `Error`; the handler ends wit
 - Every non-2xx response is a `ProblemDetails`, or a `ValidationProblemDetails` for field-level errors - `type`, `title`, `status`, `detail`, `instance`, and an `errors` map where relevant. No bespoke `{ error: ... }` envelope, anywhere.
 - Register `AddProblemDetails()` (.NET 7+) so framework-generated failures (binding 400s, 404s, 415s) emerge in the same shape as the ones you write. In its customization callback, attach a `traceId` extension so a client-side error can be traced back to the logs - the trace/correlation source itself is `dotnet-web-backend`.
 - Emit from handlers with `TypedResults.Problem(...)` and `TypedResults.ValidationProblem(errors)`; never assemble the JSON by hand.
-- This contract is transport-shared: a controller-based API (`dotnet-mvc-controllers`) reuses the same `AddProblemDetails()`, the same global `IExceptionHandler`, and the same FluentValidation filter - it emits via the `ControllerBase.Problem(...)`/`ValidationProblem(...)` helpers instead of `TypedResults`, but the envelope and the handler are identical. Do not re-shape errors per transport.
+- This contract is transport-shared: a controller-based API reuses the same `AddProblemDetails()`, the same global `IExceptionHandler`, and the same FluentValidation filter - it emits via the `ControllerBase.Problem(...)`/`ValidationProblem(...)` helpers instead of `TypedResults`, but the envelope and the handler are identical. Do not re-shape errors per transport.
 
 ## One global handler for the unexpected
 - **.NET 8+ (preferred):** implement `IExceptionHandler.TryHandleAsync`, register with `AddExceptionHandler<T>()` next to `AddProblemDetails()`, and switch it on with `app.UseExceptionHandler()`. Register several handlers in order if you want known-exception-to-status mapping ahead of a final catch-all.
@@ -78,7 +78,7 @@ app.UseExceptionHandler();
 ```
 
 ## Validate at the edge
-- Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter `dotnet-minimal-api` attaches to its route groups. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
+- Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to its route groups. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
 - A validation failure is an expected failure - it returns from the filter and never reaches the global exception handler.
 
 ## Don't

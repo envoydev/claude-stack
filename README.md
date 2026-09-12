@@ -28,7 +28,7 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 79 | house conventions + workflow skills, `.claude/skills/` |
+| **Skills** | 78 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 11 | deterministic guards + an env-gated usage instrument (off by default), `.claude/hooks/` |
@@ -114,7 +114,7 @@ default behind an env gate, so it costs nothing until you flip `CLAUDE_STACK_INS
 `"1"` in `.claude/settings.json` env (flip it back after the measured run), and
 [`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus
 its dispatched subagents) into a token/consumption report - join the two with `--hook-log` to see
-what fired and what it cost.
+what fired and what it cost. Every per-session report carries an efficiency scorecard - cache misses by Claude Code's own rule, compaction re-reads, build-dir reads, scoped against whole-suite test runs, checked commits, green claims with no check behind them, correction streaks, long answers, dispatch overhead - each a measured number with its denominator, so a hook or rule change is read from a week of sessions instead of asserted.
 
 ```bash
 node scripts/analyze-usage.js ~/.claude/projects/<encoded-project>/<session-id>.jsonl

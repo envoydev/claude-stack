@@ -1,6 +1,16 @@
 # Aspire integration testing
 
-Container-backed, end-to-end tests that boot the real Aspire AppHost in-process and drive it over HTTP. Load from `dotnet-testing` when a test needs the whole orchestrated graph - API, database, cache - not a substituted collaborator. The AppHost wiring itself (`AddProject`/`AddPostgres`/`WithReference`/`WaitFor`, ServiceDefaults) belongs to `dotnet-aspire`; this is only the test harness on top of it.
+Container-backed, end-to-end tests that boot the real Aspire AppHost in-process and drive it over HTTP. Load it from SKILL.md when a test needs the whole orchestrated graph - API, database, cache - not a substituted collaborator. The AppHost wiring itself (`AddProject`/`AddPostgres`/`WithReference`/`WaitFor`, ServiceDefaults) belongs to the skill covering Aspire orchestration; this is only the test harness on top of it.
+
+## Contents
+
+- Packages
+- Disable config file-watching before any test runs
+- The fixture: IAsyncLifetime + DistributedApplicationTestingBuilder
+- Discover endpoints dynamically, never hard-code them
+- One AppHost, two modes
+- Reset the database between tests with Respawn
+- Tips
 
 ## Packages
 

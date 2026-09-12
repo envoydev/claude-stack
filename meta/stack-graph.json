@@ -189,10 +189,6 @@
       "mcps": [],
       "plugins": []
     },
-    "frontend": {
-      "mcps": [],
-      "plugins": []
-    },
     "ilspy-decompile": {
       "mcps": [],
       "plugins": []
@@ -215,15 +211,15 @@
       "mcps": [],
       "plugins": []
     },
-    "mobile": {
-      "mcps": [],
-      "plugins": []
-    },
     "npm": {
       "mcps": [],
       "plugins": []
     },
     "nx": {
+      "mcps": [],
+      "plugins": []
+    },
+    "plugin-authoring": {
       "mcps": [],
       "plugins": []
     },
@@ -385,7 +381,6 @@
     "aspnet-solution-designer": {
       "skills": [
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-testing",
         "dotnet-web-backend",
         "project-solution-design"
@@ -482,7 +477,6 @@
     "console-solution-designer": {
       "skills": [
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-hosted-services",
         "dotnet-testing",
         "project-solution-design"
@@ -511,7 +505,6 @@
         "csharp",
         "database-conventions",
         "dotnet-data-access",
-        "dotnet-migrate",
         "dotnet-testing"
       ],
       "skillsSource": "frontmatter",
@@ -612,7 +605,6 @@
     "ionic-angular-implementer": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "ionic",
         "javascript",
         "typescript"
@@ -629,7 +621,6 @@
         "angular-conventions",
         "angular-testing",
         "ionic",
-        "mobile",
         "project-solution-design"
       ],
       "skillsSource": "frontmatter",
@@ -640,7 +631,6 @@
     "ionic-angular-verifier": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "angular-testing",
         "ionic",
         "javascript",
@@ -682,7 +672,7 @@
     },
     "security-auditor": {
       "skills": [],
-      "skillsSource": "none",
+      "skillsSource": "body",
       "agents": [],
       "mcps": [],
       "plugins": [
@@ -714,7 +704,6 @@
         "angular-conventions",
         "angular-styling",
         "angular-testing",
-        "frontend",
         "project-solution-design"
       ],
       "skillsSource": "frontmatter",
@@ -725,7 +714,6 @@
     "web-angular-verifier": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "angular-testing",
         "javascript",
         "typescript"
@@ -754,7 +742,6 @@
     "windows-service-solution-designer": {
       "skills": [
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-hosted-services",
         "dotnet-testing",
         "dotnet-windows-service",
@@ -797,7 +784,6 @@
       "skills": [
         "csharp",
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-testing",
         "dotnet-winforms",
         "project-solution-design"
@@ -839,7 +825,6 @@
       "skills": [
         "csharp",
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-testing",
         "dotnet-wpf",
         "project-solution-design"
@@ -1021,7 +1006,9 @@
         "**/compose*.yml",
         "**/compose*.yaml",
         "**/.github/workflows/*.yml",
-        "**/.github/workflows/*.yaml"
+        "**/.github/workflows/*.yaml",
+        "**/deploy*.sh",
+        "**/deploy*.ps1"
       ]
     },
     "dotnet-repair-agents": {

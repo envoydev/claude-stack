@@ -7,6 +7,14 @@ SQL-first work the DDL. Generate the diagram from the live schema (SchemaCrawler
 from PostgreSQL/SQL Server; EF's model is scriptable) and regenerate in CI, rather than
 hand-editing it into drift.
 
+## Contents
+
+- Notation - crow's foot
+- Attributes and keys
+- Canonical example
+- When to graduate off Mermaid
+- Checklist
+
 ## Notation - crow's foot
 
 A relationship is `ENTITY1 <cardinality>--<cardinality> ENTITY2 : label`. The label is REQUIRED -

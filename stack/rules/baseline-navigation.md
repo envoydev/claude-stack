@@ -4,9 +4,22 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 
 # Navigation and code reading
 
+## What to read
+
 - Read only what's needed: Read is for code already located, never a whole file to find a symbol - `guard-read-whole-file.js` blocks that Read (and the same dump via cat/sed) on a large source file, so it only costs the round trip; before editing, read the body end-to-end and any function it depends on.
 - **Everything on this page holds when the session is working through the SHELL.** Reading a file with `cat`, `sed`, `head`, `awk`, python or a heredoc is the same read, answering to the same ladder and the same ranged discipline - the tool used is not the rule. This is also where the nine path-scoped convention rules stop attaching, which is why `guard-read-whole-file.js` names the governing rule on the first shell touch of a governed file.
+- **A BLOCKED read is answered with the ranged read, never with the same read in another shape.**
+  `guard-read-whole-file.js` names the range it wants in its own denial; re-issuing the whole-file
+  read through the shell, or against a second path, pays the denial again.
+- Never fetch what is already in context, BY ANY ROUTE: no repeat `find_symbol` for a symbol fetched this session, and no second read of a file or range already in context and unchanged since - whether the second read is a `Read`, a `cat`, a `sed -n`, a heredoc or a python `open()`. Re-check an edit at the edited range only.
+- The ranged discipline covers background-task output too: poll a running task through the harness's own task tool when available (`Monitor` - `TaskOutput` is deprecated, read the task's output file instead), else tail or ranged-Read the log's NEW lines - never re-Read the whole growing file per check.
+- **Never Read a screenshot mid-loop.** An image result is base64 in the transcript and is re-sent as cache-read on every later turn, so one iteration read is paid for the rest of the session: verify UI state with DOM assertions (a snapshot / evaluate call) while iterating, and reserve an image read for the FINAL accepted state, target-scoped rather than full-page.
+- **A question about what the STACK wants is answered from the stack's own docs first, not by auditing files by hand.** 'Does X need updating after Y', 'should this file be regenerated', 'what does the update prune' - the owning command's doc defines exactly that reconcile, and reading it is one cheap read; hand-comparing file contents to infer the same answer guesses.
+
+## Locating symbols
+
 - Locate symbols, callers, and resolved types with `serena` - inline, never delegated to `Explore` / `general-purpose` (the dispatch guard blocks a symbol-shaped brief to those seats); reserve those for genuinely broad multi-file sweeps. An installed `LSP` plugin adds compiler-exact lookups and inline diagnostics for its language. The boundary is the QUESTION, not the command: a scoped grep for a literal you already located (a config key in a known file, a log marker) is fine; a symbol question - who calls this, where is it declared, what type resolves here - goes through serena/LSP, because grep answers it by name-match and name-matches lie.
+- The serena tools are DEFERRED behind tool search in this harness - naming them is not having them. Load the three the ladder above depends on with one call: `ToolSearch select:mcp__serena__find_symbol,mcp__serena__find_referencing_symbols,mcp__serena__get_symbols_overview`. A rung you never loaded is a rung you will skip.
 - If `serena`'s language server can't resolve a symbol - a large or SDK-heavy solution where it indexes slowly or not at all (notably C# / Roslyn) - fall back to the installed `LSP` plugin for that language for the lookup; with no LSP plugin for the language either, a scoped grep is the last resort and the answer is reported as name-matched, not resolved. `serena` still owns symbol edits and the memory handoff, neither of which depends on its language server.
 - **`Active language servers: []` is a run-level fact, not a per-call failure.** The first serena
   symbol call that comes back with an empty server list means the LSP is not up for this project:
@@ -14,21 +27,22 @@ description: House baseline - code navigation and reading. Always-on (no paths),
   the rest of the run. Repeating it is the waste: every repeat costs a round trip to learn what the first call already
   said. A dispatching skill passes the fact to the seats it fans out next, so they start on the
   fallback instead of rediscovering it one by one.
-- **A BLOCKED read is answered with the ranged read, never with the same read in another shape.**
-  `guard-read-whole-file.js` names the range it wants in its own denial; re-issuing the whole-file
-  read through the shell, or against a second path, pays the denial again.
 - serena is the cheap path only while the symbol is small: for a large body, fetch the symbol WITHOUT its body first (signature/children), then Read the range you need - a multi-thousand-token symbol body costs more than the ranged Read it was meant to avoid.
+- `get_symbols_overview` takes ONE file, never a directory - enumerate a module with a directory listing or Glob first, then overview the files that matter (a directory call only errors and costs the round trip).
 - `find_symbol`'s pattern parameter is `name_path_pattern`, not `name_path` - the natural mis-guess.
 - An EMPTY reference result for a symbol that plausibly has callers is suspect, not proof: in a multi-tsconfig monorepo without composite project references, serena and the LSP share the same cross-lib blind spot - cross-check with a grep before concluding 'no callers'.
-- `get_symbols_overview` takes ONE file, never a directory - enumerate a module with a directory listing or Glob first, then overview the files that matter (a directory call only errors and costs the round trip).
-- On C# pass `depth: 2` to `get_symbols_overview` - the default stops at the file's top-level symbol, in C# the NAMESPACE, so it returns only the namespace name. 2 reaches type members (names only - stays cheap); nested-type members need one more; a top-level-statements file returns `{}` at any depth.
-- Never fetch what is already in context, BY ANY ROUTE: no repeat `find_symbol` for a symbol fetched this session, and no second read of a file or range already in context and unchanged since - whether the second read is a `Read`, a `cat`, a `sed -n`, a heredoc or a python `open()`. Re-check an edit at the edited range only.
-- **Never Read a screenshot mid-loop.** An image result is base64 in the transcript and is re-sent as cache-read on every later turn, so one iteration read is paid for the rest of the session: verify UI state with DOM assertions (a snapshot / evaluate call) while iterating, and reserve an image read for the FINAL accepted state, target-scoped rather than full-page.
-- **A question about what the STACK wants is answered from the stack's own docs first, not by auditing files by hand.** 'Does X need updating after Y', 'should this file be regenerated', 'what does the update prune' - the owning command's doc defines exactly that reconcile, and reading it is one cheap read; hand-comparing file contents to infer the same answer guesses.
-- The ranged discipline covers background-task output too: poll a running task through the harness's own task tool when available (`Monitor` - `TaskOutput` is deprecated, read the task's output file instead), else tail or ranged-Read the log's NEW lines - never re-Read the whole growing file per check.
 - serena memories are name-addressed: `write_memory` replaces a note whole, `read_memory` / `list_memories` fetch it. An in-place EDIT of one memory is not a shape to recall - the tool list is the authority, so check it before the first edit call and, on a repeated schema error, read the tool's own parameter list instead of guessing again.
-- The serena tools are DEFERRED behind tool search in this harness - naming them is not having them. Load the three the ladder above depends on with one call: `ToolSearch select:mcp__serena__find_symbol,mcp__serena__find_referencing_symbols,mcp__serena__get_symbols_overview`. A rung you never loaded is a rung you will skip.
+
+## Compaction
+
+- **When compacting, keep verbatim what the next turn would otherwise re-read**: the list of files modified this session, the live plan file's path and the step it is on, the build and test commands with their last result, and every open ask with the user's answer. Drop tool output and file contents - they are on disk. Measured: two sessions each re-read 18 files after a compaction, one of them the plan the summary should have carried; the analyzer's compaction re-read row is where this line is checked.
+
+## Shell commands
+
 - A glob that belongs to the TOOL is single-quoted: `grep --include='*.cs'`, `rg --glob '*.ts'`, `find . -name '*.md'`. Left bare, the SHELL expands it first - and zsh aborts the whole command on an unmatched glob (`zsh:1: no matches found: --include=*.cs`) with status 1, which is EXACTLY what a genuine no-match returns, and `2>/dev/null` does not suppress the message. The command never ran, the harness flags no error, and the run reads the empty result as 'nothing there'. Measured many times, including a security scan whose 'no secrets found' was an aborted command.
 - A splice - `sed -i`, a python or perl in-place replace - asserts its anchor appears EXACTLY ONCE before it replaces anything: count first, and only then substitute.
+
+## When the target is ambiguous
+
 - Ambiguous reference with multiple matches: put the matches through AskUserQuestion (one option each, the likely one marked); a dispatched seat has no user channel - it returns the candidates in its report instead. Do not guess.
 - Pasted code in chat is illustrative unless stated otherwise; confirm the target file before editing.

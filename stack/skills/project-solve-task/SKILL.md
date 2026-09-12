@@ -1,6 +1,6 @@
 ---
 name: project-solve-task
-description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable): project-verify-code inline or the verifier seat -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-solve-cross-task), not greenfield (project-build-from-scratch), not a one-line edit."
+description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable): project-verify-code inline or the verifier seat -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-solve-cross-task), not greenfield - a from-scratch build has its own flow - and not a one-line edit."
 disable-model-invocation: true
 ---
 
@@ -63,8 +63,9 @@ the cheap point to run the next step in a fresh session (`/clear`): resume needs
 file + cycle note, so the step starts at a few k of context - in a long cycle the carried-forward
 context is the single biggest token cost (a resume restarts at 21.5-59.4% of the carried context with zero
 re-work - state those two absolute numbers to the user, never a ratio). On a long cycle this is a step,
-not an offer to remember: once the cycle has crossed roughly 150k ctx per message, spans hours,
-or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
+not an offer to remember: once the cycle has crossed the install's fresh-session trigger for its context
+window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window),
+spans hours, or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
 ask until it is taken or the cycle closes. And HONOR the answer: when the user picks it, the
 turn ends with a short ack plus the paste-ready resume block - no 'one more step', no new work
 in this chat. This is a CONSTRUCTION check, not a memory: before
@@ -85,7 +86,9 @@ and a step-5 punch-list re-dispatch under AUTO rides the still-live waiver.
 
 Each step that names a skill INVOKES it via the Skill tool - and re-invokes it for every new
 cycle in the same chat, even when an earlier cycle already loaded it: 'it is still in context'
-runs the step off stale framing and freezes cost attribution on the wrong skill.
+runs the step off stale framing and freezes cost attribution on the wrong skill. One exception:
+a capture named in a close-out line (step 6) is a POINTER for the user to type, never a call this
+run makes.
 
 1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
    file, not the chat, is the artifact - and that skill's design rules are settled IN it (every seam
@@ -151,7 +154,7 @@ runs the step off stale framing and freezes cost attribution on the wrong skill.
    SAME reviewer again before anything is stamped `Completed`: a punch-list fix is unreviewed code.
    Stamp the verdict. *Stop.*
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
-   (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
+   (`superpowers:verification-before-completion` - the whole feature's acceptance criteria, each one
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
    into the close. Delete or archive the cycle note, and in an agents-mode run purge the

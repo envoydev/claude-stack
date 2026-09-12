@@ -6,6 +6,25 @@ Findings in this file are **should-fix**, not must-fix. The architect can declin
 
 The skill cites style findings by short name (e.g., `style/headings/atx-only`) so the architect can locate them here.
 
+## Contents
+
+Every rule name in this file, by section - search the name verbatim to jump to its entry.
+
+- **Authoring philosophy** - `style/philosophy/minimum-viable`, `style/philosophy/better-than-best`
+- **Headings** - `style/headings/atx-only`, `style/headings/single-h1`, `style/headings/unique-names`, `style/headings/sentence-case-and-product-names`, `style/headings/blank-lines-around`
+- **Document skeleton** - `style/skeleton/recommended`, `style/skeleton/title-matches-filename`, `style/skeleton/intro-1-to-3-sentences`, `style/skeleton/see-also-section`
+- **Table of contents** - `style/toc/use-when-long`, `style/toc/placement`
+- **Line length** - `style/line-length/80`, `style/line-length/exceptions`
+- **Whitespace and line breaks** - `style/whitespace/no-trailing`, `style/line-breaks/sparingly`
+- **Lists** - `style/lists/lazy-numbering-long`, `style/lists/full-numbering-short`, `style/lists/indent-4`, `style/lists/single-space-only-for-trivial`, `style/lists/prefer-list-to-table`
+- **Code** - `style/code/fenced-only`, `style/code/declare-language`, `style/code/inline-backticks-for-escapes`, `style/code/escape-shell-newlines`, `style/code/inside-lists`
+- **Links** - `style/links/repo-absolute`, `style/links/avoid-relative-traversal`, `style/links/informative-text`, `style/links/reference-style-when`, `style/links/reference-placement`
+- **Images** - `style/images/sparingly`, `style/images/when-justified`, `style/images/alt-text-required`
+- **Tables** - `style/tables/scannable-two-dimensional`, `style/tables/avoid-when`, `style/tables/short-cells`
+- **HTML** - `style/html/avoid`
+- **Capitalization** - `style/capitalization/preserve-names`
+- **Items the style overlay does not specify** - prose, no rule names
+
 ## Authoring philosophy
 
 ### `style/philosophy/minimum-viable`

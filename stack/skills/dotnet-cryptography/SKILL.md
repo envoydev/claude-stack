@@ -1,13 +1,13 @@
 ---
 name: dotnet-cryptography
-description: ".NET cryptography conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Load when encrypting, decrypting, hashing, signing, verifying, or deriving a key. Secret STORAGE belongs to your secrets/config layer (never source); sign-in to dotnet-authentication; OWASP categories to dotnet-security. Do NOT load for TLS/HTTPS pipeline config."
+description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET. Conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way: SHA-2 for integrity, AES-GCM for authenticated encryption, RSA-OAEP/PSS and ECDsa for asymmetric work, PBKDF2 or Argon2id for password hashing, RandomNumberGenerator for entropy, and FixedTimeEquals for any secret comparison. Carries the dead-algorithm list and notes post-quantum ML-KEM/ML-DSA as a .NET 10+ opt-in. Floors at .NET 8 / C# 12. Secret STORAGE belongs to your secrets/config layer, never source. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, or for the OWASP category checklist - those are the authentication and security-hardening skills."
 ---
 
 # .NET cryptography
 
 Cryptography in .NET is a library of correct primitives that are easy to assemble incorrectly. The job is almost never to invent a scheme - it is to pick the primitive the situation calls for and use it the single way it is meant to be used. Everything here lives in `System.Security.Cryptography`. Floor is .NET 8 / C# 12, which covers every classical primitive below; post-quantum is a .NET 10+ addition flagged at the end.
 
-Two boundaries this skill does not cross. Where keys and secrets *live* - a vault, a managed key service, environment config - is your secrets layer, never a literal in source and never a checked-in file. Signing a user in is `dotnet-authentication`. This skill is only the math and the API around it. On .NET Framework 4.8 two defaults are footguns - PBKDF2's SHA-1 default and the `RandomNumberGenerator` API name - covered in `references/net-framework-48.md`.
+Two boundaries this skill does not cross. Where keys and secrets *live* - a vault, a managed key service, environment config - is your secrets layer, never a literal in source and never a checked-in file. Signing a user in belongs to the skill covering .NET authentication. This skill is only the math and the API around it. On .NET Framework 4.8 two defaults are footguns - PBKDF2's SHA-1 default and the `RandomNumberGenerator` API name - covered in `references/net-framework-48.md`.
 
 ## First principle: use the static one-shots
 
@@ -78,4 +78,4 @@ These appear in old code and tutorials; replace them on sight.
 - **AES-ECB** - leaks plaintext structure. Use GCM.
 - **RSA PKCS#1 v1.5** for encryption or signing - padding-oracle and forgery exposure. Use OAEP / PSS.
 - **A fast unsalted hash for passwords** - use PBKDF2 / Argon2id.
-- **`BinaryFormatter`** - remote-code-execution by design. The floor-aware status and replacement are owned by `dotnet-security` (A08) - reach for it rather than re-deriving the runtime timeline here.
+- **`BinaryFormatter`** - remote-code-execution by design. The floor-aware status and replacement belong to the skill covering OWASP hardening (its integrity-failures section); with none installed, the rule here is enough - never call it, and delete any opt-in that re-enables it.

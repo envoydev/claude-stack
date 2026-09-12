@@ -1,6 +1,6 @@
 ---
 name: angular-material
-description: "Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. Load when building UI with @angular/material or @angular/cdk. Companions: angular-conventions, typescript, angular-styling. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
+description: "Load when building UI with @angular/material or @angular/cdk - importing component modules, theming, reaching for a CDK primitive, or writing harness tests. Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. Load when building UI with @angular/material or @angular/cdk. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
 ---
 
 # Angular Material and CDK
@@ -68,6 +68,8 @@ When the system tokens are not enough and one component needs a specific change,
 ```
 
 Bind the overrides mixin or a `--mat-sys-*` system token - never a raw per-component custom property by hand. (v20 renamed those raw properties; the rename and its migration schematic are in `references/versions.md`.)
+
+Prove a theming change instead of eyeballing it: build the app (`ng build`, or the workspace's own build script) and confirm the Sass compiles with no unknown-mixin or undefined-variable error, then read the themed element's computed `--mat-sys-*` value in the browser and quote both results. A theme that compiles but resolves the wrong token is the failure this section exists to prevent.
 
 ## Reach for CDK primitives before hand-rolling
 

@@ -23,11 +23,14 @@ test('--check always names its verdict, clean or not', () => {
 
 test('an agent pulls its declared skills and plugins; body mentions pull nothing', () => {
     const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
-    for (const s of ['dotnet', 'dotnet-web-backend', 'dotnet-testing'])
+    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing'])
     {
         assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-solution-designer's frontmatter`);
     }
-    assert.match(c.reasons['dotnet'], /aspnet-solution-designer/);
+    assert.match(c.reasons['dotnet-web-backend'], /aspnet-solution-designer/);
+    // The dotnet ROUTER is deliberately not preloaded by the designers any more (a router beside its
+    // own leaves cost ~15k chars per dispatch); it reaches the install through the C# stack seeds.
+    assert.ok(!c.skills.includes('dotnet'), 'the dotnet router is no longer an agent edge');
     // aspnet-implementer preloads its operative stack skills via skills: frontmatter (the
     // prose-instructed loads fired in 0 of 5 seats in one measured session while every
     // frontmatter preload landed). A per-task surface pick it merely NAMES in the body is no
@@ -520,12 +523,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'frontend', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'frontend'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }

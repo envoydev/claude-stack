@@ -1,6 +1,6 @@
 ---
 name: ionic-security
-description: "Ionic / Capacitor mobile security-hardening reference for the native attack surface a WebView app adds beyond its web risks: secret storage in the Keychain / Keystore (never localStorage or Preferences - plaintext on-device), deep links as untrusted input, least-privilege native permissions, cleartext traffic and WebView debugging off in release, an allowNavigation allowlist and no live-reload server.url in production, FLAG_SECURE and backgrounding snapshots, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when the security-auditor sweeps the mobile stack. Points at angular-security, dotnet-security, capacitor-release. Do NOT load for non-security work."
+description: "Ionic / Capacitor mobile security hardening - the native attack surface a WebView app adds beyond its web risks. Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Covers secret storage in the Keychain / Keystore (never localStorage or Preferences - plaintext on-device), deep links as untrusted input, least-privilege native permissions, cleartext traffic and WebView debugging off in release, an allowNavigation allowlist and no live-reload server.url in production, FLAG_SECURE and backgrounding snapshots, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Do NOT load for non-security work."
 ---
 
 # Ionic / Capacitor mobile security
@@ -66,5 +66,12 @@ Android enforces the cleartext ban in `res/xml/network_security_config.xml`, ref
 - Signing and store/OTA integrity is `capacitor-release`'s ground - it owns the signed-HTTPS + integrity-check control on the live-update channel; a security review confirms the release is signed, cleartext/debug flags are off, and that OTA control is actually in place.
 
 ## Review output
+
+Prove the two release flags mechanically before either one becomes a row - a flag you did not grep is reported UNVERIFIED, never assumed off:
+
+```bash
+grep -rn 'cleartextTrafficPermitted' android/app/src/main/res/       # expect ="false"; no file at all is itself the finding
+grep -rn 'webContentsDebuggingEnabled\|server' capacitor.config.*    # expect no debugging flag true, no server.url outside a dev-only config
+```
 
 Report findings as `surface | risk | fix`, ordered by risk - e.g. `Preferences token store | anyone with the device reads the session token | move to the Keychain/Keystore plugin, biometric-gate the read`. Findings on the web layer inside the WebView route to the skill covering Angular web hardening (XSS, CSP, token storage, CSRF), on the API side to the skill covering ASP.NET / .NET hardening - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack.

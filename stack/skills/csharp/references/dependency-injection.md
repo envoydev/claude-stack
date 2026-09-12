@@ -2,6 +2,15 @@
 
 How a feature's registrations are grouped and composed, and the three registration shapes beyond a plain `AddScoped<I, T>`: idempotent (`TryAdd`), keyed, and factory. The lifetime rules (Singleton / Scoped / Transient), the captive-dependency ban, and constructor injection are the language baseline in `csharp` - this file does not restate them. Typed-options binding depth (`IOptionsSnapshot` / `IValidateOptions`) is the ASP.NET Core web hub skill's; scope-per-unit-of-work in a `BackgroundService` is the hosted-worker skill's - each where installed.
 
+## Contents
+
+- Group a feature behind one Add* extension
+- TryAdd for idempotent and multi-implementation registration
+- Keyed services (.NET 8+)
+- Factory registration and runtime arguments
+- Binding options into DI
+- The shapes at a glance
+
 ## Group a feature behind one Add* extension
 
 Never let `Program.cs` accumulate a wall of registrations. Each feature owns a static `Add{Feature}` extension on `IServiceCollection` that registers everything the feature needs and returns the collection so calls chain. Place it in the feature's own project, next to the services it wires, named `{Feature}ServiceCollectionExtensions`.

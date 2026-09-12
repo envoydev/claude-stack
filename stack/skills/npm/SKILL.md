@@ -1,6 +1,6 @@
 ---
 name: npm
-description: "Professional npm usage for consuming and publishing packages: lockfile + npm ci discipline, the supply-chain baseline (ignore-scripts, the min-release-age cooldown, allow-git=none, OIDC publishing, scoped internal packages), honest npm-audit gating, overrides vs --legacy-peer-deps, exports maps and ESM-first publishing, update-bot cooldowns. Fires on package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'. NOT for TS language style (typescript skill), Angular framework conventions (angular-conventions), or authoring CI pipelines beyond npm's own steps (the devops family)."
+description: "Professional npm usage for consuming and publishing packages. Fires on package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'. Covers lockfile + npm ci discipline, the supply-chain baseline (ignore-scripts, the min-release-age cooldown, allow-git=none, OIDC publishing, scoped internal packages), honest npm-audit gating, overrides vs --legacy-peer-deps, exports maps and ESM-first publishing, update-bot cooldowns. NOT for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground."
 ---
 
 # npm - professional consuming, securing, publishing
@@ -20,6 +20,8 @@ npm's dominant risk is the supply chain: self-replicating worm campaigns (Shai-H
   ```
 
   Why each line: lifecycle scripts are the worm execution vector; malicious versions are usually pulled within hours, so a 7-day cooldown filters nearly all of them (needs npm >= 11.10.0); a git dependency can ship its own `.npmrc` that swaps the git binary path - code execution even with scripts ignored - so git/file/remote sources are shut off (npm >= 11.10.0; the v12 default). `ignore-scripts` still runs your own `npm start`/`test` scripts.
+
+  Verify the baseline landed - `npm config get ignore-scripts min-release-age allow-git engine-strict` must echo `true 7 none true`. A `null` or `undefined` in that output means npm is older than the setting and the line is being ignored, not applied.
 - **`dependencies` vs `devDependencies` discipline.** Build/test-only tooling (typescript, CLIs, linters, bundlers, test libs) goes in devDependencies; production images install with `npm ci --omit=dev`. Misclassification bloats the attack surface, the image, and the SBOM.
 - **Pin Node**: `.nvmrc` + `engines.node`; CI reads `node-version-file: '.nvmrc'` with `cache: 'npm'` so dev and CI match exactly.
 - **Scope internal packages** (`@yourorg/...`), map the scope to the private registry in `.npmrc` (`@yourorg:registry=...`), and reserve the scope on public npm - closes dependency confusion. Never commit auth tokens; CI injects `${NODE_AUTH_TOKEN}` or, better, uses OIDC and has no token at all.

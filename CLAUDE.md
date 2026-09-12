@@ -192,7 +192,16 @@ change made only inside a consuming project is throwaway (see Invariants).
 - `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
   token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
   side of the flow instrumentation (`instrument-tool-usage.js` is the identity side - hooks never
-  see tokens). `scripts/scan-evidence.js` - the deterministic evidence scan the guided commands
+  see tokens). Its EFFICIENCY block is the practice scorecard: cache misses by Claude Code's own
+  rule, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green
+  claims with no check, correction streaks, long answers, dispatch overhead - one measured number
+  per practice with its denominator, so a hook or rule change is read from a week of sessions and
+  never asserted. It reads the `PowerShell` tool as a shell route (34 of 38 test runs in one
+  collection ran through it). First baseline, 115 sessions across ten projects: 45 cache misses
+  re-cached 8.2M tokens (31% of all cache writes - the largest class found), build-dir reads were
+  ~8.6k tokens in total (so the read guard grew no class), 55% of seat input was the seats' own
+  preload, and the answer-length hook's strict correction-streak detector fired on 0 sessions while
+  42 of 45 long answers drew a short correction - the week's numbers decide that threshold. `scripts/scan-evidence.js` - the deterministic evidence scan the guided commands
   run against a project (manifests only, no restore/network; conclusions computed per run, the
   catalog ships only signal definitions). `README.md` - deliberately compact: what the repo is, technologies, the two install routes (plugin / script), headline counts (lint-checked), and the usage-analysis pointer - no per-surface inventories (those live in `docs/claude-stack.html`) and no deep operational docs (env vars, troubleshooting - the guided plugin flow covers prerequisites interactively; history has the old text).
 

@@ -1,11 +1,11 @@
 ---
 name: project-verify-plan
-description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (which creates the plan) and precedes project-verify-code (which reviews the built code). Trigger on review this plan, is this design sound, does the plan miss anything, before I build.
+description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (which creates the plan) and precedes project-verify-code (which reviews the built code). Trigger on review this plan, is this design sound, does the plan miss anything, before I build. NOT the built-code review - that is project-verify-code, after the build - and not writing the plan itself.
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build
 
-A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, project-verify-code). This reviews an EXISTING plan or design (yours, or one `superpowers:writing-plans` produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
+A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, project-verify-code). This reviews an EXISTING plan or design (yours, or one `superpowers:writing-plans` - the implementation-plan format skill - produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
 
 ## Audit mode - this chat or the verifier seat
 
@@ -15,7 +15,7 @@ Audit inline in this chat, the five passes below. On an agents request, dispatch
 
 - Use it the moment a plan exists and before implementation starts - especially for anything with a boundary, state, auth, migration, or concurrency surface. The plan file is the whole input: a fresh session (or a different model) audits it as well as the chat that designed it - and independent eyes on the page are the point.
 - Not code review - that is `project-verify-code`, after the build.
-- Not plan *creation* - that is `superpowers:writing-plans` / `superpowers:brainstorming`. This audits a plan that already exists.
+- Not plan *creation* - that is `superpowers:writing-plans` (the plan-format skill) or `superpowers:brainstorming` (the intent-and-requirements pass before one exists). This audits a plan that already exists.
 
 ## The audit - five passes, in order
 

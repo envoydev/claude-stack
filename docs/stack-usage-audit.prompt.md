@@ -240,6 +240,13 @@ real trigger was the file's content).
 
 - The transcript outranks every report about it. Re-derive every countable claim before it enters a
   finding - a prior sweep found wrong counts in shipped reports that read as entirely plausible.
+- The practices are the official ones. The analyzer's scorecard measures what the Claude Code
+  best-practices and costs pages prescribe - a check Claude can run and evidence over assertion,
+  short always-on files with sometimes-relevant material in skills, hooks for zero-exception
+  actions, subagents for heavy reads, a clear after two corrections, compaction instructions,
+  one test while iterating and the suite at the gate - plus this stack's own measured rules. A
+  finding names the practice it tests, and a practice those pages have dropped or changed is
+  re-verified against them before it is enforced.
 - Read the conversation, not just the ledgers. A bundle whose findings all come from analyzer
   output has been summarized, not audited.
 - A finding is a mechanism, not a vibe: trigger, observed behaviour, measured cost, and the exact
@@ -289,8 +296,13 @@ already has one is skipped on re-invocation.
   cost every time: gate-file forensics (content AND mtime against the session window - one leftover
   stamp authorized dispatches in four later sessions) and context-load root-causing (did the
   clause's text ever enter the session - a satellite rule never Read is a placement defect, not a
-  discipline failure; measured 10/10 generic dispatches traced to one unread file). Known blind
-  spot: path-scoped rule attachment is invisible in transcripts - never report its absence.
+  discipline failure; measured 10/10 generic dispatches traced to one unread file). Path-scoped
+  rule attachment IS observable, on two records the analyzer's `Inventory vs use` section reads -
+  the harness's `nested_memory` attach row and `guard-read-whole-file.js`'s shell-route notice,
+  both measured across the corpus - with a glob proxy over the touched files as the floor under
+  them; the old 'invisible in transcripts, never report its absence' rule is retired, so an unused
+  path-scoped rule is now a finding like any other. What stays invisible is a HOOK: it leaves no
+  transcript record, so a plugin shipping only hooks can never be scored used.
 - **Token verdict - do we waste tokens?** Break the spend down: cache read vs cache creation vs
   output, per seat, and per phase of the run. Then name the drivers with numbers - the largest
   single tool result, a file read more than once, work re-derived that a generated doc already
@@ -298,7 +310,8 @@ already has one is skipped on re-invocation.
   past the fresh-session trigger. Close with ONE line: what the session delivered, what it cost,
   and the avoidable share as a measured number (`~180k of 940k, 19%`), never an adjective. A
   session that spent heavily and delivered the result reliably is a PASS - say so; waste is spend
-  with nothing bought, and that is the verdict this audit exists to reach.
+  with nothing bought, and that is the verdict this audit exists to reach. The analyzer's EFFICIENCY block is the floor of this breakdown (`--json` carries it as `main.efficiency` plus `dispatchOverhead`): cache misses by Claude Code's own rule and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks, long answers, heavy seats. Each row is opened per the analyzer skill's discipline reference before it is costed; the avoidable share sums only the rows that survived.
+- **Effectiveness verdict - did it work?** One line beside the token verdict: what landed (the artifact, the commits and whether each had a check before it), how many user corrections it took and whether the hook's streak threshold would have met them, how many green claims had no check in their turn, how many stops went unheld. A session can be cheap and ineffective - that is a finding against the flow, never a PASS.
 - **Generated docs - useful, and actually used?** For every task that needed orientation
   (a fix, an investigation, a design), check whether the session READ what the stack generates for
   exactly that - `<docs-path>/architecture/ARCHITECTURE.md` and its `references/`,
@@ -313,7 +326,15 @@ already has one is skipped on re-invocation.
   it (the strongest evidence is the user's own words next to that skill's description); and the
   right skill in the wrong mode - invoked as a Skill call where the contract says name it to the
   user, or inline where it promises dispatch. Check the installed inventory for that project, not
-  the stack's full catalog: a skill the project never installed cannot be a non-use finding.
+  the stack's full catalog: a skill the project never installed cannot be a non-use finding. The
+  analyzer's `Inventory vs use` section (`inventory` in `--json`) is that check, machine-written -
+  one row per installed skill, agent, rule, plugin and MCP server with whether it was used, HOW
+  that was observed and when, the unused names collapsed per layer, and `used in N of M sessions`
+  plus the never-used set in directory mode. Read its source line first: a row sourced `catalog`
+  means the installed set was NOT reachable and the denominator is the stack's, not this
+  project's - re-run with `--inventory <that project's .claude>` before filing a non-use finding
+  off it. Read the `how` column too: a skill preloaded by a dispatched seat's frontmatter was paid
+  for in full with zero calls, which is a different finding from a skill nothing reached.
 - **`/project-*` skills under load.** Every one that ran is judged against its own `SKILL.md`: the
   phases it promises, the asks it must put through AskUserQuestion, the artifact it must write, the
   state file it resumes from, and whether it VERIFIED its result or asserted it. Report each as a
@@ -324,7 +345,7 @@ already has one is skipped on re-invocation.
 - **Report integrity.** Spot-check a model-written report's countable claims; a wrong number is
   itself a finding, and your value is the one that enters the ledger.
 - **The audit file** `<AUDIT_DIR>/<session-id>.md`: header (id, date, stacks, task, headline
-  numbers), one-line verdict, the TOKEN VERDICT line (delivered / cost / avoidable share), the
+  numbers), one-line verdict, the TOKEN VERDICT and EFFECTIVENESS lines (delivered / cost / avoidable share; landed / corrections / unchecked claims / unheld stops), the scorecard rows quoted, the
   stack-surface scorecard (generated docs used or bypassed; skills fired, missed and misused; each
   `/project-*` run with its conformance and cost), the findings ledger including positive findings,
   report-integrity result, and `FIXED-SINCE` observations.
@@ -384,12 +405,14 @@ cap: launch up to it, replace as completions arrive, write each audit file befor
    patching per finding - one severity flip dissolved a four-session bypass cluster.
 4. Write `<AUDIT_DIR>/SUMMARY.md`: the rollup table (one row per session), the ranked cluster table
    with evidence counts, the OPEN punch-list grouped by stack home, the validation record, and the
-   NOT-STACK observations fenced off from the punch-list. Three tables are mandatory beside it:
+   NOT-STACK observations fenced off from the punch-list. Four tables are mandatory beside it:
    **token economics** - per session and per project, total spend, avoidable share, and the top
-   three drivers, closing with one cross-collection verdict on whether this stack wastes tokens and
-   where; **stack surface** - one row per skill, agent, rule, hook and MCP that appears anywhere in
+   three drivers, plus the scorecard totals per project with their denominators (misses and tokens re-cached, expected rebuilds, compaction re-reads, build-dir reads, scoped / whole-suite runs, checked / all commits, unverified / all green claims, correction streaks beside short-after-long corrections, long answers / final answers, heavy / all seats) - copied from the `--json` dumps, the numbers a hook or rule change is read from after its observation week - closing with one cross-collection verdict on whether this stack wastes tokens and where; **effectiveness** - one row per session: landed (y/n, the artifact), commits checked / all, user corrections, green claims with no check, unheld stops; **stack surface** - one row per skill, agent, rule, hook and MCP that appears anywhere in
    the collection, with sessions seen, tokens attributable, conformance, and the misuse / non-use
-   count; and **generated docs** - per project, which captures exist, how often a session read them
+   count, built from the analyzer's `inventory` block - one recursive run over the collection
+   ROOT gives `installed in K of M sessions, used in N` per name and the never-used set per
+   layer directly, resolving each session's installed set from its own cwd so a name a project
+   never installed is not counted against it; never re-derive it by hand; and **generated docs** - per project, which captures exist, how often a session read them
    versus re-derived what they hold, and the measured cost of the re-derivation. A surface that
    never appears in any session is reported as unobserved with its install count, never as
    unnecessary - absence of evidence is not failure evidence.

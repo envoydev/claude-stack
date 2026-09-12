@@ -1,8 +1,18 @@
 # Snapshot testing with Verify
 
-Snapshot (approval) testing captures an output and compares it against a human-approved baseline file checked into source control. Load from `dotnet-testing` when the thing under test is a large or structural output - a rendered document, an HTTP response, a public API surface, a serialized payload - where hand-writing per-field assertions is noise. For a scalar or a single business rule, use an explicit assertion instead; a snapshot there only hides intent.
+Snapshot (approval) testing captures an output and compares it against a human-approved baseline file checked into source control. Load it from SKILL.md when the thing under test is a large or structural output - a rendered document, an HTTP response, a public API surface, a serialized payload - where hand-writing per-field assertions is noise. For a scalar or a single business rule, use an explicit assertion instead; a snapshot there only hides intent.
 
 How it works: the first run writes a `.received.` file with the actual output; you review it and promote it to `.verified.` (the diff tool does this on approval); every later run compares against `.verified.` and fails, showing a diff, on any change. Intended changes are approved explicitly, unintended ones fail the build.
+
+## Contents
+
+- Install and initialize (xUnit)
+- Basic usage
+- Approve a public API surface
+- Snapshot an HTTP response
+- Scrub non-deterministic values
+- Source control and CI
+- When not to snapshot
 
 ## Install and initialize (xUnit)
 

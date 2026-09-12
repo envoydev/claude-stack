@@ -1,11 +1,11 @@
 ---
 name: dotnet-grpc
-description: ".NET gRPC conventions - the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Load when defining, implementing, or calling a gRPC service, or weighing gRPC against REST. Companions: dotnet-web-backend, dotnet-authentication, csharp. Do NOT load for plain REST or minimal APIs - that is dotnet-minimal-api."
+description: "Use when defining, implementing, or calling a gRPC service in .NET, or weighing gRPC against REST. Conventions where the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Do NOT use for plain REST or minimal APIs - that is dotnet-minimal-api."
 ---
 
 # .NET gRPC
 
-gRPC is a contract-first RPC system: you declare services and messages in a `.proto`, code is generated from it on both ends, and calls travel as Protobuf over HTTP/2. Reach for it when the producer and consumer are both yours and you want a typed contract, low overhead, and streaming - internal service-to-service traffic above all. Stay on REST when the surface is a public or browser-facing API where ubiquity and human-readable bodies matter more; those endpoints are `dotnet-minimal-api`. This skill covers gRPC and nothing else. Baseline is .NET 8 / C# 12.
+gRPC is a contract-first RPC system: you declare services and messages in a `.proto`, code is generated from it on both ends, and calls travel as Protobuf over HTTP/2. Reach for it when the producer and consumer are both yours and you want a typed contract, low overhead, and streaming - internal service-to-service traffic above all. Stay on REST when the surface is a public or browser-facing API where ubiquity and human-readable bodies matter more; those endpoints belong to whichever skill covers your HTTP endpoint surface. This skill covers gRPC and nothing else. Baseline is .NET 8 / C# 12.
 
 ## The .proto is the single source of truth
 The contract lives in the `.proto`, not in C#. Define every service and message there and let codegen produce the C# types; treat the generated `*.cs` as build output you never open or edit.
@@ -50,7 +50,7 @@ builder.Services
     .AddStandardResilienceHandler();
 ```
 
-- `AddGrpcClient<T>` wires the generated client to a pooled `HttpClient`, so resilience (retries, timeouts, circuit breaker) layers on the same way it does for HTTP - the resilience configuration itself is `dotnet-web-backend`. Inject the client; do not construct it.
+- `AddGrpcClient<T>` wires the generated client to a pooled `HttpClient`, so resilience (retries, timeouts, circuit breaker) layers on the same way it does for HTTP - the resilience configuration itself belongs to the ASP.NET Core cross-cutting hub; without one, configure the pipeline on the client registration here rather than skipping it. Inject the client; do not construct it.
 - The channel is the expensive, long-lived object and it multiplexes many concurrent calls over one HTTP/2 connection. Create it once and reuse it - per-request `GrpcChannel.ForAddress(...)` is the classic gRPC performance bug. `AddGrpcClient` handles this for you; only hand-managed channels need the discipline spelled out.
 - A unary call returns an awaitable plus access to response headers, trailers, and status via the call object when you need them.
 
@@ -67,7 +67,7 @@ Non-negotiable on every call, streaming or not:
 
 ## Map domain outcomes to status codes
 gRPC has its own status space; do not invent your own error envelope inside a successful response.
-- Throw `RpcException` with the right `StatusCode` for an expected failure - `NotFound`, `InvalidArgument`, `AlreadyExists`, `PermissionDenied`, `Unauthenticated`, `FailedPrecondition`. The whether-to-throw-or-return call at the language level is `csharp`; here, the wire signal for a failure is a status code, not a 200 carrying an error flag.
+- Throw `RpcException` with the right `StatusCode` for an expected failure - `NotFound`, `InvalidArgument`, `AlreadyExists`, `PermissionDenied`, `Unauthenticated`, `FailedPrecondition`. The whether-to-throw-or-return call at the language level is the C# baseline's; here, the wire signal for a failure is a status code, not a 200 carrying an error flag.
 - Reserve `Internal` (and `Unknown`) for genuine bugs - an unhandled exception maps there by default, and you must not leak its message or stack to the caller. Catch the expected cases and convert them to precise codes; let an interceptor handle the rest.
 - Attach machine-readable detail with trailers / the rich error model when a status code alone is too coarse for the client to act on.
 
@@ -78,12 +78,12 @@ Put logging, authentication checks, exception-to-status mapping, validation, and
 - Register server interceptors in `AddGrpc(o => o.Interceptors.Add<T>())`; add client interceptors via `.AddInterceptor<T>()` on the client registration.
 
 ## Auth
-- Authenticate with a **JWT bearer** token carried in call metadata, or with **mTLS** (client certificates) for service-to-service trust - both are `dotnet-authentication`. For JWT, attach the token from a client interceptor so no method has to remember it.
+- Authenticate with a **JWT bearer** token carried in call metadata, or with **mTLS** (client certificates) for service-to-service trust - both are configured by the skill covering .NET authentication. For JWT, attach the token from a client interceptor so no method has to remember it.
 - Enforce on the server with `.RequireAuthorization()` on the mapped service (or `[Authorize]` on the service class / methods), exactly as for HTTP endpoints. Authorization policies are the same machinery; gRPC just feeds them from metadata.
 
 ## Health and observability
 - Orchestrator probes speak the standard gRPC health-checking protocol - the opt-in wiring is in `references/optional-surfaces.md`.
-- gRPC integrates with the standard .NET observability stack; emit traces and metrics through it rather than bolting on a parallel logging path. Correlation and the broader telemetry setup are `dotnet-web-backend`.
+- gRPC integrates with the standard .NET observability stack; emit traces and metrics through it rather than bolting on a parallel logging path. Correlation and the broader telemetry setup belong to the ASP.NET Core cross-cutting hub.
 
 ## Browsers can't speak raw gRPC
 A browser client needs **gRPC-Web** - the server and CORS wiring, and its streaming limits, are in `references/optional-surfaces.md`.

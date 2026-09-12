@@ -10,6 +10,15 @@ Nullable reference types are NOT available on C# 7.3. Use `[NotNull]`/`[CanBeNul
 
 ---
 
+## Contents
+
+1. File layout
+2. Formatting
+3. Naming
+4. Language feature usage
+5. Modern BCL APIs are available - via NuGet, not in-box
+6. Notes on forcing a newer LangVersion
+
 ## 1. File layout
 
 - One top-level type per file. File name matches the type name.

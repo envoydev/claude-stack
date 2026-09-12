@@ -82,8 +82,9 @@ concrete - the next step named, the route-back where a step surfaced gaps, the f
 resume on a long run - the recommendation marked per that stop's own rule, free text always
 available via the built-in Other. Where the harness has no such tool, list the same options in
 plain text and END THE TURN. The selected answer is the go; silence is not, and a stop that
-only narrates is not a stop. Once the run has crossed roughly 150k ctx per message or spans
-hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
+only narrates is not a stop. Once the run has crossed the install's fresh-session trigger for its
+context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other
+window) or spans hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
 emitting each stop, not a memory: resume needs only the findings file plus the note.
 
 ## The steps
@@ -117,7 +118,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    from the evidence and the code. Append the digests' key lines to the findings file and stamp
    `Gathered:`. *Stop.*
 3. **ROOT CAUSE** - run the investigation through the hypothesis-and-test method
-   (`superpowers:systematic-debugging`): form the fewest hypotheses the evidence supports, then
+   (`superpowers:systematic-debugging` - hypotheses first, each one confirmed or killed against the
+   code, where the install has it; the same loop as written here where it does not): form the
+   fewest hypotheses the evidence supports, then
    confirm or kill each against the located code and the reproduction - root cause before
    symptom, never a plausible guess. Match the evidence to the catalogue's signature and isolate
    where the signature points, which is almost never the line that threw. **Hard cap: 2
@@ -153,7 +156,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    the next phase - writing the report, building the tasks, reading the new logs - starts in a
    FRESH session resumed from that path, and this stop offers it as an option in its own words
    ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
-   hours or past roughly 150k ctx per message (measured: one 17h15m diagnosis chat carried FOUR
+   hours or past that same trigger (measured: one 17h15m diagnosis chat carried FOUR
    auto-compactions - ~1.46M tokens of context dropped at 360-371k each - with the findings file
    durable from early in the run; every message after the cause was proven re-sent a history the
    file already held, and no `Stop` gate can catch it because that session never closed).

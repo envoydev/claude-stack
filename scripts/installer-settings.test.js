@@ -237,3 +237,43 @@ test('ps1: the slug, the sentry token and the context7 key the run is handed lan
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
+
+// --- the CLAUDE.md seed stamps the H1 placeholder with the repo folder name -----------------------
+// The template ships `# __PROJECT_NAME__` (the same __TOKEN__ shape the docs-root rule uses), and the
+// seed runs once per project - it returns early when either CLAUDE.md location exists - so the
+// stamp can never clobber a hand-written title. The sandbox repo folder is `repo`.
+function assertSeededTitle(sb, twin)
+{
+    const seeded = path.join(sb.repo, '.claude', 'CLAUDE.md');
+    assert.ok(fs.existsSync(seeded), `${twin}: .claude/CLAUDE.md was not seeded`);
+    const text = fs.readFileSync(seeded, 'utf8');
+    assert.strictEqual(text.split(/\r?\n/)[0], '# repo', `${twin}: the H1 placeholder was not stamped with the repo folder name`);
+    assert.ok(!text.includes('__PROJECT_NAME__'), `${twin}: a __PROJECT_NAME__ token survived the stamp`);
+    assert.ok(!text.startsWith('﻿'), `${twin}: the seed was written with a BOM`);
+}
+
+test('sh: the CLAUDE.md seed stamps the H1 placeholder with the repo folder name', () => {
+    const sb = sandbox();
+    try
+    {
+        runSh(sb, 'install');
+        assertSeededTitle(sb, 'sh');
+        fs.writeFileSync(path.join(sb.repo, '.claude', 'CLAUDE.md'), '# hand-written\n');
+        runSh(sb, 'update');
+        assert.strictEqual(fs.readFileSync(path.join(sb.repo, '.claude', 'CLAUDE.md'), 'utf8'), '# hand-written\n', 'sh: a second run touched a filled CLAUDE.md');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('ps1: the CLAUDE.md seed stamps the H1 placeholder with the repo folder name (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try
+    {
+        runPs(sb, 'install');
+        assertSeededTitle(sb, 'ps1');
+        fs.writeFileSync(path.join(sb.repo, '.claude', 'CLAUDE.md'), '# hand-written\n');
+        runPs(sb, 'update');
+        assert.strictEqual(fs.readFileSync(path.join(sb.repo, '.claude', 'CLAUDE.md'), 'utf8'), '# hand-written\n', 'ps1: a second run touched a filled CLAUDE.md');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});

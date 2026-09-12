@@ -1,6 +1,15 @@
 # Testcontainers integration tests (Postgres)
 
-A single real database in Docker, without the Aspire orchestrator. Load from `dotnet-testing` when a data-access test needs real SQL - actual constraints, indexes, and query behavior a substituted `DbConnection` can never prove - but the system under test is just the DB, not a full app graph.
+A single real database in Docker, without the Aspire orchestrator. Load it from SKILL.md when a data-access test needs real SQL - actual constraints, indexes, and query behavior a substituted `DbConnection` can never prove - but the system under test is just the DB, not a full app graph.
+
+## Contents
+
+- This vs Aspire
+- Packages
+- The fixture: IAsyncLifetime + PostgreSqlBuilder
+- One container per suite, not per test
+- Reset between tests with Respawn
+- Pitfalls
 
 ## This vs Aspire
 

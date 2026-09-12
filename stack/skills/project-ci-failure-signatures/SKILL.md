@@ -5,7 +5,7 @@ description: Use when a CI pipeline or PR check goes red and you want to triage 
 
 # CI Triage - turn a red pipeline into a verdict and a route
 
-A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the ci-failure-diagnoser seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of `project-runtime-failure-signatures` (a crash on your own machine) and runs on the `superpowers:systematic-debugging` method.
+A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the ci-failure-diagnoser seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of `project-runtime-failure-signatures` (a crash on your own machine) and runs on `superpowers:systematic-debugging` - read the full error, quote the part that matters, form one hypothesis, and prove it with a check before changing anything, which holds whether or not that plugin is installed.
 
 ## First: pull the right log, read the right line
 
@@ -25,29 +25,15 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 ## Execution modes
 
 This catalogue is single-sourced: the ci-failure-diagnoser seat preloads this same file, so the
-inline and seated forms never drift. Loaded in the MAIN session, run the triage HERE. The
-read-only evidence-gatherer fan-out is judged from the run's shape - but dispatch is
-explicit-only house-wide, so the seats never start on your own say-so: a calling flow that
-already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never
-re-ask; otherwise, when the shape below warrants gatherers, put it through ONE AskUserQuestion
-(gatherers recommended, the trigger named in the option's description; plain-text options
-where the harness lacks the tool) and stay inline on an inline answer. A shape that stays
-inline needs no ask:
-
-- **Dispatch gatherers** (parallel, one per failing job) when any of these holds: more than one
-  job or matrix leg is red; the failed step's log is huge, or `--log-failed` came back empty so
-  the full step log must be walked; the triage needs a comparison (first bad run vs last good)
-  or a local repro attempt alongside the log read.
-- **Stay inline** when one job failed and its failed-step log is short - pull it and read it
-  here; a gatherer would cost more than it saves.
-
-Example: a matrix run with three red legs - three gatherers at once, one per leg, each returning
-the first real error line plus its step context. The digests come back; the code-vs-environment
-call and the route stay in this session. Do NOT dispatch the diagnoser seat from this skill -
-the signatures are already in context, so the seat would only duplicate them; the seat exists
-for the orchestrated issue flow and direct @agent- calls, where it runs this same file in an
-isolated context with the same gatherer fan-out. Loaded INSIDE the seat, this section is already satisfied - the seat
-is the dispatched form.
+inline and seated forms never drift. Loaded INSIDE the seat, this section is already satisfied -
+the seat is the dispatched form, and the rest of this section is not read there. Loaded in the
+MAIN session, run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on
+evidence-gatherers - the inherit-or-ask rule, the three dispatch triggers, the stay-inline shape
+and a worked fan-out are that file. Either way, dispatch is explicit-only house-wide, so the seats
+never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the
+signatures are already in context, so the seat would only duplicate them; the seat exists for the
+orchestrated issue flow and direct @agent- calls, where it runs this same file in an isolated
+context with the same gatherer fan-out.
 
 ## Route it
 

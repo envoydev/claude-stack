@@ -1,6 +1,6 @@
 ---
 name: postgres
-description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database-conventions hub: identifier folding and idempotent DDL, index-type selection (B-tree/GIN/GiST/BRIN/hash), JSONB and full-text indexing, SARGable predicate rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum/ANALYZE, work_mem), connection pooling modes, and array-batching/ON CONFLICT/COPY. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index/pooling decision. Not the cross-engine schema/transaction rules (-> database-conventions), the ORM side (-> dotnet-data-access), or another engine's SQL. Companions: database-conventions (cross-engine hub - load first), database-security (RLS/privileges), dotnet-data-access (the EF Core / ORM side)."
+description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database conventions. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index/pooling decision. Covers identifier folding and idempotent DDL, index-type selection (B-tree/GIN/GiST/BRIN/hash), JSONB and full-text indexing, SARGable predicate rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum/ANALYZE, work_mem), connection pooling modes, RLS policy performance, and array-batching/ON CONFLICT/COPY. Not the cross-engine schema and transaction rules - the cross-engine database hub owns those, load it first where the install has it - not the ORM / EF Core side, which is its own skill, and not another engine's SQL."
 ---
 
 # postgres (engine specialist)
@@ -77,6 +77,15 @@ INSERT INTO page_views (page_id, user_id) VALUES (1,123) ON CONFLICT DO NOTHING;
   - `Sort Method: external merge` -> `work_mem` too low.
   - estimate-vs-actual row gap of 10x+ -> stale statistics, run `ANALYZE`.
 - Rank findings by measured impact (actual rows/buffers/time), never by the estimated cost percentage.
+- Report each finding in these three lines, so the evidence travels with the fix and the re-measure is part of the contract:
+
+  ```text
+  symptom: Seq Scan on orders, 2.1M rows, Rows Removed by Filter 2.09M, 1840 ms
+  cause:   no index serves WHERE status = 'open' (0.5% of rows)
+  fix:     CREATE INDEX CONCURRENTLY orders_open_idx ON orders (status) WHERE status = 'open'
+           -> re-run EXPLAIN (ANALYZE, BUFFERS) and quote the new node
+  ```
+
 - Enable `pg_stat_statements`; rank by `total_exec_time` (aggregate cost) and `mean_exec_time` (worst per-call); `pg_stat_statements_reset()` after a fix to re-measure.
 - Autovacuum handles most tables; tune per-table for high churn and `ANALYZE` after a bulk change:
 
@@ -97,8 +106,23 @@ ANALYZE orders;
 
 ## Full-text search
 
-`LIKE '%term%'` cannot use an index. Use a stored `tsvector` column + GIN + `@@` - the working recipe (generated column, index, query operators) is in `references/full-text-search.md`.
+`LIKE '%term%'` cannot use an index. Store a generated `tsvector`, index it with GIN, query with `@@`:
+
+```sql
+ALTER TABLE articles ADD COLUMN search_vector tsvector GENERATED ALWAYS AS
+  (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,''))) STORED;
+CREATE INDEX articles_search_idx ON articles USING GIN (search_vector);
+SELECT * FROM articles WHERE search_vector @@ to_tsquery('english', 'postgres & performance');
+```
+
+- The generated `STORED` column keeps the vector consistent with its source columns - no trigger to forget.
+- `to_tsquery` operators: `&` AND, `|` OR, `:*` prefix. For raw user input prefer `websearch_to_tsquery`, which parses free text safely instead of erroring on syntax.
+- Rank with `ts_rank(search_vector, query)` in `ORDER BY`; keep the language configuration (`'english'`) identical between the stored vector and the query or nothing matches.
 
 ## RLS policy performance
 
-Only when RLS is the tenancy mechanism (policy *basics* are the data-layer security skill's): make policy functions evaluate once per query instead of per row, and index the column every policy filters on - the patterns are in `references/rls-performance.md`.
+Only when RLS is the tenancy mechanism (policy *basics* - creating and enabling policies, least-privilege logins - are the data-layer security skill's):
+
+- Wrap a function call in a scalar sub-select so it evaluates once per query, not per row: `USING ((SELECT current_setting('app.user_id')::bigint) = user_id)`. A bare `current_setting(...)` in the policy re-runs on every candidate row.
+- Always index the column a policy filters on - the policy predicate is appended to every query against the table, so an unindexed policy column turns every read into a scan.
+- For complex checks, use a `SECURITY DEFINER` helper function in a non-exposed schema, with an explicit caller-identity check inside and `EXECUTE` revoked from public - the planner can treat it as stable, and the check logic stays in one audited place.

@@ -1,6 +1,6 @@
 ---
 name: dotnet-winforms
-description: "WinForms conventions for maintenance and modernization - logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Do NOT load for WPF (-> dotnet-wpf), WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> dotnet-hosted-services + dotnet-windows-service."
+description: "WinForms conventions for maintenance and modernization. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno; async baseline -> csharp, MVP/command orchestration -> csharp-design-patterns, tests -> dotnet-testing, upgrade playbook -> dotnet-migrate, a paired Windows-Service worker -> the hosted-worker and Windows-Service (SCM) skills where installed."
 ---
 
 # WinForms conventions
@@ -13,7 +13,7 @@ C# 12 while treating **.NET Framework 4.8 as a supported-but-frozen maintenance 
 serviced, but no new WinForms features land there. The conventions below are the same whichever
 runtime you are on; the version-specific mechanics live in the references.
 
-**Control naming, event-handler naming, and designer-file conventions live in `references/winforms-style.md`.** This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/PROJECT-CODE-STYLE.md` win where they diverge.
+**Read `references/winforms-style.md` before naming a control or handler, hand-editing a `*.Designer.cs`, or touching a user-facing string** - it owns control/event-handler naming, the designer-file round-trip rules, and the resx localization discipline. This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/PROJECT-CODE-STYLE.md` win where they diverge.
 
 **Load the version reference for the concrete mechanics:**
 
@@ -126,56 +126,24 @@ handling are the `dotnet-security` skill's.
 
 ## Disposal is the failure surface - manage it deliberately
 
-Undisposed resources are the dominant WinForms defect. Two leak families, both worth real care.
+Undisposed resources are the dominant WinForms defect, in two families: managed event-handler leaks
+and native GDI / USER handle leaks. What an ordinary edit has to get right:
 
-### Event-handler leaks (the top managed leak)
+- **Unsubscribe when a shorter-lived object subscribed to a longer-lived one** - detach in
+  `OnClosed` / `Dispose`. A parent-to-child handler needs no detach; their lifetimes are tied.
+- **Wrap every `System.Drawing` object you create in `using`** - `Pen`, `Brush`, `Font`, `Graphics`,
+  `Bitmap`, `Icon`, `Region` each hold a native handle from a bounded per-process quota, and
+  exhausting it throws or paints windows with missing content.
+- **A modal dialog from `ShowDialog()` is not auto-disposed** - wrap it in `using`. Neither is a
+  control or non-visual component you created in code rather than dropping in the designer.
+- **A custom control that owns `IDisposable` fields** overrides `Dispose(bool disposing)`, disposes
+  them inside `if (disposing)`, and calls `base.Dispose(disposing)` (analyzers `CA1063` / `CA2215`).
 
-A `publisher.Event += handler` is a strong reference from publisher to subscriber. It leaks only when
-the **publisher outlives the subscriber** - a long-lived service or main form raising events into
-short-lived child forms or controls that should have been collected.
-
-- You do **not** need to detach a child control's handler from its parent - their lifetimes are tied
-  and they die together.
-- You **do** need to unsubscribe when a shorter-lived object subscribed to a longer-lived one -
-  detach in `OnClosed` / `Dispose`.
-- Weak-event patterns and messenger/event-aggregator abstractions are a safety net, not a substitute
-  for correct lifetime management - a still-subscribed handler can run on a logically dead object.
-
-### GDI / USER object leaks (the top native leak)
-
-`System.Drawing` types - `Pen`, `Brush`, `Font`, `Graphics`, `Bitmap`, `Icon`, `Region` - each wrap a
-native handle and are `IDisposable`. A process has a bounded GDI-handle quota (the widely cited
-default is roughly 10,000; the real ceiling is a configurable session quota), and exhausting it
-throws or renders windows with missing content.
-
-- Wrap every created drawing object in `using`, especially inside `OnPaint` / owner-draw where they
-  are created per paint.
-- **Do not dispose `SystemPens` / `SystemBrushes`** - they are cached. **Do dispose `SystemFonts`** -
-  each access is a live OS fetch.
-- **Never dispose `PaintEventArgs.Graphics`** - you do not own it. **Do dispose** a `Graphics` you got
-  from `CreateGraphics()`, `Graphics.FromImage`, or `Graphics.FromHwnd`.
-- In a `DataGridView`, share one `DataGridViewCellStyle` across rows and columns; never allocate a new
-  `Font` or `Brush` per cell in `CellFormatting` / `CellPainting` without disposing it - a classic
-  font leak.
-
-### Control and component disposal
-
-- A disposed control disposes its children, but automatic disposal only reaches the top-level form
-  started by `Application.Run(new Form())`. Everything below inherits from that or must be handled.
-- **A modal dialog shown with `ShowDialog()` is not auto-disposed** (so you can read its state after
-  close) - wrap it in `using`.
-- **Dynamically added and removed controls dispose manually** - dispose the topmost one (disposing a
-  swapped-out `Panel` disposes its children).
-- A non-visual `IComponent` dropped in the designer (a `Timer`, `ToolTip`, `ImageList`,
-  `ErrorProvider`) auto-registers with the `IContainer components` field and is auto-disposed; **the
-  same component created in code must be disposed by hand** - an undisposed `Timer` keeps firing and
-  holding handles.
-- A custom control that owns `IDisposable` fields overrides `Dispose(bool disposing)`, disposes them
-  inside `if (disposing)`, and always calls `base.Dispose(disposing)` (analyzers `CA1063` / `CA2215`).
-
-Watch live GDI and USER handle counts (Task Manager's Details tab has both columns) across an
-open/close stress test - flat counts are the acceptance bar before shipping or migrating. Managed
-allocation profiling is the `dotnet-diagnostics` skill's.
+**Read `references/disposal-and-leaks.md` before writing owner-draw or `OnPaint` code, before adding
+a dynamically created control or component, and whenever you are hunting a handle leak** - it carries
+the per-case rules (which system objects are cached and must NOT be disposed, the `DataGridView`
+per-cell font trap, where automatic container disposal stops) and the flat-handle-count acceptance
+bar that gates a ship or a migration.
 
 ## Performance: batch, virtualize, bind
 
@@ -210,15 +178,6 @@ build property on modern .NET) - see the references.
   smoke and critical-path coverage only. Do not adopt WinAppDriver fresh (see
   **references/net-framework-48.md** for why). Test framework and structure are the `dotnet-testing`
   skill's.
-
-## Designer and resource hygiene
-
-- Never hand-edit a `*.Designer.cs` file in a way the designer will fight - one control per meaningful
-  change, and expect DPI / default-font re-serialization churn on modern .NET (mitigation in
-  **references/modern-net.md**).
-- Every user-facing string comes from a `resx` file with satellite assemblies (`Localizable = true`
-  plus the form `Language` property to generate per-culture resx). No hard-coded UI sentences; build
-  them with composite format strings, never concatenation.
 
 ## Forbidden in a presenter or ViewModel
 

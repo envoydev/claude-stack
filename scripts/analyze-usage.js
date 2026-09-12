@@ -19,6 +19,13 @@
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
 //   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_STACK_DOCS_PATH is non-default
+//   node scripts/analyze-usage.js <s.jsonl> --inventory <.claude>  # the installed set the INVENTORY vs USE block scores
+//   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
+//
+// INVENTORY vs USE answers the complement of every consumption table: which installed skill,
+// agent, rule, plugin and MCP server the session (or, in directory mode, the corpus) never
+// touched. The installed set is read off disk - `--inventory`, else the transcript's own cwd's
+// `.claude` when this machine has it, else the stack catalog beside this script, labeled as such.
 //
 // The headline health signal is ctx/msg (avg context re-sent per API call = input +
 // cache-write + cache-read over msgs): high tool-result volume means noisy tools, but a
@@ -37,6 +44,7 @@
 // offloaded to tool-results/ and undercount.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const readline = require('readline');
 
@@ -57,6 +65,68 @@ const dur = (ms) => {
 };
 const pad = (s, w) => String(s).length >= w ? String(s) : String(s) + ' '.repeat(w - String(s).length);
 const rpad = (s, w) => String(s).length >= w ? String(s) : ' '.repeat(w - String(s).length) + String(s);
+
+// ---------- the efficiency scorecard's classifiers ----------
+// The scorecard measures each session against the practices the official Claude Code guidance and
+// the stack's own audits agree on, as NUMBERS with denominators - the report judges them. Every
+// classifier here is a measurement, never a gate: a hook grows a class only after these rows have
+// shown its rate for a week.
+// Prose as guard-answer-length.js defines it (fences, tables, quotes, inline code stripped), so
+// the analyzer counts what the hook would see.
+function proseOf(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/^\s*\|.*$/gm, '')
+    .replace(/^\s*>.*$/gm, '')
+    .replace(/`[^`\n]*`/g, '')
+    .replace(/\]\([^)\s]*\)/g, ']')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
+const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
+const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and still count as its check
+// Build output, package trees, caches and lockfiles - a read there is a read of nothing the session
+// wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges.
+const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\.venv|venv|vendor|\.git|\.angular|\.nuget|\.serena|\.playwright|\.next|\.nuxt|\.gradle|\.idea|\.vs)(?:[\/\\]|$)|(?:^|[\/\\])(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|Cargo\.lock|poetry\.lock|composer\.lock)$|\.(?:log|min\.js|min\.css|map)$/;
+// The first file a dump verb names - the same read routed through the shell.
+const isShellTool = (name) => name === 'Bash' || name === 'PowerShell';
+function shellReadTarget(cmd) {
+  const m = /(?:^|[;&|(]\s*)(?:cat|head|tail|less|more|bat)\s+(?:-[\w-]+(?:\s+\d+)?\s+)*["']?([^\s"'|;&<>)]+)/.exec(cmd)
+    || /(?:^|[;&|(]\s*)sed\s+-n\s+(?:-e\s+)?["']?[\d,$p;]+["']?\s+["']?([^\s"'|;&<>)]+)/.exec(cmd);
+  if (!m) return null;
+  const p = m[1];
+  if (p.includes('$') || /[*?\[]/.test(p) || p === '-') return null;
+  return p;
+}
+// A CHECK is something that returns a pass/fail the session can read: a test run, a build, a lint,
+// a CI status read. A test run is SCOPED when it names one project, one file, one filter.
+const CHECK_RES = {
+  test: /(?:^|[;&|(]\s*)(?:dotnet\s+test|npm\s+(?:run\s+)?test\S*|pnpm\s+(?:run\s+)?test\S*|yarn\s+(?:run\s+)?test\S*|npx\s+(?:jest|vitest|mocha|playwright\s+test)|jest|vitest|mocha|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+--test|mvn\s+test|gradle\s+test|phpunit)\b/,
+  build: /(?:^|[;&|(]\s*)(?:dotnet\s+(?:build|publish)|npm\s+run\s+build\S*|pnpm\s+(?:run\s+)?build|yarn\s+(?:run\s+)?build|ng\s+build|npx\s+tsc|tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradle\s+(?:build|assemble))\b/,
+  lint: /(?:^|[;&|(]\s*)(?:npm\s+run\s+lint\S*|pnpm\s+(?:run\s+)?lint|yarn\s+(?:run\s+)?lint|npx\s+eslint|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy)\b/,
+  ci: /(?:^|[;&|(]\s*)gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)\b/,
+};
+const SCOPED_RE = /--filter[= ]|--test-name-pattern|--testNamePattern|--testPathPattern|\s-t\s|\s-k\s|--grep[= ]|--include[= ]|--run\s+\S|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b|[\w./-]+_test\.go\b|\btest_\w+\.py\b|::\w|[\w./-]+\.csproj\b|node\s+--test\s+[\w./-]+\.[cm]?js\b|cargo\s+test\s+[\w:]+|go\s+test\s+(?!\.\/\.\.\.)[\w./-]+/;
+function classifyCheck(cmdCode, cmdShell) {
+  for (const kind of ['test', 'build', 'lint', 'ci']) {
+    if (CHECK_RES[kind].test(cmdCode)) return { kind, scoped: kind === 'test' ? SCOPED_RE.test(cmdShell) : undefined };
+  }
+  return null;
+}
+// A GREEN CLAIM: prose saying a check passed. The turn it lands in either ran a check or it did not.
+const GREEN_RE = /\b(?:all\s+(?:\d[\d,]*\s+)?tests?|tests?|test\s+suite|suite|build|lint|linter|typecheck|type-check|checks?|ci)\b[^.!?\n]{0,60}?\b(?:pass(?:es|ed|ing)?|green|succeed(?:s|ed)?|clean|ok)\b|\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:tests?\s+)?pass(?:ed|ing)?\b/gi;
+function claimsGreen(prose) {
+  GREEN_RE.lastIndex = 0;
+  let m;
+  while ((m = GREEN_RE.exec(prose))) {
+    const before = prose.slice(Math.max(0, m.index - 24), m.index);
+    if (/\b(?:not|no|never|n't|until|if|when|once|should|will|would|must|before|fail\w*)\b[^.]{0,20}$/i.test(before)) continue;
+    if (/\b(?:not|n't|never|fail)/i.test(m[0])) continue;
+    return true;
+  }
+  return false;
+}
 
 function newTally() { return { input: 0, cacheCreate: 0, cacheRead: 0, output: 0, msgs: 0 }; }
 const ctxOf = (t) => (t.msgs ? Math.round((t.input + t.cacheCreate + t.cacheRead) / t.msgs) : 0);
@@ -111,6 +181,458 @@ function docRelPath(filePath) {
   return null;
 }
 
+// ---------- installed inventory: what the project HAS, against what a session USED ----------
+// The report measured consumption and never its complement: a 79-skill install could show three
+// skills used and say nothing at all about the other 76, so 'unused in this corpus' was an ad-hoc
+// script every time it was asked. The inventory side is read off DISK - the project's own
+// `.claude` directory when this machine has it, the stack's own catalog otherwise, and a catalog
+// row is labeled as such because it proves the stack SHIPS the artifact, never that this project
+// installed it.
+
+// `paths:` takes globs and brace expansion only - no negation form, and an invalid pattern matches
+// nothing (the maintainer note in markdown-docs.md records the same reading of the Claude Code
+// memory docs). This is that subset, so the proxy matches what the harness would have attached.
+function globToRe(glob) {
+  const g = String(glob).replace(/\\/g, '/');
+  let re = '';
+  let depth = 0;
+  for (let i = 0; i < g.length; i += 1) {
+    const c = g[i];
+    if (c === '*') {
+      if (g[i + 1] === '*') {
+        i += 1;
+        if (g[i + 1] === '/') { i += 1; re += '(?:.*/)?'; } else re += '.*';
+      } else re += '[^/]*';
+    } else if (c === '?') re += '[^/]';
+    else if (c === '{') { depth += 1; re += '(?:'; }
+    else if (c === '}' && depth) { depth -= 1; re += ')'; }
+    else if (c === ',' && depth) re += '|';
+    else re += c.replace(/[.+^$()|[\]\\/{},]/g, '\\$&');
+  }
+  while (depth > 0) { re += ')'; depth -= 1; }   // a malformed pattern must not kill the run
+  try { return new RegExp(`^${re}$`); } catch { return /$^/; }
+}
+
+// A frontmatter subset - `key: value`, an inline `["a", "b"]` array, and the indented `- item`
+// block list the agent seats write their `skills:` preload as. Enough for `paths:`, `skills:` and
+// `name:`; a full YAML parser is a dependency this repo does not carry for three keys.
+function parseFrontmatter(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || ''));
+  if (!m) return {};
+  const out = {};
+  const lines = m[1].split(/\r?\n/);
+  const unquote = (v) => v.trim().replace(/^['"]|['"]$/g, '');
+  for (let i = 0; i < lines.length; i += 1) {
+    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(lines[i]);
+    if (!kv) continue;
+    const val = kv[2].trim();
+    if (val === '') {
+      const items = [];
+      while (i + 1 < lines.length && /^\s+-\s+/.test(lines[i + 1])) { items.push(unquote(lines[i + 1].replace(/^\s+-\s+/, ''))); i += 1; }
+      out[kv[1]] = items;
+    } else if (val.startsWith('[')) {
+      // Quoted items first: `paths: ["**/*.{ts,tsx}"]` carries a comma INSIDE a brace group, and
+      // a plain split on commas tore that glob in half (which then threw on the RegExp).
+      const inner = val.replace(/^\[|\]$/g, '');
+      const quoted = [...inner.matchAll(/'([^']*)'|"([^"]*)"/g)].map((q) => (q[1] !== undefined ? q[1] : q[2]));
+      out[kv[1]] = quoted.length ? quoted : inner.split(',').map(unquote).filter(Boolean);
+    } else {
+      out[kv[1]] = unquote(val);
+    }
+  }
+  return out;
+}
+
+function dirEntries(dir) {
+  try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+}
+function readHead(file) {
+  try { return fs.readFileSync(file, 'utf8'); } catch { return ''; }
+}
+const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+
+// A skill is a DIRECTORY carrying SKILL.md (both the catalog and an installed `.claude/skills`
+// use that shape); a loose `.md` beside them is read too, so a hand-rolled install still lists.
+function loadSkillsDir(dir) {
+  const out = [];
+  for (const e of dirEntries(dir)) {
+    if (e.isDirectory()) {
+      const f = path.join(dir, e.name, 'SKILL.md');
+      if (fs.existsSync(f)) out.push({ name: e.name, file: f });
+    } else if (e.isFile() && /\.md$/.test(e.name) && e.name !== 'README.md') {
+      out.push({ name: e.name.replace(/\.md$/, ''), file: path.join(dir, e.name) });
+    }
+  }
+  return out.sort(byName);
+}
+
+// An agent's `skills:` frontmatter is the PRELOAD list - those skills enter the seat's context on
+// dispatch without a Skill call of their own, so a skill can be paid for in full and show zero
+// calls. That is a different column, never the same one.
+function loadAgentsDir(dir) {
+  const out = [];
+  for (const e of dirEntries(dir)) {
+    if (!e.isFile() || !/\.md$/.test(e.name)) continue;
+    const file = path.join(dir, e.name);
+    const fm = parseFrontmatter(readHead(file));
+    out.push({ name: fm.name || e.name.replace(/\.md$/, ''), file, skills: Array.isArray(fm.skills) ? fm.skills : [] });
+  }
+  return out.sort(byName);
+}
+
+// A rule with no `paths:` is always-on: it is in every prompt of every session, so 'used' is not a
+// question a transcript can answer. Say that rather than scoring it 0.
+function loadRulesDir(dir) {
+  const out = [];
+  for (const e of dirEntries(dir)) {
+    if (!e.isFile() || !/\.md$/.test(e.name)) continue;
+    const file = path.join(dir, e.name);
+    const fm = parseFrontmatter(readHead(file));
+    const globs = Array.isArray(fm.paths) ? fm.paths : (fm.paths ? [String(fm.paths)] : []);
+    out.push({ name: e.name, file, globs, alwaysOn: globs.length === 0 });
+  }
+  return out.sort(byName);
+}
+
+// Directory mode used to read only the `.jsonl` files sitting directly inside the folder it was
+// given, so the collected-bundle layout - `<corpus>/<project>/<session-id>/<session-id>.jsonl`
+// with `subagents/` beside it - printed an empty TOTAL and no inventory at all, and the corpus
+// answer needed a throwaway script. The walk is recursive, and it excludes what is NOT a session:
+// a dispatched seat's own transcript (its cost is already counted under its parent, and counting
+// it again as a session would double the corpus), and the two ledger families, which are JSONL of
+// the same shape and would otherwise open a row per file with a '?' start - measured on the local
+// corpus: 313 real transcripts against 198 ledger files under `tools-usage/` and `hook-blocks/`
+// plus 147 more named `tool-usage-<sid>` / `hook-blocks-<sid>` inside the bundles.
+const NON_SESSION_DIRS = new Set(['subagents', 'tools-usage', 'tool-usage', 'hook-blocks']);
+const LEDGER_FILE_RE = /^(?:tools?-usage|hook-blocks)-/;
+function findSessionFiles(root, depth = 0, out = []) {
+  for (const e of dirEntries(root)) {
+    const full = path.join(root, e.name);
+    if (e.isDirectory()) {
+      if (NON_SESSION_DIRS.has(e.name) || e.name.startsWith('.')) continue;
+      if (depth < 6) findSessionFiles(full, depth + 1, out);
+    } else if (e.isFile() && e.name.endsWith('.jsonl') && !LEDGER_FILE_RE.test(e.name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+const CATALOG_DIR = path.join(__dirname, '..', 'stack');
+
+// The transcript's `cwd` is the path on the machine that RAN the session - usually not this one,
+// which is exactly why the catalog fallback exists and why it says so in its own label.
+function resolveInventory(explicitDir, cwd) {
+  const tryDir = (d, kind, why) => {
+    if (!d) return null;
+    const skills = loadSkillsDir(path.join(d, 'skills'));
+    const agents = loadAgentsDir(path.join(d, 'agents'));
+    const rules = loadRulesDir(path.join(d, 'rules'));
+    if (!skills.length && !agents.length && !rules.length) return null;
+    return { dir: d, kind, why, skills, agents, rules };
+  };
+  if (explicitDir) {
+    return tryDir(explicitDir, 'project', `project ${explicitDir}`)
+      || { dir: explicitDir, kind: 'project', why: `project ${explicitDir} (no skills/, agents/ or rules/ under it)`, skills: [], agents: [], rules: [] };
+  }
+  if (cwd) {
+    const d = path.join(String(cwd).replace(/\\/g, '/'), '.claude');
+    const inv = fs.existsSync(d) ? tryDir(d, 'project', `project ${d} (the transcript's own cwd)`) : null;
+    if (inv) return inv;
+  }
+  return tryDir(CATALOG_DIR, 'catalog', 'catalog (installed set unknown)')
+    || { dir: null, kind: 'none', why: 'none reachable on this machine', skills: [], agents: [], rules: [] };
+}
+
+// installed_plugins.json keys are `<plugin>@<marketplace>`; each value is the per-scope install
+// records, and `installPath` is where that plugin's own agents and MCP servers can be read.
+function loadPlugins(explicit) {
+  const cands = [];
+  if (explicit) cands.push(explicit);
+  else {
+    if (process.env.CLAUDE_CONFIG_DIR) cands.push(path.join(process.env.CLAUDE_CONFIG_DIR, 'plugins', 'installed_plugins.json'));
+    cands.push(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'));
+  }
+  for (const f of cands) {
+    let j;
+    try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { continue; }
+    const byPlugin = new Map();
+    for (const [key, recs] of Object.entries(j.plugins || {})) {
+      const name = key.split('@')[0];
+      const e = byPlugin.get(name) || { name, agents: [], servers: [] };
+      for (const r of Array.isArray(recs) ? recs : []) {
+        const root = r && r.installPath;
+        if (!root) continue;
+        for (const a of loadAgentsDir(path.join(root, 'agents'))) if (!e.agents.includes(a.name)) e.agents.push(a.name);
+        try {
+          const mc = JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8'));
+          for (const s of Object.keys(mc.mcpServers || {})) if (!e.servers.includes(s)) e.servers.push(s);
+        } catch { /* a plugin without its own servers */ }
+      }
+      byPlugin.set(name, e);
+    }
+    return { list: [...byPlugin.values()].sort(byName), source: f };
+  }
+  return { list: null, source: 'unknown' };
+}
+
+// `.mcp.json` sits beside `.claude` at the project root. Only a PROJECT inventory has one that
+// means anything - the catalog fallback would read this repo's own file and call it the install.
+function loadMcpInventory(inv) {
+  if (!inv || inv.kind !== 'project' || !inv.dir) return { names: null, source: 'the servers seen in tool names' };
+  const f = path.join(path.dirname(inv.dir), '.mcp.json');
+  try {
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    return { names: Object.keys(j.mcpServers || {}).sort(), source: f };
+  } catch { return { names: null, source: 'the servers seen in tool names' }; }
+}
+
+// One accumulator, fed one session at a time, so the rollup over a whole corpus never holds every
+// session's stats in memory at once - `used in N of M sessions` is the corpus answer, and the
+// never-used set per layer is the question that filed this block.
+//
+// The installed set is resolved PER SESSION, from that session's own cwd: a corpus spans projects
+// that installed different things, and seeding one project's inventory over all of them reports a
+// name as unused in projects that never had it. Every name therefore carries `installedIn` beside
+// `sessionsUsed`, the unused line names only what was installed somewhere, and the resolution is
+// cached by cwd - so the single-project folder, where every session shares one cwd, still resolves
+// exactly once.
+function newInventoryUse(plugins) {
+  return {
+    plugins, sessions: 0, invCache: new Map(), sources: new Set(), mcpSources: new Set(),
+    skills: new Map(), agents: new Map(), rules: new Map(), plugins_: new Map(), mcps: new Map(),
+  };
+}
+
+function inventoryFor(acc, inventoryDir, cwd) {
+  const key = inventoryDir || cwd || '(none)';
+  let hit = acc.invCache.get(key);
+  if (!hit) {
+    const inv = resolveInventory(inventoryDir, cwd);
+    hit = { inv, mcp: loadMcpInventory(inv) };
+    acc.invCache.set(key, hit);
+  }
+  return hit;
+}
+
+function addSessionUse(acc, main, agents, inventoryDir) {
+  acc.sessions += 1;
+  const { inv, mcp } = inventoryFor(acc, inventoryDir, main.cwd);
+  acc.sources.add(inv.why);
+  acc.mcpSources.add(mcp.source);
+  const invSource = inv.kind === 'catalog' ? 'catalog' : 'installed';
+  const install = (map, name, source, extra) => {
+    let r = map.get(name);
+    if (!r) { r = { name, source, used: 'no', how: {}, firstTs: null, sessionsUsed: 0, installedIn: 0 }; map.set(name, r); }
+    r.installedIn += 1;
+    // a real project inventory outranks a catalog label, and both outrank 'observed'
+    if (source === 'installed' || r.source === 'observed') r.source = source;
+    Object.assign(r, extra || {});
+    return r;
+  };
+  for (const s of inv.skills) install(acc.skills, s.name, invSource);
+  for (const a of inv.agents) install(acc.agents, a.name, invSource);
+  for (const r of inv.rules) {
+    const row = install(acc.rules, r.name, invSource);
+    // A rule path-scoped in ANY install is observable; only one that is always-on everywhere is not.
+    if (!r.alwaysOn) row.alwaysOn = false;
+    else if (row.alwaysOn !== false) row.alwaysOn = true;
+    if (row.used === 'no' && row.alwaysOn) row.used = 'not observable';
+    if (row.used === 'not observable' && row.alwaysOn === false) row.used = 'no';
+  }
+  for (const p of acc.plugins.list || []) install(acc.plugins_, p.name, 'installed');
+  for (const m of mcp.names || []) install(acc.mcps, m, 'installed');
+
+  const srcs = [main, ...agents.map((a) => a.stats)];
+  const seen = new Set();
+  const ensure = (map, name, extra) => {
+    let r = map.get(name);
+    if (!r) { r = { name, source: 'observed', used: 'no', how: {}, firstTs: null, sessionsUsed: 0, installedIn: 0, ...(extra || {}) }; map.set(name, r); }
+    return r;
+  };
+  const mark = (row, how, count, ts) => {
+    if (!count) return;
+    row.used = 'yes';
+    row.how[how] = (row.how[how] || 0) + count;
+    if (ts && (!row.firstTs || ts < row.firstTs)) row.firstTs = ts;
+    seen.add(row);
+  };
+
+  // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
+  const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence
+  const nsPreload = new Map();    // `<plugin>:<x>` named in a dispatched seat's `skills:` list
+  const noteNs = (map, name, n, ts) => {
+    if (!name.includes(':')) return;
+    const ns = name.split(':')[0];
+    const e = map.get(ns) || { n: 0, firstTs: null };
+    e.n += n;
+    if (ts && (!e.firstTs || ts < e.firstTs)) e.firstTs = ts;
+    map.set(ns, e);
+  };
+  for (const src of srcs) {
+    for (const [name, v] of Object.entries(src.skillInvocations || {})) {
+      mark(ensure(acc.skills, name), 'Skill call', v.calls, v.firstTs);
+      noteNs(namespaced, name, v.calls, v.firstTs);
+    }
+    for (const [name, n] of Object.entries(src.commandInvocations || {})) {
+      const ts = (src.commandFirstTs || {})[name] || null;
+      noteNs(namespaced, name, n, ts);
+      // `/clear`, `/model`, `/effort` are the harness's own commands, not skills - a slash turn
+      // only counts against the skills layer when a skill of that name is installed.
+      if (!acc.skills.has(name)) continue;
+      mark(acc.skills.get(name), 'slash command', n, ts);
+    }
+  }
+
+  // --- agents: every dispatch, main session and nested
+  const dispatched = new Map();
+  for (const src of srcs) for (const d of src.agentDispatches || []) {
+    if (!d.subagentType) continue;
+    const e = dispatched.get(d.subagentType) || { n: 0, firstTs: null };
+    e.n += 1;
+    if (d.ts && (!e.firstTs || d.ts < e.firstTs)) e.firstTs = d.ts;
+    dispatched.set(d.subagentType, e);
+  }
+  for (const [type, e] of dispatched) mark(ensure(acc.agents, type), 'dispatched', e.n, e.firstTs);
+  // A seat transcript whose dispatch row sits outside the window (or in another file) is still
+  // proof the seat ran - counted apart so the two numbers never merge into a wrong dispatch count.
+  for (const a of agents) {
+    const t = a.meta && a.meta.agentType;
+    if (!t || dispatched.has(t)) continue;
+    mark(ensure(acc.agents, t), 'seat transcript', 1, a.stats.firstTs);
+  }
+  for (const [type, e] of dispatched) {
+    const meta = inv.agents.find((x) => x.name === type);
+    if (!meta) continue;
+    for (const sk of meta.skills) {
+      mark(ensure(acc.skills, sk), `preloaded via ${type}`, e.n, e.firstTs);
+      // A PLUGIN skill named in a seat's preload list is that plugin's body entering the seat's
+      // context - plugin use, on a different evidence line from a call the session made itself.
+      noteNs(nsPreload, sk, e.n, e.firstTs);
+    }
+  }
+
+  // --- rules: two direct records, then the glob proxy as the floor under them
+  for (const src of srcs) for (const [file, e] of Object.entries(src.ruleAttachments || {})) {
+    const row = ensure(acc.rules, file, { alwaysOn: false, globs: [] });
+    mark(row, 'attached (transcript record)', e.records || 0, e.firstTs);
+    mark(row, 'shell-route notice', e.shellNotices || 0, e.firstTs);
+  }
+  for (const r of inv.rules) {
+    if (r.alwaysOn || !r.globs.length) continue;
+    const res = r.globs.map(globToRe);
+    let n = 0;
+    let first = null;
+    for (const src of srcs) for (const [p, t] of Object.entries(src.fileTouches || {})) {
+      if (!res.some((re) => re.test(String(p).replace(/\\/g, '/')))) continue;
+      n += t.n;
+      if (t.firstTs && (!first || t.firstTs < first)) first = t.firstTs;
+    }
+    mark(acc.rules.get(r.name), 'glob proxy', n, first);
+  }
+
+  // --- MCP servers
+  const serverCalls = new Map();
+  for (const src of srcs) for (const [server, m] of Object.entries(src.mcp || {})) {
+    mark(ensure(acc.mcps, server), 'calls', m.calls, m.firstTs);
+    const e = serverCalls.get(server) || { n: 0, firstTs: null };
+    e.n += m.calls;
+    if (m.firstTs && (!e.firstTs || m.firstTs < e.firstTs)) e.firstTs = m.firstTs;
+    serverCalls.set(server, e);
+  }
+
+  // --- plugins: a hook is not visible in a transcript, so a plugin that ships only hooks can
+  // never be scored used here. Everything else leaves a mark - a namespaced skill or command, one
+  // of the plugin's agents dispatched, one of its MCP servers called, or, for the two `*-lsp`
+  // plugins that ship none of those, an `LSP` tool call.
+  const lsp = { n: 0, firstTs: null };
+  for (const src of srcs) {
+    const t = (src.toolCalls || {}).LSP;
+    if (!t) continue;
+    lsp.n += t.calls;
+    if (t.firstTs && (!lsp.firstTs || t.firstTs < lsp.firstTs)) lsp.firstTs = t.firstTs;
+  }
+  for (const p of acc.plugins.list || []) {
+    const row = acc.plugins_.get(p.name);
+    if (!row) continue;
+    const ns = namespaced.get(p.name);
+    if (ns) mark(row, 'namespaced skill/command', ns.n, ns.firstTs);
+    const pre = nsPreload.get(p.name);
+    if (pre) mark(row, 'preloaded skill', pre.n, pre.firstTs);
+    for (const ag of p.agents) if (dispatched.has(ag)) mark(row, `agent ${ag}`, dispatched.get(ag).n, dispatched.get(ag).firstTs);
+    for (const sv of p.servers) if (serverCalls.has(sv)) mark(row, `mcp ${sv}`, serverCalls.get(sv).n, serverCalls.get(sv).firstTs);
+    if (/-lsp$/.test(p.name)) mark(row, 'LSP call', lsp.n, lsp.firstTs);
+  }
+  for (const [ns, e] of namespaced) if (!acc.plugins_.has(ns)) mark(ensure(acc.plugins_, ns), 'namespaced skill/command', e.n, e.firstTs);
+  for (const [ns, e] of nsPreload) if (!acc.plugins_.has(ns)) mark(ensure(acc.plugins_, ns), 'preloaded skill', e.n, e.firstTs);
+
+  for (const row of seen) row.sessionsUsed += 1;
+}
+
+const LAYER_LABEL = { skills: 'skills', agents: 'agents', rules: 'rules', plugins: 'plugins', mcps: 'MCP servers' };
+
+function finishInventoryUse(acc) {
+  const shape = (row) => ({
+    name: row.name,
+    source: row.source,
+    used: row.used,
+    how: Object.entries(row.how).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} x${n}`),
+    firstUse: row.firstTs,
+    installedIn: row.installedIn,
+    sessionsUsed: row.sessionsUsed,
+    ofSessions: acc.sessions,
+  });
+  const layer = (map) => [...map.values()].sort(byName).map(shape);
+  // A run spanning several projects has several inventories; name them all when they are few and
+  // say how many when they are not - the label is what tells a reader whether a denominator is
+  // this project's or the stack catalog's.
+  const srcLine = (set) => {
+    const list = [...set];
+    if (!list.length) return 'none reachable on this machine';
+    return list.length <= 3 ? list.join('; ') : `${list.length} inventories across the run: ${list.slice(0, 3).join('; ')}, …`;
+  };
+  return {
+    source: {
+      skills_agents_rules: srcLine(acc.sources),
+      plugins: acc.plugins.source,
+      mcps: srcLine(acc.mcpSources),
+      sessions: acc.sessions,
+      inventories: acc.sources.size,
+    },
+    skills: layer(acc.skills),
+    agents: layer(acc.agents),
+    rules: layer(acc.rules),
+    plugins: layer(acc.plugins_),
+    mcps: layer(acc.mcps),
+  };
+}
+
+// One split, two renderers - the text block and the markdown section can never disagree.
+// A name is UNUSED only when something installed it: a skill this corpus never installed anywhere
+// cannot be a non-use finding, and listing it as one is the exact mistake the per-session
+// inventory exists to prevent.
+function inventoryLayers(invUse) {
+  const label = (r) => (r.installedIn && r.installedIn < r.ofSessions ? `${r.name} (installed in ${r.installedIn}/${r.ofSessions})` : r.name);
+  return ['skills', 'agents', 'rules', 'plugins', 'mcps'].map((key) => {
+    const rows = invUse[key] || [];
+    const installed = rows.filter((r) => r.installedIn > 0);
+    return {
+      key,
+      label: LAYER_LABEL[key],
+      used: rows.filter((r) => r.used === 'yes'),
+      usedInstalled: rows.filter((r) => r.used === 'yes' && r.installedIn > 0).length,
+      unused: rows.filter((r) => r.used === 'no' && r.installedIn > 0).map(label),
+      notObservable: rows.filter((r) => r.used === 'not observable').map(label),
+      observedOnly: rows.filter((r) => r.installedIn === 0 && r.used === 'yes').length,
+      total: installed.length,
+      rows: rows.length,
+    };
+  });
+}
+
+const usedCell = (r) => (r.ofSessions > 1 ? `yes (${r.sessionsUsed}/${r.ofSessions})` : 'yes');
+const installedCell = (r) => (r.installedIn ? `${r.installedIn}/${r.ofSessions}` : '-');
+
 // ---------- transcript analysis (main session or one subagent) ----------
 
 // ---------- one quoted-span-and-heredoc discipline, four consumers ----------
@@ -152,6 +674,10 @@ async function analyzeTranscript(file, window) {
   const ownIsSession = SESSION_ID.test(ownId);
   const s = {
     file,
+    cwd: null,                   // the project path on the machine that RAN this session
+    fileTouches: {},             // path as the call named it -> { n, firstTs } - the rule glob proxy
+    ruleAttachments: {},         // rule file name -> { records, shellNotices, firstTs }
+    commandFirstTs: {},          // slash-command name -> first invocation ts
     forkPrefix: { rows: 0, msgs: 0, cacheRead: 0, cacheCreate: 0, output: 0, toolCalls: 0, sessionIds: [] },
     costState: null,             // the cost-state record's own totals - the only side that sees the harness's recap calls
     toolCallIdx: [],             // { ts, tool } per tool_use outside the fork prefix - the per-side ledger join
@@ -191,6 +717,18 @@ async function analyzeTranscript(file, window) {
     skillTimeline: [],           // { ts, skill|null } - stamp changes in THIS transcript; lets
                                  // the report suggest (never charge) a skill for seats whose
                                  // own transcripts carry no stamp, from their dispatch window
+    efficiency: {                // the practice scorecard - measured here, judged in the report
+      cacheMisses: 0, cacheMissTokens: 0, expectedRebuilds: 0, expectedRebuildTokens: 0, cacheMissAt: [],
+      compactionRereads: [],     // one per compaction: { ts, candidates, files, chars }
+      buildDirReads: { calls: 0, chars: 0, paths: {} },
+      checks: { test: { calls: 0, chars: 0, scoped: 0, whole: 0 }, build: { calls: 0, chars: 0 }, lint: { calls: 0, chars: 0 }, ci: { calls: 0, chars: 0 } },
+      commitsChecked: 0, commitsUnchecked: [],
+      greenClaims: 0, unverifiedGreenClaims: [],
+      correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
+      correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
+      longAnswered: 0,           // 1,500+ char answers a user turn followed
+      finalAnswers: 0, longAnswers: 0,
+    },
   };
   const msgReg = new Map();       // message.id -> {model, skill, carried, u:{in,cc,cr,out}} folded max per field
   const seenToolUse = new Set();  // tool_use id dedup across duplicated assistant lines
@@ -238,6 +776,39 @@ async function analyzeTranscript(file, window) {
   const companionOf = {};          // skill -> the parent skill it was loaded in service of
   let activeInvoke = null;         // { skill, msgs } - last non-companion Skill call + msgs since
   let askSinceInvoke = false;      // an AskUserQuestion between the parent invoke and a Skill
+  // --- the scorecard's per-transcript trackers ---
+  let prevCache = null;            // { cr, cc } of the previous first-sighted API message
+  let afterCompaction = false;     // the next API message is an EXPECTED rebuild, not a miss
+  const readPaths = new Set();     // every file read so far, by the path the call named
+  let toolSeq = 0;                 // tool_use ordinal in this transcript
+  let lastCheckSeq = -1;           // ordinal of the last test / build / lint / ci-status call
+  let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
+  const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
+  const turns = [];                // { role, len } - the correction-streak view, as the hook builds it
+  let lastAsstId = null;
+  const onHumanTurn = (typed, ts) => {
+    turnHadCheck = false;
+    const t = String(typed || '').trim();
+    if (!t || /^</.test(t)) return;
+    turns.push({ role: 'user', len: t.length });
+    // the loose pair first: the answer before this turn, consecutive assistant rows merged
+    {
+      let j = turns.length - 2, alen = 0;
+      while (j >= 0 && turns[j].role === 'assistant') { alen += turns[j].len; j -= 1; }
+      if (alen >= STREAK_LONG) { s.efficiency.longAnswered += 1; if (t.length <= STREAK_SHORT) s.efficiency.correctionTurns += 1; }
+    }
+    let streak = 0;
+    for (let i = turns.length - 1; i >= 1; i -= 2) {
+      const u = turns[i], a = turns[i - 1];
+      if (u.role !== 'user' || a.role !== 'assistant' || u.len === 0 || u.len > STREAK_SHORT || a.len < STREAK_LONG) break;
+      streak += 1;
+    }
+    if (streak === STREAK_TURNS) s.efficiency.correctionStreaks.push(ts || null);
+  };
+  const openCompactionTracker = (ts) => {
+    afterCompaction = true;
+    s.efficiency.compactionRereads.push({ ts: ts || null, before: new Set(readPaths), seen: new Set(), files: 0, chars: 0 });
+  };
                                    // call means the user gated a NEW phase - never fold it as
                                    // a companion (measured: a post-gate flow folded into the
                                    // ask-side skill and reported as its cost)
@@ -267,6 +838,35 @@ async function analyzeTranscript(file, window) {
       for (const at of o.attachments) {
         const body = typeof at === 'string' ? at : JSON.stringify(at || '');
         pending.push({ name: `attachment:${(at && at.type) || 'text'}`, chars: body.length });
+      }
+    }
+    if (!s.cwd && typeof o.cwd === 'string' && o.cwd) s.cwd = o.cwd;
+    // A path-scoped rule ATTACH is observable after all, on two records, both measured in the
+    // audit corpus: the harness writes a row whose `attachment.type` is `nested_memory` naming the
+    // rule file it just loaded (190 rows across the collection, 11 distinct rules), and
+    // guard-read-whole-file's shell-route reminder arrives as a `hook_additional_context`
+    // attachment naming the governing rule (157 rows, 10 distinct rules). Neither is inferred, so
+    // the glob proxy the report also prints is a FLOOR under them, never the only signal.
+    {
+      const ats = [];
+      if (o.attachment && typeof o.attachment === 'object') ats.push(o.attachment);
+      if (Array.isArray(o.attachments)) for (const a of o.attachments) if (a && typeof a === 'object') ats.push(a);
+      for (const at of ats) {
+        const bump = (ruleFile, key) => {
+          const e = s.ruleAttachments[ruleFile] || (s.ruleAttachments[ruleFile] = { records: 0, shellNotices: 0, firstTs: null });
+          e[key] += 1;
+          if (o.timestamp && (!e.firstTs || o.timestamp < e.firstTs)) e.firstTs = o.timestamp;
+        };
+        if (at.type === 'nested_memory') {
+          const p = String(at.displayPath || at.path || '').replace(/\\/g, '/');
+          const m = /(?:^|\/)\.claude\/rules\/([^/]+\.md)$/.exec(p);
+          if (m) bump(m[1], 'records');
+        } else if (at.type === 'hook_additional_context') {
+          const txt = Array.isArray(at.content) ? at.content.join('\n') : String(at.content || '');
+          // one notice can name its rule twice - the notice is the event, not each mention
+          const named = new Set([...txt.matchAll(/\.claude[\\/]rules[\\/]([A-Za-z0-9._-]+\.md)/g)].map((x) => x[1]));
+          for (const r of named) bump(r, 'shellNotices');
+        }
       }
     }
     if (raw.includes(STYLE_RULE_MARKER)) s.styleRuleAttaches++;
@@ -326,8 +926,13 @@ async function analyzeTranscript(file, window) {
       });
       if (lastSkill) s.skillTimeline.push({ ts: o.timestamp || null, skill: null });
       lastSkill = null;
+      openCompactionTracker(o.timestamp);
     }
-    if (o.isCompactSummary) compactSummary++;
+    if (o.isCompactSummary) {
+      compactSummary++;
+      // a transcript generation with no boundary line: the summary is the only marker
+      if (compactMeta === 0) openCompactionTracker(o.timestamp);
+    }
     // Record the context level each API error fired at - reports guessed at causes when
     // errors clustered at high ctx (measured: 22 errors at ~200k ctx read as flakiness).
     if (o.isApiErrorMessage) { s.apiErrors++; s.apiErrorEvents.push({ ts: o.timestamp || null, ctx: prevCtx }); }
@@ -343,6 +948,7 @@ async function analyzeTranscript(file, window) {
       // table at all.
       for (const m of own.matchAll(/<command-name>\s*\/?\s*([A-Za-z0-9_:-]+)\s*<\/command-name>/g)) {
         s.commandInvocations[m[1]] = (s.commandInvocations[m[1]] || 0) + 1;
+        if (!s.commandFirstTs[m[1]]) s.commandFirstTs[m[1]] = o.timestamp || null;
         if (lastSkill) s.skillTimeline.push({ ts: o.timestamp || null, skill: null });
         lastSkill = null; // a new slash command ends the previous skill's carry-forward
         // A slash command opens a companion window too: a reference skill loaded in its
@@ -385,6 +991,28 @@ async function analyzeTranscript(file, window) {
           // message and re-paid in full after every compaction. Measured at 3.7%-86.8% of a
           // session's cache-read and 23-48% of its own floor, and no report had a row for it.
           if (ctx > 0 && (s.floorCtx === 0 || ctx < s.floorCtx)) s.floorCtx = ctx;
+          // Cache continuity, by Claude Code's OWN definition (its `Prompt cache (main)` status
+          // line): a request is a MISS when it re-processed more than 5% and at least 2,000 tokens
+          // of what the previous request had cached; the first request after a compaction is an
+          // EXPECTED rebuild, counted apart. What a miss cost is the tokens it wrote back.
+          if (ctx > 0) {
+            const cc = m.usage.cache_creation_input_tokens || 0;
+            const cr = m.usage.cache_read_input_tokens || 0;
+            if (prevCache && !foreign) {
+              const couldRead = prevCache.cr + prevCache.cc;
+              const reprocessed = Math.max(0, couldRead - cr);
+              if (couldRead > 0 && reprocessed > 0.05 * couldRead && reprocessed >= 2000) {
+                const e = s.efficiency;
+                if (afterCompaction) { e.expectedRebuilds += 1; e.expectedRebuildTokens += cc; }
+                else {
+                  e.cacheMisses += 1; e.cacheMissTokens += cc;
+                  if (e.cacheMissAt.length < 10) e.cacheMissAt.push({ ts: o.timestamp || null, reprocessed, recached: cc });
+                }
+              }
+            }
+            prevCache = { cr, cc };
+            afterCompaction = false;
+          }
           if (prevCtx != null && ctx - prevCtx > 0) {
             s.spikes.push({ ts: o.timestamp, delta: ctx - prevCtx, ctx, causes: summarizeCauses(pending) });
           } else if (prevCtx != null && (m.usage.cache_creation_input_tokens || 0) > 20000) {
@@ -414,7 +1042,7 @@ async function analyzeTranscript(file, window) {
         seenToolUse.add(c.id);
         if (foreign) s.forkPrefix.toolCalls += 1;
         else if (o.timestamp) { s.toolCallTs.push(o.timestamp); s.toolCallIdx.push({ ts: o.timestamp, tool: c.name }); }
-        const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0 });
+        const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0, firstTs: o.timestamp || null });
         t.calls += 1;
         if (c.input && typeof c.input.file_path === 'string') {
           const rel = docRelPath(c.input.file_path);
@@ -425,9 +1053,36 @@ async function analyzeTranscript(file, window) {
           }
         }
         const info = { name: c.name };
+        toolSeq += 1;
+        {
+          // What the call READS, on both routes - the scorecard's build-dir and re-read rows.
+          const i = c.input || {};
+          let readTarget = null;
+          if (c.name === 'Read' && typeof i.file_path === 'string') readTarget = i.file_path;
+          else if (isShellTool(c.name) && typeof i.command === 'string') readTarget = shellReadTarget(maskHeredocs(i.command));
+          if (readTarget) {
+            info.readTarget = readTarget;
+            if (BUILD_DIR_RE.test(readTarget)) info.buildDir = true;
+            const cur = s.efficiency.compactionRereads[s.efficiency.compactionRereads.length - 1];
+            if (cur && cur.before.has(readTarget) && !cur.seen.has(readTarget)) { cur.seen.add(readTarget); info.reread = true; }
+            readPaths.add(readTarget);
+          }
+          // a dispatched seat may have run the check in its own transcript - the turn is covered
+          if (c.name === 'Agent' || c.name === 'Task') turnHadCheck = true;
+          // Every file the session TOUCHED, on both routes - the deterministic proxy for a
+          // path-scoped rule attach. A Read is both a file tool and a read target, so the two
+          // spellings are deduped before counting.
+          const touched = new Set();
+          if (['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(c.name) && (i.file_path || i.notebook_path)) touched.add(String(i.file_path || i.notebook_path));
+          if (readTarget) touched.add(readTarget);
+          for (const p of touched) {
+            const e = s.fileTouches[p] || (s.fileTouches[p] = { n: 0, firstTs: o.timestamp || null });
+            e.n += 1;
+          }
+        }
         if (c.name === 'Skill' && c.input && c.input.skill) {
           info.skill = c.input.skill;
-          const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0 });
+          const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0, firstTs: o.timestamp || null });
           sk.calls += 1;
           if (activeInvoke && activeInvoke.skill !== c.input.skill && activeInvoke.msgs <= 5 && !askSinceInvoke) {
             if (!companionOf[c.input.skill]) companionOf[c.input.skill] = activeInvoke.skill;
@@ -437,14 +1092,14 @@ async function analyzeTranscript(file, window) {
           }
         } else if (c.name.startsWith('mcp__')) {
           const server = c.name.split('__')[1] || '?';
-          const mc = s.mcp[server] || (s.mcp[server] = { calls: 0, resultChars: 0, errors: 0, tools: {} });
+          const mc = s.mcp[server] || (s.mcp[server] = { calls: 0, resultChars: 0, errors: 0, tools: {}, firstTs: o.timestamp || null });
           mc.calls += 1;
           const tool = c.name.split('__').slice(2).join('__') || '?';
           mc.tools[tool] = (mc.tools[tool] || 0) + 1;
         } else if ((c.name === 'Agent' || c.name === 'Task') && c.input) {
-          s.agentDispatches.push({ id: c.id, desc: c.input.description || null, subagentType: c.input.subagent_type || null });
+          s.agentDispatches.push({ id: c.id, desc: c.input.description || null, subagentType: c.input.subagent_type || null, ts: o.timestamp || null });
         }
-        if (c.name === 'Bash' && c.input && typeof c.input.command === 'string') {
+        if (isShellTool(c.name) && c.input && typeof c.input.command === 'string') {
           const cmdStr = c.input.command;
           // Deterministic counters the report's protocol sweeps previously had no number for
           // (measured: '0 git commits' shipped against 3 commits + a PR merge; occurrence
@@ -458,9 +1113,17 @@ async function analyzeTranscript(file, window) {
           // harness had DENIED (worst case: 12 commits reported against 0 real). Held until the
           // paired tool_result proves the call ran, the same way the doc touches are.
           const cmdCode = maskQuoted(cmdShell);
+          const check = classifyCheck(cmdCode, cmdShell);
+          if (check) {
+            info.check = check.kind; info.scoped = check.scoped;
+            lastCheckSeq = toolSeq; turnHadCheck = true;
+            const k = s.efficiency.checks[check.kind];
+            k.calls += 1;
+            if (check.kind === 'test') { if (check.scoped) k.scoped += 1; else k.whole += 1; }
+          }
           const commits = (cmdCode.match(/(?:^|[;&|(]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
           const merges = (cmdCode.match(/(?:^|[;&|(]\s*)gh\s+pr\s+merge\b/g) || []).length;
-          if (commits || merges) pendingGitActs.set(c.id, { commits, merges });
+          if (commits || merges) pendingGitActs.set(c.id, { commits, merges, checked: lastCheckSeq >= 0 && toolSeq - lastCheckSeq <= CHECK_WINDOW, ts: o.timestamp || null });
           // Doc traffic routed through Bash (heredocs, printf >, rm -f) is real doc I/O the
           // Write/Edit-only counter missed - a receipt written+cleared via Bash showed
           // writes:0, and batched python doc writes showed writes:0 across 3 rewrites (measured).
@@ -526,7 +1189,7 @@ async function analyzeTranscript(file, window) {
         // calls by eye (measured: eight results re-derived by hand for one bundle's report).
         info.label = (() => {
           const i = c.input || {};
-          if (c.name === 'Bash') return String(i.description || i.command || '').replace(/\s+/g, ' ').slice(0, 70);
+          if (isShellTool(c.name)) return String(i.description || i.command || '').replace(/\s+/g, ' ').slice(0, 70);
           if (i.file_path || i.notebook_path) return String(i.file_path || i.notebook_path).split(/[/\\]/).pop();
           if (c.name === 'Agent' || c.name === 'Task') return [i.subagent_type, i.description].filter(Boolean).join(': ').slice(0, 70);
           if (c.name === 'Skill') return String(i.skill || '');
@@ -537,6 +1200,27 @@ async function analyzeTranscript(file, window) {
         })();
         toolById.set(c.id, info);
         lastToolName = c.name;
+      }
+      // The ANSWER side of the scorecard: green claims, long answers, and the assistant half of the
+      // correction-streak view. One API message arrives as several rows; they merge by message.id.
+      if (!foreign && m.model !== '<synthetic>' && Array.isArray(m.content)) {
+        const txt = m.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+        if (txt) msgText.set(m.id, (msgText.get(m.id) || '') + '\n' + txt);
+        const len = proseOf(txt).length;
+        const prev = turns[turns.length - 1];
+        if (m.id && m.id === lastAsstId && prev && prev.role === 'assistant') prev.len += len;
+        else turns.push({ role: 'assistant', len });
+        lastAsstId = m.id || null;
+        if (m.stop_reason === 'end_turn') {
+          const prose = proseOf(msgText.get(m.id) || '');
+          if (prose) {
+            const e = s.efficiency;
+            e.finalAnswers += 1;
+            if (prose.length > LONG_ANSWER) e.longAnswers += 1;
+            if (claimsGreen(prose)) { e.greenClaims += 1; if (!turnHadCheck) e.unverifiedGreenClaims.push(o.timestamp || null); }
+          }
+          msgText.delete(m.id);
+        }
       }
       const hasToolUse = Array.isArray(m.content) && m.content.some((c) => c.type === 'tool_use');
       if (hasToolUse) prevAssistantNoTool = null;
@@ -579,6 +1263,7 @@ async function analyzeTranscript(file, window) {
         }
         if (!o.isMeta && !isInjectedText(content) && firstOfTurn()) {
           s.userPrompts++;
+          onHumanTurn(content, o.timestamp);
           if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
         }
         return;
@@ -658,7 +1343,25 @@ async function analyzeTranscript(file, window) {
         const acts = pendingGitActs.get(c.tool_use_id);
         if (acts) {
           pendingGitActs.delete(c.tool_use_id);
-          if (!c.is_error) { s.gitCommits += acts.commits; s.prMerges += acts.merges; }
+          if (!c.is_error) {
+            s.gitCommits += acts.commits; s.prMerges += acts.merges;
+            // A commit is CHECKED when a test / build / lint / ci-status call sat within the window
+            // before it (ran - not necessarily green; the report opens the run). One Bash call
+            // carrying the check and the commit counts as checked.
+            if (acts.commits) {
+              if (acts.checked) s.efficiency.commitsChecked += acts.commits;
+              else s.efficiency.commitsUnchecked.push(acts.ts || o.timestamp || null);
+            }
+          }
+        }
+        {
+          const e = s.efficiency;
+          if (info.buildDir && info.readTarget) {
+            e.buildDirReads.calls += 1; e.buildDirReads.chars += chars;
+            e.buildDirReads.paths[info.readTarget] = (e.buildDirReads.paths[info.readTarget] || 0) + chars;
+          }
+          if (info.reread) { const cur = e.compactionRereads[e.compactionRereads.length - 1]; if (cur) { cur.files += 1; cur.chars += chars; } }
+          if (info.check) e.checks[info.check].chars += chars;
         }
         // A DECLINE is the user answering the question, not a tool failure: reports read
         // "The user doesn't want to proceed" as an error and called a working ask a weak point.
@@ -690,6 +1393,7 @@ async function analyzeTranscript(file, window) {
       }
       if (!hasResult && !o.isMeta && textJoined.trim() && !isInjectedText(textJoined) && firstOfTurn()) {
         s.userPrompts++;
+        onHumanTurn(textJoined, o.timestamp);
         if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
       }
     }
@@ -721,6 +1425,7 @@ async function analyzeTranscript(file, window) {
   }
   s.companionOf = companionOf;
   s.compactions = compactMeta > 0 ? compactMeta : compactSummary;
+  s.efficiency.compactionRereads = s.efficiency.compactionRereads.map((c) => ({ ts: c.ts, candidates: c.before.size, files: c.files, chars: c.chars }));
   // The bill sees calls the transcript never records - the harness's post-turn recap is one - so
   // cost-state cache-read exceeds the transcript's by whole contexts (measured: 694,773 vs 590,045,
   // a gap of exactly one peak context). Say so, or the bundle never reconciles to its bill and the
@@ -922,7 +1627,23 @@ function computeAggregates(main, agents) {
     }
   }
 
-  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools };
+  // Dispatch overhead: how much of each seat's input was re-sending its OWN first-message context
+  // (CLAUDE.md, the rules, the skills its frontmatter preloads - measured 26k-70k chars of skills
+  // alone per designer / implementer / verifier seat) rather than the work. A seat over 60% bought
+  // little per dispatch; a one-message seat is 100% by construction and says so.
+  const dispatchOverhead = { seats: 0, heavy: 0, preloadTokens: 0, seatInputTokens: 0, heavySeats: [] };
+  for (const a of agents) {
+    const st = a.stats;
+    const inTok = st.total.cacheRead + st.total.input + st.total.cacheCreate;
+    if (!st.total.msgs || !inTok || !st.floorCtx) continue;
+    const preload = st.floorCtx * st.total.msgs;
+    dispatchOverhead.seats += 1; dispatchOverhead.preloadTokens += preload; dispatchOverhead.seatInputTokens += inTok;
+    if (preload / inTok > 0.6) {
+      dispatchOverhead.heavy += 1;
+      if (dispatchOverhead.heavySeats.length < 8) dispatchOverhead.heavySeats.push({ type: a.meta.agentType || '(unknown)', msgs: st.total.msgs, floor: st.floorCtx, share: Math.round((100 * preload) / inTok) });
+    }
+  }
+  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead };
 }
 
 // ---------- hook-block ledger (which GUARD fired, not just which tool was denied) ----------
@@ -1110,7 +1831,74 @@ function interruptLine(main) {
   return `user interrupts ${main.userInterrupts}${ended ? ' - the session ENDS on one: it was abandoned by hand, not closed' : ''}`;
 }
 
-function printReport(main, agents, hookLog, window, blockLedger) {
+// ---------- the efficiency scorecard ----------
+// One row per practice, each a measured number with its denominator and what the number tests.
+// The report JUDGES the rows; the analyzer never scores a session - a rate is read against the
+// practice, the turn is opened before a row becomes a finding.
+function efficiencyRows(main, agg) {
+  const e = main.efficiency || {};
+  const rows = [];
+  const tsList = (arr, n = 6) => arr.slice(0, n).map((t) => (t ? String(t).slice(11, 19) : '?')).join(', ') + (arr.length > n ? ` … +${arr.length - n}` : '');
+  if (main.floorCtx) {
+    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
+    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /claude-stack:status reports it per install' });
+  }
+  rows.push({
+    practice: 'cache continuity',
+    measured: `${e.cacheMisses || 0} miss(es), ~${fmt(e.cacheMissTokens || 0)} tok re-cached; ${e.expectedRebuilds || 0} expected rebuild(s) after compaction, ~${fmt(e.expectedRebuildTokens || 0)} tok${(e.cacheMissAt || []).length ? ` - misses at: ${tsList(e.cacheMissAt.map((x) => x.ts))}` : ''}`,
+    tests: "Claude Code's own miss rule (over 5% and at least 2,000 tok re-processed); a miss outside a compaction is a cache break - open the turn before it: a system-prompt change, a tool-set change, an idle past the TTL",
+  });
+  {
+    const cr = e.compactionRereads || [];
+    const files = cr.reduce((n, c) => n + c.files, 0), chars = cr.reduce((n, c) => n + c.chars, 0);
+    rows.push({ practice: 'compaction re-reads', measured: cr.length ? `${cr.length} compaction(s): ${files} file(s) read before one and again after it, ~${fmt(approxTok(chars))} tok` : 'no compaction', tests: 'what a compaction instruction should keep (the modified files, the plan, the commands) - a re-read after the summary is the summary having dropped it' });
+  }
+  {
+    const b = e.buildDirReads || { calls: 0, chars: 0, paths: {} };
+    const top = Object.entries(b.paths).sort((x, y) => y[1] - x[1]).slice(0, 4).map(([p, c]) => `${p.split(/[/\\]/).slice(-2).join('/')} ~${fmt(approxTok(c))}`).join(', ');
+    rows.push({ practice: 'build-dir reads', measured: `${b.calls} call(s), ~${fmt(approxTok(b.chars))} tok${top ? ` - top: ${top}` : ''}`, tests: 'node_modules / bin / obj / dist / coverage / lockfiles / logs on either route - the read guard has no class for these; the rate decides whether it gets one' });
+  }
+  {
+    const c = e.checks || {};
+    const t = c.test || { calls: 0, chars: 0, scoped: 0, whole: 0 };
+    const bashChars = ['Bash', 'PowerShell'].reduce((n, k) => n + ((agg.tools[k] && agg.tools[k].resultChars) || 0), 0);
+    const checkChars = ['test', 'build', 'lint', 'ci'].reduce((n, k) => n + ((c[k] && c[k].chars) || 0), 0);
+    const share = bashChars ? Math.round((100 * checkChars) / bashChars) : null;
+    rows.push({ practice: 'test and build runs', measured: `test ${t.calls} (${t.scoped} scoped, ${t.whole} whole-suite) ~${fmt(approxTok(t.chars))} tok; build ${(c.build || {}).calls || 0} ~${fmt(approxTok((c.build || {}).chars || 0))}; lint ${(c.lint || {}).calls || 0} ~${fmt(approxTok((c.lint || {}).chars || 0))}; ci ${(c.ci || {}).calls || 0}${share != null ? ` - ${share}% of shell result volume` : ''}`, tests: 'iterate on ONE test or project, run the whole suite once at the gate; the result chars are what lands in context - a green run needs its summary line, a red run earns its trace' });
+  }
+  {
+    const n = main.gitCommits || 0, k = e.commitsChecked || 0;
+    rows.push({ practice: 'checked commits', measured: n ? `${k} of ${n} commit(s) had a test, build, lint or ci-status call in the ${CHECK_WINDOW} tool calls before${(e.commitsUnchecked || []).length ? ` - unchecked at: ${tsList(e.commitsUnchecked)}` : ''}` : 'no commit', tests: 'a check the session can run, before the work is called done - ran, not necessarily green; open the run' });
+  }
+  rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
+  rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
+  rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
+  {
+    const d = agg.dispatchOverhead || { seats: 0 };
+    rows.push({ practice: 'dispatch overhead', measured: d.seats ? `${d.heavy} of ${d.seats} seat(s) spent over 60% of their input re-sending their own first-message context; ~${fmt(d.preloadTokens)} of ~${fmt(d.seatInputTokens)} seat input tok is that context${d.heavySeats.length ? ` - ${d.heavySeats.slice(0, 4).map((h) => `${h.type} (${h.msgs} msg, ${h.share}%)`).join(', ')}` : ''}` : 'no dispatch', tests: 'a dispatch pays its preload before any work - a brief that returns less than that preload is a trade lost; a one-message seat is 100% by construction' });
+  }
+  return rows;
+}
+
+// The complement of every consumption table above it: one row per INSTALLED artifact, and the
+// unused names collapsed to one line per layer so a 79-skill install stays readable.
+function printInventoryBlock(invUse) {
+  if (!invUse) return;
+  const many = invUse.source.sessions > 1;
+  console.log(`\nINVENTORY vs USE (what the install HAS against what ${many ? `these ${invUse.source.sessions} sessions` : 'this session'} touched - a name listed and unused was installed and never reached)`);
+  console.log(`  source: skills/agents/rules from ${invUse.source.skills_agents_rules}; plugins from ${invUse.source.plugins}; MCP from ${invUse.source.mcps}`);
+  for (const L of inventoryLayers(invUse)) {
+    if (!L.rows) continue;
+    console.log(`  ${L.label.toUpperCase()} - used ${L.usedInstalled} of ${L.total} installed${L.observedOnly ? `, +${L.observedOnly} used but in no inventory the run could read` : ''}`);
+    if (L.used.length) console.log(`    ${pad('name', 38)} ${pad('source', 10)} ${pad('installed', 9)} ${pad('used', 9)} ${pad('how', 42)} first use`);
+    for (const r of L.used) console.log(`    ${pad(r.name, 38)} ${pad(r.source, 10)} ${pad(installedCell(r), 9)} ${pad(usedCell(r), 9)} ${pad(r.how.join(', '), 42)} ${r.firstUse || ''}`);
+    if (L.notObservable.length) console.log(`    always-on - in every prompt, use not observable (${L.notObservable.length}): ${L.notObservable.join(', ')}`);
+    if (L.unused.length) console.log(`    ${many ? 'never used' : 'unused'} (${L.unused.length}): ${L.unused.join(', ')}`);
+  }
+  console.log('  a plugin that ships only HOOKS can never score used here - a hook leaves no transcript record; and a catalog-sourced row proves the stack ships the artifact, never that this project installed it');
+}
+
+function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
   console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.ccVersion ? `  Claude Code ${main.ccVersion}` : ''}`);
   if (main.clearTs && main.clearTs > main.firstTs) {
@@ -1231,6 +2019,8 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     }
   }
 
+  printInventoryBlock(invUse);
+
   console.log('\nTOOLS (main + subagents; result volume = what lands back in context; declines = the USER answering an ask, never a failure; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working)');
   console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('declines', 9)} ${rpad('hook-blk', 8)}`);
   {
@@ -1257,6 +2047,12 @@ function printReport(main, agents, hookLog, window, blockLedger) {
     for (const r of main.topResults.slice(0, 8)) {
       console.log(`  ${pad(r.name + (r.label ? ` ${r.label}` : ''), 60)} ${rpad('~' + fmt(approxTok(r.chars)), 9)} ${r.error ? 'error' : ''}`);
     }
+  }
+
+  console.log('\nEFFICIENCY (the practice scorecard - measured numbers with their denominators; the rate is judged, never the presence)');
+  for (const r of efficiencyRows(main, agg)) {
+    console.log(`  ${pad(r.practice, 22)} ${r.measured}`);
+    console.log(`  ${pad('', 22)} tests: ${r.tests}`);
   }
 
   if (blockLedger && blockLedger.rows) {
@@ -1307,7 +2103,27 @@ function printReport(main, agents, hookLog, window, blockLedger) {
 // so a report author cannot misquote the numbers (measured: 5 wrong claims across 4
 // hand-written session reports, each a prose restatement of tool output). The FILL IN
 // sections at the end are the only judgment surface.
-function printMarkdown(main, agents, hookLog, window, blockLedger) {
+function inventoryMarkdown(invUse, out) {
+  if (!invUse) return;
+  const many = invUse.source.sessions > 1;
+  out.push('## Inventory vs use', '');
+  out.push(`_Inventory source: skills/agents/rules from ${invUse.source.skills_agents_rules}; plugins from ${invUse.source.plugins}; MCP from ${invUse.source.mcps}._`, '');
+  out.push(`_The installed set is resolved PER SESSION from that session's own \`cwd\`, so \`installed\` reads K of the ${invUse.source.sessions} session(s) this run covered and a name nothing installed is never reported as unused._`, '');
+  out.push('_Every row is an artifact an install HAS. A path-scoped rule is scored from the transcript records that name it (a `nested_memory` attach, guard-read-whole-file\'s shell-route notice) and by a glob proxy over the files the session touched; an always-on rule is in every prompt, so its use is not observable at all. A plugin that ships only HOOKS can never score used here, and a catalog-sourced row proves the stack ships the artifact, never that this project installed it._', '');
+  for (const L of inventoryLayers(invUse)) {
+    if (!L.rows) continue;
+    out.push(`### ${L.label.charAt(0).toUpperCase()}${L.label.slice(1)} (used ${L.usedInstalled} of ${L.total} installed${L.observedOnly ? `, +${L.observedOnly} used but in no inventory the run could read` : ''})`, '');
+    if (L.used.length) {
+      out.push('| name | source | installed | used | how | first use |', '|---|---|---|---|---|---|');
+      for (const r of L.used) out.push(`| ${r.name} | ${r.source} | ${installedCell(r)} | ${usedCell(r)} | ${r.how.join(', ')} | ${r.firstUse || ''} |`);
+      out.push('');
+    }
+    if (L.notObservable.length) out.push(`> always-on - in every prompt, use not observable (${L.notObservable.length}): ${L.notObservable.join(', ')}`, '');
+    if (L.unused.length) out.push(`> ${many ? 'never used' : 'unused'} (${L.unused.length}): ${L.unused.join(', ')}`, '');
+  }
+}
+
+function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   const extraFacts = [];
   if (main.peakCtx) extraFacts.push(`- **Peak context** ${fmt(main.peakCtx)} tokens per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - every fresh-session threshold is measured against this, not the average.`);
   if (main.thinkingTokens) extraFacts.push(`- **Thinking** ${fmt(main.thinkingTokens)} tokens (\`cost-state.modelUsage\`) - billed, attributable to no single message.`);
@@ -1443,6 +2259,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     out.push('');
   }
 
+  inventoryMarkdown(invUse, out);
+
   out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
   out.push('`hook-blk` = PreToolUse denials. A denial is not automatically the gate working - it may be a FALSE POSITIVE, and a false positive costs the denial text plus the whole retried turn. Read the block before scoring it. (Shipped verbatim over sessions whose blocks were 2 of 2 and 3 of 3 false positives, across 11 bundles.)', '');
   out.push('| tool | calls | results | errors | declines | hook-blk |', '|---|---|---|---|---|---|');
@@ -1478,6 +2296,12 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
     }
     out.push('');
   }
+
+  out.push('## Efficiency scorecard (machine-written; judge the rate, never the presence)', '');
+  out.push('Each row measures the session against one practice - the official Claude Code guidance and the stack\'s own audits agree on all of them. A number here is not yet a finding: the row says what to open before it becomes one.', '');
+  out.push('| practice | measured | what it tests |', '|---|---|---|');
+  for (const r of efficiencyRows(main, agg)) out.push(`| ${r.practice} | ${r.measured.replace(/\|/g, '\\|')} | ${r.tests.replace(/\|/g, '\\|')} |`);
+  out.push('');
 
   if (main.spikes.length) {
     out.push('## Context spikes (main session)', '');
@@ -1524,6 +2348,10 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
   }
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
+  out.push('## Efficiency verdict - FILL IN', '');
+  out.push('_Two lines, both mandatory, each citing scorecard rows or table rows above:_', '');
+  out.push('- **TOKEN VERDICT**: delivered <what the session left behind> / cost <total tokens from the Tokens table> / avoidable <N of M tok, P%> - the avoidable share is a measured number built from the rows above (re-reads, whole-suite output, build-dir reads, cache misses, dispatch overhead), never an adjective. A session that spent heavily and delivered is a PASS - say so.');
+  out.push('- **EFFECTIVENESS**: did the work land (the artifact, the commits and whether each was checked), how many corrections it took (the correction-streak row plus every user redirect you read), how many green claims had no check behind them, how many stops were not held (the protocol check\'s sweep 1). One line, numbers with denominators.', '');
   out.push('## Verdict - FILL IN', '', '| skill | worked as intended | biggest strength | biggest waste source | one concrete suggestion |', '|---|---|---|---|---|', '');
   console.log(out.join('\n'));
 }
@@ -1531,20 +2359,22 @@ function printMarkdown(main, agents, hookLog, window, blockLedger) {
 // Exported for the tests: the join's arithmetic shipped broken (ISO string minus a number = NaN,
 // so every ledger-joined session printed '0% of tool calls are inside the ledger window') and
 // stayed broken because nothing could reach the function to pin it.
-module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine };
+module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter };
 
 // ---------- entry ----------
 
 async function main() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
-  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
+  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   const asJson = args.includes('--json');
   const asMd = args.includes('--report-md');
   const hookFile = flagVal('--hook-log');
   const blockDir = flagVal('--hook-blocks');
   const docsRoot = flagVal('--docs-root');
+  const inventoryDir = flagVal('--inventory');
+  const pluginsFile = flagVal('--plugins');
   // one spelling for both routes: backslashes normalized, `./` dropped, one trailing slash
   if (docsRoot) {
     const r = String(docsRoot).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') + '/';
@@ -1555,26 +2385,39 @@ async function main() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--json] [--report-md]');
+    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--json] [--report-md]');
     process.exit(1);
   }
 
   if (fs.statSync(target).isDirectory()) {
-    // rollup mode: one line per session in the directory, newest first
-    const files = fs.readdirSync(target).filter((f) => f.endsWith('.jsonl'))
-      .map((f) => path.join(target, f))
+    // rollup mode: one line per session under the directory, newest first. RECURSIVE - a
+    // collected corpus nests one folder per project and one per session, and the flat one-level
+    // history folder is just the depth-0 case of the same walk.
+    const files = findSessionFiles(target)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)}`);
+    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)}`);
     const grand = newTally();
+    // Fed one session at a time and never held as a list: the corpus answer must not cost the
+    // corpus. Each session's installed set is resolved from its OWN cwd (cached per cwd, so a
+    // one-project folder resolves exactly once), because a corpus spans projects that installed
+    // different things and one project's inventory would report the rest's names as unused.
+    const acc = newInventoryUse(loadPlugins(pluginsFile));
+    const rollupJson = { sessions: [] };
     for (const f of files) {
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
+      addSessionUse(acc, s, agents, inventoryDir);
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
       mergeTally(grand, s.total); mergeTally(grand, at);
-      console.log(`  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)}`);
+      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)}`;
+      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length });
+      else console.log(row);
     }
+    const invUse = acc.sessions ? finishInventoryUse(acc) : null;
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, inventory: invUse }, null, 2)); return; }
     console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)}`);
+    printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;
   }
@@ -1586,21 +2429,24 @@ async function main() {
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
   const blockLedger = readBlockLedger(blockDir, path.basename(target, '.jsonl'));
+  const invAcc = newInventoryUse(loadPlugins(pluginsFile));
+  addSessionUse(invAcc, mainStats, agents, inventoryDir);
+  const invUse = finishInventoryUse(invAcc);
   if (asJson) {
     // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
     // Fold them into the dump beside the ledger they describe.
     const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, computeAggregates(mainStats, agents).tools) : null;
     const hl = hookLog ? (({ rowsIdx, ...rest }) => rest)(hookLog) : hookLog;   // the row index is the join's input, not a report field
-    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger };
+    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: computeAggregates(mainStats, agents).dispatchOverhead, inventory: invUse };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }
   if (asMd) {
-    printMarkdown(mainStats, agents, hookLog, window, blockLedger);
+    printMarkdown(mainStats, agents, hookLog, window, blockLedger, invUse);
     return;
   }
-  printReport(mainStats, agents, hookLog, window, blockLedger);
+  printReport(mainStats, agents, hookLog, window, blockLedger, invUse);
 }
 
 // Run only as a COMMAND. Required as a module (the tests, which need to reach hookJoinStats),

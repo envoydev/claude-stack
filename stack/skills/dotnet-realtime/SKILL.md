@@ -1,17 +1,17 @@
 ---
 name: dotnet-realtime
-description: ".NET real-time conventions for ASP.NET Core SignalR - server-to-client push over a persistent connection, connection-scoped, not durable. Covers strongly-typed Hub<TClient>, sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service). Floors at .NET 8 / C# 12. Load for chat, notifications, live dashboards, or any real-time server push - or when the user names SignalR, hub, server-side WebSocket push, or live updates. Companions: dotnet-messaging, dotnet-authentication, dotnet-hosted-services, dotnet-web-backend. Do NOT load for broker-backed durable messaging (dotnet-messaging), request/response HTTP (dotnet-minimal-api), in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket (dotnet-hosted-services)."
+description: "Use for chat, notifications, live dashboards, or any real-time server push in .NET - or when the user names SignalR, hub, server-side WebSocket push, or live updates. ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable, covering strongly-typed Hub<TClient>, sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service). Floors at .NET 8 / C# 12. Do NOT use for broker-backed durable messaging (dotnet-messaging), plain request/response HTTP, in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket."
 ---
 
 # .NET real-time - ASP.NET Core SignalR
 
 SignalR is server-push over a persistent connection: the server can call methods on connected clients (and they on it) without the client polling. The transport negotiates down a ladder - WebSockets first, then Server-Sent Events, then long-polling. Reach for it for chat, notifications, live dashboards, presence, and collaborative editing - anything where the server has something to say *now* and a client is connected to hear it. Baseline is .NET 8 / C# 12.
 
-The defining trait, and the thing that sets every rule below: a SignalR message is **connection-scoped and best-effort**. The server holds no durable copy; a client that is offline, mid-reconnect, or on another server simply misses it. That is the opposite of `dotnet-messaging`, where the broker persists the message and redelivers until acknowledged. If a notification *must* arrive, the durable guarantee lives in the broker, and SignalR is only the last hop - see the seam below. This skill does not cover broker-backed messaging (`dotnet-messaging`), request/response HTTP (`dotnet-minimal-api`, `dotnet-web-backend`), or in-process reactive streams (Rx / System.Reactive).
+The defining trait, and the thing that sets every rule below: a SignalR message is **connection-scoped and best-effort**. The server holds no durable copy; a client that is offline, mid-reconnect, or on another server simply misses it. That is the opposite of broker-backed messaging, where the broker persists the message and redelivers until acknowledged. If a notification *must* arrive, the durable guarantee lives in the broker, and SignalR is only the last hop - see the seam below. This skill does not cover broker-backed messaging, request/response HTTP, or in-process reactive streams (Rx / System.Reactive) - each has its own skill where the project installed one.
 
 ## The seam with messaging: broker delivers, SignalR pushes
 
-The common architecture is not 'SignalR instead of a broker' - it is both. A durable integration event arrives on the bus, a consumer handles it inside its transaction, and *then* it pushes a notification to the relevant browsers. The consumer is `dotnet-messaging` / `dotnet-hosted-services`; the push is here. The bridge is `IHubContext` - the supported way to send from outside a hub, where no `Clients` property exists:
+The common architecture is not 'SignalR instead of a broker' - it is both. A durable integration event arrives on the bus, a consumer handles it inside its transaction, and *then* it pushes a notification to the relevant browsers. The consumer belongs to the broker-messaging and hosted-worker skills; the push is here. The bridge is `IHubContext` - the supported way to send from outside a hub, where no `Clients` property exists:
 
 ```csharp
 public sealed class OrderPlacedConsumer(IHubContext<OrdersHub, IOrdersClient> hub)
@@ -81,7 +81,7 @@ Reconnection only spans a brief window; past it the connection closes and the cl
 
 ## Contracts evolve additively
 
-The client interface is a published contract - clients on old versions stay connected. Evolve it the same way `dotnet-messaging` evolves message contracts: add new optional fields (prefer a single request/response object parameter so a new field is not a new method signature), never repurpose or retype an existing one, and version the hub name (a `OrdersHubV2` at a new path) for a genuinely breaking change. Stamp any server-set timestamps from an injected `TimeProvider`, never `DateTime.Now` - see `csharp`.
+The client interface is a published contract - clients on old versions stay connected. Evolve it the way a durable message contract is evolved: add new optional fields (prefer a single request/response object parameter so a new field is not a new method signature), never repurpose or retype an existing one, and version the hub name (a `OrdersHubV2` at a new path) for a genuinely breaking change. Stamp any server-set timestamps from an injected `TimeProvider`, never `DateTime.Now` - the clock-seam rule is the C# baseline's.
 
 ## Payloads, throughput, transport
 
@@ -96,11 +96,7 @@ Running more than one server instance? A message sent from server A never reache
 
 ## Anti-patterns
 
-- Storing per-connection state in hub fields - the hub instance is gone after the call.
-- Constructing or injecting a `Hub` subclass to send from elsewhere instead of `IHubContext<THub, TClient>`.
-- Not rejoining groups after a reconnect - the new connection is in no groups.
-- Not `await`ing a send, so the hub method returns before the message goes out.
-- Running multiple servers with no backplane (messages reach only same-server clients), or a backplane without sticky sessions.
-- Trusting the connection after the initial auth - skipping per-message validation, or forgetting the query-string token wiring so WebSocket auth silently fails.
-- Pushing large payloads or unthrottled high-frequency events over the hub instead of a notify-then-pull split.
-- Exposing ORM entities directly as hub payloads (over-serialization, leak risk) instead of explicit DTOs.
+Each of the classic SignalR mistakes is the inverse of a rule already stated with its reason - hub state and injecting a `Hub` instead of `IHubContext` (§Hubs, §The seam with messaging), groups after a reconnect (§Reconnection), a missing backplane or sticky sessions (§Scale-out), trusting a connection past its initial auth (§Auth), and bulk or unthrottled payloads over the hub (§Payloads, throughput, transport). Two more have no rule of their own:
+
+- Not `await`ing a send, so the hub method returns before the message goes out and an exception surfaces on no caller.
+- Exposing ORM entities directly as hub payloads - over-serialization and leak risk; send an explicit DTO instead.

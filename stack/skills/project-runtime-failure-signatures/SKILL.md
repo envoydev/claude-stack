@@ -5,7 +5,7 @@ description: Use when something breaks at runtime on your own machine and you ha
 
 # Failure Signatures - what the crash means and where the cause actually lives
 
-Every runtime failure has a signature, and the signature names where to look - which is almost never the line in the top frame. This is the single-chat form of the diagnoser seat's failure catalogue: match the evidence to a signature, then isolate at the place the signature points, not the place it threw. It pairs with the `superpowers:systematic-debugging` method - that skill runs the disciplined hypothesis-and-test loop; this one tells you which hypothesis the signature warrants. Read the evidence first and quote the exact frame, then match.
+Every runtime failure has a signature, and the signature names where to look - which is almost never the line in the top frame. This is the single-chat form of the diagnoser seat's failure catalogue: match the evidence to a signature, then isolate at the place the signature points, not the place it threw. It pairs with `superpowers:systematic-debugging` - the disciplined hypothesis-and-test loop, where the install has it; this one tells you which hypothesis the signature warrants. Read the evidence first and quote the exact frame, then match.
 
 ## The signatures - and where each isolates
 
@@ -22,31 +22,13 @@ Every runtime failure has a signature, and the signature names where to look - w
 ## Execution modes
 
 This catalogue is single-sourced: the runtime-failure-diagnoser seat preloads this same file, so
-the inline and seated forms never drift. Loaded in the MAIN session, run the triage HERE. The
-read-only evidence-gatherer fan-out is judged from the evidence's shape - but dispatch is
-explicit-only house-wide, so the seats never start on your own say-so: a calling flow that
-already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never
-re-ask; otherwise, when the shape below warrants gatherers, put it through ONE AskUserQuestion
-(gatherers recommended, the trigger named in the option's description; plain-text options
-where the harness lacks the tool) and stay inline on an inline answer. A shape that stays
-inline needs no ask:
+the inline and seated forms never drift. Loaded INSIDE the seat, this section is already satisfied
+- the seat is the dispatched form, and the rest of this section is not read there. Loaded in the
+MAIN session, run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on
+evidence-gatherers - the inherit-or-ask rule, the four dispatch triggers, the stay-inline shapes
+and a worked fan-out are that file. Either way, dispatch is explicit-only house-wide, so the seats
+never start on your own say-so.
 
-- **Dispatch gatherers** (parallel, one per source) when any of these holds: the evidence spans
-  two or more independent sources (a server log AND a DB state AND a repro run); a log or trace
-  runs to hundreds of lines, so reading it here would flood the context the diagnosis needs; the
-  repro is a matrix (several inputs/orderings for an intermittent failure); or proving a fact
-  means running the app while the reasoning continues here.
-- **Stay inline** when the evidence is one pasted stack trace, a short log excerpt, or already
-  in the chat - a gatherer would cost more than it saves.
-
-Example: 'the list endpoint 500s on some months, prod DB snapshot and ops log attached' - three
-gatherers at once: one windows the ops log to the failing requests, one inspects the suspect DB
-rows, one curls the month matrix against a local run. Their digests come back; the signature
-match, the judgment, and the fix-route gate stay in this session. Do NOT dispatch the diagnoser
-seat from this skill - the catalogue is already in context, so the seat would only duplicate it;
-the seat exists for the orchestrated issue flow and direct @agent- calls, where it runs this
-same file in an isolated context with the same gatherer fan-out.
-Loaded INSIDE the seat, this section is already satisfied - the seat is the dispatched form.
 
 ## How to use it
 

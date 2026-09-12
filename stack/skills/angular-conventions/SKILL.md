@@ -1,6 +1,6 @@
 ---
 name: angular-conventions
-description: "Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, reward-hacking shortcuts to reject. Load when creating or editing a component, service, directive, or template; refactoring to signals; or reviewing Angular code. Companions: typescript, angular-material, angular-styling, angular-security, frontend, mobile. Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript."
+description: "Load when creating or editing an Angular component, service, directive, pipe or template, refactoring to signals, or reviewing Angular code. Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, reward-hacking shortcuts to reject. Load when creating or editing a component, service, directive, or template; refactoring to signals; or reviewing Angular code. Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript."
 ---
 
 # Angular conventions
@@ -47,7 +47,7 @@ Data that lives on the server (a fetched list, a record by id) is a cache of som
 - Use block control flow - `@if`, `@for`, `@switch` - in place of the old structural directives. Give every `@for` over an object collection a `track` expression keyed on a stable identity.
 - Defer below-the-fold and non-critical content with `@defer`. Pick the trigger on purpose - `on viewport`, `on idle`, `on interaction` - and always supply a `@placeholder` so nothing reflows when the block resolves.
 - Static images go through `NgOptimizedImage`; mark the above-the-fold hero `priority` so the LCP image preloads and its box is reserved, killing layout shift.
-- No `@angular/animations` DSL in new code - it is deprecated: use the native `animate.enter` / `animate.leave` bindings and plain CSS transitions, and plan existing DSL animations off it. Route transitions use `withViewTransitions()` - except inside an Ionic `IonRouterOutlet`, whose own stack transitions it fights (the `ionic` skill owns page transitions there).
+- No `@angular/animations` DSL in new code - it is deprecated: use the native `animate.enter` / `animate.leave` bindings and plain CSS transitions, and plan existing DSL animations off it. Route transitions use `withViewTransitions()` - except inside an Ionic `IonRouterOutlet`, whose own stack transitions it fights (page transitions there belong to the skill covering the Ionic/Capacitor layer; with none installed, keep `withViewTransitions()` off that outlet and say why inline).
 
 ## SSR and hydration
 Web targets only - a Capacitor WebView has no server render, so skip this in an Ionic native app. SSR project: the rules are in `references/ssr-hydration.md` - Read it before touching server rendering, hydration, or any code that runs during the server pass (browser globals, non-deterministic output, the transfer cache).
@@ -63,7 +63,7 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - Typed reactive forms (`FormGroup<T>`) are the default; on v22+ prefer Signal Forms for new forms (`form()` from `@angular/forms/signals`, stable there - experimental on v21, so version-tag any use). Template-driven forms are only for trivial throwaway inputs, and no field is ever typed or defaulted as `null`.
 - Lazy-load feature routes with `loadComponent` for standalone targets, falling back to `loadChildren` only where legacy modules remain.
 - Bind route params and `data` straight into component `input()`s with `withComponentInputBinding()` instead of injecting `ActivatedRoute` and reading snapshots.
-- Resolve a route's critical data ahead of activation with a thin `resolve` guard that delegates to a service, so the component renders without a request waterfall. Not in an Ionic app: cached pages never re-activate on revisit, so a resolver never re-runs and ships stale data - refresh on `ionViewWillEnter` there (the `ionic` skill's ground).
+- Resolve a route's critical data ahead of activation with a thin `resolve` guard that delegates to a service, so the component renders without a request waterfall. Not in an Ionic app: cached pages never re-activate on revisit, so a resolver never re-runs and ships stale data - refresh on `ionViewWillEnter` there - ground the skill covering the Ionic/Capacitor layer owns, and with none installed this rule is the whole guidance.
 - Validation is a layer, not a pile of one-off checks: rules declared on the model, reusable pure `ValidatorFn`s, cross-field rules on the group, async validators that debounce and cancel, ONE shared error surface - never a per-template error wall. The full strategy (Signal Forms and Standard Schema included) is `references/forms-validation.md`; load it before building any non-trivial form.
 
 ## Accessibility
@@ -71,6 +71,16 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - Reach for semantic HTML first - `<button>`, `<nav>`, `<main>`, `<header>` - and add ARIA only when no native element expresses the intent.
 - For custom widgets (accordion, listbox, combobox, menu, tabs, and more), build on the headless `@angular/aria` directives (developer preview in v21, stable from v22): they own the keyboard, focus, and ARIA state machine; you supply the markup and styles, hung off the aria-expanded / aria-selected / aria-current attributes they manage. Check `angular.dev/guide/aria` for the current roster and never reimplement that logic.
 - Text contrast meets WCAG AA - exact ratios are `angular-styling`'s to state.
+
+## Design quality (distinctive, production-grade UI)
+
+House guidance for UI that looks intentional, not generic-AI-default. Apply it on greenfield or visual work, and skip it when you are reproducing a fixed design or Figma handoff faithfully. It owns the *taste*; the mechanism lives in the styling skill (CSS, tokens, responsive) and, where the project uses Material, the theming skill.
+
+- **A real design system, not defaults.** Commit to a deliberate type scale, a spacing rhythm, and a genuine color system (surfaces, accents, states) - not the framework's out-of-the-box palette and default margins.
+- **Layout with intent.** Build hierarchy from scale, weight, and whitespace; align to a grid; give content room. Avoid the evenly-spaced, center-everything, single-column default.
+- **Motion with purpose.** Transitions and micro-interactions that clarify a state change, not decoration - and respect prefers-reduced-motion.
+- **Design every state.** Empty, loading, error, and success are part of the UI, not afterthoughts.
+- **Responsive by construction, accessible by default.** Contrast, focus-visible, and keyboard paths are not optional; the a11y rules themselves are the Accessibility section above and the styling skill's.
 
 ## Feature boundaries
 - Features may depend on `shared/` and `core/` but never on one another. No import from `features/billing` reaches into `features/orders`. (How barrels and deep imports are policed is `typescript`.)

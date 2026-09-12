@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: "Performance-aware .NET design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here. Type design: struct vs class, readonly struct, seal by default, fewer allocations, `Span`, `ValueTask`, frozen/immutable returns. Serialization: pick the format - `System.Text.Json` source-gen for JSON, Protobuf for wire, MessagePack for cache/messaging. Load when a type sits on a hot path or high-throughput loop, or when choosing how bytes cross a process boundary. Do NOT start here for 'my app is slow' - that is usually a bad query or an N+1: route to `dotnet-diagnostics` and measure first. Companions: `csharp`, `dotnet`, `dotnet-diagnostics`."
+description: "Use when a .NET type sits on a hot path or a high-throughput loop, or when choosing how bytes cross a process boundary. Performance-aware design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here. Type design: struct vs class, readonly struct, seal by default, fewer allocations, `Span`, `ValueTask`, frozen/immutable returns. Serialization: pick the format - `System.Text.Json` source-gen for JSON, Protobuf for wire, MessagePack for cache/messaging. Do NOT start here for 'my app is slow' - that is usually a bad query or an N+1: measure first with `dotnet-diagnostics`."
 ---
 
 # dotnet-performance (decision layer)
@@ -19,7 +19,7 @@ Do not optimize on a hunch. A performance change is only earned by a measurement
 
 ## When allocation and memory layout matter (type design)
 
-Spend on the type-design defaults when a type sits on a **hot path** - a per-request allocation inside a tight loop, a high-throughput pipeline, a `BackgroundService` draining a channel (`dotnet-hosted-services`), a serializer inner loop. There the choices pay their way: seal by default, a small immutable value becomes a readonly struct, byte work moves to `Span`, a usually-cached async result returns `ValueTask`, static lookup data becomes a `FrozenDictionary`.
+Spend on the type-design defaults when a type sits on a **hot path** - a per-request allocation inside a tight loop, a high-throughput pipeline, a `BackgroundService` draining a channel, a serializer inner loop. There the choices pay their way: seal by default, a small immutable value becomes a readonly struct, byte work moves to `Span`, a usually-cached async result returns `ValueTask`, static lookup data becomes a `FrozenDictionary`.
 
 Off the hot path, do not contort a domain model for allocations you never measured - correctness and clarity win. The seal-by-default and immutable-return defaults still apply everywhere, though, because they cost nothing and prevent whole classes of bug. Load `references/type-design.md` for the rules and the anti-patterns.
 

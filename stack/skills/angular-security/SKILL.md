@@ -1,11 +1,11 @@
 ---
 name: angular-security
-description: "Angular / web frontend security-hardening reference mapped to concrete Angular 17+ mitigations: XSS and the DomSanitizer bypassSecurityTrust* escape hatches, innerHTML injection, nonce-based CSP, CSRF via HttpClient's XSRF support, secrets that must never ship in the bundle (environment.ts, source maps), auth-token storage (httpOnly cookie over localStorage), SSR/TransferState leaks, open redirects, target=_blank window.opener, unsafe URL bindings, and vulnerable npm dependencies. Load when hardening or reviewing an Angular web feature, or when the security-auditor sweeps the web stack. Points at dotnet-security for the API side, ionic-security for the Capacitor native shell. Do NOT load for non-security work or the mobile native surface."
+description: "Load when hardening or reviewing an Angular web feature, or when a security sweep reaches the web stack. Angular / web frontend security-hardening reference mapped to concrete Angular 17+ mitigations: XSS and the DomSanitizer bypassSecurityTrust* escape hatches, innerHTML injection, nonce-based CSP, CSRF via HttpClient's XSRF support, secrets that must never ship in the bundle (environment.ts, source maps), auth-token storage (httpOnly cookie over localStorage), SSR/TransferState leaks, open redirects, target=_blank window.opener, unsafe URL bindings, and vulnerable npm dependencies. Do NOT load for non-security work or the mobile native surface."
 ---
 
 # Angular / web frontend security
 
-Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map; it pairs with the runtime security-guidance plugin (which reviews a live diff) and with `dotnet-security` (the server side). Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
+Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map; it pairs with the runtime security-guidance plugin (which reviews a live diff) and with the skill covering server-side .NET hardening, where the install has one. Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
 
 ## XSS and the sanitizer bypass
 
@@ -78,7 +78,3 @@ this.router.navigateByUrl(
 ## Review output
 
 Report findings as `surface | risk | fix`, ordered by risk - e.g. `[innerHTML] fed through bypassSecurityTrustHtml | stored XSS runs in every viewer's session | bind the sanitized value and keep trust calls away from user-influenced input`. Findings on the server side route to the skill covering ASP.NET / .NET hardening (the OWASP-mapped server mitigations), on the native shell to the skill covering the Ionic / Capacitor native attack surface (Keychain storage, deep links, WebView lockdown) - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack.
-
-## Where the rest lives
-
-Server-side authorization, injection, CORS, and error-envelope leakage are `dotnet-security`. The Ionic / Capacitor native shell - secure storage, deep-link validation, WebView hardening, native permissions - is `ionic-security` (an Ionic app inherits everything here **plus** that native surface).

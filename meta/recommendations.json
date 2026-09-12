@@ -66,9 +66,9 @@
   "skills": [
    "dotnet-hosted-services",
    "dotnet-data-access",
-   "frontend",
    "project-related-context",
-   "project-stack-usage-analyzer"
+   "project-stack-usage-analyzer",
+   "plugin-authoring"
   ],
   "agents": [
    "related-project-analyzer"
@@ -87,6 +87,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -141,6 +142,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -168,6 +170,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -195,6 +198,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -221,6 +225,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",

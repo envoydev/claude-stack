@@ -2,8 +2,8 @@
 
 SKILL.md is ASP.NET Core controllers. On .NET Framework 4.8, MVC 5 and Web API 2 are two separate stacks
 with their own mechanics - these are the deltas that trip up developers who learned the unified Core
-model. Load `dotnet-web-backend`'s `references/net-framework-48.md` first for the classic-pipeline
-baseline.
+model. Read the web hub's own 4.8 notes first for the classic-pipeline baseline, where the project installed
+that skill.
 
 ## Two DI resolvers, not one (the marquee 4.8 trap)
 
@@ -26,8 +26,8 @@ baseline.
 
 ## Model binding: bind DTOs, never entities
 
-- MVC model binding binds every posted field, so binding straight to an EF entity is an over-posting
-  (mass-assignment) hole. Use a separate input / view model rather than `[Bind(Include=...)]` /
+- MVC 5 model binding binds every posted field. Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted.
+  Use a separate input / view model rather than `[Bind(Include=...)]` /
   `[Bind(Exclude=...)]` - `[Bind]` resets excluded properties to defaults in edit scenarios and is ignored for
   `[FromBody]` JSON. Reach for `TryUpdateModel` with an explicit allow-list only where a two-model split
   is impractical.
@@ -36,6 +36,5 @@ baseline.
   use no cookie and need no anti-forgery; cookie-authenticated ones do. Validate return URLs with
   `Url.IsLocalUrl()` before redirecting.
 
-Thin controllers still delegate to services (SKILL.md's rule, unchanged). Auth wiring is
-`dotnet-authentication`'s `references/net-framework-48.md`; the deserialization and header hardening are
-`dotnet-security`'s.
+Thin controllers still delegate to services (SKILL.md's rule, unchanged). Auth wiring belongs to the authentication skill's own 4.8
+notes; the deserialization and header hardening to the security-hardening skill's.

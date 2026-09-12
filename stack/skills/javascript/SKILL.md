@@ -1,6 +1,6 @@
 ---
 name: javascript
-description: "JavaScript language conventions, framework-agnostic - the base layer for all JS-family code: ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape. Load before writing or editing any .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. The type layer (TypeScript, and checked JS via JSDoc) is the `typescript` skill, which stacks on this baseline; frameworks add their own layer above that. Not for C#/.NET or other languages."
+description: "JavaScript language conventions, framework-agnostic - the base layer for all JS-family code. Load before writing or editing any .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. Covers ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape. The type layer (TypeScript, and checked JS via JSDoc) stacks on this baseline in the type-conventions skill where the project has one; frameworks add their own layer above that. Not for C#/.NET or other languages."
 ---
 
 # JavaScript conventions - the base language layer

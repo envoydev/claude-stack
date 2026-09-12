@@ -1,6 +1,6 @@
 ---
 name: nx
-description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Draws the line against serena - Nx answers project-graph and affected questions, serena answers symbol-level code questions. For the Angular code conventions themselves see `angular-conventions`; this is the workspace/monorepo layer above them.
+description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Draws the line against serena - Nx answers project-graph and affected questions, serena answers symbol-level code questions. For a framework's own code conventions reach for that framework's conventions skill where the project has one; this is the workspace/monorepo layer above them.
 ---
 
 # Nx Monorepo
@@ -17,6 +17,21 @@ touches - never dump the whole workspace or run every target.
 - Do not hand the whole graph dump into context to answer a narrow question - query the one project
   (`nx show project <name>`) or the affected set (below). The full graph is large; pull only the slice
   the task needs.
+- What the cheap call buys, so you can decide before paying for it - `nx show project my-app --json`
+  returns the resolved configuration under `project.data` plus a `sourceMap` saying which file or
+  plugin contributed each key:
+
+  ```json
+  { "project": { "name": "my-app", "type": "app", "data": {
+      "root": "apps/my-app", "sourceRoot": "apps/my-app/src", "projectType": "application",
+      "tags": [], "metadata": { "technologies": ["react"] },
+      "targets": { "build": { "executor": "nx:run-commands", "cache": true,
+                              "dependsOn": ["^build"], "outputs": ["{projectRoot}/dist"] } } } },
+    "sourceMap": { "targets.build": ["apps/my-app/vite.config.ts", "@nx/vite/plugin"] } }
+  ```
+
+  The `sourceMap` is the answer to 'where does this target come from' - read it instead of grepping
+  for a config file that may not exist, because an inferred target has no `project.json` entry.
 
 ## Scope every gate with `nx affected`
 - Run build, test, and lint over the affected set, not the whole tree: `nx affected -t build`,
@@ -50,8 +65,10 @@ or you pay for the wrong tool:
 ## The CLI is the lever; the Nx MCP is optional
 - Prefer teaching the CLI (this skill) over the Nx MCP server - `nx show` / `nx affected` output is
   leaner than large JSON payloads over MCP. If you do run the MCP, keep it in minimal mode
-  (`--minimal`, the default - never `--no-minimal` for workspace analysis) and prune tools with `--tools` globs so its schemas do not bloat every request;
-  reserve it for Nx Cloud connectivity and running processes, not workspace analysis.
+  (`--minimal` is the default and hides the workspace-analysis tools on purpose - do that analysis
+  with the CLI above rather than passing `--no-minimal` to expose them) and prune tools with
+  `--tools` globs so its schemas do not bloat every request; reserve it for Nx Cloud connectivity
+  and running processes, not workspace analysis.
 - `npx nx configure-ai-agents` lays down the agent config once - keep the MCP minimal afterward.
 
 ## Keep the output quiet

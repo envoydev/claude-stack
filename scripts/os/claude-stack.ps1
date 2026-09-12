@@ -392,7 +392,7 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (79).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (78).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -419,6 +419,7 @@ $Skills = @(
   'envoydev/claude-stack|project-runtime-failure-signatures' # single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging
   'envoydev/claude-stack|project-ci-failure-signatures'        # single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures
   'envoydev/claude-stack|project-stack-usage-analyzer' # token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/
+  'envoydev/claude-stack|plugin-authoring'   # Claude Code plugin authoring: manifest + marketplace schema, layout and precedence, plugin root vs data paths, per-component rules, the validate / plugin-dir / details / eval loop, security review
   'envoydev/claude-stack|devops'           # DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost
   'envoydev/claude-stack|database-conventions' # cross-engine DB conventions + per-engine skill routing
   'envoydev/claude-stack|database-security'    # SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit
@@ -433,8 +434,6 @@ $Skills = @(
   'envoydev/claude-stack|angular-material'   # Angular Material + CDK: selective imports, M3 theming, CDK primitives, harnesses
   'envoydev/claude-stack|angular-styling'    # Angular CSS/styling: ViewEncapsulation, :host, ::ng-deep ways-out, design tokens, responsive, a11y styling
   'envoydev/claude-stack|angular-security'   # Angular/web frontend security: XSS/DomSanitizer bypass, CSP, CSRF, no-secrets-in-bundle, token storage, SSR/TransferState
-  'envoydev/claude-stack|frontend'         # web frontend router: Angular/TS + in-skill design-quality guidance -> mobile
-  'envoydev/claude-stack|mobile'           # Ionic/Capacitor router/index over the Angular (angular-conventions) + TypeScript baselines
   'envoydev/claude-stack|ionic'            # house Ionic/Capacitor conventions: UI, nav, lifecycle, permissions, plugin sourcing + wrapping
   'envoydev/claude-stack|capacitor-release' # Ionic/Capacitor release pipeline: cap sync/build, iOS+Android signing, store submission, OTA, versioning, CI, symbols
   'envoydev/claude-stack|ionic-security'   # Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening
@@ -1649,6 +1648,12 @@ function New-ClaudeMd {
   $dest = Join-Path $root '.claude/CLAUDE.md'
   New-Item -ItemType Directory -Force -Path (Join-Path $root '.claude') | Out-Null
   Copy-Item -LiteralPath $src -Destination $dest -Force
+  # Stamp the H1 placeholder with the repo folder name - the same __TOKEN__ convention as
+  # Set-DocsRootStamp, and the seed runs once, so a hand-written title is never clobbered.
+  try {
+    $seedBody = (Get-Content -LiteralPath $dest -Raw).Replace('__PROJECT_NAME__', (Split-Path -Leaf $root))
+    [System.IO.File]::WriteAllText($dest, $seedBody, (New-Object System.Text.UTF8Encoding($false)))
+  } catch { Log '  !! CLAUDE.md: project-name stamp failed - replace the __PROJECT_NAME__ H1 by hand' }
   Log '  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the .claude/* + !.claude/CLAUDE.md gitignore lines so it stays committed'
 }
 
@@ -2124,7 +2129,7 @@ function Set-HookSettings {
 # under the old @agent-name (and the capabilities capture inventories it). Only names this stack itself
 # once installed; an absent one is a no-op. The guided /claude-stack:update prunes from the stamp
 # compare instead - these lists are the script path's equivalent (twin of the sh RETIRED_* arrays).
-$RetiredSkills = @('project-task-flow', 'project-task-cycle', 'project-capabilities', 'project-failure-signatures', 'typescript-testing', 'data-security', 'dotnet-error-handling', 'mobile-security')
+$RetiredSkills = @('frontend', 'mobile', 'project-task-flow', 'project-task-cycle', 'project-capabilities', 'project-failure-signatures', 'typescript-testing', 'data-security', 'dotnet-error-handling', 'mobile-security')
 $RetiredRules = @('baseline-agents-skills.md', 'baseline-code-quality.md', 'baseline-communication.md', 'baseline-definition-of-done.md', 'baseline-evaluating-proposals.md', 'baseline-mcp-tools.md', 'baseline-planning.md', 'baseline-related-projects.md', 'house-baseline.md', 'web-conventions.md', 'aspnet-conventions.md')
 $RetiredHooks = @('require-convention-skill.js', 'inject-code-style.js')
 $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'angular-verifier.md', 'mobile-solution-designer.md', 'mobile-implementer.md', 'mobile-verifier.md', 'dotnet-windows-service-solution-designer.md', 'dotnet-windows-service-implementer.md', 'dotnet-windows-service-verifier.md', 'code-analyzer.md', 'issue-diagnoser.md')
