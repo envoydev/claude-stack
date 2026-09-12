@@ -1,6 +1,6 @@
 # Serialization format choice
 
-The format decision for bytes that leave the process. When it matters - and when not to serialize at all - is in `SKILL.md`. Source-gen mechanics are in `dotnet-source-generators`, the gRPC wire in `dotnet-grpc`, broker messaging in `dotnet-messaging`, and the ASP.NET JSON wiring in `dotnet-web-backend`.
+The format decision for bytes that leave the process. When it matters - and when not to serialize at all - is in `SKILL.md`. The source-generator authoring mechanics, the gRPC wire contract, broker message contracts and the ASP.NET JSON wiring each belong to their own skill where the project installed one; with none of them, the snippets below are enough to ship.
 
 ## Schema-based over reflection-based
 
@@ -33,18 +33,18 @@ var json = JsonSerializer.Serialize(order, AppJsonContext.Default.Order);
 var back = JsonSerializer.Deserialize(json, AppJsonContext.Default.Order);
 ```
 
-In ASP.NET Core, register the context (`dotnet-web-backend`):
+In ASP.NET Core, register the context:
 
 ```csharp
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
 ```
 
-The attribute and generator mechanics belong to `dotnet-source-generators`.
+The attribute and generator mechanics belong to the skill covering Roslyn source generators.
 
 ## Protobuf
 
-Best for gRPC and any long-lived contract (`dotnet-grpc`). The schema is the source of truth; codegen produces the types.
+Best for gRPC and any long-lived contract. The schema is the source of truth; codegen produces the types.
 
 ```protobuf
 message Order {
@@ -59,7 +59,7 @@ Versioning: adding a field with a new number is always safe; removing one is saf
 
 ## MessagePack
 
-Best for caches and broker messages (`dotnet-messaging`) - compact and fast. Annotate contracts with explicit keys, and make the type `partial` to opt into the source generator (AOT-safe).
+Best for caches and broker messages - compact and fast. Annotate contracts with explicit keys, and make the type `partial` to opt into the source generator (AOT-safe).
 
 ```csharp
 [MessagePackObject]

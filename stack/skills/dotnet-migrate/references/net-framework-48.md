@@ -12,15 +12,15 @@ one-change-per-step) still govern.
   security through Windows Update. Safe to run, a poor place to invest. Treat migration as debt
   reduction, not an emergency, and target an LTS directly (.NET 8 or .NET 10), skipping STS releases.
 - Migration is incremental, never big-bang. Do the prerequisites first - they pay off even if you stop
-  there: `packages.config` -> `PackageReference` and SDK-style conversion (`dotnet-project-setup`'s
-  `references/net-framework-48.md`), then multi-target shared libraries
+  there: `packages.config` -> `PackageReference` and SDK-style conversion (the solution-build-spine skill's own
+  4.8 notes carry the conversion mechanics), then multi-target shared libraries
   (`<TargetFrameworks>net48;net8.0-windows</TargetFrameworks>`), upgraded leaf-first.
 
 ## The blocker map - upgrade vs replace
 
 - **Mechanical (port):** class libraries, console apps, WPF, and WinForms - to `net8.0-windows` with
   `<UseWPF>` / `<UseWindowsForms>`; swap the `WebBrowser` control for WebView2 and replace AppDomain
-  isolation. WPF specifics are `dotnet-wpf`, WinForms are `dotnet-winforms`.
+  isolation. WPF and WinForms specifics belong to the desktop skills for each toolkit, where the project installed them.
 - **Architectural (redesign):** classic ASP.NET (System.Web MVC / Web API) has no in-place path - stand
   up an ASP.NET Core entry point with a YARP reverse proxy and
   `Microsoft.AspNetCore.SystemWebAdapters`, then strangle routes one at a time (the Strangler Fig
@@ -35,7 +35,7 @@ one-change-per-step) still govern.
   `AssemblyLoadContext` or separate processes for isolation).
 - **Data:** the current EF Core does not run on 4.8 (only EF Core 3.1 and earlier do), so stage it -
   4.8 + EF6 -> modern .NET + EF6 -> modern .NET + EF Core. Plan for the EF Core breaks (no `ObjectContext`, no EDMX, opt-in lazy loading, no silent
-  client evaluation, incompatible migrations). The query and migration mechanics are `dotnet-data-access`.
+  client evaluation, incompatible migrations). The query and configuration mechanics belong to the skill covering the ORM layer.
 
 ## Tooling
 

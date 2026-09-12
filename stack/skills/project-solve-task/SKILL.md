@@ -1,6 +1,6 @@
 ---
 name: project-solve-task
-description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable): project-verify-code inline or the verifier seat -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-solve-cross-task), not greenfield (project-build-from-scratch), not a one-line edit."
+description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable) -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (project-solve-cross-task), not greenfield, and not a one-line edit."
 disable-model-invocation: true
 ---
 
@@ -30,7 +30,7 @@ session recommends the fresh-session hand-off in its first ask - the finished cy
 context compounds into every later call. A cycle mid-build looks like:
 
 ```
-plan .claude/docs/superpowers/plans/csv-export.md:
+plan <docs-path>/superpowers/plans/csv-export.md:
   Gated: passed | Approved: 2026-07-16 - mode session
   task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
 cycle note 'csv-export__cycle': step 4 BUILD - resume at task 2, mode session
@@ -63,8 +63,9 @@ the cheap point to run the next step in a fresh session (`/clear`): resume needs
 file + cycle note, so the step starts at a few k of context - in a long cycle the carried-forward
 context is the single biggest token cost (a resume restarts at 21.5-59.4% of the carried context with zero
 re-work - state those two absolute numbers to the user, never a ratio). On a long cycle this is a step,
-not an offer to remember: once the cycle has crossed roughly 150k ctx per message, spans hours,
-or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
+not an offer to remember: once the cycle has crossed the install's fresh-session trigger for its context
+window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window),
+spans hours, or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
 ask until it is taken or the cycle closes. And HONOR the answer: when the user picks it, the
 turn ends with a short ack plus the paste-ready resume block - no 'one more step', no new work
 in this chat. This is a CONSTRUCTION check, not a memory: before
@@ -77,15 +78,15 @@ recommended without asking me'), do not silently self-authorize past the stops -
 has a receipted path: write `<docs-path>/flow/APPROVAL` with first line
 `AUTO - "<their words, verbatim>"` (the same file-backed waiver `project-solve-cross-task`
 uses), say in one line that stops are waived under it, and proceed taking each stop's
-recommended option; the pre-commit checkpoint and its receipt still apply. Write the stamp at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL` with the Write tool - `.claude/` is a protected path, so the first write in a session prompts; take the prompt's 'allow Claude to edit its own settings for this session' option and the rest of the run is free (no settings key can pre-approve it: `permissions.allow` is not consulted for protected paths); a relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate. The AUTO stamp lives until step 6's
-close deletes it - step 4's delete-when-fan-out-completes applies to per-plan APPROVED stamps,
-and a step-5 punch-list re-dispatch under AUTO rides the still-live waiver.
+recommended option; the pre-commit checkpoint and its receipt still apply. Write the stamp at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` carries the rest of the mechanics - the protected-path prompt, why a relative write bounces the dispatch, what to do when the harness refuses both write routes, and the AUTO stamp's lifetime across steps 4-6.
 
 ## The steps
 
 Each step that names a skill INVOKES it via the Skill tool - and re-invokes it for every new
 cycle in the same chat, even when an earlier cycle already loaded it: 'it is still in context'
-runs the step off stale framing and freezes cost attribution on the wrong skill.
+runs the step off stale framing and freezes cost attribution on the wrong skill. One exception:
+a capture named in a close-out line (step 6) is a POINTER for the user to type, never a call this
+run makes.
 
 1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
    file, not the chat, is the artifact - and that skill's design rules are settled IN it (every seam
@@ -151,7 +152,7 @@ runs the step off stale framing and freezes cost attribution on the wrong skill.
    SAME reviewer again before anything is stamped `Completed`: a punch-list fix is unreviewed code.
    Stamp the verdict. *Stop.*
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
-   (`superpowers:verification-before-completion` on the whole feature - each acceptance criterion
+   (`superpowers:verification-before-completion` - the whole feature's acceptance criteria, each one
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
    into the close. Delete or archive the cycle note, and in an agents-mode run purge the

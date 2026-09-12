@@ -2,6 +2,12 @@
 
 The concrete, enforceable slice of the Angular conventions: the v20+ file-naming rules, the angular-eslint + Prettier flat config that enforces them, and modern-vs-legacy examples. The broad conventions - signals, control flow, DI, state tiers, SSR, forms, a11y, testing - live in `SKILL.md`; the per-version stable/experimental deltas live in `references/v19.md`-`v22.md`. This document is the enforcement layer. A project's own config (its `eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/PROJECT-CODE-STYLE.md` are HIGHER priority - where a project diverges, follow the project.
 
+## Contents
+
+- File and folder naming (v20+ style guide - the house convention)
+- Enforceable config (angular-eslint flat config + typescript-eslint + Prettier)
+- Modern vs legacy examples
+
 ## File and folder naming (v20+ style guide - the house convention)
 
 The house follows the v20 official style guide: **drop the `.component`/`.service`/`.directive`/`.pipe` type suffixes.** A `UserProfile` component lives in `user-profile.ts` (class `UserProfile`), with `user-profile.html` and `user-profile.css` sharing the base name. From Angular v20 the CLI generates no suffix for components, directives, services, and pipes by default.

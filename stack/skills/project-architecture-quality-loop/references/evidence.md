@@ -4,7 +4,7 @@ The measured anecdotes behind this skill's rules, kept out of the run-time body 
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
 
 ## Intro
-- **a skill-level model pin is not reliably honored for main-session turns** - measured: three invocations ran the session model despite it, while agent-level pins held exactly
+- **a skill-level `model` pin applies only for the rest of the turn in which the skill activates** - measured: three invocations ran the session model, while agent-level pins held exactly; the documented turn scope is what the measurement shows, so the session model is the lever
 
 ## 1. ANALYZE + ASSESS (lens sweep, now in references/loop-mechanics.md)
 - **the brief pastes the RELEVANT map sections, never a bare path to the whole doc** - measured: 7 seats each whole-read an identical 8.4k-token map, md5-proven, because the brief passed only the path

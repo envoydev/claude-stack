@@ -16,8 +16,8 @@ mechanics matter for MVC 5 / Web API 2.
 
 - The sealed `HttpContext.Current` is the enemy of a unit test. Depend on `HttpContextBase` /
   `HttpContextWrapper` where you must touch context, but better, keep controllers free of `HttpContext`
-  and pass in the data they need. Constructor DI into controllers (the resolver wiring is
-  `dotnet-mvc-controllers`' `references/net-framework-48.md`) lets them test without a web host.
+  and pass in the data they need. Constructor DI into controllers (the resolver wiring belongs to
+  the skill covering controller-based Web APIs, in its own 4.8 notes) lets them test without a web host.
 - The real leverage is the same as everywhere: keep business logic in POCO services with no `System.Web`
   dependency, so the bulk of the suite is fast plain-object tests. That structure is also exactly what
-  the System.Web Adapters migration needs (`dotnet-migrate`'s `references/net-framework-48.md`).
+  the System.Web Adapters migration needs - see the .NET migration skill's own 4.8 notes.

@@ -1,6 +1,6 @@
 ---
 name: postgres
-description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database-conventions hub: identifier folding and idempotent DDL, index-type selection (B-tree/GIN/GiST/BRIN/hash), JSONB and full-text indexing, SARGable predicate rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum/ANALYZE, work_mem), connection pooling modes, and array-batching/ON CONFLICT/COPY. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index/pooling decision. Not the cross-engine schema/transaction rules (-> database-conventions), the ORM side (-> dotnet-data-access), or another engine's SQL. Companions: database-conventions (cross-engine hub - load first), database-security (RLS/privileges), dotnet-data-access (the EF Core / ORM side)."
+description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database conventions. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index / pooling / RLS decision. Not the cross-engine schema and transaction rules - the cross-engine database hub owns those, load it first where the install has it - not the ORM / EF Core side, which is its own skill, not another engine's SQL, and not an analytics or columnar workload, where this tuning advice inverts."
 ---
 
 # postgres (engine specialist)
@@ -77,6 +77,15 @@ INSERT INTO page_views (page_id, user_id) VALUES (1,123) ON CONFLICT DO NOTHING;
   - `Sort Method: external merge` -> `work_mem` too low.
   - estimate-vs-actual row gap of 10x+ -> stale statistics, run `ANALYZE`.
 - Rank findings by measured impact (actual rows/buffers/time), never by the estimated cost percentage.
+- Report each finding in these three lines, so the evidence travels with the fix and the re-measure is part of the contract:
+
+  ```text
+  symptom: Seq Scan on orders, 2.1M rows, Rows Removed by Filter 2.09M, 1840 ms
+  cause:   no index serves WHERE status = 'open' (0.5% of rows)
+  fix:     CREATE INDEX CONCURRENTLY orders_open_idx ON orders (status) WHERE status = 'open'
+           -> re-run EXPLAIN (ANALYZE, BUFFERS) and quote the new node
+  ```
+
 - Enable `pg_stat_statements`; rank by `total_exec_time` (aggregate cost) and `mean_exec_time` (worst per-call); `pg_stat_statements_reset()` after a fix to re-measure.
 - Autovacuum handles most tables; tune per-table for high churn and `ANALYZE` after a bulk change:
 
@@ -95,10 +104,10 @@ ANALYZE orders;
 - Size `max_connections` to RAM (100-200), not to peak client count - that is the pooler's job, and `work_mem * max_connections` must stay bounded.
 - Behind a transaction pooler, disable driver-side prepared statements: Npgsql `Max Auto Prepare=0` (the ORM-side skill covers the EF Core wiring), postgres.js `{ prepare: false }`, JDBC `prepareThreshold=0`.
 
-## Full-text search
+## The two specialist sections, deferred
 
-`LIKE '%term%'` cannot use an index. Use a stored `tsvector` column + GIN + `@@` - the working recipe (generated column, index, query operators) is in `references/full-text-search.md`.
-
-## RLS policy performance
-
-Only when RLS is the tenancy mechanism (policy *basics* are the data-layer security skill's): make policy functions evaluate once per query instead of per row, and index the column every policy filters on - the patterns are in `references/rls-performance.md`.
+`references/fts-and-rls.md` carries the two blocks a Postgres session needs only when the work is
+actually there: FULL-TEXT SEARCH (the generated `tsvector` + GIN shape, the query operators, and
+the language-configuration trap) and RLS POLICY PERFORMANCE (the scalar sub-select wrap, indexing
+the policy column, and the `SECURITY DEFINER` helper). Read it when a query is a text search, or
+when RLS is this project's tenancy mechanism - not otherwise.

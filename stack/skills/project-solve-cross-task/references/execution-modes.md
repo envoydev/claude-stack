@@ -2,6 +2,19 @@
 
 The full team is not the default. Classify size, risk, domains, and contract impact, then run the smallest safe mode. Modes are a routing policy, not separate agents - never create a web-angular-small-task-agent or an aspnet-implementer-high; keep one seat per role and let this policy pick the mode and `references/model-routing.md` pick the effort.
 
+## Contents
+
+- DELEGATED vs INLINE - dispatch capability
+- Feature / change modes
+- Decision ladder
+- Single-chat and implementer-only
+- Route by risk, not size - what the verifier is worth
+- Escalation guardrails
+- Per-mode model, by example
+- Team Lead routing output
+- Issue / bug modes
+- Cost rules
+
 ## DELEGATED vs INLINE - dispatch capability
 Before the size/risk modes below, every skill carrying the session-or-agents decision - the orchestrators (`project-solve-cross-task`, `project-build-from-scratch`, `project-architecture-quality-loop`, `project-test-coverage-loop`, `project-quality-loop`), the captures, and the single-chat twins (`project-solution-design` / `project-implementer` / `project-verify-plan`) - picks one dispatch mode at the start and holds it for the run. This is the canonical statement of that policy; the skills that must run without this file installed carry their own pinned copies or restatements:
 

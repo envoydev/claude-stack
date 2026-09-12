@@ -11,17 +11,17 @@ request lifetime.
 - Keep EF6 for a stable data layer with EDMX or mature conventions; choose EF Core 3.1 for a
   greenfield-on-4.8 that will migrate later - it is the forward-compatible bet, since the eventual
   runtime move keeps EF Core. EF Core is not a drop-in replacement for EF6, so budget porting work. The
-  upgrade path itself is `dotnet-migrate`'s `references/net-framework-48.md`.
+  upgrade path itself belongs to the .NET migration skill's own 4.8 notes.
 
 ## Request lifetime and the single-operation rule
 
-- Scope the `DbContext` **per web request** through the DI container (the resolver wiring is
-  `dotnet-mvc-controllers`' `references/net-framework-48.md`). A `DbContext` is not thread-safe and runs
+- Scope the `DbContext` **per web request** through the DI container (the resolver wiring belongs to the
+  controller-based Web API skill's own 4.8 notes). A `DbContext` is not thread-safe and runs
   one operation at a time - parallel `await`s on one context throw 'A second operation started on this
   context...'. EF async buys scalability, not intra-request parallelism; for genuinely parallel queries
   use separate contexts.
 - Use async EF6 (`ToListAsync`, `SaveChangesAsync`) with `ConfigureAwait(false)` in the data layer (the
-  SynchronizationContext reason is `csharp`'s `references/net-framework-48.md`). Reads use
+  SynchronizationContext reason is in the `csharp` baseline's own 4.8 notes). Reads use
   `AsNoTracking`; avoid N+1 by projection or `Include` - unchanged from SKILL.md.
 - Enable a retrying execution strategy for Azure SQL (EF Core `EnableRetryOnFailure`; EF6
   `SqlAzureExecutionStrategy`). Caveat: a retrying strategy rejects a user-initiated `BeginTransaction`

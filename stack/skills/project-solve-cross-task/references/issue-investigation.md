@@ -2,6 +2,18 @@
 
 Bugs, CI failures, incidents, runtime errors, flaky tests, and unclear behavior use a different flow from feature work. Do NOT start them on the feature path (clarify -> scope -> solution designers -> implementers). Start with evidence and diagnosis.
 
+## Contents
+
+- Issue-flow seats
+- Investigation-only mode
+- Investigation + optional fix mode
+- Fix routing rules
+- Issue execution modes
+- Parallelism
+- Final report
+- Task card
+- Anti-patterns
+
 ```text
 Issue / failure report
   -> triage

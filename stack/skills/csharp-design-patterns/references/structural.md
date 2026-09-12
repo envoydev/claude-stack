@@ -2,6 +2,10 @@
 
 Each entry: Intent, When to use, Modern C# form, .NET-native form, Pros/Cons. Code targets .NET 8+, nullable enabled.
 
+## Contents
+
+Adapter, Bridge, Composite, Decorator, Facade, Flyweight, Proxy.
+
 ## Adapter
 
 **Intent**: convert the interface of an existing class into the interface clients expect.

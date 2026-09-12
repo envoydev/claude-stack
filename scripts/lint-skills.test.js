@@ -164,8 +164,14 @@ test('absentSkillsFor is the cross-stack case: a skill missing where the citing 
     assert.ok(!own.has('csharp'), 'its own stack ships csharp');
     assert.ok(own.has('angular-security'), 'but not another stack\'s');
 
-    // an artifact no seed installs proves nothing - no findings rather than false ones
-    assert.strictEqual(absentSkillsFor(closures, 'agents', 'not-seeded-anywhere', skills).size, 0);
+    // 39. An artifact NO seed installs is checked like every other citer, not exempted. It used to
+    // return an empty set, which made a citer with no closure the one shape that could name
+    // anything; such an artifact can land in ANY project, so only what ships everywhere is
+    // guaranteed beside it.
+    const optIn = absentSkillsFor(closures, 'agents', 'not-seeded-anywhere', skills);
+    assert.ok(optIn.has('csharp') && optIn.has('angular-security') && optIn.has('frontend'),
+        'an opt-in citer may not name a stack skill either');
+    assert.ok(!optIn.has('docs-as-code'), 'an always-on skill is still guaranteed beside it');
 });
 
 test('lintSuggestionEdges blocks the removed `suggests:` frontmatter from coming back', () => {
@@ -285,4 +291,254 @@ test('check 34: a references/ pointer at a sibling skill must resolve in that si
     assert.match(findings[0], /renamed-away\.md.*csharp.*dangled/);
     assert.match(findings[1], /never-existed\.md.*no skill folder/);
     fs.rmSync(root, { recursive: true, force: true });
+});
+
+// 35. The directive shapes that carry no load verb. Each of these was measured passing the
+// load-verb scan in the 2026-09-12 audits while routing the reader BY NAME to an absent artifact.
+test('check 35: a Companions list, a Points-at line, a routes-to sentence and a route column are directives', () => {
+    const { lintOptionalCites } = require('./lint-skills.js');
+    const optional = new Set(['dotnet-architecture-tests', 'angular-material', 'dotnet-migrate']);
+
+    // a `Companions:` list in a description - two names, no verb anywhere in the sentence
+    const companions = 'Companions: dotnet-migrate (migration mechanics), angular-material (the component library).\n';
+    assert.strictEqual(lintOptionalCites('f.md', companions, optional).length, 2);
+    assert.strictEqual(lintOptionalCites('f.md', 'Companion skills: dotnet-migrate.\n', optional).length, 1);
+
+    assert.strictEqual(lintOptionalCites('f.md', 'Points at dotnet-migrate and angular-material.\n', optional).length, 2);
+    assert.strictEqual(lintOptionalCites('f.md', 'A red routes to dotnet-architecture-tests for the boundary rule.\n', optional).length, 1);
+    assert.strictEqual(lintOptionalCites('f.md', 'Migrations route through dotnet-migrate.\n', optional).length, 1);
+    assert.strictEqual(lintOptionalCites('f.md', 'That mechanism is dotnet-migrate, which owns the workflow.\n', optional).length, 1);
+    assert.strictEqual(lintOptionalCites('f.md', 'The verifier hands off to angular-material for the component review.\n', optional).length, 1);
+    assert.strictEqual(lintOptionalCites('f.md', 'The loop dispatches dotnet-architecture-tests on every boundary change.\n', optional).length, 1);
+
+    // a route column is a load column, and the column need not be the last one
+    const routeTable = '| Situation | Route |\n|---|---|\n| Material UI | `angular-material` |\n';
+    assert.strictEqual(lintOptionalCites('f.md', routeTable, optional).length, 1);
+    const firstCol = '| Load | Why |\n|---|---|\n| `angular-material` | Material work |\n';
+    assert.strictEqual(lintOptionalCites('f.md', firstCol, optional).length, 1, 'the header cell carries the meaning, not the position');
+
+    // a plain pointer with none of the shapes is still not a directive
+    assert.deepStrictEqual(lintOptionalCites('f.md', 'Boundary enforcement lives in dotnet-architecture-tests.\n', optional), []);
+    // a single-word roster name is ordinary English unless it is backticked
+    const single = new Set(['mobile']);
+    assert.deepStrictEqual(lintOptionalCites('f.md', 'Points at mobile work on the device.\n', single), []);
+    assert.strictEqual(lintOptionalCites('f.md', 'Points at `mobile` for the shell.\n', single).length, 1);
+});
+
+// 36. Seat names follow the skill rule: name a seat only from an artifact installed in every unit
+// that installs the seat. The measured shape is an ALWAYS skill routing a red to four per-stack
+// resolvers, so every install is missing at least two of them.
+test('check 36: an agent name is cited under the same absence rule as a skill name', () => {
+    const { lintOptionalCites, optionalAgents, absentAgentsFor, seedClosures } = require('./lint-skills.js');
+    const recs = {
+        always: { skills: ['project-architecture-quality-loop'] },
+        general: { agents: ['related-project-analyzer'] },
+        stacks: {
+            aspnet: { agents: ['dotnet-build-error-resolver'] },
+            'web-angular': { agents: ['ng-build-error-resolver'] },
+        },
+    };
+    const graph = { agents: {}, rules: {} };
+    const seats = new Set(['dotnet-build-error-resolver', 'ng-build-error-resolver', 'related-project-analyzer']);
+
+    // the `general` list seeds no stack, so its seat is optional exactly like an opt-in skill
+    assert.deepStrictEqual([...optionalAgents(recs, graph, seats)], ['related-project-analyzer']);
+
+    const closures = seedClosures(recs, graph);
+    const absent = absentAgentsFor(closures, 'skills', 'project-architecture-quality-loop', seats);
+    assert.ok(absent.has('dotnet-build-error-resolver') && absent.has('ng-build-error-resolver'));
+
+    const body = 'A red routes to the matching resolver (dotnet-build-error-resolver / ng-build-error-resolver).\n';
+    const found = lintOptionalCites('skills/x/SKILL.md', body, new Set(), { agents: absent });
+    assert.strictEqual(found.length, 2);
+    assert.match(found[0], /seat can be absent here/, 'the message says seat, not skill');
+
+    // a seat inside the citer's own stack closure passes; another stack's does not
+    const own = absentAgentsFor(closures, 'agents', 'dotnet-build-error-resolver', seats);
+    assert.ok(!own.has('dotnet-build-error-resolver'), 'its own stack ships it');
+    assert.ok(own.has('ng-build-error-resolver'), "but not the other stack's seat");
+
+    // an artifact never names ITSELF into a finding, and a frontmatter preload is a guarantee
+    assert.deepStrictEqual(lintOptionalCites('skills/x/SKILL.md', 'Points at dotnet-build-error-resolver.\n', new Set(),
+        { agents: absent, self: 'dotnet-build-error-resolver' }), []);
+    const preloaded = '---\nname: x\nskills:\n  - dotnet-migrate\n---\n\nLoad dotnet-migrate before the first edit.\n';
+    assert.deepStrictEqual(lintOptionalCites('agents/x.md', preloaded, new Set(['dotnet-migrate'])), []);
+    // ... and the frontmatter's own keys are a registration, never a directive
+    const declaration = '---\nname: x\nskills:\n  - dotnet-migrate\n---\n\nbody\n';
+    assert.deepStrictEqual(lintOptionalCites('agents/x.md', declaration, new Set(['dotnet-migrate'])), []);
+});
+
+// 37. A plugin-qualified name is a skill the stack does not own and cannot guarantee. Named bare it
+// teaches a seat without the plugin nothing at all; the house form pairs it with what it contains.
+test('check 37: a plugin-qualified cite carries a content clause, or it is bare', () => {
+    const { lintPluginCites } = require('./lint-skills.js');
+    const plugins = new Set(['superpowers', 'claude-hud']);
+
+    // the golden form, live in baseline-quality-gates.md - the name, then the clause
+    const golden = 'satisfy `superpowers:verification-before-completion` - build + relevant tests run, output quoted - before any done word.\n';
+    assert.deepStrictEqual(lintPluginCites('rules/baseline-quality-gates.md', golden, plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `superpowers:writing-plans`: the plan format the house writes to.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Localize with `superpowers:systematic-debugging` (one hypothesis at a time, re-run before the next).\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'The loop is one hypothesis at a time - root cause before symptom, and the method is `superpowers:systematic-debugging`.\n', plugins), []);
+
+    // the measured shapes: a name and nothing else
+    const bare = lintPluginCites('agents/x.md', '- Follow `superpowers:verification-before-completion` before any done word.\n', plugins);
+    assert.strictEqual(bare.length, 1);
+    assert.match(bare[0], /agents\/x\.md:1 cites `superpowers:verification-before-completion` BARE/);
+    assert.strictEqual(lintPluginCites('f.md', 'Run the method (superpowers:systematic-debugging) first.\n', plugins).length, 1);
+    assert.strictEqual(lintPluginCites('f.md', 'the `superpowers:verification-before-completion` gate per task: run it.\n', plugins).length, 1);
+
+    // only real plugin namespaces, and only where the stack has some
+    assert.deepStrictEqual(lintPluginCites('f.md', 'status:blocked is not a plugin skill.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Follow `superpowers:writing-plans`.\n', new Set()), []);
+
+    // a frontmatter `skills:` preload is the GUARANTEE shape, not a cite: the skill is injected whole
+    // at seat start, a YAML list item cannot carry a content clause, and there is nothing to teach a
+    // seat that already holds it. Two seats were permanently red on this line.
+    const preload = '---\nname: ci-failure-diagnoser\ntools: Read\nskills:\n  - superpowers:systematic-debugging\n  - project-ci-failure-signatures\n---\n\nYou are a diagnostician.\n';
+    assert.deepStrictEqual(lintPluginCites('agents/ci-failure-diagnoser.md', preload, plugins), []);
+    // ... and the BODY of that same seat is still scanned
+    assert.strictEqual(lintPluginCites('agents/x.md', preload.replace('You are a diagnostician.', 'Run `superpowers:systematic-debugging` and report.'), plugins).length, 1);
+    // the description stays in scope - it is shipped prose a router reads, not a registration
+    const inDesc = '---\nname: x\ndescription: Use for a red build. Follow `superpowers:systematic-debugging` and report.\nskills:\n  - superpowers:systematic-debugging\n---\n\nbody\n';
+    assert.strictEqual(lintPluginCites('agents/x.md', inDesc, plugins).length, 1);
+});
+
+// 38. The Availability blanket covers its own section, never the whole file.
+test('check 38: an Availability callout blankets its section only', () => {
+    const { availabilityCoverage, lintOptionalCites } = require('./lint-skills.js');
+    const callout = '**Availability** - a row whose skill is not installed means the area is absent here.';
+
+    // under the file's own `# title` there is no higher heading, so the hub keeps its whole file
+    const hub = ['# dotnet (router)', '', callout, '', '## Area', 'row', '## Notes', 'note'];
+    assert.deepStrictEqual(availabilityCoverage(hub).filter(Boolean).length, hub.length - 2);
+
+    // under a `##` section it stops at the next `##`
+    const scoped = ['# Title', '', '## Routing', callout, 'row', '', '## Elsewhere', 'other'];
+    const cov = availabilityCoverage(scoped);
+    assert.ok(cov[3] && cov[4] && cov[5], 'its own section is covered');
+    assert.ok(!cov[6] && !cov[7], 'the next section of the same level is not');
+    assert.ok(!cov[0] && !cov[1] && !cov[2], 'and nothing before the callout is');
+
+    const optional = new Set(['angular-material']);
+    const text = ['# Title', '', '## Routing', callout, 'Load `angular-material` for Material work.', '',
+        '## Elsewhere', 'Load `angular-material` for Material work.', ''].join('\n');
+    const found = lintOptionalCites('f.md', text, optional);
+    assert.strictEqual(found.length, 1, 'only the cite outside the blanketed section');
+    assert.match(found[0], /f\.md:8/);
+});
+
+// 40. Every `tools:` entry resolves to a real tool - a dead grant is silent, so nothing else would
+// ever notice it. Names checked against https://code.claude.com/docs/en/tools-reference.
+test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant', () => {
+    const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
+    assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
+
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__serena__find_symbol, mcp__playwright__*, mcp__github\n';
+    assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
+    assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
+
+    const bad = lintAgentTools('agents/x.md', 'tools: Read, Task, Reed, mcp_serena\n');
+    assert.strictEqual(bad.length, 3, bad.join('\n'));
+    assert.ok(bad.some(f => f.includes("grants tool 'Task'")), 'a retired spelling is a finding, not an alias');
+    assert.ok(bad.some(f => f.includes("grants tool 'Reed'")));
+    assert.ok(bad.some(f => f.includes("grants tool 'mcp_serena'")), 'one underscore is not the mcp__ grant shape');
+    assert.match(bad[0], /tools-reference/, 'the message names the authority');
+});
+
+// 41. A reference over 100 lines opens with a table of contents inside its first 15.
+test('check 41: a long reference opens with a table of contents', () => {
+    const { lintReferenceContents } = require('./lint-skills.js');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-toc-'));
+    const body = (head) => `${head}\n${'line\n'.repeat(120)}`;
+    const mk = (d, rel, text) => { fs.mkdirSync(path.dirname(path.join(root, d, rel)), { recursive: true }); fs.writeFileSync(path.join(root, d, rel), text); };
+    mk('a', 'references/no-toc.md', body('# Long reference\n\nStraight into the prose.'));
+    mk('a', 'references/named-toc.md', body('# Long reference\n\n## Contents\n\n- one\n- two'));
+    mk('a', 'references/anchor-toc.md', body('# Long reference\n\n- [One](#one)\n- [Two](#two)'));
+    mk('a', 'references/bold-toc.md', body('# Long reference\n\n**Contents**\n\n- one'));
+    mk('b', 'references/short.md', `# Short\n${'line\n'.repeat(20)}`);
+
+    const findings = lintReferenceContents(root, ['a', 'b']);
+    assert.strictEqual(findings.length, 1, findings.join('\n'));
+    assert.match(findings[0], /a\/references\/no-toc\.md: 12[0-9] lines with no table of contents/);
+    fs.rmSync(root, { recursive: true, force: true });
+});
+
+// 42. An ENUMERATED component array and its directory are two lists that must say the same thing.
+test('check 42: the plugin manifest\'s commands array equals the commands directory', () => {
+    const { lintPluginComponents } = require('./lint-skills.js');
+    const onDisk = { commands: ['setup.md', 'status.md', 'update.md'] };
+
+    const clean = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md', './commands/update.md'] }, onDisk);
+    assert.deepStrictEqual(clean, [], clean.join('\n'));
+
+    const missing = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md', './commands/update.md', './commands/gone.md'] }, onDisk);
+    assert.strictEqual(missing.length, 1, missing.join('\n'));
+    assert.match(missing[0], /names 'commands\/gone\.md', which is not on disk/);
+
+    const dead = lintPluginComponents({ commands: ['./commands/setup.md', './commands/status.md'] }, onDisk);
+    assert.strictEqual(dead.length, 1, dead.join('\n'));
+    assert.match(dead[0], /setup-plugin\/commands\/update\.md is not in plugin\.json's `commands` array/);
+    assert.match(dead[0], /ships dead in every install/, 'the message says what the cost of the miss is');
+
+    // A field the manifest leaves out is the default directory scan - nothing to reconcile.
+    assert.deepStrictEqual(lintPluginComponents({}, onDisk), []);
+    // The `./` prefix is the manifest's own spelling, not a difference.
+    assert.deepStrictEqual(lintPluginComponents({ commands: ['commands/setup.md', 'commands/status.md', 'commands/update.md'] }, onDisk), []);
+});
+
+// 37 (extension). A BARE plugin name is the same class as a bare plugin skill, one level up.
+test('check 37: a backticked bare plugin name needs the clause saying what it gives', () => {
+    const { lintPluginCites } = require('./lint-skills.js');
+    const plugins = new Set(['superpowers', 'claude-md-management', 'csharp-lsp']);
+
+    const flagged = lintPluginCites('skills/x/references/capability-reuse.md', 'Wire the `csharp-lsp` plugin in.\n', plugins);
+    assert.strictEqual(flagged.length, 1, flagged.join('\n'));
+    assert.match(flagged[0], /names the plugin `csharp-lsp` BARE/);
+
+    // The same content clause that clears a `plugin:skill` cite clears a bare one, either side.
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Wire `csharp-lsp` - inline Roslyn diagnostics as each edit lands - into the seat.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `claude-md-management` (the audit-and-revise pass over the instruction file) here.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Drift in the instruction file is paid for by every seat - keep it current with `claude-md-management`.\n', plugins), []);
+
+    // Unbackticked prose is not a cite: stack-graph.js reads the backticked token, and the word
+    // 'superpowers' is English before it is a plugin.
+    assert.deepStrictEqual(lintPluginCites('f.md', 'You have superpowers in this session.\n', plugins), []);
+    // A qualified cite is judged once, by the qualified rule, not twice.
+    assert.strictEqual(lintPluginCites('f.md', 'Follow `superpowers:writing-plans`.\n', plugins).length, 1);
+});
+
+// 28. The verified note must name the plugin its keys were read from, not just any version.
+test('check 28: a verified note copied from another plugin is a finding', () => {
+    const { lintPluginSettings } = require('./lint-skills.js');
+    const roster = new Set(['claude-hud', 'superpowers']);
+    const row = (verified) => ({ plugins: { 'claude-hud': { verified, scope: 'account', targets: [{ file: 'plugins/claude-hud/config.json', settings: { display: { a: 1 } }, why: { display: 'x' } }] } } });
+
+    assert.deepStrictEqual(lintPluginSettings(row('claude-hud 0.8.0 - dist/config.js DEFAULT_CONFIG'), roster), []);
+    const wrongPlugin = lintPluginSettings(row('superpowers 6.3.0 - dist/config.js'), roster);
+    assert.strictEqual(wrongPlugin.length, 1, wrongPlugin.join('\n'));
+    assert.match(wrongPlugin[0], /opening with 'claude-hud <version>'/);
+    assert.strictEqual(lintPluginSettings(row('0.8.0'), roster).length, 1, 'a bare version does not say which plugin');
+});
+
+// 35b. The load verb can come AFTER the name, and only a back-reference makes it a directive.
+test('check 35: a trailing load verb with a back-reference is a directive too', () => {
+    const { lintOptionalCites } = require('./lint-skills.js');
+    const optional = new Set(['dotnet-aspire', 'angular-security']);
+    const fires = (t) => lintOptionalCites('x.md', t + '\n', optional).length;
+
+    // The two shapes the 2026-09-12 skills audit measured walking past the scan.
+    assert.strictEqual(fires('The boundary rules belong to `dotnet-aspire` - load both alongside this one.'), 1);
+    assert.strictEqual(fires('That surface is owned by `angular-security`; reach for it before the edit.'), 1);
+
+    // A pointer is still a pointer: no verb, or a verb whose object is something else.
+    assert.strictEqual(fires('Boundary rules live in `dotnet-aspire`.'), 0);
+    assert.strictEqual(fires('Mechanics live in `dotnet-aspire`. Load the migration tool first.'), 0,
+        'a fresh object in the NEXT sentence is a different artifact, not a back-reference');
+
+    // And the leading form is untouched.
+    assert.strictEqual(fires('Load `angular-security` before the edit.'), 1);
 });

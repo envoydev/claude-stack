@@ -1,13 +1,13 @@
 ---
 name: javascript
-description: "JavaScript language conventions, framework-agnostic - the base layer for all JS-family code: ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape. Load before writing or editing any .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. The type layer (TypeScript, and checked JS via JSDoc) is the `typescript` skill, which stacks on this baseline; frameworks add their own layer above that. Not for C#/.NET or other languages."
+description: "JavaScript language conventions, framework-agnostic - the base layer for all JS-family code. Load before writing or editing any .js, .jsx, .mjs, or .cjs file in any runtime - browser, Node, build script, service worker, extension. Covers ES modules only, named exports and boundary barrels, async/await discipline with cancellation, the two failure channels (returned result vs thrown Error), modern-feature adoption (structuredClone, iterator helpers, Temporal), untrusted-input rules, naming and shape. The type layer (TypeScript, and checked JS via JSDoc) stacks on this baseline in the type-conventions skill where the project has one; frameworks add their own layer above that. Not for C#/.NET or other languages."
 ---
 
 # JavaScript conventions - the base language layer
 
 For any runtime or package API surface not pinned down here, reach for the `context7` MCP rather than memory - never by grepping `node_modules` bundles (measured: one session spent ~5.2k tokens grep/sed-ing a minified package for an answer the live MCP held; the routing line lived only in a router skill this leaf never loads).
 
-These are the language rules for every piece of JS-family code, independent of where it runs. TypeScript's type layer (`typescript`) stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority - follow the project where it diverges.**
+These are the language rules for every piece of JS-family code, independent of where it runs. The TypeScript type-layer skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority - follow the project where it diverges.**
 
 ## Modules and imports
 
@@ -45,4 +45,5 @@ These are the language rules for every piece of JS-family code, independent of w
 
 - Default test runner for plain JS/TS projects: **Vitest** (ESM-first, Jest-compatible API) - jest only where the project already signals it (existing jest config/deps, CRA, a monorepo sibling on jest); `node:test` is the zero-dependency floor for small libraries. Frameworks bring their own harness and win in their own projects.
 - Performance work - Core Web Vitals in the browser, the never-block-the-event-loop discipline in Node, and the profiling toolbox - is `references/performance.md`; measure before optimizing.
-- Lint and format per the project's own config; in a TypeScript project the `typescript` skill's style reference owns the concrete setup.
+- Lint and format per the project's own config; in a TypeScript project the TypeScript type-layer skill's style reference owns the concrete setup.
+- Before any done word: run the project's lint and its test command over what you changed and quote both result lines. A JS change that was never executed is a change nobody has run - the language gives you no compiler to catch it.

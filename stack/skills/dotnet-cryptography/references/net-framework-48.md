@@ -28,6 +28,6 @@ name differs. The rule is unchanged: pick the primitive correctly, never roll yo
   Framework) or a CNG P/Invoke; where you cannot, fall back to AES-CBC + HMAC (encrypt-then-MAC). Still
   prefer authenticated encryption over bare AES-CBC once you have it.
 
-The TLS transport defaults are `dotnet-security`'s (its `references/net-framework-48.md`). Storing a
-protected secret at rest (Windows DPAPI, `ProtectedData`, `CurrentUser` scope) has no net48 delta - it
-lives in your secrets / config layer (`dotnet-security`'s SKILL.md).
+The TLS transport defaults belong to the security-hardening skill's own 4.8 notes. Storing a protected
+secret at rest (Windows DPAPI, `ProtectedData`, `CurrentUser` scope) has no net48 delta - it lives in
+your secrets / config layer.

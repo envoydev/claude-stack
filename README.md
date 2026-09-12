@@ -28,15 +28,41 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 79 | house conventions + workflow skills, `.claude/skills/` |
+| **Skills** | 78 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 11 | deterministic guards + an env-gated usage instrument (off by default), `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
-| **Plugins** | 7 | installed via the `claude` CLI |
+| **Plugins** | 6 | installed via the `claude` CLI |
 
 The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
 inventory at [`docs/claude-stack.html`](docs/claude-stack.html), not in this README.
+
+## What a run actually touches
+
+Read this before the first install - it is the whole trust surface, and nothing here is hidden
+behind a flag.
+
+| | |
+| --- | --- |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/`, the `.claude/settings.json` `env` block plus eleven hook wirings, `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
+| **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) |
+| **Starts** | six `claude plugin install` calls and up to eight `claude mcp add` registrations; nothing else executes from the package, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies |
+| **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
+| **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/claude-stack:status` reports your own install's number |
+
+Nothing is written outside the project and that account `env` block, and nothing is deleted that
+the run did not install.
+
+### Under managed settings
+
+An organisation enforcing `strictKnownMarketplaces` needs three `extraKnownMarketplaces` rows -
+`claude-stack` and `claude-hud` - since only `claude-plugins-official` is known by
+default, plus the seven `enabledPlugins` keys (the six above and `claude-stack` itself). And
+`allowManagedHooksOnly` silently disables all eleven house hooks: the files still install and the
+wirings still land in `settings.json`, but no guard ever fires, so the stack's deterministic gates
+are gone with nothing reporting it. Decide that one before rolling the stack out under a managed
+policy.
 
 ## Install - with the marketplace plugin (guided)
 
@@ -114,7 +140,7 @@ default behind an env gate, so it costs nothing until you flip `CLAUDE_STACK_INS
 `"1"` in `.claude/settings.json` env (flip it back after the measured run), and
 [`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus
 its dispatched subagents) into a token/consumption report - join the two with `--hook-log` to see
-what fired and what it cost.
+what fired and what it cost. Every per-session report carries an efficiency scorecard - cache misses by Claude Code's own rule, compaction re-reads, build-dir reads, scoped against whole-suite test runs, checked commits, green claims with no check behind them, correction streaks, long answers, dispatch overhead - each a measured number with its denominator, so a hook or rule change is read from a week of sessions instead of asserted.
 
 ```bash
 node scripts/analyze-usage.js ~/.claude/projects/<encoded-project>/<session-id>.jsonl

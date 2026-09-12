@@ -6,6 +6,21 @@ The version-agnostic conventions live in the parent SKILL.md; this reference is 
 mechanics plus the WinForms-specific migration deltas. The frozen 4.8 counterpart is
 **net-framework-48.md**.
 
+## Contents
+
+- Project shape
+- Dependency injection through the generic host
+- Secrets
+- The MVVM binding engine (stable in .NET 8)
+- Async: InvokeAsync and async forms
+- High-DPI as a build property
+- Dark mode (experimental .NET 9, stable .NET 10)
+- BinaryFormatter is gone - move payloads to JSON
+- Version timeline (what lands where)
+- WinForms-specific migration deltas
+- Deployment and packaging
+- Analyzers to keep on
+
 ## Project shape
 
 - SDK-style `.csproj`: `<TargetFramework>net10.0-windows</TargetFramework>` and

@@ -1,11 +1,11 @@
 ---
 name: dotnet-openapi
-description: "ASP.NET Core OpenAPI conventions - how a service emits a correct, generated OpenAPI document and serves a browsable docs UI from it. Picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Load before adding API docs, editing the generated spec, declaring a security scheme, or standing up the docs UI. Companions: dotnet-minimal-api (the endpoint metadata feeding the document), dotnet-web-backend, dotnet-authentication. Skip it for non-HTTP code and internal APIs with no published contract."
+description: "Use before adding API docs, editing the generated spec, declaring a security scheme, or standing up a Swagger / Scalar docs UI on an ASP.NET Core service. Covers how a service emits a correct, generated OpenAPI document and serves a browsable UI from it: picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Skip it for non-HTTP code and internal APIs with no published contract."
 ---
 
 # ASP.NET Core OpenAPI - the document and the docs UI
 
-OpenAPI is two separate concerns that get conflated: producing a faithful machine-readable description of the API, and rendering that description as something a human can click through. This skill owns both. The endpoint declarations the document is generated *from* - route groups, filters, `.WithName()`, the typed results - belong to `dotnet-minimal-api`; here we assume those exist and concentrate on turning them into an accurate spec and a usable UI. Floor is .NET 8 / C# 12.
+OpenAPI is two separate concerns that get conflated: producing a faithful machine-readable description of the API, and rendering that description as something a human can click through. This skill owns both. The endpoint declarations the document is generated *from* - route groups, filters, `.WithName()`, the typed results - belong to whichever skill covers your endpoint surface; here we assume those exist and concentrate on turning them into an accurate spec and a usable UI. Floor is .NET 8 / C# 12.
 
 The single discipline that runs through everything below: the document is generated, never hand-written. You shape the endpoints and the metadata, and the pipeline derives the spec. A spec edited by hand drifts from the running code the first time anyone forgets to update it.
 
@@ -42,9 +42,9 @@ if (app.Environment.IsDevelopment())
 
 A document is only as good as the type information it can see, and most thin specs are thin because the endpoints hide their types.
 
-- Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the `dotnet-minimal-api` default, so it usually comes for free.
-- Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails` (owned by `dotnet-web-error-handling`); the metadata here just advertises which statuses appear.
-- Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in the project file and write XML doc comments (`<summary>`, `<param>`, `<returns>`) so operation summaries and parameter descriptions land in the spec. The XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
+- Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the house minimal-API default, so it usually comes for free.
+- Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails`, owned by the skill covering HTTP error handling; the metadata here just advertises which statuses appear.
+- Write XML doc comments (`<summary>`, `<param>`, `<returns>`) and set `<GenerateDocumentationFile>true</GenerateDocumentationFile>`, then wire the generator to read them - the property alone only writes the XML file, it does not put anything in the spec. On Swashbuckle (.NET 8) the wiring is `o.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"))` inside `AddSwaggerGen`. The built-in `Microsoft.AspNetCore.OpenApi` generator reads XML comments from .NET 10; on .NET 9 the file is produced and ignored, so the summaries never reach the document. Confirm the current gate through `context7` before relying on it. Either way the XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
 
 ## Shape the document with transformers
 
@@ -52,7 +52,7 @@ When the generated spec needs adjusting - a server URL, a global response, consi
 
 - **Built-in (.NET 9+):** three composable hooks. `IOpenApiDocumentTransformer` (or `.AddDocumentTransformer(...)`) for whole-document edits like info, servers, and security; operation transformers via `.AddOperationTransformer(...)` for per-endpoint tags and shared responses; schema transformers for type-level adjustments. They run in registration order and stack cleanly.
 - **Swashbuckle (.NET 8):** the same three levels are `IDocumentFilter`, `IOperationFilter`, and `ISchemaFilter`, registered inside `AddSwaggerGen(o => o.DocumentFilter<...>())`.
-- The per-endpoint `.WithOpenApi(...)` modifier is deprecated under the built-in generator - move that logic into an operation transformer so the customization lives in one place instead of scattered across route registrations.
+- The per-endpoint `.WithOpenApi(...)` modifier is deprecated from .NET 10 under the built-in generator (`ASPDEPR002`); it still works on .NET 9. Move that logic into an operation transformer so the customization lives in one place instead of scattered across route registrations.
 
 ## Declare security schemes in the document
 
@@ -60,7 +60,7 @@ The spec has to describe how to authenticate, or the docs UI has no Authorize bu
 
 - **Built-in:** add an `OpenApiSecurityScheme` (typically HTTP `bearer` with `bearerFormat: JWT`) to the document's components via a document transformer, and a matching security requirement so protected operations reference it.
 - **Swashbuckle:** `AddSecurityDefinition("Bearer", ...)` plus `AddSecurityRequirement(...)`.
-- The real authentication and authorization pipeline - the handlers, the token validation, the policies - is `dotnet-authentication`. Keep the two in sync by hand: the scheme in the spec must name the scheme the app actually enforces, but the spec never enforces anything itself.
+- The real authentication and authorization pipeline - the handlers, the token validation, the policies - belongs to the skill covering .NET authentication. Keep the two in sync by hand: the scheme in the spec must name the scheme the app actually enforces, but the spec never enforces anything itself.
 
 ## Split versioned or grouped documents
 
@@ -68,7 +68,7 @@ When the API carries more than one version, or you want public and internal surf
 
 - **Built-in:** `AddOpenApi("v1")` and `AddOpenApi("v2")`, then tag each endpoint with `.WithGroupName("v1")` so it lands in the right document; each is served at `/openapi/{name}.json`.
 - **Swashbuckle:** one `SwaggerDoc("v1", ...)` per group, with an `ApiExplorer` group name on the endpoints.
-- The actual API-versioning strategy - URL segment versus header versus query, and how versions are deprecated - is `dotnet-web-backend`. This skill only routes endpoints into the documents that strategy implies.
+- The actual API-versioning strategy - URL segment versus header versus query, and how versions are deprecated - belongs to the ASP.NET Core cross-cutting hub. This skill only routes endpoints into the documents that strategy implies.
 
 ## Serve the docs UI with Scalar
 
@@ -76,8 +76,12 @@ When the API carries more than one version, or you want public and internal surf
 - Gate the UI: either wrap it in `if (app.Environment.IsDevelopment())` or attach `.RequireAuthorization()` in production. A docs page is a map of the internal surface - parameter names, status codes, schema shapes - and shipping it open invites scanning.
 - Theme with `.WithTheme(...)`. For convenience during local testing, prefill auth with `AddHttpAuthentication`, but only ever with a throwaway dev token - the UI renders credentials into the browser, so a real or production token there is leaked the moment the page loads. For a sensitive API, do not route the UI's calls through a request proxy - leave `.WithProxyUrl(...)` unset (the Aspire Scalar integration enables its own proxy by default; `DisableDefaultProxy()` turns it off there) - a proxy relays every call through another host.
 
+## Prove the document
+
+A generator that is wired is not a document that is right. Run the app, fetch `/openapi/v1.json` (or the Swashbuckle path), and quote two results: the count of `paths` against the endpoint list you expected, and one operation's `summary` and response schema. An empty `summary` block is the XML gate above not being wired; a missing path is an endpoint the generator cannot see.
+
 ## Anti-patterns
 
-- Returning untyped `Results.Ok()` and wondering why the schema is empty - the document can only describe the types it can see.
+- Returning untyped `Results.Ok()` and wondering why the schema is empty - the document can only describe the types it can see (§Make the schemas accurate).
 - Dropping `.WithName()` and then finding generated clients have meaningless method names - the operation id comes from the route name.
-- A production docs UI with no gate, or a real bearer token baked into Scalar's prefill.
+- Treating the document as hand-editable: an OpenAPI file checked in and edited by hand drifts from the code the moment an endpoint changes, and nothing fails when it does. The document is generated output; fix the endpoint, not the spec.

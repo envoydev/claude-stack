@@ -2,6 +2,13 @@
 
 The Ionic page-lifecycle hooks and the router-vs-NavController choice, for Angular 17+ standalone apps. Platform detection, deep-link routing, Capacitor listener lifecycle, and the NgZone boundary live in the parent `ionic` skill - this file is the in-app navigation layer only.
 
+## Contents
+
+- **The four page hooks** - `ionViewWillEnter` / `ionViewDidEnter` / `ionViewWillLeave` / `ionViewDidLeave` against the Angular init hooks, and why the DOM page cache splits them
+- **Which hook owns which work** - the per-concern table (refresh-on-entry, heavy work, subscriptions, teardown)
+- **NavController vs the Angular Router** - which one owns a navigation and how to force a stack direction
+- **Tabs** - one shell route, a child route per tab
+
 ## The four page hooks
 
 `<ion-router-outlet>` caches a page in the DOM after you navigate away so the back transition can animate the real element. That cache is why the Angular init hooks and the Ionic view hooks fire on different schedules - the Angular ones track component lifetime, the Ionic ones track visibility.

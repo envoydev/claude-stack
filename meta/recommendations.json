@@ -25,10 +25,8 @@
   ],
   "plugins": [
    "superpowers",
-   "claude-md-management",
    "security-guidance",
-   "claude-hud",
-   "ponytail"
+   "claude-hud"
   ],
   "hooks": [
    "guard-protected-force-push",
@@ -66,15 +64,18 @@
   "skills": [
    "dotnet-hosted-services",
    "dotnet-data-access",
-   "frontend",
    "project-related-context",
-   "project-stack-usage-analyzer"
+   "project-stack-usage-analyzer",
+   "plugin-authoring"
   ],
   "agents": [
    "related-project-analyzer"
   ],
   "mcps": [
    "memory"
+  ],
+  "plugins": [
+   "claude-md-management"
   ]
  },
  "stacks": {
@@ -87,6 +88,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -141,6 +143,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -168,6 +171,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -195,6 +199,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",
@@ -221,6 +226,7 @@
     "dotnet-test-failure-resolver"
    ],
    "skills": [
+    "dotnet",
     "csharp-design-patterns",
     "dotnet-architecture",
     "dotnet-diagnostics",

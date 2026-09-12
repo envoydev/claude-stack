@@ -1,6 +1,6 @@
 ---
 name: sqlite
-description: "SQLite engine specialist - the SQLite-specific delta on top of the cross-engine database-conventions hub: when SQLite fits, the single-writer / WAL concurrency model and busy-timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables and date/bool storage, limited ALTER TABLE and the table-rebuild, connection-per-thread and in-memory test DBs, B-tree-only indexing, FTS5, and backup. Load for a SQLite .db, a PRAGMA, an embedded/desktop/mobile/test store, or an EF Core SQLite provider quirk. Not the cross-engine schema/transaction rules (-> database-conventions) or a server-class concurrent-writer workload (-> postgres). Companions: database-conventions (cross-engine hub - load first), dotnet-data-access (the EF Core / ORM side), postgres (the other engine)."
+description: "Use when the work touches a SQLite database - a `.db` file, a PRAGMA, an embedded/desktop/mobile/test store, or an EF Core SQLite provider quirk. The SQLite-specific delta on top of the cross-engine database hub: when SQLite fits, the single-writer / WAL concurrency model and busy-timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables and date/bool storage, limited ALTER TABLE and the table-rebuild, connection-per-thread and in-memory test DBs, B-tree-only indexing, FTS5, and backup. Not the cross-engine schema and transaction rules - those are the hub skill, loaded first - and not a server-class concurrent-writer workload, which is the PostgreSQL skill."
 ---
 
 # sqlite (engine specialist)
@@ -49,6 +49,28 @@ PRAGMA synchronous = NORMAL;  -- the usual durability/speed balance with WAL
   10. `PRAGMA foreign_key_check` (if FKs were on).
   11. Commit.
   12. `PRAGMA foreign_keys=ON` again.
+- The core of that sequence, with its two PRAGMA bookends - steps 3, 8 and 9 (saving and recreating the indexes, triggers and views) are the ones a hand-written rebuild forgets:
+
+```sql
+PRAGMA foreign_keys=OFF;                          -- step 1, outside the transaction
+BEGIN;
+  -- step 3: SELECT type, name, sql FROM sqlite_schema WHERE tbl_name='orders';
+  CREATE TABLE new_orders (                       -- step 4: the revised schema
+    id      INTEGER PRIMARY KEY,
+    total   REAL NOT NULL,                        -- was TEXT
+    placed  TEXT NOT NULL
+  ) STRICT;
+  INSERT INTO new_orders (id, total, placed)      -- step 5
+    SELECT id, CAST(total AS REAL), placed FROM orders;
+  DROP TABLE orders;                              -- step 6
+  ALTER TABLE new_orders RENAME TO orders;        -- step 7
+  -- steps 8-9: replay the saved index / trigger / view SQL here
+  PRAGMA foreign_key_check;                       -- step 10, inside the transaction
+COMMIT;
+PRAGMA foreign_keys=ON;                           -- step 12
+```
+
+- **The rebuild is not done until its check is quoted.** Paste the `PRAGMA foreign_key_check` output (an empty result is the pass, and say so), plus the row counts either side of step 5 and an `EXPLAIN QUERY PLAN` for one query that used a recreated index - a rebuild that silently dropped an index reads as a successful migration until production slows down.
 - EF Core migrations on SQLite rebuild tables for many operations - can be slow and occasionally lossy. Review the generated SQL before applying.
 
 ## Queries and indexes

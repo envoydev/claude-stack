@@ -34,15 +34,15 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------
 const ROUTES = [
-  { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash'], deny: true },
-  { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash'], deny: true },
-  { hook: 'guard-read-whole-file.js', event: 'PreToolUse', tools: ['Read', 'Bash'], deny: true },
-  { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'Grep'], deny: true },
+  { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell'], deny: true },
+  { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell'], deny: true },
+  { hook: 'guard-read-whole-file.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell'], deny: true },
+  { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Grep'], deny: true },
   { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent'], deny: true },
-  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash'], deny: true },
+  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
-  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash'], deny: true },
+  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   { hook: 'guard-answer-length.js', event: 'Stop', deny: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false, needsTranscript: true },
@@ -58,6 +58,23 @@ const UNEXERCISED = {
     'no force-push to a protected branch occurred in 21.5k Bash payloads; the gate fires in guard-hooks.test.js',
   'guard-secret-value.js::PreToolUse:Grep':
     'the corpus predates this matcher - it was wired after a content-mode Grep was measured reading a settings.json the Bash route had just blocked; the gate fires in guard-secret-value.test.js',
+  // The PowerShell spelling of the shell route, wired 2026-09-12 after an audit measured 122
+  // PowerShell tool calls in a 115-session corpus against six guards matching `Bash` alone. The
+  // replay corpus predates the wiring, so it can prove nothing about these six; each fires on its
+  // own PowerShell-spelled case in guard-hooks.test.js / guard-secret-value.test.js. Delete a line
+  // here once the corpus carries a real PowerShell payload for that guard.
+  'guard-protected-force-push.js::PreToolUse:PowerShell':
+    'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
+  'guard-catastrophic-rm.js::PreToolUse:PowerShell':
+    'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
+  'guard-read-whole-file.js::PreToolUse:PowerShell':
+    'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
+  'guard-secret-value.js::PreToolUse:PowerShell':
+    'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-secret-value.test.js',
+  'guard-ungated-commit.js::PreToolUse:PowerShell':
+    'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
+  'guard-cross-project-write.js::PreToolUse:PowerShell':
+    'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
 };
 
 const routeId = (r, tool) => `${r.hook}::${r.event}${tool ? ':' + tool : ''}`;

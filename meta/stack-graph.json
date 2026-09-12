@@ -134,7 +134,9 @@
       "plugins": []
     },
     "dotnet-openapi": {
-      "mcps": [],
+      "mcps": [
+        "context7"
+      ],
       "plugins": []
     },
     "dotnet-performance": {
@@ -189,10 +191,6 @@
       "mcps": [],
       "plugins": []
     },
-    "frontend": {
-      "mcps": [],
-      "plugins": []
-    },
     "ilspy-decompile": {
       "mcps": [],
       "plugins": []
@@ -215,15 +213,15 @@
       "mcps": [],
       "plugins": []
     },
-    "mobile": {
-      "mcps": [],
-      "plugins": []
-    },
     "npm": {
       "mcps": [],
       "plugins": []
     },
     "nx": {
+      "mcps": [],
+      "plugins": []
+    },
+    "plugin-authoring": {
       "mcps": [],
       "plugins": []
     },
@@ -295,9 +293,7 @@
     },
     "project-solve-cross-task": {
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "project-solve-task": {
       "mcps": [],
@@ -378,14 +374,11 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "aspnet-solution-designer": {
       "skills": [
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-testing",
         "dotnet-web-backend",
         "project-solution-design"
@@ -419,9 +412,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "browser-extension-solution-designer": {
       "skills": [
@@ -475,14 +466,11 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "console-solution-designer": {
       "skills": [
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-hosted-services",
         "dotnet-testing",
         "project-solution-design"
@@ -511,15 +499,12 @@
         "csharp",
         "database-conventions",
         "dotnet-data-access",
-        "dotnet-migrate",
         "dotnet-testing"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "data-solution-designer": {
       "skills": [
@@ -552,9 +537,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "devops-solution-designer": {
       "skills": [
@@ -612,7 +595,6 @@
     "ionic-angular-implementer": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "ionic",
         "javascript",
         "typescript"
@@ -620,16 +602,13 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "ionic-angular-solution-designer": {
       "skills": [
         "angular-conventions",
         "angular-testing",
         "ionic",
-        "mobile",
         "project-solution-design"
       ],
       "skillsSource": "frontmatter",
@@ -640,7 +619,6 @@
     "ionic-angular-verifier": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "angular-testing",
         "ionic",
         "javascript",
@@ -682,7 +660,7 @@
     },
     "security-auditor": {
       "skills": [],
-      "skillsSource": "none",
+      "skillsSource": "body",
       "agents": [],
       "mcps": [],
       "plugins": [
@@ -705,16 +683,12 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "web-angular-solution-designer": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "angular-testing",
-        "frontend",
         "project-solution-design"
       ],
       "skillsSource": "frontmatter",
@@ -725,7 +699,6 @@
     "web-angular-verifier": {
       "skills": [
         "angular-conventions",
-        "angular-styling",
         "angular-testing",
         "javascript",
         "typescript"
@@ -747,14 +720,11 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "windows-service-solution-designer": {
       "skills": [
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-hosted-services",
         "dotnet-testing",
         "dotnet-windows-service",
@@ -789,15 +759,11 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "winforms-solution-designer": {
       "skills": [
-        "csharp",
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-testing",
         "dotnet-winforms",
         "project-solution-design"
@@ -824,22 +790,17 @@
     "wpf-implementer": {
       "skills": [
         "csharp",
-        "csharp-design-patterns",
         "dotnet-testing",
         "dotnet-wpf"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "ponytail"
-      ]
+      "plugins": []
     },
     "wpf-solution-designer": {
       "skills": [
-        "csharp",
         "csharp-design-patterns",
-        "dotnet",
         "dotnet-testing",
         "dotnet-wpf",
         "project-solution-design"
@@ -957,7 +918,6 @@
       "agents": [],
       "mcps": [],
       "plugins": [
-        "ponytail",
         "superpowers"
       ],
       "paths": []
@@ -986,9 +946,7 @@
       "skills": [
         "project-commit-checkpoint"
       ],
-      "agents": [
-        "integration-reviewer"
-      ],
+      "agents": [],
       "mcps": [],
       "plugins": [],
       "paths": []
@@ -1021,7 +979,9 @@
         "**/compose*.yml",
         "**/compose*.yaml",
         "**/.github/workflows/*.yml",
-        "**/.github/workflows/*.yaml"
+        "**/.github/workflows/*.yaml",
+        "**/deploy*.sh",
+        "**/deploy*.ps1"
       ]
     },
     "dotnet-repair-agents": {
@@ -1139,7 +1099,6 @@
       "claude-hud",
       "claude-md-management",
       "csharp-lsp",
-      "ponytail",
       "security-guidance",
       "superpowers",
       "typescript-lsp"

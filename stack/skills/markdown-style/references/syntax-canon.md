@@ -4,6 +4,24 @@ The 'what is valid' layer. Distilled from the Markdown Guide basic-syntax refere
 
 A finding in this file is a **must-fix** - the construct is either invalid or so inconsistently rendered across processors that it counts as a bug. The skill cites the rule by its short name (e.g., `syntax/headings/atx-space-after`) so the architect can locate it here.
 
+## Contents
+
+Every rule name in this file, by section - search the name verbatim to jump to its entry.
+
+- **Headings** - `syntax/headings/atx`, `syntax/headings/atx-space-after`, `syntax/headings/blank-lines-around`, `syntax/headings/setext`
+- **Paragraphs** - `syntax/paragraphs/blank-line-separator`, `syntax/paragraphs/no-indent`
+- **Line breaks** - `syntax/line-breaks/two-trailing-spaces`, `syntax/line-breaks/br-tag`, `syntax/line-breaks/backslash`
+- **Emphasis** - `syntax/emphasis/bold`, `syntax/emphasis/italic`, `syntax/emphasis/bold-italic`, `syntax/emphasis/mid-word-asterisks`
+- **Blockquotes** - `syntax/blockquote/prefix`, `syntax/blockquote/multi-paragraph`, `syntax/blockquote/nesting`, `syntax/blockquote/contents`
+- **Lists** - `syntax/lists/ordered-period`, `syntax/lists/ordered-start-at-1`, `syntax/lists/unordered-marker`, `syntax/lists/nested-indent-4`, `syntax/lists/nested-code-indent-8`, `syntax/lists/escape-leading-number`
+- **Code** - `syntax/code/inline-backticks`, `syntax/code/inline-double-backticks`, `syntax/code/indented-block`, `syntax/code/fenced-block`
+- **Horizontal rules** - `syntax/horizontal-rule`
+- **Links** - `syntax/links/inline`, `syntax/links/inline-title`, `syntax/links/autolinks`, `syntax/links/emphasis-and-code`, `syntax/links/reference-style`, `syntax/links/url-encoding`
+- **Images** - `syntax/images/inline`, `syntax/images/linked`
+- **Escaping** - `syntax/escape`
+- **Inline HTML** - `syntax/html/inline-allowed`, `syntax/html/block-level-blank-lines`, `syntax/html/block-level-no-indent`, `syntax/html/markdown-inside-block-html`
+- **Known compatibility footguns** - prose, no rule names
+
 ## Headings
 
 ### `syntax/headings/atx`

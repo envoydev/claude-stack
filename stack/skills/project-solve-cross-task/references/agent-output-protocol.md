@@ -2,6 +2,17 @@
 
 Every seat returns structured output - never free-form only - so the orchestrator can route on status without re-reading the whole result. The orchestrator keeps a durable ledger so a long run survives context compaction.
 
+## Contents
+
+- Status vocabulary
+- Designer output
+- Implementer output
+- Verifier output
+- Integration gate output
+- Progress ledger
+- Task-card template
+- Verification-report template
+
 ## Status vocabulary
 
 Five run statuses, shared across the seats that do work:

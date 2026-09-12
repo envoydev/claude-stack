@@ -1,15 +1,15 @@
 ---
 name: dotnet
-description: "Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, hosting & background work, testing & quality, diagnostics & performance, and desktop (WPF / WinForms). Routes per area, does not restate the skills. Load when starting or navigating any .NET / C# backend or desktop work - typed asks like 'add an endpoint to the orders API', 'my BackgroundService stopped overnight', or 'which skill covers EF Core queries' all start here. Companion: csharp (always, for any C#). For web front-end see frontend; for Ionic/Capacitor see mobile."
+description: "Load when starting or navigating any .NET / C# backend or desktop work - typed asks like 'add an endpoint to the orders API', 'my BackgroundService stopped overnight', or 'which skill covers EF Core queries' all start here. Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, hosting & background work, testing & quality, diagnostics & performance, and desktop (WPF / WinForms). Routes per area, does not restate the skills; pairs with `csharp` for any C# file. Do NOT load for front-end, mobile, or non-.NET work, and never load this router INSTEAD of the specialist skill a row names - this file only routes."
 ---
 
 # dotnet (skill router)
 
+**Availability - required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row.
+
 The single source-of-truth index mapping a concrete .NET work area - a construct, command, file, or task - to the one focused skill to load. It routes, it does not restate: load the named skill for the actual guidance. Pick by what you are about to do; if several rows match, load several.
 
 **Companion, not optional:** load `csharp` whenever you write or refactor any C# - naming, layout, modern syntax, async, dispose, exceptions/Result, logging, DI lifetimes. Every row below is *in addition to* the C# baseline, never instead of it.
-
-**Availability - required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row.
 
 **The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
 
@@ -114,28 +114,10 @@ The single source-of-truth index mapping a concrete .NET work area - a construct
 
 ## Legacy: .NET Framework 4.8 (net48)
 
-Maintaining or hardening a .NET Framework 4.8 codebase - the deltas from the modern floor live as a net48 reference inside each owner skill (`references/net-framework-48.md`, or the file the row names). Load the owner, then that file.
-
-| You are about to... | Load |
-|---|---|
-| write C# for net48 - the C# 7.3 language ceiling, compiler-only vs CLR-dependent features, polyfill packages, and the SynchronizationContext / ConfigureAwait async caveat | `csharp` (its `references/net-framework-48.md`) |
-| harden a net48 app - TLS registry keys, BinaryFormatter still shipping, ViewState / machineKey rotation, classic-ASP.NET headers, web.config secrets, dependency auditing | `dotnet-security` (its `references/net-framework-48.md`) |
-| use crypto on net48 - the PBKDF2 SHA-1 default, the RNG API name, AES-GCM availability | `dotnet-cryptography` (its `references/net-framework-48.md`) |
-| optimize on net48 - the 'slow span', NuGet-only fast-path packages, benchmarking on net48 | `dotnet-performance` (its `references/net-framework-48.md`) |
-| configure a net48 project - packages.config -> PackageReference, LangVersion pinning, Server GC, binding redirects | `dotnet-project-setup` (its `references/net-framework-48.md`) |
-| migrate off net48 - the frozen-platform stance and the upgrade-vs-replace blocker map | `dotnet-migrate` (its `references/net-framework-48.md`) |
-| build or maintain classic ASP.NET (MVC 5 / Web API 2 / Web Forms) on net48 - the single-threaded request context, no IHttpClientFactory, OWIN pipeline, caching | `dotnet-web-backend` (its `references/net-framework-48.md`) |
-| wire MVC 5 / Web API 2 controllers - the two separate DI resolvers, bind-DTOs-not-entities, anti-forgery | `dotnet-mvc-controllers` (its `references/net-framework-48.md`) |
-| add auth to classic ASP.NET - OWIN / Katana, ASP.NET Identity 2.x, OAuth bearer + JWT validation | `dotnet-authentication` (its `references/net-framework-48.md`) |
-| pick and scope EF on net48 - EF Core 3.1 vs EF6, DbContext-per-request, the single-operation rule | `dotnet-data-access` (its `references/net-framework-48.md`) |
-| test classic ASP.NET on net48 - in-memory OWIN TestServer, HttpContextBase over sealed HttpContext.Current | `dotnet-testing` (its `references/net-framework-48.md`) |
-| build or maintain a WPF app on net48 - CommunityToolkit.Mvvm source-generator constraints, Generic Host composition, app-level exception handlers | `dotnet-wpf` (its `references/net-framework-48.md`) |
-| maintain a .NET Framework Windows Service - the `ServiceBase` shape, `installutil`, and the migration path to `AddWindowsService` | `dotnet-windows-service` (its `references/framework-services.md`) |
-
-The async deadlock angle (why `ConfigureAwait(false)` is load-bearing here) is in `csharp`'s `references/net-framework-48.md`.
+Maintaining or hardening a .NET Framework 4.8 codebase routes through a second table - one row per work area, each naming the owner skill and the net48 reference file inside it, plus the async-deadlock angle. It is `references/net-framework-48-routing.md`; open it only when the codebase is actually on net48.
 
 ## Notes
 
 - **Every target is house-owned.** This router points only to skills authored in this repo - hubs that carry a `references/` folder (`dotnet-architecture`, `dotnet-data-access`, `dotnet-project-setup`, `dotnet-performance`, `dotnet-diagnostics`) and the leaf specialists. Some rows route into a hub's reference file rather than a standalone skill - load the named skill and open that reference; nothing here installs from a third-party kit.
 - **Hubs vs leaves.** `csharp` is the C# baseline hub, `dotnet-web-backend` the web hub, `database-conventions` the data hub, `dotnet-testing` the test hub - a leaf specialist points UP to its hub, the hub points DOWN to its deep specialists, and this router indexes them all. Load the web hub before a web specialist; load the data hub before EF/SQL specialists.
-- **Out of this router's scope.** Web front-end work routes through `frontend` (and `mobile` for Ionic/Capacitor), not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `project-verify-code`, context7 library docs, git - lives in the project's `CLAUDE.md`.
+- **Out of this router's scope.** Web front-end and mobile work belong to the Angular, TypeScript and Ionic/Capacitor conventions skills, whose descriptions lead with their own triggers - not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `project-verify-code`, context7 library docs, git - lives in the project's `CLAUDE.md`.

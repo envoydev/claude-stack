@@ -247,6 +247,12 @@
    "files": [
     "webpack.config.*"
    ]
+  },
+  "plugin-authoring": {
+   "files": [
+    "marketplace.json",
+    "plugin.json"
+   ]
   }
  },
  "mcps": {

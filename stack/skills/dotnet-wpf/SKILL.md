@@ -1,6 +1,6 @@
 ---
 name: dotnet-wpf
-description: "WPF conventions - strict MVVM with a one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Load before editing any XAML, code-behind, or ViewModel. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks; orchestration routes to csharp-design-patterns, tests to dotnet-testing, a paired Windows-Service worker to dotnet-hosted-services."
+description: "WPF conventions - strict MVVM on the data-binding engine. Load before editing any XAML, code-behind, or ViewModel. Covers the one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks."
 ---
 
 # WPF conventions
@@ -44,7 +44,7 @@ Compose the app through the .NET generic host, not hand-rolled service location 
 
 ## Pairing with a Windows Service
 
-A WPF desktop is often the front for a Windows Service companion - a tray or dashboard UI over a background daemon. The service half is not WPF code: the worker model is the hosted-worker skill's (BackgroundService lifecycle, graceful shutdown, 24/7 hardening) and the SCM layer is the Windows Service skill's (`AddWindowsService`, start/stop budgets, install and recovery) - load those for that process where the install has them; without them the service half is a plain generic-host worker with `AddWindowsService()`, and this skill stops at the contract below. What is WPF's side of the pairing: the two processes share only a contract - a named pipe, a local socket, a file or database, an IPC channel - never a UI thread or a `Dispatcher`; a service-pushed update crosses into the app as data and marshals onto the UI thread like any other off-thread work.
+A WPF desktop is often the front for a Windows Service companion. The service half is not WPF code - the worker model is the hosted-worker skill's (BackgroundService lifecycle, graceful shutdown) and the SCM layer the Windows Service skill's (`AddWindowsService`, start/stop budgets, install and recovery); load those for that process where the install has them, and without them the service half is a plain generic-host worker with `AddWindowsService()`. WPF's own side of the pairing is the boundary: the two processes share only a contract - a named pipe, a local socket, a file or database, an IPC channel - never a UI thread or a `Dispatcher`, and a service-pushed update crosses in as data and marshals onto the UI thread like any other off-thread work.
 
 ## Naming and pairing
 
@@ -126,17 +126,20 @@ private async Task LoadOrdersAsync(CancellationToken token)
   the `csharp` skill's; they apply unchanged here.
 - `AsyncRelayCommand` has two fault models - pick one deliberately. The default awaits and rethrows on the UI `SynchronizationContext`, so a try/catch inside the command sees the fault; setting `FlowExceptionsToTaskScheduler` instead routes it to `TaskScheduler.UnobservedTaskException`. Prefer the default and catch locally so the failure reaches the user through your dialog or error surface; reach for the flow option only when a deliberate global handler owns it.
 
-## Routed events vs commands
+## The interaction layer - what code-behind still owns
 
-Commands are the default for intent. Routed events are for the low-level interactions commands cannot
-express - drag-drop, mouse capture, manipulation. When a routed-event handler is unavoidable in
-code-behind, it does one thing: forward to a ViewModel method through a thin private wrapper. No
-branching, no domain logic, no state in the handler.
+- **Commands are the default for intent.** A routed-event handler is only for what commands cannot
+  express (drag-drop, mouse capture, manipulation), and it does one thing: forward to a ViewModel
+  method through a thin private wrapper. No branching, no domain logic, no state in the handler.
+- **Cross-cutting interaction goes in a behavior**, not code-behind plumbing -
+  `Microsoft.Xaml.Behaviors.Wpf`, one behavior per concern.
+- **No custom type on the clipboard or a drag payload.** On modern .NET `Clipboard.SetData`,
+  `SetDataObject` and `DoDragDrop` throw `PlatformNotSupportedException` for any non-intrinsic type -
+  put a string, an intrinsic, or JSON across the boundary instead.
 
-## Clipboard and drag-drop payloads
-
-- Custom types no longer ride onto the clipboard or a drag payload through `BinaryFormatter` - on modern .NET, `Clipboard.SetData`, `SetDataObject`, `DoDragDrop`, and navigation-journal state throw `PlatformNotSupportedException` for any non-intrinsic type (the runtime status and replacement are `dotnet-security`'s A08).
-- Put a serializable shape across the boundary instead: a string, an intrinsic type, or your object serialized to JSON or a `byte[]` you re-hydrate yourself. The `System.Runtime.Serialization.Formatters` compatibility shim is a migration bridge, not a destination.
+**Read `references/interaction-layer.md` before writing a routed-event handler, reaching for a
+behavior, or moving a payload across the clipboard or a drag operation** - it carries the reasons,
+the composition rule, and the `BinaryFormatter` migration bridge.
 
 ## Bindings: explicit and direct
 
@@ -149,68 +152,41 @@ branching, no domain logic, no state in the handler.
 - WPF binds with `{Binding}`. Compiled bindings (`x:Bind`) are a UWP/WinUI feature that WPF does not
   have - do not reach for it. Set `x:DataType` only where a tooling analyzer you use consumes it.
 
-## Dependency properties vs ViewModel state
+## Dependency and attached properties, weak events, validation
 
-The registration mechanics - control-only `DependencyProperty`, `PropertyMetadata`, coerce/validate callbacks, and why ViewModel state is never one - are in `references/mvvm-advanced.md`.
+**Read `references/mvvm-advanced.md` before registering a `DependencyProperty` or an attached
+property, wiring a subscription whose publisher outlives its subscriber, or adding validation to a
+ViewModel.** It owns all four mechanics - including why ViewModel state is never a
+`DependencyProperty`, the symmetric-undo rule for attached side effects, and the `ObservableValidator`
+validate-on-set / revalidate-on-submit cadence.
 
-## Attached properties
+## Keeping the UI responsive - threading and big lists
 
-The attached-property mechanics - `RegisterAttached` plus the `GetX` / `SetX` pair, and the symmetric-undo rule for side effects - are in `references/mvvm-advanced.md`.
+Two rules an ordinary edit must not get wrong:
 
-## Event subscriptions and weak events
+- **A ViewModel never touches `Application.Current.Dispatcher`.** Long work runs off the UI thread
+  (`await` an I/O `Task`, or `Task.Run` for CPU-bound work) and reports back through `IProgress<T>`,
+  which captures the UI `SynchronizationContext` for you. If a ViewModel truly must marshal, inject a
+  dispatcher abstraction so it stays testable.
+- **`ItemsControl` does not virtualize.** Any sizeable collection binds to `ListView`, `ListBox`, or
+  `DataGrid` instead - they do.
 
-Symmetric subscribe/unsubscribe and when to reach for `WeakEventManager` / `WeakReferenceMessenger` instead - the leak mechanics are in `references/mvvm-advanced.md`.
-
-## Behaviors over code-behind wiring
-
-- Reach for `Microsoft.Xaml.Behaviors.Wpf` for cross-cutting interaction - drag-drop, focus
-  management, data-triggered animation, event-to-command glue.
-- One behavior per concern; compose several on one element rather than building one omni-behavior.
-- This replaces `Loaded` / `Unloaded` subscriptions in code-behind for cross-cutting work. If you
-  find yourself adding plumbing in code-behind to react to interaction, a behavior is the home.
-
-## Validation lives on the ViewModel
-
-The validation depth - `INotifyDataErrorInfo` via the toolkit's `ObservableValidator`, C#-not-XAML validation logic, `Validation.ErrorTemplate`, the validate-on-set / revalidate-on-submit cadence - is in `references/mvvm-advanced.md`.
-
-## Threading: off the UI thread, marshalled back cleanly
-
-- Long work runs off the UI thread - `await` an I/O `Task` directly, or `Task.Run` for CPU-bound
-  work. The UI thread stays free to render.
-- Report progress with `IProgress<T>` (`Progress<T>` captures the UI `SynchronizationContext` and
-  marshals callbacks for you). Reach for `Dispatcher.Invoke` only when there is genuinely no other
-  way - it is the escape hatch, not the tool.
-- A ViewModel never touches `Application.Current.Dispatcher`. If it truly needs to marshal, inject a
-  dispatcher abstraction so the ViewModel stays testable.
-- `ObservableCollection<T>` must be mutated on the UI thread - it raises `CollectionChanged`
-  synchronously and the binding engine assumes the UI thread. For high-frequency updates, batch into
-  a backing list and replace once, or use a collection type built for cross-thread updates, rather
-  than firing thousands of per-item notifications.
-
-## Large lists need virtualization
-
-- `ItemsControl` does **not** virtualize by default. For any sizeable collection use `ListView`,
-  `ListBox`, or `DataGrid`, which do.
-- Keep `VirtualizingStackPanel.IsVirtualizing="True"`,
-  `VirtualizingStackPanel.VirtualizationMode="Recycling"`, and
-  `ScrollViewer.CanContentScroll="True"`. Recycling reuses containers instead of rebuilding them.
-- Do not swap in a `Grid`, `WrapPanel`, or `StackPanel` as the `ItemsPanel` for big lists - they
-  measure every child and defeat virtualization.
-- For tens of thousands of rows, `DataGrid` with `EnableRowVirtualization` and
-  `EnableColumnVirtualization` both true.
+**Read `references/threading-and-lists.md` before mutating a bound collection off the UI thread,
+tuning a high-frequency update path, or binding a list past a few hundred rows** - it owns the
+`ObservableCollection<T>` UI-thread constraint and its batch-and-replace pattern, the virtualization
+properties to keep set, and the `ItemsPanel` swaps that silently defeat them.
 
 ## ViewModels are unit tests waiting to happen
 
-- Because a ViewModel is a plain CLR object with no `Window` or `Dispatcher` dependency, it tests
-  directly - no UI host. The mechanics (framework, fakes, assertions) are the `dotnet-testing`
-  skill's; the WPF-specific points are below.
-- Assert change notification by subscribing to `PropertyChanged` and checking the property name
-  fired.
-- Test a command by calling `Execute(...)` and asserting resulting state or a mocked side effect;
-  assert `CanExecute(...)` separately from execution.
-- Inject every collaborator - `INavigationService`, `IDialogService`, repositories - so the test
-  substitutes them. Navigation runs through an `INavigationService`; a ViewModel never does
-  `new Window().Show()`.
+A ViewModel is a plain CLR object with no `Window` or `Dispatcher` dependency, so it tests directly
+with no UI host - that is the return on holding the MVVM line. Assert change notification by
+subscribing to `PropertyChanged` and checking the fired property name; test a command by calling
+`Execute(...)` and asserting state or a mocked side effect, with `CanExecute(...)` asserted
+separately. Inject every collaborator (`INavigationService`, `IDialogService`, repositories) so the
+test substitutes them - a ViewModel never does `new Window().Show()`. Framework, fakes and assertion
+mechanics are the `dotnet-testing` skill's. The check is the test run itself: a ViewModel test that needs a `Dispatcher`
+to pass is the failure - it proves the View-knows-ViewModel line was crossed - so quote the run and the first failure
+rather than asserting the layering holds.
 
 ## Styling and theming
 

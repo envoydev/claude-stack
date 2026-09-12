@@ -157,7 +157,11 @@ const CONVENTION_RULES = [
   [/\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b/, 'winforms-conventions.md'], // twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#
   [/\.cs\b/i, 'csharp-conventions.md'],
   [/\.xaml\b/i, 'wpf-conventions.md'],
-  [/\.(component|service|directive|pipe|guard|resolver|module|routes)\.ts\b/i, 'angular-conventions.md'],
+  // Twin of the rule's own `paths:`. The suffixes are the pre-v20 spelling; the directory shapes are
+  // the current one - the Angular style guide now recommends suffix-less names, and the rule matches
+  // `**/src/app/**/*.ts` for exactly that reason, so a write to `src/app/user-profile.ts` was being
+  // announced as typescript-conventions.md alone.
+  [/\.(component|service|directive|pipe|guard|resolver|module|routes)\.ts\b|(?:^|[\s"'=\/])src\/(?:app|lib)\/[^\s"';|&]*\.tsx?\b/i, 'angular-conventions.md'],
   [/\.(component|global)\.(scss|css)\b|\bstyles\.(scss|css)\b/i, 'angular-styling-conventions.md'],
   [/\.tsx?\b/i, 'typescript-conventions.md'],
   [/\.(jsx?|mjs|cjs)\b/i, 'javascript-conventions.md'],
@@ -184,14 +188,20 @@ const WRITES_RE = new RegExp([
 ].join('|'));
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
 // neither is the install's own `.claude/` tree. A `.md` hit whose targets all live there is dropped.
-const UNGOVERNED_MD = /(?:^|[\s"'=])(?:\.\/)?\.claude\//;
+// The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with
+// CLAUDE_STACK_DOCS_PATH=docs - the committed-root case the docs-root rule itself describes - a write
+// to `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
+const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const UNGOVERNED_MD = new RegExp(
+  `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
 function announceRules(text) {
   if (!WRITES_RE.test(text)) return;
   const hit = [];
   for (const [re, rule] of CONVENTION_RULES) if (re.test(text) && !hit.includes(rule)) hit.push(rule);
   if (hit.includes('markdown-docs.md')) {
     const mdTargets = [...String(text).matchAll(/(?:^|[\s"'=])((?:[^\s"';|&]+)?\.md)\b/g)].map((m) => m[1]);
-    if (mdTargets.length && mdTargets.every((f) => UNGOVERNED_MD.test(` ${f}`) || f.includes('.claude/')))
+    const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
+    if (mdTargets.length && mdTargets.every((f) => UNGOVERNED_MD.test(` ${f}`) || f.includes('.claude/') || f.includes(`${docsRel}/`)))
       hit.splice(hit.indexOf('markdown-docs.md'), 1);
   }
   if (!hit.length) return;
@@ -221,8 +231,14 @@ function announceRules(text) {
   process.exit = (code) => { if (code === 0) flush(); exit(code); };
 }
 
-// ---- Bash matcher: a whole-file dump via cat/sed is the Read block routed around ----
-if (payload.tool_name === 'Bash') {
+// ---- Shell matcher: a whole-file dump via cat/sed is the Read block routed around ----
+// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
+// `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
+// since 34 of 38 test runs in one collection arrived that way, and the hooks docs name the matcher
+// `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
+// (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
+const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+if (isShellTool(payload.tool_name)) {
   // Runs FIRST and on EVERY Bash call, not just the dump verbs: a grep, a build and a test run all
   // name the files whose conventions the session needs, and none of them reaches the checks below.
   try { announceRules(stripHeredocsOf(String((payload.tool_input || {}).command || ''))); } catch { /* an injection never breaks the gate */ }

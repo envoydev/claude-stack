@@ -1,6 +1,6 @@
 ---
 name: ts-js-testing
-description: "Plain TypeScript/JavaScript testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via project-test-coverage-analyzer): runner routing (Vitest the house default, Jest where the workspace signals it, node:test the zero-dependency floor - detect, never install), a test strategy keyed off role (pure module / boundary seam / DOM-adjacent / Node-runtime / published types), fake timers vs real async, the mock-masking smoke spec, and the TS/JS exclusion catalog. Covers libraries, Node CLIs/tooling, framework-free web code, and the browser-extension unit layer (the chrome.* seam and extension E2E live in browser-extension). Load before writing, modifying, or reviewing TS/JS tests outside a framework harness, auditing suite quality, running mutation testing, or configuring coverage - do not rely on recall. Do NOT load for Angular/Ionic (angular-testing) or .NET (dotnet-testing)."
+description: "Load before writing, modifying or reviewing plain TypeScript/JavaScript tests, auditing suite quality or configuring coverage - NOT for Angular or Ionic specs, which the Angular testing skill owns, and not for .NET, which the .NET testing skill owns. Covers libraries, Node CLIs and tooling, framework-free web code, and the browser-extension unit layer (the chrome.* seam and extension E2E live in the browser-extension skill): runner routing by detection (Vitest the house default, never install one), a strategy keyed off role, fake timers vs real async, the mock-masking smoke spec, mutation testing, and the TS/JS exclusion catalog. Practices and tooling only - it sets no coverage percentage, the % bar is the user's via project-test-coverage-analyzer. Do not rely on recall."
 ---
 
 # TypeScript Testing
@@ -13,10 +13,11 @@ meaningfully claim.
 
 Plain-JavaScript projects (`.js`/`.mjs`, with or without JSDoc/checkJs) share everything here -
 the published-type-surface section is the only TS-only part; a checked-JS project keeps
-`tsc --noEmit` in CI the same way. Framework surfaces have their own hubs: Angular (and Ionic)
-suites are `angular-testing`'s, .NET is `dotnet-testing`'s. Browser extensions share everything here for their chrome-free logic; the
-extension-specific seams - the mocked `chrome.*` API and Playwright persistent-context E2E - are
-the `browser-extension` skill's ground.
+`tsc --noEmit` in CI the same way. Framework surfaces have their own hubs: Angular and Ionic
+suites belong to the Angular testing skill, .NET to the .NET testing skill. Browser extensions
+share everything here for their chrome-free logic; the extension-specific seams - the mocked
+`chrome.*` API and Playwright persistent-context E2E - belong to the browser-extension skill, the
+one covering MV3 manifests and that seam.
 
 ## Runner routing
 
@@ -42,8 +43,11 @@ migrate a runner inside a task; a migration is its own user-approved change.
   a behavior only a browser proves moves to a Playwright E2E (or, interactively, the MCP that
   drives a real browser, when one is registered), never into deeper jsdom mocking.
 - **Node-runtime code (fs, env, processes)** - real temp dirs (`fs.mkdtemp`) beat fs mocks;
-  `memfs` where the workspace already uses it. `vi.stubEnv` (restored per test) over raw
-  `process.env` writes; child-process work goes behind an injected exec seam like any boundary.
+  `memfs` where the workspace already uses it. `vi.stubEnv` over raw `process.env` writes - it is NOT
+  restored per test on its own (`unstubEnvs` defaults to false), so set `unstubEnvs: true` in the
+  Vitest config or call `vi.unstubAllEnvs()` in a `beforeEach`, or the stub bleeds into every later
+  test (verified against the Vitest docs, `config/unstubenvs` + `api/vi`, 2026-09-12);
+  child-process work goes behind an injected exec seam like any boundary.
 - **Published type surface** - `expectTypeOf`/`tsd` assertions only for types that ARE the
   product (a library's public generics, a message-contract union); app-internal types are
   already tested by the compiler, and `tsc --noEmit` in CI is part of the suite.

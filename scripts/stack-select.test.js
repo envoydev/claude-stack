@@ -23,11 +23,14 @@ test('--check always names its verdict, clean or not', () => {
 
 test('an agent pulls its declared skills and plugins; body mentions pull nothing', () => {
     const c = computeClosure(graph, { agents: ['aspnet-solution-designer'] });
-    for (const s of ['dotnet', 'dotnet-web-backend', 'dotnet-testing'])
+    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing'])
     {
         assert.ok(c.skills.includes(s), `expected skill ${s} pulled by aspnet-solution-designer's frontmatter`);
     }
-    assert.match(c.reasons['dotnet'], /aspnet-solution-designer/);
+    assert.match(c.reasons['dotnet-web-backend'], /aspnet-solution-designer/);
+    // The dotnet ROUTER is deliberately not preloaded by the designers any more (a router beside its
+    // own leaves cost ~15k chars per dispatch); it reaches the install through the C# stack seeds.
+    assert.ok(!c.skills.includes('dotnet'), 'the dotnet router is no longer an agent edge');
     // aspnet-implementer preloads its operative stack skills via skills: frontmatter (the
     // prose-instructed loads fired in 0 of 5 seats in one measured session while every
     // frontmatter preload landed). A per-task surface pick it merely NAMES in the body is no
@@ -40,7 +43,10 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     }
     assert.strictEqual(graph.agents['aspnet-implementer'].suggests, undefined, 'the suggests edge is removed from the graph');
     assert.ok(!impl.skills.includes('dotnet-minimal-api'), 'a per-task surface pick named in the body is not pulled');
-    assert.ok(impl.plugins.includes('ponytail'), 'aspnet-implementer still pulls the ponytail plugin');
+    // The minimal-code plugin was dropped from the stack in 0.2.74 (a standing contradiction with
+    // the house no-marker rule, 0 invocations in 115 sessions, and its ladder already inline in 34
+    // agent bodies), so the seat's discipline paragraph is now its only home and pulls no plugin.
+    assert.deepStrictEqual(impl.plugins, [], 'the implementer carries its discipline inline and pulls no plugin');
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
     assert.deepStrictEqual(resolver.skills, [], 'a body-sourced agent locks no skills');
 });
@@ -207,12 +213,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 test('emitSelectionFile produces Component B selection lines', () => {
-    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['ponytail'] });
+    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['csharp-lsp'] });
     const lines = text.trim().split('\n');
     assert.ok(lines.includes('skill csharp'));
     assert.ok(lines.includes('agent aspnet-implementer'));
     assert.ok(lines.includes('mcp serena'));
-    assert.ok(lines.includes('plugin ponytail'));
+    assert.ok(lines.includes('plugin csharp-lsp'));
     assert.ok(lines.includes('rule csharp-conventions'));
 });
 
@@ -520,12 +526,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'frontend', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'frontend'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }

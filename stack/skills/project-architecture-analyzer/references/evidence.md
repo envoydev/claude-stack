@@ -4,7 +4,7 @@ The measured anecdotes behind this skill's rules, kept out of the run-time body 
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
 
 ## Intro
-- **a skill-level model pin is not reliably honored for main-session turns** - measured: invocations ran on the session model despite it, while agent-level pins in the same session held exactly
+- **a skill-level `model` pin applies only for the rest of the turn in which the skill activates** - measured: invocations ran on the session model, while agent-level pins in the same session held exactly; the documented turn scope is what the measurement shows, so the session model is the lever
 
 ## Execution modes
 - **An interrupted or declined ask is answered by RE-ASKING, never by inference** - measured: one run took exactly that sequence as 'run it'

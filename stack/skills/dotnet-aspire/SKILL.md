@@ -1,6 +1,6 @@
 ---
 name: dotnet-aspire
-description: ".NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. This is the local run, NOT production deployment or container publishing. Floors at .NET 8 / C# 12. Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. Companions: dotnet-web-backend, dotnet-testing. Do NOT load for non-Aspire projects, production deployment, or publishing images."
+description: "Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. This is the local run, NOT production deployment or container publishing. Floors at .NET 8 / C# 12. Do NOT load for non-Aspire projects, production deployment, or publishing images."
 ---
 
 # .NET Aspire - local orchestration
@@ -11,13 +11,13 @@ Aspire is two cooperating pieces, and this skill is about both:
 - the **AppHost**, a small project that declares the topology and orchestrates the local run;
 - **ServiceDefaults**, a shared library every service calls into for the cross-cutting plumbing.
 
-The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check probes, the resilience handlers - is configured by `dotnet-web-backend`. ServiceDefaults is just the composition point where they all get registered in one call. This skill owns the orchestration; it does not re-teach what goes inside the defaults.
+The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check probes, the resilience handlers - is configured by the skill covering the ASP.NET Core cross-cutting baseline (typed options, resilience, observability), where the install has one; without it, keep the defaults the templates ship and change one knob at a time with the reason recorded. ServiceDefaults is just the composition point where they all get registered in one call. This skill owns the orchestration; it does not re-teach what goes inside the defaults.
 
 ## What Aspire is and is not
 
-- It orchestrates a **local development run**. It is not a deployment system. The graph you write here drives `dotnet run` on the AppHost; getting the app onto a server is a separate concern that belongs to your CI and container tooling, and is out of scope for this skill.
-- It does not change how your services are written. A service still reads a connection string from configuration and constructs its clients the ordinary way - the AppHost is what hands it that connection string. Keep Aspire's client packages and resource types out of business logic; if you find yourself reaching for an Aspire type inside a handler, the wiring has leaked into the wrong layer.
-- Prefer the first-party integrations - Postgres, Redis, RabbitMQ, SQL Server, and the rest - over standing up a bare container and configuring it yourself. Each integration package handles the connection string, registers a health check, and emits traces, so you inherit observability and readiness for free instead of bolting them on.
+- **Local run only, never a deployment system.** The graph drives `dotnet run` on the AppHost; getting the app onto a server belongs to CI and container tooling.
+- **No Aspire type inside business logic.** A service reads its connection string from configuration as usual; the AppHost is only what hands it over. An Aspire type in a handler means the wiring leaked a layer.
+- **First-party integration over a bare container.** Postgres, Redis, RabbitMQ, SQL Server and the rest each bring the connection string, a health check and traces; a hand-configured container brings none of them.
 
 ## The AppHost owns the topology
 
@@ -77,20 +77,22 @@ var app = builder.Build();
 app.MapDefaultEndpoints();
 ```
 
-What goes *inside* each of those - which spans to record, what the readiness probe checks, how aggressive the retry policy is - is `dotnet-web-backend`'s call, not this skill's. ServiceDefaults is the place those decisions get registered, not where they get made.
+What goes *inside* each of those - which spans to record, what the readiness probe checks, how aggressive the retry policy is - is the ASP.NET Core cross-cutting baseline skill's call where the install has one, not this skill's. ServiceDefaults is the place those decisions get registered, not where they get made.
 
-Pair the registration with `MapDefaultEndpoints()`, which maps the health endpoints. Keep the liveness-versus-readiness distinction that `dotnet-web-backend` defines: liveness answers is the process alive, readiness answers can it serve traffic yet (dependencies reachable, warmup done). Map the readiness probe only in environments where an orchestrator will poll it.
+Pair the registration with `MapDefaultEndpoints()`, which maps the health endpoints. Keep the liveness-versus-readiness distinction: liveness answers is the process alive, readiness answers can it serve traffic yet (dependencies reachable, warmup done). Map the readiness probe only in environments where an orchestrator will poll it.
 
 ## Service discovery and configuration
 
 - Address other services by their Aspire resource name, never by a hardcoded host or port. With service discovery wired through ServiceDefaults, a typed `HttpClient` configured with a base address of `https+http://orders-api` resolves to wherever that resource is actually running. Hardcoding `localhost:5217` defeats the whole orchestration model and breaks the moment a port shifts.
-- Connection strings arrive as configuration, courtesy of the `WithReference` in the AppHost. The service should read them through the options pattern (`dotnet-web-backend`) and bind them to a typed options class - not pull magic strings out of `IConfiguration` ad hoc, and never hardcode a value the AppHost is already supplying.
+- Connection strings arrive as configuration, courtesy of the `WithReference` in the AppHost. The service should read them through the options pattern and bind them to a typed options class - not pull magic strings out of `IConfiguration` ad hoc, and never hardcode a value the AppHost is already supplying.
 - The contract between AppHost and service is the resource name plus the configuration key it injects under. Keep both stable; changing either is a wiring break even though nothing in the service signatures changed.
 
 ## The dashboard
 
-A local run launches the Aspire dashboard automatically. Lean on it instead of standing up Seq, Jaeger, or a local Grafana for the inner loop - it consumes the same OTLP that ServiceDefaults already exports, so traces, structured logs, and metrics for every resource are there with zero extra setup. Use it to follow a request across services, watch a resource's health flip, and read environment variables and console output per process. It is a development tool only; do not treat it as a production observability backend.
+A local run launches the dashboard automatically, consuming the same OTLP ServiceDefaults already exports - use it for cross-service traces, health flips, and per-process environment and console output instead of standing up Seq, Jaeger or Grafana for the inner loop. Development tool only; never a production observability backend.
+
+Prove the graph before calling the wiring done: `dotnet run` the AppHost, confirm every resource reaches Running in the dashboard and that each service resolved its injected connection string, and quote both. A topology that compiles but never starts is the failure this skill exists to prevent.
 
 ## Testing the orchestrated app
 
-To spin up the full graph in a test and assert against it, use `DistributedApplicationTestingBuilder` to build the AppHost in-process. The harness specifics - waiting on resources, resolving endpoints, fixture lifetime - belong to `dotnet-testing` (its `references/aspire-integration-testing.md`); load that when you write those tests rather than reinventing the setup here.
+To spin up the full graph in a test and assert against it, use `DistributedApplicationTestingBuilder` to build the AppHost in-process. The harness specifics - waiting on resources, resolving endpoints, fixture lifetime - belong to the skill covering .NET test practice, which carries the Aspire integration-testing reference; load it when you write those tests rather than reinventing the setup here, and with none installed keep the fixture to one AppHost build per test class and say the setup is unverified.

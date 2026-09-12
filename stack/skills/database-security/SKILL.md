@@ -1,6 +1,6 @@
 ---
 name: database-security
-description: "SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. Load when hardening or reviewing a SQL / data-persistence feature, when the security-auditor sweeps the data stack, or on asks like 'is this query injectable' or 'can one tenant read another's rows'. Points at dotnet-security for the app-layer EF and injection surface, dotnet-cryptography for crypto primitives, and dotnet-migrate for safe migration mechanics. Do NOT load for non-security work."
+description: "Load when hardening or reviewing a SQL / data-persistence feature, when a security sweep reaches the data stack, or on asks like 'is this query injectable' or 'can one tenant read another's rows'. SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. The body names each deeper route and what to do when the project installed none of them. Do NOT load for non-security work."
 ---
 
 # SQL / data-layer security
@@ -44,6 +44,10 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 
 - Audit who-changed-what on sensitive tables - temporal (system-versioned) tables, an audit trigger, or `created/modified by+at` columns - but the audit record must **never** store the secret it is tracking (log the fact of a password change, not the password).
 - A migration or seed that inserts a default admin credential, grants a broad role, or disables a constraint is a finding - flag it (safe migration mechanics are `dotnet-migrate`).
+
+## Probe before you report
+
+Two checks turn this from an opinion into a finding, and both are one query. List the runtime login's grants and quote the result - a login that can `CREATE`, `DROP` or read another schema is the finding, whatever the queries look like. Then confirm row-level security is enabled on every tenant-scoped table and quote the policy count; zero policies on a tenant table is the IDOR. A check you did not run is reported UNVERIFIED.
 
 ## Review output
 

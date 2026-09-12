@@ -624,3 +624,407 @@ test('hook-blocks: a probe row is counted apart from the blocks', () => {
   assert.deepStrictEqual(hookBlocks.probeKinds, { 'fork-liveness': 1 });
   assert.strictEqual(Object.keys(hookBlocks.byHook).length, 1, 'the probe is not a hook block row');
 });
+
+// ---------- the efficiency scorecard ----------
+// Each row is a measured practice with a denominator; these pin the classifiers on synthetic
+// transcripts so a regex drift cannot silently move a rate the observation week is read from.
+
+const scAsst = (id, ts, u, content, extra = {}) => line({ type: 'assistant', timestamp: ts, message: { id, model: 'claude-sonnet-5', usage: u, content, ...extra } });
+const scHuman = (ts, text) => line({ type: 'user', timestamp: ts, message: { content: text } });
+const toolRes = (ts, id, text, isError) => line({ type: 'user', timestamp: ts, message: { content: [{ type: 'tool_result', tool_use_id: id, content: text, ...(isError ? { is_error: true } : {}) }] } });
+const scBash = (id, cmd) => ({ type: 'tool_use', id, name: 'Bash', input: { command: cmd } });
+const scRead = (id, file) => ({ type: 'tool_use', id, name: 'Read', input: { file_path: file } });
+const scT = (n) => `2026-07-15T07:${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}.000Z`;
+
+test("scorecard: a cache miss uses Claude Code's own rule, and the first request after a compaction is an expected rebuild", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file,
+    scAsst('m1', scT(0), usage(10, 100000, 0, 5), []) +
+    scAsst('m2', scT(1), usage(10, 500, 100000, 5), []) +          // read everything m1 cached: continuous
+    scAsst('m3', scT(2), usage(10, 90000, 20000, 5), []) +         // re-processed 80.5k of 100.5k: a MISS
+    line({ type: 'system', timestamp: scT(3), compactMetadata: { trigger: 'auto', preTokens: 110000, postTokens: 30000 } }) +
+    line({ type: 'user', timestamp: scT(3), isCompactSummary: true, message: { content: 'summary' } }) +
+    scAsst('m4', scT(4), usage(10, 30000, 0, 5), []) +             // the rebuild after the compaction: EXPECTED
+    scAsst('m5', scT(5), usage(10, 100, 30000, 5), []),            // continuous again
+  );
+  const { main } = run([file]);
+  const e = main.efficiency;
+  assert.strictEqual(e.cacheMisses, 1);
+  assert.strictEqual(e.cacheMissTokens, 90000);
+  assert.strictEqual(e.cacheMissAt[0].reprocessed, 80500);
+  assert.strictEqual(e.expectedRebuilds, 1);
+  assert.strictEqual(e.expectedRebuildTokens, 30000);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: build-dir reads and post-compaction re-reads are counted on both routes, once per file per compaction', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file,
+    scAsst('m1', scT(0), usage(1, 0, 100, 5), [scRead('t1', 'src/a.cs'), scRead('t2', 'node_modules/x/index.js'), scBash('t3', 'cat dist/main.js'), scBash('t4', "sed -n '1,20p' src/b.cs")]) +
+    toolRes(scT(1), 't1', 'a'.repeat(400)) + toolRes(scT(1), 't2', 'b'.repeat(800)) + toolRes(scT(1), 't3', 'c'.repeat(200)) + toolRes(scT(1), 't4', 'd'.repeat(100)) +
+    line({ type: 'system', timestamp: scT(2), compactMetadata: { trigger: 'auto' } }) +
+    line({ type: 'user', timestamp: scT(2), isCompactSummary: true, message: { content: 'summary' } }) +
+    scAsst('m2', scT(3), usage(1, 0, 100, 5), [scRead('t5', 'src/a.cs'), scRead('t6', 'src/c.cs'), scBash('t7', 'head -n 5 src/b.cs'), scRead('t8', 'src/a.cs')]) +
+    toolRes(scT(4), 't5', 'a'.repeat(400)) + toolRes(scT(4), 't6', 'e'.repeat(300)) + toolRes(scT(4), 't7', 'd'.repeat(50)) + toolRes(scT(4), 't8', 'a'.repeat(400)),
+  );
+  const { main } = run([file]);
+  const e = main.efficiency;
+  assert.strictEqual(e.buildDirReads.calls, 2, 'the Read and the cat under a build dir');
+  assert.strictEqual(e.buildDirReads.chars, 1000);
+  assert.strictEqual(e.buildDirReads.paths['node_modules/x/index.js'], 800);
+  assert.deepStrictEqual(e.compactionRereads, [{ ts: scT(2), candidates: 4, files: 2, chars: 450 }], 'a.cs once (its second post-compaction read is not a second re-read), b.cs via head');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: test runs split scoped from whole-suite, and a commit is checked only when a check sat within the window', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  let body = '';
+  body += scAsst('m1', scT(0), usage(1, 0, 100, 5), [scBash('c1', 'dotnet test --filter FullyQualifiedName~Foo'), scBash('c2', 'dotnet test'), scBash('c3', 'npm run build')]);
+  body += toolRes(scT(1), 'c1', 'x'.repeat(300)) + toolRes(scT(1), 'c2', 'y'.repeat(5000)) + toolRes(scT(1), 'c3', 'z'.repeat(100));
+  body += scAsst('m2', scT(2), usage(1, 0, 100, 5), [scBash('g1', 'git commit -m first')]) + toolRes(scT(3), 'g1', '[main abc] first');
+  // 45 unrelated calls push the last check out of the 40-call window
+  const filler = []; for (let i = 0; i < 45; i++) filler.push(scBash(`f${i}`, `echo ${i}`));
+  body += scAsst('m3', scT(4), usage(1, 0, 100, 5), filler);
+  for (let i = 0; i < 45; i++) body += toolRes(scT(5), `f${i}`, String(i));
+  body += scAsst('m4', scT(6), usage(1, 0, 100, 5), [scBash('g2', 'git commit -m second')]) + toolRes(scT(7), 'g2', '[main def] second');
+  // the check and the commit in ONE call: checked
+  body += scAsst('m5', scT(8), usage(1, 0, 100, 5), [scBash('g3', 'npm test -- src/a.spec.ts && git commit -m third')]) + toolRes(scT(9), 'g3', '12 passed\n[main ghi] third');
+  fs.writeFileSync(file, body);
+  const { main } = run([file]);
+  const e = main.efficiency;
+  assert.deepStrictEqual(e.checks.test, { calls: 3, chars: 300 + 5000 + '12 passed\n[main ghi] third'.length, scoped: 2, whole: 1 });
+  assert.strictEqual(e.checks.build.calls, 1);
+  assert.strictEqual(main.gitCommits, 3);
+  assert.strictEqual(e.commitsChecked, 2);
+  assert.deepStrictEqual(e.commitsUnchecked, [scT(6)]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: a green claim with no check in its turn is listed, a checked or negated one is not; long answers and correction streaks count as the hook would', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  let body = '';
+  body += scHuman(scT(0), 'do it');
+  body += endTurn('m1', scT(1), 'Done. All tests pass now.');                       // no check this turn: UNVERIFIED
+  body += scHuman(scT(2), 'ok');
+  body += scAsst('m2', scT(3), usage(1, 0, 100, 5), [scBash('c1', 'npm test')]) + toolRes(scT(4), 'c1', '12 passed');
+  body += endTurn('m3', scT(5), 'Tests pass, 12/12.');                              // the turn ran the check
+  body += scHuman(scT(6), 'and?');
+  body += endTurn('m4', scT(7), 'The tests do not pass yet - two failures remain.'); // negated: not a claim
+  body += scHuman(scT(8), 'more');
+  body += endTurn('m5', scT(9), 'word '.repeat(420));                              // 2,099 chars of prose: LONG
+  // a correction streak: three short turns, each after a 1,500+ char answer
+  for (let i = 0; i < 4; i++) {
+    body += endTurn(`L${i}`, scT(10 + 2 * i), 'prose '.repeat(280));
+    body += scHuman(scT(11 + 2 * i), 'no, shorter');
+  }
+  fs.writeFileSync(file, body);
+  const { main } = run([file]);
+  const e = main.efficiency;
+  assert.strictEqual(e.greenClaims, 2);
+  assert.deepStrictEqual(e.unverifiedGreenClaims, [scT(1)]);
+  assert.strictEqual(e.longAnswers, 1, 'the 2,099-char answer; the four 1,680-char streak answers sit under the 1,800 cap');
+  assert.strictEqual(e.correctionTurns, 4, 'every short turn after a merged 1,500+ char answer');
+  assert.strictEqual(e.longAnswered, 4);
+  assert.strictEqual(e.finalAnswers, 8);
+  assert.deepStrictEqual(e.correctionStreaks, [scT(15)], 'recorded once, at the third short turn, not again at the fourth');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: dispatch overhead flags a seat whose input was mostly its own first-message context', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file, scAsst('m1', scT(0), usage(1, 0, 100, 5), []));
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  fs.writeFileSync(path.join(sub, 'agent-a1.jsonl'),
+    scAsst('a1', scT(1), usage(0, 0, 50000, 10), []) + scAsst('a2', scT(2), usage(0, 2000, 50000, 10), []));
+  fs.writeFileSync(path.join(sub, 'agent-a1.meta.json'), JSON.stringify({ agentType: 'aspnet-implementer' }));
+  fs.writeFileSync(path.join(sub, 'agent-b1.jsonl'),
+    scAsst('b1', scT(3), usage(0, 0, 10000, 10), []) + scAsst('b2', scT(4), usage(0, 40000, 10000, 10), []) + scAsst('b3', scT(5), usage(0, 0, 50000, 10), []));
+  fs.writeFileSync(path.join(sub, 'agent-b1.meta.json'), JSON.stringify({ agentType: 'evidence-gatherer' }));
+  const { dispatchOverhead: d } = run([file]);
+  assert.strictEqual(d.seats, 2);
+  assert.strictEqual(d.heavy, 1);
+  assert.deepStrictEqual(d.heavySeats, [{ type: 'aspnet-implementer', msgs: 2, floor: 50000, share: 98 }]);
+  assert.strictEqual(d.preloadTokens, 130000);
+  assert.strictEqual(d.seatInputTokens, 212000);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: the markdown skeleton carries the scorecard table and the efficiency verdict fill-in; the text report carries the block', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const file = writeFixture(dir);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /## Efficiency scorecard/);
+  assert.match(md, /\| cache continuity \| 0 miss\(es\)/);
+  assert.match(md, /\| long answers \| 0 of 0 final answer/);
+  assert.ok(md.indexOf('## Efficiency verdict - FILL IN') < md.indexOf('## Verdict - FILL IN'), 'the efficiency verdict precedes the skill verdict');
+  assert.match(md, /TOKEN VERDICT/);
+  assert.match(md, /EFFECTIVENESS/);
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /\nEFFICIENCY \(/);
+  assert.match(txt, /checked commits\s+no commit/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- INVENTORY vs USE: the complement the report never had ---
+// The analyzer counted consumption and never what was installed and never touched, so
+// 'unused in this corpus' was an ad-hoc script every time it was asked. These fixtures pin
+// one detection branch per layer plus the unused complement.
+
+// A synthetic install: two skills reached three different ways, one never; an agent whose
+// frontmatter PRELOADS a skill; an always-on rule, a path-scoped rule with a glob the session
+// matches, one named only by the shell-route notice, and one nothing touches.
+function writeInventory(root) {
+  const claude = path.join(root, '.claude');
+  const mk = (p) => fs.mkdirSync(p, { recursive: true });
+  mk(path.join(claude, 'skills'));
+  mk(path.join(claude, 'agents'));
+  mk(path.join(claude, 'rules'));
+  for (const s of ['alpha-skill', 'beta-skill', 'gamma-skill', 'delta-skill']) {
+    mk(path.join(claude, 'skills', s));
+    fs.writeFileSync(path.join(claude, 'skills', s, 'SKILL.md'), `---\nname: ${s}\ndescription: "fixture"\n---\n\nbody\n`);
+  }
+  fs.writeFileSync(path.join(claude, 'agents', 'demo-implementer.md'),
+    '---\nname: demo-implementer\ndescription: fixture seat\nmodel: sonnet\nskills:\n  - gamma-skill\n  - demo-plugin:preloaded-helper\n---\n\nbody\n');
+  fs.writeFileSync(path.join(claude, 'agents', 'unused-agent.md'), '---\nname: unused-agent\ndescription: never dispatched\n---\n\nbody\n');
+  fs.writeFileSync(path.join(claude, 'rules', 'baseline-demo.md'), '---\ndescription: always-on, no paths\n---\n\nbody\n');
+  fs.writeFileSync(path.join(claude, 'rules', 'demo-conventions.md'), '---\npaths: ["**/*.cs"]\n---\n\nbody\n');
+  fs.writeFileSync(path.join(claude, 'rules', 'shell-only-conventions.md'), '---\npaths: ["**/*.sql"]\n---\n\nbody\n');
+  fs.writeFileSync(path.join(claude, 'rules', 'other-conventions.md'), '---\npaths: ["**/*.{ts,tsx}"]\n---\n\nbody\n');
+  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {} } }));
+  const pluginsFile = path.join(root, 'installed_plugins.json');
+  fs.writeFileSync(pluginsFile, JSON.stringify({ version: 2, plugins: { 'demo-plugin@market': [{ scope: 'user' }], 'typescript-lsp@market': [{ scope: 'user' }], 'hooks-only-plugin@market': [{ scope: 'user' }] } }));
+  return { claude, pluginsFile };
+}
+
+const invAsst = (id, ts, content) => ({
+  type: 'assistant', timestamp: ts,
+  message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), content },
+});
+const use = (id, name, input) => ({ type: 'tool_use', id, name, input });
+
+function writeInventoryTranscript(dir, root, name) {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, [
+    // the transcript's own cwd - the machine that ran it. Present so the resolution is exercised.
+    line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'do the thing' } }),
+    line(invAsst('m1', '2026-07-15T07:00:10.000Z', [use('t1', 'Skill', { skill: 'alpha-skill' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:00:11.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+    // the slash route - a skill invoked as a command emits no Skill event at all
+    line({ type: 'user', timestamp: '2026-07-15T07:01:00.000Z', parentUuid: 'p2', origin: { kind: 'slash_command' }, message: { content: '<command-name>/beta-skill</command-name>' } }),
+    // a harness command must NOT open a skill row
+    line({ type: 'user', timestamp: '2026-07-15T07:01:01.000Z', parentUuid: 'p3', origin: { kind: 'slash_command' }, message: { content: '<command-name>/model</command-name>' } }),
+    line(invAsst('m2', '2026-07-15T07:02:00.000Z', [use('t2', 'Task', { subagent_type: 'demo-implementer', description: 'build one task' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:02:30.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'done' }] } }),
+    // a governed file touched through a file tool - the glob proxy's input
+    line(invAsst('m3', '2026-07-15T07:03:00.000Z', [use('t3', 'Edit', { file_path: `${root}/src/Foo.cs`, old_string: 'a', new_string: 'b' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:03:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'ok' }] } }),
+    // the DIRECT attach record the harness writes when it loads the rule
+    line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
+    // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
+    line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__serena__find_symbol', { name_path: 'Foo' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
+    line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),
+    // a plugin skill: the namespace is the plugin layer's evidence, and the skill row is observed
+    line(invAsst('m6', '2026-07-15T07:06:00.000Z', [use('t6', 'Skill', { skill: 'demo-plugin:helper' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:06:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't6', content: 'ok' }] } }),
+  ].join(''));
+  return file;
+}
+
+const invRow = (rows, name) => rows.find((r) => r.name === name);
+
+test('inventory vs use: every layer scores what was used, HOW it was observed, and what never was', () => {
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  const file = writeInventoryTranscript(dir, root, 'session.jsonl');
+  const { inventory } = run([file, '--inventory', claude, '--plugins', pluginsFile]);
+
+  // --- skills: three routes in, three different columns
+  assert.deepStrictEqual(invRow(inventory.skills, 'alpha-skill').how, ['Skill call x1'], 'the Skill tool');
+  assert.strictEqual(invRow(inventory.skills, 'alpha-skill').firstUse, '2026-07-15T07:00:10.000Z');
+  assert.deepStrictEqual(invRow(inventory.skills, 'beta-skill').how, ['slash command x1'], 'the slash route emits no Skill event');
+  assert.deepStrictEqual(invRow(inventory.skills, 'gamma-skill').how, ['preloaded via demo-implementer x1'],
+    "a seat's frontmatter preload is paid for in full and shows zero calls - its own column, never the caller's");
+  assert.strictEqual(invRow(inventory.skills, 'delta-skill').used, 'no');
+  assert.strictEqual(invRow(inventory.skills, 'model'), undefined, '/model is the harness, not a skill');
+  assert.strictEqual(invRow(inventory.skills, 'demo-plugin:helper').source, 'observed', 'a plugin skill is used but not in the project inventory');
+  assert.deepStrictEqual(invRow(inventory.skills, 'demo-plugin:preloaded-helper').how, ['preloaded via demo-implementer x1']);
+
+  // --- agents
+  assert.deepStrictEqual(invRow(inventory.agents, 'demo-implementer').how, ['dispatched x1']);
+  assert.strictEqual(invRow(inventory.agents, 'unused-agent').used, 'no');
+
+  // --- rules: always-on is not a question a transcript can answer; the rest have two direct
+  // records and a glob proxy under them
+  assert.strictEqual(invRow(inventory.rules, 'baseline-demo.md').used, 'not observable');
+  assert.deepStrictEqual(invRow(inventory.rules, 'demo-conventions.md').how.sort(),
+    ['attached (transcript record) x1', 'glob proxy x1'], 'the attach record AND the proxy, never one instead of the other');
+  assert.deepStrictEqual(invRow(inventory.rules, 'shell-only-conventions.md').how, ['shell-route notice x1'],
+    'the shell route attaches no rule, so the guard notice is the only record there is');
+  assert.strictEqual(invRow(inventory.rules, 'other-conventions.md').used, 'no');
+
+  // --- plugins: a namespace, an LSP call, and one that ships only hooks and can never score
+  assert.deepStrictEqual(invRow(inventory.plugins, 'demo-plugin').how.sort(), ['namespaced skill/command x1', 'preloaded skill x1'],
+    "a plugin skill named in a seat's preload list is that plugin's body entering the seat, on its own evidence line");
+  assert.deepStrictEqual(invRow(inventory.plugins, 'typescript-lsp').how, ['LSP call x1']);
+  assert.strictEqual(invRow(inventory.plugins, 'hooks-only-plugin').used, 'no');
+
+  // --- MCP
+  assert.deepStrictEqual(invRow(inventory.mcps, 'serena').how, ['calls x1']);
+  assert.strictEqual(invRow(inventory.mcps, 'context7').used, 'no');
+  assert.match(inventory.source.skills_agents_rules, /^project /);
+  assert.strictEqual(inventory.source.sessions, 1);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('inventory vs use: the corpus answer is used in N of M sessions, and the never-used set per layer', () => {
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  const sessions = path.join(dir, 'sessions');
+  fs.mkdirSync(sessions);
+  writeInventoryTranscript(sessions, root, 'a.jsonl');
+  // the second session touches nothing the first did
+  fs.writeFileSync(path.join(sessions, 'b.jsonl'),
+    line(invAsst('n1', '2026-07-16T07:00:00.000Z', [use('u1', 'Read', { file_path: `${root}/README.txt` })])));
+  const { inventory } = run([sessions, '--inventory', claude, '--plugins', pluginsFile]);
+  assert.strictEqual(inventory.source.sessions, 2);
+  assert.strictEqual(invRow(inventory.skills, 'alpha-skill').sessionsUsed, 1, 'used in 1 of 2');
+  assert.strictEqual(invRow(inventory.skills, 'alpha-skill').ofSessions, 2);
+  assert.strictEqual(invRow(inventory.skills, 'delta-skill').used, 'no', 'never used across the corpus');
+  assert.strictEqual(invRow(inventory.rules, 'other-conventions.md').used, 'no');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('inventory vs use: the block renders in the text report, the skeleton and the rollup', () => {
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  const file = writeInventoryTranscript(dir, root, 'session.jsonl');
+  const args = ['--inventory', claude, '--plugins', pluginsFile];
+
+  const txt = execFileSync('node', [SCRIPT, file, ...args], { encoding: 'utf8' });
+  assert.match(txt, /\nINVENTORY vs USE \(/);
+  assert.match(txt, /SKILLS - used 3 of 4 installed, \+2 used but in no inventory the run could read/);
+  assert.match(txt, /unused \(1\): delta-skill/);
+  assert.match(txt, /always-on - in every prompt, use not observable \(1\): baseline-demo\.md/);
+
+  const md = execFileSync('node', [SCRIPT, file, ...args, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /## Inventory vs use/);
+  assert.match(md, /### Skills \(used 3 of 4 installed, \+2 used but in no inventory the run could read\)/);
+  assert.match(md, /\| alpha-skill \| installed \| 1\/1 \| yes \| Skill call x1 \| 2026-07-15T07:00:10\.000Z \|/);
+  assert.match(md, /> unused \(1\): delta-skill/);
+  assert.ok(md.indexOf('## Inventory vs use') < md.indexOf('## Tools ('), 'the complement sits with the surface tables, before the tools table');
+
+  const sessions = path.join(dir, 'sessions');
+  fs.mkdirSync(sessions);
+  fs.copyFileSync(file, path.join(sessions, 'a.jsonl'));
+  const roll = execFileSync('node', [SCRIPT, sessions, ...args], { encoding: 'utf8' });
+  assert.match(roll, /\nINVENTORY vs USE \(/, 'directory mode carries the corpus answer');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('inventory vs use: the glob subset covers **, *, ? and brace groups, and nothing else', () => {
+  const { globToRe, parseFrontmatter } = require('./analyze-usage.js');
+  assert.ok(globToRe('**/*.cs').test('C:/Projects/app/src/Foo.cs'));
+  assert.ok(globToRe('**/*.cs').test('Foo.cs'), 'a bare relative path still matches');
+  assert.ok(!globToRe('**/*.cs').test('/app/src/Foo.csproj'));
+  assert.ok(globToRe('**/*.{ts,tsx}').test('/app/src/app.tsx'), 'brace group');
+  assert.ok(!globToRe('**/*.{ts,tsx}').test('/app/src/app.js'));
+  assert.ok(globToRe('src/*.ts').test('src/a.ts'));
+  assert.ok(!globToRe('src/*.ts').test('src/deep/a.ts'), 'a single star never crosses a separator');
+  assert.ok(globToRe('**/file?.md').test('/x/file1.md'));
+  // the frontmatter subset the loaders read: an inline array, a block list, a plain value
+  const fm = parseFrontmatter('---\nname: demo\npaths: ["**/*.cs", "**/*.razor"]\nskills:\n  - one\n  - two\n---\nbody');
+  assert.deepStrictEqual(fm.paths, ['**/*.cs', '**/*.razor']);
+  assert.deepStrictEqual(fm.skills, ['one', 'two']);
+  assert.strictEqual(fm.name, 'demo');
+});
+
+test('inventory vs use: a nested corpus is walked recursively, per project, and ledgers are not sessions', () => {
+  // The collected-bundle layout is `<corpus>/<project>/<session-id>/<session-id>.jsonl` with the
+  // ledgers beside it, and directory mode used to read only the files directly inside the folder
+  // it was given: an empty TOTAL, no inventory block, and every ledger file a bogus session row.
+  // Two projects, two different installs - the point of resolving the inventory per session.
+  const dir = tmp();
+  const corpus = path.join(dir, 'corpus');
+  const mkSkill = (claude, name) => {
+    fs.mkdirSync(path.join(claude, 'skills', name), { recursive: true });
+    fs.writeFileSync(path.join(claude, 'skills', name, 'SKILL.md'), `---\nname: ${name}\ndescription: "fixture"\n---\n\nbody\n`);
+  };
+  const project = (name, skills) => {
+    const root = path.join(dir, name);
+    const claude = path.join(root, '.claude');
+    for (const s of skills) mkSkill(claude, s);
+    return root;
+  };
+  // `shared-skill` is installed in BOTH and used in ONE; `solo-skill` is installed in one project
+  // only and never used; `absent-skill` exists nowhere and must never appear at all.
+  const rootA = project('project-a', ['shared-skill', 'solo-skill']);
+  const rootB = project('project-b', ['shared-skill']);
+
+  const bundle = (proj, sid, root, records) => {
+    const d = path.join(corpus, proj, sid);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, `${sid}.jsonl`), records.map(line).join(''));
+    // the two ledger families a bundle carries - JSONL of the same shape, never a session
+    fs.writeFileSync(path.join(d, `tool-usage-${sid}.jsonl`), line({ ts: '2026-07-15T07:00:00.000Z', tool: 'Read' }));
+    fs.writeFileSync(path.join(d, `hook-blocks-${sid}.jsonl`), line({ ts: '2026-07-15T07:00:00.000Z', hook: 'guard-read-whole-file.js' }));
+    // a dispatched seat's transcript belongs to its parent, never to the rollup as a session
+    fs.mkdirSync(path.join(d, 'subagents'), { recursive: true });
+    fs.writeFileSync(path.join(d, 'subagents', 'agent-s1.jsonl'), line(invAsst('s1', '2026-07-15T07:09:00.000Z', [])));
+    return d;
+  };
+  bundle('project-a', 'aaaaaaaa-1111-1111-1111-111111111111', rootA, [
+    { type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: rootA, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } },
+    invAsst('a1', '2026-07-15T07:00:10.000Z', [use('t1', 'Skill', { skill: 'shared-skill' })]),
+    { type: 'user', timestamp: '2026-07-15T07:00:11.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+  ]);
+  bundle('project-b', 'bbbbbbbb-2222-2222-2222-222222222222', rootB, [
+    { type: 'user', timestamp: '2026-07-16T07:00:00.000Z', cwd: rootB, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } },
+    invAsst('b1', '2026-07-16T07:00:10.000Z', [use('t1', 'Read', { file_path: `${rootB}/README.md` })]),
+    { type: 'user', timestamp: '2026-07-16T07:00:11.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+  ]);
+  // a collection-level ledger folder: its files are named `<session-id>.jsonl` and are not sessions
+  fs.mkdirSync(path.join(corpus, 'project-a', 'tools-usage'), { recursive: true });
+  fs.writeFileSync(path.join(corpus, 'project-a', 'tools-usage', 'cccccccc-3333-3333-3333-333333333333.jsonl'),
+    line({ ts: '2026-07-15T07:00:00.000Z', tool: 'Bash' }));
+
+  const pluginsFile = path.join(dir, 'installed_plugins.json');
+  fs.writeFileSync(pluginsFile, JSON.stringify({ version: 2, plugins: {} }));
+  const out = run([corpus, '--plugins', pluginsFile]);
+
+  assert.deepStrictEqual(out.sessions.map((x) => x.session).sort(),
+    ['aaaaaaaa-1111-1111-1111-111111111111', 'bbbbbbbb-2222-2222-2222-222222222222'],
+    'two sessions found two folders deep, and no ledger or seat transcript among them');
+  assert.strictEqual(out.sessions.length, 2, 'and no third row for either seat transcript');
+  assert.strictEqual(out.total.msgs, 4, "2 main msgs + each bundle's seat, counted under its parent - the TOTAL was empty before the walk recursed");
+  const inv = out.inventory;
+  assert.strictEqual(inv.source.sessions, 2);
+  assert.strictEqual(inv.source.inventories, 2, 'two cwds resolved two project inventories, not one');
+
+  const shared = invRow(inv.skills, 'shared-skill');
+  assert.strictEqual(shared.installedIn, 2, 'installed in 2 of 2 sessions');
+  assert.strictEqual(shared.sessionsUsed, 1, '... and used in 1');
+  const solo = invRow(inv.skills, 'solo-skill');
+  assert.strictEqual(solo.used, 'no');
+  assert.strictEqual(solo.installedIn, 1, 'installed in one project only - the unused line must say so');
+  assert.strictEqual(invRow(inv.skills, 'absent-skill'), undefined, 'a name nothing installed is not a non-use finding');
+
+  const txt = execFileSync('node', [SCRIPT, corpus, '--plugins', pluginsFile], { encoding: 'utf8' });
+  assert.match(txt, /SKILLS - used 1 of 2 installed/);
+  assert.match(txt, /never used \(1\): solo-skill \(installed in 1\/2\)/,
+    'the unused line carries the install count when the run spans installs that differ');
+  assert.doesNotMatch(txt, /tool-usage-|hook-blocks-|agent-s1/, 'no ledger or seat row in the rollup table');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

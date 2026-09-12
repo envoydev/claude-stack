@@ -1,13 +1,13 @@
 ---
 name: angular-conventions
-description: "Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, reward-hacking shortcuts to reject. Load when creating or editing a component, service, directive, or template; refactoring to signals; or reviewing Angular code. Companions: typescript, angular-material, angular-styling, angular-security, frontend, mobile. Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript."
+description: "Load when creating or editing an Angular component, service, directive, pipe or template, refactoring to signals, or reviewing Angular code. Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, reward-hacking shortcuts to reject. Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript."
 ---
 
 # Angular conventions
 
 House rules for Angular, floored at v17 and reaching forward to whatever the workspace is actually on (v20, v21, v22): version-gated idioms name their floor inline, the rest applies from v17 up, and a newer idiom is adopted only when the installed version ships it. The language underneath (strict TypeScript, type modeling, modules, async, error handling, lint and format) is the house TypeScript skill's - load it beside this one; everything here is purely Angular. Material components and the CDK, the broader web index, and the Ionic/Capacitor layer are each their own skill - match them from your skill list by what they cover, and skip any this project did not install. This file is opinion, not reference: it states the choices the team has settled on and the divergences kept on purpose. For any API surface not pinned down here, reach for the `context7` MCP or the Angular CLI MCP (angular.dev content) rather than memory - and never by grepping `node_modules` bundles. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load. Version specifics live in per-version delta files - load only the one your workspace is on (`references/v22.md`, `v21.md`, `v20.md`, `v19.md`: stable versus experimental, API spellings and deprecations, the Node.js/TypeScript floor, fact-checked against angular.dev); on v17/v18 there is no delta and this file alone governs.
 
-**The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/PROJECT-CODE-STYLE.md` outrank these conventions: follow the project where it diverges.
+**The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/PROJECT-CODE-STYLE.md` are higher priority - follow the project where it diverges.
 
 ## Standalone is the only module model
 - Every component, directive, and pipe is `standalone` - the implicit default from v19, declared explicitly before that. `NgModule` does not appear in new code; the bootstrap is `bootstrapApplication` with an `ApplicationConfig`.
@@ -47,7 +47,7 @@ Data that lives on the server (a fetched list, a record by id) is a cache of som
 - Use block control flow - `@if`, `@for`, `@switch` - in place of the old structural directives. Give every `@for` over an object collection a `track` expression keyed on a stable identity.
 - Defer below-the-fold and non-critical content with `@defer`. Pick the trigger on purpose - `on viewport`, `on idle`, `on interaction` - and always supply a `@placeholder` so nothing reflows when the block resolves.
 - Static images go through `NgOptimizedImage`; mark the above-the-fold hero `priority` so the LCP image preloads and its box is reserved, killing layout shift.
-- No `@angular/animations` DSL in new code - it is deprecated: use the native `animate.enter` / `animate.leave` bindings and plain CSS transitions, and plan existing DSL animations off it. Route transitions use `withViewTransitions()` - except inside an Ionic `IonRouterOutlet`, whose own stack transitions it fights (the `ionic` skill owns page transitions there).
+- No `@angular/animations` DSL in new code - it is deprecated: use the native `animate.enter` / `animate.leave` bindings and plain CSS transitions, and plan existing DSL animations off it. Route transitions use `withViewTransitions()` - except inside an Ionic `IonRouterOutlet`, whose own stack transitions it fights (page transitions there belong to the skill covering the Ionic/Capacitor layer; with none installed, keep `withViewTransitions()` off that outlet and say why inline).
 
 ## SSR and hydration
 Web targets only - a Capacitor WebView has no server render, so skip this in an Ionic native app. SSR project: the rules are in `references/ssr-hydration.md` - Read it before touching server rendering, hydration, or any code that runs during the server pass (browser globals, non-deterministic output, the transfer cache).
@@ -63,7 +63,7 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - Typed reactive forms (`FormGroup<T>`) are the default; on v22+ prefer Signal Forms for new forms (`form()` from `@angular/forms/signals`, stable there - experimental on v21, so version-tag any use). Template-driven forms are only for trivial throwaway inputs, and no field is ever typed or defaulted as `null`.
 - Lazy-load feature routes with `loadComponent` for standalone targets, falling back to `loadChildren` only where legacy modules remain.
 - Bind route params and `data` straight into component `input()`s with `withComponentInputBinding()` instead of injecting `ActivatedRoute` and reading snapshots.
-- Resolve a route's critical data ahead of activation with a thin `resolve` guard that delegates to a service, so the component renders without a request waterfall. Not in an Ionic app: cached pages never re-activate on revisit, so a resolver never re-runs and ships stale data - refresh on `ionViewWillEnter` there (the `ionic` skill's ground).
+- Resolve a route's critical data ahead of activation with a thin `resolve` guard that delegates to a service, so the component renders without a request waterfall. Not in an Ionic app: cached pages never re-activate on revisit, so a resolver never re-runs and ships stale data - refresh on `ionViewWillEnter` there - ground the skill covering the Ionic/Capacitor layer owns, and with none installed this rule is the whole guidance.
 - Validation is a layer, not a pile of one-off checks: rules declared on the model, reusable pure `ValidatorFn`s, cross-field rules on the group, async validators that debounce and cancel, ONE shared error surface - never a per-template error wall. The full strategy (Signal Forms and Standard Schema included) is `references/forms-validation.md`; load it before building any non-trivial form.
 
 ## Accessibility
@@ -72,6 +72,7 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - For custom widgets (accordion, listbox, combobox, menu, tabs, and more), build on the headless `@angular/aria` directives (developer preview in v21, stable from v22): they own the keyboard, focus, and ARIA state machine; you supply the markup and styles, hung off the aria-expanded / aria-selected / aria-current attributes they manage. Check `angular.dev/guide/aria` for the current roster and never reimplement that logic.
 - Text contrast meets WCAG AA - exact ratios are `angular-styling`'s to state.
 
+On greenfield or visual work, load `references/design-quality.md` before the first screen goes in - the type scale, spacing rhythm, color system, motion and per-state rules that keep a UI from reading as a framework default. Skip it when you are reproducing a fixed design or Figma handoff faithfully. It owns the *taste*; the mechanism lives in the styling skill (CSS, tokens, responsive) and, where the project uses Material, the theming skill.
 ## Feature boundaries
 - Features may depend on `shared/` and `core/` but never on one another. No import from `features/billing` reaches into `features/orders`. (How barrels and deep imports are policed is `typescript`.)
 - Anything two features must share crosses through a service in `core/` or a state store, never a direct component reference.
@@ -85,6 +86,7 @@ These are gates for the web/PWA target - a Capacitor binary loads its bundle fro
 ## Testing
 - Test practice is `angular-testing`'s - load it before writing, changing, or reviewing tests; this skill keeps only the convention below.
 - Bake automated accessibility checks into component specs - a11y is a convention gate here, not just a test technique. The matcher package follows the workspace's runner (`angular-testing` owns runner routing): `jest-axe` on Jest, `vitest-axe` on Vitest, raw `axe-core` (`axe.run` on the fixture element) under Karma/Jasmine - never mandate a matcher the installed runner cannot load.
+- Before calling an Angular change done, run the workspace build and the specs covering the files you touched, and quote both result lines. A build that was never run is not a green build.
 
 ## Banned patterns
 - No `setTimeout` poked in to coax change detection into noticing a change - it only 'works' because zone.js patches timers to trigger a render, so it papers over a broken signal/input flow and silently stops working under zoneless. Fix the flow instead.
@@ -96,13 +98,5 @@ These are gates for the web/PWA target - a Capacitor binary loads its bundle fro
 ## Reward-hacking shortcuts to reject
 The recurring ways a change fakes a green build or suite instead of earning it - reject each in review, whoever wrote it. This is the one consolidated list to check a diff against before claiming done; the language-level bans (`any`, `@ts-ignore`, non-null `!`) live in `typescript`.
 
-| Shortcut | Instead |
-|---|---|
-| `xit`/`xdescribe`, an `fdescribe` that narrows the run, or deleting a failing spec | fix the defect the spec caught; delete only a genuinely obsolete spec, with the reason stated |
-| Weakened assertion, or a spec rewritten to assert less than the behavior | fix the code, keep the bar (Testing above) |
-| Disabling an ESLint rule, loosening `strictTemplates`/`fullTemplateTypeCheck`, or `"aot": false` to clear an error | fix the type or template the compiler is pointing at |
-| `$any()` or `CUSTOM_ELEMENTS_SCHEMA`/`NO_ERRORS_SCHEMA` to mute a template error | import the declarable, fix the binding type |
-| Raising an `angular.json` budget or padding `allowedCommonJsDependencies` to clear a threshold | shrink the bundle honestly - defer, lazy-load, drop the dependency (Performance budgets above) |
-| Package downgrade to dodge a peer conflict | resolve the conflict at the current version |
-| Real time, real HTTP, or `tick(99999)` to mask flaky async | fix the async handling - `fakeAsync` with an honest `tick`, the HTTP testing controller |
+The shortcut-by-shortcut table is `references/reward-hacking.md` - read it before claiming a change is done.
 

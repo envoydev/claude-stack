@@ -2,6 +2,13 @@
 
 Description template, epic-specific rules, and example. The shared rules (Language, Tracker dialect, Filing, Tone, Assumptions, Format / delivery) and the Title format live in `SKILL.md`.
 
+## Contents
+
+- Title
+- Description template (Objective, Scope, Success Metrics, Proposed Stories / Breakdown, Notes)
+- Epic-specific rules
+- Example
+
 ## Title
 
 Phrase as a capability, system, or outcome - not a task.

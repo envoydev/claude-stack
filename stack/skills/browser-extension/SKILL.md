@@ -1,6 +1,6 @@
 ---
 name: browser-extension
-description: "Browser-extension engineering (TypeScript/JavaScript, Manifest V3): the ephemeral service-worker model, content-script isolation and MAIN-world boundaries, typed cross-context messaging, storage tiers and quotas, least-privilege permissions, CSP-safe UI frameworks, WXT-first tooling, store review and monetization reality. Fires on manifest.json / MV3 work, content scripts, extension service workers, chrome.* or browser.* APIs, popup/options/side-panel UI, Web Store or AMO publishing, 'build a chrome extension'. NOT for regular browser web apps (angular-conventions / frontend), Electron or VS Code extensions (Node-runtime work), or npm mechanics (npm skill)."
+description: "Use when building, reviewing, or shipping a browser extension - 'build a chrome extension', manifest.json / MV3 work, content scripts, extension service workers, chrome.* or browser.* APIs, popup/options/side-panel UI, Web Store or AMO publishing. Browser-extension engineering (TypeScript/JavaScript, Manifest V3): the ephemeral service-worker model, content-script isolation and MAIN-world boundaries, typed cross-context messaging, storage tiers and quotas, least-privilege permissions, CSP-safe UI frameworks, WXT-first tooling, store review and monetization reality. NOT for regular browser web apps, Electron or VS Code extensions (Node-runtime work), or package-manager mechanics."
 ---
 
 # Browser extensions - MV3 engineering that survives review and termination
@@ -10,9 +10,24 @@ Build MV3-only: Chrome stopped running MV2 for ordinary users mid-2025 and the W
 ## Architecture non-negotiables
 
 - **The service worker is an event router, never a state holder.** Globals vanish on termination (~30s idle; each event or extension API call resets the timer). Persist everything: `chrome.storage.session` for ephemeral state and tokens (in-memory, not exposed to content scripts by default), `chrome.storage.local` for durable data, IndexedDB via an extension page or offscreen document past ~10 MB. `localStorage` does not exist in a SW. Periodic work uses `chrome.alarms` (30s minimum) - `setInterval` dies with the worker. Register listeners synchronously at top level and lazy-import heavy modules: every event may be a cold start.
-- **One typed message contract.** All contexts (SW, content scripts, popup, options, side panel, offscreen) talk through one TS module of discriminated-union message types - `runtime.sendMessage` for one-shots, `runtime.connect` ports for streams. Untyped ad-hoc messages are how extensions rot.
+- **One typed message contract.** All contexts (SW, content scripts, popup, options, side panel, offscreen) talk through one TS module of discriminated-union message types - `runtime.sendMessage` for one-shots, `runtime.connect` ports for streams. Untyped ad-hoc messages are how extensions rot. One module, imported by every context:
+
+  ```ts
+  export type Msg =
+    | { type: 'CAPTURE_TAB'; tabId: number }
+    | { type: 'SAVE_NOTE'; body: string };
+  export type Reply = { ok: true; id: string } | { ok: false; error: string };
+  ```
 - **Content scripts run in an isolated world** - shared DOM, separate JS. Touching page JS needs an explicit MAIN-world injection (`world: 'MAIN'`), and MAIN world is enemy territory: the page reads and rewrites it, so no sensitive logic and no trust in anything coming back. Injected UI mounts inside a shadow DOM so host-page CSS cannot bleed in. Prefer lazy `scripting.executeScript` injection over static `content_scripts` that run on every page load.
-- **Cross-browser through the `browser.*` promise namespace** (webextension-polyfill or the toolkit's wrapper). Firefox runs background as an **event page, not a service worker** - declare both background keys; each browser ignores the other's. Feature-detect at runtime instead of assuming parity.
+- **Cross-browser through the `browser.*` promise namespace** (webextension-polyfill or the toolkit's wrapper). Firefox runs background as an **event page, not a service worker** - declare both background keys in the one `background` object; each browser ignores the other's. Feature-detect at runtime instead of assuming parity.
+
+  ```json
+  "background": {
+    "service_worker": "background.js",
+    "type": "module",
+    "scripts": ["background.js"]
+  }
+  ```
 
 ## Security floor
 
@@ -31,3 +46,5 @@ UI frameworks work in popup/options/side panel with one hard constraint: extensi
 ## Shipping
 
 Store policies, review realities (single-purpose rule, AMO's readable-source + bundled-dependency requirements, obfuscation bans), distribution modes, and monetization (no built-in store billing - your backend + a merchant-of-record, license token checked on load): `references/store-and-distribution.md`.
+
+Prove it before any done word: load the unpacked build, confirm the service worker registers with no error in its own console, send one message end to end and confirm the typed reply comes back, then quote both results. A manifest that parses is not an extension that runs, and the store review is the wrong place to discover the difference.

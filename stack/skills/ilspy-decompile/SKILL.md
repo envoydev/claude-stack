@@ -1,6 +1,6 @@
 ---
 name: ilspy-decompile
-description: "Decompile a compiled .NET assembly to read its real implementation - see how a framework or NuGet API actually works, view source you do not ship, or confirm behavior before a framework upgrade. Uses ilspycmd (via dnx or a pinned global tool). Load when you need ground truth from a .dll instead of guessing at an API, not for source you already have (that is serena / the LSP). Companions: `dotnet-migrate` (upgrade investigation), `csharp`."
+description: "Decompiles a compiled .NET assembly with ilspycmd (via dnx or a pinned global tool) to read its real implementation. Load when you need ground truth from a .dll instead of guessing at an API - 'what does this NuGet package actually do', 'read the framework source for this method', 'where is this method implemented in the package', 'did this behavior change before I upgrade across it'. Not for source you already have - that is serena / the LSP. The upgrade playbook and the C# language baseline are their own skills where the project has them."
 ---
 
 # ilspy-decompile
@@ -9,12 +9,13 @@ Decompile a compiled assembly when you need the real implementation - a framewor
 
 ## Tool
 
-`ilspycmd`, via either form (pick whichever the environment has):
+`ilspycmd`. Default to the no-install form:
 
 ```bash
-dnx ilspycmd -h                       # needs the .NET 10 SDK
-dotnet tool install --global ilspycmd # or pin per-repo in .config/dotnet-tools.json
+dnx ilspycmd -h                       # needs the .NET 10 SDK, installs nothing
 ```
+
+Where `dnx` is unavailable, the tool has to be installed, and that is the user's call, never yours. Ask ONE AskUserQuestion before running any install, with these options: pin it per-repo in `.config/dotnet-tools.json` (recommended - the version is committed and the machine stays clean), install it globally (`dotnet tool install --global ilspycmd`), or skip the decompile and report the question UNANSWERED. Where the harness has no AskUserQuestion tool, ask the same three options in plain text and wait. Never install on your own judgement.
 
 Flags vary by version - confirm with `ilspycmd -h`.
 
@@ -35,6 +36,8 @@ ilspycmd -il MyLibrary.dll                   # raw IL
 ```
 
 Workflow: identify what you want to understand, locate the assembly, decompile the one type (`-t`) rather than the whole thing.
+
+Confirm the output before you reason from it: a `-t` run that prints only a namespace and an empty type body means the assembly is ReadyToRun, trimmed, or a reference assembly - the implementation is not in that file. Re-run against a non-trimmed build, or the runtime `.dll` rather than the ref, before quoting anything as the real behavior.
 
 ## Modern-build caveats
 

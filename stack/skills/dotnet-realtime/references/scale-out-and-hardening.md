@@ -19,7 +19,7 @@ options.Events = new JwtBearerEvents
 };
 ```
 
-The full JWT/policy setup is `dotnet-authentication`; this is only the hub-specific wiring.
+The full JWT/policy setup belongs to the skill covering .NET authentication; this is only the hub-specific wiring.
 
 ## The MessagePack protocol
 

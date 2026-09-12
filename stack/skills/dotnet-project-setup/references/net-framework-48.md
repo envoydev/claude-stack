@@ -8,8 +8,8 @@ migration prerequisites.
 
 - Convert every project from `packages.config` to `PackageReference`: top-level-only project files, a
   global package cache, per-TFM conditioning, and - critically - it unlocks NuGet vulnerability
-  auditing (`dotnet-security`'s `references/net-framework-48.md`) and is a prerequisite for SDK-style /
-  modern-.NET migration. Use the VS 'Migrate packages.config to PackageReference' command (VS 2017
+  auditing (the security-hardening skill's own 4.8 notes carry the audit detail) and is a prerequisite
+  for SDK-style / modern-.NET migration. Use the VS 'Migrate packages.config to PackageReference' command (VS 2017
   15.7+). Blocker: this migration is not available for ASP.NET (System.Web) or C++ projects.
 - Central Package Management (`Directory.Packages.props` with `<PackageVersion>`) works with
   PackageReference on net48 - adopt it as in `references/central-package-management.md`.
@@ -18,8 +18,8 @@ migration prerequisites.
 
 - Pin `<LangVersion>` explicitly in Directory.Build.props (e.g. `8.0` / `9.0`), never `latest` - C# 7.3
   is the official net48 ceiling and higher versions only work for a subset. The
-  compiler-only-vs-CLR-dependent feature matrix and the polyfill packages are `csharp`'s
-  `references/net-framework-48.md`.
+  compiler-only-vs-CLR-dependent feature matrix and the polyfill packages are in the `csharp` baseline's
+  own 4.8 notes.
 
 ## Runtime configuration (app.config / web.config)
 

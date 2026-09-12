@@ -269,8 +269,11 @@ function main()
             // clean, and `git restore <dirty file>` passed on every Windows install (measured: the
             // release CI's windows job, both pathspec tests, 0 where 2 was expected).
             const { execFileSync } = require('child_process');
+            // stdio: git's own stderr is CAPTURED, not inherited. Left inherited, a non-repo path
+            // printed `fatal: not a git repository` to the user on a call this gate then PASSED -
+            // noise that reads as a hook failure on a clean pass.
             dirty = execFileSync('git', ['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])],
-                { cwd: root, timeout: 5000 }).toString().trim();
+                { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
         }
         catch { dirty = ''; } // not a git repo / git unavailable - never block on our own failure
 
@@ -309,7 +312,8 @@ function main()
             const receiptRel = path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
             process.stderr.write(
                 `Blocked: this discards uncommitted work in ${rows.length} file(s) under ${scope}, and there is\n` +
-                `no reflog for a working tree - once it is gone it is gone (CLAUDE.md's rm rule, same class).\n` +
+                `no reflog for a working tree - once it is gone it is gone. A house rule enforced here, no prose\n` +
+                `copy to consult - same class as the recursive-rm gate in this file.\n` +
                 rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
                 (rows.length > 10 ? `\n  ... and ${rows.length - 10} more` : '') +
                 `\n\nDo not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
@@ -331,7 +335,8 @@ function main()
 
     process.stderr.write(
         'Refusing a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
-        'parent, a bare *, or several top-level system dirs at once) - the filesystem has no reflog (CLAUDE.md). ' +
+        'parent, a bare *, or several top-level system dirs at once) - the filesystem has no reflog. A house ' +
+        'rule enforced here, no prose copy to consult. ' +
         'Delete a specific subdirectory by name instead.\n');
     process.exit(2);
 }

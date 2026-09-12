@@ -2,6 +2,10 @@
 
 Each entry: Intent, When to use, Modern C# form, .NET-native form, Pros/Cons. Code targets .NET 8+, nullable enabled.
 
+## Contents
+
+Factory Method, Abstract Factory, Builder, Prototype, Singleton.
+
 ## Factory Method
 
 **Intent**: define an interface for creating an object, but let subclasses (or registered implementations) decide which class to instantiate.

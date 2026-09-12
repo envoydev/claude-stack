@@ -10,6 +10,13 @@ A technical task is work that is not a bug or a user-facing feature. Supports th
 - **Upgrade** - dependency, framework, or platform version bumps
 - **Cleanup / Tech Debt** - removing dead code, fixing inconsistencies, paying down known debt
 
+## Contents
+
+- Title
+- Description templates: Refactor / Cleanup / Upgrade / Migration, Performance, Investigation / Spike
+- Task-specific rules
+- Examples, one per task type
+
 ## Title
 
 Phrase as an action or goal.

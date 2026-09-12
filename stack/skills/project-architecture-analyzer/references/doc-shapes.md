@@ -1,5 +1,12 @@
 # The capture's artifacts - required shape and write protocol
 
+## Contents
+
+- **`<docs-path>/architecture/ARCHITECTURE.md`** - the structure map's required shape
+- **`<docs-path>/architecture/ASSESSMENT.md`** - the reasoned evaluation: the four-question findings gate, the count rule, the three buckets, the shape, the format budget
+- **Write protocol** (how step 5 lands the docs) - the stamp, the branch delta, diagrams and format, the folder, the budget check and the spill
+- **`.claude/rules/baseline-project-architecture.md`** - the awareness rule's template and byte budget
+
 ## <docs-path>/architecture/ARCHITECTURE.md - the structure map
 
 The durable, whole-project architecture record - the orientation a solution-designer reads to keep new work consistent with the structure that already exists. Keep it LEAN: it carries the CORE map only, and deep-dive detail spills to `<docs-path>/architecture/references/<topic>.md` topic files that the main file links from a short index (the same hub-and-spoke shape as a skill's `SKILL.md` plus its `references/`). The five core sections, in order, each concise:

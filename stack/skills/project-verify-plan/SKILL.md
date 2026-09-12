@@ -1,11 +1,11 @@
 ---
 name: project-verify-plan
-description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with writing-plans (which creates the plan) and precedes project-verify-code (which reviews the built code). Trigger on review this plan, is this design sound, does the plan miss anything, before I build.
+description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Trigger on review this plan, is this design sound, does the plan miss anything, before I build. NOT the built-code review - that is project-verify-code, after the build - and not writing the plan itself.
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build
 
-A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, project-verify-code). This reviews an EXISTING plan or design (yours, or one `superpowers:writing-plans` produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
+A plan built perfectly is still wrong if the plan was wrong - the design carries the quality: a build handles the traps its plan names and ships the ones it misses, and catching the miss here on the page is cheaper than any downstream gate (the code, the tests, project-verify-code). This reviews an EXISTING plan or design (yours, or one `superpowers:writing-plans` - the implementation-plan format skill - produced) for the defects that are expensive to discover later. It does not write or fix code; it flags gaps in the plan and hands them back.
 
 ## Audit mode - this chat or the verifier seat
 
@@ -15,7 +15,7 @@ Audit inline in this chat, the five passes below. On an agents request, dispatch
 
 - Use it the moment a plan exists and before implementation starts - especially for anything with a boundary, state, auth, migration, or concurrency surface. The plan file is the whole input: a fresh session (or a different model) audits it as well as the chat that designed it - and independent eyes on the page are the point.
 - Not code review - that is `project-verify-code`, after the build.
-- Not plan *creation* - that is `superpowers:writing-plans` / `superpowers:brainstorming`. This audits a plan that already exists.
+- Not plan *creation* - that is `superpowers:writing-plans` (the plan-format skill) or `superpowers:brainstorming` (the intent-and-requirements pass before one exists). This audits a plan that already exists.
 
 ## The audit - five passes, in order
 
@@ -28,12 +28,10 @@ Load the plan's target stack skill FIRST, so you check against the right trap li
    capability it assumes a tool or seat has. Check it - `find_symbol`, a read of the config, a
    context7 lookup for the external ones - and mark anything you could not confirm `unverified` in
    the finding, never in the plan's prose as fact. This pass exists because asserted existence is
-   the most expensive defect class in the corpus: an invented CSS token plus two wrong test
-   predictions cost 2,663,771 tokens to repair, and a false capability claim propagated through a
-   DURABLE doc over six escalating hops (790,759 tokens of recovery) after being certified twice by
-   a report that never checked it.
+   the most expensive defect class in the corpus - two repairs measured in millions of tokens,
+   written up in `references/evidence.md`, both from a name that was asserted rather than looked up.
 4. **Edges + safety.** Boundary, empty, and error cases are named, not assumed. Any auth / migration-order / data-loss / concurrency surface is called out WITH its safeguard. Silence on a safety-critical edge is a finding.
-5. **Soundness.** The approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement - and its seams pass the design rules `project-solution-design` decides against: a task boundary that splits one axis of change across two tasks, an interface with one implementation and no credible second, a pattern with no trigger yet in the code, a task whose failure exits name no `log_points` (a silent failure designed in) - each a finding against the PLAN, with the breakage named, never a letter of SOLID alone.
+5. **Soundness.** A plan that is really a BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major - is a finding of its own before anything else is judged: that is the staged upgrade flow (`project-version-upgrade`), with a green gate after every stage, not a feature plan. Otherwise: the approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement - and its seams pass the design rules `project-solution-design` decides against: a task boundary that splits one axis of change across two tasks, an interface with one implementation and no credible second, a pattern with no trigger yet in the code, a task whose failure exits name no `log_points` (a silent failure designed in) - each a finding against the PLAN, with the breakage named, never a letter of SOLID alone.
 
 ## Output
 

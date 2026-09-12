@@ -12,9 +12,9 @@ DELEGATED, `3.naming.md` over src/Orders/:
 open: [(MAJOR, OrderSvc.cs:14, abbreviation in public type), (MINOR, OrderQueries.cs:22, vague 'data' param), (MINOR, OrderQueries.cs:41, vague 'tmp' local)]
 ```
 
-- RUN dispatched aspnet-verifier as a read-only auditor; the open set above is its result.
+- RUN dispatched the stack's verifier seat (here the .NET web one) as a read-only auditor; the open set above is its result.
 - FIX: OrderSvc -> OrderService (clear); the two vague names renamed to follow the OrderQueries naming
-  precedent, logged to DECISIONS. Dispatch aspnet-implementer with that findings-plan.
+  precedent, logged to DECISIONS. Dispatch the same stack's implementer seat with that findings-plan.
 - Pass 2 re-runs the auditor -> `open: []` -> **SATISFIED**; advance to the next file.
 
 ## Note on convergence
