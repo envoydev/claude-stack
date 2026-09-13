@@ -1,6 +1,6 @@
 # Concurrency correctness (async, cancellation, synchronization)
 
-The async-correctness mechanics that sit on top of this skill's style rules: how to await without deadlocking, how to thread a cancellation token to the leaves, the `Channel<T>` producer-consumer basics, and the synchronization primitives worth reaching for when shared mutable state is genuinely unavoidable. What a hosted worker loop adds on top is the hosted-worker skill's own concurrency reference, installed where the project hosts workers.
+The async-correctness mechanics that sit on top of this skill's style rules: how to await without deadlocking, how to thread a cancellation token to the leaves, the `Channel<T>` producer-consumer basics, and the synchronization primitives worth reaching for when shared mutable state is genuinely unavoidable. What a hosted worker loop adds on top - the unobserved-exception trap, captive scoped dependencies, `PeriodicTimer`, graceful shutdown - is the hosted-worker skill's own SKILL.md, installed where the project hosts workers.
 
 ## async/await correctness
 
