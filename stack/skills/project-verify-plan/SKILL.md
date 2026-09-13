@@ -35,7 +35,7 @@ Load the plan's target stack skill FIRST, so you check against the right trap li
 
 ## Output
 
-**Six named fields, every run, each with a value** - a controlled measurement put named fields at
+**Seven named fields, every run, each with a value** - a controlled measurement put named fields at
 5 of 5 emitted against a prose condition at 0 of 1, so anything that must happen every time is a
 field, not a sentence about when to write one:
 
