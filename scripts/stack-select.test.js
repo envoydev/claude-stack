@@ -587,6 +587,28 @@ test('CLI --missing prints per-category missing lines from an installed inventor
     }
 });
 
+test('CLI: plugins written as {name,scope} - the shape validate step 1 mandates - read as installed', () => {
+    // validate carries each plugin's scope into the inventory (an uninstall is scope-addressed),
+    // but every --installed consumer compared the raw entries against bare names, so each object
+    // matched nothing: --missing reported every installed plugin missing and --redundant never
+    // saw one (measured on a live validate run, worked around by re-writing plain names).
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-plugin-scope-'));
+    try
+    {
+        const invFile = path.join(dir, 'installed.json');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], plugins: [{ name: 'csharp-lsp', scope: 'project' }, { name: 'typescript-lsp', scope: 'project' }], hooks: [] }));
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+        const run = mode => execFileSync('node', [path.join(__dirname, 'stack-select.js'), mode, '--installed', invFile, '--recs', recsPath, '--graph', graphPath, '--stacks', 'aspnet'], { encoding: 'utf8' });
+        assert.ok(!/missing: plugin csharp-lsp/.test(run('--missing')), 'a scoped installed plugin is not missing');
+        assert.match(run('--redundant'), /plugin typescript-lsp/, 'a scoped installed plugin is seen by the redundant pass');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('CLI --redundant prints per-category redundant lines from an installed inventory', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-redundant-'));
     try

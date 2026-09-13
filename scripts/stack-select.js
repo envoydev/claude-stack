@@ -520,6 +520,20 @@ function findEvidenceGaps(catalog, found, installed)
     return { missing, unevidenced };
 }
 
+// An --installed inventory to the bare-name arrays every consumer compares against. validate
+// writes `plugins` as {name,scope} (an uninstall is scope-addressed), and a bare-name compare
+// matched none of those objects - every installed plugin read as missing (measured).
+function normalizeInventory(inv)
+{
+    if (!inv || typeof inv !== 'object') return inv;
+    const out = { ...inv };
+    for (const layer of ['skills', 'agents', 'rules', 'mcps', 'plugins', 'hooks'])
+        if (Array.isArray(inv[layer]))
+            out[layer] = inv[layer].map(e => (e && typeof e === 'object' ? e.name : e)).filter(Boolean).map(String);
+    if (Array.isArray(out.hooks)) out.hooks = out.hooks.map(h => h.replace(/\.js$/, ''));
+    return out;
+}
+
 function main(argv)
 {
     const arg = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
@@ -527,7 +541,7 @@ function main(argv)
     const readJson = (flag, file) =>
     {
         if (!file) return null;
-        try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+        try { const json = JSON.parse(fs.readFileSync(file, 'utf8')); return flag === '--installed' ? normalizeInventory(json) : json; }
         catch (e) { console.error(`stack-select: cannot read ${flag} ${file}: ${e.code || e.message}`); process.exit(1); }
     };
     // Advisory inputs (--found evidence labels, --dropped orphan offers) degrade to a loud
@@ -698,6 +712,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, evaluatePrereqs, detectEnvironment, onPath, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));
