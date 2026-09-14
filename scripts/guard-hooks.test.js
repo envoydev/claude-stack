@@ -1563,12 +1563,12 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
 });
 
-test('guard-fresh-session-start: a SECOND deliberate run is gated on the FIRST one, at any context size', () => {
+test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, at any context size', () => {
     // Measured across three audited sessions: four deliberate flows chained with zero `/clear`
     // boundary, 199.1k average context per message for well under 30k of real tool output, and the
     // size trigger fired on none of them - every run STARTED under it and crossed it only while
     // running. So the second run is judged on the FIRST run's own marker and never on the context,
-    // which is why every transcript here sits at 40k, far under the smallest trigger.
+    // which is why every transcript here sits at 60k, far under the smallest trigger.
     // 20k floor, 60k carry: cold by every trigger, and two thirds of the carry is what a resume
     // would recover, so the recoverable-share rule has nothing to say about these fixtures.
     const FLOOR = { cache_creation_input_tokens: 20000 };
@@ -1577,64 +1577,76 @@ test('guard-fresh-session-start: a SECOND deliberate run is gated on the FIRST o
     const toolResult = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
     const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
     const skillRow = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Skill', input: { skill: name } }], usage: COLD } });
-    const call = (tp, env, skill) => runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: skill || 'project-quality-loop' }, transcript_path: tp },
-        { env: env || winEnv() });
+    // The slash route is the only route this trigger judges. Its prompt row is already on disk when
+    // UserPromptSubmit fires, so every fixture ends with the command being judged. It never denies:
+    // an offer is injected context, so the helper returns that text ('' = no offer).
+    const slash = (tp, env, skill) => {
+      const r = runIn('guard-fresh-session-start.js',
+          { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'project-quality-loop'}</command-name>`, transcript_path: tp },
+          { env: env || winEnv() });
+      assert.equal(r.status, 0, 'the slash route never denies');
+      return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+    };
+    const skillCall = (tp, skill) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp },
+        { env: winEnv() }).status;
 
-    // ONE run in flight - its own marker is not a prior run.
-    const first = transcript('chain-first', [cmd('project-quality-loop'), assistantRow('a1', 'working', FLOOR)]);
-    assert.equal(call(first).status, 0, 'the run that is starting is not evidence against itself');
+    // ONE run starting - its own marker is not a prior run.
+    assert.equal(slash(transcript('chain-first', [cmd('project-quality-loop')])), '', 'the run that is starting is not evidence against itself');
 
-    // A finished run, a human turn, then a second one: the whole measured shape.
+    // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
       cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(),
-      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD),
+      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('project-quality-loop'),
     ]);
     const env = winEnv();
-    const blocked = call(second, env);
-    assert.equal(blocked.status, 2, 'the second deliberate run is blocked on a cold window');
-    assert.match(blocked.stderr, /ALREADY run one/, 'the denial names the reason - the prior run, not the size');
-    assert.match(blocked.stderr, /fresh session/, 'and carries the same offer the size trigger does');
+    const offered = slash(second, env);
+    assert.match(offered, /ALREADY run one/, 'the offer names the reason - the prior run, not the size');
+    assert.match(offered, /fresh session/, 'and carries the same offer the size trigger does');
     // ONCE per session: the user has answered, so the retry must go through.
-    assert.equal(call(second, env).status, 0, 'an answered offer is not asked again');
+    assert.equal(slash(second, env), '', 'an answered offer is not asked again');
 
-    // One run re-entering its OWN skill mid-flight is one run, not two - no human turn between.
-    const reentry = transcript('chain-reentry', [
-      cmd('project-quality-loop'), skillRow('a1', 'project-quality-loop'), toolResult(), assistantRow('a2', 'ok', COLD),
+    // ONE gated cycle is one run: its phases arrive as Skill calls, and its approval step puts a
+    // human turn between them. Measured 2026-09-14: the build step of a single cycle was offered a
+    // fresh session when Skill calls counted as runs.
+    const cycle = transcript('chain-cycle', [
+      cmd('project-solve-task'), assistantRow('a0', 'reading the plan', FLOOR), skillRow('a1', 'project-solution-design'),
+      toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'project-implementer'),
     ]);
-    assert.equal(call(reentry).status, 0, 'a mid-run re-entry is not a second run');
+    assert.equal(skillCall(cycle, 'project-implementer'), 0, 'a phase of a run in flight is not a second run');
+    assert.equal(skillCall(cycle, 'project-quality-loop'), 0, '... nor is any Skill-route call - only a typed run chains');
 
     // Chaining the SAME command twice is still chaining.
-    const twice = transcript('chain-twice', [
+    assert.match(slash(transcript('chain-twice', [
       cmd('project-quality-loop'), assistantRow('a1', 'done', FLOOR), toolResult(),
-      userRow('do it again'), assistantRow('a2', 'ok', COLD),
-    ]);
-    assert.equal(call(twice).status, 2, 'the same run a second time carries the same carried history');
+      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('project-quality-loop'),
+    ])), /ALREADY run one/, 'the same run a second time carries the same carried history');
 
-    // The slash route injects, exactly as the size trigger's does - it may never deny.
-    const slashTp = transcript('chain-slash', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(),
-      userRow('next'), assistantRow('a2', 'ok', COLD),
-    ]);
-    const slash = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/project-quality-loop</command-name>', transcript_path: slashTp },
-        { env: winEnv() });
-    assert.equal(slash.status, 0, 'the slash route never denies, on either trigger');
-    assert.match(JSON.parse(slash.stdout).hookSpecificOutput.additionalContext, /ALREADY run one/, '... it injects the same reason');
+    // The REAL slash shape: the harness writes the skill's body as an isMeta user record right after
+    // the marker, and other harness rows (command output, task notifications, a compact summary)
+    // are user-typed too. None is a human turn - measured 2026-09-14, a run started right after
+    // /clear was offered a fresh session.
+    assert.equal(slash(transcript('chain-harness-rows', [
+      assistantRow('a0', 'hello', FLOOR), assistantRow('a1', 'ok', COLD), cmd('project-solve-task'),
+      { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: 'Base directory for this skill: x' }] } },
+      userRow('<local-command-stdout>Set effort level</local-command-stdout>'),
+      userRow('<task-notification>agent done</task-notification>'),
+      { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued' } },
+    ]), winEnv(), 'project-solve-task'), '', 'harness-written user records are not a human turn');
 
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
     const plain = transcript('chain-plain', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'),
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
     ]);
-    assert.equal(call(plain, winEnv(), 'dev-log-convert').status, 0, 'a non-orchestration skill is untouched');
+    assert.equal(slash(plain, winEnv(), 'dev-log-convert'), '', 'a non-orchestration skill is untouched');
     // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
-    assert.equal(call(transcript('chain-allfloor', [
+    assert.equal(slash(transcript('chain-allfloor', [
       cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
-      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD),
-    ])).status, 0, 'a second run carrying only the cold floor is not worth a fresh session');
-    assert.equal(call(transcript('chain-off', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'),
-    ]), winEnv({ CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })).status, 0,
+      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('project-quality-loop'),
+    ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
+    assert.equal(slash(transcript('chain-off', [
+      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('project-quality-loop'),
+    ]), winEnv({ CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })), '',
         'all three triggers off is the whole off switch - the chained one included');
 });
 
