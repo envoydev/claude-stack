@@ -1,6 +1,6 @@
 ---
 name: project-test-coverage-analyzer
-description: "Use when someone asks to measure the test coverage, capture the coverage baseline, or how covered is this project - the deliberate coverage capture. Detects each stack's test-and-coverage tooling, runs the instrumented suite ONCE per surface in the main session, judges the result against the USER's % bar, and writes the coverage doc plus its raw results, reconciling both in place on a re-run. Deliberate only - on those triggers, typed as /project-test-coverage-analyzer, or as the coverage loop's ANALYZE step; never mid-build, never a flow gate. NOT for fixing the gaps it finds (project-test-coverage-loop), writing a task's tests (every build flow's own done bar), or architecture capture (project-architecture-analyzer)."
+description: "Measures test coverage: detects each stack's coverage tooling, runs the instrumented suite once per surface, judges it against the user's % bar and writes the coverage doc. Use when asked to measure coverage, capture a coverage baseline, or how covered is this project. Not for writing the missing tests."
 ---
 
 # Project Test Coverage Analyzer - Capture the Coverage (Deliberate)

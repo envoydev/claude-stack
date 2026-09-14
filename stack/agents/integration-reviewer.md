@@ -1,6 +1,6 @@
 ---
 name: integration-reviewer
-description: Use as the mandatory final gate before commit on cross-domain feature or fix work - after every affected domain verifier has signed off, a read-only pass over the WHOLE assembled feature (not any one stack) that checks it against the frozen contract and cross-stack correctness (the seams, the assembled build and tests, migration and deploy safety) - then returns a commit-or-punch-list verdict. Independent of the orchestrator by design - it compares spec, contract, diff, and tests itself and never asks the orchestrator to bless quality. Best as the closing step of a cross-domain run, looping the affected domain verifiers on a punch-list until sign-off. Do NOT use it to fix what it finds (routes back to the owning domain), to replace a single stack's verifier on single-stack work (that verifier is the gate there), or to design or write code.
+description: "Use as the mandatory final gate before commit on cross-domain work, after each domain verifier signs off: a read-only check of the whole assembled feature against the frozen contract, the cross-stack seams, build, tests, migration and deploy safety; returns commit or punch-list. Never fixes; not for single-stack work."
 tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright__*
 model: sonnet
 effort: xhigh

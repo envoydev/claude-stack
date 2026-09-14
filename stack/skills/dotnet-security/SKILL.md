@@ -1,6 +1,6 @@
 ---
 name: dotnet-security
-description: "Use when hardening a feature, threat-modeling an endpoint, or reviewing a change for vulnerabilities in a .NET service. The application-security hardening reference: the OWASP Top 10 mapped to concrete ASP.NET Core / .NET 8 mitigations - access control and IDOR, injection and XSS, CORS, crypto and integrity, deserialization, misconfiguration, vulnerable dependencies, SSRF, security logging - reported as a `category | surface | risk | fix` findings table. Owns the do-not-use list for dead-but-tempting APIs (BinaryFormatter, Code Access Security, .NET Remoting). Floors at .NET 8 / C# 12. Do NOT use for building the sign-in flow itself or for picking a crypto primitive - this skill reviews and hardens; the authentication and cryptography skills build."
+description: "Use when hardening, threat-modeling or reviewing a .NET service for vulnerabilities: the OWASP Top 10 mapped to ASP.NET Core mitigations (IDOR, injection, XSS, CORS, crypto, deserialization, SSRF), reported as a findings table. Not for building sign-in or picking crypto primitives."
 ---
 
 # .NET application security - the OWASP Top 10, applied

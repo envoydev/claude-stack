@@ -390,7 +390,8 @@ and the removal ask that proposed it NAMES that scope ('enabled at USER scope - 
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`; 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
-installed) so the generated awareness rule reflects the new inventory (the skill is manual-only,
+installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
+inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
 user, never acted on), and any environment writes from step 9. On a step-10 'set the default for
 this project' answer, merge `permissions.defaultMode: <value>` into the PROJECT's
@@ -426,7 +427,8 @@ the next configure diffs from here.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
-(when installed), a manual-only capture, the serena re-index, a credential to rotate or set by
+(when installed and this run changed the inventory it lists), a manual-only capture whose output this
+run made stale, the serena re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/project-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the

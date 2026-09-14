@@ -29,9 +29,9 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 ## 3. REPORT
 - **A literal line template, not prose to remember** - measured: the prose form of these lines lost in 2 of 2 audited runs with the text loaded.
 - **Every count comes from the command that produced the list** - measured: four audited sessions miscounted the seats, every one of them off by one and every one of them LOW (17 vs 18, 18 vs 19, 21 vs 22).
-- **`Live from:` and `Next run:` are UNCONDITIONAL** - measured: a first-act run that recommended nothing chained a second orchestration run 3 minutes later and wrote off 205.9k tokens before the user killed it by hand.
+- **`Live from:` is UNCONDITIONAL** - the report line once carried a `Next run:` field for the same reason (measured: a first-act run that recommended nothing chained a second orchestration run 3 minutes later and wrote off 205.9k tokens).
 - **Say the `Live from:` line the one way it is true on both branches** - measured: the un-scripted version got it wrong in 4 of 5 audited runs - two called a first-act session 'mid-session', and one told the user a rule written 90 seconds in was 'live for the rest of it'.
-- **Name the next deliberate skill in `Next run:`** - measured: a session wrote the rule at minute 2, then chained three more orchestration runs the rule's own text warns against, every context spike landing above 320k - the warning existed only in a file the session never re-read.
+- **No `Next run:` field** - removed 2026-09-14: filled from 'the command they named', it named `/project-agent-capabilities` itself after a run the user had just typed, and the user ruled that a skill is suggested only when its output is stale. Chaining runs into one session (measured: three chained orchestration runs, every context spike above 320k) is `guard-fresh-session-start.js`'s to catch, not a report line's.
 - **Two flags are MECHANICAL - compute them, never eyeball them** - measured: the prose form was missed by a run that had the evidence in front of it.
 - **(a) intersect `.mcp.json` against the heavy-native-deps list** - measured: a run with `appium-mcp` registered closed with 'Nothing odd to flag'.
 - **(b) `ls .claude/rules/` and report a seat family with no convention rule** - measured: a run asserted that cross-check having never listed the directory.

@@ -1,6 +1,6 @@
 ---
 name: test-coverage-analyzer
-description: Use to characterize one surface's test coverage from an already-produced instrumented run - a read-only analysis seat that returns a structured digest, writes NO files and NEVER runs the suite (the run is the main session's). The project-test-coverage-analyzer skill is its primary caller - one dispatch per measured surface once the raw results sit under <docs-path>/test-coverage/raw/; also callable alone on existing raw output. Given the raw-results path, the suite and the requirement, it parses the coverage output (cobertura / lcov / summary JSON), reads the uncovered code and suspicious tests, and returns per-module numbers, uncovered hot spots, tiered weak points with a simplify-testing action, and test smells. Do NOT use to run tests or produce coverage (the main session owns that), to fix gaps or write tests (project-test-coverage-loop routes fixes), to write COVERAGE.md (the skill owns it), or for architecture/style (architecture-analyzer / code-style-analyzer).
+description: "Use to characterize one surface's coverage from an already-produced instrumented run: parses cobertura / lcov / summary output and returns per-module numbers, uncovered hot spots, weak points and test smells. Read-only, never runs the suite or writes files; the coverage capture skill is its primary caller."
 tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Grep, Glob, Skill
 model: sonnet
 effort: medium

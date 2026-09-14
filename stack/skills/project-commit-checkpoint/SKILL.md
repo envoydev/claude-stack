@@ -1,6 +1,6 @@
 ---
 name: project-commit-checkpoint
-description: "Use before any non-trivial git commit, git push or gh pr merge - the house pre-commit checkpoint and the publish ceremony: what runs over the diff first (a fresh formatter run, the project-verify-code review, /security-review on auth/crypto/secrets/payment/data-access paths), which diffs are exempt, and the COMMIT-GATE and PUSH-GATE receipts the guard-ungated-commit hook reads. Triggers on commit this, ready to commit, push it, open the PR, or that hook's denial naming this skill. NOT the review itself (project-verify-code), the commit-message shape (baseline-git owns it), or a trivial diff the hook already lets through."
+description: "Use before any non-trivial git commit, git push or gh pr merge: the pre-commit checkpoint (formatter, code review, security review on sensitive paths) and the COMMIT-GATE / PUSH-GATE receipts the commit guard reads. Triggers on commit this, ready to commit, push it, open the PR, or that hook's denial."
 ---
 
 # Commit checkpoint - the gate before a commit or a publish

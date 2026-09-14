@@ -1,6 +1,6 @@
 ---
 name: dotnet-migrate
-description: "Use when running an EF Core database migration, raising a target framework or SDK, or refreshing NuGet packages - trigger words migrate, upgrade, update packages. The safe-migration playbook for .NET: preview the generated SQL, put the first apply to the user before it runs, carry a rollback, and keep one logical change per step so a break bisects cleanly. Covers the EF Core schema flow, target-framework / SDK lifts, and package audit-and-bump; a process skill, version-neutral with a .NET 8 floor. Skip it for ordinary feature work that touches no schema, no version, and no package; a BREAKING framework or runtime major is the version-upgrade flow's, and this skill is the mechanics of one lift."
+description: "Use when running an EF Core migration, raising a target framework or SDK, or updating NuGet packages - migrate, upgrade, update packages. Safe playbook: preview the SQL, confirm the first apply, keep a rollback, one change per step. A breaking framework major goes to the version-upgrade flow."
 ---
 
 # Safe migration workflow (.NET)

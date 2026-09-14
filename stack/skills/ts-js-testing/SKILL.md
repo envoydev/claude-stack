@@ -1,6 +1,6 @@
 ---
 name: ts-js-testing
-description: "Load before writing, modifying or reviewing plain TypeScript/JavaScript tests, auditing suite quality or configuring coverage - NOT for Angular or Ionic specs, which the Angular testing skill owns, and not for .NET, which the .NET testing skill owns. Covers libraries, Node CLIs and tooling, framework-free web code, and the browser-extension unit layer (the chrome.* seam and extension E2E live in the browser-extension skill): runner routing by detection (Vitest the house default, never install one), a strategy keyed off role, fake timers vs real async, the mock-masking smoke spec, mutation testing, and the TS/JS exclusion catalog. Practices and tooling only - it sets no coverage percentage, the % bar is the user's via project-test-coverage-analyzer. Do not rely on recall."
+description: "Load before writing, changing or reviewing plain TypeScript/JavaScript tests or configuring coverage: libraries, Node CLIs, framework-free web code, extension unit tests; runner detection (Vitest default), fake timers, mutation testing. Not for Angular/Ionic specs or .NET tests."
 ---
 
 # TypeScript Testing

@@ -1,6 +1,6 @@
 ---
 name: dotnet-project-setup
-description: "Use to set up a new .NET solution, add a NuGet package, add a project, or pin a dotnet tool - and when a change touches .slnx, Directory.Build.props, Directory.Packages.props, global.json or .config/dotnet-tools.json. Owns the solution build spine: the canonical src / tests / .config layout, .slnx solution files, Directory.Build.props shared build properties, global.json SDK pinning + rollForward, central package management via Directory.Packages.props, and pinning a dotnet tool in .config/dotnet-tools.json. Do NOT use for analyzers / TreatWarningsAsErrors / .editorconfig (the .NET quality-gate skill) or CI workflows / packaging / SourceLink (the CI-and-deploy skill)."
+description: "Use to set up a .NET solution, add a project or NuGet package, or pin a dotnet tool, and when touching .slnx, Directory.Build.props, Directory.Packages.props, global.json or .config/dotnet-tools.json. Not for analyzers / .editorconfig or CI workflows."
 ---
 
 # dotnet-project-setup (build spine)

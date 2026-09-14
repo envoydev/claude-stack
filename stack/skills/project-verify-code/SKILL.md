@@ -1,6 +1,6 @@
 ---
 name: project-verify-code
-description: "Use when a build is assembled and you want to review it in THIS chat with no dispatch - the single-chat, no-agents form of the verifier seat, and the inline alternative to /code-review's fan-out. Loads the stack's trap-list skills, reruns build + tests, gates the code against its plan, RUNS the app on failable inputs (a test can pass against a test host while the live endpoint 500s), traces a changed wire contract to its consumers, and returns a ranked punch-list - all inline, dispatching nothing. Trigger on review the build, review this here, check the code without agents, review before done. Not the plan audit (project-verify-plan, before code), not the dispatched verifier seat or /code-review's parallel angles."
+description: "Use to review an assembled build in this chat without dispatching agents: reruns build + tests, checks the code against its plan, runs the app on failing inputs, traces changed contracts, returns a ranked punch-list. Triggers on review the build, check the code, review before done. Not the plan audit."
 ---
 
 # Verify Code - review the assembled code in one chat, no dispatch

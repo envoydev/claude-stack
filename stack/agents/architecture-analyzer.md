@@ -1,6 +1,6 @@
 ---
 name: architecture-analyzer
-description: Use ONLY as a read-only ARCHITECTURE data-gatherer - the module-level eyes of the project-architecture-analyzer capture, which fans it out one module per dispatch and reasons over the digests; the project-solve-cross-task scoping pass uses it the same way, and it is independently callable to characterize one area. Given one module or topic, it reads that code and returns a compact STRUCTURED VERDICT - purpose, public surface, inbound/outbound dependencies, patterns in use, smells/violations - every claim tied to a located symbol, windowed to the area, nothing rounded up. It does NOT synthesize the whole-project picture, judge how a change fits, name a root cause, or edit. Do NOT use to map the whole project (the project-architecture-analyzer skill), to scope a single task (the project-solve-cross-task scoping pass), to diagnose a bug (runtime-failure-diagnoser), or to write any doc (the capture skills own their docs).
+description: "Use only as a read-only architecture data-gatherer for one module or topic: returns a structured verdict (purpose, public surface, dependencies, patterns, smells) tied to located symbols. Dispatched by the architecture capture and scoping passes. Does not map the whole project, diagnose bugs, or edit."
 tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Grep, Glob
 model: sonnet
 effort: medium

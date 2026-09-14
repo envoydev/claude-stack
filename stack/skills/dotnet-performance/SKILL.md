@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: "Use when a .NET type sits on a hot path or a high-throughput loop, or when choosing how bytes cross a process boundary. Performance-aware design decisions and where they matter - the layer that decides whether an allocation/memory-layout or serialization-format choice is worth spending on here. Two calls, each routed to its own reference - type design (struct versus class, allocations, `Span`, `ValueTask`) and serialization format (JSON, Protobuf, MessagePack). Do NOT start here for 'my app is slow' - that is usually a bad query or an N+1: measure first with `dotnet-diagnostics`."
+description: "Use when a .NET type sits on a hot path or high-throughput loop, or when picking a serialization format: struct vs class, allocations, Span, ValueTask, JSON vs Protobuf vs MessagePack. Not the starting point for 'my app is slow' - measure first with the diagnostics skill."
 ---
 
 # dotnet-performance (decision layer)

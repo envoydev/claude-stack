@@ -124,21 +124,21 @@ Template:   read - references/generated-rule-template.md
 Inventory:  skills <n> / seats <n> / MCP servers <n> / plugins <n | CLI absent>
 Drift:      <the paths the precheck printed, or `user asked for a refresh` / `plugin state only`>
 Live from:  next session - an always-on rule is read at session start, so it does not govern this one
-Next run:   start the next deliberate run in a FRESH session - /<the command they named>
 Flags:      <one row each, or `none>`
 ```
 
 Every count comes from the command that produced the list, never from a hand tally. Pipe the inventory through `wc -l`, or quote the number the listing printed.
-`Live from:` and `Next run:` are UNCONDITIONAL and identical on both branches - a rule is read at
-session start either way, and the first-act session is the one most likely to run something else
-next. The FIRST-ACT test
+`Live from:` is UNCONDITIONAL and identical on both branches - a rule is read at session start
+either way. There is no next-run line: this report suggests no other skill, and never itself -
+a capture is suggested only where its output is stale, and chaining a second deliberate run into
+this session is `guard-fresh-session-start.js`'s to catch. The FIRST-ACT test
 itself stays mechanical - this run was NOT the session's first act when a user message, a tool call
 or another skill run precedes it in the transcript - and it is now only a detail in the sentence,
 not a branch that changes what is owed.
 
 Then the prose, short - four things, each its own line so none of them is skimmed past:
 
-- **Say `Live from:` the one way it is true on BOTH branches** - an always-on rule loads at session start, not retroactively, so this one governs from the next session and its guidance starts applying at the next `/clear`. Name the next deliberate skill in `Next run:` by name.
+- **Say `Live from:` the one way it is true on BOTH branches** - an always-on rule loads at session start, not retroactively, so this one governs from the next session and its guidance starts applying at the next `/clear`.
 - **Two flags are MECHANICAL - compute them, do not eyeball them**: (a) intersect the parsed `.mcp.json` names against the heavy-native-deps list {`chrome-devtools`, `appium-mcp`} and report every hit as its own row; (b) `ls .claude/rules/` in step 1 and report any seat family with no matching convention rule. Also flag a slash-only skill whose seats are not installed.
 - **Never infer causation from a machine-global listing** - state observed facts plainly ('typescript-lsp: listed disabled'), and never assert WHY something is installed or disabled without checking the per-project plugin records first: `claude plugin list` is machine-global, so install-scope causation read off it is a guess.
 - **Say that the rule is MACHINE-LOCAL, not committed** - the installers tell every project to gitignore `.claude/*` and re-include only `.claude/CLAUDE.md`, so this file is untracked, a fresh clone does not carry it, and the command has to be re-run there.

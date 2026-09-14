@@ -1,6 +1,6 @@
 ---
 name: angular-security
-description: "Load when hardening or reviewing an Angular web feature, or when a security sweep reaches the web stack. Angular / web frontend security-hardening reference mapped to concrete Angular 17+ mitigations: XSS and the DomSanitizer bypassSecurityTrust* escape hatches, innerHTML injection, nonce-based CSP, CSRF via HttpClient's XSRF support, secrets that must never ship in the bundle (environment.ts, source maps), auth-token storage (httpOnly cookie over localStorage), SSR/TransferState leaks, open redirects, target=_blank window.opener, unsafe URL bindings, and vulnerable npm dependencies. Do NOT load for non-security work or the mobile native surface."
+description: "Load when hardening or reviewing an Angular web feature for security: XSS and bypassSecurityTrust, innerHTML, CSP nonces, CSRF/XSRF, secrets in the bundle, auth-token storage, SSR leaks, open redirects, vulnerable npm packages. Not for non-security work or the mobile native surface."
 ---
 
 # Angular / web frontend security
