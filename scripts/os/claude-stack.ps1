@@ -1631,6 +1631,9 @@ function Get-Hooks {
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
   $files = @(foreach ($entry in $Hooks) { ($entry -split '::', 2)[0] })
+  # the fresh-session hooks' model -> context window table: data, not a wired hook - copied only
+  # beside a hook that reads it
+  if ($files -contains 'guard-stop-contract.js' -or $files -contains 'guard-fresh-session-start.js') { $files += 'model-windows.json' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -2133,24 +2136,22 @@ function Set-HookSettings {
     Log '  settings.json env: CLAUDE_STACK_FRESH_SESSION_200K seeded (150000)'
   }
   # ... and the trigger for every OTHER case: a window the hooks cannot read (the settings `model`
-  # carries no window suffix) and one that is neither named size. 180,000 is REACHABLE on a 200k
+  # has no row in hooks/model-windows.json and no fallback is set) and one that is neither named size. 180,000 is REACHABLE on a 200k
   # window - at 250,000 it sat above that window entirely and the gate could never fire there.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_DEFAULT']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_FRESH_SESSION_DEFAULT -NotePropertyValue '180000'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_FRESH_SESSION_DEFAULT seeded (180000)'
   }
-  # the window the hooks ASSUME when nothing proves one (a bare model id with no carry past 200k and no
-  # auto-compaction under it). A fallback only - every proof outvotes it, unlike the retired
-  # CLAUDE_STACK_CONTEXT_WINDOW below, which sat first and killed the offer on 200k accounts.
+  # the window the hooks use for a model hooks/model-windows.json does not list - the table is the only
+  # other source, so this answers only for an unlisted model.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW -NotePropertyValue '1000000'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW seeded (1000000)'
   }
-  # WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
-  # model id's own window suffix ('opus[1m]'), else take the tier the session has already proven
-  # (nothing can carry more input tokens than the window), else make no offer at all. The old
+  # WHICH trigger applies comes from the session model's row in hooks/model-windows.json, else
+  # CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW above, else the DEFAULT trigger. The old
   # CLAUDE_STACK_CONTEXT_WINDOW knob is retired - it was seeded '1000000', which declared a 1M
   # window on every install and killed the gate on every account that was not 1M (ten confirmations
   # across four projects), and its replacement seeds ('' then 'AUTO') only ever meant 'detect'.
@@ -2674,8 +2675,7 @@ Write-Host '  CLAUDE_STACK_FRESH_SESSION_DEFAULT'
 Write-Host '                                   the same trigger for every other case - a window the hooks'
 Write-Host '                                   cannot read, or one that is neither of those sizes (default'
 Write-Host '                                   180000; 0 = off)'
-Write-Host 'Which one applies is DETECTED: the hooks read the window suffix on the settings model id'
-Write-Host '(opus[1m], opus[200k]), a carry past 200k (1M) or an auto-compaction under 200k (200k). With no'
-Write-Host 'proof they assume CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (default 1000000); remove that key and an'
-Write-Host 'unproven window takes the DEFAULT trigger.'
+Write-Host 'Which one applies comes from ONE table: the session model in .claude/hooks/model-windows.json'
+Write-Host '(replaced on every update). An unlisted model takes CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (default'
+Write-Host '1000000); remove that key and an unlisted model takes the DEFAULT trigger.'
 Write-Host 'CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.'

@@ -108,138 +108,75 @@ const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 180000);
 const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
 
 // --- which context WINDOW is this session running in? -------------------------------------
-// Measured on a 1M session: the transcript's message.model records `claude-opus-5` with the
-// `[1m]` suffix STRIPPED, the PreToolUse payload carries only cwd/session_id/tool_name/
-// tool_input/transcript_path, no transcript field names a window or a token limit, and no env
-// var carries the model. settings.json's `model` keeps it - and so does the transcript's own
-// `cost-state` record (`modelUsage` is keyed `claude-opus-5[1m]`), which the earlier text wrongly
-// called the ONLY source; measured on CLI 2.1.258 and 2.1.261. settings.json's
-// `model` (e.g. `opus[1m]`). The window is read from ONE place: the settings.json model id's own window suffix - `[1m]`,
-// `[200k]`. A property of the id, never a model -> window TABLE, which goes stale on every model
-// release. Anything else - no suffix, an unreadable settings file, or a suffix naming some other
-// size - is not one of the two named tiers and takes CLAUDE_STACK_FRESH_SESSION_DEFAULT. There is
-// no env override: a hand-set window was one more number to keep true.
-function windowFromModelId(id) {
-  const m = /\[(\d+)\s*([km])\]/i.exec(String(id || ''));
-  if (!m) return null;
-  const n = parseInt(m[1], 10) * (m[2].toLowerCase() === 'm' ? 1000000 : 1000);
-  return n >= 100000 ? n : null;   // a suffix that is not a window size proves nothing
-}
-function settingsModelWindow() {
+// ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
+// and replaced on every update, so a new model arrives with the release that lists it. A model the
+// table does not list takes CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (seeded 1000000); with that unset or
+// garbage, no window is known and the DEFAULT trigger applies. Nothing else decides - not a
+// `[1m]`/`[200k]` id suffix, not the carry, not a compaction. Those inferences each fixed one case
+// and broke another (Sonnet 5 runs 1M on a bare id, so the suffix read offered a resume at ~252k),
+// and a window that moves with the session's own history cannot be predicted by the person who set
+// it. The table holds the API maximum from the Claude models docs; a session that runs smaller than
+// its row is the table's error, corrected in the table.
+// The id is the main transcript's last `message.model` - subagents write their own files, so a
+// Haiku helper cannot answer for the session - else the settings `model` when it is a full id.
+// Measured: the PreToolUse payload carries no model and no window, and no env var names either.
+function sessionModelId() {
+  try {
+    const p = payload.transcript_path;
+    if (p) {
+      const size = fs.statSync(p).size;
+      const start = Math.max(0, size - 512 * 1024);
+      const fd = fs.openSync(p, 'r');
+      const buf = Buffer.alloc(size - start);
+      fs.readSync(fd, buf, 0, buf.length, start);
+      fs.closeSync(fd);
+      const lines = buf.toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (!lines[i].includes('"model"')) continue;
+        try {
+          const o = JSON.parse(lines[i]);
+          const m = o.type === 'assistant' && o.message && o.message.model;
+          if (m && m !== '<synthetic>') return String(m);
+        } catch { /* partial first line of the tail - skip */ }
+      }
+    }
+  } catch { /* unreadable transcript - try settings */ }
   try {
     const path = require('path');
     const os = require('os');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
-    for (const f of [
-      path.join(root, '.claude', 'settings.local.json'),
-      path.join(root, '.claude', 'settings.json'),
-      path.join(account, 'settings.json'),
-    ]) {
+    for (const f of [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]) {
       try {
-        const w = windowFromModelId(JSON.parse(fs.readFileSync(f, 'utf8')).model);
-        if (w) return w;
-      } catch { /* absent, unreadable, or not JSON - try the next file */ }
+        const m = JSON.parse(fs.readFileSync(f, 'utf8')).model;
+        if (m) return String(m);
+      } catch { /* absent or not JSON - next file */ }
     }
-  } catch { /* no home and no cwd - fall through to the next layer */ }
+  } catch { /* no home and no cwd */ }
   return null;
 }
-// The SECOND source, and the reason this is no longer settings-only: the transcript's own
-// `cost-state` records key `modelUsage` by the FULL model id, suffix intact. Measured across the
-// audited corpus - a session whose settings id carried no suffix still proved a 1M window through
-// `claude-opus-5[1m]` here, and one session carried `[1m]` and a bare id at once, so the LARGEST
-// window any record proves is the one the session could reach. The comment above already called
-// this a second source while the code read only the first.
-function costStateWindow() {
-  try {
-    const p = payload.transcript_path;
-    if (!p) return null;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    let best = null;
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (!line.includes('"cost-state"')) continue;
-      try {
-        const o = JSON.parse(line);
-        if (o.type !== 'cost-state' || !o.modelUsage) continue;
-        for (const id of Object.keys(o.modelUsage)) {
-          const w = windowFromModelId(id);
-          if (w && (best === null || w > best)) best = w;
-        }
-      } catch { /* partial first line of the tail window - skip */ }
-    }
-    return best;
-  } catch { return null; }   // no transcript, unreadable, or not JSON - the DEFAULT tier covers it
+// A key matches the id itself, a dated snapshot (`claude-haiku-4-5-20251001`) and a provider-prefixed
+// id (`us.anthropic.claude-opus-5-v1:0`); the longest matching key wins.
+function tableWindow() {
+  const id = String(sessionModelId() || '').toLowerCase();
+  if (!id) return null;
+  let models = {};
+  try { models = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'model-windows.json'), 'utf8')).models || {}; } catch { return null; }
+  let best = null;
+  for (const [key, n] of Object.entries(models)) {
+    const k = key.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!(Number(n) >= 100000) || !new RegExp(`(^|[./])${k}($|[-@:[])`).test(id)) continue;
+    if (!best || key.length > best.key.length) best = { key, n: Number(n) };
+  }
+  return best ? best.n : null;
 }
-// The THIRD and FOURTH sources are the session's own usage. No request holds more input than its
-// window, so a message that carried past 200k PROVES a window beyond the 200k tier - and the one
-// named tier beyond it is 1M. Measured: Sonnet 5 runs a 1M window with a bare `claude-sonnet-5` id in
-// settings and in `cost-state` alike, so both suffix sources read nothing and the 180k DEFAULT trigger
-// offered the resume at ~252k (claude-hud: 27% of the window). The other way round, the harness
-// AUTO-compacts a 1M session near 390k (measured 387,619-397,171), so an `auto` compaction whose
-// `preTokens` sat under 200k PROVES the 200k window. A manual `/compact` proves nothing - it runs at
-// whatever size the user chose. Each proof is LATCHED per transcript, because the 512KB tail scan
-// loses the evidence as a long session grows - which is what retired the first carry-based version.
-const TIER_200K = 200000;
-function usageWindow() {
-  try {
-    const p = payload.transcript_path;
-    if (!p) return null;
-    const os = require('os');
-    const key = String(p).replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-    const latch = (w) => `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-window-${key}.${w}`;
-    const seal = (w, why) => {
-      try { fs.writeFileSync(latch(w), String(why)); } catch { /* an unwritable latch only costs the rescan */ }
-      return w;
-    };
-    let best = fs.existsSync(latch(1000000)) ? 1000000 : fs.existsSync(latch(TIER_200K)) ? TIER_200K : null;
-    if (best === 1000000) return best;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    for (const line of buf.toString('utf8').split('\n')) {
-      if (line.includes('"compactMetadata"')) {
-        try {
-          const m = JSON.parse(line).compactMetadata;
-          if (m.trigger === 'auto' && m.preTokens > 0 && m.preTokens < TIER_200K && !best) best = seal(TIER_200K, m.preTokens);
-        } catch { /* partial first line of the tail - skip */ }
-        continue;
-      }
-      if (!line.includes('"usage"')) continue;
-      try {
-        const u = JSON.parse(line).message.usage;
-        const carry = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
-        if (carry > TIER_200K) return seal(1000000, carry);
-      } catch { /* a row without usage, or the partial first line of the tail - skip */ }
-    }
-    return best;
-  } catch { return null; }
-}
-// The LAST resort, used only when nothing above proves a window: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW,
-// in tokens, seeded 1000000 because the accounts this stack runs on are 1M. It is a FALLBACK, never a
-// declaration - the retired CLAUDE_STACK_CONTEXT_WINDOW was the first layer and so outvoted every
-// proof, killing the offer on every 200k account (ten confirmations). A 200k account whose model id
-// is bare now sits on the 1M trigger only until its first auto-compaction, which proves 200k, and the
-// SessionStart compact route reaches it at that moment regardless. Unset or garbage = no fallback,
-// and the DEFAULT trigger applies.
 function envWindow() {
   const n = parseInt(process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW, 10);
   return n >= 100000 ? n : null;
 }
 let _knownWindow;
 function knownWindow() {
-  // The LARGEST proven window wins: a `[200k]` id cannot outvote a carry the 200k window could not hold.
-  if (_knownWindow === undefined) {
-    const proven = [settingsModelWindow(), costStateWindow(), usageWindow()].filter(Boolean);
-    _knownWindow = proven.length ? Math.max(...proven) : envWindow();
-  }
+  if (_knownWindow === undefined) _knownWindow = tableWindow() || envWindow();
   return _knownWindow;
 }
 // The trigger this session is judged against. The two named tiers each own a variable; every

@@ -1466,6 +1466,12 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
   for entry in ${HOOKS[@]+"${HOOKS[@]}"}; do file="${entry%%::*}"; files+=("$file"); done   # empty-array-safe on bash 3.2 (macOS /bin/bash) under set -u
   _install_from_src stack/hooks hook "$root/.claude/hooks" exec ${files[@]+"${files[@]}"}
+  # the fresh-session hooks' model -> context window table: data, not a wired hook, so no exec bit -
+  # copied only beside a hook that reads it
+  case " ${files[*]-} " in
+    *" guard-stop-contract.js "*|*" guard-fresh-session-start.js "*)
+      _install_from_src stack/hooks hook "$root/.claude/hooks" noexec model-windows.json ;;
+  esac
 }
 
 download_agents() {  # copy each subagent .md into .claude/agents/; per-agent fail-soft (keeps repo copy)
@@ -1906,20 +1912,18 @@ if "CLAUDE_STACK_FRESH_SESSION_200K" not in env:
     env["CLAUDE_STACK_FRESH_SESSION_200K"] = "150000"; changed = True
     print("  settings.json env: CLAUDE_STACK_FRESH_SESSION_200K seeded (150000)")
 # ... and the trigger for every OTHER case: a window the hooks cannot read (the settings `model`
-# carries no window suffix) and one that is neither named size. 180,000 is REACHABLE on a 200k
+# has no row in hooks/model-windows.json and no fallback is set) and one that is neither named size. 180,000 is REACHABLE on a 200k
 # window - at 250,000 it sat above that window entirely and the gate could never fire there.
 if "CLAUDE_STACK_FRESH_SESSION_DEFAULT" not in env:
     env["CLAUDE_STACK_FRESH_SESSION_DEFAULT"] = "180000"; changed = True
     print("  settings.json env: CLAUDE_STACK_FRESH_SESSION_DEFAULT seeded (180000)")
-# the window the hooks ASSUME when nothing proves one (a bare model id with no carry past 200k and no
-# auto-compaction under it). A fallback only - every proof outvotes it, unlike the retired
-# CLAUDE_STACK_CONTEXT_WINDOW below, which sat first and killed the offer on 200k accounts.
+# the window the hooks use for a model hooks/model-windows.json does not list - the table is the only
+# other source, so this answers only for an unlisted model.
 if "CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW" not in env:
     env["CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW"] = "1000000"; changed = True
     print("  settings.json env: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW seeded (1000000)")
-# WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
-# model id's own window suffix (`opus[1m]`), else take the tier the session has already proven
-# (nothing can carry more input tokens than the window), else make no offer at all. The old
+# WHICH trigger applies comes from the session model's row in hooks/model-windows.json, else
+# CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW above, else the DEFAULT trigger. The old
 # CLAUDE_STACK_CONTEXT_WINDOW knob is retired - it was seeded "1000000", which declared a 1M window
 # on every install and killed the gate on every account that was not 1M (ten confirmations across
 # four projects), and its replacement seeds ("" then "AUTO") only ever meant 'detect'.
@@ -2353,9 +2357,8 @@ hand-edited value survives every update):
                                    the same trigger for every other case - a window the hooks
                                    cannot read, or one that is neither of those sizes (default
                                    180000; 0 = off)
-Which one applies is DETECTED: the hooks read the window suffix on the settings model id
-('opus[1m]', 'opus[200k]'), a carry past 200k (1M) or an auto-compaction under 200k (200k). With no
-proof they assume CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (default 1000000); remove that key and an
-unproven window takes the DEFAULT trigger.
+Which one applies comes from ONE table: the session's model in .claude/hooks/model-windows.json
+(replaced on every update). An unlisted model takes CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (default
+1000000); remove that key and an unlisted model takes the DEFAULT trigger.
 CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.
 GITIGNORE

@@ -136,8 +136,8 @@ is how a commit-time security gate sat off through two runs that both reported n
 | CLAUDE_STACK_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
 | CLAUDE_STACK_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
 | CLAUDE_STACK_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
-| CLAUDE_STACK_FRESH_SESSION_DEFAULT | 180000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies is detected from the model id suffix or the session's own usage |
-| CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW | 1000000 (default) - the window the gate assumes when nothing proves one; every proof outvotes it |
+| CLAUDE_STACK_FRESH_SESSION_DEFAULT | 180000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
+| CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW | 1000000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
 | SENTRY_SLUG (account env) | set / not set - only when sentry is installed |
 | SENTRY_ACCESS_TOKEN (account env) | set / not set - only when sentry is installed and its registration carries a header |
 | CONTEXT7_API_KEY (account env) | set / not set - only when context7 is installed remote; not set = the keyless free tier |

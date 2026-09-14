@@ -54,10 +54,9 @@ change made only inside a consuming project is throwaway.
     finished. Credential branch: asks for rotation ONCE per exposure (`CLAUDE_STACK_ROTATE_ASK=0` off).
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `CLAUDE_STACK_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
-    unreadable window); `0` switches that case off; seeded absent-only. The window is DETECTED (the
-    settings.json model id suffix, transcript `cost-state.modelUsage` keys, or a carry past 200k latched
-    per transcript - Sonnet 5 runs 1M on a bare id - or an AUTO compaction under 200k; the largest proven
-    window wins; with no proof, the seeded fallback `CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW` (1000000)), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the
+    unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
+    model's row in the shipped `model-windows.json`, else `CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW`, seeded 1000000; no id
+    suffix, carry or compaction is read), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the
     seeding of `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are retired. A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),

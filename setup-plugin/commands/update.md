@@ -45,8 +45,8 @@ transcript. Ask ONLY when that figure is past the same trigger `guard-fresh-sess
 - the tier's own absolute trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or
 `CLAUDE_STACK_FRESH_SESSION_1M` (default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT`
 (default 180,000) when the window is neither of those two sizes or cannot be read at all - which
-one applies comes from the window suffix on the settings.json model id (`opus[1m]`, `opus[200k]`)
-- or when that hook has already injected
+one applies comes from the session model's row in `.claude/hooks/model-windows.json`, else
+`CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW` - or when that hook has already injected
 the ask into this turn. Below the trigger, or when the figure cannot be read at all, SKIP the ask
 silently and go to step 1: an ask with no measurement behind it is the failure this replaced
 (measured: it fired on the FIRST message of a brand-new session, twice in one run, and could quote
