@@ -1,6 +1,6 @@
 ---
 name: code-style-analyzer
-description: Use to characterize how a project ACTUALLY writes code in one language family - a read-only analysis seat that returns a structured style report and writes NO files. The project-code-style-analyzer skill is its primary caller (one dispatch per language, merged into <docs-path>/PROJECT-CODE-STYLE.md and the generated style rule); also callable alone for one language. Given a language scope, it reads the style config (.editorconfig, eslint/prettier, tsconfig, SQL linter rules) AND representative code, and returns project type, the extensions the language occupies here, the config-enforced rules, the idioms a linter cannot encode (error handling, naming, DI/async, immutability), and divergence from the house conventions. Do NOT use to map structure or judge pros/cons (the project-architecture-analyzer skill), to characterize one module (architecture-analyzer), to write the style doc or rule (the skill owns both), or to enforce style (the configs stay the enforced source).
+description: "Use to characterize how the project actually writes code in one language: reads style configs and representative code and returns a structured style report (enforced rules, idioms, divergence from house conventions). Read-only, writes no files; the code-style capture skill is its primary caller."
 tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Grep, Glob, Skill
 model: sonnet
 effort: medium

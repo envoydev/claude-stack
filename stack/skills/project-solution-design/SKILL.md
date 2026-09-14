@@ -1,6 +1,6 @@
 ---
 name: project-solution-design
-description: Use when you have a feature or change to build in a single chat and want to settle how it fits the existing code before writing any - the single-chat form of the solution-designer seat - orient, judge the fit, decompose into an ordered minimal plan. Trigger on analyse how to integrate this, how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for a one-line edit, not a breaking framework or runtime major (project-version-upgrade), and not the multi-agent flow with its own verifier and fan-out (that is project-solve-cross-task) - in-session it keeps the whole design in your context so you check each step; the run-start ask (or your named mode) decides the designer seat.
+description: "Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan. Triggers on how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for one-line edits."
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat

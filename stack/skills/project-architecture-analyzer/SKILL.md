@@ -1,6 +1,6 @@
 ---
 name: project-architecture-analyzer
-description: "The deliberate architecture capture. Use when the user asks to capture or refresh the architecture docs, and as project-architecture-quality-loop's ANALYZE step - deliberate-only, never mid-build. A FIRST capture dispatches architecture-analyzer per module; an UPDATE reconciles inline over the git diff. The reasoning stays IN-SESSION and writes the architecture map, the assessment, and the generated always-on rule .claude/rules/baseline-project-architecture.md; a re-run reconciles all three in place. NOT for fixing the weaknesses it finds (project-architecture-quality-loop runs this capture first), one module's characterization (@agent-architecture-analyzer), code style (project-code-style-analyzer), or test-suite/coverage weaknesses (project-test-coverage-analyzer - the assessment keeps only structural testability blockers, never coverage gaps)."
+description: "Captures or refreshes the project's architecture docs - the map, the pros/cons assessment and the always-on architecture rule. Use when the user asks to capture, document or refresh the architecture. Deliberate only, never mid-build; not for fixing what it finds, code style, or test coverage - the assessment keeps only structural testability blockers, never coverage gaps."
 ---
 
 # Project Architecture Analyzer - Capture the Architecture (Deliberate)

@@ -1,6 +1,6 @@
 ---
 name: dotnet-diagnostics
-description: "Use when timing a hot path, comparing two implementations, or when a .NET process has crashed, hung, or is leaking - CoreCLR only, not .NET Framework or NativeAOT dumps. Measures and diagnoses a live process: the layer that decides whether to benchmark or capture a dump. Microbenchmarking: BenchmarkDotNet in a separate Release console project, [MemoryDiagnoser], reading mean/alloc/ratio. Dumps: capture a crash/hang/OOM dump with dotnet-dump or DOTNET_DbgEnableMiniDump, managed-heap-only with dotnet-gcdump, then first-look SOS analysis (clrstack, dumpheap, gcroot). Do NOT use for CPU/memory profiling, APM, or distributed tracing - this owns benchmarks and dumps."
+description: "Use when benchmarking a .NET hot path (BenchmarkDotNet) or when a process crashed, hung or leaks memory: capture a dump with dotnet-dump / dotnet-gcdump and do first-look SOS analysis. CoreCLR only. Not for CPU profiling, APM or distributed tracing."
 ---
 
 # dotnet-diagnostics (decision layer)

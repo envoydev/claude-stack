@@ -1,6 +1,6 @@
 ---
 name: project-verify-plan
-description: Use when you have an implementation plan or design in hand and want to audit it BEFORE writing code - a risk-coverage review that checks the plan names the non-obvious traps its stack will actually hit, matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Trigger on review this plan, is this design sound, does the plan miss anything, before I build. NOT the built-code review - that is project-verify-code, after the build - and not writing the plan itself.
+description: "Use to audit an implementation plan or design before writing code: checks it names the stack's non-obvious traps, matches the scope, covers edge and safety cases, and stays minimal. Triggers on review this plan, is this design sound, does the plan miss anything, before I build. Not the built-code review."
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build

@@ -1,6 +1,6 @@
 ---
 name: project-implementer
-description: "Use when you have a task plan in hand - from project-solution-design, ideally gated by project-verify-plan - and want to BUILD it in the current chat, task by task: the single-chat form of the implementer seat's execution protocol. Honors each task's contract, builds code + tests per task, gates each task green before the next, resolves every red INLINE, and hands to the build review (`project-verify-code`) + the done-gate. Trigger on execute the plan, build the plan, implement the tasks, build task 2, continue the plan. On an agents answer it hands each task to its `<stack>-implementer` seat instead; the full multi-agent flow is project-solve-cross-task. Not a plan-less ad-hoc edit - just make that."
+description: "Use when you have a task plan and want to build it in this chat, task by task: honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review. Triggers on execute the plan, build the plan, implement task 2. Not for a plan-less ad-hoc edit."
 ---
 
 # Project Implementer - execute a verified plan, task by task, in one chat

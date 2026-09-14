@@ -1,6 +1,6 @@
 ---
 name: angular-testing
-description: "Load before writing, modifying, or reviewing Angular tests. Do NOT load for .NET tests, or for plain TS/JS outside a framework harness - the .NET and the TypeScript/JavaScript testing skills own those. The Angular testing hub, practices and tooling only: TestBed and component-harness patterns for standalone components, a test strategy keyed off role (component / service / store / pipe), runner routing across Karma/Jasmine, Jest and Vitest, HttpTestingController, and fakeAsync versus real-async timing. Ionic/Capacitor apps share it. Do not rely on recall."
+description: "Load before writing, changing or reviewing Angular tests: TestBed and component harnesses for standalone components, strategy by role, Karma/Jasmine vs Jest vs Vitest, HttpTestingController, fakeAsync timing. Not for .NET tests or plain TS/JS outside Angular."
 ---
 
 # Angular Testing

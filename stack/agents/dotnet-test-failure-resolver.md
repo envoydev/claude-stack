@@ -1,6 +1,6 @@
 ---
 name: dotnet-test-failure-resolver
-description: Use when a .NET solution already compiles but `dotnet test` is red - an autonomous red-to-green loop that runs the suite, identifies each failure, decides whether the defect is in the production code or the test, fixes the correct side, and re-runs until green. Best in the implement phase once the build is clean - it pairs after dotnet-build-error-resolver, which hands off a green build; a solution that will not compile is that resolver's, not this one's. Do NOT use to write new tests from scratch (that is test-driven development) - it repairs an existing failing suite without gaming coverage.
+description: "Use when a .NET solution compiles but dotnet test is red: an autonomous loop that runs the suite, decides whether the bug is in the code or the test, fixes the correct side and re-runs until green. Not for a build that does not compile, and not for writing new tests from scratch."
 tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: high

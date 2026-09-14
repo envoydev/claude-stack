@@ -2,483 +2,299 @@
 
 ## What this repo is
 
-The single source of truth for the **Claude Code** half of the house coding-agent setup -
-not an application. It collects everything applied to *other* projects: the house-style
-skills, the base instruction template those projects extend, the hook scripts and
-convention rules, and the installer that wires skills / MCP servers / plugins into each
-project. The **Cursor** twin stack was split out to its own repo,
-[`cursor-stack`](https://github.com/envoydev/cursor-stack) - its installers git-clone THIS
-repo for the shared skills, so the skill + MCP baseline stays single-sourced here, and a
-baseline change is a TWO-REPO commit (the manifest lists are mirrored there in the same
-sitting; each repo lints its own `.sh`/`.ps1` twins). Consuming projects pull from here -
-they do not own their copy. Skills install via the installers' one-snapshot download (the
-versioned release archive, git-clone fallback; or the claude-stack plugin's
-`/claude-stack:setup`); the rest is laid down by the same installers. The durable change always lives in *this* repo's source; a
-change made only inside a consuming project is throwaway (see Invariants).
+The single source of truth for the **Claude Code** half of the house coding-agent setup - not an
+application. It holds what is applied to *other* projects: house-style skills, the base instruction
+template, hook scripts, convention rules, agents, and the installer that wires skills / MCP servers /
+plugins into each project. The **Cursor** twin lives in
+[`cursor-stack`](https://github.com/envoydev/cursor-stack); its installers clone THIS repo for the
+shared skills, so a skill + MCP baseline change is a TWO-REPO commit (mirror the manifest lists there in
+the same sitting; each repo lints its own `.sh`/`.ps1` twins). Consuming projects pull from here; a
+change made only inside a consuming project is throwaway.
 
 ## Layout - one home per concern
 
-- `stack/skills/` - the house-style skills, each a `SKILL.md`. Auto-activate on their own
-  keywords / file types in consuming projects. Distributed via the stack installers'
-  snapshot-download-and-copy step (or the claude-stack plugin) - including `cursor-stack`'s
-  installers, which clone this repo.
-- `scripts/os/claude-stack.{sh,ps1}` - the installer twins (Unix / Windows); `docs/claude-stack.html` is the browser inventory.
-- `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton (an authoring outline in a stripped comment plus a rules table to trim) that each
-  consuming project's `CLAUDE.md` is filled in from; the working conventions ship separately in
-  the `stack/rules/baseline-*.md` set. Content shipped to projects, not this repo's own file.
-- `stack/hooks/` - `guard-protected-force-push.js` + `guard-catastrophic-rm.js` (PreToolUse `Bash` - a recursive `rm`
-  of an unrecoverable target, and the git verbs that destroy a working tree with no reflog to recover
-  from: `checkout --` / `restore` / `reset --hard` / `clean -f`, blocked only when the work it would
-  actually destroy is dirty - the PATHSPEC the command names, not the whole tree, so `git restore
-  <one file>` is judged on that file and the denial's own 'name the ONE file instead' escape is
-  reachable (it was not: seven dirty files were listed for a command naming one); a clean path
-  passes, the denial ends in ONE AskUserQuestion, and a 'discard it' answer is honoured through the
-  `<docs-path>/flow/DISCARD-ALLOW` receipt on the CROSS-WRITE-ALLOW shape - one path per line or
-  `*`, this session's own, under 8h - because without it the guard re-blocked a discard the user had
-  just chosen and the action was silently substituted with a stash; the guard had zero git coverage
-  and a destructive `git checkout --` replayed exit 0 against every guard in the stack) +
-  `guard-read-whole-file.js` (PreToolUse `Read` + `Bash` - the same dump routed through the shell;
-  also blocks a whole-file Read of any OVERSIZED file whatever its extension, since a persisted
-  spill is by definition past the inline cap and one was read whole twice for 99k chars, and a
-  sweep over `.md` files, which is the largest measured dump shape in the collection. A target it
-  cannot see through - an unexpanded `$VAR` - is judged by nobody rather than denied, a leading
-  `cd` moves its anchor, a runtime expression that only COUNTS is not a dump, and every denial
-  carries the `ToolSearch select:` line that LOADS the serena tools, since naming a deferred tool
-  is not having it) + `guard-secret-value.js` (PreToolUse `Read` + `Bash` - a credential is read for PRESENCE, never its value: blocks a Read or a dump verb on a JSON/dotenv file holding a `secret_key_pattern` key with a live value, judged by CONTENT since the path-based deny list leaves a project settings.json open and that is where the measured leak came from; an `echo $SECRET`, a bare `env`, and a credential-shaped literal in a command - on the SHELL route the dump, the echo and the env are REWRITTEN (`hookSpecificOutput.updatedInput`) into their redacted form rather than blocked: `--redacted <file>` returns the file with every credential value as `<set (N chars)>` and the rest as written, the echo becomes its presence line, `--redacted-env` the masked listing, so the model gets the placeholder and no turn is retried; the Read tool and the literal stay blocked; its own `--presence <file> [KEY ...]` mode is the sanctioned one-key read the guided commands call; a block or a redacted view ends in ONE AskUserQuestion - presence only (recommended) / show or use the value this session / drop - and the 'show' answer is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt (a file, a variable name or `*`; this session's own, under 8h), which the stop contract reads too so a consented exposure is not re-asked for rotation - a remote user cannot run the copy-ready command themselves; the four account-settings `permissions.deny` entries the installers wrote until 0.2.62 are retired and dropped on every run, since this guard covers that file on both routes and a deny entry has no receipt to lift it) + `guard-unapproved-dispatch.js` (PreToolUse
-  `Task|Agent` - blocks an `*-implementer` dispatch without the `<docs-path>/flow/APPROVAL` gate
-  file the flows write on explicit user approval or an explicit AUTO waiver, and blocks a generic `general-purpose`/`claude` dispatch while that stamp is live; stamps older than 8h or older than the session are absent; also blocks an `Explore`/generic dispatch whose brief asks a SYMBOL question - callers, declaration site, resolved type - since a grep-shaped seat answers those by name-match and the built-in `Explore` loads none of the project's rules) +
-  `guard-ungated-commit.js` (PreToolUse `Bash` - the publish ceremony, both halves in one hook because
-  they share the receipt machinery and the heredoc/quote masking: blocks a non-trivial `git commit` without the
-  `<docs-path>/flow/COMMIT-GATE` receipt the pre-commit checkpoint writes on VERIFIED gates or an
-  explicit user waiver (trivial diffs pass), and blocks `git push` / `gh pr merge` without the same-shaped
-  `<docs-path>/flow/PUSH-GATE` receipt - nothing gated publishing before, and across four audited sessions
-  every push and merge passed every guard, one putting 40 files on a shared `develop`. A dry run or a branch
-  level with its upstream publishes nothing and is never gated; `CLAUDE_STACK_PUSH_GATE=0` turns that half
-  off where the remote is already gated) +
-  `guard-stop-contract.js` (dual-wired: a `Stop` hook that blocks a turn ending on a
-  decision-shaped question in prose, or on a 'done, next step pending' close stated as fact - the blocking-ask mandate mechanized; a close that says the RUN has nothing pending ('Nothing is pending on this run - these are yours to run when you choose.', the line the four guided walks end their suggestion card with, pinned in shared-rules.json) is finished, not stalled; its credential branch demands the rotate ask once a credential shape has entered the session, ONCE per exposure - an answered ask covers every shape already in the transcript, only a new one asks again, and `CLAUDE_STACK_ROTATE_ASK=0` turns it off - and, on a CLEAN close past the window's own ABSOLUTE trigger (`CLAUDE_STACK_FRESH_SESSION_200K`, default 150000, on a 200k window; `CLAUDE_STACK_FRESH_SESSION_1M`, default 400000, on a 1M one; `CLAUDE_STACK_FRESH_SESSION_DEFAULT`, default 180000, on any other window and on one that cannot be read at all - a token count per case, not a percentage: the percentage was inert at its default on both tiers at once, and the clamp that fixed it made the number in the box a lie. `0` on one of them switches that case's offer off, the retired `CLAUDE_STACK_FRESH_SESSION_PCT` is not read at all any more, and the window itself is DETECTED, never declared, from TWO sources in order - the settings.json model id's own `[1m]`-style suffix first, then the transcript's `cost-state.modelUsage` keys, which carry the SAME id with its suffix intact where the assistant rows strip it (measured: a session whose settings id had no suffix still proved a 1M window there, and one carried a suffixed and a bare id at once, so the LARGEST window any record proves wins). A trigger at or above the window it applies to is clamped back inside it - a gate that cannot fire is the gate not existing. There is no env override: `CLAUDE_STACK_CONTEXT_WINDOW` is retired too, and so is the stack's seeding of Claude Code's own `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` - neither is written or asked about any more. Guessing a TIER for an unreadable window was the failure the DEFAULT replaces - reading it as 200k offered a 1M account the resume at 150k, reading it as 1M never offered a 200k account anything at all, and offering nothing left a 1M install with no gate whenever its model id carried no suffix. The DEFAULT must stay REACHABLE on the smallest window it can land on: at 250000 it sat above a 200k window entirely, so an unreadable window on that tier could never trip the gate at all (measured: a session at 187.2k, 93.6% of its window, ran both Stop hooks and neither held). All three triggers are seeded absent-only), holds the turn ONCE so the user is asked whether to resume in a fresh session - but only when a resume would RECOVER something: the carry minus this session's own first-message floor must be at least 40% of the carry, since the floor is the install's standing inventory a fresh session pays again (measured 87k-134k across the nine audited projects; one /clear-started single-command run tripped the 150,000 trigger at 159,363 with a 103,964 floor and the ask moved nothing). Both hooks read that floor from the same pinned block. It re-arms only when the context has grown 1.5x, and it fires after the work is finished, never mid-response. The PreToolUse `AskUserQuestion` matcher IS wired, as an INJECTION-ONLY branch (it enriches the ask being built - stale scope, a recommendation contradicting an un-actioned prompt, a live credential, the house voice in the ask's own text - and never denies); what was retired is the DENYING form of that branch, which refused the ask mid-response, and the migration that unwired the matcher was itself removed in 0.2.55 so an update no longer unwires what the installer has just wired) +
-  `guard-fresh-session-start.js` (a `disable-model-invocation` skill is the USER's to type: the model's own PreToolUse `Skill` call on one is DENIED, read from that skill's own frontmatter, while the user's slash turn arrives on a different event and is untouched - the stack used to assert the harness blocked this, and it is measured BOTH ways - one CLI build denied the model's Skill call on a flagged skill with a tool_use_error, a later session's model call went through after a leading-space slash turn - so the gate is the hook's, whatever the harness build does. Plus three routes into one decision - a deliberate orchestration run
-  (a capture, a loop, a solve flow, a review, one of the four guided plugin walks) must not start on another finished run's carried
-  history past the same window-scaled trigger (the same three-layer window resolution). TWO triggers,
-  either one enough: that context size, and - at ANY size, once per session - a run this session has
-  ALREADY made (a prior orchestration marker in the transcript followed by a human turn), because the
-  measured shape was four flows chained with no `/clear` boundary at 199.1k per message for under 30k
-  of real tool output, each one STARTING under the size trigger. PreToolUse `Skill`
-  BLOCKS it; `UserPromptSubmit` INJECTS the ask for the same run invoked as a slash command, which emits no
-  Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) and never denies,
-  since a UserPromptSubmit denial erases the user's prompt; `SessionStart` matcher `compact` injects it at the
-  auto-compaction, which proves the session hit the ~390k ceiling at a moment a Stop may never come - and carries two post-compaction lines: answer in the language of the user's own prompts, not the summary's (measured: two sessions switched to English right after compacting), and re-read a live plan file's header FIRST (measured: a resume grepped the tree and read a 10k-char range before opening the plan that named the ranges). The
-  capabilities rule's prose form lost in 4 of 4 audited sessions) +
-  `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit`/`Bash` - one session
-  belongs to ONE project: a write whose target resolves outside the project root is blocked, via
-  the file tools or the shell routes around them (redirection, `tee`, in-place `sed`/`perl`, a `cp`/`mv`
-  destination, `rm`/`mkdir`/`chmod`, `git -C <other>` with a mutating subcommand, or a `cd <other>`
-  followed by one or by a relative write), and the change the other
-  repo needs goes to a task card under `<docs-path>/cross-project-tasks/` instead. READING another
-  repo stays open - that is what makes the card specific. The session's own scratch, the `~/.claude` /
-  `~/.claude-<space>` account dirs and `/dev` stay writable; a `>` or verb inside a quoted string is
-  prose; an allowance containing the project root is dropped, both
-  sides are compared as REAL paths (macOS `/tmp` is a symlink) and a Git Bash mount path (`/c/...`,
-  `/cygdrive/c/...`) is read as the Windows path it names before any resolution - node on win32
-  resolves that spelling against the current drive, which blocked a session cleaning its own temp
-  scratch (the read-whole-file, secret-value and ungated-commit guards translate it too - four inline copies of one regex plus its `nativePath`, pinned as `gitbash-mount-path` in shared-rules.json because each hook is a standalone file with no shared module), an unexpanded variable is never
-  judged, a block ENDS IN AN ASK - the denial mandates one AskUserQuestion: task card here (recommended), allow that tree for this session, or drop - because a bare denial left the user out of the decision, and the 'allow' answer is honoured through the `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt (one root per line; this session's own, under 8h, a root containing the project dropped), while `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second tree a project genuinely owns, permanently; and it carries the fork-liveness PROBE, log-only: when this transcript is a fork - it carries rows of another session id - and that lineage's other session touched its own transcript within the last 60s, a mutating call (a file tool, a shell write, a process kill, a test or build run) appends a `mode: probe` row to the hook-blocks ledger and denies nothing. Measured once: a backgrounded fork kept editing and running the suite for 15 minutes after the foreground's user had said stop - 10.44M cache-read and one edit collision. A denial waits on the week's rows, since a backgrounded turn cannot end a denial in an ask and two deliberate sessions from one fork point would be held) +
-  `guard-answer-length.js` (dual-wired: a `UserPromptSubmit` hook that appends the answer budget -
-  3 sentences plus points, ~900 chars of prose, code/tables exempt - to every turn's context, and a
-  `Stop` hook that blocks an answer past the 1800-char prose cap when the user's own message asked
-  for no depth, and blocks an EM-DASH in that same prose whatever the length (the injection's other
-  half, previously enforced nowhere: measured 32 em-dashes in 21,434 chars of one session's prose
-  with the rule loaded three times in the same transcript; the length exemptions do not reach it,
-  since a dash is a character to replace and a re-send at the same length loses nothing);
-  the short-answer contract mechanized after it failed as prose; and the UserPromptSubmit half injects one more line after the third consecutive short turn that follows a long answer - the format ask the interaction rule mandates on a re-ask of the same deliverable, which lost as prose through nine corrections and nine redrafts of one report (measured, 1.64M cache-read) - injection only, never a denial, watched for a week before it grows), all wired; plus `instrument-tool-usage.js`,
-  wired env-gated (per-run tool/skill/MCP stats; a sh gate skips the node spawn unless the
-  settings-env switch CLAUDE_STACK_INSTRUMENT - seeded "0" - is flipped to "1" for a measured run).
-  Every wired hook carries `"timeout": 10` in settings.json: they run in 22-25ms (measured, almost
-  all of it the node spawn), while a `command` hook with no timeout takes Claude Code's 600s default -
-  one stalled `git rev-parse` would freeze a session for ten minutes. Each guard also appends one row
-  per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl` (`analyze-usage.js --hook-blocks` tallies it):
-  a block costs its denial text plus the retried turn, so the block RATE is the number that says a
-  gate earns its keep, and the transcript alone records only which TOOL was denied, never which hook.
-  Copied from the run's clone into a project's `.claude/hooks/` (wired with the placeholder quoted - `"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"` - so a project path with a space works; an update rewrites the older unquoted text in place); a hooks layer in the guided walk
-  makes them selectable per install (a selection with no `hook` lines installs all eleven).
-- `stack/agents/` - the Claude-contract subagents, 43 total: the four build/test resolvers - .NET
-    (`dotnet-build-error-resolver`, `dotnet-test-failure-resolver`) + Angular (`ng-build-error-resolver`,
-    `angular-test-resolver`) - plus four cross-cutting agents (`ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` - a read-only
-    cross-stack security posture audit that routes an OWASP/CWE punch-list to the implementers, complementing
-    `/security-review` - and `integration-reviewer`, the mandatory read-only cross-domain final gate that
-    checks the assembled feature against the frozen contract before commit) - plus
-    30 per-domain seats, the same 3-agent vertical repeated across 10 stacks (ASP.NET, web Angular, WPF, WinForms,
-    console, Windows Service, Ionic Angular, data, DevOps, browser extension - the five C# verticals split by surface: ASP.NET web/API,
-    WPF desktop, WinForms desktop LOB, console the headless Generic-Host worker/bot/daemon/CLI, windows-service the SCM-hosted
-    worker; the three TypeScript verticals by runtime surface: Angular web, Ionic/Capacitor mobile, MV3 browser extension): `<stack>-solution-designer` (decomposes into parallel tasks) → `<stack>-implementer`
-    (builds one task, code + tests) → `<stack>-verifier` (gates the assembled build vs plan + quality,
-    punch-list loop) - plus five read-only sonnet support seats: `evidence-gatherer` (sonnet/low - the two
-    diagnosers dispatch it to reproduce and pull logs), `test-coverage-analyzer` (sonnet/medium - the read-only
-    per-surface coverage characterizer the `project-test-coverage-analyzer` skill fans out over the raw
-    instrumented output; the suite run itself stays in the main session), `architecture-analyzer` (sonnet/medium - the
-    `project-architecture-analyzer` capture fans it out to characterize modules) and `code-style-analyzer` (sonnet/medium - the read-only
-    per-language style characterizer the `project-code-style-analyzer` skill fans out and merges into
-    `<docs-path>/PROJECT-CODE-STYLE.md` + the generated path-scoped project-code-style rule) and `related-project-analyzer` (sonnet/medium -
-    characterizes one sibling repo, the `project-related-context` skill fans it out and merges
-    `<docs-path>/related-context/PROJECT-RELATED-CONTEXT.md`), each keeping read volume off the opus seat.
-    the architecture capture is deliberate-only (the `project-architecture-analyzer` skill - dispatches
-    `architecture-analyzer` per module, reasons in the main session, writes `<docs-path>/architecture/ARCHITECTURE.md` +
-    the pros/cons `<docs-path>/architecture/ASSESSMENT.md` + the generated always-on awareness rule
-    `baseline-project-architecture.md`; never in a build flow); the per-change fit
-    verdict moved to the domain solution-designers. The `project-solve-cross-task` skill is the single
-    entry-point orchestrator - it picks the execution mode, runs a single stack's vertical per its
-    `references/domain-trio-protocol.md` (main-stack-agents-flow was folded into that reference),
-    and for cross-domain work freezes the shared contract and drives the parallel
-    per-stack runs through the `integration-reviewer` final gate. All 43 carry
-    frontmatter model/effort pins (resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers
-    `sonnet`/`xhigh`, implementers `sonnet`/`medium`, the five support seats `sonnet`). Copied from
-    the run's clone into a project's `.claude/agents/`. The `cursor-stack` repo ships adapted twins of all 43 - a
-    protocol change to an agent here usually needs the same edit to its twin there (the deliberate
-    divergences are only the platform gaps, listed in that repo's CLAUDE.md: `model: inherit`, no
-    per-tool `tools:` allowlist, `superpowers` optional, no auto-delegation hard-disable).
-- `stack/rules/` - eighteen rules, fetched into a project's `.claude/rules/`, each doing ONE job. Six
-    are the always-on `baseline-*.md` set (no `paths:` - the cross-project working conventions grouped
-    by exclusion affinity: interaction (communication + proposal review + planning), quality-gates
-    (code quality + definition of done), security, git (the pre-commit checkpoint protocol itself is the
-    always-seeded `project-commit-checkpoint` skill, loaded when a commit is the next act instead of
-    on every message - 6.6k chars off the floor), navigation, docs-root (the
-    generated-docs root - `CLAUDE_STACK_DOCS_PATH` resolution, what lives under `<docs-path>`; the env var
-    is the ONLY lever, no CLAUDE.md restatement - the installers stamp the resolved value over the
-    rule's `__DOCS_ROOT__` placeholder on every install/update, and setup/configure re-stamp after
-    an env change) - loaded every session and
-    subagent like `CLAUDE.md` but refreshed on `update`, individually excludable via the manifest;
-    the skill/agent usage policy + per-project MCP routing live in the GENERATED
-    baseline-project-agent-capabilities.md, written by the `project-agent-capabilities` skill).
-    The other twelve
-    are path-scoped, lazy-loaded on a matching file touch: `markdown-docs.md`, the two repair-loop
-    routers (`dotnet-repair-agents.md` / `angular-repair-agents.md`), and the nine convention rules
-    (`javascript-conventions.md` / `typescript-conventions.md` / `angular-conventions.md` /
-    `angular-styling-conventions.md` /
-    `csharp-conventions.md` / `wpf-conventions.md` / `winforms-conventions.md` / `sql-conventions.md` / `devops-conventions.md`)
-    each glob-attaching ONE file family to its house-style skill - single-job so a stack a project
-    lacks is simply not installed; the soft replacement for the retired require-convention-skill
-    hard gate. All nine state the attach in ONE imperative form - 'the FIRST action after this rule
-    attaches is that Skill call, before the NEXT edit lands' plus a load receipt - pinned as
-    `convention-rule-first-action` in shared-rules.json; the weaker 'load `x` before the edit'
-    phrasing lost across 12 measured edits with two rule bodies sitting in context, so a new
-    convention rule copies the form rather than paraphrasing it.
-- `setup-plugin/` - the claude-stack plugin: five guided COMMANDS, `/claude-stack:setup` (fresh install from scratch), `/claude-stack:update` (no-questions refresh + prune of upstream-removed artifacts, computed from the stamp compare; the script route prunes only the known renamed names in the installers' RETIRED_SKILLS / RETIRED_AGENTS / RETIRED_RULES / RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend both twins' lists when ANY of the six is renamed or removed, and note that a stamp compare only names what left AFTER the stamped commit, so an older leftover is caught by the lists alone; a retired rule is the costly one, since a pathless baseline-*.md loads into every session beside the rule that replaced it, and a retired hook keeps its settings.json wiring until the same run drops it; a retired MCP is the same shape one layer out - it stays registered and re-injects its tool schemas into every session, measured at 24 schemas for a browser server on a headless backend project. a retired PLUGIN is the worst of the set, because it can ship a SessionStart hook that injects thousands of characters into every session AND every subagent, and none of that cost is visible to `claude plugin details`, to the always-on lint budget or to `/claude-stack:status` (measured: two curated plugins injecting 8,337 chars per session, one of them 5,229 more per subagent). RETIRED_MCPS and RETIRED_PLUGINS both ship empty: the mechanism is what was missing, and plugins were the last layer without one. A server or plugin the stack still SHIPS but a project no longer needs is validate's whole-stack-absent pass, not a retirement), `/claude-stack:configure` (adjust an existing install - add or drop), `/claude-stack:status` (read-only per-area tables of the install - skills/agents/rules/hooks/MCPs/plugins/env/generated docs with capture dates, plus the one number nothing else reports: the always-on FLOOR this install pays on every message, in chars and approximate tokens, reported and not judged) and `/claude-stack:validate` (reconcile an install against THIS project - prune what its frameworks do not use (whole-stack-absent) AND add the detected stacks' missing artifacts, the project-relative two-way audit configure does not do; project mode only, a per-layer walk like setup/configure driven by `stack-select.js --redundant` / `--missing` / `--evidence-gaps`, plus an ENVIRONMENT layer - the settings.json `env` block reconciled against `environment.json`: keys a release introduced, an old spelling still present, a value failing its shape), their data catalogs in repo `meta/` (`environment.json` - the ONE list of the settings.json `env` values this stack owns, read by setup / configure / validate and lint-checked against both installer twins' seeds, so ADDING a variable is one row plus the two seeds, never three command edits; its `_comment` carries the row shape; `recommendations.json` - the seeds + the never-flag `general` list, which also holds the project-conditional opt-ins no stack owns and no manifest signal can prove: the `project-related-context` / `related-project-analyzer` pair applies only where the project has sibling repos, so it is addable-not-seeded and never re-added by validate - and `evidence.json`, the need-signal catalog `scripts/scan-evidence.js` matches the project's package manifests against: evidence rows arrive pre-selected with the matched signal as the reason, absence is advisory-only, and evidence never creates a `required` lock), plus the `/claude-stack` router SKILL (answers with the right command). The split is display-driven, empirically proven: plugin commands list namespaced-only (`/claude-stack:setup`, like claude-hud's), plugin skills list bare - so workers-as-commands kills the generic bare `/setup`-`/update`-`/configure`-`/validate` entries, and router-as-skill (named exactly like the plugin) lists as bare `/claude-stack` instead of the `/claude-stack:claude-stack` stutter a router command produces. Do not convert either back. None of the five carries `allowed-tools`, and that is settled, not pending: it is a per-turn PERMISSION pre-approval - the tools the walk may use without being asked, cleared the moment the next message is sent (checked against the Claude Code skills/slash-command frontmatter reference) - so it is neither a restriction nor a context saving, removes no tool schema from the session, and on a multi-turn walk would cover turn one and nothing after it.
-- `meta/` - the repo's own registries, never installed into a project: `shared-rules.json` pins
-  every deliberate multi-home rule (one canonical owner + its inline restatement sites, each copy
-  marker-pinned; no prose cross-mentions in the bodies) - the lint goes red when any copy's marker
-  breaks, so a multi-home edit syncs all copies mechanically; the generated `stack-graph.json`
-  (the dependency graph `stack-graph.js` builds and `stack-select.js` reads at guided-install
-  time - regenerate with `npm run graph`, the lint fails when stale); and the guided commands'
-  catalogs (`recommendations.json`, `evidence.json`, `plugin-settings.json` - the recommended
-  settings the stack offers for an INSTALLED plugin's own config file (today claude-hud's
-  account-level `plugins/claude-hud/config.json` plus the `statusLine.refreshInterval` its setup's
-  block takes), applied by `scripts/plugin-settings.js`: the walks REPORT the delta and ask
-  inside the plugins layer's own turn (setup step 8 / configure step 8) and apply the answer once
-  the installer has put the plugin on disk (10a / 11a), the same ask-early-apply-after shape the
-  environment choices use. Add-only by default so a value the user already chose is reported
-  and kept, `--replace` is the explicit overwrite, a target whose gate block is absent skips
-  itself, and every row names the plugin VERSION its keys were read from - lint check 28 rejects a
-  row for an uninstalled plugin, a missing `verified` version or a key group with no `why` -,
-  `judgment.json`, and `migrations.json` -
-  existence-detected retirements of GENERATED per-project artifacts, applied by update / flagged
-  by validate, since the upstream file compare can never name generated output; it also carries the
-  settings.json `env` RENAMES (`detect.settings_env_key` + `rename_settings_env`) the installers'
-  env pass applies on every run - the order and its reason live in that file's `_comment`, pinned
-  as `env-pass-order` in shared-rules.json. Every consumer of a renamed key reads the old spelling
-  as a fallback until the rename has reached every install - `CLAUDE_STACK_DOCS_PATH` is the first
-  of these, ex-`CLAUDE_DOCS_PATH`). Commands reach ALL of
-  these through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}` - the
-  installed plugin package is `setup-plugin/` only, so nothing in `meta/` exists inside it.
-- `scripts/lint-skills.js` - the parity lint (below). `scripts/analyze-usage.js` - offline
-  token/tool consumption report over a session's transcript JSONL (+ its `subagents/`), the token
-  side of the flow instrumentation (`instrument-tool-usage.js` is the identity side - hooks never
-  see tokens). Its EFFICIENCY block is the practice scorecard: cache misses by Claude Code's own
-  rule, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green
-  claims with no check, correction streaks, long answers, dispatch overhead - one measured number
-  per practice with its denominator, so a hook or rule change is read from a week of sessions and
-  never asserted. It reads the `PowerShell` tool as a shell route (34 of 38 test runs in one
-  collection ran through it). First baseline, 115 sessions across ten projects: 45 cache misses
-  re-cached 8.2M tokens (31% of all cache writes - the largest class found), build-dir reads were
-  ~8.6k tokens in total (so the read guard grew no class), 55% of seat input was the seats' own
-  preload, and the answer-length hook's strict correction-streak detector fired on 0 sessions while
-  42 of 45 long answers drew a short correction - the week's numbers decide that threshold. `scripts/scan-evidence.js` - the deterministic evidence scan the guided commands
-  run against a project (manifests only, no restore/network; conclusions computed per run, the
-  catalog ships only signal definitions). `README.md` - deliberately compact: what the repo is, technologies, the two install routes (plugin / script), headline counts (lint-checked), and the usage-analysis pointer - no per-surface inventories (those live in `docs/claude-stack.html`) and no deep operational docs (env vars, troubleshooting - the guided plugin flow covers prerequisites interactively; history has the old text).
+- `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
+  file types. Distributed by the installers' snapshot copy (or the plugin), including cursor-stack's.
+- `scripts/os/claude-stack.{sh,ps1}` - the installer twins (Unix / Windows); `docs/claude-stack.html`
+  is the browser inventory.
+- `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
+  `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
+- `stack/hooks/` - eleven hooks, copied into a project's `.claude/hooks/` and wired in
+  `.claude/settings.json` with the placeholder quoted (`"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"`).
+  Every wired hook carries `"timeout": 10` (a hook with no timeout gets Claude Code's 600s default).
+  Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
+  (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
+  A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
+  honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
+  - `guard-protected-force-push.js` - blocks force-push to protected branches.
+  - `guard-catastrophic-rm.js` (PreToolUse `Bash`) - a recursive `rm` of an unrecoverable target, and
+    `git checkout --` / `restore` / `reset --hard` / `clean -f` only when the PATHSPEC the command names
+    is dirty (not the whole tree). A 'discard it' answer is honoured via `<docs-path>/flow/DISCARD-ALLOW`.
+  - `guard-read-whole-file.js` (PreToolUse `Read` + `Bash`) - blocks whole-file dumps (also through the
+    shell, any oversized file, a sweep over `.md` files). An unexpanded `$VAR` target is not judged; a
+    leading `cd` moves the anchor; a counting expression is not a dump. Every denial carries the
+    `ToolSearch select:` line that loads the serena tools.
+  - `guard-secret-value.js` (PreToolUse `Read` + `Bash`) - credentials are read for PRESENCE, never
+    value. Judged by file CONTENT (a JSON/dotenv file holding a `secret_key_pattern` key with a live
+    value). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
+    `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
+    Read tool and a credential literal stay blocked. `--presence <file> [KEY ...]` is the sanctioned
+    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The four
+    account-settings `permissions.deny` entries written until 0.2.62 are retired and dropped every run.
+  - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
+    without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
+    blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
+    or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question.
+  - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
+    `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
+    run or a branch level with upstream is never gated; `CLAUDE_STACK_PUSH_GATE=0` turns the push half off.
+  - `guard-stop-contract.js` (`Stop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion` branch that
+    never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
+    pending' close; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
+    finished. Credential branch: asks for rotation ONCE per exposure (`CLAUDE_STACK_ROTATE_ASK=0` off).
+    Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
+    `CLAUDE_STACK_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
+    unreadable window); `0` switches that case off; seeded absent-only. The window is DETECTED (the
+    settings.json model id suffix, then transcript `cost-state.modelUsage` keys; the largest proven
+    window wins), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the
+    seeding of `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are retired. A trigger at or above its window is clamped
+    inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
+    when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
+    re-arms at 1.5x growth, and never mid-response.
+  - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
+    `disable-model-invocation` skill (read from its frontmatter; the user's slash turn is untouched), and
+    offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
+    guided walk) when the context is past the window trigger OR this session already made a run. Routes:
+    PreToolUse `Skill` BLOCKS; `UserPromptSubmit` INJECTS for slash-invoked runs (never denies - that
+    would erase the prompt); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
+    the language of the user's prompts, and re-read a live plan file's header first.
+  - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit`/`Bash`) - a write outside
+    the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
+    `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
+    the change goes to a task card under `<docs-path>/cross-project-tasks/`. Reading stays open. Session
+    scratch, `~/.claude` / `~/.claude-<space>` and `/dev` stay writable; paths compared as REAL paths; a
+    Git Bash mount path (`/c/...`, `/cygdrive/c/...`) is translated first (the same regex is inlined in
+    four hooks, pinned as `gitbash-mount-path`). 'Allow' is honoured through the
+    `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second
+    tree permanently. Also carries the log-only fork-liveness PROBE (`mode: probe` rows, denies nothing).
+  - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
+    Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash in
+    prose at any length. After the third consecutive short correction following a long answer it injects
+    the format ask (injection only).
+  - `instrument-tool-usage.js` - wired env-gated: skipped unless `CLAUDE_STACK_INSTRUMENT` (seeded "0")
+    is "1".
+  The guided walk's hooks layer makes them selectable (a selection with no `hook` lines installs all).
+- `stack/agents/` - 43 Claude-contract subagents, copied into `.claude/agents/`:
+  - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
+    `angular-test-resolver`;
+  - cross-cutting: `ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` (read-only
+    OWASP/CWE posture audit), `integration-reviewer` (mandatory read-only cross-domain final gate
+    against the frozen contract);
+  - 30 per-domain seats - `<stack>-solution-designer` -> `<stack>-implementer` -> `<stack>-verifier`
+    across 10 stacks (ASP.NET, web Angular, WPF, WinForms, console, Windows Service, Ionic Angular, data,
+    DevOps, browser extension);
+  - five read-only sonnet support seats: `evidence-gatherer`, `test-coverage-analyzer`,
+    `architecture-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
+  Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
+  `sonnet`/`medium`, support seats `sonnet`. The architecture capture is deliberate-only (the
+  `project-architecture-analyzer` skill writes `<docs-path>/architecture/ARCHITECTURE.md`,
+  `ASSESSMENT.md` and `baseline-project-architecture.md`; never in a build flow).
+  `project-solve-cross-task` is the single entry-point orchestrator (single-stack vertical per
+  `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
+  `integration-reviewer`). cursor-stack ships adapted twins of all 43 - a protocol change here usually
+  needs the same edit there (divergences only: `model: inherit`, no `tools:` allowlist, `superpowers`
+  optional, no auto-delegation hard-disable).
+- `stack/rules/` - eighteen single-job rules copied into `.claude/rules/`. Six always-on `baseline-*.md`
+  (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
+  `project-commit-checkpoint` skill), navigation, docs-root (`CLAUDE_STACK_DOCS_PATH` is the ONLY lever;
+  installers stamp its value over `__DOCS_ROOT__` on every install/update, setup/configure re-stamp).
+  Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
+  Twelve path-scoped: `markdown-docs.md`, the repair routers (`dotnet-repair-agents.md`,
+  `angular-repair-agents.md`) and nine convention rules, each glob-attaching ONE file family to its
+  house-style skill. Every convention rule uses the imperative form pinned as
+  `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
+- `setup-plugin/` - the claude-stack plugin: five COMMANDS and one router SKILL.
+  - `/claude-stack:setup` (fresh install), `/claude-stack:update` (no-questions refresh + prune from the
+    stamp compare), `/claude-stack:configure` (add or drop), `/claude-stack:status` (read-only tables plus
+    the install's always-on FLOOR), `/claude-stack:validate` (project-relative two-way reconcile via
+    `stack-select.js --redundant` / `--missing` / `--evidence-gaps`, plus the settings.json `env` layer
+    against `environment.json`).
+  - The script route prunes only names in the installers' RETIRED_SKILLS / RETIRED_AGENTS /
+    RETIRED_RULES / RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend BOTH twins' lists when
+    any of the six is renamed or removed (a stamp compare only names what left after the stamped commit).
+    A retired pathless rule, hook wiring, MCP registration or plugin keeps costing every session until
+    pruned. A shipped-but-unneeded server or plugin is validate's whole-stack-absent pass, not a retirement.
+  - The `/claude-stack` router is a SKILL and the workers are COMMANDS on purpose (commands list
+    namespaced, skills list bare) - do not convert either back.
+  - None of the five carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
+    restriction or a context saving.
+- `meta/` - never installed:
+  - `shared-rules.json` pins every deliberate multi-home rule (owner + marker-pinned copies); the lint
+    goes red when a copy's marker breaks.
+  - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
+    `npm run graph` (lint fails when stale).
+  - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
+    one row plus the two installer seeds (lint-checked).
+  - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
+    `project-related-context` / `related-project-analyzer`: addable, never seeded or re-added).
+  - `evidence.json` - need-signals `scripts/scan-evidence.js` matches against manifests; evidence rows
+    arrive pre-selected, absence is advisory, evidence never creates a `required` lock.
+  - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
+    `scripts/plugin-settings.js`: walks report and ask in the plugins layer turn, apply after install;
+    add-only by default (`--replace` overwrites); each row names the verified plugin VERSION (lint 28).
+  - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
+    `env` RENAMES the env pass applies every run (order pinned as `env-pass-order`). A renamed key is read
+    under its old spelling as fallback until every install has it (e.g. `CLAUDE_STACK_DOCS_PATH`,
+    ex-`CLAUDE_DOCS_PATH`).
+  Commands reach `meta/` through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}`.
+- `scripts/lint-skills.js` - the parity lint. `scripts/analyze-usage.js` - offline token/tool report over
+  a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
+  it reads `PowerShell` as a shell route. `scripts/scan-evidence.js` - deterministic manifest-only
+  evidence scan. `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
-The **Cursor** delivery - installers, the 43 agent twins, `.mdc` rules, hooks,
-`AGENTS.template.md` - lives in the `cursor-stack` repo (its own CLAUDE.md documents the
-platform gaps and the twin-maintenance rule).
+## The stack's delivery surfaces
 
-## The stack's delivery surfaces (and the Cursor twin repo)
-
-The Claude Code delivery, per surface. Skills, hooks, agents, rules and the CLAUDE.md template all
-come from the SAME one-per-run source snapshot (the newest release archive, or the shallow-clone
-fallback), so an install is a single revision - the one `claude-stack.stamp` records:
+All surfaces come from ONE source snapshot per run, so an install is a single revision (the one
+`claude-stack.stamp` records).
 
 | Surface | Delivery |
 |---|---|
-| Skills | installer snapshot-download + copy → `.claude/skills` (or plugin `/claude-stack`) |
-| MCP | `claude mcp add` → `<repo>/.mcp.json`, then VERIFIED: every stack-owned entry is compared to the manifest shape and rewritten when it drifted (see the gotcha below) |
-| Plugins | 6 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud); update runs at the scope `claude plugin list --json` says each is installed at - passing the run's own scope was a silent no-op - and reads the versions back (`x -> y` / `already newest`) |
-| Hooks | copied from the snapshot → `.claude/hooks/`, wired into `.claude/settings.json` (all eleven; instrumentation env-gated off via CLAUDE_STACK_INSTRUMENT=0) |
-| Agents | `.claude/agents/` - the 43 model/effort-pinned subagents described under Layout. Copied like hooks; per-tool `tools:` allowlist |
-| Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir when scope=global) - the source commit this install came from; `/claude-stack:configure` diffs it against `main`. Machine-local (covered by the `.claude/*` gitignore line) |
-| Convention gate | nine path-scoped convention rules in `.claude/rules/` (soft, glob auto-attach - each points a file type at its house-style skill; replaced the `require-convention-skill` hard gate) |
-| Security review | `/security-review` (diff/PR) + `security-guidance` hooks (commit-time) + the `security-auditor` agent (opus/xhigh, read-only posture audit routing an OWASP/CWE punch-list to the implementers) |
+| Skills | installer snapshot copy -> `.claude/skills` (or plugin `/claude-stack`) |
+| MCP | `claude mcp add` -> `<repo>/.mcp.json`, then VERIFIED against the manifest shape and rewritten on drift |
+| Plugins | 6 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud); update runs at the scope `claude plugin list --json` reports and reads versions back |
+| Hooks | copied -> `.claude/hooks/`, wired in `.claude/settings.json` (all eleven; instrumentation off via CLAUDE_STACK_INSTRUMENT=0) |
+| Agents | `.claude/agents/` - the 43 pinned subagents, per-tool `tools:` allowlist |
+| Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit; configure diffs it against `main` |
+| Convention gate | nine path-scoped convention rules in `.claude/rules/` |
+| Security review | `/security-review` + `security-guidance` hooks + the `security-auditor` agent |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins |
 
-The Cursor deliveries of the same surfaces (`.cursor/skills`, `.cursor/mcp.json` with tokens
-pre-resolved, no plugins, `.cursor/hooks.json`, `.cursor/agents/` twins, `.mdc` rules, Bugbot
-`/review`, `AGENTS.md`) live in the `cursor-stack` repo - `SKILLS` and `MCPS` stay identical
-across the two repos' installers by the two-repo-commit discipline; the platform gaps are
-documented there.
+Cursor's deliveries live in cursor-stack; `SKILLS` and `MCPS` stay identical across both repos'
+installers by the two-repo-commit discipline.
 
 ## The model these templates encode
 
-- **MCP servers are per-project, never global.** Two are LOCKED into every install by an always-on
-  rule's backticked mention - `serena` (baseline-navigation) and `context7` (baseline-quality-gates) -
-  so artifacts may name them; every other server is recommended or stack-seeded and droppable, so a
-  body describes it. Only two are STACK-NEUTRAL enough to seed into every project - `context7`
-  (docs) and `serena` (symbol nav + edits + per-project memory); the rest reach a project by
-  proof, never by assumption: a stack whose surface always has them, an evidence signal in the
-  project's own manifests, or the user's own pick from the catalog table. `memory` (cross-project
-  recall) was the third until an audit of 164 sessions across 9 projects measured **zero**
-  `mcp__memory__*` calls in every one of them - a registered server re-injects its tool schemas
-  into every session, so it now sits in `recommendations.json`'s `general` list: offered in the
-  MCP table, never seeded, and never flagged missing or redundant by validate. Catalog (8): those two plus
-  `playwright` (browser - seeded for the web-angular / ionic / extension stacks, evidence-proven
-  by `Microsoft.Playwright` / `@playwright/*` anywhere else; it used to sit in the always-baseline
-  and shipped a browser driver to every WinForms and console install), `angular-cli`
-  (framework-specific - comment out where not
-  applicable), `chrome-devtools` (browser/extension debug - addable only, seeded by no stack),
-  `appium-mcp` (native mobile E2E - Capacitor/Ionic, needs Xcode/Android SDK + Java; evidence-gated
-  on an `appium` / `@wdio/` / `webdriverio` dependency, seeded by no stack) and `sentry` (error monitoring - the hosted
-  remote MCP, registered as the CONSTANT `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` with the header
-  `Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`; both placeholders stay LITERAL in the
-  registration and expand at launch from the ACCOUNT settings.json `env` (`~/.claude/settings.json`,
-  or the space's - the one file measured to reach `.mcp.json` expansion; a project-level
-  `.claude/settings.json` does not; `${env:VAR}` + OS env on Cursor). The guided commands make the
-  user fill both in whenever sentry is present: `SENTRY_SLUG` = the org, or `org/project` (Sentry's
-  recommended scoping; the installers' `--sentry-slug` seeds it), `SENTRY_ACCESS_TOKEN` = a
-  personal/org API token the user adds by hand or exports in the shell the installer runs in - the
-  installers write every key they are handed (the slug, the token, `CONTEXT7_API_KEY`) into the account
-  file on every run at both scopes, a secret logged by length - never through the chat. `Sentry-Bearer` is the scheme
-  for an API token; plain `Bearer` is the server's OAuth-issued token scheme and rejects an API token
-  as `invalid_token`; `--sentry-auth oauth` registers no header instead, so Claude Code runs the
-  browser consent flow on first connect (a set-but-wrong header disables that fallback, so the modes
-  never mix). Unset, `${SENTRY_SLUG}` stays literal: the server accepts the path on tools/list and
-  fails every call naming the variable, and `claude mcp list` warns - diagnosable, unlike
-  `${SENTRY_SLUG:-}`, whose trailing slash the server 404s (both measured). `update` keeps the
-  registration's auth mode; an old plain-`Bearer` registration migrates to the fixed header.
-  `SENTRY_AUTH_TOKEN` is a different credential - sentry-cli's release/symbol upload, needing
-  `project:releases`. Comment out where the project has no Sentry). The heavy two (`chrome-devtools`,
-  `appium-mcp`) fail at launch without their native deps, so neither is stack-seeded any more - the
-  extension stack seeded `chrome-devtools` and the Ionic stack seeded `appium-mcp`, and an audit
-  measured **zero** calls to either across the whole 164-session collection. They stay one number
-  away in the MCP table, and appium arrives pre-selected where the project's own manifest proves it. The `memory` MCP (one shared
-  SQLite DB under `$HOME`) is the cross-project store - the per-project transient handoff runs
-  on serena's local memory (durable orientation is the committed architecture docs), so comment
-  `memory` out in a standalone project.
-- **serena self-activates via `--project-from-cwd`**, not a hook: it finds `.serena/project.yml`
-  in its cwd (the project root) and binds on process start, zero model involvement. That flag only
-  RESOLVES the root, though: the config serena AUTO-GENERATES for a root without one is not a
-  substitute (read in serena 1.7.0, `serena/config/serena_config.py`) - `ProjectConfigAutoGenerationMode.ASYNCHRONOUS`
-  writes the language list EMPTY and fills it from a background thread, and
-  `_determine_project_language_servers` enables only the single TOP language by file count when it
-  is not interactive, so a C#+Angular repo gets one server and a lookup racing the background pass
-  gets none. The installers therefore SEED `.serena/project.yml` on install and update - project
-  name, the `language_servers` their own narrow file scan detects (C#, TypeScript/JS), and
-  `ignored_paths` for `.serena` / `.claude` / `.playwright`, without which the indexer walks
-  serena's own ~327MB language-server tree (measured: 126 files attempted, 112 failed). A key that
-  already carries entries is never rewritten, and neither is ever appended twice - serena's own
-  generated file ships both keys EMPTY, and a duplicate YAML key is an error, not an override. The
-  key was renamed from `languages` in 1.7.0 (`ProjectConfig.RENAMED_FIELDS`, which still migrates
-  the old spelling), and the C# Roslyn server needs .NET 10+, which serena installs itself into
-  `SERENA_HOME` when it is missing. Two approaches
-  that look right but FAIL - do not retry: (1) an `mcp_tool` `SessionStart` hook calling
-  `activate_project` never fires before serena connects; (2) `--project ${CLAUDE_PROJECT_DIR}` is the
-  wrong lever - use `--project-from-cwd` (above). Current Claude Code *does* expand `${VAR}` /
-  `${VAR:-default}` in `.mcp.json` (command/args/env/url/headers), so the blanket 'no `${...}`
-  expansion' was too broad; the catches are that `CLAUDE_PROJECT_DIR` isn't reliably in scope at
-  `.mcp.json` parse time for a non-plugin config, and that the expansion reads the SHELL
-  environment Claude Code starts in plus the ACCOUNT settings.json `env` (`~/.claude/settings.json`
-  or the space's) - a PROJECT-level `.claude/settings.json` / `settings.local.json` `env` value stays
-  literal in the config (measured in a trusted project: it reaches the MCP child process environment,
-  not the config expansion; an unset `${VAR}` stays literal with a `claude mcp list` warning,
-  `${VAR:-}` expands to empty). So a value a remote server's header or URL must read belongs in the
-  account file, which is also where the installers' next-steps point. Cursor runs
-  serena with `--context ide-assistant`; Claude with `claude-code`.
-- **serena state is isolated per project** via `-e SERENA_HOME=.serena/home` (relative, resolved
-  from cwd): registry, logs, and language servers live in-project under `.serena/home`, and serena's
-  project memories live alongside in `.serena/memories/` - so nothing pools across projects or
-  accounts (default `~/.serena` keys off `$HOME`, merging every repo across both Claude config dirs).
-  Cost: the LSP is re-downloaded per same-language project (~327MB for C# Roslyn); the whole `.serena/`
-  must be gitignored (it holds the LSP cache and the memories).
-- **serena holds local memory; the `memory` MCP is the cross-project store.** Three stores,
-  don't conflate: the file-based auto-memory (`MEMORY.md` + `memory/*.md`, harness-injected);
-  **serena's per-project memory** (`.serena/memories/`, name-addressed, local to the repo and
-  gitignored - the store for the transient per-feature subagent handoff, not durable orientation); and the `memory`
-  MCP (one SQLite DB under `$HOME`, shared across projects *and* accounts - the cross-project
-  recall store, addable but no longer seeded; a space arg names its DB `memory_<space>.db` and, on
-  Claude, selects the `~/.claude-<space>` account). Add it only where cross-project recall is
-  actually the work, and comment it out in a standalone project. Cross-project
-  *structure* - which repos are related and where they live - lives in each repo's generated
-  awareness rule (`.claude/rules/baseline-project-related-context.md`, written by the
-  `/project-related-context` skill), not in memory.
-- **Two stores, split by durability** - the second hard rule (peer of the read-whole-file rule
-  below). The committed architecture docs - a lean `<docs-path>/architecture/ARCHITECTURE.md` core map plus the deep-dive
-  files under `<docs-path>/architecture/references/` it links to - are the DURABLE truth: every seat READS them at start
-  to orient (the structure, patterns, boundaries and packages already in place) instead of re-deriving
-  the project, and the `project-architecture-analyzer` skill owns them (plus a `<docs-path>/architecture/ASSESSMENT.md` pros/cons
-  doc), reasoning in the main session over `architecture-analyzer` module digests - refreshed deliberately via that
-  skill or the `project-architecture-quality-loop`, never after each change lands; the project's actual code style lives alongside in `<docs-path>/PROJECT-CODE-STYLE.md`, owned by the `project-code-style-analyzer` skill (fans out `code-style-analyzer` per language and generates the path-scoped `project-code-style.md` rule that attaches the style core on any matching file touch - main session and subagents; replaced the inject-code-style hook, whose injected context never reached subagent tool calls). serena's
-  per-project memory (`write_memory` / `read_memory` / `list_memories`, named
-  `<feature>__<contract_version>__<seat>`, never the shared `memory` MCP) is the EPHEMERAL inter-agent
-  comms bus - the transient per-feature handoff between seats: a diagnoser's task cards to the
-  implementer, the implementer's build summary to the verifier, a short 'what to do' context note -
-  info that is not durable architecture. serena memory is local and disposable; a reference that must
-  survive a fresh clone belongs in the committed docs, not memory.
-- **Never `Read` a whole file to find a symbol** - the hard rule shipped to both stacks: locate via
-  serena (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
+- **MCP servers are per-project, never global.** `serena` (baseline-navigation) and `context7`
+  (baseline-quality-gates) are LOCKED into every install and may be named in artifacts; every other
+  server is droppable, so a body describes it. Only those two are seeded everywhere; the rest arrive by
+  proof - a stack whose surface always has them, an evidence signal, or the user's pick. Catalog (8):
+  - `memory` - offered in the MCP table, never seeded, never flagged by validate (it sits in the
+    `general` list because an audit found zero calls in 164 sessions).
+  - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere.
+  - `angular-cli` - framework-specific.
+  - `chrome-devtools`, `appium-mcp` - addable only, seeded by no stack (both fail at launch without
+    native deps; appium arrives pre-selected on an `appium` / `@wdio/` / `webdriverio` dependency).
+  - `sentry` - hosted remote MCP registered as the CONSTANT `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}`
+    with header `Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`. Both placeholders stay LITERAL
+    and expand from the ACCOUNT settings.json `env` (`~/.claude/settings.json` or the space's) - a
+    project `.claude/settings.json` does not reach `.mcp.json` expansion (Cursor: `${env:VAR}` + OS env).
+    `SENTRY_SLUG` = org or `org/project` (`--sentry-slug`); the token is added by hand or exported in the
+    installer's shell, never through the chat; installers write handed keys (slug, token,
+    `CONTEXT7_API_KEY`) to the account file, secrets logged by length. `Sentry-Bearer` is the API-token
+    scheme - plain `Bearer` rejects it as `invalid_token`. `--sentry-auth oauth` registers no header (the
+    browser consent flow); never mix the modes. Never use `${SENTRY_SLUG:-}` (the trailing slash 404s).
+    `update` keeps the auth mode and migrates old plain-`Bearer` registrations. `SENTRY_AUTH_TOKEN` is a
+    different credential (sentry-cli uploads).
+  - plus `serena` and `context7`.
+- **serena self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
+  AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
+  enabled), so the installers SEED `.serena/project.yml` on install and update: project name, the
+  `language_servers` their own scan detects (C#, TypeScript/JS), and `ignored_paths` for `.serena` /
+  `.claude` / `.playwright`. A key that already has entries is never rewritten, and never appended twice
+  (a duplicate YAML key is an error). The key was renamed from `languages` in serena 1.7.0; the C#
+  Roslyn server needs .NET 10+ (serena installs it into `SERENA_HOME`). Two approaches FAIL - do not
+  retry: (1) an `mcp_tool` `SessionStart` hook calling `activate_project`; (2)
+  `--project ${CLAUDE_PROJECT_DIR}`. `.mcp.json` DOES expand `${VAR}` / `${VAR:-default}`, but
+  `CLAUDE_PROJECT_DIR` is not reliably in scope at parse time, and expansion reads only the shell
+  environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
+  `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
+- **serena state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
+  `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories).
+- **Three memory stores, don't conflate:** the harness auto-memory (`MEMORY.md` + `memory/*.md`);
+  serena's per-project memory (`.serena/memories/`, the transient per-feature subagent handoff); the
+  `memory` MCP (one SQLite DB under `$HOME`, cross-project, addable not seeded - comment it out in a
+  standalone project). Which repos are related lives in the generated
+  `.claude/rules/baseline-project-related-context.md` (the `/project-related-context` skill), not memory.
+- **Two stores, split by durability** (hard rule). The committed architecture docs
+  (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, `ASSESSMENT.md`, owned by
+  `project-architecture-analyzer`) are the DURABLE truth every seat reads to orient, refreshed
+  deliberately (that skill or `project-architecture-quality-loop`), never after each change. The code
+  style lives in `<docs-path>/PROJECT-CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
+  (owned by `project-code-style-analyzer`). serena memory (`<feature>__<contract_version>__<seat>`,
+  never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
+  belongs in the committed docs.
+- **Never `Read` a whole file to find a symbol** (hard rule, both stacks): locate via serena
+  (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
 
 ## Working in THIS repo - invariants
 
-- **`develop` is where work lands; `main` is the release branch.** Commit to `develop` (or a
-  branch off it); merging `develop` -> `main` IS the release act - the release workflow rebuilds
-  the release archive from that merge, and that revision is what every install delivers. ONE
-  version everywhere: the workflow tags each release `v<version>` from
-  `setup-plugin/.claude-plugin/plugin.json` - the same manifest the marketplace serves from
-  `main` - so bump it (plus `marketplace.json` metadata; the lint enforces they stay equal) on
-  `develop` as part of any release-worthy change.
-  Never commit feature work directly to `main`, and keep `main` the GitHub default branch (the
-  README's raw installer bootstrap delivers the default branch; the installers' and skills'
-  clone fallback is pinned `-b main` regardless). The lint + test workflows gate every push and
-  PR, so a merge to `main` only ever promotes a green tree.
-- **Public repo.** No private project names or absolute local paths in any tracked file - generic
-  'consuming project' references only; real names / paths stay in untracked local files.
-- **Parity / source-of-truth.** A change to skills / MCPs / hooks / rules / plugins lands in the
-  SOURCE here, kept in parity: `SKILLS` + `MCPS` + `PLUGINS` identical across both `claude-stack`
-  twins - **`npm run lint` enforces it** (and that the HTML agrees, and the skill count). A change
-  to the shared `SKILLS`/`MCPS` baseline is additionally mirrored into the `cursor-stack` repo's
-  manifests in the same sitting (cross-repo parity is discipline, not a networked lint). Never patch
-  only a generated `.mcp.json` or a consuming project's copy - the installer
-  regenerates and silently wipes it.
-- **Select a skill by DESCRIPTION, not by name.** Naming works only for a skill guaranteed
-  alongside its citer - a frontmatter preload, an own-stack skill. Everything else is per-project,
-  in two absence classes: a skill no stack seeds (evidence-gated or opt-in), and one belonging to a
-  DIFFERENT stack than the artifact citing it - an always-on agent naming `angular-security` breaks
-  in every .NET-only install. So a brief says what the skill COVERS ('the skill covering Angular
-  hardening - template injection, CSP, token storage'), which the model matches against the
-  installed inventory and which still tells a seat without it what to do. A guard phrase beside the
-  name is NOT the remedy - it makes absence safe but leaves the name as the invitation and teaches
-  nothing. `npm run lint` checks 25 and 26 block a named cite that can be absent; a router hub opts
-  out with an `**Availability**` callout, since a name -> area table IS its content. A pointer
-  ('boundary rules live in `x`') is not a directive. And naming a skill NEVER puts it into an
-  install: the `suggests:` frontmatter that carried those edges is removed (it offered
-  `angular-security` on a WinForms install, `dotnet-aspire` on a project with no Aspire,
-  `dotnet-authentication` on a browser extension), check 27 keeps it out, and the graph emits no
-  edge from a body mention either. An install need is PROVEN, never inferred: `meta/evidence.json`
-  matched against the project's own manifests, or a per-stack seed in `meta/recommendations.json`.
-  What a seat loads at runtime stays a body matter, by description.
-- **One home per piece, no duplication.** A deterministic gate at a discrete event → a hook
-  (`hooks/`). A per-file-type convention → a path-scoped rule that glob-attaches
-  its house-style skill (`.claude/rules/`). A keyword capability → the skill's own description.
-  Cross-cutting guidance → the always-on `baseline-*.md` set (fleet-updatable): interaction,
-  quality-gates, security, git, navigation - each with an `.mdc` twin in `cursor-stack` that a
-  content change must be mirrored to. The base template (`stack/CLAUDE.template.md`)
-  carries only per-project structure + platform routing, never the baseline conventions. Never state one
-  trigger twice.
-- **Prove a behavioral change, don't assert it.** A change to a model / effort pin, a routing rule, or a
-  plugin set - any claim the flow got cheaper or still catches the same bugs - ships only with evidence:
-  run the affected build + tests yourself and read the code (never a run's self-report), measure the cost /
-  token delta when the claim is about cost, and commit that evidence (a benchmark note or branch) BEFORE any
-  reset. An earlier reset destroyed an unverified 'green' claim - so evidence lands first. A claim about the outside world - a package, a version, an API shape, a CLI flag - is verified through context7 in the same sitting and the evidence cited; the build passing says nothing about whether the API is still the current one (measured: two audits found drifted version-coupled claims in shipped artifacts, both compiling fine).
+- **`develop` is where work lands; `main` is the release branch.** Merging `develop` -> `main` IS the
+  release: the workflow rebuilds the archive and tags `v<version>` from
+  `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `marketplace.json` metadata; lint enforces
+  equality) on `develop` with any release-worthy change. Never commit feature work to `main`; keep `main`
+  the GitHub default branch. Lint + test workflows gate every push and PR.
+- **Public repo.** No private project names or absolute local paths in tracked files.
+- **Parity / source-of-truth.** Changes land in the SOURCE here: `SKILLS` + `MCPS` + `PLUGINS` identical
+  across both installer twins (`npm run lint` enforces it, plus the HTML and skill count). A shared
+  baseline change is mirrored into cursor-stack in the same sitting. Never patch only a generated
+  `.mcp.json` or a consuming project's copy - the installer wipes it.
+- **Select a skill by DESCRIPTION, not by name.** Naming works only for a skill guaranteed alongside its
+  citer (a frontmatter preload, an own-stack skill). Anything else - a skill no stack seeds, or one from a
+  DIFFERENT stack - is described by what it covers. A guard phrase beside the name is not the remedy.
+  Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an
+  `**Availability**` callout. Naming a skill never installs it: `suggests:` is removed (check 27) and the
+  graph emits no body-mention edge. Install need is PROVEN via `meta/evidence.json` or a per-stack seed.
+- **One home per piece, no duplication.** A deterministic gate -> a hook. A per-file-type convention -> a
+  path-scoped rule attaching its skill. A keyword capability -> the skill's description. Cross-cutting
+  guidance -> the always-on `baseline-*.md` set (each with an `.mdc` twin in cursor-stack to mirror). The
+  base template carries only per-project structure + platform routing. Never state one trigger twice.
+- **Prove a behavioral change, don't assert it.** A model / effort pin, routing rule or plugin-set change
+  ships only with evidence: run the build + tests yourself and read the code, measure the token delta when
+  the claim is about cost, and commit the evidence BEFORE any reset. Verify outside-world claims
+  (package, version, API shape, CLI flag) through context7 in the same sitting and cite it.
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
-  option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/` and `meta/` for an em-dash in
-  shipped text and names the file and line; `guard-answer-length.js` enforces the same character in a
-  session's own answers, so the rule holds on both surfaces.
-- **The always-on surface has a BUDGET, and the lint holds it.** Check 33 sums what every session
-  pays before a single message: the pathless `baseline-*.md` bodies plus every agent and skill
-  DESCRIPTION (the text the harness loads to decide what to invoke), and fails the build over
-  160,000 chars - ~31k tokens today at 123,593 (pathless rules 32,225, agent descriptions 38,346,
-  skill descriptions 53,022; the 2026-09-12 audit remediation took ~9,400 chars off it). So a rule moved into the baseline set, or a
-  description grown by a paragraph, is costed against that ceiling instead of assumed free. Two
-  measurements set the bar: standing context was 63.5% of a 164-session collection's whole token
-  bill, and nine independent installs floored between 87k and 134k tokens per message. The
-  install-side half is `/claude-stack:status`, which reports each install's own always-on floor.
+  option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes.
+- **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
+  every agent and skill DESCRIPTION and fails over 160,000 chars (106,873 on 2026-09-14: pathless rules 33,313, agent descriptions 28,540, skill descriptions 45,020). A rule moved into the
+  baseline set or a grown description is costed against it. `/claude-stack:status` reports an install's
+  own floor.
 
 ## Maintenance gotchas
 
-- **`.mcp.json` is registered by the CLI and VERIFIED by the installer - fix the manifest, not the output.**
-  `claude mcp add` over an existing server name prints 'already exists' and EXITS 0, so a `remove` that did
-  not take (an old CLI, a scope mismatch, a registration shadowing from another scope) is indistinguishable
-  from a successful rewrite: the run reported the MCP refreshed and the stale entry survived every update -
-  measured on a consuming project still carrying the pre-0.2.34 stdio sentry registration, `SENTRY_HOST` and
-  all. So the CLI stays the happy path and `verify_mcps` / `Test-McpRegistrations` read the RESULT back: at
-  project scope `.mcp.json` is parsed directly and the drifted entries rewritten (`mcp repaired: <name>`),
-  at user scope the shape comes from `claude mcp get` and a mismatch is retried once through the CLI, then
-  reported - the account config is never hand-edited. The expected shape is built from the SAME manifest
-  words the add is given, so a pin bumped this run is itself a mismatch and the refresh becomes verified;
-  a server the project added by hand is not a stack name and is never touched. `scripts/mcp-verify.test.js`
-  pins it on both twins with a stub `claude` that exits 0 and writes nothing - the failure itself.
-- Editing a consuming project's installed copy is local-only; mirror the change into this repo's
-  installer twins (both shells) or the next install wipes it - and into `cursor-stack`
-  when the change touches the shared skills/MCP baseline or a twinned agent/rule.
-- **Everything installs from ONE source snapshot** of this repo, taken once per run (`stack_src` /
-  `Get-StackSrc`): the release archive that `.github/workflows/release.yml` republishes on every
-  release merge to main - tagged `v<plugin version>`, always served by the
-  `releases/latest/download` URL, with a `RELEASE-SOURCE` file inside naming the exact commit +
-  version - falling back to a shallow git clone when no release is reachable. Skills, hooks, agents, rules
-  and the CLAUDE.md template are all copied out of it, so a change ships only once merged to
-  `main` (the release branch - the workflow rebuilds the archive from the merge); until then the
-  per-file fail-soft keeps any existing copy. The snapshot replaced the per-file `…/main/…` raw fetches - the raw CDN is per-file and
-  ~5 min stale after a push, so a run could mix revisions. One snapshot = one revision, which is
-  what makes the stamp below true. Never reintroduce a raw fetch of a repo-owned file.
-- **One download per RUN, not per layer.** The plugin skills (`/claude-stack:setup`, `:configure`)
-  must download anyway - they need `stack-select.js`, the graph, the template and the stamp diff
-  before the installer runs - so they pass that extracted snapshot to the installer with
-  `--source` / `-Source` and it skips its own fetch. A borrowed source is never deleted by the
-  script (`STACK_SRC_OWNED` / `$script:StackSrcOwned` gates the cleanup); the SKILLS own removing
-  their `$TMP`, on every exit path. Standalone (no `--source`) still fetches and cleans up after
-  itself - keep that path working, it is the no-plugin install documented in the README.
-- **One download per RELEASE, not per run - the source cache.** The extracted snapshot is kept at
-  `<config>/cache/stack-source/<repo-slug>/<version>`, and a run reuses it when a `HEAD` of
-  `/releases/latest` says that version is still newest (measured: 0.3s to probe, against ~1.8s for
-  the 1.4MB archive and 0.1s to copy the 5.4MB snapshot off disk) - so a second project, or a
-  `configure` an hour later, downloads nothing. Both installer twins and the guided walks write the
-  SAME layout, so the two routes reuse each other's fetch; a change to the shape is therefore a
-  four-site edit (`stack_src`, `Get-StackSrc`, and the protocol's two snippets). Two properties are
-  load-bearing, keep both: it is keyed by VERSION and never by time, so a new release wins the
-  moment it exists and no TTL can serve a stale stack; and an entry counts only when it carries
-  `stack/skills` + `stack/agents`, so an interrupted promote is re-downloaded rather than installed.
-  A promote drops sibling entries older than a WEEK, never 'all but the current' - another run
-  resolved its entry seconds ago and reads it for the length of its install. `STACK_SOURCE_CACHE=0`
-  restores the always-fresh temp download, and a cache that cannot be written is never fatal.
-- **The first download per release is usually avoidable too - the marketplace clone.** Claude Code
-  clones the whole marketplace repo to `<config>/plugins/marketplaces/<name>` and serves the plugin
-  out of its `setup-plugin/` subdir, so every machine with the plugin installed already holds
-  `scripts/`, `meta/` and `stack/` (measured: 7.1MB). A run takes it - copying it into the cache
-  under a synthesized `RELEASE-SOURCE`, `.git` dropped - only when its `origin` is this repo AND its
-  plugin manifest carries the exact version the probe just named: the clone moves when the USER
-  refreshes the marketplace, not when a release is published, so that version match is the whole
-  safety argument, and it is also what keeps a fork's run (and every test on a developer's machine)
-  out of the canonical clone. One exception, spelled out where it happens: when the archive, the
-  probe and the `git clone` have all failed, the clone is taken UNVERIFIED - installing the release
-  the plugin was last refreshed at beats installing nothing on an offline machine, and the log line
-  plus the stamp both name the commit it was. Same four sites as the cache (`stack_src`,
-  `Get-StackSrc`, the protocol's two snippets); `scripts/source-cache.test.js` covers the match, a
-  clone behind the release, a foreign repo's clone and the offline route.
-- **The install is versioned, not the file.** Claude Code has no per-artifact version: `version:` is
-  in the plugin.json schema and NOWHERE else (a `version:` key on a skill/agent/rule parses but is
-  ignored - don't add one). Instead each run writes `claude-stack.stamp` (project `.claude/`, or the
-  account dir for a global install) naming the source commit and release version; `/claude-stack:configure` diffs it
-  against the new snapshot's commit (the GitHub compare API - an archive has no local history) to
-  report what an update would bring. A run whose source never resolved writes NO stamp - a wrong
-  stamp is worse than none.
-- Authoring or editing a house skill in stack/skills/? The superpowers writing-skills method is a useful
-  reference - subordinate it to the parity lint, the HTML + skill-count sync, and the house
-  voice; take its skill-testing discipline, not its own formatting or its push-to-fork deploy step.
-- Skills are shared with Cursor: a skill body must stay platform-neutral (execution-mode
-  conditionals like 'INLINE when no dispatch' handle the platform delta inside the skill - never
-  fork a skill per platform).
+- **`.mcp.json` is registered by the CLI and VERIFIED by the installer - fix the manifest, not the
+  output.** `claude mcp add` over an existing name prints 'already exists' and exits 0, so a failed
+  `remove` looks like success. `verify_mcps` / `Test-McpRegistrations` read the result back: at project
+  scope `.mcp.json` is parsed and drifted entries rewritten (`mcp repaired: <name>`); at user scope the
+  shape comes from `claude mcp get`, a mismatch is retried once through the CLI, then reported (the
+  account config is never hand-edited). The expected shape is built from the same manifest words; a
+  server the project added by hand is never touched. `scripts/mcp-verify.test.js` pins it on both twins.
+- Editing a consuming project's installed copy is local-only; mirror it into both installer twins here
+  (and into cursor-stack when it touches the shared baseline or a twinned agent/rule).
+- **Everything installs from ONE source snapshot** per run (`stack_src` / `Get-StackSrc`): the release
+  archive (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version), falling
+  back to a shallow clone. A change ships only once merged to `main`; until then the per-file fail-soft
+  keeps existing copies. Never reintroduce a raw fetch of a repo-owned file (per-file, stale, mixes
+  revisions).
+- **One download per RUN.** The plugin commands download the snapshot anyway and pass it with
+  `--source` / `-Source`; a borrowed source is never deleted by the script
+  (`STACK_SRC_OWNED` / `$script:StackSrcOwned`) - the skills remove their `$TMP` on every exit path.
+  Standalone (no `--source`) still fetches and cleans up; keep that path working.
+- **One download per RELEASE - the source cache** at `<config>/cache/stack-source/<repo-slug>/<version>`,
+  reused when a `HEAD` of `/releases/latest` says that version is newest. Both twins and the guided walks
+  write the same layout, so a shape change is a four-site edit (`stack_src`, `Get-StackSrc`, the
+  protocol's two snippets). Keyed by VERSION, never time; an entry counts only with `stack/skills` +
+  `stack/agents`; a promote drops siblings older than a WEEK, never 'all but current'.
+  `STACK_SOURCE_CACHE=0` restores always-fresh; an unwritable cache is never fatal.
+- **The marketplace clone** (`<config>/plugins/marketplaces/<name>`) is taken into the cache only when
+  its `origin` is this repo AND its plugin manifest carries the exact version the probe named. Exception:
+  when archive, probe and clone all failed, it is taken UNVERIFIED (logged, and the stamp names the
+  commit). Same four sites; `scripts/source-cache.test.js` covers it.
+- **The install is versioned, not the file.** `version:` exists only in plugin.json - a `version:` key on
+  a skill/agent/rule is ignored; don't add one. Each run writes `claude-stack.stamp` (source commit +
+  release version); configure diffs it via the GitHub compare API. A run whose source never resolved
+  writes NO stamp.
+- Authoring a skill in `stack/skills/`: superpowers writing-skills is a reference - take its testing
+  discipline, subordinate it to the parity lint, HTML + count sync and house voice.
+- Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
+  dispatch'), never forked per platform.

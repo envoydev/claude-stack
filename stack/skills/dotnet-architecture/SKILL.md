@@ -1,6 +1,6 @@
 ---
 name: dotnet-architecture
-description: "Load when deciding where code belongs, structuring a new app or module, picking a layering or slicing style, drawing a service or module boundary, reviewing architecture drift, or when the user says clean architecture, vertical slice, DDD, modular monolith, microservices, or bounded context. Choose and hold a .NET application architecture - the decision layer here, each style's depth in references/. Two axes plus one additive: topology (single deployable -> modular-monolith -> microservices), internal organization (clean-architecture vs vertical-slice), and DDD tactical patterns layered on when the domain has real invariants. Do NOT load for encoding the boundaries as build-failing tests, or for raw SQL and query tuning - those are their own skills."
+description: "Choose and hold a .NET application architecture: where code belongs, layering or slicing, service and module boundaries, drift review. Use when the user says clean architecture, vertical slice, DDD, modular monolith, microservices or bounded context. Not for architecture tests or SQL tuning."
 ---
 
 # dotnet-architecture (decision hub)

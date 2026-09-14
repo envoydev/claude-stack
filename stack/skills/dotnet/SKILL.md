@@ -1,6 +1,6 @@
 ---
 name: dotnet
-description: "Load when starting or navigating any .NET / C# backend or desktop work - typed asks like 'add an endpoint to the orders API', 'my BackgroundService stopped overnight', or 'which skill covers EF Core queries' all start here. Router and complete index for .NET / C# specialist skills - maps a concrete work area (a construct, command, file, or task) to the one focused skill to load, across language & types, architecture & structure, ASP.NET Core & web, cross-cutting hardening, data & EF, messaging & orchestration, hosting & background work, testing & quality, diagnostics & performance, and desktop (WPF / WinForms). Routes per area, does not restate the skills; pairs with `csharp` for any C# file. Do NOT load for front-end, mobile, or non-.NET work, and never load this router INSTEAD of the specialist skill a row names - this file only routes."
+description: "Router for .NET / C# work: maps a work area (endpoint, EF Core query, BackgroundService, messaging, testing, performance, WPF / WinForms) to the one specialist skill to load. Load when starting or navigating any .NET backend or desktop task. Not for front-end or non-.NET work, and never instead of the specialist it names."
 ---
 
 # dotnet (skill router)
