@@ -296,7 +296,8 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
     // 'tokens' is an absolute per-message token count with 0 meaning off - the fresh-session
     // triggers, which replaced a percentage that the clamps made inert at its own default.
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens']);
+    // 'window' is a context-window SIZE in tokens: no off value, since a window of 0 is not a window.
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens', 'window']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
@@ -320,6 +321,12 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
             assert.ok(Number.isInteger(n) && n >= 0, `${row.key} default is a whole token count`);
             assert.strictEqual(row.validate.min, 0, `${row.key} accepts 0 - the hook reads it as off, not as invalid`);
             assert.strictEqual(row.validate.off, '0', `${row.key} documents 0 as its off switch`);
+        }
+        if (row.validate.type === 'window')
+        {
+            const n = Number(row.default);
+            assert.ok(Number.isInteger(n) && n >= row.validate.min, `${row.key} default is a whole window size at or above its floor`);
+            assert.ok(!('off' in row.validate), `${row.key} has no off value - removing the key is how it stops applying`);
         }
         if (row.asked_with) { assert.ok(cat.env.some(r => r.key === row.asked_with), `${row.key} rides along with a row that exists`); }
         // `group_off` makes a row the OWNER of a whole feature: setup and configure ask it as one

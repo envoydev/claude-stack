@@ -233,6 +233,8 @@ narration lines between them:
   count line. Never a call per file, never a re-run to re-read what you already have.
 - Never paste tool output (`required:`/`orphan:` dumps, file listings, diffs) into the chat - the
   tables and banners you compose ARE the presentation; raw lines are your input, not the user's.
+  The one exception: a table or report the user decides from (`stack-select.js --table`,
+  `plugin-settings.js`) is pasted verbatim in a fenced block BEFORE the ask about it.
 - Between steps, one narration line in this shape - what just closed, what is being computed,
   what comes next:
 

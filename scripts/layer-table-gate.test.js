@@ -1,0 +1,91 @@
+// The guided walks' layer turn must carry the pasted table before its selection ask. The prose
+// mandate failed in a real setup run: the agents ask named rows 3-5, 11-19, 32-34 and the user
+// answered 'I do not see any table'. The plugin hook denies that ask - both directions pinned here.
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const HOOK = path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'layer-table-'));
+
+const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+const say = (text) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] } });
+const call = (id, name, input) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] } });
+const result = (id, content, is_error = false) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error }] } });
+const table = (layer) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${layer} --recs r.json` });
+const ask = { questions: [{ question: 'Keep as shown?', header: 'Agents', multiSelect: false, options: [{ label: 'Recommended', description: 'x' }, { label: 'All', description: 'y' }] }] };
+
+function run(rows, input = ask) {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: input, transcript_path: p }), encoding: 'utf8' });
+  return { status: r.status, stderr: r.stderr };
+}
+
+test('denies the layer ask when the table ran but was never pasted', () => {
+  const r = run([typed('/claude-stack:setup'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /agents table ran/);
+});
+
+test('allows the ask once the footer line is in the assistant text', () => {
+  const r = run([typed('/claude-stack:setup'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
+  assert.strictEqual(r.status, 0);
+});
+
+test('a footer for a DIFFERENT layer does not satisfy the gate', () => {
+  const r = run([say('```\ntotal: 18 rules\n```'), table('agents'), result('t1', 'total: 43 agents')]);
+  assert.strictEqual(r.status, 2);
+});
+
+const denied = (n) => [call(`a${n}`, 'AskUserQuestion', ask), result(`a${n}`, 'claude-stack layer-table gate: ...', true)];
+
+test('keeps denying a retry that only CLAIMS the paste - the measured skills turn did it three times', () => {
+  const r = run([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), say('[step 6/12 - skills] full 78-row catalog, pasted below'), ...denied(2)]);
+  assert.strictEqual(r.status, 2);
+});
+
+test('the table only in the ask preview panel does not count', () => {
+  const withPreview = { questions: [{ ...ask.questions[0], options: [{ label: 'Recommended', description: 'x', preview: 'total: 78 skills' }, { label: 'All', description: 'y' }] }] };
+  assert.strictEqual(run([table('skills'), result('t1', 'total: 78 skills')], withPreview).status, 2);
+});
+
+test('lets the ask through after three denials for the same table call - never loops the walk', () => {
+  const r = run([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), ...denied(2), ...denied(3)]);
+  assert.strictEqual(r.status, 0);
+});
+
+test('a new table call resets the denial count', () => {
+  const r = run([table('agents'), ...denied(1), ...denied(2), ...denied(3), say('```\ntotal: 43 agents\n```'), table('skills'), result('t1', 'total: 78 skills')]);
+  assert.strictEqual(r.status, 2);
+});
+
+const settings = (extra = '') => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/plugin-settings.js" --catalog c.json --config-dir ~/.claude --installed claude-hud${extra}` });
+const report = 'claude-hud  display.showTools  missing\nclaude-hud  missing: 2 · differs: 0 · match: 5';
+
+test('the plugin-settings report counts as a decision table - its closing line must be pasted', () => {
+  assert.strictEqual(run([settings(), result('t1', report)]).status, 2);
+  assert.strictEqual(run([settings(), result('t1', report), say('```\n' + report + '\n```')]).status, 0);
+});
+
+test('the plugin-settings --apply run is not a decision table', () => {
+  assert.strictEqual(run([settings(' --apply'), result('t1', 'applied: 2')]).status, 0);
+});
+
+test('a result given as content blocks is read the same way', () => {
+  assert.strictEqual(run([settings(), result('t1', [{ type: 'text', text: report }])]).status, 2);
+});
+
+test('an ask with no table call in the transcript is untouched', () => {
+  assert.strictEqual(run([typed('which branch?'), say('Looking.')]).status, 0);
+});
+
+test('fail-open on a missing transcript or garbage payload', () => {
+  const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8' });
+  assert.strictEqual(r2.status, 0);
+});

@@ -40,9 +40,11 @@ to the user.
 it: resolve the snapshot once into `$TMP/repo` - a cached release copy when the version probe says it is current, a download when it is not (the reference owns the fallback), use every tool
 from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
-call: one quiet call per recompute, no pasted tool output, one narration line between steps.
+call: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
 This command's extra stake in the snapshot: its `RELEASE-SOURCE` commit is what step 1 compares
 the stamp against to report what an update would bring.
+
+**Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
@@ -456,7 +458,7 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's
   layer is the remedy.
-- Do not paste tool output or run chatty per-file commands - the 'Narrate, don't trace' contract
+- Do not paste tool output other than the decision tables, or run chatty per-file commands - the 'Narrate, don't trace' contract
   holds for the whole run.
 - Do not skip the area pick, the walked layers, the add/drop rounds, the prerequisite gate, or the explicit-removal
   pass. Do not write the archive, the extracted repo, or the working files into the project

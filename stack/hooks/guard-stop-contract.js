@@ -175,9 +175,71 @@ function costStateWindow() {
     return best;
   } catch { return null; }   // no transcript, unreadable, or not JSON - the DEFAULT tier covers it
 }
+// The THIRD and FOURTH sources are the session's own usage. No request holds more input than its
+// window, so a message that carried past 200k PROVES a window beyond the 200k tier - and the one
+// named tier beyond it is 1M. Measured: Sonnet 5 runs a 1M window with a bare `claude-sonnet-5` id in
+// settings and in `cost-state` alike, so both suffix sources read nothing and the 180k DEFAULT trigger
+// offered the resume at ~252k (claude-hud: 27% of the window). The other way round, the harness
+// AUTO-compacts a 1M session near 390k (measured 387,619-397,171), so an `auto` compaction whose
+// `preTokens` sat under 200k PROVES the 200k window. A manual `/compact` proves nothing - it runs at
+// whatever size the user chose. Each proof is LATCHED per transcript, because the 512KB tail scan
+// loses the evidence as a long session grows - which is what retired the first carry-based version.
+const TIER_200K = 200000;
+function usageWindow() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return null;
+    const os = require('os');
+    const key = String(p).replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+    const latch = (w) => `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-window-${key}.${w}`;
+    const seal = (w, why) => {
+      try { fs.writeFileSync(latch(w), String(why)); } catch { /* an unwritable latch only costs the rescan */ }
+      return w;
+    };
+    let best = fs.existsSync(latch(1000000)) ? 1000000 : fs.existsSync(latch(TIER_200K)) ? TIER_200K : null;
+    if (best === 1000000) return best;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 512 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (line.includes('"compactMetadata"')) {
+        try {
+          const m = JSON.parse(line).compactMetadata;
+          if (m.trigger === 'auto' && m.preTokens > 0 && m.preTokens < TIER_200K && !best) best = seal(TIER_200K, m.preTokens);
+        } catch { /* partial first line of the tail - skip */ }
+        continue;
+      }
+      if (!line.includes('"usage"')) continue;
+      try {
+        const u = JSON.parse(line).message.usage;
+        const carry = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+        if (carry > TIER_200K) return seal(1000000, carry);
+      } catch { /* a row without usage, or the partial first line of the tail - skip */ }
+    }
+    return best;
+  } catch { return null; }
+}
+// The LAST resort, used only when nothing above proves a window: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW,
+// in tokens, seeded 1000000 because the accounts this stack runs on are 1M. It is a FALLBACK, never a
+// declaration - the retired CLAUDE_STACK_CONTEXT_WINDOW was the first layer and so outvoted every
+// proof, killing the offer on every 200k account (ten confirmations). A 200k account whose model id
+// is bare now sits on the 1M trigger only until its first auto-compaction, which proves 200k, and the
+// SessionStart compact route reaches it at that moment regardless. Unset or garbage = no fallback,
+// and the DEFAULT trigger applies.
+function envWindow() {
+  const n = parseInt(process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW, 10);
+  return n >= 100000 ? n : null;
+}
 let _knownWindow;
 function knownWindow() {
-  if (_knownWindow === undefined) _knownWindow = settingsModelWindow() || costStateWindow() || null;
+  // The LARGEST proven window wins: a `[200k]` id cannot outvote a carry the 200k window could not hold.
+  if (_knownWindow === undefined) {
+    const proven = [settingsModelWindow(), costStateWindow(), usageWindow()].filter(Boolean);
+    _knownWindow = proven.length ? Math.max(...proven) : envWindow();
+  }
   return _knownWindow;
 }
 // The trigger this session is judged against. The two named tiers each own a variable; every

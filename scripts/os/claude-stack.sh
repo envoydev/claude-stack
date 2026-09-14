@@ -1911,6 +1911,12 @@ if "CLAUDE_STACK_FRESH_SESSION_200K" not in env:
 if "CLAUDE_STACK_FRESH_SESSION_DEFAULT" not in env:
     env["CLAUDE_STACK_FRESH_SESSION_DEFAULT"] = "180000"; changed = True
     print("  settings.json env: CLAUDE_STACK_FRESH_SESSION_DEFAULT seeded (180000)")
+# the window the hooks ASSUME when nothing proves one (a bare model id with no carry past 200k and no
+# auto-compaction under it). A fallback only - every proof outvotes it, unlike the retired
+# CLAUDE_STACK_CONTEXT_WINDOW below, which sat first and killed the offer on 200k accounts.
+if "CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW" not in env:
+    env["CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW"] = "1000000"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW seeded (1000000)")
 # WHICH of the two triggers applies is DETECTED, never configured: the hooks read the settings
 # model id's own window suffix (`opus[1m]`), else take the tier the session has already proven
 # (nothing can carry more input tokens than the window), else make no offer at all. The old
@@ -2347,7 +2353,9 @@ hand-edited value survives every update):
                                    the same trigger for every other case - a window the hooks
                                    cannot read, or one that is neither of those sizes (default
                                    180000; 0 = off)
-Which one applies is DETECTED, not configured: the hooks read the window suffix on the settings
-model id ('opus[1m]', 'opus[200k]'); anything else takes the DEFAULT trigger.
+Which one applies is DETECTED: the hooks read the window suffix on the settings model id
+('opus[1m]', 'opus[200k]'), a carry past 200k (1M) or an auto-compaction under 200k (200k). With no
+proof they assume CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (default 1000000); remove that key and an
+unproven window takes the DEFAULT trigger.
 CLAUDE_STACK_FRESH_SESSION_PCT and CLAUDE_STACK_CONTEXT_WINDOW are retired; nothing reads them.
 GITIGNORE

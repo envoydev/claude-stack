@@ -55,8 +55,9 @@ change made only inside a consuming project is throwaway.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `CLAUDE_STACK_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window is DETECTED (the
-    settings.json model id suffix, then transcript `cost-state.modelUsage` keys; the largest proven
-    window wins), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the
+    settings.json model id suffix, transcript `cost-state.modelUsage` keys, or a carry past 200k latched
+    per transcript - Sonnet 5 runs 1M on a bare id - or an AUTO compaction under 200k; the largest proven
+    window wins; with no proof, the seeded fallback `CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW` (1000000)), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the
     seeding of `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are retired. A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
@@ -126,6 +127,10 @@ change made only inside a consuming project is throwaway.
     pruned. A shipped-but-unneeded server or plugin is validate's whole-stack-absent pass, not a retirement.
   - The `/claude-stack` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
+  - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
+    (up to 3 times per table) whose decision table was run but never pasted - a `stack-select.js
+    --table` catalog or the `plugin-settings.js` report. It ships in the plugin because a fresh setup
+    has no stack hooks yet; the rule text is pinned as `table-before-question`.
   - None of the five carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
 - `meta/` - never installed:
