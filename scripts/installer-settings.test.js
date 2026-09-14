@@ -157,6 +157,7 @@ function assertHookAdoption(sb, run, updateIo, twin)
     const shipped = shippedHooks(sb);
     assert.ok(shipped.length >= 10, `${twin}: the stamp records the whole shipped hook catalog, not this run's subset`);
     assert.deepStrictEqual(hooksOnDisk(sb), ['guard-secret-value'], `${twin}: the selection installed one hook`);
+    assert.ok(!fs.existsSync(path.join(sb.repo, '.claude', 'hooks', 'model-windows.json')), `${twin}: no model table without a hook that reads it`);
 
     // every other hook was shipped at install time and is absent now - a deliberate drop, kept dropped
     const kept = updateIo(sb);
@@ -173,6 +174,20 @@ function assertHookAdoption(sb, run, updateIo, twin)
     assert.ok(wiring.includes('guard-answer-length.js'), `${twin}: the adopted hook is wired, not just copied`);
     assert.ok(!adopted.includes('adopting hook guard-catastrophic-rm'), `${twin}: the other dropped hooks stay dropped in the same run`);
 }
+
+// The model -> window table is data the two fresh-session hooks read from their own directory, so it
+// must land beside them - and only beside them.
+function assertModelTable(sb, run, twin)
+{
+    fs.writeFileSync(sb.sel, 'skill angular-conventions\nrule markdown-docs\nhook guard-stop-contract\n');
+    run(sb, 'install');
+    const table = path.join(sb.repo, '.claude', 'hooks', 'model-windows.json');
+    assert.ok(fs.existsSync(table), `${twin}: the table lands beside guard-stop-contract.js`);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(table, 'utf8')), JSON.parse(fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'model-windows.json'), 'utf8')), `${twin}: byte-equal to the release's copy`);
+}
+
+test('sh: the model table is installed beside the fresh-session hooks', () => assertModelTable(sandbox(), runSh, 'sh'));
+test('ps1: the model table is installed beside the fresh-session hooks (pwsh required)', { skip: skipNoPwsh }, () => assertModelTable(sandbox(), runPs, 'ps1'));
 
 test('sh: update adopts a hook the release ADDED, and never resurrects one the user dropped', () => {
     assertHookAdoption(sandbox(), runSh, updateIoSh, 'sh');
@@ -193,6 +208,7 @@ const SEEDS = [
     ['CLAUDE_STACK_FRESH_SESSION_1M', '400000'],
     ['CLAUDE_STACK_FRESH_SESSION_200K', '150000'],
     ['CLAUDE_STACK_FRESH_SESSION_DEFAULT', '180000'],
+    ['CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW', '1000000'],
 ];
 
 function assertSeedLines(sb, out, twin)

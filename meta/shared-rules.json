@@ -3078,7 +3078,7 @@
    ]
   },
   "context-window-tier": {
-   "_note": "The context WINDOW the fresh-session trigger scales against, read from ONE source and identical in the two hooks that use it (the gate and the offer must never sit on different triggers in one session): the settings.json model id's own [1m]-style suffix - the only readable one, since the transcript strips the suffix and no payload or env var carries the model. Never a model -> window TABLE: it goes stale on every release. There is no env override; CLAUDE_STACK_CONTEXT_WINDOW is retired. A window that is neither 200k nor 1M - including one that cannot be read at all - takes CLAUDE_STACK_FRESH_SESSION_DEFAULT, so the offer always has a number behind it.",
+   "_note": "The context WINDOW the fresh-session trigger scales against, identical in the two hooks that use it (the gate and the offer must never sit on different triggers in one session): the session model id's row in the shipped hooks/model-windows.json, else CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW - ONE rule, nothing else read (no id suffix, no carry, no compaction; each of those fixed one case and broke another). A 200k window takes CLAUDE_STACK_FRESH_SESSION_200K, a 1M one _1M, anything else - including no window at all - CLAUDE_STACK_FRESH_SESSION_DEFAULT.",
    "owner": {
     "file": "stack/hooks/guard-fresh-session-start.js",
     "marker": "which context WINDOW is this session running in?"
