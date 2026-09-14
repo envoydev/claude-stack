@@ -86,6 +86,16 @@
         "min": 0,
         "off": "0"
       }
+    },
+    {
+      "key": "CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW",
+      "default": "1000000",
+      "ask": false,
+      "what": "the context WINDOW, in tokens, the fresh-session gate assumes when nothing proves one - no `[1m]`/`[200k]` suffix on the settings or transcript model id (Sonnet 5 runs 1M on a bare id), no carry past 200k, no auto-compaction under 200k. A fallback, never a declaration: every proof outvotes it, which is what separates it from the retired CLAUDE_STACK_CONTEXT_WINDOW that killed the offer on 200k accounts. Remove the key to make an unproven window take CLAUDE_STACK_FRESH_SESSION_DEFAULT again.",
+      "validate": {
+        "type": "window",
+        "min": 100000
+      }
     }
   ]
 }

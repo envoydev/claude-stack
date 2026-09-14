@@ -5089,6 +5089,23 @@
      "marker": "The shortcut-by-shortcut table is `references/reward-hacking.md` - read it before claiming a change is done."
     }
    ]
+  },
+  "table-before-question": {
+   "_note": "A table or report the user decides from is pasted into the message BEFORE the ask about it. Measured twice in one setup run (agents, skills): the table ran, its tool result was collapsed in the UI, and the ask went out with no table on screen. The narrate-dont-trace protocol banned pasted tool output, so the exception is stated where that ban lives; guard-layer-table.js in the plugin enforces it.",
+   "owner": {
+    "file": "setup-plugin/commands/setup.md",
+    "marker": "Table before question - no exceptions."
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "Table before question - no exceptions."
+    },
+    {
+     "file": "setup-plugin/references/source-protocol.md",
+     "marker": "is pasted verbatim in a fenced block BEFORE the ask about it"
+    }
+   ]
   }
  }
 }

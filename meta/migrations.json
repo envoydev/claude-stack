@@ -52,7 +52,7 @@
     "key": "CLAUDE_STACK_CONTEXT_WINDOW"
    },
    "why": "the window is DETECTED from the window suffix on the settings model id (opus[1m], opus[200k]) and nothing else; a window that is neither named size, or one that cannot be read at all, takes CLAUDE_STACK_FRESH_SESSION_DEFAULT. The key was the first resolution layer and is read by nothing now - it was also seeded 1000000 for several releases, which declared a 1M window on every install",
-   "then": "nothing - the tier is read from the model id; put the trigger you want in the three FRESH_SESSION keys"
+   "then": "nothing - the window is read from the model id or the session's own usage, with CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW as the fallback when nothing proves one (every proof outvotes it); put the trigger you want in the three FRESH_SESSION keys"
   },
   {
    "id": "autocompact-seed-dropped",

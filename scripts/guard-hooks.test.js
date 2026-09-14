@@ -30,6 +30,10 @@ function transcript(name, rows) {
 // threshold assertion in this file. Pin an EMPTY account dir for the whole run; the tests that
 // exercise the layers point it at a fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
+// ... and a Claude Code session's settings env reaches this process too: the seeded
+// CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
+// The fallback's own test sets it explicitly.
+delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.claude/docs/hook-blocks/` (measured 2026-09-07: 12,480
@@ -264,18 +268,23 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
   // above a 200k window entirely, so an unreadable window on that tier could never trip the gate.
   assert.equal(call(at('w-undeclared', 170000)), 0, '170k with nothing declared is under the 180k default');
   assert.equal(call(at('w-undeclared-190k', 190000)), 2, '190k is past it - on a 200k window that is 95% full, and the gate must still reach it');
-  assert.equal(call(at('w-undeclared-260k', 260000)), 2, '260k is past it');
+  assert.equal(call(at('w-undeclared-199k-off1m', 199000), { CLAUDE_STACK_FRESH_SESSION_1M: '0' }), 2, '199k proves no window - still the default tier');
+  // A carry past 200k PROVES the 1M window even with no suffix anywhere (Sonnet 5 runs 1M on a bare
+  // id): measured, the default trigger offered the resume at ~252k while claude-hud read 27%.
+  assert.equal(call(at('w-undeclared-260k', 260000)), 0, '260k with no suffix proves 1M - under its 400k trigger');
+  assert.equal(call(at('w-bare-sonnet-260k', 260000), { CLAUDE_CONFIG_DIR: accountDir('tier-bare', 'claude-sonnet-5') }), 0, 'a bare model id is no proof against the carry');
+  assert.equal(call(at('w-200k-id-260k', 260000), w200()), 0, 'a [200k] id cannot outvote a carry that window could not hold');
   assert.equal(call(at('w-undeclared-160k', 160000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '150000' }), 2, 'the default variable moves it');
-  assert.equal(call(at('w-undeclared-260k-off', 260000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
-  assert.equal(call(at('w-odd-260k', 260000), { CLAUDE_CONFIG_DIR: accountDir('tier-500k', 'opus[500k]') }), 2,
+  assert.equal(call(at('w-undeclared-190k-off', 190000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
+  assert.equal(call(at('w-odd-190k', 190000), { CLAUDE_CONFIG_DIR: accountDir('tier-500k', 'opus[500k]') }), 2,
     'a window that is neither named size takes the same default');
   // 1M tier: CLAUDE_STACK_FRESH_SESSION_1M, default 400,000 - deliberately above the harness's own
   // auto-compaction band (387,619-397,171 measured), so the Stop offer there is usually unreachable
   // and the SessionStart compact route carries it instead. Lower the variable to be asked earlier.
   assert.equal(call(at('w-1m-395k', 395000), w1m()), 0, '395k is under the 1M tier default');
   assert.equal(call(at('w-1m-450k', 450000), w1m()), 2, '450k is past it');
-  assert.equal(call(at('w-1m-450k-nodecl', 450000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0,
-    'without the model id it is not the 1M tier at all - it is the default one, off here');
+  assert.equal(call(at('w-1m-450k-nodecl', 450000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 2,
+    'without the model id the 450k carry still proves the 1M tier - the default switch does not reach it');
   assert.equal(call(at('w-1m-260k', 260000), w1m({ CLAUDE_STACK_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
   assert.equal(call(at('w-1m-450k-off', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
   assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch');
@@ -833,10 +842,10 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
   const stop = (extra) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
     { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'freshoff-')), ...extra } }).status;
 
-  // this fixture names no model id, so the window is unreadable and the DEFAULT trigger applies
-  assert.equal(stop({ CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
-  assert.equal(stop({}), 2, 'and the same session still qualifies at the default');
-  assert.equal(stop({ CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_200K: '0' }), 2, 'the two named tiers\' switches do not reach it');
+  // this fixture names no model id, but its 900k carry PROVES the 1M window, so that tier's trigger applies
+  assert.equal(stop({ CLAUDE_STACK_FRESH_SESSION_1M: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
+  assert.equal(stop({}), 2, 'and the same session still qualifies at the 1M default');
+  assert.equal(stop({ CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0', CLAUDE_STACK_FRESH_SESSION_200K: '0' }), 2, 'the other tiers\' switches do not reach it');
   assert.equal(stop({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all');
   const acct1m = fs.mkdtempSync(path.join(TMP, 'stopoff-1m-'));
   fs.writeFileSync(path.join(acct1m, 'settings.json'), JSON.stringify({ model: 'opus[1m]' }));
@@ -1209,7 +1218,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     const start = (source, env) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'SessionStart', source }, { env: winEnv(env) });
     const injected = (r) => (r.stdout && r.stdout.includes('additionalContext') ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '');
-    const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 180k default trigger
+    const hot = ctxAt('ups-hot', 450000);   // no model id here - the 450k carry proves 1M, past its 400k trigger
 
     // NEVER exit 2 on UserPromptSubmit: that erases the user's prompt and shows the reason to the
     // user only - the run would be lost and the model would never learn why.
@@ -1221,7 +1230,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.equal(injected(ups('<command-name>/project-quality-loop</command-name>', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
     assert.equal(injected(ups('fix the failing test', hot)), '', 'an ordinary prompt is never touched');
     assert.equal(injected(ups('/help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(ups('/project-quality-loop', hot, { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(injected(ups('/project-quality-loop', hot, { CLAUDE_STACK_FRESH_SESSION_1M: '0' })), '', '0 on the trigger this session uses disables this route too');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
     // compaction event itself is the evidence.
@@ -1283,6 +1292,35 @@ test('fresh-session window: the tier variable is the whole setting on a declared
     assert.equal(askLoop(at160, w200({ CLAUDE_STACK_FRESH_SESSION_200K: '180000' })), 0, '... and its own knob does');
 });
 
+test('fresh-session window: the carry latches the 1M proof, so a compacted session keeps it', () => {
+    const logDir = fs.mkdtempSync(path.join(TMP, 'latch-'));
+    const env = winEnv({ CLAUDE_STACK_HOOK_LOG_DIR: logDir });
+    const tp = ctxAt('latch-260k', 260000);
+    assert.equal(askLoop(tp, env), 0, '260k proves the 1M window');
+    fs.writeFileSync(tp, ctxRows('latch-260k', 190000).map((r) => JSON.stringify(r)).join('\n') + '\n');
+    assert.equal(askLoop(tp, env), 0, 'compacted to 190k: the latched 1M window still holds, so the 180k default does not fire');
+});
+
+test('fresh-session window: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW is the fallback, never a declaration', () => {
+    // The retired CLAUDE_STACK_CONTEXT_WINDOW sat FIRST and outvoted every proof, so its seeded
+    // 1000000 killed the offer on 200k accounts. This one answers only when nothing proves a window.
+    const w = (extra) => winEnv({ CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW: '1000000', ...extra });
+    assert.equal(askLoop(ctxAt('envw-190k', 190000), w()), 0, 'unproven window: the 1M fallback puts 190k under its 400k trigger');
+    assert.equal(askLoop(ctxAt('envw-190k-unset', 190000), winEnv()), 2, 'unset: the 180k DEFAULT trigger, as before');
+    assert.equal(askLoop(ctxAt('envw-190k-junk', 190000), w({ CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW: 'lots' })), 2, 'garbage is no fallback');
+    assert.equal(askLoop(ctxAt('envw-160k-200k', 160000), w({ CLAUDE_CONFIG_DIR: accountDir('envw-200k', 'opus[200k]') })), 2,
+        'a [200k] model id is a proof - the fallback never outvotes it');
+    const compacted = (name, trigger, preTokens) => transcript(name, [
+        ...ctxRows(name, 160000),
+        { type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger, preTokens } },
+    ]);
+    assert.equal(askLoop(compacted('envw-auto-170k', 'auto', 170000), w()), 2,
+        'an AUTO compaction under 200k proves the 200k window - 160k is past its 150k trigger despite the 1M fallback');
+    assert.equal(askLoop(compacted('envw-manual-170k', 'manual', 170000), w()), 0,
+        'a manual /compact proves nothing - the fallback still decides');
+    assert.equal(askLoop(compacted('envw-auto-390k', 'auto', 390000), w()), 0, 'an auto compaction near 390k is the 1M shape, not a 200k proof');
+});
+
 test('fresh-session window: an unreadable window takes the DEFAULT trigger, not a guessed tier', () => {
     // This replaced a LATCHED inference: a message past 200k was read as proof of the 1M tier and
     // cached per transcript, because the 512KB tail scan lost the crossing as the session grew.
@@ -1290,7 +1328,10 @@ test('fresh-session window: an unreadable window takes the DEFAULT trigger, not 
     // is - so an unreadable window now takes its own trigger instead of being guessed at.
     const env = winEnv();
     assert.equal(askLoop(ctxAt('win-def-170k', 170000), env), 0, '170k with no readable window is under the 180k default');
-    assert.equal(askLoop(ctxAt('win-def-260k', 260000), env), 2, '260k is past it');
+    assert.equal(askLoop(ctxAt('win-def-190k', 190000), env), 2, '190k is past it - and proves no window');
+    // A carry past 200k is not 'unreadable': it excludes the 200k tier. Measured on Sonnet 5, a 1M
+    // window under a bare id: the default trigger offered the resume at ~252k with claude-hud at 27%.
+    assert.equal(askLoop(ctxAt('win-def-260k', 260000), env), 0, '260k proves the 1M window - under its 400k trigger');
     assert.equal(askLoop(ctxAt('win-def-260k-1m', 260000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('def-1m', 'opus[1m]') })), 0,
         'the same session on a readable 1M window waits for its own 400k trigger');
     assert.equal(askLoop(ctxAt('win-def-160k-200k', 160000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('def-200k', 'opus[200k]') })), 2,
@@ -1312,13 +1353,13 @@ test('fresh-session window: cost-state is the SECOND source, and the largest suf
     // 300k: under the 1M tier's 400k trigger, past the 180k default an unresolved window takes.
     assert.equal(askLoop(withCost('cs-1m', 300000, ['claude-opus-5[1m]']), plainAcct()), 0,
         'cost-state proves the 1M window the settings id does not - 300k waits for that tier\'s 400k');
-    assert.equal(askLoop(withCost('cs-bare', 300000, ['claude-opus-5']), plainAcct()), 2,
-        '... and a bare id there proves nothing, so the default trigger applies and 300k is past it');
+    assert.equal(askLoop(withCost('cs-bare', 190000, ['claude-opus-5']), plainAcct()), 2,
+        '... and a bare id there proves nothing, so the default trigger applies and 190k is past it');
     assert.equal(askLoop(withCost('cs-mixed', 300000, ['claude-opus-5', 'claude-haiku-4-5-20251001', 'claude-opus-5[1m]']), plainAcct()), 0,
         'a session carrying a suffixed AND a bare id is on the larger window - that is what it reached');
     assert.equal(askLoop(withCost('cs-settings-wins', 300000, ['claude-opus-5[1m]']),
-        winEnv({ CLAUDE_CONFIG_DIR: accountDir('cs-200k', 'opus[200k]') })), 2,
-        'the settings id stays the FIRST source - a declared 200k window is not overridden by usage');
+        winEnv({ CLAUDE_CONFIG_DIR: accountDir('cs-200k', 'opus[200k]') })), 0,
+        'the LARGEST proven window wins - a 300k carry is one a declared 200k window could not have held');
 });
 
 test('fresh-session window: a trigger at or above its own window is clamped back inside it', () => {
