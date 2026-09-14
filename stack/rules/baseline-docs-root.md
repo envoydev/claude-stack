@@ -34,8 +34,9 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   the tree held uncommitted work), and these docs do not switch with git branches, so the stamp says
   which code the doc describes. A foreign-branch stamp, or `+dirty`, means approximate at best -
   verify against the code before relying on it, never as ground truth for HEAD. Nothing re-captures
-  automatically: a flow may SUGGEST the right capture at close, the user decides, and how a doc is
-  refreshed is the owning capture skill's own contract.
+  automatically: a flow SUGGESTS a capture at close only when that capture's output is missing or no
+  longer reflects what the run changed - never as a default next step, and never the capture that
+  just ran. The user decides, and how a doc is refreshed is the owning capture skill's own contract.
 
 <!-- Operator note: the default root is machine-local (`.claude/*` is gitignored) - nothing under it
      is committed or survives a fresh clone, so the captures are re-run after a re-clone. A committed

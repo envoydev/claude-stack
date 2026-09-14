@@ -428,7 +428,8 @@ profile), output to `$TMP/select.out` - then:
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
-(when installed), a manual-only capture, the serena re-index, a credential to rotate or set by
+(when installed and this run added or removed something it lists), a manual-only capture whose
+output this run made stale, the serena re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/project-agent-capabilities` - validate added 3 skills, so the generated rule's
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
