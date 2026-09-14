@@ -64,7 +64,8 @@ change made only inside a consuming project is throwaway.
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter; the user's slash turn is untouched), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
-    guided walk) when the context is past the window trigger OR this session already made a run. Routes:
+    guided walk) when the context is past the window trigger OR (slash route only) this session already
+    TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. Routes:
     PreToolUse `Skill` BLOCKS; `UserPromptSubmit` INJECTS for slash-invoked runs (never denies - that
     would erase the prompt); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
     the language of the user's prompts, and re-read a live plan file's header first.

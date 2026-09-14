@@ -21,9 +21,9 @@
 // Same step run fresh in the next session cost 134k. This is that rule mechanized.
 //
 // The incoming skill must be one of the orchestration entry points below - everything else passes -
-// and then EITHER trigger is enough: the session's context is already past the threshold, or this
-// session has already made one deliberate run (see priorOrchestrationRun below, which is what
-// reaches the chained case the size trigger structurally cannot).
+// and then EITHER trigger is enough: the session's context is already past the threshold, or - on
+// the slash route only - this session has already made one typed run (see priorOrchestrationRun
+// below, which is what reaches the chained case the size trigger structurally cannot).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 const nodePath = require('path');
@@ -358,6 +358,19 @@ function worthResuming(ctx) {
 // fresh session stronger, not weaker. What IS required is a human turn between the two, so a run
 // re-entering its own skill mid-flight is never read as a second run.
 const CHAIN_TAIL = 8 * 1024 * 1024;   // measured over the audited corpus: p90 transcript 0.7MB, largest 10.6MB
+// A `user` record the harness wrote is not the user speaking. Measured 2026-09-14: a slash skill's
+// own body lands as an `isMeta` user record on the very next line, so every run's FIRST sub-skill
+// call read its own start as a prior run and offered a fresh session inside a fresh session.
+// The other harness-written kinds in the corpus: compact summaries, local-command output and
+// task notifications.
+function isHumanTurn(line) {
+  let row;
+  try { row = JSON.parse(line); } catch { return false; }
+  if (row.type !== 'user' || row.isMeta || row.isCompactSummary) return false;
+  const c = row.message && row.message.content;
+  const t = typeof c === 'string' ? c : (Array.isArray(c) ? (c.find((x) => x && x.type === 'text') || {}).text || '' : '');
+  return !/^\s*<(local-command-stdout|local-command-caveat|task-notification)>/.test(t);
+}
 function priorOrchestrationRun() {
   try {
     const p = payload.transcript_path;
@@ -369,34 +382,29 @@ function priorOrchestrationRun() {
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
     const text = buf.toString('utf8');
-    // Two spellings of ONE event, both read from the raw text - a transcript JSON-escapes neither
-    // `<` nor `/`: the slash route's `<command-name>` marker, and the model route's `Skill`
-    // tool_use input. Prose ABOUT a run matches neither, which is what keeps this cheap and quiet.
+    // A RUN is what the user typed: the slash route's `<command-name>` marker, read from the raw
+    // text (a transcript JSON-escapes neither `<` nor `/`). A `Skill` tool_use is NOT a run: a
+    // solve flow calls its own phases (solution-design, implementer, verify-code) that way, and its
+    // approval step puts a human turn between them, so counting them read ONE gated cycle as a
+    // chain (measured 2026-09-14: the build step of a single cycle was offered a fresh session).
+    // Prose ABOUT a run does not match either, which is what keeps this cheap and quiet.
     const hits = [];
-    for (const re of [
-      /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/g,
-      /"skill"\s*:\s*"([A-Za-z0-9:_-]+)"/g,
-    ]) {
-      let m;
-      while ((m = re.exec(text)) !== null) if (isOrchestration(m[1])) hits.push({ at: m.index, name: m[1] });
-    }
+    const re = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/g;
+    let m;
+    while ((m = re.exec(text)) !== null) if (isOrchestration(m[1])) hits.push({ at: m.index, name: m[1] });
     if (!hits.length) return false;
     hits.sort((a, b) => a.at - b.at);
     // ONE test does both jobs: an earlier run counts only when a HUMAN turn follows it - a `user`
-    // record that is not a tool_result. That excludes the call being judged without having to
-    // guess whether it is on disk yet (it may be: the assistant row carrying a `Skill` tool_use is
-    // written before PreToolUse fires), because nothing human follows it either way - a slash
-    // prompt is the last line, and a tool_use is followed only by the result that has not happened.
-    // It also keeps the SAME command chained twice, which matching the last hit by NAME did not.
-    // It is deliberately loose in one direction: a user interjecting mid-run and the run then
-    // entering another orchestration skill reads as a second run. That costs ONE dismissible ask
-    // per session, against a measured 199.1k/message for missing the real case.
+    // record that is not a tool_result. That excludes the prompt being judged without having to
+    // guess whether it is on disk yet (it is: the prompt row is written before UserPromptSubmit
+    // fires), because nothing human follows it. It also keeps the SAME command chained twice,
+    // which matching the last hit by NAME did not.
     // Slice from the END of the hit's own line - a marker lives inside a user record, so reading
     // the remainder of that same line would count the prior run's own prompt as the turn after it.
     const nl = text.indexOf('\n', hits[0].at);
     if (nl === -1) return false;
     for (const line of text.slice(nl + 1).split('\n')) {
-      if (line.includes('"type":"user"') && !line.includes('"tool_result"')) return true;
+      if (line.includes('"type":"user"') && !line.includes('"tool_result"') && isHumanTurn(line)) return true;
     }
     return false;
   } catch {
@@ -445,7 +453,9 @@ const FRESH_AT = ctxThreshold();   // null = this window's trigger is switched o
 const sizeAlreadyOffered = sizeOfferedAt();
 const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResuming(ctx)
   && (!sizeAlreadyOffered || ctx >= sizeAlreadyOffered * REOFFER_GROWTH);
-const chained = !FRESH_OFF && !overSize && worthResuming(ctx)
+// The chained trigger judges only a run the user TYPED (the slash route); a Skill call is a phase
+// of a run already in flight, and the size trigger still covers that route.
+const chained = EVENT === 'UserPromptSubmit' && !FRESH_OFF && !overSize && worthResuming(ctx)
   && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
 if (!overSize && !chained) process.exit(0);
 if (chained) {
