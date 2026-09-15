@@ -42,6 +42,17 @@
   ACCOUNT settings.json 'env' or the launch environment - never from a project-level .claude\settings.json
   (measured: that stays literal). update: absent = keep the mode the existing registration carries.
 
+.PARAMETER PlaywrightBrowsers
+  The browsers the playwright MCP can drive, comma-separated: any of 'chrome', 'msedge', 'firefox', 'webkit' -
+  ONE server per engine (playwright-chrome, playwright-firefox, ...), each with its own profile in
+  .playwright/<engine>. chrome and msedge use the browser installed on the machine; firefox and webkit are
+  Playwright's own builds, downloaded by the run. Absent = keep the registered set (a legacy 'playwright'
+  server counts as its engine), chrome when there is none. A dropped engine's server is removed.
+
+.PARAMETER PlaywrightEnabled
+  The one engine to keep switched on (one of the kept engines; given alone, it is added to the set). The run
+  prints '/mcp disable playwright-<x>' for every other kept engine - switch any time with /mcp enable / disable.
+
 .PARAMETER GitHubCli
   Install the GitHub CLI (gh) via winget if missing. Reminds you to run `gh auth login` when unauthenticated.
 
@@ -133,6 +144,10 @@ param(
   # settings.json env) or 'oauth' (no header, browser consent on first connect). Empty -> token on install,
   # the existing mode on update. e.g.: .\claude-stack.ps1 install -SentryAuth oauth
   [string]$SentryAuth = '',
+  # Optional: the playwright browsers, one server each - any of chrome, msedge, firefox, webkit - and the one kept
+  # on. Empty -> the registered set (chrome when none). e.g.: .\claude-stack.ps1 install -PlaywrightBrowsers chrome,firefox -PlaywrightEnabled firefox
+  [string]$PlaywrightBrowsers = '',
+  [string]$PlaywrightEnabled = '',
   # Optional: install the GitHub CLI (gh) via winget if missing; prompts for `gh auth login`
   # when unauthenticated. e.g.: .\claude-stack.ps1 install -GitHubCli
   [switch]$GitHubCli,
@@ -342,6 +357,23 @@ $SentryAuth = $SentryAuth.ToLowerInvariant()
 if ($SentryAuth -notin @('', 'token', 'oauth')) {
   Write-Host "-SentryAuth must be 'token' or 'oauth' (got '$SentryAuth')" -ForegroundColor Red
   exit 1
+}
+# -PlaywrightBrowsers / -PlaywrightEnabled: lower-cased like the other enums and put in ONE canonical order
+# (chrome, msedge, firefox, webkit) so a server list never depends on how the flag was typed. Empty
+# browsers = 'resolve later' from what is registered (the playwright block after the selection).
+$PwEnginesAll = @('chrome', 'msedge', 'firefox', 'webkit')
+$PwKept = @()
+if ($PlaywrightBrowsers) {
+  $pwWant = @($PlaywrightBrowsers.ToLowerInvariant().Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  foreach ($w in $pwWant) {
+    if ($w -notin $PwEnginesAll) { [Console]::Error.WriteLine("-PlaywrightBrowsers takes chrome, msedge, firefox, webkit (got '$w')"); exit 1 }
+  }
+  $PwKept = @($PwEnginesAll | Where-Object { $_ -in $pwWant })
+}
+$PlaywrightEnabled = $PlaywrightEnabled.ToLowerInvariant()
+if ($PlaywrightEnabled) {
+  if ($PlaywrightEnabled -notin $PwEnginesAll) { [Console]::Error.WriteLine("-PlaywrightEnabled takes chrome, msedge, firefox, webkit (got '$PlaywrightEnabled')"); exit 1 }
+  if ($PwKept.Count -and $PlaywrightEnabled -notin $PwKept) { [Console]::Error.WriteLine("-PlaywrightEnabled must be one of the kept engines ($($PwKept -join ',')), got '$PlaywrightEnabled'"); exit 1 }
 }
 if (-not $SentrySlug -and $env:SENTRY_SLUG) { $SentrySlug = $env:SENTRY_SLUG }   # the flag, else the launch environment - either lands in the account file (Set-AccountKeys)
 $SentrySlugRe = '^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)?$'
@@ -683,7 +715,7 @@ $AppiumMcpEntry      = 'appium-mcp|-- ' + $Npx + ' -y appium-mcp@latest'
 $Mcps = @(
   $AngularCliEntry                            # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
   $SerenaEntry                                # LSP symbol navigation; PyPI-pinned (not git), dashboard off
-  $PlaywrightEntry                            # drive a real browser for visual checks / web app verification
+  $PlaywrightEntry                            # drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser
   $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
   $SentryEntry  # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; -SentrySlug seeds the slug); -SentryAuth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
@@ -882,7 +914,8 @@ if ($InstalledOnly) {
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
   if ($ClaudeScope -eq 'project' -and (Test-Path $ioMcpJson)) {
     try {
-      foreach ($n in @((Get-Content -Raw $ioMcpJson | ConvertFrom-Json).mcpServers.PSObject.Properties.Name)) { $ioLines += "mcp $n" }
+      # playwright-<engine> servers are ONE manifest entry (playwright), expanded again after the selection
+      foreach ($n in @((Get-Content -Raw $ioMcpJson | ConvertFrom-Json).mcpServers.PSObject.Properties.Name)) { $l = "mcp $($n -replace '^playwright-(chrome|msedge|firefox|webkit)$', 'playwright')"; if ($l -notin $ioLines) { $ioLines += $l } }
     } catch {}
   }
   elseif (Get-Command claude -ErrorAction SilentlyContinue) {
@@ -891,7 +924,7 @@ if ($InstalledOnly) {
     # claude.ai-managed or hand-added server is never touched.
     try {
       foreach ($l in @(& claude mcp list 2>$null)) {
-        if ($l -match '^([A-Za-z0-9_.-]+):\s') { $ioLines += "mcp $($Matches[1])" }
+        if ($l -match '^([A-Za-z0-9_.-]+):\s') { $m = "mcp $($Matches[1] -replace '^playwright-(chrome|msedge|firefox|webkit)$', 'playwright')"; if ($m -notin $ioLines) { $ioLines += $m } }
       }
     } catch {}
   }
@@ -1012,6 +1045,65 @@ if ($PrintPlan) {
   'plan hooks:'   + (($Hooks       | ForEach-Object { (($_ -split '::', 2)[0]) } | Select-Object -Unique | ForEach-Object { ' ' + ($_ -replace '\.js$', '') }) -join '')
   if ($script:InstalledOnlyTmp) { Remove-Item -LiteralPath $script:InstalledOnlyTmp -Recurse -Force -ErrorAction SilentlyContinue }   # Remove-StackSrc is defined further down - clean the -InstalledOnly scratch here
   exit 0
+}
+
+# --- playwright: one server per browser engine --------------------------------------------------
+# A Playwright MCP server drives ONE browser, fixed at launch (`--browser`; @playwright/mcp 0.0.80 has
+# no tool to switch it - measured), so the manifest's single `playwright` entry expands HERE, after the
+# selection, into playwright-chrome / -msedge / -firefox / -webkit: each an explicit --browser and its
+# own profile folder, because a persistent profile belongs to one engine. Every later step (add,
+# refresh, verify, the settings approvals) sees the real server names. Which one is ON is the user's
+# `/mcp enable` / `disable` - the run writes no toggle state and only prints the lines to run when
+# -PlaywrightEnabled names the engine to keep on.
+# Kept set: the flag, else what is registered - project scope reads .mcp.json, user scope the CLI
+# listing; a legacy `playwright` server counts as its --browser engine (none = chrome) - else chrome.
+function Get-PlaywrightRegistered {
+  $found = @()
+  if ($ClaudeScope -eq 'project') {
+    $f = Join-Path (Get-Location).Path '.mcp.json'
+    if (-not (Test-Path -LiteralPath $f)) { return @() }
+    try { $srv = (Get-Content -Raw -LiteralPath $f | ConvertFrom-Json).mcpServers } catch { return @() }
+    if (-not $srv) { return @() }
+    foreach ($p in $srv.PSObject.Properties) {
+      if ($p.Name -match '^playwright-(chrome|msedge|firefox|webkit)$') { $found += $Matches[1] }
+      elseif ($p.Name -eq 'playwright') {
+        $a = @(); if ($p.Value.PSObject.Properties['args']) { $a = @($p.Value.args) }
+        $i = [array]::IndexOf($a, '--browser')
+        $found += if ($i -ge 0 -and $i -lt $a.Count - 1) { [string]$a[$i + 1] } else { 'chrome' }
+      }
+    }
+  }
+  elseif (Get-Command claude -ErrorAction SilentlyContinue) {
+    try {
+      foreach ($l in @(& claude mcp list 2>$null)) {
+        if ($l -match '^playwright-(chrome|msedge|firefox|webkit):') { $found += $Matches[1] }
+        elseif ($l -match '^playwright:') { $found += if ($l -match '--browser\s+([a-z]+)') { $Matches[1] } else { 'chrome' } }
+      }
+    } catch {}
+  }
+  return $found
+}
+function Get-PlaywrightArgs([string]$Spec, [string]$Engine) {  # the engine's args: --browser after the package, profile/<engine>
+  $out = @(); $prev = ''
+  foreach ($w in @($Spec.Split(' ') | Where-Object { $_ -ne '' })) {
+    $word = if ($prev -eq '--user-data-dir') { "$w/$Engine" } else { $w }
+    $out += $word
+    if ($word -like '@playwright/mcp*') { $out += '--browser'; $out += $Engine }
+    $prev = $w
+  }
+  return ($out -join ' ')
+}
+if ($Mcps | Where-Object { $_ -like 'playwright|*' }) {
+  if (-not $PwKept.Count) {
+    $have = @(Get-PlaywrightRegistered)
+    if ($PlaywrightEnabled) { $have += $PlaywrightEnabled }
+    $PwKept = @($PwEnginesAll | Where-Object { $_ -in $have })
+    if (-not $PwKept.Count) { $PwKept = @('chrome') }
+  }
+  $Mcps = @(foreach ($e in $Mcps) {
+    $parts = $e.Split('|', 2)
+    if ($parts[0] -eq 'playwright') { foreach ($k in $PwKept) { "playwright-$k|" + (Get-PlaywrightArgs $parts[1] $k) } } else { $e }
+  })
 }
 
 function Get-RepoRoot {
@@ -1450,6 +1542,38 @@ function Register-Mcp([string]$Name, [string]$Spec) {
   return ($LASTEXITCODE -eq 0)
 }
 
+# The playwright servers this run no longer keeps - a legacy `playwright` and every dropped engine - go
+# away on both actions (they are stack names: install would otherwise leave them live beside the new
+# ones). The CLI route runs first; at project scope the stack-owned .mcp.json entry is then removed
+# directly, because a `remove` that did not take exits 0 like one that did (see the verify pass).
+function Remove-DroppedPlaywright {
+  if (-not $PwKept.Count) { return }
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { return }
+  $keep = @($PwKept | ForEach-Object { "playwright-$_" })
+  $drop = @(@('playwright', 'playwright-chrome', 'playwright-msedge', 'playwright-firefox', 'playwright-webkit') | Where-Object { $_ -notin $keep })
+  if ($ClaudeScope -eq 'project') {
+    $f = Join-Path (Get-Location).Path '.mcp.json'
+    if (-not (Test-Path -LiteralPath $f)) { return }
+    try { $doc = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json } catch { return }
+    if (-not $doc.mcpServers) { return }
+    $gone = @($drop | Where-Object { $doc.mcpServers.PSObject.Properties[$_] })
+    if (-not $gone.Count) { return }
+    foreach ($n in $gone) { try { & claude mcp remove $n -s project *> $null } catch {} }
+    try { $doc = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json } catch { return }
+    $changed = $false
+    foreach ($n in $gone) { if ($doc.mcpServers.PSObject.Properties[$n]) { $doc.mcpServers.PSObject.Properties.Remove($n); $changed = $true } }
+    if ($changed) { Write-JsonFile $doc $f }
+    foreach ($n in $gone) { Write-Host ("  mcp removed: $n" + $(if ($n -eq 'playwright') { ' (now one server per browser engine)' } else { ' (engine dropped)' })) }
+  }
+  else {
+    foreach ($n in $drop) {
+      $has = $false
+      try { & claude mcp get $n *> $null; $has = ($LASTEXITCODE -eq 0) } catch { $has = $false }
+      if ($has) { try { & claude mcp remove $n -s $ClaudeScope *> $null; Log "  mcp removed: $n" } catch {} }
+    }
+  }
+}
+
 function Install-Mcps {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   foreach ($entry in $Mcps) {
@@ -1757,6 +1881,19 @@ function Get-SerenaLangs {
   return $langs
 }
 
+# firefox / webkit are Playwright's own builds, not a browser the machine already has: download the one
+# chosen through the server's OWN bundled playwright (`npx -p @playwright/mcp@<pin> playwright`), so the
+# build matches the version the server launches. chrome / msedge use the installed browser. Fail-soft.
+function Install-PlaywrightBrowser {
+  foreach ($e in @($PwKept | Where-Object { $_ -in @('firefox', 'webkit') })) {
+    Log "playwright: downloading the $e build the server launches"
+    $ok = $false
+    if (Get-Command npx -ErrorAction SilentlyContinue) {
+      try { & npx -y -p "@playwright/mcp$PwPin" playwright install $e; $ok = ($LASTEXITCODE -eq 0) } catch { $ok = $false }
+    }
+    if (-not $ok) { Log "  !! could not download $e - run by hand: npx -y -p @playwright/mcp$PwPin playwright install $e" }
+  }
+}
 function New-SerenaProject {
   # INSTALL + UPDATE: seed .serena/project.yml with the languages actually in this repo.
   # serena's --project-from-cwd only RESOLVES the root (a .serena/project.yml, else a .git). It DOES
@@ -2563,8 +2700,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -2580,6 +2717,7 @@ if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
 # the close had nothing to cite and asserted the reset from memory instead.
 if ($KeepPins) { $summary += '; keep-pins=on' } else { $summary += '; keep-pins=off (agent model/effort pins reset to catalog defaults)' }
 if ($script:McpRepairs -gt 0) { $summary += "; mcp registrations repaired=$($script:McpRepairs)" }
+if ($PwKept.Count) { $summary += "; playwright=$($PwKept -join ',')" }
 Log "$summary; context7=$Context7"
 # The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
 # project-owned files and names this release no longer ships are neither refreshed nor counted
@@ -2613,6 +2751,12 @@ if ($Mcps | Where-Object { $_ -like 'serena|*' }) {
   Log '  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): $env:SERENA_HOME=".serena/home"; uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things'
 }
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
+# One line, only when this run was TOLD which engine stays on (setup / configure): an update never
+# re-asks the user to toggle what they may already have toggled.
+if ($PlaywrightEnabled -and $PwKept.Count) {
+  $pwOff = @($PwKept | Where-Object { $_ -ne $PlaywrightEnabled } | ForEach-Object { "/mcp disable playwright-$_" })
+  if ($pwOff.Count) { Log "  - playwright: keep playwright-$PlaywrightEnabled on - run once in Claude Code: $($pwOff -join ', ') (switch any time with /mcp enable / disable)" }
+}
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 # The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says
 # what actually landed; the project-level settings.json never reaches .mcp.json expansion (measured).

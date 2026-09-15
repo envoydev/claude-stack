@@ -268,6 +268,17 @@ or to pick `--sentry-auth oauth` instead. Both values already present: say so in
 line and ask nothing. An existing registration needs no auth flag: `update` reads it back and keeps
 its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
+Whenever playwright is PRESENT after this round, name the browsers installed today - one server per
+browser, `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single `playwright`
+server counts as its `--browser` value, `chrome` when it has none, and is migrated by the run - and ask in
+the same turn TWO questions: which browsers to keep (multi-select: `chrome` = the machine's Google Chrome,
+`msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are
+Playwright's own builds, downloaded by the installer) and which ONE stays enabled. Pass both at step 12 as
+`--playwright-browsers <csv> --playwright-enabled <browser>`; a dropped browser's server is removed by the
+run. Keeping everything as it is passes nothing. Which server is ON is the user's: the installer writes no
+toggle, and its next-steps card prints the `/mcp disable playwright-<x>` lines to run once - switching
+later is `/mcp enable` / `disable`, no configure run needed.
+
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
@@ -342,8 +353,9 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
-(`--sentry-oauth` when sentry is kept under a headerless registration, so its token warning does not
+Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]`
+(`--playwright-browsers` with the step-7 kept browsers whenever playwright is kept - a kept `msedge` warns
+when Edge is not installed; `--sentry-oauth` when sentry is kept under a headerless registration, so its token warning does not
 fire falsely; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
@@ -370,8 +382,8 @@ installer pass whose only real effect was resetting the agent model/effort pins)
 Otherwise, run the installer **from the snapshot**, passing it back with `--source` so the run
 lands the same revision step 1 previewed:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth]`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>]`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>]`
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
@@ -386,7 +398,7 @@ stamp action) - never paste its output, and take the counts from the line that s
 it, which is how the wrong post-check above was written); (2) removals - each dropped item (incl. accepted
 orphans) with its command shown before running it: delete the skill directory / agent file /
 rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
-(show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP;
+(show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP (playwright = every `playwright-<browser>` server);
 `claude plugin uninstall <name> --scope <the scope step 1's listing printed for it>` for a plugin -
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong

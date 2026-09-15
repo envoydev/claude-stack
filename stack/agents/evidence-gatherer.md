@@ -1,7 +1,7 @@
 ---
 name: evidence-gatherer
 description: "Use only as a dispatched read-only helper that runs one exact gather task (reproduce a failure, pull a CI log, tail an app log, locate a symbol) and returns a compact quoted digest. Never forms hypotheses or fixes. Not the first delegation on a bug or a red pipeline - the diagnosers are."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Bash, Grep, Glob, mcp__playwright__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Bash, Grep, Glob, mcp__playwright-chrome__*, mcp__playwright-msedge__*, mcp__playwright-firefox__*, mcp__playwright-webkit__*
 model: sonnet
 effort: low
 color: orange

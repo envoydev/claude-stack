@@ -174,6 +174,26 @@ test('a selected sentry mcp warns for its slug and (token mode) its token, never
     assert.ok(!present.warnings.some(b => /Sentry/i.test(b.need)), 'both sentry values satisfied');
 });
 
+test('playwright keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
+    // msedge is the one kept engine that uses a browser the machine must already carry and that
+    // no default install has everywhere; firefox/webkit are downloaded by the installer itself.
+    const sel = { skills: [], mcps: ['playwright'], plugins: [] };
+    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
+    const edge = r => r.warnings.some(w => /Microsoft Edge/.test(w.need));
+    assert.ok(edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: ['chrome', 'msedge'] })), 'msedge kept without Edge warns');
+    assert.ok(!evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] }).blockers.length, '... and never blocks');
+    assert.ok(!edge(evaluatePrereqs(sel, { bins: { ...bins, msedge: true }, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'Edge present is clean');
+    for (const other of [undefined, [], ['chrome'], ['firefox', 'webkit']])
+        assert.ok(!edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: other })), `${JSON.stringify(other)} never asks for Edge`);
+    assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no playwright selected, no Edge warning');
+});
+
+test('installed playwright-<engine> servers read back as the one manifest entry', () => {
+    const { normalizeInventory } = require('./stack-select.js');
+    const inv = normalizeInventory({ mcps: ['serena', 'playwright-chrome', { name: 'playwright-firefox' }, 'playwright', 'playwright-extra'] });
+    assert.deepStrictEqual(inv.mcps, ['serena', 'playwright', 'playwright-extra'], 'engine servers collapse to playwright; a non-engine name is left alone');
+});
+
 test('a .NET skill without the dotnet SDK is a blocker', () => {
     const r = evaluatePrereqs({ skills: ['dotnet-web-backend'], mcps: [], plugins: [] }, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: {} }, {});
     assert.ok(r.blockers.some(b => /\.NET SDK/.test(b.need)), 'dotnet SDK blocker for a dotnet-* skill');

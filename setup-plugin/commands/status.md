@@ -109,8 +109,11 @@ registrations - the installer's `--scope global` registers them with `--scope us
 |---|---|---|
 | serena | stdio | uvx ... --project-from-cwd |
 | sentry | http | https://mcp.sentry.dev/mcp/${SENTRY_SLUG} |
+| playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 
-`target` is the command or URL, middle-truncated to keep the row one line. Never print env
+`target` is the command or URL, middle-truncated to keep the row one line. Playwright has one server per
+kept browser (`playwright-<browser>`); which of them is switched on is the user's `/mcp` toggle, not
+something this table reads. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
 
 **Plugins** - `claude plugin list` (fail-soft: without the CLI print the banner +
