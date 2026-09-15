@@ -1,7 +1,7 @@
 ---
 name: web-angular-verifier
 description: "Use once every web-angular-implementer task has landed: a read-only gate over the assembled Angular work against the plan and TypeScript quality (signals, OnPush, effect loops, RxJS leaks, a11y, no any), reruns ng build/test, checks interaction paths in the browser and returns a per-task punch-list. Never fixes."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright-chrome__*, mcp__playwright-msedge__*, mcp__playwright-firefox__*, mcp__playwright-webkit__*
 model: sonnet
 effort: xhigh
 color: purple

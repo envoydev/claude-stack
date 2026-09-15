@@ -92,6 +92,10 @@ const SCOPED_PREREQS = [
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { mcp: 'chrome-devtools' }, bin: 'chrome', severity: 'warning', need: 'Chrome / Chromium', how: 'install Google Chrome or Chromium' },
+    // The one kept playwright engine that needs a browser the machine must already carry and no platform
+    // ships everywhere (chrome, the default, is the server's own long-standing assumption; firefox and
+    // webkit are downloaded by the installer). Probed at its install locations, not only PATH.
+    { when: { mcp: 'playwright', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the playwright browsers (--playwright-browsers)' },
     { when: { mcp: 'appium-mcp' }, bin: 'appium', severity: 'warning', need: 'Appium + native SDKs', how: 'install Appium and the Xcode / Android SDK / Java toolchain' },
     // Advisory for BOTH transports: the remote registration sends `${CONTEXT7_API_KEY:-}` (unset = an
     // empty header = the keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on
@@ -113,6 +117,7 @@ function evaluatePrereqs(selection, env, options)
     const matches = when =>
     {
         if (when.unlessOption && options[when.unlessOption]) return false;
+        if (when.optionIncludes && !(options[when.optionIncludes[0]] || []).includes(when.optionIncludes[1])) return false;
         if (when.mcp) return mcps.has(when.mcp);
         if (when.plugin) return plugins.has(when.plugin);
         if (when.skillPrefix) return [...skills].some(s => s.startsWith(when.skillPrefix));
@@ -196,6 +201,17 @@ function accountSettingsEnv(configDir)
     catch { return {}; }
 }
 
+// Edge is rarely on PATH (Windows and macOS install it as an app), so its fixed install locations count.
+function edgeInstalled()
+{
+    const p = require('path');
+    const candidates = process.platform === 'win32'
+        ? [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA]
+            .filter(Boolean).map(d => p.join(d, 'Microsoft', 'Edge', 'Application', 'msedge.exe'))
+        : process.platform === 'darwin' ? ['/Applications/Microsoft Edge.app'] : [];
+    return candidates.some(c => fs.existsSync(c));
+}
+
 function detectEnvironment(opts)
 {
     opts = opts || {};
@@ -203,6 +219,7 @@ function detectEnvironment(opts)
     const ENVS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
+    bins.msedge = onPath('msedge') || onPath('microsoft-edge') || edgeInstalled();
     const acct = accountSettingsEnv(opts.configDir);
     const set = v => typeof v === 'string' && v.trim() !== '';
     const envs = {};
@@ -523,6 +540,11 @@ function findEvidenceGaps(catalog, found, installed)
 // An --installed inventory to the bare-name arrays every consumer compares against. validate
 // writes `plugins` as {name,scope} (an uninstall is scope-addressed), and a bare-name compare
 // matched none of those objects - every installed plugin read as missing (measured).
+// The installer expands the ONE manifest entry `playwright` into a server per browser engine
+// (playwright-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
+const manifestMcpName = n => String(n).replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
+const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
+
 function normalizeInventory(inv)
 {
     if (!inv || typeof inv !== 'object') return inv;
@@ -531,6 +553,7 @@ function normalizeInventory(inv)
         if (Array.isArray(inv[layer]))
             out[layer] = inv[layer].map(e => (e && typeof e === 'object' ? e.name : e)).filter(Boolean).map(String);
     if (Array.isArray(out.hooks)) out.hooks = out.hooks.map(h => h.replace(/\.js$/, ''));
+    if (Array.isArray(out.mcps)) out.mcps = manifestMcps(out.mcps);
     return out;
 }
 
@@ -643,10 +666,11 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
+    if (raw && Array.isArray(raw.mcps)) raw.mcps = manifestMcps(raw.mcps.filter(m => typeof m === 'string'));
     // Hooks are cataloged by bare name; an inventory built from `.claude/hooks/*.js` filenames
     // arrives suffixed and would misclassify every hook as unknown (measured) - normalize here.
     if (Array.isArray(raw.hooks)) raw.hooks = raw.hooks.map(h => String(h).replace(/\.js$/, ''));
@@ -698,7 +722,7 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { context7Local: has('--context7-local'), sentryOauth: has('--sentry-oauth'), githubCli: has('--github-cli') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { context7Local: has('--context7-local'), sentryOauth: has('--sentry-oauth'), playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
         // A clean check printed NOTHING, and silence is the one result a caller cannot tell from a

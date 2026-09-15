@@ -71,6 +71,10 @@ function sandbox(mcpServers)
         'if "%~1"=="mcp" if "%~2"=="add" if exist "%CLAUDE_STUB_MCPGET_NEW%" copy /y "%CLAUDE_STUB_MCPGET_NEW%" "%CLAUDE_STUB_MCPGET%" >nul',
         'exit /b 0',
         ''].join('\r\n'));
+    // Stub npx: the playwright browser download is the one npx call a run makes - logged, never run.
+    const npxLog = path.join(work, 'npx-calls.log');
+    fs.writeFileSync(path.join(bin, 'npx'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$NPX_STUB_LOG"', 'exit 0', ''].join('\n'), { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'npx.cmd'), ['@echo off', '>>"%NPX_STUB_LOG%" echo %*', 'exit /b 0', ''].join('\r\n'));
     const sel = path.join(work, 'sel.txt');
     fs.writeFileSync(sel, 'skill markdown-docs\nrule markdown-docs\nhook guard-secret-value\nmcp sentry\nmcp serena\n');
     if (mcpServers) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers }, null, 2) + '\n');
@@ -81,9 +85,10 @@ function sandbox(mcpServers)
         PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: log, CLAUDE_STUB_PLUGINS: plugins,
         CLAUDE_STUB_MCPGET: path.join(work, 'mcp-get.txt'), CLAUDE_STUB_MCPGET_NEW: path.join(work, 'mcp-get-after.txt'),
+        NPX_STUB_LOG: npxLog,
     };
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
-    return { work, repo, acct, sel, env, log, plugins, mcpGet: path.join(work, 'mcp-get.txt'), mcpGetAfter: path.join(work, 'mcp-get-after.txt') };
+    return { work, repo, acct, sel, env, log, npxLog, plugins, mcpGet: path.join(work, 'mcp-get.txt'), mcpGetAfter: path.join(work, 'mcp-get-after.txt') };
 }
 
 // The scope defaults to project and a caller passing its own (the global-install tests) replaces it -
@@ -313,6 +318,192 @@ test('ps1: a user-scope registration in the old shape is re-registered through t
         const out = runPs(sb, 'install', [], 'global');
         assert.match(out, /mcp shape drifted at user scope: sentry/, 'ps1: the drift was not detected at user scope');
         assert.match(out, /mcp repaired: sentry \(user scope\)/, 'ps1: the retry was not confirmed');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// --- playwright engines ---------------------------------------------------------------------
+// One server drives ONE browser (--browser, fixed at launch), so the manifest's single `playwright`
+// entry expands into one registration per kept engine: playwright-chrome / -msedge / -firefox /
+// -webkit, each with an explicit --browser and its own profile folder. Disabling is the user's
+// `/mcp disable`, which the close prints when an enabled engine is named - the installer writes no
+// toggle state. A legacy `playwright` registration is migrated to its engine and removed.
+const pwSel = 'skill markdown-docs\nmcp playwright\n';
+const PW_DIR = '${CLAUDE_PROJECT_DIR:-.}/.playwright';
+const npxCalls = (sb) => (fs.existsSync(sb.npxLog) ? fs.readFileSync(sb.npxLog, 'utf8') : '');
+const pwNames = (sb) => Object.keys(servers(sb)).filter((n) => n.startsWith('playwright')).sort();
+const pwServer = (engine, pin = '0.0.80') => ({
+    type: 'stdio', command: 'npx', env: {},
+    args: ['-y', `@playwright/mcp@${pin}`, '--browser', engine, '--user-data-dir', `${PW_DIR}/${engine}`, '--output-dir', `${PW_DIR}/output`],
+});
+const LEGACY_PW = (browserArgs = []) => ({
+    type: 'stdio', command: 'npx', env: {},
+    args: ['-y', '@playwright/mcp@0.0.70', ...browserArgs, '--user-data-dir', PW_DIR, '--output-dir', `${PW_DIR}/output`],
+});
+
+function assertPwEngine(sb, engine, twin)
+{
+    const a = servers(sb)[`playwright-${engine}`].args;
+    assert.strictEqual(a[a.indexOf('--browser') + 1], engine, `${twin}: playwright-${engine} lost --browser ${engine}`);
+    assert.strictEqual(a[a.indexOf('--user-data-dir') + 1], `${PW_DIR}/${engine}`, `${twin}: ${engine} needs its own profile folder`);
+    assert.strictEqual(a[a.indexOf('--output-dir') + 1], `${PW_DIR}/output`, `${twin}: the output dir is shared and unchanged`);
+    assert.ok(/^@playwright\/mcp(@\S+)?$/.test(a[a.indexOf('--browser') - 1]), `${twin}: --browser must follow the package`);
+}
+
+test('sh: playwright defaults to one playwright-chrome server with an explicit --browser', () =>
+{
+    const sb = sandbox();
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        const out = runSh(sb, 'install');
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome'], 'sh: the default is exactly one chrome server');
+        assertPwEngine(sb, 'chrome', 'sh');
+        assert.doesNotMatch(npxCalls(sb), /playwright install/, 'sh: chrome uses the machine\'s Chrome - nothing to download');
+        assert.match(out, /playwright=chrome/, 'sh: the summary does not name the engine');
+        assert.doesNotMatch(out, /\/mcp disable/, 'sh: nothing to disable with one engine');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: several engines register one server each, download their builds, and print the disable lines', () =>
+{
+    const sb = sandbox();
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        const out = runSh(sb, 'install', ['--playwright-browsers', 'WebKit,chrome,firefox', '--playwright-enabled', 'firefox']);
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome', 'playwright-firefox', 'playwright-webkit'], 'sh: one server per kept engine');
+        for (const e of ['chrome', 'firefox', 'webkit']) assertPwEngine(sb, e, 'sh');
+        assert.match(npxCalls(sb), /-p @playwright\/mcp(@\S+)? playwright install firefox/, 'sh: firefox was not downloaded through the server\'s own playwright');
+        assert.match(npxCalls(sb), /-p @playwright\/mcp(@\S+)? playwright install webkit/, 'sh: webkit was not downloaded');
+        assert.match(out, /\/mcp disable playwright-chrome/, 'sh: the close does not tell the user to disable chrome');
+        assert.match(out, /\/mcp disable playwright-webkit/, 'sh: the close does not tell the user to disable webkit');
+        assert.doesNotMatch(out, /\/mcp disable playwright-firefox/, 'sh: the enabled engine must stay on');
+        const enabled = JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8')).enabledMcpjsonServers;
+        for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(enabled.includes(`playwright-${e}`), `sh: playwright-${e} is not pre-approved`);
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: update migrates a legacy `playwright` registration to its engine and removes the old name', () =>
+{
+    const sb = sandbox({ playwright: LEGACY_PW(['--browser', 'webkit']), 'hand-added': HAND_ADDED });
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        runSh(sb, 'update');
+        assert.deepStrictEqual(pwNames(sb), ['playwright-webkit'], 'sh: the legacy server was not migrated to its engine');
+        assertPwEngine(sb, 'webkit', 'sh');
+        assert.deepStrictEqual(servers(sb)['hand-added'], HAND_ADDED, 'sh: a hand-added server was touched');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: a legacy `playwright` with no --browser migrates to chrome', () =>
+{
+    const sb = sandbox({ playwright: LEGACY_PW() });
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        runSh(sb, 'update');
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome'], 'sh: a flagless legacy server is chrome');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: update with no flag keeps the registered set and prints no disable lines', () =>
+{
+    const sb = sandbox({ 'playwright-chrome': pwServer('chrome'), 'playwright-firefox': pwServer('firefox') });
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        const out = runSh(sb, 'update');
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome', 'playwright-firefox'], 'sh: update changed the kept set');
+        assert.doesNotMatch(out, /\/mcp disable/, 'sh: update must never re-ask the user to toggle');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: dropping an engine removes its server; --playwright-enabled alone adds to the set', () =>
+{
+    const sb = sandbox({ 'playwright-chrome': pwServer('chrome'), 'playwright-firefox': pwServer('firefox') });
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        runSh(sb, 'update', ['--playwright-browsers', 'chrome']);
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome'], 'sh: the dropped firefox server survived');
+        const out = runSh(sb, 'update', ['--playwright-enabled', 'msedge']);
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome', 'playwright-msedge'], 'sh: an enabled engine outside the set was not added');
+        assert.match(out, /\/mcp disable playwright-chrome/, 'sh: the switch does not print the disable line');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: unknown engines and an enabled engine outside the list are rejected before anything runs', () =>
+{
+    const sb = sandbox();
+    try
+    {
+        const run = (...args) => spawnSync('bash', [SH, 'install', '--scope', 'project', '--selection', sb.sel, '--source', ROOT, ...args],
+            { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+        const bad = run('--playwright-browsers', 'chrome,safari');
+        assert.notStrictEqual(bad.status, 0, 'sh: safari was accepted');
+        assert.match(bad.stderr, /--playwright-browsers takes chrome, msedge, firefox, webkit/, 'sh: the error does not list the choices');
+        const outside = run('--playwright-browsers', 'chrome', '--playwright-enabled', 'webkit');
+        assert.notStrictEqual(outside.status, 0, 'sh: an enabled engine outside the list was accepted');
+        assert.match(outside.stderr, /--playwright-enabled must be one of the kept engines/, 'sh: the error does not say why');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('sh: --installed-only reads playwright-* servers back as the one manifest entry', () =>
+{
+    const sb = sandbox({ 'playwright-firefox': pwServer('firefox') });
+    fs.mkdirSync(path.join(sb.repo, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(sb.repo, '.claude', 'rules', 'markdown-docs.md'), 'x\n');   // installed-only needs an install to read
+    try
+    {
+        const r = spawnSync('bash', [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan', '--source', ROOT],
+            { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+        const plan = (r.stdout.match(/^plan mcps:(.*)$/m) || [])[1] || '';
+        assert.match(plan, /(^| )playwright( |$)/, `sh: the plan lost playwright (${plan})`);
+        assert.doesNotMatch(plan, /playwright-firefox/, 'sh: a registration name leaked into the manifest plan');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('ps1: several engines, their downloads and disable lines, and the legacy migration (pwsh required)', { skip: skipNoPwsh }, () =>
+{
+    const sb = sandbox({ playwright: LEGACY_PW(['--browser', 'firefox']) });
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        runPs(sb, 'update');
+        assert.deepStrictEqual(pwNames(sb), ['playwright-firefox'], 'ps1: the legacy server was not migrated to its engine');
+        const out = runPs(sb, 'update', ['-PlaywrightBrowsers', 'webkit,firefox', '-PlaywrightEnabled', 'WebKit']);
+        assert.deepStrictEqual(pwNames(sb), ['playwright-firefox', 'playwright-webkit'], 'ps1: one server per kept engine');
+        for (const e of ['firefox', 'webkit']) assertPwEngine(sb, e, 'ps1');
+        assert.match(npxCalls(sb), /-p @playwright\/mcp(@\S+)? playwright install webkit/, 'ps1: webkit was not downloaded');
+        assert.match(out, /\/mcp disable playwright-firefox/, 'ps1: the close does not print the disable line');
+        assert.doesNotMatch(out, /\/mcp disable playwright-webkit/, 'ps1: the enabled engine must stay on');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+test('ps1: the default is playwright-chrome, and sh agrees with the file ps1 wrote (pwsh required)', { skip: skipNoPwsh }, () =>
+{
+    const sb = sandbox();
+    fs.writeFileSync(sb.sel, pwSel);
+    try
+    {
+        const out = runPs(sb, 'install');
+        assert.deepStrictEqual(pwNames(sb), ['playwright-chrome'], 'ps1: the default is exactly one chrome server');
+        assertPwEngine(sb, 'chrome', 'ps1');
+        assert.match(out, /playwright=chrome/, 'ps1: the summary does not name the engine');
+        const afterPs = fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8');
+        assert.doesNotMatch(runSh(sb, 'update'), /mcp repaired:/, 'sh: rewrote the chrome server ps1 wrote');
+        assert.strictEqual(fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8'), afterPs, 'sh: reformatted the file ps1 wrote');
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });

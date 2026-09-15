@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
-# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
+# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
 # claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
 # system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; the Cursor
 # stack lives in the cursor-stack repo.
@@ -39,7 +39,7 @@ usage() {
   cat <<USAGE
 claude-stack.sh - install or update the Claude Code stack into a project.
 
-Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--github-cli] [--keep-pins]
+Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--github-cli] [--keep-pins]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; MCP/plugin versions freeze until the next update; wires .claude/settings.json
@@ -60,6 +60,16 @@ Named flags (any order, each optional with a default):
                            ACCOUNT settings.json "env" or the launch shell - never from a project-level
                            .claude/settings.json (measured: that stays literal). update: absent = keep
                            the mode the registration already has
+  --playwright-browsers <csv>  the browsers the playwright MCP can drive, any of chrome, msedge, firefox,
+                           webkit - ONE server per engine (playwright-chrome, playwright-firefox, ...),
+                           each with its own profile in .playwright/<engine>. chrome and msedge use the
+                           browser installed on the machine; firefox and webkit are Playwright's own
+                           builds, downloaded by the run. Absent = keep the registered set (a legacy
+                           'playwright' server counts as its engine), chrome when there is none. A
+                           dropped engine's server is removed
+  --playwright-enabled <engine>  the one engine to keep switched on (one of the kept engines; given
+                           alone, it is added to the set). The run prints '/mcp disable playwright-<x>'
+                           for every other kept engine - switch any time with /mcp enable / disable
   --github-cli             install the GitHub CLI (gh) if missing
   --keep-pins              keep local model/effort frontmatter edits on installed agents/skills across
                            the refresh (an update resets them to upstream otherwise)
@@ -137,6 +147,8 @@ KEEP_PINS=false
 CONTEXT7_MODE="remote"
 SENTRY_SLUG_FLAG=""
 SENTRY_AUTH_FLAG=""
+PLAYWRIGHT_BROWSERS_FLAG=""
+PLAYWRIGHT_ENABLED_FLAG=""
 SELECTION=""
 INSTALLED_ONLY=false
 PRINT_PLAN=false
@@ -157,6 +169,10 @@ while [ $# -gt 0 ]; do
     --sentry-slug=*) SENTRY_SLUG_FLAG="${1#*=}";                   shift ;;
     --sentry-auth) _flag_val "$1" "${2:-}"; SENTRY_AUTH_FLAG="$2"; shift 2 ;;
     --sentry-auth=*) SENTRY_AUTH_FLAG="${1#*=}";                  shift ;;
+    --playwright-browsers)   _flag_val "$1" "${2:-}"; PLAYWRIGHT_BROWSERS_FLAG="$2"; shift 2 ;;
+    --playwright-browsers=*) PLAYWRIGHT_BROWSERS_FLAG="${1#*=}";                   shift ;;
+    --playwright-enabled)    _flag_val "$1" "${2:-}"; PLAYWRIGHT_ENABLED_FLAG="$2";  shift 2 ;;
+    --playwright-enabled=*)  PLAYWRIGHT_ENABLED_FLAG="${1#*=}";                    shift ;;
     --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
     --keep-pins)  KEEP_PINS=true;                              shift ;;
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
@@ -166,7 +182,7 @@ while [ $# -gt 0 ]; do
     --skills-only) SKILLS_ONLY=true;                              shift ;;
     --source)      _flag_val "$1" "${2:-}"; SOURCE_DIR="$2";      shift 2 ;;
     --source=*)    SOURCE_DIR="${1#*=}";                          shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --sentry-slug, --sentry-auth, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
   esac
 done
 
@@ -197,6 +213,32 @@ SENTRY_AUTH="$(printf '%s' "$SENTRY_AUTH_FLAG" | tr '[:upper:]' '[:lower:]')"
 case "$SENTRY_AUTH" in ""|token|oauth) ;;
   *) usage >&2; echo "error: --sentry-auth must be 'token' or 'oauth' (got '$SENTRY_AUTH')" >&2; exit 1 ;;
 esac
+# --playwright-browsers / --playwright-enabled: lower-cased like the other enums and put in ONE canonical
+# order (chrome, msedge, firefox, webkit) so a server list never depends on how the flag was typed.
+# Empty browsers = 'resolve later' from what is registered (the playwright block after the selection).
+PW_ENGINES_ALL="chrome msedge firefox webkit"
+PLAYWRIGHT_BROWSERS=""
+if [ -n "$PLAYWRIGHT_BROWSERS_FLAG" ]; then
+  _pw_want=" $(printf '%s' "$PLAYWRIGHT_BROWSERS_FLAG" | tr '[:upper:]' '[:lower:]' | tr ',' ' ') "
+  for _pw_w in $_pw_want; do
+    case " $PW_ENGINES_ALL " in *" $_pw_w "*) ;;
+      *) usage >&2; echo "error: --playwright-browsers takes chrome, msedge, firefox, webkit (got '$_pw_w')" >&2; exit 1 ;;
+    esac
+  done
+  for _pw_e in $PW_ENGINES_ALL; do case "$_pw_want" in *" $_pw_e "*) PLAYWRIGHT_BROWSERS="$PLAYWRIGHT_BROWSERS $_pw_e" ;; esac; done
+  PLAYWRIGHT_BROWSERS="${PLAYWRIGHT_BROWSERS# }"
+fi
+PLAYWRIGHT_ENABLED="$(printf '%s' "$PLAYWRIGHT_ENABLED_FLAG" | tr '[:upper:]' '[:lower:]')"
+if [ -n "$PLAYWRIGHT_ENABLED" ]; then
+  case " $PW_ENGINES_ALL " in *" $PLAYWRIGHT_ENABLED "*) ;;
+    *) usage >&2; echo "error: --playwright-enabled takes chrome, msedge, firefox, webkit (got '$PLAYWRIGHT_ENABLED')" >&2; exit 1 ;;
+  esac
+  if [ -n "$PLAYWRIGHT_BROWSERS" ]; then
+    case " $PLAYWRIGHT_BROWSERS " in *" $PLAYWRIGHT_ENABLED "*) ;;
+      *) usage >&2; echo "error: --playwright-enabled must be one of the kept engines ($PLAYWRIGHT_BROWSERS), got '$PLAYWRIGHT_ENABLED'" >&2; exit 1 ;;
+    esac
+  fi
+fi
 SENTRY_SLUG="${SENTRY_SLUG_FLAG:-${SENTRY_SLUG:-}}"   # the flag, else the launch environment - either lands in the account file (seed_account_keys)
 _sentry_slug_ok() {  # $1 = candidate: <org> or <org>/<project>, slug characters only (it lands inside a URL)
   case "$1" in ""|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*/|*//*) return 1 ;; esac; return 0
@@ -609,10 +651,11 @@ else
 fi
 CONTEXT7_ENTRY="context7|$CONTEXT7_SPEC"
 
+
 MCPS=(
   "angular-cli|-- npx -y @angular/cli mcp" # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
   "serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent${SERENA_PIN} serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd" # LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off
-  "playwright|-- npx -y @playwright/mcp${PW_PIN} --user-data-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright/output" # drive a real browser for visual checks / web app verification
+  "playwright|-- npx -y @playwright/mcp${PW_PIN} --user-data-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright/output" # drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser
   "chrome-devtools|-- npx -y chrome-devtools-mcp@latest" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   "appium-mcp|-- npx -y appium-mcp@latest" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
   "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; --sentry-slug seeds the slug); --sentry-auth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
@@ -800,12 +843,13 @@ if [ "$INSTALLED_ONLY" = true ]; then
       printf 'hook %s\n' "$_io_b"
     done
     if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
-      node -e 'for(const n of Object.keys((JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mcpServers)||{}))console.log("mcp "+n)' "$PWD/.mcp.json" 2>/dev/null || true
+      # playwright-<engine> servers are ONE manifest entry (playwright), expanded again after the selection
+      node -e 'const s=new Set();for(const n of Object.keys((JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mcpServers)||{}))s.add("mcp "+n.replace(/^playwright-(chrome|msedge|firefox|webkit)$/,"playwright"));for(const l of s)console.log(l)' "$PWD/.mcp.json" 2>/dev/null || true
     elif command -v claude >/dev/null 2>&1; then
       # No .mcp.json to read (a global install, or a project whose config the CLI owns): ask the CLI
       # which servers are registered. Names are intersected with the MCPS manifest by the selection
       # filter below, so a claude.ai-managed or hand-added server is never touched.
-      claude mcp list 2>/dev/null | sed -n 's/^\([A-Za-z0-9_.-]*\):[[:space:]].*/mcp \1/p' || true
+      claude mcp list 2>/dev/null | sed -n 's/^\([A-Za-z0-9_.-]*\):[[:space:]].*/mcp \1/p' | sed -E 's/^mcp playwright-(chrome|msedge|firefox|webkit)$/mcp playwright/' | awk '!seen[$0]++' || true
     fi
     # Plugins are machine-level, so they are derived from the CLI listing rather than from a
     # project directory - without this the fast path filtered PLUGINS to empty and 'update' never
@@ -905,6 +949,56 @@ if [ "$PRINT_PLAN" = true ]; then
   printf 'plan hooks:';   _seen=""; for e in ${HOOKS[@]+"${HOOKS[@]}"};     do n="${e%%::*}"; case " $_seen " in *" $n "*) continue ;; esac; _seen="$_seen $n"; printf ' %s' "${n%.js}"; done; printf '\n'
   [ -n "${_IO_TMP:-}" ] && rm -rf "$_IO_TMP"   # the EXIT trap is installed further down - clean the --installed-only scratch here
   exit 0
+fi
+
+# --- playwright: one server per browser engine --------------------------------------------------
+# A Playwright MCP server drives ONE browser, fixed at launch (`--browser`; @playwright/mcp 0.0.80 has
+# no tool to switch it - measured), so the manifest's single `playwright` entry expands HERE, after the
+# selection, into playwright-chrome / -msedge / -firefox / -webkit: each an explicit --browser and its
+# own profile folder, because a persistent profile belongs to one engine. Every later step (add,
+# refresh, verify, the settings approvals) sees the real server names. Which one is ON is the user's
+# `/mcp enable` / `disable` - the run writes no toggle state and only prints the lines to run when
+# --playwright-enabled names the engine to keep on.
+# Kept set: the flag, else what is registered - project scope reads .mcp.json, user scope the CLI
+# listing; a legacy `playwright` server counts as its --browser engine (none = chrome) - else chrome.
+_pw_registered() {
+  if [ "$CLAUDE_SCOPE" = "project" ]; then
+    [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1 || return 0
+    node -e '
+const fs=require("fs");let s={};try{s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).mcpServers||{}}catch{}
+for(const [n,v] of Object.entries(s)){const m=n.match(/^playwright-(chrome|msedge|firefox|webkit)$/);if(m){console.log(m[1]);continue}
+if(n==="playwright"){const a=(v&&v.args)||[];const i=a.indexOf("--browser");console.log(i>=0?a[i+1]:"chrome")}}' "$PWD/.mcp.json" 2>/dev/null || true
+  elif command -v claude >/dev/null 2>&1; then
+    claude mcp list 2>/dev/null | sed -n -E 's/^playwright-(chrome|msedge|firefox|webkit):.*/\1/p; /^playwright:/{s/.*--browser ([a-z]+).*/\1/p;/--browser/!s/.*/chrome/p;}' || true
+  fi
+}
+_pw_args_for() {  # $1 = manifest args $2 = engine -> the engine's args: --browser after the package, profile/<engine>
+  local -a words; local out="" w prev=""
+  read -ra words <<<"$1"
+  for w in "${words[@]}"; do
+    [ "$prev" = "--user-data-dir" ] && w="$w/$2"
+    out="$out $w"
+    case "$w" in @playwright/mcp*) out="$out --browser $2" ;; esac
+    prev="$w"
+  done
+  printf '%s' "${out# }"
+}
+PW_MIGRATED=""
+if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^playwright|'; then
+  if [ -z "$PLAYWRIGHT_BROWSERS" ]; then
+    _pw_have=" $(_pw_registered | tr '\n' ' ') "
+    [ -n "$PLAYWRIGHT_ENABLED" ] && _pw_have="$_pw_have$PLAYWRIGHT_ENABLED "
+    for _pw_e in $PW_ENGINES_ALL; do case "$_pw_have" in *" $_pw_e "*) PLAYWRIGHT_BROWSERS="$PLAYWRIGHT_BROWSERS $_pw_e" ;; esac; done
+    PLAYWRIGHT_BROWSERS="${PLAYWRIGHT_BROWSERS# }"
+    [ -n "$PLAYWRIGHT_BROWSERS" ] || PLAYWRIGHT_BROWSERS="chrome"
+  fi
+  _f=()
+  for e in ${MCPS[@]+"${MCPS[@]}"}; do
+    if [ "${e%%|*}" = "playwright" ]; then
+      for _pw_e in $PLAYWRIGHT_BROWSERS; do _f+=("playwright-$_pw_e|$(_pw_args_for "${e#*|}" "$_pw_e")"); done
+    else _f+=("$e"); fi
+  done
+  MCPS=(${_f[@]+"${_f[@]}"})
 fi
 
 # ===========================================================================
@@ -1265,6 +1359,33 @@ _mcp_register() {  # $1 = name $2 = manifest args - the `claude mcp add` call fo
   claude mcp add --scope "$CLAUDE_SCOPE" "$name" "${spec_words[@]}"
 }
 
+# The playwright servers this run no longer keeps - a legacy `playwright` and every dropped engine - go
+# away on both actions (they are stack names: install would otherwise leave them live beside the new
+# ones). The CLI route runs first; at project scope the stack-owned .mcp.json entry is then removed
+# directly, because a `remove` that did not take exits 0 like one that did (see the verify pass).
+prune_playwright_servers() {
+  [ -n "$PLAYWRIGHT_BROWSERS" ] || return 0
+  local name drop=""
+  for name in playwright playwright-chrome playwright-msedge playwright-firefox playwright-webkit; do
+    case " $(printf 'playwright-%s ' $PLAYWRIGHT_BROWSERS)" in *" $name "*) continue ;; esac
+    drop="$drop $name"
+  done
+  if [ "$CLAUDE_SCOPE" = "project" ]; then
+    [ -f "$PWD/.mcp.json" ] || return 0
+    for name in $drop; do grep -q "\"$name\"" "$PWD/.mcp.json" && claude mcp remove "$name" -s project >/dev/null 2>&1; done
+    node -e '
+const fs=require("fs");const [p,...drop]=process.argv.slice(1);let d;try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch{process.exit(0)}
+const s=d.mcpServers||{};const gone=drop.filter(n=>n in s);if(!gone.length)process.exit(0);
+for(const n of gone)delete s[n];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");
+for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one server per browser engine)":" (engine dropped)"))' "$PWD/.mcp.json" $drop || true
+  else
+    for name in $drop; do
+      claude mcp get "$name" >/dev/null 2>&1 && claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 && log "  mcp removed: $name"
+    done
+  fi
+  return 0
+}
+
 install_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   local entry name args
@@ -1577,6 +1698,19 @@ _serena_set_list_key() {  # $1 = project.yml, $2 = key, $3 = value, $4 = comment
     printf '\n# Added by claude-stack: %s\n%s: %s\n' "$comment" "$key" "$value" >> "$cfg"
     log "  serena: $key $value appended to project.yml"
   fi
+}
+# firefox / webkit are Playwright's own builds, not a browser the machine already has: download each kept
+# one through the server's OWN bundled playwright (`npx -p @playwright/mcp@<pin> playwright`), so the build
+# matches the version the server launches. chrome / msedge use the installed browser. Fail-soft.
+ensure_playwright_browser() {
+  local e
+  for e in $PLAYWRIGHT_BROWSERS; do
+    case "$e" in firefox|webkit) ;; *) continue ;; esac
+    log "playwright: downloading the $e build the server launches"
+    if ! command -v npx >/dev/null 2>&1 || ! npx -y -p "@playwright/mcp${PW_PIN}" playwright install "$e"; then
+      log "  !! could not download $e - run by hand: npx -y -p @playwright/mcp${PW_PIN} playwright install $e"
+    fi
+  done
 }
 seed_serena_project() {
   printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^serena|' || return 0   # serena not in this selection
@@ -2252,9 +2386,9 @@ install_github_cli
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project
+  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project; ensure_playwright_browser
 else
-  update_skills; update_plugins; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project
+  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project; ensure_playwright_browser
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed
@@ -2270,6 +2404,7 @@ _summary="  installed/refreshed this run - skills=${#SKILLS[@]}, plugins=${#PLUG
 # the close had nothing to cite and asserted the reset from memory instead.
 if [ "$KEEP_PINS" = true ]; then _summary="$_summary; keep-pins=on"; else _summary="$_summary; keep-pins=off (agent model/effort pins reset to catalog defaults)"; fi
 [ "$MCP_REPAIRS" -gt 0 ] && _summary="$_summary; mcp registrations repaired=$MCP_REPAIRS"
+[ -n "$PLAYWRIGHT_BROWSERS" ] && _summary="$_summary; playwright=$(printf '%s' "$PLAYWRIGHT_BROWSERS" | tr ' ' ',')"
 log "$_summary; context7=$CONTEXT7_MODE"
 # The counts above are the SELECTION this run wrote, not a listing of .claude/ - generated
 # project-owned files and names this release no longer ships are neither refreshed nor counted
@@ -2297,6 +2432,12 @@ if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^serena|'; then
   log "  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): SERENA_HOME=.serena/home uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things"
 fi
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
+# One line, only when this run was TOLD which engine stays on (setup / configure): an update never
+# re-asks the user to toggle what they may already have toggled.
+if [ -n "$PLAYWRIGHT_ENABLED" ] && [ -n "$PLAYWRIGHT_BROWSERS" ]; then
+  _pw_off=""; for _pw_e in $PLAYWRIGHT_BROWSERS; do [ "$_pw_e" = "$PLAYWRIGHT_ENABLED" ] || _pw_off="$_pw_off, /mcp disable playwright-$_pw_e"; done
+  [ -n "$_pw_off" ] && log "  - playwright: keep playwright-$PLAYWRIGHT_ENABLED on - run once in Claude Code: ${_pw_off#, } (switch any time with /mcp enable / disable)"
+fi
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 # The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says
 # what actually landed; the project-level settings.json never reaches .mcp.json expansion (measured).

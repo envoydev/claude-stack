@@ -38,7 +38,10 @@ change made only inside a consuming project is throwaway.
     value. Judged by file CONTENT (a JSON/dotenv file holding a `secret_key_pattern` key with a live
     value). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
-    Read tool and a credential literal stay blocked. `--presence <file> [KEY ...]` is the sanctioned
+    Read tool and a credential literal stay blocked. A rewrite drops the rest of the command, so one
+    carrying a CHANGING step (an edit, a redirect, a build) is blocked instead; a filtering read (`grep`,
+    `jq .path`, `head`) keeps its filter over the view. A connection-string / URL password and a PEM
+    private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The four
     account-settings `permissions.deny` entries written until 0.2.62 are retired and dropped every run.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
@@ -186,7 +189,13 @@ installers by the two-repo-commit discipline.
   proof - a stack whose surface always has them, an evidence signal, or the user's pick. Catalog (8):
   - `memory` - offered in the MCP table, never seeded, never flagged by validate (it sits in the
     `general` list because an audit found zero calls in 164 sessions).
-  - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere.
+  - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
+    entry, expanded after the selection into ONE server per kept browser (`playwright-chrome|msedge|firefox|
+    webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded via the
+    server's bundled playwright). `--playwright-browsers <csv>` / `--playwright-enabled` (setup/configure ask
+    both); absent = read back, a legacy `playwright` server migrates. The installer writes NO toggle: it prints
+    `/mcp disable` lines, switching is `/mcp` (a server cannot change browser at runtime). Every installed-name
+    reader maps `playwright-*` back to `playwright`; the four playwright agents grant all four servers.
   - `angular-cli` - framework-specific.
   - `chrome-devtools`, `appium-mcp` - addable only, seeded by no stack (both fail at launch without
     native deps; appium arrives pre-selected on an `appium` / `@wdio/` / `webdriverio` dependency).

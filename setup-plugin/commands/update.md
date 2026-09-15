@@ -183,7 +183,10 @@ at the scope the listing says they are installed at and their versions are read 
 each one as `x -> y` or `already newest` instead of asserting a refresh. The refresh re-registers every MCP;
 for sentry that means the constant `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` registration with
 the `Sentry-Bearer` header (an old plain-`Bearer` header, the broken v0.2.33-and-earlier default,
-migrates by itself; a deliberately headerless oauth registration is read back and kept). Sentry
+migrates by itself; a deliberately headerless oauth registration is read back and kept). Playwright keeps its browsers the same
+way: every `playwright-<browser>` server is read back and re-registered (a legacy single `playwright` server
+migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
+for the refreshed server version, and the user's `/mcp` enable / disable toggles are left alone. Sentry
 environment plan, no question on this path: when sentry is installed, read the ACCOUNT
 `settings.json` env (`~/.claude/settings.json`, or the space's) and report - as ONE line in the
 close-out, with the file path - any of `SENTRY_SLUG` and (token mode) `SENTRY_ACCESS_TOKEN` still

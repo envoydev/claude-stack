@@ -76,7 +76,7 @@ Confirm the install (project mode, above), then **inventory the installed set fr
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
 `baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
-`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json`; plugins = the SAME `claude plugin list --json`
+`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = the SAME `claude plugin list --json`
 scan configure runs (its step 1 carries the one-line command - copy it, do not re-derive it), which
 prints `name<TAB>version<TAB>scope<TAB>enabled` filtered to the entries that apply to THIS project
 (project scope at this path, or user scope) - the listing is machine-global, and an unfiltered read
@@ -389,8 +389,10 @@ renames included - and named in the post-check the same way an added artifact is
 profile), output to `$TMP/select.out` - then:
 
 - **Adds**: run the installer from the snapshot for the kept+added set -
-  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--sentry-slug <slug>] [--sentry-auth token|oauth]`
-  (ps1 on Windows). Sentry environment plan: whenever sentry is installed or among the adds, read the
+  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>]`
+  (ps1 on Windows). Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
+  `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
+  (the installer reads its `playwright-<browser>` servers back and keeps them). Sentry environment plan: whenever sentry is installed or among the adds, read the
   ACCOUNT `settings.json` env (`~/.claude/settings.json`, or the space's) - `SENTRY_SLUG` missing -> ask
   it (`<org>` or `<org>/<project>`) and pass `--sentry-slug`; `SENTRY_ACCESS_TOKEN` missing in token
   mode -> tell the user to add it there by hand or export it in the shell the installer runs in (the
@@ -401,7 +403,7 @@ profile), output to `$TMP/select.out` - then:
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
 - **Removes**: `install --selection` does NOT uninstall - delete each accepted removal explicitly,
   showing the command first: the skill directory / agent file / rule file; a hook loses BOTH its
-  `.claude/hooks/` file and its `.claude/settings.json` wiring; `claude mcp remove <name>`;
+  `.claude/hooks/` file and its `.claude/settings.json` wiring; `claude mcp remove <name>` (playwright = every `playwright-<browser>` server);
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` - and the removal ask
   that proposed it NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
