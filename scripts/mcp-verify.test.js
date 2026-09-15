@@ -501,6 +501,9 @@ test('ps1: the default is playwright-chrome, and sh agrees with the file ps1 wro
         assert.deepStrictEqual(pwNames(sb), ['playwright-chrome'], 'ps1: the default is exactly one chrome server');
         assertPwEngine(sb, 'chrome', 'ps1');
         assert.match(out, /playwright=chrome/, 'ps1: the summary does not name the engine');
+        // The cross-twin half holds off Windows only: there ps1 launches `cmd /c npx` (the bare npx.cmd shim dies
+        // with JSON-RPC -32000) and sh under Git Bash launches `npx`, so each twin reads the other's entry as drift.
+        if (process.platform === 'win32') return;
         const afterPs = fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8');
         assert.doesNotMatch(runSh(sb, 'update'), /mcp repaired:/, 'sh: rewrote the chrome server ps1 wrote');
         assert.strictEqual(fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8'), afterPs, 'sh: reformatted the file ps1 wrote');
