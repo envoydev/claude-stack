@@ -283,13 +283,14 @@ if (EVENT === 'SessionStart') {
   process.exit(0);
 }
 
-// Context comes from the last assistant message's usage, same source the stop contract uses.
-function lastUsage() {
+// Context comes from the last assistant message's usage, same source the stop contract uses: a
+// `<synthetic>` row's zero usage is skipped, and a last row bigger than the window retries over 8MB.
+function lastUsage(tail = 512 * 1024) {
   try {
     const p = payload.transcript_path;
     if (!p) return null;
     const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
+    const start = Math.max(0, size - tail);
     const fd = fs.openSync(p, 'r');
     const buf = Buffer.alloc(size - start);
     fs.readSync(fd, buf, 0, buf.length, start);
@@ -299,9 +300,10 @@ function lastUsage() {
       if (!line.includes('"assistant"')) continue;
       try {
         const o = JSON.parse(line);
-        if (o.type === 'assistant' && o.message && o.message.usage) usage = o.message.usage;
+        if (o.type === 'assistant' && o.message && o.message.usage && o.message.model !== '<synthetic>') usage = o.message.usage;
       } catch { /* partial first line of the tail window - skip */ }
     }
+    if (!usage && start > 0 && tail < 8 * 1024 * 1024) return lastUsage(8 * 1024 * 1024);
     return usage;
   } catch {
     return null;
@@ -381,30 +383,27 @@ function priorOrchestrationRun() {
     const buf = Buffer.alloc(size - start);
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
-    const text = buf.toString('utf8');
-    // A RUN is what the user typed: the slash route's `<command-name>` marker, read from the raw
-    // text (a transcript JSON-escapes neither `<` nor `/`). A `Skill` tool_use is NOT a run: a
-    // solve flow calls its own phases (solution-design, implementer, verify-code) that way, and its
-    // approval step puts a human turn between them, so counting them read ONE gated cycle as a
-    // chain (measured 2026-09-14: the build step of a single cycle was offered a fresh session).
-    // Prose ABOUT a run does not match either, which is what keeps this cheap and quiet.
-    const hits = [];
-    const re = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/g;
-    let m;
-    while ((m = re.exec(text)) !== null) if (isOrchestration(m[1])) hits.push({ at: m.index, name: m[1] });
-    if (!hits.length) return false;
-    hits.sort((a, b) => a.at - b.at);
+    // A RUN is what the user typed: the slash route's `<command-name>` marker in a HUMAN turn's own
+    // prompt. The marker as text anywhere else is not a run - measured 2026-09-15, 28 of 73 markers
+    // in the corpus sat in tool results (a `sed` over a test file, a transcript dump), and one
+    // replayed session was offered a fresh session for a run nobody typed. A `Skill` tool_use is
+    // NOT a run either: a solve flow calls its own phases (solution-design, implementer,
+    // verify-code) that way, and its approval step puts a human turn between them, so counting them
+    // read ONE gated cycle as a chain (measured 2026-09-14: the build step of a single cycle was
+    // offered a fresh session).
+    const re = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/;
     // ONE test does both jobs: an earlier run counts only when a HUMAN turn follows it - a `user`
     // record that is not a tool_result. That excludes the prompt being judged without having to
     // guess whether it is on disk yet (it is: the prompt row is written before UserPromptSubmit
     // fires), because nothing human follows it. It also keeps the SAME command chained twice,
     // which matching the last hit by NAME did not.
-    // Slice from the END of the hit's own line - a marker lives inside a user record, so reading
-    // the remainder of that same line would count the prior run's own prompt as the turn after it.
-    const nl = text.indexOf('\n', hits[0].at);
-    if (nl === -1) return false;
-    for (const line of text.slice(nl + 1).split('\n')) {
-      if (line.includes('"type":"user"') && !line.includes('"tool_result"') && isHumanTurn(line)) return true;
+    let seenRun = false;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.includes('"type":"user"') || line.includes('"tool_result"') || !isHumanTurn(line)) continue;
+      if (seenRun) return true;
+      const c = (JSON.parse(line).message || {}).content;
+      const m = re.exec(typeof c === 'string' ? c : (Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : ''));
+      if (m && isOrchestration(m[1])) seenRun = true;
     }
     return false;
   } catch {

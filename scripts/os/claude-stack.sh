@@ -170,9 +170,9 @@ while [ $# -gt 0 ]; do
     --sentry-auth) _flag_val "$1" "${2:-}"; SENTRY_AUTH_FLAG="$2"; shift 2 ;;
     --sentry-auth=*) SENTRY_AUTH_FLAG="${1#*=}";                  shift ;;
     --playwright-browsers)   _flag_val "$1" "${2:-}"; PLAYWRIGHT_BROWSERS_FLAG="$2"; shift 2 ;;
-    --playwright-browsers=*) PLAYWRIGHT_BROWSERS_FLAG="${1#*=}";                   shift ;;
+    --playwright-browsers=*) _flag_val "--playwright-browsers" "${1#*=}"; PLAYWRIGHT_BROWSERS_FLAG="${1#*=}"; shift ;;
     --playwright-enabled)    _flag_val "$1" "${2:-}"; PLAYWRIGHT_ENABLED_FLAG="$2";  shift 2 ;;
-    --playwright-enabled=*)  PLAYWRIGHT_ENABLED_FLAG="${1#*=}";                    shift ;;
+    --playwright-enabled=*)  _flag_val "--playwright-enabled" "${1#*=}"; PLAYWRIGHT_ENABLED_FLAG="${1#*=}"; shift ;;
     --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
     --keep-pins)  KEEP_PINS=true;                              shift ;;
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
@@ -227,6 +227,8 @@ if [ -n "$PLAYWRIGHT_BROWSERS_FLAG" ]; then
   done
   for _pw_e in $PW_ENGINES_ALL; do case "$_pw_want" in *" $_pw_e "*) PLAYWRIGHT_BROWSERS="$PLAYWRIGHT_BROWSERS $_pw_e" ;; esac; done
   PLAYWRIGHT_BROWSERS="${PLAYWRIGHT_BROWSERS# }"
+  # a value that names no engine at all (`,`) is a typo, never 'no flag'
+  [ -n "$PLAYWRIGHT_BROWSERS" ] || { usage >&2; echo "error: --playwright-browsers needs at least one of chrome, msedge, firefox, webkit" >&2; exit 1; }
 fi
 PLAYWRIGHT_ENABLED="$(printf '%s' "$PLAYWRIGHT_ENABLED_FLAG" | tr '[:upper:]' '[:lower:]')"
 if [ -n "$PLAYWRIGHT_ENABLED" ]; then
@@ -677,7 +679,7 @@ HOOKS=(
   "guard-secret-value.js::Grep::"                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   "guard-unapproved-dispatch.js::Task|Agent::"    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   "guard-ungated-commit.js::Bash|PowerShell::"               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
-  "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
+  "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth
   "guard-stop-contract.js::AskUserQuestion::"  # PreToolUse AskUserQuestion: INJECT context into the ask being built - stale scope (an option naming repo/remote/job state with no fresh read this turn), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for a flow whose every stop is a tool call, a live credential, and the house voice in the ask's own text. Presence only, never denies
   "guard-fresh-session-start.js::Skill::"        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   "guard-fresh-session-start.js::@UserPromptSubmit::"   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
@@ -967,9 +969,11 @@ _pw_registered() {
     node -e '
 const fs=require("fs");let s={};try{s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).mcpServers||{}}catch{}
 for(const [n,v] of Object.entries(s)){const m=n.match(/^playwright-(chrome|msedge|firefox|webkit)$/);if(m){console.log(m[1]);continue}
-if(n==="playwright"){const a=(v&&v.args)||[];const i=a.indexOf("--browser");console.log(i>=0?a[i+1]:"chrome")}}' "$PWD/.mcp.json" 2>/dev/null || true
+if(n==="playwright"){const a=(v&&v.args)||[];const i=a.indexOf("--browser");const eq=a.find(x=>/^--browser=/.test(x));console.log(i>=0?a[i+1]:eq?eq.slice(10):"chrome")}}' "$PWD/.mcp.json" 2>/dev/null || true
   elif command -v claude >/dev/null 2>&1; then
-    claude mcp list 2>/dev/null | sed -n -E 's/^playwright-(chrome|msedge|firefox|webkit):.*/\1/p; /^playwright:/{s/.*--browser ([a-z]+).*/\1/p;/--browser/!s/.*/chrome/p;}' || true
+    # the chrome fallback runs FIRST: after the engine substitution the line no longer carries
+    # --browser, so the other order printed chrome beside every named engine (measured)
+    claude mcp list 2>/dev/null | sed -n -E 's/^playwright-(chrome|msedge|firefox|webkit):.*/\1/p; /^playwright:/{/--browser/!s/.*/chrome/p;s/.*--browser[= ]([a-z]+).*/\1/p;}' || true
   fi
 }
 _pw_args_for() {  # $1 = manifest args $2 = engine -> the engine's args: --browser after the package, profile/<engine>
@@ -1199,6 +1203,8 @@ stack_src() {
     if [ -n "$STACK_SHA" ]; then
       # Stamp the URL the caller actually cloned from, not our default - they may have used a fork.
       STACK_REPO_URL="$(git -C "$SOURCE_DIR" remote get-url origin 2>/dev/null || echo "$STACK_REPO_URL")"
+      # an SSH remote is no browsable URL for the stamp's compare line - spell it as https
+      STACK_REPO_URL="$(printf '%s' "$STACK_REPO_URL" | sed -E 's#^(ssh://)?git@([^:/]+)[:/](.+)$#https://\2/\3#; s#\.git$##')"
     elif [ -f "$SOURCE_DIR/RELEASE-SOURCE" ]; then
       STACK_SHA="$(sed -n 's/^sha: //p' "$SOURCE_DIR/RELEASE-SOURCE" | head -1)"
       STACK_REF="$(sed -n 's/^ref: //p' "$SOURCE_DIR/RELEASE-SOURCE" | head -1)"
@@ -1316,8 +1322,18 @@ install_skills() {
   done
 }
 
+# Claude Code registers claude-plugins-official itself only on its first INTERACTIVE launch
+# (code.claude.com/docs/en/plugins), so an install before that failed every official plugin with 'not
+# found in marketplace' (measured on a fresh config). Register it (a no-op when present) and refresh it
+# so a stale clone knows the plugins this release names. Fail-soft both ways.
+ensure_official_marketplace() {
+  claude plugin marketplace add anthropics/claude-plugins-official >/dev/null 2>&1 || true
+  claude plugin marketplace update claude-plugins-official >/dev/null 2>&1 || true
+}
+
 install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
+  ensure_official_marketplace
   for mp in ${EXTRA_MARKETPLACES[@]+"${EXTRA_MARKETPLACES[@]}"}; do claude plugin marketplace add "$mp" 2>/dev/null || true; done
   for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
@@ -1372,12 +1388,17 @@ prune_playwright_servers() {
   done
   if [ "$CLAUDE_SCOPE" = "project" ]; then
     [ -f "$PWD/.mcp.json" ] || return 0
-    for name in $drop; do grep -q "\"$name\"" "$PWD/.mcp.json" && claude mcp remove "$name" -s project >/dev/null 2>&1; done
+    # the names present BEFORE the CLI remove are the ones reported: a remove that worked left the
+    # node step nothing to find, so the removal went unreported (measured with the real CLI)
+    local present=""
+    for name in $drop; do grep -q "\"$name\"" "$PWD/.mcp.json" && present="$present $name"; done
+    [ -n "$present" ] || return 0
+    for name in $present; do claude mcp remove "$name" -s project >/dev/null 2>&1; done
     node -e '
-const fs=require("fs");const [p,...drop]=process.argv.slice(1);let d;try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch{process.exit(0)}
-const s=d.mcpServers||{};const gone=drop.filter(n=>n in s);if(!gone.length)process.exit(0);
-for(const n of gone)delete s[n];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");
-for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one server per browser engine)":" (engine dropped)"))' "$PWD/.mcp.json" $drop || true
+const fs=require("fs");const [p,...gone]=process.argv.slice(1);let d;try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch{process.exit(0)}
+const s=d.mcpServers||{};const left=gone.filter(n=>n in s);
+if(left.length){for(const n of left)delete s[n];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")}
+for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one server per browser engine)":" (engine dropped)"))' "$PWD/.mcp.json" $present || true
   else
     for name in $drop; do
       claude mcp get "$name" >/dev/null 2>&1 && claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 && log "  mcp removed: $name"
@@ -1520,6 +1541,8 @@ _mcp_get_shape() {  # $1 = name -> 'http|<url>' / 'stdio|<command> <args>' as `c
     END { if (t == "http") printf "http|%s", u; else if (t != "") printf "stdio|%s %s", c, a }'
 }
 
+_mcp_shape_norm() { printf '%s' "$1" | sed -E 's/\$\{([A-Za-z_][A-Za-z0-9_]*):-[^}]*\}/${\1}/g'; }
+
 _verify_mcps_user() {
   local entry name args line kind want have
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
@@ -1532,13 +1555,17 @@ _verify_mcps_user() {
       # 'stdio|<command> <args>' - the env pairs and the -- separator are not in `mcp get`'s Command/Args lines.
       want="stdio|$(printf '%s' "$line" | cut -f3- | tr '\t' '\n' | awk '/^-e$/{skip=1;next} skip{skip=0;next} /^--$/{next} {printf "%s%s", (n++?" ":""), $0}')"
     fi
-    have="$(_mcp_get_shape "$name")"
+    # `claude mcp get` PRINTS a stored `${VAR:-default}` as `${VAR}` (CLI 2.1.272 - the stored entry keeps
+    # the default), so both sides compare with the default dropped; as printed, every playwright server
+    # read as drifted on every global run and failed it (measured).
+    want="$(_mcp_shape_norm "$want")"
+    have="$(_mcp_shape_norm "$(_mcp_get_shape "$name")")"
     [ -z "$have" ] && continue                     # an older CLI, or a server the account config does not expose - nothing to compare against
     [ "$have" = "$want" ] && continue
     log "  mcp shape drifted at user scope: $name - re-registering"
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
     _mcp_register "$name" "$args" >/dev/null 2>&1 || true
-    have="$(_mcp_get_shape "$name")"
+    have="$(_mcp_shape_norm "$(_mcp_get_shape "$name")")"
     if [ -n "$have" ] && [ "$have" != "$want" ]; then
       note_failure "mcp $name could not be brought to the current shape at user scope - remove it by hand (claude mcp remove $name -s user) and re-run"
     else
@@ -1995,7 +2022,7 @@ for _key, _only_when in (("CLAUDE_STACK_FRESH_SESSION_PCT", None),
     if _key in env and (_only_when is None or env[_key] == _only_when):
         del env[_key]
         changed = True
-        print("  settings.json env: %s removed (retired - nothing reads it)" % _key)
+        print("  settings.json env: %s removed (%s)" % (_key, "retired - nothing reads it" if _only_when is None else "the old stack seed %s - the default applies" % _only_when))
 # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
 # still exactly that seed - a value the user set by hand is theirs and is never touched. Keep any
 # entry identical in both installer twins and in meta/migrations.json.
@@ -2036,7 +2063,7 @@ if "CLAUDE_STACK_ROTATE_ASK" not in env:
 # tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
 # at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the
 # ceiling), so the clamps decided and the knob lied about what it controlled. That key is retired
-# outright - nothing reads it any more; `0` on BOTH keys below is the off switch.
+# outright - nothing reads it any more; `0` on ALL THREE keys below is the off switch.
 # 400,000 on the 1M tier is deliberately ABOVE the harness's own auto-compaction (387,619-397,171
 # measured), so there the SessionStart compact route carries the offer - lower it to be asked first.
 if "CLAUDE_STACK_FRESH_SESSION_1M" not in env:
@@ -2103,7 +2130,9 @@ RETIRED_MCPS=()
 # budget, or to /claude-stack:status). Entries are the bare plugin NAME, without the @marketplace
 # suffix the PLUGINS block carries. A plugin the stack still SHIPS but this project does not need is
 # a different question - that is /claude-stack:validate's whole-stack-absent pass, not a retirement.
-RETIRED_PLUGINS=()
+RETIRED_PLUGINS=(
+  "ponytail"   # dropped from PLUGINS in 0.2.7x (the audit remediation); never joined this list until 0.2.85
+)
 
 remove_skills() {  # rm -rf each manifest skill under the scope dest, so update starts from a clean slate
   local dest entry name
@@ -2201,6 +2230,7 @@ prune_retired_plugins() {  # UPDATE: uninstall the known retired plugin names (R
 
 update_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
+  ensure_official_marketplace
   claude plugin marketplace update 2>/dev/null || true            # refresh marketplaces first
   local before after p name pscope v1 v2
   before="$(_plugin_scan)"
@@ -2487,9 +2517,9 @@ generated docs inherit the .claude ignore above and are machine-local: not commi
 re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
 
-The same env block carries the fresh-session gate's two knobs (seeded, absent-only, so a
+The same env block carries the fresh-session gate's three knobs (seeded, absent-only, so a
 hand-edited value survives every update):
-  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a window over 200k may carry
+  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a 1M window may carry
                                    before an orchestration run is offered a fresh one (default
                                    400000; 0 = off). Above the harness's own auto-compaction, so
                                    lower it to be asked before the harness decides for you

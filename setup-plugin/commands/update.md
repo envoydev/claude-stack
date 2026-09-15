@@ -201,7 +201,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|installed-only: required:|settings\.json env:|=set \(|=absent|serena project index|!!' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: required:|settings\.json env:|=set \(|=absent|serena project index|!!' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -280,9 +280,11 @@ prune: .claude/rules/web-conventions.md (renamed upstream; typescript-convention
 On 'proceed': selection = installed, minus the confirmed prune list, plus the new names of
 renames; write `raw.json`, run `stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt"
 --check`. A `required:` line (a dependency the new release introduced) is auto-kept and
-reported. An `unknown:` line is an upstream retirement the compare missed - already excluded
-from the emitted selection; add it to the prune list (an MCP simply drops out of the
-regenerated `.mcp.json`; name it in the report). Blockers stop the run with their fixes -
+reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote,
+and an MCP server added by hand, print exactly that way, and the installer leaves every one of
+them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never
+touched). It is excluded from the emitted selection and nothing more - list it in the report as
+`kept - not a stack item`. Only the compare list and the migrations prune. Blockers stop the run with their fixes -
 never update past one; warnings are listed and passed. Then run the installer as in step 3 but
 with `--selection "$TMP/selection.txt"` / `-Selection "$TMP/selection.txt"` in place of the installed-only
 flag.

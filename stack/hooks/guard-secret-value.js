@@ -483,9 +483,11 @@ const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2);
 // The shell route's verdict: the call is REPLACED (hookSpecificOutput.updatedInput) by one that
 // prints the placeholder form, and the tool runs that instead - no denial, no retried turn, and the
 // note on its first line carries the route to the value. Not a block, so no ledger row: the ledger
-// counts the turns a gate costs, and a rewrite costs none.
+// counts the turns a gate costs, and a rewrite costs none. `updatedInput` REPLACES the tool's
+// arguments (code.claude.com/docs/en/hooks), so every other field - timeout, description,
+// run_in_background - is carried over.
 const rewrite = (command) => {
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { command } } }));
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...input, command } } }));
   process.exit(0);
 };
 const presenceHint = (file) =>
@@ -502,8 +504,11 @@ const presenceHint = (file) =>
 // The second half of the list is the review's: `tac`, `base64`, `xxd` and friends print the same
 // bytes in a different order or encoding, and a dump verb only matters when its file token holds a
 // live credential, so the false-positive cost of a long list is nil. `cp` and `dd` are NOT here -
-// `cp .env .env.bak` is a legitimate backup, and it prints nothing.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee)\b/;
+// `cp .env .env.bak` is a legitimate backup, and it prints nothing. The PowerShell spellings
+// (`Get-Content` and its `gc` / `type` aliases, `Select-String`, `Format-Hex`, `Import-Csv`) are the
+// same reads - measured 2026-09-15, `Get-Content .env` printed the value in real pwsh - and cmdlet
+// names are case-insensitive, so the whole list is.
+const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell)\b/;
 // A heredoc body is DATA, not shell: a plan that merely DESCRIBES `cat ~/.claude/settings.json` is
 // inert text (reproduced against the sibling guards). Blank the payload spans, keeping the character
@@ -676,7 +681,7 @@ function printsKeysOnly(stage) {
 // and the user found the old value in the config 37 minutes later. So a command carrying a CHANGING step is
 // blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
 // this list does not know (a build, a network call, a runtime) counts as changing.
-const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)/;
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
 const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
 const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
 const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/;
@@ -742,6 +747,9 @@ function narrowFilter(stages, tok) {
 // `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
 // (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
 const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+const IS_PWSH = payload.tool_name === 'PowerShell';
+// A PowerShell single-quoted literal: nothing expands inside it, and `'` doubles.
+const psSingle = (s) => `'${String(s).replace(/'/g, "''")}'`;
 if (isShellTool(payload.tool_name)) {
   const raw = String(input.command || '');
   // A credential-shaped literal typed into a command is already in the transcript as the call's own
@@ -764,10 +772,17 @@ if (isShellTool(payload.tool_name)) {
 
 // A print of a credential-shaped variable becomes that variable's presence line - the idiom the
 // denial used to prescribe, run for the model instead of fed back to it - led by the note.
+// On the PowerShell route the same line is spelled in PowerShell - the Bash form is a ParserError in
+// pwsh - and reads the environment variable first, then a session variable of that name.
 function blockVariable(name) {
   if (allowAll || allowedNames.has(name)) return; // the user's own allowance for this session
   refuseDroppedSteps(`the credential-shaped variable \`${name}\``);
   const note = noteLine(`\`${name}\` is a credential-shaped variable - shown as presence, not printed.`, receipt);
+  if (IS_PWSH) {
+    rewrite(`Write-Output ${psSingle(note)}; $cgv = [Environment]::GetEnvironmentVariable('${name}'); ` +
+      `if (-not $cgv) { $cgv = Get-Variable -Name '${name}' -ValueOnly -ErrorAction SilentlyContinue }; ` +
+      `if ($cgv) { Write-Output "${name}=set ($(([string]$cgv).Length) chars)" } else { Write-Output '${name}=absent' }`);
+  }
   rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
 }
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
@@ -776,7 +791,35 @@ function blockVariable(name) {
 function blockEnvDump() {
   if (allowAll) return; // only `*` covers every variable at once
   refuseDroppedSteps('the whole environment');
-  rewrite(`node "${shDouble(__filename)}" --redacted-env`);
+  rewrite(IS_PWSH ? `node ${psSingle(__filename)} --redacted-env` : `node "${shDouble(__filename)}" --redacted-env`);
+}
+
+// PowerShell prints a value four ways Bash does not: a bare expression statement (`$env:NAME`,
+// `"$env:NAME"`, `[Environment]::GetEnvironmentVariable('NAME')`), a Write-* cmdlet, the env: drive
+// (`Get-Item env:NAME`, `Get-ChildItem env:` - the whole environment), and the .NET listing
+// `[Environment]::GetEnvironmentVariables()`. A USE - `if ($env:NAME)`, `$env:NAME.Length`, a header
+// argument to curl.exe - prints nothing, the same line the Bash branch draws for `curl -d "$TOKEN"`.
+// Declarations only inside: the shell branch runs ABOVE this point, so a top-level const here would
+// still be in its temporal dead zone.
+function judgePwshStage(stage) {
+  const PS_ENV_REF = /\$\{?env:([A-Za-z_][A-Za-z0-9_]*)\}?/gi;
+  const PS_GETENV = /\[(?:System\.)?Environment\]::GetEnvironmentVariable\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/gi;
+  const s = stage.trim();
+  const secretOf = (re, text) => [...text.matchAll(re)].map((m) => m[1]).find((n) => SECRET_KEY_RE.test(n));
+  // env: drive - a named item prints that variable, anything else lists the environment.
+  const drive = s.match(/^\(?\s*(?:get-item|gi|get-childitem|gci|dir|ls)\s+(?:-path\s+|-literalpath\s+)?['"]?env:\\?([^\s'")|]*)/i);
+  if (drive) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(drive[1])) { if (SECRET_KEY_RE.test(drive[1])) blockVariable(drive[1]); } else blockEnvDump();
+  }
+  if (/^\[(?:System\.)?Environment\]::GetEnvironmentVariables\(\s*\)/i.test(s)) blockEnvDump();
+  // A bare expression statement is printed by the host.
+  const bare = s.match(/^"?\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}?"?$/i) || s.match(/^\[(?:System\.)?Environment\]::GetEnvironmentVariable\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\)$/i);
+  if (bare && SECRET_KEY_RE.test(bare[1])) blockVariable(bare[1]);
+  // The print verbs, PowerShell's own included.
+  if (/^(?:echo|write-output|write-host|write-information|write|out-host)\b/i.test(s)) {
+    const hit = secretOf(PS_ENV_REF, s) || secretOf(PS_GETENV, s);
+    if (hit) blockVariable(hit);
+  }
 }
 
 function judgeShell(text, forceRuntime) {
@@ -827,6 +870,7 @@ function judgeShell(text, forceRuntime) {
         const hit = names.find((n) => SECRET_KEY_RE.test(n));
         if (hit) blockVariable(hit);
       }
+      if (IS_PWSH) judgePwshStage(stage);
       // `declare -p NAME` / `typeset -p NAME` print one variable's value, like printenv NAME.
       const dp = stage.replace(PREFIX_WORDS, '').match(/^(?:declare|typeset)\s+-p\s+([^\n|]+)/);
       if (dp) { const hit = shellTokens(dp[1]).find((n) => SECRET_KEY_RE.test(n)); if (hit) blockVariable(hit); }
@@ -879,7 +923,7 @@ function judgeShell(text, forceRuntime) {
           // a compound command is dropped rather than spliced, so the rewritten call is always one the
           // model can read back whole; a dropped step that CHANGES something blocks instead.
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``);
-          const view = `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
+          const view = IS_PWSH ? `node ${psSingle(__filename)} --redacted ${psSingle(file)}` : `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
           const narrow = payload.tool_name === 'Bash' && !isRuntime && sj === 0 && narrowFilter(stages, tok);
           rewrite(narrow ? `${view} --note-to-stderr | ${narrow}` : view);
         }

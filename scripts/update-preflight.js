@@ -90,17 +90,19 @@ function migrationFields(e)
 function changedClasses(compareLines)
 {
     const n = { skills: 0, agents: 0, rules: 0, hooks: 0, template: false };
+    const seen = { skills: new Set(), agents: new Set(), rules: new Set(), hooks: new Set() };
     for (const line of compareLines)
     {
         const m = /^(modified|added|removed|renamed)\t([^\t]+)/.exec(line);
         if (!m) continue;
         const p = m[2];
-        if (/^stack\/skills\//.test(p)) n.skills += 1;
-        else if (/^stack\/agents\//.test(p)) n.agents += 1;
-        else if (/^stack\/rules\//.test(p)) n.rules += 1;
-        else if (/^stack\/hooks\//.test(p)) n.hooks += 1;
+        // Distinct ITEMS, not files: a skill is its folder, so SKILL.md plus its references count once
+        // (measured: skills=108 reported against 78 shipped).
+        const item = /^stack\/(skills|agents|rules|hooks)\/([^/]+)/.exec(p);
+        if (item) seen[item[1]].add(item[2]);
         else if (/^stack\/CLAUDE\.template\.md$/.test(p)) n.template = true;
     }
+    for (const k of Object.keys(seen)) n[k] = seen[k].size;
     return n;
 }
 

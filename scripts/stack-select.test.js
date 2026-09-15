@@ -622,6 +622,40 @@ test('CLI: plugins written as {name,scope} - the shape validate step 1 mandates 
         const run = mode => execFileSync('node', [path.join(__dirname, 'stack-select.js'), mode, '--installed', invFile, '--recs', recsPath, '--graph', graphPath, '--stacks', 'aspnet'], { encoding: 'utf8' });
         assert.ok(!/missing: plugin csharp-lsp/.test(run('--missing')), 'a scoped installed plugin is not missing');
         assert.match(run('--redundant'), /plugin typescript-lsp/, 'a scoped installed plugin is seen by the redundant pass');
+        // A DISABLED plugin is a third state (validate.md step 1): never proposed as an install.
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [],
+            plugins_disabled: [{ name: 'csharp-lsp', scope: 'project' }, 'superpowers'] }));
+        const missing = run('--missing');
+        assert.ok(!/missing: plugin csharp-lsp/.test(missing), 'a disabled stack plugin is not missing');
+        assert.ok(!/missing: plugin superpowers/.test(missing), 'a disabled baseline plugin is not missing');
+        assert.match(missing, /missing: plugin security-guidance/, 'an absent plugin still is');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: a --selection built from that inventory keeps its {name,scope} plugins (validate step 11)', () => {
+    // validate copies the step-1 inventory into final.json and emits from it; the --selection read
+    // never normalized, so every plugin printed `unknown: plugin '[object Object]'` and was dropped
+    // from selection.txt (measured on a temp project 2026-09-15).
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-sel-scope-'));
+    try
+    {
+        const sel = path.join(dir, 'final.json');
+        const emit = path.join(dir, 'selection.txt');
+        const dropped = path.join(dir, 'dropped.json');
+        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'serena' }, 'context7'], hooks: [],
+            plugins: [{ name: 'superpowers', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
+        fs.writeFileSync(dropped, JSON.stringify({ plugins: [{ name: 'typescript-lsp', scope: 'project' }] }));
+        const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
+            '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
+        assert.ok(!/\[object Object\]/.test(out), `no object reads as a name:\n${out}`);
+        const txt = fs.readFileSync(emit, 'utf8');
+        assert.match(txt, /^plugin superpowers$/m, 'a scoped plugin stays selected');
+        assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
+        assert.match(txt, /^mcp serena$/m, 'an object mcp entry stays selected');
     }
     finally
     {
@@ -751,6 +785,24 @@ test('context7 selected without a key warns for either transport, never blocks; 
 
 // A --space install keeps its account under ~/.claude-<space>; the model's shell rarely carries
 // CLAUDE_CONFIG_DIR, so the check must be told which account file to read.
+// Measured 2026-09-15: macOS installs Chrome as an app, never on PATH as `chrome`, so a machine
+// WITH Chrome was told to 'install Google Chrome or Chromium' whenever chrome-devtools was kept.
+test('browserCandidates: Chrome and Edge are probed at their app install locations on every platform', () => {
+    const { browserCandidates } = require('./stack-select.js');
+    const env = { ProgramFiles: 'C:\\PF', 'ProgramFiles(x86)': 'C:\\PF86', LOCALAPPDATA: 'C:\\LA' };
+    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Google Chrome.app'), 'macOS Chrome app');
+    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Chromium.app'), 'macOS Chromium app');
+    assert.ok(browserCandidates('chrome', 'win32', env).some((c) => /Google[\\/]Chrome[\\/]Application[\\/]chrome\.exe$/.test(c)), 'Windows Chrome exe');
+    assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app, unchanged');
+    assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe, unchanged');
+    assert.deepStrictEqual(browserCandidates('chrome', 'linux', env), [], 'Linux relies on PATH');
+    if (process.platform === 'darwin' && fs.existsSync('/Applications/Google Chrome.app'))
+    {
+        const { detectEnvironment } = require('./stack-select.js');
+        assert.strictEqual(detectEnvironment().bins.chrome, true, 'this Mac has Chrome installed as an app');
+    }
+});
+
 test('detectEnvironment reads the account settings.json env from --config-dir (a --space account)', () => {
     const fs = require('node:fs');
     const os = require('node:os');

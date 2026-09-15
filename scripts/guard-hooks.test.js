@@ -1634,6 +1634,25 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
       { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued' } },
     ]), winEnv(), 'project-solve-task'), '', 'harness-written user records are not a human turn');
 
+    // The marker as TEXT is not a run: a tool result that printed a transcript or a test file, or the
+    // model's own tool input writing one. Measured 2026-09-15: 28 of 73 markers in the corpus sat in
+    // tool results, and a replayed session was offered a fresh session for a run nobody typed.
+    const markup = '<command-name>/project-architecture-analyzer</command-name>';
+    assert.equal(slash(transcript('chain-in-tool-result', [
+      assistantRow('a0', 'reading', FLOOR),
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `const x = '${markup}';` }] } },
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('project-quality-loop'),
+    ])), '', 'a marker printed by a tool is not a prior run');
+    assert.equal(slash(transcript('chain-in-tool-input', [
+      { type: 'assistant', message: { id: 'a0', content: [{ type: 'tool_use', name: 'Write', input: { content: markup } }], usage: FLOOR } },
+      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('project-quality-loop'),
+    ])), '', 'a marker the model wrote into a tool input is not a prior run');
+    assert.equal(slash(transcript('chain-in-meta', [
+      assistantRow('a0', 'hi', FLOOR),
+      { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `skill body quoting ${markup}` }] } },
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('project-quality-loop'),
+    ])), '', 'a marker inside a harness-written row is not a prior run');
+
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
     const plain = transcript('chain-plain', [
       cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),

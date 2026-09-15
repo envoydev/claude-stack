@@ -15,6 +15,9 @@ const FAKE_TOKEN = 'sntrys_' + 'A'.repeat(48);
 const FIXTURE = { files: [
     { status: 'modified', filename: 'stack/skills/csharp/SKILL.md' },
     { status: 'modified', filename: 'stack/skills/dotnet/SKILL.md' },
+    // a second file of the SAME skill is still one skill changed (measured: skills=108 against 78 shipped)
+    { status: 'modified', filename: 'stack/skills/dotnet/references/testing.md' },
+    { status: 'modified', filename: 'stack/hooks/model-windows.json' },
     { status: 'modified', filename: 'stack/hooks/guard-secret-value.js' },
     { status: 'added', filename: 'stack/hooks/guard-new-thing.js' },
     { status: 'removed', filename: 'stack/rules/web-conventions.md' },
@@ -63,7 +66,7 @@ test('ONE call carries the compare contract, the changed classes, the fired migr
     assert.match(out, /^modified\tstack\/skills\/csharp\/SKILL\.md$/m);
     // the counts the close-out names refreshed paths from - the installer's log tail counts
     // every file it copied, which is all of them on every run
-    assert.match(out, /^changed: skills=2 agents=0 rules=1 hooks=2 template=no$/m);
+    assert.match(out, /^changed: skills=2 agents=0 rules=1 hooks=3 template=no$/m, 'distinct ITEMS: a skill folder counts once, model-windows.json is a hooks-class file');
     assert.match(out, /^migration: inject-code-style-hook-to-rule\tfile_exists$/m);
     assert.match(out, /^migration: docs-path-env-rename\tsettings_env_key$/m);
     assert.match(out, /^env-keys: CLAUDE_DOCS_PATH,SENTRY_ACCESS_TOKEN$/m);

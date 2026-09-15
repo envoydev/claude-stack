@@ -384,7 +384,7 @@ Build the final selection = the installed set, PLUS every accepted add, MINUS ev
 remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
 are applied here too, as a merge on the scope's settings.json touching ONLY those keys - seeds and
 renames included - and named in the post-check the same way an added artifact is. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
 (`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 

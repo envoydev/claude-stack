@@ -575,6 +575,63 @@ test('guard-secret-value: the PowerShell tool is the same shell route', () => {
   assert.equal(pwsh(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`), 2, 'a credential-shaped literal in the command is blocked');
 });
 
+// Measured 2026-09-15 on a temp project: the PowerShell route knew only Bash spelling, so
+// `Get-Content .env`, `echo $env:MY_TOKEN` and `Get-ChildItem env:` printed raw values in real pwsh,
+// and the presence rewrite of `echo $MY_TOKEN` was Bash syntax pwsh rejects with a ParserError.
+test('guard-secret-value: PowerShell spelling - its read cmdlets, $env:NAME and env: drive listings', () => {
+  const f = fixtures();
+  const ps = (command) => run({ tool_name: 'PowerShell', tool_input: { command }, session_id: 'suite' });
+  for (const cmd of [`Get-Content ${f.dotenv}`, `gc ${f.dotenv}`, `type ${f.dotenv}`, `get-content -Path ${f.dotenv} -Raw`,
+    `Select-String -Path ${f.dotenv} -Pattern API`, `Get-Content ${f.dotenv} | Select-String API`]) {
+    const out = updatedCommand(ps(cmd));
+    assert.ok(out && out.includes('--redacted'), `${cmd}: rewritten to the redacted view`);
+  }
+  for (const cmd of ['echo $env:SENTRY_ACCESS_TOKEN', 'Write-Output $env:SENTRY_ACCESS_TOKEN', 'Write-Host "t=$env:SENTRY_ACCESS_TOKEN"',
+    '$env:SENTRY_ACCESS_TOKEN', '"$env:SENTRY_ACCESS_TOKEN"', '${env:SENTRY_ACCESS_TOKEN}', "[Environment]::GetEnvironmentVariable('SENTRY_ACCESS_TOKEN')",
+    'Get-Item env:SENTRY_ACCESS_TOKEN', '(Get-Item Env:SENTRY_ACCESS_TOKEN).Value', 'echo $SENTRY_ACCESS_TOKEN']) {
+    const out = updatedCommand(ps(cmd));
+    assert.ok(out && out.includes('SENTRY_ACCESS_TOKEN=absent') && !out.includes('[ -n'), `${cmd}: the PowerShell presence line`);
+  }
+  for (const cmd of ['Get-ChildItem env:', 'gci Env:\\', 'dir env:', 'ls env:', 'Get-ChildItem env:*TOKEN*', '[Environment]::GetEnvironmentVariables()']) {
+    assert.ok(String(updatedCommand(ps(cmd))).includes('--redacted-env'), `${cmd}: the masked environment listing`);
+  }
+  for (const cmd of [`Get-Content ${f.clean}`, 'echo $env:PATH', '$env:PATH', 'if ($env:SENTRY_ACCESS_TOKEN) { "set" }', '$env:SENTRY_ACCESS_TOKEN.Length',
+    'curl.exe -H "Authorization: $env:SENTRY_ACCESS_TOKEN" https://example.test', 'Get-ChildItem src', 'Get-Item package.json']) {
+    assert.equal(verdict(ps(cmd)), 0, `${cmd}: not a print of a credential`);
+  }
+  assert.equal(verdict(ps(`Get-Content ${f.dotenv}; Set-Content out.txt 'x'`)), 2, 'a dropped changing step blocks, as on Bash');
+  assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: 'ls env:' }, session_id: 'suite' })), 0, 'the env: drive is PowerShell only');
+  // updatedInput REPLACES the tool input (code.claude.com/docs/en/hooks), so the rewrite keeps the rest of it.
+  const kept = JSON.parse(ps(`Get-Content ${f.dotenv}`, {}).stdout || '{}');
+  const keptFull = JSON.parse(run({ tool_name: 'PowerShell', tool_input: { command: `gc ${f.dotenv}`, timeout: 5000, description: 'd' }, session_id: 'suite' }).stdout);
+  assert.ok(kept.hookSpecificOutput, 'rewritten');
+  assert.equal(keptFull.hookSpecificOutput.updatedInput.timeout, 5000, 'timeout survives the rewrite');
+  assert.equal(keptFull.hookSpecificOutput.updatedInput.description, 'd', 'description survives the rewrite');
+});
+
+// The rewrites must RUN in real pwsh and print presence, never the value.
+const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
+test('guard-secret-value: the PowerShell rewrites run in pwsh and print no value', { skip: !hasPwsh && 'pwsh not installed' }, () => {
+  const f = fixtures();
+  const pwshRun = (command, env) => spawnSync('pwsh', ['-NoProfile', '-Command', command], { encoding: 'utf8', cwd: f.dir, env: { ...process.env, ...env } });
+  const rewritten = (command) => updatedCommand(run({ tool_name: 'PowerShell', tool_input: { command }, session_id: 'suite' }));
+  for (const cmd of ['echo $env:SENTRY_ACCESS_TOKEN', 'echo $SENTRY_ACCESS_TOKEN', "[Environment]::GetEnvironmentVariable('SENTRY_ACCESS_TOKEN')"]) {
+    const set = pwshRun(rewritten(cmd), { SENTRY_ACCESS_TOKEN: FAKE_TOKEN });
+    assert.equal(set.status, 0, `${cmd}: runs (${set.stderr})`);
+    assert.match(set.stdout, /SENTRY_ACCESS_TOKEN=set \(40 chars\)/, `${cmd}: presence when set`);
+    assert.ok(!set.stdout.includes(FAKE_TOKEN), `${cmd}: the value never prints`);
+    const env = { ...process.env }; delete env.SENTRY_ACCESS_TOKEN;
+    const unset = spawnSync('pwsh', ['-NoProfile', '-Command', rewritten(cmd)], { encoding: 'utf8', cwd: f.dir, env });
+    assert.match(unset.stdout, /SENTRY_ACCESS_TOKEN=absent/, `${cmd}: absent when unset`);
+  }
+  const view = pwshRun(rewritten(`Get-Content ${f.dotenv}`));
+  assert.equal(view.status, 0, `the file view runs (${view.stderr})`);
+  assert.ok(view.stdout.includes('DB_HOST=localhost') && !view.stdout.includes('abc123'), 'the file view masks the value');
+  const listing = pwshRun(rewritten('Get-ChildItem env:'), { SENTRY_ACCESS_TOKEN: FAKE_TOKEN });
+  assert.equal(listing.status, 0, `the env listing runs (${listing.stderr})`);
+  assert.ok(!listing.stdout.includes(FAKE_TOKEN), 'the env listing masks the value');
+});
+
 // Measured in an audited session (a .NET appsettings.Staging.json): the redacted view's header said 'A value
 // never enters the chat' while the view printed the Postgres and Redis passwords (inside their connection
 // strings - the KEY names the connection, not the credential) and the Firebase PEM private key (its line breaks
@@ -644,7 +701,7 @@ test('guard-secret-value: a narrow read of a credential file keeps its own filte
   assert.equal(rewritten(`cat ${f.secret}`), view(f.secret), 'a whole-file dump is still the whole view');
   assert.equal(rewritten(`grep SENTRY ${f.secret} ${f.dotenv}`), view(f.secret), 'two files: the view of the first, as before');
   const pw = updatedCommand(run({ tool_name: 'PowerShell', tool_input: { command: `grep -n SENTRY_SLUG ${f.secret}` }, session_id: 'suite' }));
-  assert.equal(pw, view(f.secret), 'the PowerShell tool keeps the whole view');
+  assert.equal(pw, `node '${HOOK}' --redacted '${f.secret}'`, 'the PowerShell tool keeps the whole view, PowerShell-quoted');
   // run for real: the note goes to stderr, the filter sees only the masked file
   const g = spawnSync('bash', ['-c', rewritten(`grep -n SENTRY ${f.secret}`)], { encoding: 'utf8' });
   assert.match(g.stdout, /"SENTRY_SLUG": "acme"/);

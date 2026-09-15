@@ -75,6 +75,20 @@ test('the plugin-settings --apply run is not a decision table', () => {
   assert.strictEqual(run([settings(' --apply'), result('t1', 'applied: 2')]).status, 0);
 });
 
+// Measured 2026-09-15: setup skips the report silently on `nothing to offer`, and every later ask
+// (CLAUDE.md, gitignore, blockers) was denied three times over a table that never existed.
+test('a plugin-settings run with nothing to offer is no table - later asks pass', () => {
+  const none = 'plugin-settings: nothing to offer (no catalog row for the installed plugins)';
+  assert.strictEqual(run([settings(), result('t1', none), say('Next: the CLAUDE.md step.')]).status, 0);
+});
+
+// A command continued over lines with a trailing backslash is the same table call.
+test('a multi-line stack-select --table command is still a table call', () => {
+  const multi = call('t1', 'Bash', { command: 'node "$TMP/repo/scripts/stack-select.js" \\\n  --selection "$TMP/raw.json" \\\n  --table skills --recs r.json' });
+  assert.strictEqual(run([multi, result('t1', ' 1  x\ntotal: 78 skills')]).status, 2);
+  assert.strictEqual(run([multi, result('t1', 'total: 78 skills'), say('```\ntotal: 78 skills\n```')]).status, 0);
+});
+
 test('a result given as content blocks is read the same way', () => {
   assert.strictEqual(run([settings(), result('t1', [{ type: 'text', text: report }])]).status, 2);
 });

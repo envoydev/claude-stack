@@ -301,23 +301,29 @@ const WAITER_RE = /\b(will notify|notify (on|when)|i'?ll (report back|update you
 const NOTHING_PENDING_RE = /\bnothing(?: (?:else|more))?(?: is)? pending (?:on|from) (?:me|my side|my end|this run|the run|this turn)\b/i;
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
-function lastAssistantMessage() {
+// A last row bigger than the window (a huge Write input) leaves only a partial line, so an empty
+// read retries once over 8MB rather than reporting no message.
+function lastAssistantMessage(tail = 512 * 1024) {
   try {
     const p = payload.transcript_path;
     if (!p) return null;
     const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
+    const start = Math.max(0, size - tail);
     const fd = fs.openSync(p, 'r');
     const buf = Buffer.alloc(size - start);
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
     const lines = buf.toString('utf8').split('\n');
     let last = null;
+    // The context figure comes from the last REAL model call: a `<synthetic>` row (an interrupt, an
+    // API error) carries zero usage and would read a hot session as empty.
+    let contextUsage = null;
     for (const line of lines) {
       if (!line.includes('"assistant"')) continue;
       try {
         const o = JSON.parse(line);
         if (o.type !== 'assistant' || !o.message || !Array.isArray(o.message.content)) continue;
+        if (o.message.usage && o.message.model !== '<synthetic>') contextUsage = o.message.usage;
         // One logical assistant turn is written as SEVERAL jsonl lines sharing one message.id
         // (a thinking line, then the text line). Taking the last line as the whole message made
         // the hook read an empty-text or tool_use-only fragment and pass silently - measured: 6
@@ -332,6 +338,8 @@ function lastAssistantMessage() {
         }
       } catch { /* partial first line of the tail window - skip */ }
     }
+    if (!last) return start > 0 && tail < 8 * 1024 * 1024 ? lastAssistantMessage(8 * 1024 * 1024) : null;
+    last.contextUsage = contextUsage;
     return last;
   } catch (err) {
     breadcrumb(`transcript read failed: ${err && err.message}`);
@@ -561,7 +569,7 @@ if (payload.hook_event_name === 'Stop') {
     // Past the window-scaled trigger, ask once per cost step whether to carry on here or resume
     // fresh; a turn that already made the offer, and a session already asked at this cost step,
     // both pass untouched.
-    const usage = (() => { const l = lastAssistantMessage(); return (l && l.message && l.message.usage) || null; })();
+    const usage = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
     if (!usage || FRESH_OFF) process.exit(0);
     const ctx = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.input_tokens || 0);
     // null = this window's trigger is 0, which is the user switching the offer off.
@@ -726,7 +734,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // 3. FRESH SESSION. No recordBlockCtx here: this is a note, not the ask itself, so it must not
     // consume the cost step the Stop wiring's real offer is owed.
     if (!FRESH_OFF && !FRESH_RE.test(askText)) {
-      const u = (() => { const l = lastAssistantMessage(); return (l && l.message && l.message.usage) || null; })();
+      const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
       const ctx = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
       const since = lastBlockCtx();
       const at = ctxThreshold();   // null = this window's trigger is switched off

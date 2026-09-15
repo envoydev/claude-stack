@@ -201,16 +201,17 @@ function accountSettingsEnv(configDir)
     catch { return {}; }
 }
 
-// Edge is rarely on PATH (Windows and macOS install it as an app), so its fixed install locations count.
-function edgeInstalled()
+// Chrome and Edge are rarely on PATH (Windows and macOS install them as apps), so their fixed install
+// locations count. Chrome was PATH-only until 2026-09-15: a Mac WITH Chrome was told to install it.
+function browserCandidates(name, platform, env)
 {
     const p = require('path');
-    const candidates = process.platform === 'win32'
-        ? [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA]
-            .filter(Boolean).map(d => p.join(d, 'Microsoft', 'Edge', 'Application', 'msedge.exe'))
-        : process.platform === 'darwin' ? ['/Applications/Microsoft Edge.app'] : [];
-    return candidates.some(c => fs.existsSync(c));
+    const win = { chrome: ['Google', 'Chrome', 'Application', 'chrome.exe'], msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'] }[name];
+    const mac = { chrome: ['/Applications/Google Chrome.app', '/Applications/Chromium.app'], msedge: ['/Applications/Microsoft Edge.app'] }[name];
+    if (platform === 'win32') return [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter(Boolean).map(d => p.win32.join(d, ...win));
+    return platform === 'darwin' ? mac : [];
 }
+const browserInstalled = name => browserCandidates(name, process.platform, process.env).some(c => fs.existsSync(c));
 
 function detectEnvironment(opts)
 {
@@ -219,7 +220,8 @@ function detectEnvironment(opts)
     const ENVS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
-    bins.msedge = onPath('msedge') || onPath('microsoft-edge') || edgeInstalled();
+    bins.chrome = bins.chrome || ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].some(onPath) || browserInstalled('chrome');
+    bins.msedge = onPath('msedge') || onPath('microsoft-edge') || browserInstalled('msedge');
     const acct = accountSettingsEnv(opts.configDir);
     const set = v => typeof v === 'string' && v.trim() !== '';
     const envs = {};
@@ -490,6 +492,9 @@ function findStackRedundant(graph, recs, installed, detected)
 // The inverse of findStackRedundant, for the validate walk's ADD side: what a fresh install
 // for the DETECTED stacks (plus the always-baseline) would lay down that is NOT installed here.
 // `neededBy` names the source(s) - 'baseline' or the detected stack(s) whose closure pulls it.
+// validate keeps a DISABLED plugin out of `plugins` and in `plugins_disabled` (validate.md step 1).
+const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv.plugins_disabled : [])
+    .map(e => (e && typeof e === 'object' ? e.name : e)).filter(Boolean).map(String);
 function findStackMissing(graph, recs, installed, detected)
 {
     const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
@@ -500,7 +505,8 @@ function findStackMissing(graph, recs, installed, detected)
     const out = [];
     for (const l of LAYERS)
     {
-        const have = new Set((installed && installed[l]) || []);
+        // A plugin validate recorded as DISABLED is on disk: its row is an enable, never an install.
+        const have = new Set([...((installed && installed[l]) || []), ...(l === 'plugins' ? parkedPlugins(installed) : [])]);
         const ideal = new Set();
         for (const c of Object.values(sources)) for (const n of c[l] || []) ideal.add(n);
         for (const name of [...ideal].sort())
@@ -527,10 +533,11 @@ function findEvidenceGaps(catalog, found, installed)
     {
         const foundL = (found && found[l]) || {};
         const have = new Set((installed && installed[l]) || []);
+        const parked = new Set(l === 'plugins' ? parkedPlugins(installed) : []);
         for (const name of Object.keys((catalog && catalog[l]) || {}))
         {
             const signal = foundL[name];
-            if (signal && !have.has(name)) missing.push({ category: singular[l], name, signal });
+            if (signal && !have.has(name) && !parked.has(name)) missing.push({ category: singular[l], name, signal });
             else if (!signal && have.has(name)) unevidenced.push({ category: singular[l], name });
         }
     }
@@ -574,7 +581,7 @@ function main(argv)
     const readJsonSoft = (flag, file) =>
     {
         if (!file) return null;
-        try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+        try { const json = JSON.parse(fs.readFileSync(file, 'utf8')); return flag === '--dropped' ? normalizeInventory(json) : json; }
         catch (e) { console.error(`stack-select: warning - cannot read ${flag} ${file} (${e.code || e.message}); continuing without it`); return null; }
     };
     // --stacks names are recommendation keys. An unknown one - a typo, or a display name such as
@@ -670,13 +677,13 @@ function main(argv)
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
-    if (raw && Array.isArray(raw.mcps)) raw.mcps = manifestMcps(raw.mcps.filter(m => typeof m === 'string'));
-    // Hooks are cataloged by bare name; an inventory built from `.claude/hooks/*.js` filenames
-    // arrives suffixed and would misclassify every hook as unknown (measured) - normalize here.
-    if (Array.isArray(raw.hooks)) raw.hooks = raw.hooks.map(h => String(h).replace(/\.js$/, ''));
+    // The same boundary as --installed: validate builds its final.json FROM the step-1 inventory, so
+    // a {name,scope} plugin read as `[object Object]` and was dropped from the emit (measured
+    // 2026-09-15), and a `.claude/hooks/*.js` filename misclassified every hook as unknown.
+    raw = normalizeInventory(raw);
     const unknown = findUnknownNames(graph, raw);
     const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
-    for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (retired upstream, renamed, or a typo); excluded from the selection`);
+    for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (your own item, retired upstream, renamed, or a typo); excluded from the selection`);
     const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
 
     const emit = arg('--emit');
@@ -736,6 +743,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

@@ -157,7 +157,7 @@ environment area.
 
 Presence, never the value - run this and paste its lines as-is:
 `node .claude/hooks/guard-secret-value.js --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
-(global scope: the same file under the account dir's `hooks/`; the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)` or `KEY=absent`.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)` or `KEY=absent`. Hooks install into a project's `.claude/hooks/` only, so when that file is absent - a global install, or the guard deselected - do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly
 as the docs-root rule states) plus serena's local memory:

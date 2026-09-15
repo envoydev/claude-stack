@@ -370,6 +370,9 @@ if ($PlaywrightBrowsers) {
   }
   $PwKept = @($PwEnginesAll | Where-Object { $_ -in $pwWant })
 }
+# An explicitly EMPTY value (or one naming no engine, like ',') is a typo, never 'no flag' - the sh twin's rule.
+if ($PSBoundParameters.ContainsKey('PlaywrightBrowsers') -and -not $PwKept.Count) { [Console]::Error.WriteLine('-PlaywrightBrowsers needs at least one of chrome, msedge, firefox, webkit'); exit 1 }
+if ($PSBoundParameters.ContainsKey('PlaywrightEnabled') -and -not $PlaywrightEnabled) { [Console]::Error.WriteLine('-PlaywrightEnabled needs one of chrome, msedge, firefox, webkit'); exit 1 }
 $PlaywrightEnabled = $PlaywrightEnabled.ToLowerInvariant()
 if ($PlaywrightEnabled) {
   if ($PlaywrightEnabled -notin $PwEnginesAll) { [Console]::Error.WriteLine("-PlaywrightEnabled takes chrome, msedge, firefox, webkit (got '$PlaywrightEnabled')"); exit 1 }
@@ -743,7 +746,7 @@ $Hooks = @(
   'guard-secret-value.js::Grep::'                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   'guard-ungated-commit.js::Bash|PowerShell::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
-  'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
+  'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth
   'guard-stop-contract.js::AskUserQuestion::'  # PreToolUse AskUserQuestion: INJECT context into the ask being built - stale scope (an option naming repo/remote/job state with no fresh read this turn), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for a flow whose every stop is a tool call, a live credential, and the house voice in the ask's own text. Presence only, never denies
   'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   'guard-fresh-session-start.js::@UserPromptSubmit::'   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
@@ -1069,7 +1072,8 @@ function Get-PlaywrightRegistered {
       elseif ($p.Name -eq 'playwright') {
         $a = @(); if ($p.Value.PSObject.Properties['args']) { $a = @($p.Value.args) }
         $i = [array]::IndexOf($a, '--browser')
-        $found += if ($i -ge 0 -and $i -lt $a.Count - 1) { [string]$a[$i + 1] } else { 'chrome' }
+        $eq = @($a | Where-Object { "$_" -match '^--browser=' }) | Select-Object -First 1
+        $found += if ($i -ge 0 -and $i -lt $a.Count - 1) { [string]$a[$i + 1] } elseif ($eq) { ([string]$eq).Substring(10) } else { 'chrome' }
       }
     }
   }
@@ -1077,7 +1081,7 @@ function Get-PlaywrightRegistered {
     try {
       foreach ($l in @(& claude mcp list 2>$null)) {
         if ($l -match '^playwright-(chrome|msedge|firefox|webkit):') { $found += $Matches[1] }
-        elseif ($l -match '^playwright:') { $found += if ($l -match '--browser\s+([a-z]+)') { $Matches[1] } else { 'chrome' } }
+        elseif ($l -match '^playwright:') { $found += if ($l -match '--browser[=\s]+([a-z]+)') { $Matches[1] } else { 'chrome' } }
       }
     } catch {}
   }
@@ -1326,7 +1330,8 @@ function Get-StackSrc {
     if ($script:StackSha) {
       # Stamp the URL the caller actually cloned from, not our default - they may have used a fork.
       $originUrl = (& git -C $Source remote get-url origin 2>$null)
-      if ($originUrl) { $script:StackRepoUrl = $originUrl }
+      # an SSH remote is no browsable URL for the stamp's compare line - spell it as https
+      if ($originUrl) { $script:StackRepoUrl = ($originUrl -replace '^(ssh://)?git@([^:/]+)[:/](.+)$', 'https://$2/$3') -replace '\.git$', '' }
     } else { Read-ReleaseSource -Dir $Source }
     if (-not $script:StackSha) { Log "source: $Source (provided; no git checkout or RELEASE-SOURCE - no revision, so no stamp)" }
     else {
@@ -1502,8 +1507,19 @@ function Install-Skills {
   }
 }
 
+# Claude Code registers claude-plugins-official itself only on its first INTERACTIVE launch
+# (code.claude.com/docs/en/plugins), so an install before that failed every official plugin with 'not
+# found in marketplace' (measured on a fresh config). Register it (a no-op when present) and refresh it
+# so a stale clone knows the plugins this release names. Fail-soft both ways.
+function Initialize-OfficialMarketplace {
+  try { & claude plugin marketplace add anthropics/claude-plugins-official *> $null } catch {}
+  try { & claude plugin marketplace update claude-plugins-official *> $null } catch {}
+  $global:LASTEXITCODE = 0
+}
+
 function Install-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
+  Initialize-OfficialMarketplace
   foreach ($mp in $ExtraMarketplaces) { try { & claude plugin marketplace add $mp 2>$null } catch {} }
   foreach ($p in $Plugins) {
     # claude-hud is a statusline HUD - force USER scope regardless of $ClaudeScope. A project-scoped
@@ -1723,6 +1739,7 @@ function Get-McpShape([string]$Name) {
   return ''
 }
 
+$McpDefaultRe = '\$\{([A-Za-z_][A-Za-z0-9_]*):-[^}]*\}'
 function Repair-McpsUser {
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
@@ -1730,13 +1747,17 @@ function Repair-McpsUser {
     $spec = $parts[1]
     $want = Get-McpExpected $name $spec
     $expected = if ($want.type -eq 'http') { "http|$($want.url)" } else { ("stdio|$($want.command) " + (@($want.args) -join ' ')).TrimEnd() }
-    $have = Get-McpShape $name
+    # `claude mcp get` PRINTS a stored `${VAR:-default}` as `${VAR}` (CLI 2.1.272 - the stored entry keeps
+    # the default), so both sides compare with the default dropped; as printed, every playwright server
+    # read as drifted on every global run and failed it (measured).
+    $expected = $expected -replace $McpDefaultRe, '$${$1}'
+    $have = (Get-McpShape $name) -replace $McpDefaultRe, '$${$1}'
     if (-not $have) { continue }        # an older CLI, or a server the account config does not expose
     if ($have -eq $expected) { continue }
     Log "  mcp shape drifted at user scope: $name - re-registering"
     try { & claude mcp remove $name -s $ClaudeScope 2>$null | Out-Null } catch {}
     [void](Register-Mcp $name $spec)
-    $have = Get-McpShape $name
+    $have = (Get-McpShape $name) -replace $McpDefaultRe, '$${$1}'
     if ($have -and $have -ne $expected) {
       Add-Failure "mcp $name could not be brought to the current shape at user scope - remove it by hand (claude mcp remove $name -s user) and re-run"
     }
@@ -2204,7 +2225,7 @@ function Set-HookSettings {
         ($null -eq $dead.only -or [string]$data.env.($dead.key) -eq $dead.only)) {
       $data.env.PSObject.Properties.Remove($dead.key)
       $changed = $true
-      Log "  settings.json env: $($dead.key) removed (retired - nothing reads it)"
+      Log "  settings.json env: $($dead.key) removed ($(if ($null -eq $dead.only) { 'retired - nothing reads it' } else { "the old stack seed $($dead.only) - the default applies" }))"
     }
   }
   # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
@@ -2255,11 +2276,11 @@ function Set-HookSettings {
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)'
   }
-  # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
+  # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both
   # real tiers (200k x 40% fell under the floor, 1M x 40% sat over the ceiling), so the clamps
   # decided and the knob lied about what it controlled. That key is retired outright - nothing reads
-  # it any more; '0' on BOTH keys below is the off switch. 400,000 on the 1M tier is
+  # it any more; '0' on ALL THREE keys below is the off switch. 400,000 on the 1M tier is
   # deliberately ABOVE the harness's own auto-compaction (387,619-397,171 measured), so there the
   # SessionStart compact route carries the offer - lower it to be asked first.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_1M']) {
@@ -2340,7 +2361,9 @@ $RetiredMcps = @()
 # budget, or to /claude-stack:status). Entries are the bare plugin NAME, without the @marketplace
 # suffix the $Plugins block carries. A plugin the stack still SHIPS but this project does not need is
 # a different question - that is /claude-stack:validate's whole-stack-absent pass, not a retirement.
-$RetiredPlugins = @()
+$RetiredPlugins = @(
+  'ponytail'   # dropped from `$Plugins in 0.2.7x (the audit remediation); never joined this list until 0.2.85
+)
 
 function Remove-Skills {
   # rm the manifest skills under the scope dest, so update starts from a clean slate.
@@ -2444,6 +2467,7 @@ function Remove-RetiredPlugins {
 
 function Update-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
+  Initialize-OfficialMarketplace
   try { & claude plugin marketplace update 2>$null } catch {}   # refresh marketplaces first
   $before = Get-InstalledPluginMap
   Remove-RetiredPlugins -Listing $before
@@ -2808,9 +2832,9 @@ Write-Host 'generated docs inherit the .claude ignore above and are machine-loca
 Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
 Write-Host ''
-Write-Host 'The same env block carries the fresh-session gate''s two knobs (seeded, absent-only, so a'
+Write-Host 'The same env block carries the fresh-session gate''s three knobs (seeded, absent-only, so a'
 Write-Host 'hand-edited value survives every update):'
-Write-Host '  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a window over 200k may carry'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a 1M window may carry'
 Write-Host '                                   before an orchestration run is offered a fresh one (default 400000;'
 Write-Host '                                   0 = off). Above the harness own auto-compaction, so lower it to be'
 Write-Host '                                   asked before the harness decides for you'

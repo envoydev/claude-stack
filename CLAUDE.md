@@ -6,15 +6,16 @@ The single source of truth for the **Claude Code** half of the house coding-agen
 application. It holds what is applied to *other* projects: house-style skills, the base instruction
 template, hook scripts, convention rules, agents, and the installer that wires skills / MCP servers /
 plugins into each project. The **Cursor** twin lives in
-[`cursor-stack`](https://github.com/envoydev/cursor-stack); its installers clone THIS repo for the
-shared skills, so a skill + MCP baseline change is a TWO-REPO commit (mirror the manifest lists there in
-the same sitting; each repo lints its own `.sh`/`.ps1` twins). Consuming projects pull from here; a
+[`cursor-stack`](https://github.com/envoydev/cursor-stack), a sibling with its OWN skills, agents and
+installers (it does not clone this repo, and its lists may diverge - e.g. it ships no `plugin-authoring`).
+A change that maps to Cursor is mirrored there in the same sitting; each repo lints its own
+`.sh`/`.ps1` twins. Consuming projects pull from here; a
 change made only inside a consuming project is throwaway.
 
 ## Layout - one home per concern
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
-  file types. Distributed by the installers' snapshot copy (or the plugin), including cursor-stack's.
+  file types. Distributed by the installers' snapshot copy (or the plugin).
 - `scripts/os/claude-stack.{sh,ps1}` - the installer twins (Unix / Windows); `docs/claude-stack.html`
   is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
@@ -178,8 +179,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins |
 
-Cursor's deliveries live in cursor-stack; `SKILLS` and `MCPS` stay identical across both repos'
-installers by the two-repo-commit discipline.
+Cursor's deliveries live in cursor-stack, whose lists are its own; a change here that maps to Cursor is
+mirrored there in the same sitting.
 
 ## The model these templates encode
 
@@ -267,6 +268,22 @@ installers by the two-repo-commit discipline.
   ships only with evidence: run the build + tests yourself and read the code, measure the token delta when
   the claim is about cost, and commit the evidence BEFORE any reset. Verify outside-world claims
   (package, version, API shape, CLI flag) through context7 in the same sitting and cite it.
+- **Every change is proven on a TEMP PROJECT before it is committed - MANDATORY, no exceptions.** Unit
+  tests and a green `npm run lint` / `npm test` are necessary, never sufficient. Each change or feature
+  (installer, hook, command, skill, rule, agent, MCP, manifest - a one-line or prose-only edit included)
+  is exercised end to end from THIS working tree (`--source <repo>`) inside throwaway projects created
+  under the session scratchpad (or `os.tmpdir()`), never a real consuming project, and removed after.
+  - Edge cases are REQUIRED, not optional: a fresh install; an update over an older install; a re-run
+    (idempotent - a second run changes nothing); a project holding the user's own config the change must
+    not clobber (hand-added MCP server, settings key, hook); missing, empty or malformed input (absent
+    file, garbage JSON, unset env); both installer twins (`pwsh` for the `.ps1` when installed, else say
+    it was not run); and every boundary the change introduces (at, one under, one over).
+  - Read the RESULT, never the exit code alone: open the written `.mcp.json` / `settings.json` / copied
+    files and hook output, and assert they are what the change claims.
+  - A bug found blocks the commit AND the release: fix it, add a regression test, re-run the whole
+    temp-project matrix. A case not run is reported as NOT RUN, never implied as passing. No 'done',
+    commit, version bump or `develop` -> `main` merge until the matrix is green and its commands plus
+    results are in the report.
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
   option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
