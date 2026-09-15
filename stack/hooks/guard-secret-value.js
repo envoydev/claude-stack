@@ -67,12 +67,28 @@ const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|repla
 // an AWS `AKIA...` id (no underscore anyway) is judged on its shape, not excused as a name. The
 // gap this accepts is a real password spelled in screaming snake under 64 characters.
 const NAME_VALUE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+// A private key in PEM form is ONE value spanning lines, so the whitespace tell below would read it as a
+// label. Measured: a Firebase `PrivateKey` printed raw in the redacted view of an appsettings file.
+const PEM_PRIVATE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
 const isSampleValue = (key, v) => {
   const s = String(v).trim();
+  if (PEM_PRIVATE.test(s)) return false;
   return s.toLowerCase() === String(key).toLowerCase() || /\s/.test(s) || TEMPLATE_VALUE.test(s) || s.startsWith('MII')
     || (s.length <= 64 && NAME_VALUE.test(s) && !SECRET_SHAPE.test(s));
 };
 const holdsCredential = (key, v) => isLive(v) && !isSampleValue(key, v);
+// A credential INSIDE a larger value: a connection string's `Password=` / `Pwd=` (`;` pairs, or Redis's `,`
+// pairs) and a URL's userinfo (`postgres://user:<pw>@host`). The key names the CONNECTION (`Postgres`,
+// `DATABASE_URL`), so the key test never saw it. Measured: a Staging Postgres and Redis password printed raw
+// in the redacted view whose header promised no value enters the chat. The value is judged like any other -
+// a `${VAR}` placeholder or a template word is not live - and only the password part is masked.
+const EMBEDDED_PAIR = /((?:^|[;,])\s*(?:password|pwd)\s*=\s*)([^;,]*)/gi;
+const EMBEDDED_URL = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)([^@\s/]+)(?=@)/gi;
+const embeddedCredential = (v) => typeof v === 'string'
+  && [...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]));
+const maskEmbedded = (v, mask) => v
+  .replace(EMBEDDED_PAIR, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all))
+  .replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all));
 // A file-SHAPE tell: a basename ending .example / .sample / .template / .dist ships the KEYS, never
 // the values - judging it blocks the one file a session legitimately reads to learn what to fill in.
 const TEMPLATE_FILE = /\.(?:example|sample|template|dist)$/i;
@@ -83,7 +99,7 @@ function secretKeyIn(node, prefix, depth) {
   if (!node || typeof node !== 'object' || depth > 6) return null;
   for (const [k, v] of Object.entries(node)) {
     const here = prefix ? `${prefix}.${k}` : k;
-    if (typeof v === 'string') { if (SECRET_KEY_RE.test(k) && holdsCredential(k, v)) return here; }
+    if (typeof v === 'string') { if ((SECRET_KEY_RE.test(k) && holdsCredential(k, v)) || PEM_PRIVATE.test(v) || embeddedCredential(v)) return here; }
     else { const hit = secretKeyIn(v, here, depth + 1); if (hit) return hit; }
   }
   return null;
@@ -97,7 +113,7 @@ const LINES = /\r?\n/;
 function secretLineIn(text) {
   for (const line of text.split(LINES)) {
     const m = line.match(DOTENV_LINE);
-    if (m && SECRET_KEY_RE.test(m[1]) && holdsCredential(m[1], unquote(m[2]))) return m[1];
+    if (m && ((SECRET_KEY_RE.test(m[1]) && holdsCredential(m[1], unquote(m[2]))) || embeddedCredential(unquote(m[2])))) return m[1];
   }
   return null;
 }
@@ -168,6 +184,9 @@ let payload; // set below; resolveFile reads its cwd
 // could resolve. The default anchors stay in the list - a cd this guard cannot follow (`cd -`, an
 // unexpanded variable) leaves the judgement exactly where it was, never worse.
 let cwdAnchor = null;
+// Where judgeShell is: the command, and the segment / stage whose verdict is about to rewrite it - read by
+// refuseDroppedSteps, which must know what the rewrite would throw away.
+let judging = null;
 // The anchors a relative path is tried against. A payload field is attacker-shaped input, not a
 // promise: a non-string `cwd` reached pathMod.join and threw ERR_INVALID_ARG_TYPE, and a hook that
 // exits 1 fails OPEN - the dump it was judging ran (review finding, reproduced with `"cwd": 5`).
@@ -308,8 +327,9 @@ const noteLine = (what, r) => `# credential guard: ${what} A value never enters 
 const shDouble = (s) => String(s).replace(/\\(?=["$`\\]|$)|["$`]/g, (c) => '\\' + c);
 const SECRET_SHAPE_G = new RegExp(SECRET_SHAPE.source, 'g');
 // A value is masked when its KEY is credential-shaped and it holds a credential, or when the value
-// itself has a known credential SHAPE whatever the key - the one case the key test cannot see.
-const maskable = (k, v) => typeof v === 'string' && ((SECRET_KEY_RE.test(k) && holdsCredential(k, v)) || SECRET_SHAPE.test(v));
+// itself has a known credential SHAPE (or is a PEM private key) whatever the key - the cases the key test
+// cannot see. A password inside a larger value is masked in place by maskEmbedded instead.
+const maskable = (k, v) => typeof v === 'string' && ((SECRET_KEY_RE.test(k) && holdsCredential(k, v)) || SECRET_SHAPE.test(v) || PEM_PRIVATE.test(v));
 
 // ---- CLI mode: the sanctioned presence-only read --------------------------------------------
 // `node guard-secret-value.js --presence <file> [KEY ...]` - what the denials and the guided
@@ -343,8 +363,11 @@ if (process.argv[2] === '--presence') {
 // (the hook wiring a session inspects in a settings.json, the non-secret keys of a dotenv), led by a
 // note saying so and naming the route to the value. JSON is re-emitted from its parse; a dotenv is
 // masked line by line, and a credential SHAPE anywhere in the text is masked whatever surrounds it.
+// `--note-to-stderr` is the NARROW form a filtering read is rewritten into (`--redacted <file> --note-to-stderr |
+// grep KEY`): the note leaves the pipe, so the command's own filter reads only the masked file.
 if (process.argv[2] === '--redacted') {
   const fileArg = String(process.argv[3] || '');
+  const filtered = process.argv[4] === '--note-to-stderr';
   const file = nativePath(fileArg.replace(/^~(?=\/|$)/, HOME));
   const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
   let text = null;
@@ -359,7 +382,7 @@ if (process.argv[2] === '--redacted') {
     let body;
     try {
       const walk = (node) => {
-        if (typeof node === 'string') return SECRET_SHAPE.test(node) ? mask(node) : node;
+        if (typeof node === 'string') return SECRET_SHAPE.test(node) || PEM_PRIVATE.test(node) ? mask(node) : maskEmbedded(node, mask);
         if (Array.isArray(node)) return node.map(walk);
         if (node && typeof node === 'object') {
           const o = {};
@@ -373,10 +396,13 @@ if (process.argv[2] === '--redacted') {
       body = text.split(LINES).map((line) => {
         const m = line.match(DOTENV_LINE);
         if (m && maskable(m[1], unquote(m[2]))) return `${m[1]}=${mask(unquote(m[2]))}`;
+        if (m) { const v = unquote(m[2]); const inPlace = maskEmbedded(v, mask); if (inPlace !== v) return `${m[1]}=${inPlace}`; }
         return line.replace(SECRET_SHAPE_G, (s) => mask(s));
       }).join('\n');
     }
-    out = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written.`, receipt) + '\n' + body;
+    const note = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written` +
+      (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.'), receipt);
+    if (filtered) { process.stderr.write(note + '\n'); out = body; } else out = note + '\n' + body;
   }
   process.stdout.write(out);
   process.exit(0);
@@ -391,7 +417,7 @@ if (process.argv[2] === '--redacted-env') {
   let masked = 0;
   for (const k of Object.keys(process.env).sort()) {
     const v = String(process.env[k]);
-    if (maskable(k, v)) { masked++; lines.push(`${k}=<set (${v.length} chars)>`); } else lines.push(`${k}=${v}`);
+    if (maskable(k, v)) { masked++; lines.push(`${k}=<set (${v.length} chars)>`); } else lines.push(`${k}=${maskEmbedded(v, (x) => { masked++; return `<set (${x.length} chars)>`; })}`);
   }
   process.stdout.write(noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it.`, receipt) + '\n' + lines.join('\n') + '\n');
   process.exit(0);
@@ -644,6 +670,71 @@ function printsKeysOnly(stage) {
   });
 }
 
+// A rewrite replaces the WHOLE command, so every other step in it is dropped. That is free for a step that
+// changes nothing (a cd, an ls, an echo, a filter) and silent data loss for one that does. Measured: `grep -c
+// ... && sed -i ... "$F" && jq -r .SuperAdmin.Email "$F"` became the file's redacted view, the edit never ran,
+// and the user found the old value in the config 37 minutes later. So a command carrying a CHANGING step is
+// blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
+// this list does not know (a build, a network call, a runtime) counts as changing.
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)/;
+const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
+const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
+const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/;
+// The first step of `text` that may change something, skipping the stage being rewritten; null when none.
+function changingStep(text, skipSeg, skipStage) {
+  const segs = splitSegments(stripComments(text));
+  for (let i = 0; i < segs.length; i++) {
+    const bare = segs[i].replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
+    // stdout into a file is a write; /dev/null and a terminal device are not
+    if ([...bare.matchAll(REDIRECT_RE)].some((m) => !TERMINAL_DEV.test(m[1]) && m[1] !== '/dev/null')) return segs[i].trim();
+    if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(bare)) return segs[i].trim();
+    const stages = splitPipes(segs[i]);
+    for (let j = 0; j < stages.length; j++) {
+      if (i === skipSeg && j === skipStage) continue;
+      let step = stages[j].trim();
+      if (!step || SELF_READ.test(step) || teesToTerminal(step)) continue;
+      for (const m of step.matchAll(/\$\(([^()]*)\)/g)) { const inner = changingStep(m[1], -1, -1); if (inner) return inner; }
+      while (CONTROL_LEAD.test(step)) step = step.replace(CONTROL_LEAD, '');
+      step = step.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)\s*)+/, '');
+      if (!/^command\s+-v\b/.test(step)) step = step.replace(PREFIX_WORDS, '');
+      if (!step || CONTROL_ALONE.test(step)) continue;
+      if (!READ_ONLY_STEP.test(step)) return stages[j].trim();
+    }
+  }
+  return null;
+}
+// Called before every rewrite judgeShell makes. A runtime heredoc body is exempt: the rewrite already stands
+// in for the whole script, which no step list can judge.
+function refuseDroppedSteps(what) {
+  if (!judging || judging.runtime) return;
+  const step = changingStep(judging.text, judging.seg, judging.stage);
+  if (!step) return;
+  global.BLOCK_DETAIL = { branch: 'dropped-steps', matched: step.split(/\s+/)[0].slice(0, 40) };
+  block(`Blocked: this command prints ${what} AND runs a step that changes something - nothing ran.\n` +
+    `The shell route would replace the WHOLE command with the redacted form and silently drop that step:\n` +
+    `  ${step.slice(0, 160)}\n` +
+    `Run the changing steps as their own command (an in-place \`sed -i\` edit and a \`> file\` redirect pass this guard),\n` +
+    `then check the result with a count (\`grep -c\`), \`jq '... | length'\`, or the presence read:\n` +
+    `  node "${__filename}" --presence <file> [KEY ...]\n`);
+}
+// A FILTERING read (grep KEY <file>, jq .path <file>, head -5 <file>) asked for a slice, and the whole redacted
+// file answered it. Measured: a one-key `grep -n -i '"email"'` came back as the full view (~1.3k tok), three
+// times in one session. The filter now runs over the view instead: the file operand leaves the stage and the
+// view is piped in. Only when the file is the stage's ONE file operand, spelled once, and not a `<` redirect;
+// Bash tool only (the note goes to stderr, which a PowerShell pipe turns into an error record).
+const FILTER_VERB = /^(?:grep|egrep|fgrep|rg|jq|head|tail|sed|awk|cut)(?=\s|$)/;
+function narrowFilter(stages, tok) {
+  const first = stages[0];
+  if (!FILTER_VERB.test(first.replace(PREFIX_WORDS, ''))) return null;
+  const words = shellTokens(first);
+  if (words.filter((w) => w === tok).length !== 1) return null;
+  if (words.some((w, k) => k > 0 && w !== tok && !w.startsWith('-') && candidatePaths(w).some((p) => statFile(p)))) return null;
+  const at = first.match(new RegExp(`(^|\\s)${tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`));
+  if (!at || /<\s*$/.test(first.slice(0, at.index + at[1].length))) return null;
+  const rest = (first.slice(0, at.index) + first.slice(at.index + at[0].length)).trim();
+  return [rest, ...stages.slice(1).map((x) => x.trim())].join(' | ');
+}
+
 // ---- Shell matcher ----
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
 // `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
@@ -675,6 +766,7 @@ if (isShellTool(payload.tool_name)) {
 // denial used to prescribe, run for the model instead of fed back to it - led by the note.
 function blockVariable(name) {
   if (allowAll || allowedNames.has(name)) return; // the user's own allowance for this session
+  refuseDroppedSteps(`the credential-shaped variable \`${name}\``);
   const note = noteLine(`\`${name}\` is a credential-shaped variable - shown as presence, not printed.`, receipt);
   rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
 }
@@ -683,12 +775,15 @@ function blockVariable(name) {
 // A whole-environment dump becomes the masked listing.
 function blockEnvDump() {
   if (allowAll) return; // only `*` covers every variable at once
+  refuseDroppedSteps('the whole environment');
   rewrite(`node "${shDouble(__filename)}" --redacted-env`);
 }
 
 function judgeShell(text, forceRuntime) {
   cwdAnchor = null;
-  for (const seg of splitSegments(stripComments(text))) {
+  const segments = splitSegments(stripComments(text));
+  for (let si = 0; si < segments.length; si++) {
+    const seg = segments[si];
     // A `NAME=value` assignment, or a `for NAME in <list>`, binds the path the NEXT segment dumps.
     const asg = seg.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
     if (asg) VARS.set(asg[1], [asg[2].replace(/^(["'])([\s\S]*)\1$/, '$2')]);
@@ -709,7 +804,9 @@ function judgeShell(text, forceRuntime) {
     }
     if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(seg)) continue; // an edit, not a dump
 
-    for (const stage of stages) {
+    for (let sj = 0; sj < stages.length; sj++) {
+      const stage = stages[sj];
+      judging = { text, seg: si, stage: sj, runtime: forceRuntime };
       // The sanctioned read is exempt by name - it is this file - and only in its OWN stage: the
       // exemption used to cover the whole segment, so `--presence <file> | cat <file>` passed.
       if (/guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/.test(stage)) continue;
@@ -780,8 +877,11 @@ function judgeShell(text, forceRuntime) {
           if (!key) continue;
           // The FIRST credential file wins and the whole call becomes its redacted view - the rest of
           // a compound command is dropped rather than spliced, so the rewritten call is always one the
-          // model can read back whole; the note names the file, so a dropped tail is re-run knowingly.
-          rewrite(`node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`);
+          // model can read back whole; a dropped step that CHANGES something blocks instead.
+          refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``);
+          const view = `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
+          const narrow = payload.tool_name === 'Bash' && !isRuntime && sj === 0 && narrowFilter(stages, tok);
+          rewrite(narrow ? `${view} --note-to-stderr | ${narrow}` : view);
         }
       }
     }

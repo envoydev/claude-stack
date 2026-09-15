@@ -259,7 +259,8 @@ test('guard-secret-value: an inline runtime read of a credential file is the sam
 
 test('guard-secret-value: quoting never hides a dump - operators inside quotes do not split, an unbalanced quote falls back to the quote-blind split', () => {
   const f = fixtures();
-  assert.equal(bash(`echo "1 > 2 is true && cat ${f.secret}`), REWRITE, 'an unterminated double quote cannot excuse the cat behind it');
+  // the quote-blind split reads `> 2` as a write into a file, so this one blocks rather than rewrites - either way not excused
+  assert.notEqual(bash(`echo "1 > 2 is true && cat ${f.secret}`), 0, 'an unterminated double quote cannot excuse the cat behind it');
   assert.equal(bash(`echo 'it's fine && cat ${f.secret}`), REWRITE, 'an unbalanced apostrophe');
   assert.equal(bash(`echo "C:\\dir\\" && cat ${f.secret}`), REWRITE, 'a backslash before the closing quote leaves it open - still judged');
   assert.equal(bash(`echo "1 > 2 is true" && cat ${f.secret}`), REWRITE, 'a balanced quote holding operators still splits at the real &&');
@@ -572,4 +573,82 @@ test('guard-secret-value: the PowerShell tool is the same shell route', () => {
   assert.equal(pwsh('echo $SENTRY_ACCESS_TOKEN'), REWRITE, 'an echo of a credential variable becomes its presence line');
   assert.equal(pwsh(`cat ${f.clean}`), 0, 'a file with no credential passes untouched');
   assert.equal(pwsh(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`), 2, 'a credential-shaped literal in the command is blocked');
+});
+
+// Measured in an audited session (a .NET appsettings.Staging.json): the redacted view's header said 'A value
+// never enters the chat' while the view printed the Postgres and Redis passwords (inside their connection
+// strings - the KEY names the connection, not the credential) and the Firebase PEM private key (its line breaks
+// read as a label's whitespace).
+test('guard-secret-value: a password inside a connection string or URL, and a PEM private key, are credentials too', () => {
+  const f = fixtures();
+  const pem = '-----BEGIN PRIVATE KEY-----\nMIIEvFAKEfakeFAKE\n-----END PRIVATE KEY-----\n';
+  const pg = 'FakePgPass123';
+  const redis = 'FakeRedisPass456';
+  const app = path.join(f.dir, 'appsettings.Staging.json');
+  fs.writeFileSync(app, JSON.stringify({
+    ConnectionStrings: { Postgres: `Host=db.test;Database=app;Username=app;Password=${pg}`, Redis: `cache.test:6379,password=${redis},ssl=True` },
+    Firebase: { PrivateKey: pem },
+    SuperAdmin: { Email: 'admin@example.test' },
+  }, null, 2));
+  const view = cli('--redacted', app).stdout;
+  for (const v of [pg, redis, 'MIIEvFAKEfakeFAKE']) assert.ok(!view.includes(v), `${v} never appears in the view`);
+  assert.match(view, new RegExp(`Host=db\\.test;Database=app;Username=app;Password=<set \\(${pg.length} chars\\)>`), 'the rest of the connection string stays readable');
+  assert.match(view, new RegExp(`cache\\.test:6379,password=<set \\(${redis.length} chars\\)>,ssl=True`), 'the Redis comma form');
+  assert.match(view, new RegExp(`"PrivateKey": "<set \\(${pem.length} chars\\)>"`), 'the PEM key is one masked value');
+  assert.match(view, /"Email": "admin@example\.test"/, 'a plain value stays');
+  const only = (name, obj) => { const p = path.join(f.dir, name); fs.writeFileSync(p, JSON.stringify(obj)); return p; };
+  assert.equal(read(only('conn.json', { ConnectionStrings: { Default: 'Server=x;User Id=sa;Password=FakePw999' } })), 2, 'a connection-string password alone makes a credential file');
+  assert.equal(read(only('url.json', { Database: { Url: 'postgres://app:FakeUrlPw777@db.test:5432/app' } })), 2, 'a URL userinfo password');
+  assert.equal(read(only('pem.json', { service: { cert: pem } })), 2, 'a PEM private key under any key');
+  assert.equal(read(only('noconn.json', { ConnectionStrings: { Default: 'Server=x;Database=y;Trusted_Connection=True' }, Api: { Url: 'https://api.test:8443/v1@x' } })), 0, 'no password, no credential');
+  assert.equal(read(only('placeholder.json', { ConnectionStrings: { Default: 'Server=x;Password=${DB_PASSWORD}' }, Url: 'postgres://app:${PG_PW}@db/app' })), 0, 'a placeholder password is not live');
+  assert.equal(read(only('pubkey.json', { key: '-----BEGIN PUBLIC KEY-----\nMIIBfake\n-----END PUBLIC KEY-----' })), 0, 'a PUBLIC key is not a credential');
+  const envPw = 'FakeEnvPw555';
+  const dotenv = path.join(f.dir, 'url.env');
+  fs.writeFileSync(dotenv, `DATABASE_URL=postgres://app:${envPw}@db.test/app\nPWD=/home/app\n`);
+  assert.equal(bash(`cat ${dotenv}`), REWRITE, 'a dotenv URL password');
+  const envView = cli('--redacted', dotenv).stdout;
+  assert.match(envView, new RegExp(`^DATABASE_URL=postgres://app:<set \\(${envPw.length} chars\\)>@db\\.test/app$`, 'm'));
+  assert.match(envView, /^PWD=\/home\/app$/m, 'a PWD path is not a password');
+  const listing = spawnSync(process.execPath, [HOOK, '--redacted-env'], { encoding: 'utf8', env: { ...process.env, DATABASE_URL: `postgres://app:${envPw}@db.test/app` } }).stdout;
+  assert.ok(!listing.includes(envPw), 'the environment listing masks it too');
+});
+
+// Measured in the same session: `N=$(grep -c ...) && sed -i ... "$F" && jq -r .SuperAdmin.Email "$F"` came back
+// as the redacted view of the file. The edit never ran and nothing said so; the user found the old value in the
+// config 37 minutes later.
+test('guard-secret-value: a command that also CHANGES something is blocked, never silently cut down to the redacted view', () => {
+  const f = fixtures();
+  const r = run({ tool_name: 'Bash', tool_input: { command: `F=${f.secret}\nN=$(grep -c SENTRY_SLUG "$F"); echo "matches=$N"\n[ "$N" = 1 ] && sed -i '' 's/acme/acme2/' "$F" && jq -r '.env.SENTRY_SLUG' "$F"` }, session_id: 'suite' });
+  assert.equal(r.status, 2, 'blocked, visibly');
+  assert.match(r.stderr, /nothing ran/i, 'the denial says the command did not run');
+  assert.match(r.stderr, /sed -i/, 'and names the step the rewrite would have dropped');
+  assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN));
+  assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a build after the dump');
+  assert.equal(bash(`jq .env ${f.secret} | tee ${path.join(f.dir, 'copy.json')}`), 2, 'a tee into a file writes as it prints');
+  assert.equal(bash(`echo $SENTRY_ACCESS_TOKEN && rm -rf ${path.join(f.dir, 'gone')}`), 2, 'the variable rewrite would drop steps the same way');
+  assert.equal(bash('env && curl https://example.test'), 2, '... and so would the environment dump');
+  assert.equal(bash(`cd ${f.dir} && ls && cat settings.json | head -5; echo "exit=$?"`), REWRITE, 'cd, ls, echo and a pipe change nothing - still the rewrite');
+  assert.equal(bash(`[ -f ${f.secret} ] && cat ${f.secret} 2>/dev/null`), REWRITE, 'a test and a stderr redirect change nothing');
+  assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'the edit on its own passes, as before');
+});
+
+// Measured in the same session: a one-key `grep -n -i '"email"' appsettings.Staging.json` came back as the whole
+// redacted file (~1.3k tok), three times, each carried to the end of the session.
+test('guard-secret-value: a narrow read of a credential file keeps its own filter over the redacted view', () => {
+  const f = fixtures();
+  const view = (file) => `node "${HOOK}" --redacted "${file}"`;
+  assert.equal(rewritten(`grep -n SENTRY_SLUG ${f.secret}`), `${view(f.secret)} --note-to-stderr | grep -n SENTRY_SLUG`);
+  assert.equal(rewritten(`jq -r '.env.SENTRY_SLUG' "${f.secret}"`), `${view(f.secret)} --note-to-stderr | jq -r '.env.SENTRY_SLUG'`, 'a quoted file operand');
+  assert.equal(rewritten(`head -3 ${f.secret} | tail -1`), `${view(f.secret)} --note-to-stderr | head -3 | tail -1`, 'the rest of the pipeline is kept');
+  assert.equal(rewritten(`cat ${f.secret}`), view(f.secret), 'a whole-file dump is still the whole view');
+  assert.equal(rewritten(`grep SENTRY ${f.secret} ${f.dotenv}`), view(f.secret), 'two files: the view of the first, as before');
+  const pw = updatedCommand(run({ tool_name: 'PowerShell', tool_input: { command: `grep -n SENTRY_SLUG ${f.secret}` }, session_id: 'suite' }));
+  assert.equal(pw, view(f.secret), 'the PowerShell tool keeps the whole view');
+  // run for real: the note goes to stderr, the filter sees only the masked file
+  const g = spawnSync('bash', ['-c', rewritten(`grep -n SENTRY ${f.secret}`)], { encoding: 'utf8' });
+  assert.match(g.stdout, /"SENTRY_SLUG": "acme"/);
+  assert.match(g.stdout, /"SENTRY_ACCESS_TOKEN": "<set \(40 chars\)>"/);
+  assert.ok(!(g.stdout + g.stderr).includes(FAKE_TOKEN), 'the value never appears');
+  assert.match(g.stderr, /^# credential guard: redacted view of .*line numbers count the view/, 'the note says what happened');
 });
