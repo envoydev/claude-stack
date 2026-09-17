@@ -20,7 +20,7 @@ change made only inside a consuming project is throwaway.
   is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - eleven hooks, copied into a project's `.claude/hooks/` and wired in
+- `stack/hooks/` - twelve hooks, copied into a project's `.claude/hooks/` and wired in
   `.claude/settings.json` with the placeholder quoted (`"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"`).
   Every wired hook carries `"timeout": 10` (a hook with no timeout gets Claude Code's 600s default).
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
@@ -88,6 +88,7 @@ change made only inside a consuming project is throwaway.
     the format ask (injection only).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `CLAUDE_STACK_INSTRUMENT` (seeded "0")
     is "1".
+  - `docs-session.js` (`SessionStart`, `SubagentStart`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Bash/PowerShell/Grep/Glob, `Stop`) with its engine `docs.js` (copied beside it, not wired) - the architecture docs follow the branch: committed docs through git, ignored docs through per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The start block pushes `ORIENTATION.md` (4KB cap); the first change under a source root waits for a section read (two holds, then a logged bypass); the end ask fires only when a changed file hits the capture's `watch.json`. `CLAUDE_STACK_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
   The guided walk's hooks layer makes them selectable (a selection with no `hook` lines installs all).
 - `stack/agents/` - 43 Claude-contract subagents, copied into `.claude/agents/`:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
@@ -171,7 +172,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Skills | installer snapshot copy -> `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` -> `<repo>/.mcp.json`, then VERIFIED against the manifest shape and rewritten on drift |
 | Plugins | 6 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud); update runs at the scope `claude plugin list --json` reports and reads versions back |
-| Hooks | copied -> `.claude/hooks/`, wired in `.claude/settings.json` (all eleven; instrumentation off via CLAUDE_STACK_INSTRUMENT=0) |
+| Hooks | copied -> `.claude/hooks/`, wired in `.claude/settings.json` (all twelve; instrumentation off via CLAUDE_STACK_INSTRUMENT=0) |
 | Agents | `.claude/agents/` - the 43 pinned subagents, per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit; configure diffs it against `main` |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |

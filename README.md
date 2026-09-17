@@ -31,7 +31,7 @@ The stack is built for this house's verticals:
 | **Skills** | 78 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 18 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 11 | deterministic guards + an env-gated usage instrument (off by default), `.claude/hooks/` |
+| **Hooks** | 12 | deterministic guards, the architecture docs hook, and an env-gated usage instrument (off by default), `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
 | **Plugins** | 6 | installed via the `claude` CLI |
 
@@ -45,7 +45,7 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/`, the `.claude/settings.json` `env` block plus eleven hook wirings, `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/`, the `.claude/settings.json` `env` block plus twelve hook wirings, `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) |
 | **Starts** | six `claude plugin install` calls and up to eight `claude mcp add` registrations; nothing else executes from the package, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
@@ -59,7 +59,7 @@ the run did not install.
 An organisation enforcing `strictKnownMarketplaces` needs three `extraKnownMarketplaces` rows -
 `claude-stack` and `claude-hud` - since only `claude-plugins-official` is known by
 default, plus the seven `enabledPlugins` keys (the six above and `claude-stack` itself). And
-`allowManagedHooksOnly` silently disables all eleven house hooks: the files still install and the
+`allowManagedHooksOnly` silently disables all twelve house hooks: the files still install and the
 wirings still land in `settings.json`, but no guard ever fires, so the stack's deterministic gates
 are gone with nothing reporting it. Decide that one before rolling the stack out under a managed
 policy.
