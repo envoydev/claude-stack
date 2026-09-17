@@ -196,3 +196,131 @@ test('set refuses: detached HEAD, empty text, no section id, unknown file', () =
     assert.match(d.stdout, /detached HEAD/);
   } finally { r.rm(); }
 });
+
+function branchWithDecision(r, name, text) {
+  r.git('switch', '-qc', name);
+  r.write('src/Api/Orders/Refund.cs', `class Refund { /* ${name} */ }\n`);
+  r.git('add', '-A'); r.git('commit', '-qm', `work on ${name}`);
+  assert.strictEqual(r.cli(['set', 'patterns#orders'], text).status, 0);
+  r.git('switch', '-q', 'develop');
+}
+const ORDERS = (body) => `## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\n${body}\n`;
+
+test('a merge commit is detected and promoted; the overlay goes; promoted.jsonl records it', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    branchWithDecision(r, 'feat/cap', ORDERS('Refunds are capped at 10.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/cap');
+    const out = r.cli(['promote', '--merged']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /feat\/cap .*patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10[\s\S]*soft-deleted/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-cap'));
+    assert.match(r.read('.claude/docs/.branches/promoted.jsonl'), /"branch":"feat-cap"/);
+  } finally { r.rm(); }
+});
+
+test('a squash merge is detected by blobs', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    branchWithDecision(r, 'feat/squash', ORDERS('Squashed rule.'));
+    r.git('merge', '-q', '--squash', 'feat/squash'); r.git('commit', '-qm', 'squash');
+    r.git('branch', '-D', 'feat/squash');
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Squashed rule\./);
+  } finally { r.rm(); }
+});
+
+test('a fast-forward merge is detected by ancestry, a rebase merge by blobs', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    branchWithDecision(r, 'feat/ff', ORDERS('Fast-forwarded rule.'));
+    r.git('merge', '-q', '--ff-only', 'feat/ff');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/ff \(ancestor\) patterns#orders: merged/);
+    branchWithDecision(r, 'feat/rebased', ORDERS('Rebased rule.'));
+    r.write('README.md', 'y\n'); r.git('commit', '-qam', 'mainline moved');
+    r.git('cherry-pick', 'feat/rebased');
+    r.git('branch', '-D', 'feat/rebased');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/rebased \(blobs\) patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Rebased rule\./);
+  } finally { r.rm(); }
+});
+
+test('a branch with no commits of its own is never taken as merged', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/fresh');
+    r.cli(['set', 'patterns#orders'], ORDERS('Not yet.'));
+    r.git('switch', '-q', 'develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-fresh'));
+  } finally { r.rm(); }
+});
+
+test('a promote conflict keeps that override; a reconciled mainline lets the next promote finish', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'The cap is 5.') } });
+  try {
+    branchWithDecision(r, 'feat/c', ORDERS('The cap is 10.'));
+    r.cli(['set', 'patterns#orders'], ORDERS('The cap is 20.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/c');
+    const first = r.cli(['promote', '--merged']);
+    assert.match(first.stdout, /patterns#orders: conflict/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-c/references/patterns/orders.md'));
+    assert.match(r.cli(['show', 'patterns#orders', '--conflict', 'feat/c']).stdout, /<<<<<<< mainline/);
+    r.cli(['set', 'patterns#orders'], ORDERS('The cap is 10.'));
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: merged/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-c'));
+  } finally { r.rm(); }
+});
+
+test('a section new on the branch is appended on promote; one mainline removed is a conflict', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/add');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int P; }\n'); r.git('commit', '-qam', 'p');
+    r.cli(['set', 'patterns#paging'], '## Paging\n<!-- id: paging -->\nTen rows.\n');
+    r.cli(['set', 'patterns#users'], '## users\n<!-- id: users -->\nUsers are archived.\n');
+    r.git('switch', '-q', 'develop');
+    r.write('.claude/docs/architecture/references/patterns.md', section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/add');
+    const out = r.cli(['promote', '--merged']).stdout;
+    assert.match(out, /patterns#paging: added/);
+    assert.match(out, /patterns#users: conflict \(mainline removed this section\)/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Ten rows\./);
+  } finally { r.rm(); }
+});
+
+test('status lists a deleted unmerged branch; promote <branch> folds it in, prune <branch> drops it', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    branchWithDecision(r, 'feat/gone', ORDERS('Gone rule.'));
+    branchWithDecision(r, 'feat/drop', ORDERS('Dropped rule.'));
+    r.git('branch', '-D', 'feat/gone'); r.git('branch', '-D', 'feat/drop');
+    assert.match(r.cli(['status']).stdout, /deleted branches never detected as merged: feat-drop, feat-gone|deleted branches never detected as merged: feat-gone, feat-drop/);
+    assert.match(r.cli(['promote', 'feat-gone']).stdout, /patterns#orders: merged/);
+    assert.match(r.cli(['prune', 'feat-drop']).stdout, /pruned: feat-drop/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-drop'));
+  } finally { r.rm(); }
+});
+
+test('status: mode, branch, overrides and conflicts; a shallow clone skips promote', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/s');
+    r.cli(['set', 'patterns#orders'], ORDERS('Branch rule.'));
+    const out = r.cli(['status']).stdout;
+    assert.match(out, /mode: overlay/);
+    assert.match(out, /branch: feat\/s/);
+    assert.match(out, /overrides: patterns#orders/);
+    r.write('.claude/docs/architecture/BRANCH-DELTA.md', '## Old delta\nA decision.\n');
+    assert.match(r.cli(['status']).stdout, /BRANCH-DELTA\.md from an older capture/);
+    assert.doesNotMatch(r.cli(['files']).stdout, /BRANCH-DELTA/, 'never read as a doc');
+    assert.ok(r.exists('.claude/docs/architecture/BRANCH-DELTA.md'));
+    r.git('switch', '-q', 'develop');
+    const clone = `${r.root}-shallow`;
+    require('node:child_process').spawnSync('git', ['clone', '-q', '--depth', '1', `file://${r.root}`, clone]);
+    const s = require('node:child_process').spawnSync(process.execPath, [require('./docs-fixture').HOOKS + '/docs.js', 'promote', '--merged'], { cwd: clone, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: clone, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    assert.match(s.stdout, /shallow clone: merged branches cannot be detected/);
+    fs.rmSync(clone, { recursive: true, force: true });
+  } finally { r.rm(); }
+});

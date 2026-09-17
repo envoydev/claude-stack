@@ -586,12 +586,126 @@ function show(ref) {
   return `${where}${warn}\n\n${body}`;
 }
 
+const overlayNames = () => (fs.existsSync(BRANCHES) ? fs.readdirSync(BRANCHES, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : []);
+const isShallow = () => git(['rev-parse', '--is-shallow-repository']) === 'true';
+const overrideFiles = (dir) => walkFiles(dir).filter((f) => !path.relative(dir, f).split(path.sep).includes('.base'));
+
+// A branch landed when its last recorded commit is part of HEAD - provided it had commits of its own - or when every
+// file it changed now holds, at HEAD, the content the branch gave it (a squash or a rebase leaves no ancestor).
+function mergedBranches() {
+  if (!hasGit() || tracked() || isShallow()) return [];
+  const current = safe(branch() || '');
+  const out = [];
+  for (const name of overlayNames()) {
+    if (name === current) continue;
+    const meta = readMeta(name);
+    if (!meta || !meta.head) continue;
+    const ownCommits = meta.head !== meta.base;
+    const ancestor = ownCommits && spawnSync('git', ['merge-base', '--is-ancestor', meta.head, 'HEAD'], { cwd: ROOT }).status === 0;
+    const files = Object.entries(meta.files || {});
+    const landed = files.length > 0 && files.every(([f, blob]) => (blob === '-'
+      ? git(['cat-file', '-e', `HEAD:${f}`]) === null
+      : (git(['rev-parse', `HEAD:${f}`]) || '').startsWith(blob)));
+    if (ancestor || landed) out.push({ name, branch: meta.branch || name, how: ancestor ? 'ancestor' : 'blobs' });
+  }
+  return out;
+}
+
+function promote(name) {
+  const dir = path.join(BRANCHES, safe(name));
+  if (!fs.existsSync(dir)) return { error: `no doc overrides for ${name}` };
+  const results = [];
+  for (const over of overrideFiles(dir)) {
+    const rel = path.relative(dir, over).split(path.sep);
+    const id = path.basename(rel.pop(), '.md');
+    const mainline = `${path.join(DOCS, ...rel)}.md`;
+    const label = `${path.basename(mainline, '.md')}#${id}`;
+    if (!fs.existsSync(mainline)) { results.push({ id: label, result: 'conflict', why: 'mainline has no such doc file', path: over }); continue; }
+    const raw = fs.readFileSync(mainline, 'utf8');
+    const hit = parse(mainline, raw).find((s) => s.id === label);
+    const base = safeRead(path.join(dir, '.base', ...rel, `${id}.md`));
+    const mine = fs.readFileSync(over, 'utf8');
+    const covers = (t) => globList((COVERS.exec(norm(t).split('\n').slice(0, 10).join('\n')) || [])[1] || '');
+    const restamp = (t) => withStamp(t, captureStamp(covers(t)));
+    if (!hit) {
+      if (norm(base)) { results.push({ id: label, result: 'conflict', why: 'mainline removed this section', path: over }); continue; }
+      fs.writeFileSync(mainline, `${norm(raw)}\n\n${norm(restamp(mine))}\n`);
+      results.push({ id: label, result: 'added', path: over });
+      continue;
+    }
+    const m = merge3(stripStamp(hit.text), stripStamp(norm(base) ? base : hit.text), stripStamp(mine), name);
+    if (m.error || m.conflicts) { results.push({ id: label, result: 'conflict', why: m.error || 'both sides changed the same lines', path: over }); continue; }
+    fs.writeFileSync(mainline, spliceSection(raw.split('\n'), hit, norm(restamp(m.text))).join('\n'));
+    results.push({ id: label, result: 'merged', path: over });
+  }
+  for (const r of results.filter((x) => x.result !== 'conflict')) {
+    fs.rmSync(r.path, { force: true });
+    fs.rmSync(path.join(dir, '.base', path.relative(dir, r.path)), { force: true });
+  }
+  const removed = overrideFiles(dir).length === 0;
+  if (removed) fs.rmSync(dir, { recursive: true, force: true });
+  try { fs.appendFileSync(path.join(BRANCHES, 'promoted.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), branch: safe(name), results: results.map(({ id, result }) => ({ id, result })) })}\n`); } catch {}
+  return { results: results.map(({ id, result, why }) => ({ id, result, why })), removed };
+}
+
+function autoPromote() {
+  const b = branch();
+  if (!b || !isMainline(b) || tracked()) return [];
+  return mergedBranches().map((m) => ({ branch: m.branch, how: m.how, ...promote(m.name) }));
+}
+
+function deletedUnmerged() {
+  if (!hasGit() || tracked()) return [];
+  const live = new Set((git(['for-each-ref', '--format=%(refname:short)', 'refs/heads']) || '').split('\n').filter(Boolean).map(safe));
+  const merged = new Set(mergedBranches().map((m) => m.name));
+  return overlayNames().filter((n) => !live.has(n) && !merged.has(n));
+}
+
+function prune(name) {
+  if (name) {
+    const dir = path.join(BRANCHES, safe(name));
+    if (!fs.existsSync(dir)) return [];
+    fs.rmSync(dir, { recursive: true, force: true });
+    return [safe(name)];
+  }
+  const live = new Set((git(['for-each-ref', '--format=%(refname:short)', 'refs/heads']) || '').split('\n').filter(Boolean).map(safe));
+  const dropped = [];
+  for (const n of overlayNames()) {
+    if (live.has(n)) continue;
+    const dir = path.join(BRANCHES, n);
+    if ((Date.now() - fs.statSync(dir).mtimeMs) / 86400000 < 30) continue;
+    fs.rmSync(dir, { recursive: true, force: true });
+    dropped.push(n);
+  }
+  return dropped;
+}
+
+function status() {
+  const b = branch();
+  const gitRepo = hasGit();
+  const view = overlayDir() ? docFiles().flatMap((f) => sections(f).filter((s) => s.overrideOf)) : [];
+  return {
+    mode: !gitRepo ? 'no git (docs written in place)' : tracked() ? 'git (docs are committed - git versions them per branch)' : 'overlay (docs are ignored by git - branch versions live in .branches/)',
+    branch: b || (gitRepo && git(['rev-parse', 'HEAD']) ? 'detached HEAD' : 'no branch'),
+    detached: Boolean(gitRepo && !b && git(['rev-parse', 'HEAD'])),
+    mainline: isMainline(b),
+    overrides: view.map((s) => s.id),
+    conflicts: view.filter((s) => s.conflict).map((s) => s.id),
+    orphans: view.filter((s) => s.orphan).map((s) => s.id),
+    outgrown: stale().length,
+    deletedUnmerged: deletedUnmerged(),
+    shallow: gitRepo && isShallow(),
+    legacyDelta: fs.existsSync(path.join(DOCS, 'BRANCH-DELTA.md')),
+  };
+}
+
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
   git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRef, porcelainPaths, blobOf,
   stripStamp, stampLineOf, withStamp, conflictView,
+  overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
 };
 if (require.main !== module) return;
 
@@ -622,6 +736,38 @@ const commands = {
     if (r.error) { console.log(r.error); process.exit(1); }
     docsLog({ event: 'doc-set', ref, wrote: r.wrote, inPlace: Boolean(r.inPlace) });
     console.log(r.inPlace ? `wrote ${ref} into ${r.wrote}` : `wrote ${r.wrote} (base kept at ${r.base}) - this branch only`);
+  },
+  promote: () => {
+    if (args[0] === '--merged') {
+      if (isShallow()) { console.log('shallow clone: merged branches cannot be detected - nothing promoted'); return; }
+      const rows = autoPromote();
+      if (!rows.length) { console.log('nothing merged'); return; }
+      for (const p of rows) {
+        docsLog({ event: 'promote', branch: p.branch, how: p.how, results: p.results });
+        for (const x of p.results) console.log(`${p.branch} (${p.how}) ${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
+      }
+      return;
+    }
+    const p = promote(args[0]);
+    if (p.error) { console.log(p.error); process.exit(1); }
+    docsLog({ event: 'promote', branch: args[0], how: 'manual', results: p.results });
+    for (const x of p.results) console.log(`${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
+    process.exit(p.results.some((x) => x.result === 'conflict') ? 1 : 0);
+  },
+  prune: () => { const d = prune(args[0]); console.log(d.length ? `pruned: ${d.join(', ')}` : 'nothing to prune'); },
+  status: () => {
+    const s = status();
+    console.log([
+      `mode: ${s.mode}`,
+      `branch: ${s.branch}${s.mainline ? ' (mainline)' : ''}`,
+      `overrides: ${s.overrides.length ? s.overrides.join(', ') : 'none'}`,
+      ...(s.conflicts.length ? [`conflicts: ${s.conflicts.join(', ')}`] : []),
+      ...(s.orphans.length ? [`orphaned (mainline removed the section): ${s.orphans.join(', ')}`] : []),
+      `outgrown sections: ${s.outgrown}`,
+      ...(s.deletedUnmerged.length ? [`deleted branches never detected as merged: ${s.deletedUnmerged.join(', ')}`] : []),
+      ...(s.shallow ? ['shallow clone: merged branches cannot be detected'] : []),
+      ...(s.legacyDelta ? ['BRANCH-DELTA.md from an older capture: nothing reads it any more - a capture on that branch folds its decisions into sections; it is never deleted for you'] : []),
+    ].join('\n'));
   },
 };
 if (commands[cmd]) commands[cmd]();
