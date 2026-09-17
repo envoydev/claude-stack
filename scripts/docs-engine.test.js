@@ -286,6 +286,28 @@ test('a branch cut from develop with no commits is never promoted when origin/HE
   } finally { r.rm(); fs.rmSync(remote, { recursive: true, force: true }); }
 });
 
+test('a branch cut from origin/develop with no commits is never promoted when the local develop is stale', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const remote = `${r.root}-remote`;
+  try {
+    spawnSync('git', ['init', '-q', '--bare', remote]);
+    r.git('remote', 'add', 'origin', remote);
+    r.git('push', '-q', 'origin', 'develop');
+    r.write('README.md', 'ahead\n'); r.git('add', '-A'); r.git('commit', '-qm', 'develop moves ahead');
+    r.git('push', '-q', 'origin', 'develop');
+    r.git('reset', '--hard', 'HEAD~1'); // the local develop goes stale; origin/develop stays ahead
+    r.git('fetch', '-q', 'origin');
+
+    // cut from origin/develop, the real tip - not from the local branch, which has not caught up.
+    r.git('switch', '-qc', 'feat/fresh', 'origin/develop');
+    r.cli(['set', 'patterns#orders'], ORDERS('Not yet.'));
+    r.git('switch', 'develop');
+    r.git('merge', '-q', '--ff-only', 'origin/develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-fresh'));
+  } finally { r.rm(); fs.rmSync(remote, { recursive: true, force: true }); }
+});
+
 test('two branches adding the same new section: the second promote conflicts, not overwrites', () => {
   const r = repo({ files: { 'src/Api/Orders/A.cs': 'class A {}\n', 'src/Api/Orders/B.cs': 'class B {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
@@ -358,6 +380,37 @@ test('a section new on the branch is appended on promote; one mainline removed i
     assert.match(out, /patterns#paging: added/);
     assert.match(out, /patterns#users: conflict \(mainline removed this section\)/);
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Ten rows\./);
+  } finally { r.rm(); }
+});
+
+test('a doc file mainline no longer has stays a plain conflict, never traps an unclearable marker', () => {
+  const r = repo({
+    files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' },
+    docs: {
+      'references/patterns.md': PATTERNS,
+      'references/legacy.md': section('old-rule', 'src/Api/Legacy/**', 'Legacy behavior.'),
+    },
+  });
+  try {
+    r.git('switch', '-qc', 'feat/mix');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int M; }\n'); r.git('commit', '-qam', 'm');
+    r.cli(['set', 'patterns#orders'], ORDERS('Mixed rule.'));
+    r.cli(['set', 'legacy#old-rule'], '## old rule\n<!-- id: old-rule -->\nBranch keeps it.\n');
+    r.git('switch', '-q', 'develop');
+
+    // mainline drops the whole doc file this branch also touched.
+    fs.rmSync(path.join(r.root, '.claude/docs/architecture/references/legacy.md'), { force: true });
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/mix');
+
+    const first = r.cli(['promote', '--merged']).stdout;
+    assert.match(first, /patterns#orders: merged/);
+    assert.match(first, /legacy#old-rule: conflict \(mainline has no such doc file\)/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-mix/.conflict/references/legacy/old-rule.md'), 'no marker for a missing doc file - set can never match one to clear it');
+    assert.ok(r.exists('.claude/docs/.branches/feat-mix/references/legacy/old-rule.md'), 'the conflicting override is kept as-is');
+
+    const second = r.cli(['promote', '--merged']).stdout;
+    assert.match(second, /legacy#old-rule: conflict \(mainline has no such doc file\)/);
+    assert.doesNotMatch(second, /patterns#orders/, 'the already-landed side is never revisited');
   } finally { r.rm(); }
 });
 

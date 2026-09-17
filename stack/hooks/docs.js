@@ -449,14 +449,18 @@ const porcelainPaths = () => (git(['status', '--porcelain', '--untracked-files=a
 const blobOf = (f) => (fs.existsSync(path.join(ROOT, f)) ? (git(['hash-object', f]) || '').slice(0, 12) : '-');
 const docsRel = () => path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
 
-// Every mainline ref that actually exists here: the local branches plus origin/HEAD's target. A git-flow repo
-// (work on develop, origin/HEAD -> main) has both, and they can be commits apart - the nearest one, not either
-// one by name, is what tells a branch with no commits of its own from one that is genuinely ahead.
+// Every mainline ref that actually exists here: the local branches, their origin/<name> remote-tracking twins,
+// and origin/HEAD's target. A git-flow repo (work on develop, origin/HEAD -> main) has several of these, and
+// they can be commits apart - a stale local mainline must never be the nearest candidate just because it is
+// local, so a branch cut from the remote-tracking ref is measured against that ref too.
 function mainlineRefs() {
   const refs = MAINLINE.filter((n) => git(['rev-parse', '--verify', '--quiet', `refs/heads/${n}`]) !== null);
   const originHead = git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
   if (originHead) refs.push(originHead);
-  return refs;
+  for (const n of MAINLINE) {
+    if (git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${n}`]) !== null) refs.push(`origin/${n}`);
+  }
+  return [...new Set(refs)];
 }
 
 // The files this branch COMMITTED since it left mainline, by their blob at HEAD: the evidence that lets a later
@@ -657,7 +661,10 @@ function promote(name) {
       fs.writeFileSync(marker, `${stripStamp(mainlineText || '')}\n`);
       results.push({ id: label, result: 'conflict', why, path: over });
     };
-    if (!fs.existsSync(mainline)) { flagConflict('mainline has no such doc file', ''); continue; }
+    // No marker here: a missing doc file is a conflict `set` can never match (there is no file to write the
+    // section into), so a marker for it could only ever be cleared by prune - which drops the whole branch,
+    // including any of its other, perfectly fine overrides. It stays a plain, always-reported conflict.
+    if (!fs.existsSync(mainline)) { results.push({ id: label, result: 'conflict', why: 'mainline has no such doc file', path: over }); continue; }
     const raw = fs.readFileSync(mainline, 'utf8');
     const hit = parse(mainline, raw).find((s) => s.id === label);
     const base = safeRead(path.join(dir, '.base', ...rel, `${id}.md`));
