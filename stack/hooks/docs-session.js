@@ -216,8 +216,42 @@ function preToolUse(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
 }
 
-// Task 8 replaces this.
-function stop() {}
+function stop(input, root, docs, state) {
+  if (process.env.CLAUDE_STACK_DOCS_ASK === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
+  let changed;
+  let hits = [];
+  try {
+    changed = docs.changedSince(state.snapshot);
+    if (!changed.files.length && !changed.dirs.length) return;
+    hits = docs.watchHits(changed.files, changed.dirs);
+  } catch { return; }
+  if (!hits.length) return;
+  const ids = [...new Set(hits.flatMap((h) => h.sections))].slice(0, ASK_SECTIONS);
+  const files = [...new Set(hits.flatMap((h) => h.files))];
+  const kinds = [...new Set(hits.map((h) => h.kind))];
+  state.asked = true;
+  saveState(input.session_id, state);
+  log(root, { event: 'ask-update', sections: ids, files: files.slice(0, 5), kinds });
+  let scope = 'It is written into the doc file itself.';
+  try {
+    const st = docs.status();
+    if (st.mode.startsWith('overlay') && !st.mainline) scope = `It is saved for branch ${st.branch} only; mainline keeps its own text until the branch merges.`;
+  } catch {}
+  const one = ids.length === 1;
+  process.stdout.write(JSON.stringify({
+    decision: 'block',
+    reason: [
+      `One check before you finish. You changed ${files.slice(0, 4).join(', ')}${files.length > 4 ? ` and ${files.length - 4} more` : ''} (${kinds.join(', ')}), which ${one ? 'this section owns' : 'these sections own'}: ${ids.join(', ')}.`,
+      `Open ${one ? 'it' : 'them'}: ${READ} show ${ids.join(' ')}`,
+      'For each: if your change moved a rule, boundary, contract or pattern it states, rewrite that section - heading included, changing only what your change made untrue - and save it:',
+      `  ${READ} set <file>#<id> <<'MD'`,
+      '  <the whole section>',
+      '  MD',
+      `${scope} Leave out the captured line; set stamps it.`,
+      `If ${one ? 'it still holds' : 'they still hold'}, reply 'docs still hold: ${ids.join(', ')}' and finish. Do not edit any other doc.`,
+    ].join('\n'),
+  }));
+}
 
 module.exports = { writeTargets, consultedBy, toolPaths };
 if (require.main === module) {

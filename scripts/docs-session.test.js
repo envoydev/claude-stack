@@ -2,6 +2,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
 const { repo, section } = require('./docs-fixture');
 
 let n = 0;
@@ -188,4 +189,65 @@ test('writeTargets: the paths a shell command writes, from real runs', () => {
     ['cd src && echo x > A.cs', ['A.cs']],
   ];
   for (const [command, want] of cases) assert.deepStrictEqual(writeTargets(command).sort(), [...want].sort(), command);
+});
+
+const WATCH = (extra = {}) => JSON.stringify({ watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }], ...extra });
+const start = (r, s) => r.hook({ hook_event_name: 'SessionStart', session_id: s });
+const stopEv = (s, active) => ({ hook_event_name: 'Stop', session_id: s, stop_hook_active: Boolean(active) });
+
+test('a change to a watched file asks once, naming the section; a second stop is silent', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const out = r.hook(stopEv(s));
+    const body = JSON.parse(out.stdout);
+    assert.strictEqual(body.decision, 'block');
+    assert.match(body.reason, /You changed src\/Api\/Program\.cs \(composition root\), which this section owns: patterns#orders/);
+    assert.match(body.reason, /docs still hold: patterns#orders/);
+    assert.strictEqual(r.hook(stopEv(s)).stdout, '');
+  } finally { r.rm(); }
+});
+
+test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'x\n', 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const a = sid(); start(r, a);
+    r.write('src/Api/Orders/Refund.cs', 'y\n');
+    assert.strictEqual(r.hook(stopEv(a)).stdout, '', 'routine change');
+    const b = sid(); start(r, b);
+    r.write('src/Api/Program.cs', 'y\n');
+    assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'stop_hook_active');
+    assert.strictEqual(r.hook(stopEv(b), { CLAUDE_STACK_DOCS_ASK: '0' }).stdout, '', 'switched off');
+    fs.rmSync(`${r.root}/.claude/docs/architecture/watch.json`);
+    const c = sid(); start(r, c);
+    r.write('src/Api/Program.cs', 'z\n');
+    assert.strictEqual(r.hook(stopEv(c)).stdout, '', 'no watch.json');
+  } finally { r.rm(); }
+});
+
+test('four owning sections: the ask names three', () => {
+  const secs = ['a', 'b', 'c', 'd'].map((x) => section(x, '', `${x}.`)).join('\n');
+  const r = repo({ files: { 'src/Api/Program.cs': 'x\n' }, docs: { 'references/p.md': secs, 'watch.json': JSON.stringify({ watch: [{ kind: 'root', globs: ['src/*/Program.cs'], sections: ['p#a', 'p#b', 'p#c', 'p#d'] }] }) } });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Api/Program.cs', 'y\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /these sections own: p#a, p#b, p#c\./);
+    assert.doesNotMatch(reason, /p#d/);
+  } finally { r.rm(); }
+});
+
+test('a new module folder hits newModule; a committed script change counts', () => {
+  const r = repo({ files: { 'src/Api/Features/Orders/A.cs': 'x\n', 'src/Api/Program.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH({ newModule: { globs: ['src/*/Features/*/'], sections: ['patterns#users'] } }) } });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Api/Features/Billing/Invoice.cs', 'class Invoice {}\n');
+    assert.match(JSON.parse(r.hook(stopEv(s)).stdout).reason, /new module[\s\S]*patterns#users/);
+    const t = sid(); start(r, t);
+    r.write('src/Api/Program.cs', 'changed by a script\n');
+    r.git('commit', '-qam', 'script');
+    assert.match(JSON.parse(r.hook(stopEv(t)).stdout).reason, /patterns#orders/);
+  } finally { r.rm(); }
 });
