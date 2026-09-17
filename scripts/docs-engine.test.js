@@ -57,7 +57,7 @@ test('an unknown file or section answers with what exists, exit 0', () => {
 
 const setText = (heading, id, body) => `## ${heading}\n<!-- id: ${id} -->\n<!-- covers: src/Api/Orders/** -->\n${body}\n`;
 
-test('overlay mode: a feature branch writes its own version and mainline keeps its text', { todo: 'overlay reads land in Task 3' }, () => {
+test('overlay mode: a feature branch writes its own version and mainline keeps its text', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     r.git('switch', '-qc', 'feat/refund-cap');
@@ -96,7 +96,7 @@ test('in place: on mainline, with committed docs, and without git', () => {
   } finally { a.rm(); b.rm(); }
 });
 
-test('a section new on a branch is written with an empty base and read as added', { todo: 'overlay reads land in Task 3' }, () => {
+test('a section new on a branch is written with an empty base and read as added', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {
     r.git('switch', '-qc', 'feat/new');
@@ -104,6 +104,51 @@ test('a section new on a branch is written with an empty base and read as added'
     assert.strictEqual(r.read('.claude/docs/.branches/feat-new/.base/references/patterns/device-paging.md'), '');
     assert.match(r.cli(['show', 'patterns#device-paging']).stdout, /Ten rows per page/);
     assert.match(r.cli(['toc', 'patterns']).stdout, /patterns#device-paging .*\[this branch\]/);
+  } finally { r.rm(); }
+});
+
+test('mainline edits to other lines reach the branch through a clean three-way merge', () => {
+  // Changes three unchanged lines apart: git merge-file treats touching hunks as a conflict, so the test keeps a gap.
+  const body = (first, last) => `${first}\nLine two.\nLine three.\nLine four.\n${last}`;
+  const r = repo({ docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', body('Line one.', 'Line five.')) } });
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    r.cli(['set', 'patterns#orders'], `## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\n${body('Line one.', 'Line five, on the branch.')}\n`);
+    r.git('switch', '-q', 'develop');
+    r.cli(['set', 'patterns#orders'], `## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\n${body('Line one, on mainline.', 'Line five.')}\n`);
+    r.git('switch', '-q', 'feat/x');
+    const out = r.cli(['show', 'patterns#orders']).stdout;
+    assert.match(out, /Line one, on mainline\.[\s\S]*Line five, on the branch\./);
+    assert.doesNotMatch(out, /CONFLICT/);
+  } finally { r.rm(); }
+});
+
+test('the same line changed on both sides: the branch text is served and flagged, --conflict shows both', () => {
+  const r = repo({ docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'The cap is 5.') } });
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nThe cap is 10.\n');
+    r.git('switch', '-q', 'develop');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nThe cap is 20.\n');
+    r.git('switch', '-q', 'feat/x');
+    const out = r.cli(['show', 'patterns#orders']).stdout;
+    assert.match(out, /The cap is 10\./);
+    assert.match(out, /CONFLICT/);
+    const both = r.cli(['show', 'patterns#orders', '--conflict']).stdout;
+    assert.match(both, /<<<<<<< mainline[\s\S]*The cap is 20\.[\s\S]*=======[\s\S]*The cap is 10\.[\s\S]*>>>>>>> feat\/x/);
+  } finally { r.rm(); }
+});
+
+test('a stamp rewritten on both sides alone never conflicts', () => {
+  const r = repo({ docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'Stable text.') } });
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nStable text.\nBranch addition.\n');
+    r.git('switch', '-q', 'develop');
+    r.write('README.md', 'x\n'); r.git('add', '-A'); r.git('commit', '-qm', 'move HEAD');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nStable text.\n');
+    r.git('switch', '-q', 'feat/x');
+    assert.doesNotMatch(r.cli(['show', 'patterns#orders']).stdout, /CONFLICT/);
   } finally { r.rm(); }
 });
 

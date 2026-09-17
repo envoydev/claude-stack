@@ -350,9 +350,98 @@ function parse(file, raw) {
   });
 }
 
-// Task 3 replaces this with the overlay-aware version.
+const stripStamp = (t) => norm(t).split('\n').filter((l) => !STAMP.test(l)).join('\n');
+const stampLineOf = (t) => norm(t).split('\n').find((l) => STAMP.test(l)) || '';
+// A merged text carries no stamp (both sides were stripped): the given one goes back after the heading's comments.
+function withStamp(text, stamp) {
+  const lines = stripStamp(text).split('\n');
+  let j = 1;
+  while (j < lines.length && COMMENT.test(lines[j])) j++;
+  return [...lines.slice(0, j), ...(stamp ? [stamp] : []), ...lines.slice(j)].join('\n');
+}
+
+function sectionOverrides(file, dir) {
+  if (!dir) return new Map();
+  const sdir = path.join(dir, ...relKey(file).split('/'));
+  if (!fs.existsSync(sdir)) return new Map();
+  return new Map(fs.readdirSync(sdir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => [e.name.slice(0, -3), path.join(sdir, e.name)]));
+}
+const baseText = (dir, file, id) => safeRead(path.join(dir, '.base', ...overlayParts(file, id)));
+
+// What a branch reads for a section it overrides: its own text while mainline still holds the base it started from;
+// a three-way merge (stamps aside) once mainline moved; its own text, flagged, when both sides changed the same lines.
+function servedText(dir, file, id, mainlineText, overridePath) {
+  const mine = fs.readFileSync(overridePath, 'utf8');
+  const base = baseText(dir, file, id);
+  if (!norm(base) || stripStamp(base) === stripStamp(mainlineText)) return { text: mine, conflict: false };
+  const m = merge3(stripStamp(mainlineText), stripStamp(base), stripStamp(mine), 'branch');
+  if (m.error || m.conflicts) return { text: mine, conflict: true };
+  return { text: withStamp(m.text, stampLineOf(mine)), conflict: false };
+}
+
+function withSectionOverrides(file, raw, dir) {
+  const over = sectionOverrides(file, dir);
+  if (!over.size) return { raw, ranges: [] };
+  const secs = parse(file, raw);
+  const lines = raw.split('\n');
+  const chosen = [];
+  const seen = new Set();
+  for (const s of secs) {
+    const id = sectionId(s);
+    if (!over.has(id)) continue;
+    seen.add(id);
+    if (chosen.some((c) => s.start >= c.s.start && s.end <= c.s.end)) continue;
+    chosen.push({ s, id });
+  }
+  const out = [];
+  const ranges = [];
+  let at = 0;
+  for (const { s, id } of chosen) {
+    out.push(...lines.slice(at, s.start));
+    const served = servedText(dir, file, id, s.text, over.get(id));
+    const body = ensureHeadingAndId(served.text, id, lines[s.start]);
+    ranges.push({ start: out.length, end: out.length + body.length, id, path: over.get(id), conflict: served.conflict });
+    out.push(...body, ...Array(trailingBlanks(lines.slice(s.start, s.end))).fill(''));
+    at = s.end;
+  }
+  out.push(...lines.slice(at));
+  for (const [id, p] of over) {
+    if (seen.has(id)) continue;
+    const orphan = Boolean(norm(baseText(dir, file, id)));
+    const body = ensureHeadingAndId(fs.readFileSync(p, 'utf8'), id, `## ${id}`);
+    if (out.length && out[out.length - 1] !== '') out.push('');
+    ranges.push({ start: out.length, end: out.length + body.length, id, path: p, orphan, added: !orphan });
+    out.push(...body);
+  }
+  return { raw: out.join('\n'), ranges };
+}
+
 function sections(file) {
-  return parse(file, fs.readFileSync(file, 'utf8'));
+  const dir = overlayDir();
+  const { raw, ranges } = withSectionOverrides(file, fs.readFileSync(file, 'utf8'), dir);
+  const secs = parse(file, raw);
+  for (const s of secs) {
+    const r = ranges.find((x) => s.start >= x.start && s.start < x.end);
+    if (r) Object.assign(s, { from: r.path, overlaid: true, overrideOf: r.id, conflict: Boolean(r.conflict), orphan: Boolean(r.orphan), added: Boolean(r.added) });
+  }
+  return secs;
+}
+
+// Both sides of a conflicting section, with git's markers, for reconciling by hand. On a feature branch the overlay is
+// the branch's own; on mainline, name the branch whose promote conflicted.
+function conflictView(ref, branchName) {
+  const [fileKey, id] = String(ref).split('#');
+  const file = findFile(fileKey);
+  if (!file || !id) return `name a section: show <file>#<id> --conflict [branch]`;
+  const dir = branchName ? path.join(BRANCHES, safe(branchName)) : overlayDir();
+  const label = branchName || branch() || 'branch';
+  if (!dir) return 'no branch overlay here: on mainline, name the branch - show <file>#<id> --conflict <branch>';
+  const over = path.join(dir, ...overlayParts(file, id));
+  if (!fs.existsSync(over)) return `${label} has no version of ${key(file)}#${id}`;
+  const main = parse(file, fs.readFileSync(file, 'utf8')).find((s) => s.id === `${key(file)}#${id}`);
+  const m = merge3(stripStamp(main ? main.text : ''), stripStamp(baseText(dir, file, id)), stripStamp(fs.readFileSync(over, 'utf8')), label);
+  if (m.error) return `cannot merge: ${m.error}`;
+  return `${key(file)}#${id} - mainline against ${label}${m.conflicts ? '' : ' (no conflict left)'}\nSave the reconciled section with: node .claude/hooks/docs.js set ${key(file)}#${id}\n\n${m.text}`;
 }
 
 const porcelainPaths = () => (git(['status', '--porcelain', '--untracked-files=all'], { raw: true }) || '')
@@ -475,6 +564,7 @@ module.exports = {
   git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRef, porcelainPaths, blobOf,
+  stripStamp, stampLineOf, withStamp, conflictView,
 };
 if (require.main !== module) return;
 
@@ -483,7 +573,11 @@ const args = process.argv.slice(3);
 const docsLog = (row) => { try { fs.appendFileSync(path.join(ROOT, '.claude', 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`); } catch {} };
 const commands = {
   toc: () => console.log(toc(args[0])),
-  show: () => console.log(args.filter((a) => !a.startsWith('--')).map((a) => show(a)).join('\n\n')),
+  show: () => {
+    const at = args.indexOf('--conflict');
+    if (at >= 0) { console.log(conflictView(args[0], args[at + 1])); return; }
+    console.log(args.filter((a) => !a.startsWith('--')).map((a) => show(a)).join('\n\n'));
+  },
   where: () => {
     const hits = where(args);
     console.log(hits.length ? hits.map((s) => `${s.id} - ${s.heading} (${s.chars} chars)`).join('\n') : 'no section matches those paths');

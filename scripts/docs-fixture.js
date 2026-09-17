@@ -23,7 +23,7 @@ function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs
   git('config', 'user.email', 't@example.com');
   git('config', 'user.name', 'test');
   git('config', 'commit.gpgsign', 'false');
-  if (!tracked) write('.gitignore', `${docsPath}/\n`);
+  write('.gitignore', `.claude/docs-log.jsonl\n${tracked ? '' : `${docsPath}/\n`}`);
   for (const [rel, text] of Object.entries(files)) write(rel, text);
   for (const [rel, text] of Object.entries(docs)) write(path.join(docsPath, 'architecture', rel), text);
   git('add', '-A');
