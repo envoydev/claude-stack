@@ -173,10 +173,12 @@ function preToolUse(input, root, docs, state) {
     log(root, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
     return;
   }
+  // Only these five tools can name a source target, so nothing else pays for the watch list.
+  const name = input.tool_name || '';
+  if (!/^(Edit|Write|MultiEdit|NotebookEdit|Bash)$/.test(name)) return;
   let roots = ['src', 'tests'];
   try { roots = docs.loadWatch().sourceRoots; } catch {}
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
-  const name = input.tool_name || '';
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
   let targets = [];
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) targets = paths.filter(inRoots);
