@@ -247,6 +247,41 @@ test('a fast-forward merge is detected by ancestry, a rebase merge by blobs', ()
   } finally { r.rm(); }
 });
 
+// The overlay is written before the branch has a commit of its own, so BASE.json snapshots head === base and no
+// files at all. The branch commits afterwards and lands: the snapshot is one commit behind, and only the branch ref
+// still says what the branch actually holds.
+test('a section set before the branch\'s first commit is still promoted when the branch merges', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/early');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.')).status, 0);
+    const meta = JSON.parse(r.read('.claude/docs/.branches/feat-early/BASE.json'));
+    assert.strictEqual(meta.head, meta.base, 'the snapshot is taken before the branch has a commit of its own');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap => 10; }\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'cap');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/early');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/early .*patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10[\s\S]*soft-deleted/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-early'), 'the overlay is folded in and gone');
+  } finally { r.rm(); }
+});
+
+test('a section set before the first commit is promoted through a squash merge too', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/early-squash');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Squashed early rule.')).status, 0);
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap => 20; }\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'cap');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--squash', 'feat/early-squash'); r.git('commit', '-qm', 'squash');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/early-squash .*patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Squashed early rule\./);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-early-squash'));
+  } finally { r.rm(); }
+});
+
 test('a branch with no commits of its own is never taken as merged', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {
@@ -255,6 +290,24 @@ test('a branch with no commits of its own is never taken as merged', () => {
     r.git('switch', '-q', 'develop');
     assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
     assert.ok(r.exists('.claude/docs/.branches/feat-fresh'));
+  } finally { r.rm(); }
+});
+
+// Catching up with mainline moves the branch tip without the branch committing anything: the tip is then a mainline
+// commit, indistinguishable from a landed one by ancestry alone. The recorded fork point is what keeps them apart.
+test('a branch that only caught up with mainline is never taken as merged', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/behind');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Not yet.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.write('README.md', 'y\n'); r.git('commit', '-qam', 'mainline moved');
+    r.git('switch', '-q', 'feat/behind');
+    r.git('merge', '-q', '--ff-only', 'develop');
+    r.git('switch', '-q', 'develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-behind'));
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /ledgered before the payment call/);
   } finally { r.rm(); }
 });
 
