@@ -355,6 +355,92 @@ function sections(file) {
   return parse(file, fs.readFileSync(file, 'utf8'));
 }
 
+const porcelainPaths = () => (git(['status', '--porcelain', '--untracked-files=all'], { raw: true }) || '')
+  .split('\n').filter(Boolean).map((l) => l.slice(3).split(' -> ').pop().replace(/^"|"$/g, '')).slice(0, 2000);
+const blobOf = (f) => (fs.existsSync(path.join(ROOT, f)) ? (git(['hash-object', f]) || '').slice(0, 12) : '-');
+const docsRel = () => path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
+
+function mainlineRef() {
+  const originHead = git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  if (originHead) return originHead;
+  return MAINLINE.find((n) => git(['rev-parse', '--verify', '--quiet', `refs/heads/${n}`]) !== null) || null;
+}
+
+// The files this branch COMMITTED since it left mainline, by their blob at HEAD: the evidence that lets a later
+// mainline session tell the branch landed even when it was squashed or rebased. Uncommitted and untracked files stay
+// out - a log or scratch file never reaches mainline, and recording one would make the branch look unmerged forever.
+const headBlob = (f) => (git(['rev-parse', `HEAD:${f}`]) || '-').slice(0, 12);
+function branchFiles(base) {
+  const changed = base ? (git(['diff', '--name-only', `${base}..HEAD`]) || '').split('\n').filter(Boolean) : [];
+  const out = {};
+  for (const f of changed.filter((x) => !x.startsWith(`${docsRel()}/`)).slice(0, 200)) out[f] = headBlob(f);
+  return out;
+}
+
+function writeBaseMeta(dir, b) {
+  const main = mainlineRef();
+  const head = git(['rev-parse', 'HEAD']);
+  const base = (main && git(['merge-base', 'HEAD', main])) || head;
+  const meta = { branch: b, base, head, files: branchFiles(base), updated: new Date().toISOString() };
+  fs.writeFileSync(path.join(dir, 'BASE.json'), `${JSON.stringify(meta, null, 2)}\n`);
+}
+function refreshBaseMeta() {
+  const dir = overlayDir();
+  if (dir && fs.existsSync(dir)) writeBaseMeta(dir, branch());
+}
+function readMeta(name) {
+  try { return JSON.parse(fs.readFileSync(path.join(BRANCHES, name, 'BASE.json'), 'utf8')); } catch { return null; }
+}
+
+const overlayParts = (file, id) => [...relKey(file).split('/'), `${id}.md`];
+
+function set(ref, newText) {
+  const [fileKey, sec] = String(ref).split('#');
+  if (!sec) return { error: 'name one section: set <file>#<id> - whole-file writes are not supported' };
+  const file = findFile(fileKey);
+  if (!file) return { error: `no such doc file: ${fileKey}` };
+  if (!/^[\w.-]+$/.test(sec)) return { error: `not a valid section id: ${sec}` };
+  if (!String(newText).trim()) return { error: 'empty section text: nothing written' };
+  const gitRepo = hasGit();
+  const b = branch();
+  if (gitRepo && !b && git(['rev-parse', 'HEAD']) !== null) return { error: 'detached HEAD: check out a branch before writing docs' };
+  const hit = sections(file).find((s) => s.id === `${key(file)}#${sec}`);
+  const lines = ensureHeadingAndId(newText, sec, `${'#'.repeat(hit ? hit.level : 2)} ${hit ? hit.heading : sec.replace(/-/g, ' ')}`);
+  let j = 2;
+  const meta = [];
+  while (j < lines.length && COMMENT.test(lines[j])) meta.push(lines[j++]);
+  const kept = meta.filter((m) => !STAMP.test(m));
+  if (hit && hit.declared && !kept.some((m) => COVERS.test(m))) kept.unshift(`<!-- covers: ${hit.covers.join(', ')} -->`);
+  const own = globList((COVERS.exec(kept.join('\n')) || [])[1] || '');
+  const stampLine = gitRepo ? captureStamp(own.length ? own : (hit ? hit.covers : [])) : '';
+  const text = [lines[0], lines[1], ...kept, ...(stampLine ? [stampLine] : []), ...lines.slice(j)].join('\n');
+  if (!gitRepo || tracked() || isMainline(b)) return writeInPlace(file, sec, text);
+  return writeOverride(file, sec, text, b);
+}
+
+function writeInPlace(file, sec, text) {
+  const raw = fs.readFileSync(file, 'utf8');
+  const own = parse(file, raw).find((s) => s.id === `${key(file)}#${sec}`);
+  const next = own ? spliceSection(raw.split('\n'), own, text).join('\n') : `${norm(raw)}\n\n${norm(text)}\n`;
+  fs.writeFileSync(file, next);
+  return { wrote: path.relative(ROOT, file), inPlace: true, added: !own };
+}
+
+function writeOverride(file, sec, text, b) {
+  const dir = path.join(BRANCHES, safe(b));
+  const target = path.join(dir, ...overlayParts(file, sec));
+  const base = path.join(dir, '.base', ...overlayParts(file, sec));
+  if (!fs.existsSync(base)) {
+    const mainline = parse(file, fs.readFileSync(file, 'utf8')).find((s) => s.id === `${key(file)}#${sec}`);
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    fs.writeFileSync(base, mainline ? mainline.text : '');
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `${norm(text)}\n`);
+  writeBaseMeta(dir, b);
+  return { wrote: path.relative(ROOT, target), base: path.relative(ROOT, base) };
+}
+
 function allSections() {
   return docFiles().flatMap((f) => sections(f));
 }
@@ -388,6 +474,7 @@ module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
   git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
+  set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRef, porcelainPaths, blobOf,
 };
 if (require.main !== module) return;
 
@@ -405,6 +492,15 @@ const commands = {
   stale: () => {
     const rows = stale();
     console.log(rows.length ? rows.map((r) => `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`).join('\n') : 'no section has been outgrown');
+  },
+  set: () => {
+    const [ref, from] = args;
+    let text = '';
+    try { text = from ? fs.readFileSync(from, 'utf8') : fs.readFileSync(0, 'utf8'); } catch (e) { console.log(`cannot read the new text: ${e.message}`); process.exit(1); }
+    const r = set(ref, text);
+    if (r.error) { console.log(r.error); process.exit(1); }
+    docsLog({ event: 'doc-set', ref, wrote: r.wrote, inPlace: Boolean(r.inPlace) });
+    console.log(r.inPlace ? `wrote ${ref} into ${r.wrote}` : `wrote ${r.wrote} (base kept at ${r.base}) - this branch only`);
   },
 };
 if (commands[cmd]) commands[cmd]();
