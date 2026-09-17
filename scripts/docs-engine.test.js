@@ -311,6 +311,96 @@ test('a branch that only caught up with mainline is never taken as merged', () =
   } finally { r.rm(); }
 });
 
+// The release shape this repo itself uses: work lands on develop, develop is merged into main. A branch that only
+// caught up sits on develop's tip - and that tip becomes the release merge's SECOND parent, which is exactly the
+// shape a merged branch has. Two variants: the tip is still develop's head, and develop has moved on past it.
+for (const moveOn of [false, true]) {
+  test(`a branch that only caught up is never promoted when a second mainline ref merges that mainline${moveOn ? ', develop moved on' : ''}`, () => {
+    const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+    try {
+      r.git('branch', 'main');
+      r.git('switch', '-qc', 'feat/behind');
+      assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Still being decided.')).status, 0);
+      r.git('switch', '-q', 'develop');
+      r.write('README.md', 'y\n'); r.git('commit', '-qam', 'develop moved');
+      r.git('switch', '-q', 'feat/behind');
+      r.git('merge', '-q', '--ff-only', 'develop');
+      r.git('switch', '-q', 'main');
+      r.git('merge', '-q', '--no-ff', '-m', 'release', 'develop');
+      if (moveOn) {
+        r.git('switch', '-q', 'develop');
+        r.write('README.md', 'z\n'); r.git('commit', '-qam', 'develop moved on');
+        r.git('switch', '-q', 'main');
+      }
+      assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+      assert.ok(r.exists('.claude/docs/.branches/feat-behind'), 'the in-progress overlay survives');
+      assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /ledgered before the payment call/);
+      assert.match(r.cli(['status']).stdout, /branches sitting on mainline with no proof they merged: feat-behind/);
+    } finally { r.rm(); }
+  });
+}
+
+// The same release shape, with a branch that really did commit and land: the guard above must not cost this one.
+test('a branch merged into develop and released into main is still promoted there', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('branch', 'main');
+    r.git('switch', '-qc', 'feat/released');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.')).status, 0);
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap => 10; }\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'cap');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge feat/released', 'feat/released');
+    r.git('switch', '-q', 'main');
+    r.git('merge', '-q', '--no-ff', '-m', 'release', 'develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/released .*patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-released'));
+  } finally { r.rm(); }
+});
+
+// A snapshot is taken while the branch is still short of mainline and never rewritten afterwards: going back to a
+// merged branch for one more session used to re-measure it as 'no commits of its own' and strand its sections.
+test('a session on a branch after it merged leaves its snapshot alone', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/revisited');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int R; }\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'r');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Revisited rule.')).status, 0);
+    const before = r.read('.claude/docs/.branches/feat-revisited/BASE.json');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/revisited');
+    r.git('switch', '-q', 'feat/revisited');
+    r.hook({ hook_event_name: 'SessionStart', session_id: 'revisit-1' });
+    assert.strictEqual(r.read('.claude/docs/.branches/feat-revisited/BASE.json'), before, 'the merged branch keeps its snapshot');
+    assert.strictEqual(r.cli(['set', 'patterns#users'], '## users\n<!-- id: users -->\nAlso decided here.\n').status, 0);
+    assert.strictEqual(JSON.parse(r.read('.claude/docs/.branches/feat-revisited/BASE.json')).base, JSON.parse(before).base, 'and keeps it through a later set');
+    r.git('switch', '-q', 'develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/revisited \(ancestor\) patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Revisited rule\./);
+  } finally { r.rm(); }
+});
+
+// The other half of the same rule: a branch that only caught up must not have its snapshot re-measured either, or
+// its head would advance onto mainline while its base stayed put and the next promote would take it as merged.
+test('a set on a branch that only caught up does not make it promotable', () => {
+  const r = repo({ files: { 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/caught-up');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('First thought.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.write('README.md', 'y\n'); r.git('commit', '-qam', 'develop moved');
+    r.git('switch', '-q', 'feat/caught-up');
+    r.git('merge', '-q', '--ff-only', 'develop');
+    assert.strictEqual(r.cli(['set', 'patterns#users'], '## users\n<!-- id: users -->\nSecond thought.\n').status, 0);
+    r.git('switch', '-q', 'develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-caught-up'));
+    assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /Second thought/);
+  } finally { r.rm(); }
+});
+
 test('a branch cut from develop with no commits is never promoted when origin/HEAD is main', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   const remote = `${r.root}-remote`;

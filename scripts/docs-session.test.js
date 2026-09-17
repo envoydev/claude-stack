@@ -54,6 +54,46 @@ test('on mainline the start hook promotes a merged branch and says so', () => {
   } finally { r.rm(); }
 });
 
+// One log file, many sessions: without the id the rows of two sessions cannot be told apart.
+test('every log row carries the session it came from', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    const one = sid();
+    const two = sid();
+    r.git('switch', '-qc', 'feat/logged');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n'); r.git('commit', '-qam', 'cap');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are capped at 10.\n');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/logged');
+    r.hook({ hook_event_name: 'SessionStart', session_id: one });
+    r.hook({ hook_event_name: 'PreToolUse', session_id: two, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Orders/Refund.cs' } });
+    const all = r.read('.claude/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
+    // `doc-set` rows come from the docs.js CLI, which is a plain command and has no session to name.
+    const rows = all.filter((x) => x.event !== 'doc-set');
+    assert.ok(rows.length >= 2, 'both sessions logged');
+    assert.ok(rows.every((x) => x.session), 'no hook row is missing its session');
+    assert.strictEqual(rows.find((x) => x.event === 'promote').session, one);
+    assert.ok(rows.some((x) => x.event === 'hold' && x.session === two), 'the second session is told apart');
+  } finally { r.rm(); }
+});
+
+// A branch sitting on mainline with nothing to prove it landed is the one case the engine cannot decide. It used to
+// be reported nowhere: the branch is alive, so it is not a deleted-unmerged row, and no promote ever picks it up.
+test('the start block names a live branch sitting on mainline with no proof it merged', () => {
+  const r = repo({ files: { 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    r.git('switch', '-qc', 'feat/behind');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nStill being decided.\n');
+    r.git('switch', '-q', 'develop');
+    r.write('README.md', 'y\n'); r.git('commit', '-qam', 'develop moved');
+    r.git('switch', '-q', 'feat/behind');
+    r.git('merge', '-q', '--ff-only', 'develop');
+    r.git('switch', '-q', 'develop');
+    assert.match(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })),
+      /Doc versions of branches sitting on mainline with no proof they merged: feat-behind/);
+  } finally { r.rm(); }
+});
+
 test('the start block names conflict markers and duplicate ids, and a detached HEAD', () => {
   const r = repo({ tracked: true, docs: { 'references/patterns.md': `${PATTERNS}\n<<<<<<< HEAD\nA.\n=======\nB.\n>>>>>>> feat\n`, 'ORIENTATION.md': ORIENT } });
   try {

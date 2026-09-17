@@ -24,7 +24,9 @@ const statePath = (s) => path.join(os.tmpdir(), `docs-session-${String(s || 'non
 const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
 const saveState = (s, v) => { try { fs.writeFileSync(statePath(s), JSON.stringify(v)); } catch {} };
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
-const log = (root, row) => { try { fs.appendFileSync(path.join(root, '.claude', 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`); } catch {} };
+// One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
+// tells them apart.
+const log = (root, input, row) => { try { fs.appendFileSync(path.join(root, '.claude', 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`); } catch {} };
 
 function orientation(root, docs) {
   let block = '';
@@ -41,13 +43,15 @@ function orientation(root, docs) {
 
 function sessionStart(input, root, docs, state) {
   if (!state.snapshot) { try { state.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, state); }
+  // Repair the branch snapshots BEFORE looking for merged branches, so a snapshot repaired here is promotable in
+  // this session and not only the next one.
+  try { docs.refreshBaseMeta(); } catch {}
   let promoted = [];
   try { promoted = docs.autoPromote(); } catch {}
   // A row with changed=false is a standing, already-reported conflict - skip it, or it would be re-logged and
   // re-announced at every session start.
   const landed = promoted.filter((p) => p.changed);
-  for (const p of landed) log(root, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
-  try { docs.refreshBaseMeta(); } catch {}
+  for (const p of landed) log(root, input, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
   if (process.env.CLAUDE_STACK_DOCS_BLOCK === '0') return;
   let st = null;
   try { st = docs.status(); } catch {}
@@ -66,6 +70,7 @@ function sessionStart(input, root, docs, state) {
   if (st && st.overrides.length) extra.push(`You are on branch ${st.branch}. ${st.overrides.length} doc section(s) hold this branch's own decisions and replace mainline's in every read: ${st.overrides.slice(0, 6).join(', ')}${st.overrides.length > 6 ? ` ... (\`${READ} status\`)` : ''}.`);
   if (st && st.conflicts.length) extra.push(`Conflicts: ${st.conflicts.join(', ')} - mainline changed lines this branch also changed; \`${READ} show <id> --conflict\` shows both, \`${READ} set <id>\` saves the reconciled text.`);
   if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${st.deletedUnmerged.join(', ')} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
+  if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${st.liveOnMainline.join(', ')} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
   if (st && st.outgrown) extra.push(`${st.outgrown} section(s) describe code that changed since they were written - each says so when opened, and the code wins there.`);
   if (process.env.CLAUDE_STACK_DOCS_GATE !== '0') {
     let roots = ['src', 'tests'];
@@ -170,7 +175,7 @@ function preToolUse(input, root, docs, state) {
   if (consults.length) {
     state.consults.push(...consults);
     saveState(input.session_id, state);
-    log(root, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
+    log(root, input, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
     return;
   }
   // Only these five tools can name a source target, so nothing else pays for the watch list.
@@ -187,10 +192,10 @@ function preToolUse(input, root, docs, state) {
   const allow = () => {
     state.edits++;
     saveState(input.session_id, state);
-    if (state.edits === 1) log(root, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
+    if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
   };
   if (process.env.CLAUDE_STACK_DOCS_GATE === '0' || state.consults.length) { allow(); return; }
-  if (state.holds >= MAX_HOLDS) { log(root, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
+  if (state.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
   state.holds++;
   saveState(input.session_id, state);
   let hits = [];
@@ -203,7 +208,7 @@ function preToolUse(input, root, docs, state) {
     const body = first.text.length > INLINE_CHARS ? `${first.text.slice(0, INLINE_CHARS)}\n... (${first.text.length - INLINE_CHARS} more chars: \`${READ} show ${first.id}\`)` : first.text;
     state.consults.push(first.id);
     saveState(input.session_id, state);
-    log(root, { event: 'consult', refs: [first.id], tool: 'gate-inline' });
+    log(root, input, { event: 'consult', refs: [first.id], tool: 'gate-inline' });
     reason = [
       `Architecture docs not read yet in this session. ${first.id} covers ${targets[0]} - here it is:`,
       '', body, '',
@@ -211,7 +216,7 @@ function preToolUse(input, root, docs, state) {
       'That is the convention this change follows. Now make the change.',
     ].join('\n');
   }
-  log(root, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id) });
+  log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id) });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
 }
@@ -231,7 +236,7 @@ function stop(input, root, docs, state) {
   const kinds = [...new Set(hits.map((h) => h.kind))];
   state.asked = true;
   saveState(input.session_id, state);
-  log(root, { event: 'ask-update', sections: ids, files: files.slice(0, 5), kinds });
+  log(root, input, { event: 'ask-update', sections: ids, files: files.slice(0, 5), kinds });
   let scope = 'It is written into the doc file itself.';
   try {
     const st = docs.status();

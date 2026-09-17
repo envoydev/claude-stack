@@ -514,20 +514,25 @@ const branchTip = (meta) => (meta && meta.branch ? branchTips().get(meta.branch)
 // What a branch holds, measured from one ref: its fork point (the nearest mainline merge-base), its tip, and the
 // files it committed since. Sound only while the branch has NOT reached mainline - once it has, the merge-base
 // collapses onto the tip and the fork point is no longer measurable, which is why the snapshot is kept at all.
-function metaFor(b, ref) {
-  const head = git(['rev-parse', ref]);
+function metaFor(b, ref, head = git(['rev-parse', ref])) {
   const merged = mainlineRefs().map((r) => git(['merge-base', ref, r])).filter(Boolean)
     .map((mb) => ({ mb, count: Number(git(['rev-list', '--count', `${mb}..${ref}`]) || 0) }));
   const base = merged.length ? merged.reduce((best, x) => (x.count < best.count ? x : best)).mb : head;
   return { branch: b, base, head, files: branchFiles(base, ref), updated: new Date().toISOString() };
 }
+// ONE rule decides every write: a snapshot is only ever taken while the branch is still short of mainline. Once its
+// tip has reached mainline nothing here is measurable any more - the merge-base has collapsed onto the tip, so a
+// rewrite would say 'no commits of its own' about a branch that landed (stranding its sections forever) and 'own
+// commits' about one that only caught up (promoting sections still being written). The existing snapshot, taken
+// while both were still knowable, is kept whole: base, head and files.
 function writeBaseMeta(dir, b, ref = 'HEAD') {
-  fs.writeFileSync(path.join(dir, 'BASE.json'), `${JSON.stringify(metaFor(b, ref), null, 2)}\n`);
+  const head = git(['rev-parse', ref]);
+  if (head && inMainline(head) && readMetaAt(dir)) return;
+  fs.writeFileSync(path.join(dir, 'BASE.json'), `${JSON.stringify(metaFor(b, ref, head), null, 2)}\n`);
 }
 // Every live overlay is refreshed here, not just this branch's: a branch is only checked out again when someone works
 // on it, so a branch that committed after its sections were written would otherwise carry a snapshot from before
-// those commits until it is deleted. A tip already in mainline is left alone - its snapshot is the last thing that
-// can still say what was the branch's own work.
+// those commits until it is deleted.
 function refreshBaseMeta() {
   const dir = overlayDir();
   if (dir && fs.existsSync(dir)) writeBaseMeta(dir, branch());
@@ -541,9 +546,10 @@ function refreshBaseMeta() {
     writeBaseMeta(path.join(BRANCHES, name), meta.branch, tip);
   }
 }
-function readMeta(name) {
-  try { return JSON.parse(fs.readFileSync(path.join(BRANCHES, name, 'BASE.json'), 'utf8')); } catch { return null; }
+function readMetaAt(dir) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'BASE.json'), 'utf8')); } catch { return null; }
 }
+const readMeta = (name) => readMetaAt(path.join(BRANCHES, name));
 
 const overlayParts = (file, id) => [...relKey(file).split('/'), `${id}.md`];
 
@@ -677,11 +683,15 @@ const overrideFiles = (dir) => walkFiles(dir).filter((f) => {
 });
 
 // Direct proof that a branch was merged: a commit in mainline's history names the branch's tip as a parent other
-// than its first, so a merge commit brought it in. This is the one route a stale snapshot cannot break, and it never
-// mistakes a branch that merely caught UP with mainline for merged work - catching up moves the tip onto mainline's
-// first-parent chain, where nothing ever holds it as a second parent.
+// than its first, so a merge commit brought it in.
 const mergedInto = (tip) => (git(['rev-list', '--parents', '--ancestry-path', '--merges', `${tip}..HEAD`]) || '')
   .split('\n').filter(Boolean).some((row) => row.split(' ').slice(2).includes(tip));
+// The proof above is not enough on its own. A branch that only caught UP with mainline sits on a mainline commit,
+// and that commit becomes somebody's SECOND parent the moment another mainline ref merges the branch it sits on
+// (develop released into main, the shape this repo itself uses) - so the merge commit would name a branch that
+// committed nothing. A commit on a mainline ref's own first-parent chain is mainline's work, never a branch's.
+const onMainlineFirstParent = (sha, base) => mainlineRefs()
+  .some((ref) => (git(['rev-list', '--first-parent', `${base}..${ref}`]) || '').split('\n').includes(sha));
 
 // A branch landed when its last recorded commit is part of HEAD - provided it had commits of its own - or when every
 // file it changed now holds, at HEAD, the content the branch gave it (a squash or a rebase leaves no ancestor), or
@@ -706,10 +716,10 @@ function mergedBranches() {
       ? git(['cat-file', '-e', `HEAD:${f}`]) === null
       : (git(['rev-parse', `HEAD:${f}`]) || '').startsWith(blob)));
     // Only a snapshot the ref has outgrown needs this route: when the two agree, the ancestor check above already
-    // asked about that same commit. The tip is compared against the RECORDED fork point, so a branch with no commits
-    // of its own - which sits on that very commit - is never promoted however mainline's merges are shaped.
+    // asked about that same commit. Everything else here keeps a branch that committed nothing of its own out of
+    // it: the tip must have left the RECORDED fork point, and it must not be a commit mainline itself made.
     const byMerge = !ancestor && !landed && Boolean(tip) && tip !== stored.head && tip !== meta.base
-      && isAncestor(tip, 'HEAD') && mergedInto(tip);
+      && isAncestor(tip, 'HEAD') && !onMainlineFirstParent(tip, meta.base) && mergedInto(tip);
     if (ancestor || landed || byMerge) out.push({ name, branch: meta.branch || name, how: ancestor ? 'ancestor' : landed ? 'blobs' : 'merge' });
   }
   return out;
@@ -785,12 +795,25 @@ function autoPromote() {
   return mergedBranches().map((m) => ({ branch: m.branch, how: m.how, ...promote(m.name) }));
 }
 
-function deletedUnmerged() {
-  if (!hasGit() || tracked()) return [];
+// The overlays no promote will ever pick up by itself, in one pass over the branches (mergedBranches is the
+// expensive part and is asked once):
+//   deleted   - the branch is gone and nothing proved it merged; only the user knows which it was.
+//   onMainline - the branch is alive and its tip already sits in mainline with no proof it landed. A branch that
+//     merely caught up looks exactly like one whose sections were written before its first commit and was then
+//     fast-forwarded in, so the engine cannot choose - but saying nothing leaves the second kind stranded in silence.
+function unpromotable() {
+  if (!hasGit() || tracked()) return { deleted: [], onMainline: [] };
   const live = liveBranches();
+  const current = safe(branch() || '');
   const merged = new Set(mergedBranches().map((m) => m.name));
-  return overlayNames().filter((n) => !live.has(n) && !merged.has(n));
+  const rest = overlayNames().filter((n) => n !== current && !merged.has(n));
+  // Only a session ON mainline can act on the second list, and only there is HEAD the ref to ask - which is also
+  // the question mergedBranches just asked about most of these tips, so the answer is usually already paid for.
+  const here = !isMainline(branch()) ? [] : rest.filter((n) => live.has(n))
+    .filter((n) => { const t = branchTip(readMeta(n)); return Boolean(t) && isAncestor(t, 'HEAD'); });
+  return { deleted: rest.filter((n) => !live.has(n)), onMainline: here };
 }
+const deletedUnmerged = () => unpromotable().deleted;
 
 // The newest mtime of any file under a directory - a fallback clock for an overlay whose BASE.json cannot
 // say when it was last touched (missing, unreadable, or written before 'updated' existed).
@@ -837,6 +860,7 @@ function status() {
   const b = branch();
   const gitRepo = hasGit();
   const view = overlayDir() ? docFiles().flatMap((f) => sections(f).filter((s) => s.overrideOf)) : [];
+  const stuck = unpromotable();
   return {
     mode: !gitRepo ? 'no git (docs written in place)' : tracked() ? 'git (docs are committed - git versions them per branch)' : 'overlay (docs are ignored by git - branch versions live in .branches/)',
     branch: b || (gitRepo && git(['rev-parse', 'HEAD']) ? 'detached HEAD' : 'no branch'),
@@ -846,7 +870,8 @@ function status() {
     conflicts: view.filter((s) => s.conflict).map((s) => s.id),
     orphans: view.filter((s) => s.orphan).map((s) => s.id),
     outgrown: stale().length,
-    deletedUnmerged: deletedUnmerged(),
+    deletedUnmerged: stuck.deleted,
+    liveOnMainline: stuck.onMainline,
     shallow: gitRepo && isShallow(),
     legacyDelta: fs.existsSync(path.join(DOCS, 'BRANCH-DELTA.md')),
   };
@@ -1060,6 +1085,7 @@ const commands = {
       ...(s.orphans.length ? [`orphaned (mainline removed the section): ${s.orphans.join(', ')}`] : []),
       `outgrown sections: ${s.outgrown}`,
       ...(s.deletedUnmerged.length ? [`deleted branches never detected as merged: ${s.deletedUnmerged.join(', ')}`] : []),
+      ...(s.liveOnMainline && s.liveOnMainline.length ? [`branches sitting on mainline with no proof they merged: ${s.liveOnMainline.join(', ')} - if one landed, 'promote <branch>' folds it in; one that only caught up needs nothing`] : []),
       ...(s.shallow ? ['shallow clone: merged branches cannot be detected'] : []),
       ...(s.legacyDelta ? ['BRANCH-DELTA.md from an older capture: nothing reads it any more - a capture on that branch folds its decisions into sections; it is never deleted for you'] : []),
     ].join('\n'));
