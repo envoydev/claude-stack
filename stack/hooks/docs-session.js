@@ -90,11 +90,134 @@ function main() {
   if (event === 'Stop') return stop(input, root, docs, state);
 }
 
-// Task 7 and Task 8 replace these two.
-function preToolUse() {}
+// What the tool is about to touch, project-relative.
+function toolPaths(input, root) {
+  const t = input.tool_input || {};
+  const out = [];
+  for (const p of [t.file_path, t.path, t.relative_path, t.notebook_path]) if (typeof p === 'string' && p) out.push(p);
+  if (typeof t.command === 'string') {
+    for (const w of t.command.split(/[\s;|&<>()'"`]+/)) {
+      if (/[\w.-]\/[\w.-]/.test(w)) out.push(w.replace(/^[^\w./~-]+|[,:]+$/g, '').replace(/:\d+(:\d+)?$/, ''));
+    }
+  }
+  return [...new Set(out.map((p) => path.relative(root, path.resolve(root, p))).filter((p) => p && !p.startsWith('..')))];
+}
+
+// The paths a shell command WRITES, not every path it mentions: redirect targets (never /dev/null or a file
+// descriptor), tee arguments, files edited in place by sed/perl, cp/mv destinations, rm/mkdir/touch arguments, and the
+// project a migration or a patch lands in. `grep -n X src/... 2>/dev/null` writes nothing, and neither does
+// `dotnet test tests/Api > run.log`. A write whose target cannot be named counts as a write under the first source root.
+const UNKNOWN_SOURCE_WRITE = '<unknown source write>';
+function writeTargets(command) {
+  let c = String(command);
+  // A heredoc body is content, not shell: `x => y` inside it is no redirect.
+  c = c.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, (m) => m.split('\n')[0]);
+  // Quoted text is an argument, not syntax - kept only as a redirect target.
+  c = c.replace(/(>>?\s*)?(["'])((?:(?!\2)[^\\]|\\.)*)\2/g, (m, redirect, q, body) => (redirect ? `${redirect}${body.replace(/\s/g, '_')}` : 'QUOTED'));
+  const out = [];
+  for (const m of c.matchAll(/(?:^|[^\w&<>=-])(?:\d|&)?>>?\|?\s*([^\s;|&<>()]+)/g)) if (m[1] !== '/dev/null' && !/^&/.test(m[1])) out.push(m[1]);
+  for (const simple of c.split(/&&|\|\||[;|\n]/)) {
+    const words = simple.trim().split(/\s+/).filter(Boolean);
+    while (words.length && (/^\w+=/.test(words[0]) || /^(sudo|env|nohup|time|command|xargs)$/.test(words[0]))) words.shift();
+    const [cmd, ...rest] = words;
+    const args = rest.filter((w) => !w.startsWith('-') && !/^\d?>|^</.test(w));
+    if (!cmd) continue;
+    if (cmd === 'tee') out.push(...args);
+    else if (cmd === 'sed' && rest.some((w) => /^-[a-zA-Z]*i/.test(w) || w === '--in-place')) out.push(...args.filter((w) => w !== 'QUOTED' && !/^s\W/.test(w)));
+    else if (cmd === 'perl' && rest.some((w) => /^-[a-zA-Z]*i/.test(w))) out.push(...args.filter((w) => w !== 'QUOTED'));
+    else if (/^(cp|mv|install|ln|rsync)$/.test(cmd)) { const t = rest.indexOf('-t'); out.push(t >= 0 && rest[t + 1] ? rest[t + 1] : args[args.length - 1]); }
+    else if (/^(rm|rmdir|mkdir|touch|truncate)$/.test(cmd)) out.push(...args);
+    else if (cmd === 'chmod') out.push(...args.slice(1));
+    else if (cmd === 'dd') out.push(...rest.filter((w) => w.startsWith('of=')).map((w) => w.slice(3)));
+    else if (cmd === 'dotnet' && rest[0] === 'new') { const o = rest.findIndex((w) => w === '-o' || w === '--output'); out.push(o >= 0 && rest[o + 1] ? rest[o + 1] : UNKNOWN_SOURCE_WRITE); }
+    else if (cmd === 'dotnet' && rest[0] === 'ef' && rest[1] === 'migrations' && /^(add|remove)$/.test(rest[2] || '')) { const o = rest.findIndex((w) => w === '-p' || w === '--project'); out.push(o >= 0 && rest[o + 1] ? rest[o + 1] : UNKNOWN_SOURCE_WRITE); }
+    else if (cmd === 'git' && rest[0] === 'apply') out.push(UNKNOWN_SOURCE_WRITE);
+    else if (cmd === 'git' && (rest[0] === 'restore' || (rest[0] === 'checkout' && rest.includes('--')))) out.push(...rest.slice(rest.includes('--') ? rest.indexOf('--') + 1 : 1).filter((w) => !w.startsWith('-')));
+  }
+  return [...new Set(out.filter((t) => t && t !== 'QUOTED'))];
+}
+const relative = (root, paths) => [...new Set(paths.map((p) => path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, '')))).filter((p) => p && !p.startsWith('..')))];
+
+// Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
+function consultedBy(input, paths, docsRel) {
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const command = typeof t.command === 'string' ? t.command : '';
+  if (/docs\.js[ \t]+show[ \t]/.test(command)) {
+    return (command.match(/docs\.js[ \t]+show[ \t]+[\w#.\/-]+(?:[ \t]+[\w#.\/-]+)*/g) || [])
+      .flatMap((r) => r.split(/[ \t]+/).slice(2))
+      .filter((r) => !r.startsWith('-') && /^[A-Za-z][\w.\/-]*(#[\w-]+)?$/.test(r));
+  }
+  if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
+  const isDoc = (p) => p === docsRel || p.startsWith(`${docsRel}/`);
+  const hits = paths.filter(isDoc);
+  if (hits.length && (/^(Read|Grep|Glob)$/.test(name) || (name === 'Bash' && !writeTargets(command).length))) return hits;
+  return [];
+}
+
+function blockRow(root, input, reason) {
+  try {
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${input.session_id || 'nosession'}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
+  } catch {}
+}
+
+function preToolUse(input, root, docs, state) {
+  const paths = toolPaths(input, root);
+  const docsRel = path.relative(root, docs.DOCS).split(path.sep).join('/');
+  const consults = consultedBy(input, paths, docsRel);
+  if (consults.length) {
+    state.consults.push(...consults);
+    saveState(input.session_id, state);
+    log(root, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
+    return;
+  }
+  let roots = ['src', 'tests'];
+  try { roots = docs.loadWatch().sourceRoots; } catch {}
+  const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
+  const name = input.tool_name || '';
+  const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
+  let targets = [];
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) targets = paths.filter(inRoots);
+  else if (name === 'Bash') targets = relative(root, writeTargets(command).map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x))).filter(inRoots);
+  if (!targets.length) return;
+  const allow = () => {
+    state.edits++;
+    saveState(input.session_id, state);
+    if (state.edits === 1) log(root, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
+  };
+  if (process.env.CLAUDE_STACK_DOCS_GATE === '0' || state.consults.length) { allow(); return; }
+  if (state.holds >= MAX_HOLDS) { log(root, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
+  state.holds++;
+  saveState(input.session_id, state);
+  let hits = [];
+  try { hits = docs.where(targets, 3); } catch {}
+  let reason;
+  if (!hits.length) {
+    reason = `Architecture docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
+  } else {
+    const [first, ...rest] = hits;
+    const body = first.text.length > INLINE_CHARS ? `${first.text.slice(0, INLINE_CHARS)}\n... (${first.text.length - INLINE_CHARS} more chars: \`${READ} show ${first.id}\`)` : first.text;
+    state.consults.push(first.id);
+    saveState(input.session_id, state);
+    log(root, { event: 'consult', refs: [first.id], tool: 'gate-inline' });
+    reason = [
+      `Architecture docs not read yet in this session. ${first.id} covers ${targets[0]} - here it is:`,
+      '', body, '',
+      ...(rest.length ? [`Also covering it: ${rest.map((h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`).join(', ')}`, ''] : []),
+      'That is the convention this change follows. Now make the change.',
+    ].join('\n');
+  }
+  log(root, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id) });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+}
+
+// Task 8 replaces this.
 function stop() {}
 
-module.exports = {};
+module.exports = { writeTargets, consultedBy, toolPaths };
 if (require.main === module) {
   try { main(); } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

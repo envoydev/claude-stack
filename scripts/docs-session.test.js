@@ -84,3 +84,108 @@ test('no docs folder, garbage stdin, unknown event: silent and exit 0', () => {
     assert.strictEqual(r.hook({ hook_event_name: 'Notification', session_id: sid() }).stdout, '');
   } finally { r.rm(); }
 });
+
+const pre = (tool, input, session) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input });
+const denied = (out) => /"permissionDecision":"deny"/.test(out.stdout);
+
+test('the first source change is held and handed the covering section; a show unlocks it', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const held = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
+    assert.ok(denied(held));
+    assert.match(held.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/);
+    assert.match(held.stdout, /ledgered before the payment call/);
+    assert.match(r.read('.claude/docs/hook-blocks/' + s + '.jsonl'), /"hook":"docs-session\.js"/);
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s))), 'the handed-over section counts as read');
+    const s2 = sid();
+    r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders 2>&1' }, s2));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))));
+  } finally { r.rm(); }
+});
+
+test('where, toc and status do not unlock; a Read of a doc file does', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js where src/Api/Orders' }, s));
+    r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js toc patterns' }, s));
+    assert.ok(denied(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, s))));
+    const s2 = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/architecture/references/patterns.md` }, s2));
+    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, s2))));
+  } finally { r.rm(); }
+});
+
+test('no covering section: two holds pointing at the doc list, then the change goes through and a bypass is logged', () => {
+  const r = repo({ files: { 'tests/Zeta/Quux.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const edit = pre('Edit', { file_path: 'tests/Zeta/Quux.cs' }, s);
+    assert.match(r.hook(edit).stdout, /see what is documented: node \.claude\/hooks\/docs\.js files/);
+    assert.ok(denied(r.hook(edit)));
+    assert.ok(!denied(r.hook(edit)));
+    assert.match(r.read('.claude/docs-log.jsonl'), /"event":"bypass"/);
+  } finally { r.rm(); }
+});
+
+test('shell reads are never held; shell writes are', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -n Refund src/Api/Orders/Refund.cs 2>/dev/null' }, s))));
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'dotnet test tests/Api > run.log 2>&1' }, s))));
+    assert.ok(denied(r.hook(pre('Bash', { command: "cat > src/Api/Orders/Refund.cs <<'EOF'\nclass Refund {}\nEOF" }, s))));
+  } finally { r.rm(); }
+});
+
+test('source roots come from watch.json; CLAUDE_STACK_DOCS_GATE=0 turns the gate off', () => {
+  const r = repo({ files: { 'app/Orders/Refund.cs': 'x\n', 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'app/Orders/**', 'App rule.'), 'watch.json': JSON.stringify({ sourceRoots: ['app'] }) } });
+  try {
+    assert.ok(denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()))));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { CLAUDE_STACK_DOCS_GATE: '0' })));
+  } finally { r.rm(); }
+});
+
+test('writeTargets: the paths a shell command writes, from real runs', () => {
+  const { writeTargets } = require('../stack/hooks/docs-session.js');
+  const U = '<unknown source write>';
+  const cases = [
+    // reads that mention source paths - the live-run false positives
+    ['grep -n "CancelDeletionRequest" -A 15 src/Shop.Api/Features/Auth/CancelDeletion/*.cs 2>/dev/null; echo "---"; find src/Shop.Api/Features/Auth -iname "*CancelDeletion*"', []],
+    ['grep -rn "AddValidatorsFromAssembly\\|AbstractValidator" --include="*.cs" src/Shop.Api/Program.cs src/Shop.Api/Common 2>/dev/null | grep -v Features', []],
+    ['nohup dotnet test tests/Shop.IntegrationTests > shop-integration-full.log 2>&1 &', ['shop-integration-full.log']],
+    ['dotnet build Shop.slnx 2>&1 | tail -20', []],
+    ['cat src/Api/Orders/OrderRefunds.cs', []],
+    ['grep -n "x => x.Id > 0" src/Api/Orders/OrderRefunds.cs', []],
+    ['ls src/Api > /dev/null 2>&1', []],
+    ['find src -name "*.cs" 2>/dev/null | xargs grep -l Refund', []],
+    ['git diff src/Api/Orders/OrderRefunds.cs', []],
+    ['git checkout feat/x', []],
+    // writes
+    ['echo x > src/Api/Orders/OrderRefunds.cs', ['src/Api/Orders/OrderRefunds.cs']],
+    ['echo x >> src/Api/Orders/OrderRefunds.cs', ['src/Api/Orders/OrderRefunds.cs']],
+    ["cat > src/Api/Orders/New.cs <<'EOF'\nclass New { bool A(int x) => x > 0; }\nEOF", ['src/Api/Orders/New.cs']],
+    ['cat > "src/Api/Orders/Quoted.cs" <<EOF\nx\nEOF', ['src/Api/Orders/Quoted.cs']],
+    ["sed -i '' 's/a/b/' src/Api/Orders/OrderRefunds.cs", ['src/Api/Orders/OrderRefunds.cs']],
+    ['sed -i.bak -e "s/a/b/" src/A.cs src/B.cs', ['src/A.cs', 'src/B.cs']],
+    ['sed -n 1,20p src/Api/Orders/OrderRefunds.cs', []],
+    ['perl -pi -e "s/a/b/" tests/X.cs', ['tests/X.cs']],
+    ['cp /tmp/x.cs src/Api/Orders/Copy.cs', ['src/Api/Orders/Copy.cs']],
+    ['cp src/Api/Orders/OrderRefunds.cs /tmp/backup.cs', ['/tmp/backup.cs']],
+    ['mv src/a.cs src/b.cs', ['src/b.cs']],
+    ['rm -f src/Api/Orders/OrderQueries.cs tests/Old.cs', ['src/Api/Orders/OrderQueries.cs', 'tests/Old.cs']],
+    ['mkdir -p src/Api/Refunds', ['src/Api/Refunds']],
+    ['echo x | tee src/T.cs', ['src/T.cs']],
+    ['dotnet ef migrations add AddRefunds --project src/Shop.Infrastructure', ['src/Shop.Infrastructure']],
+    ['dotnet ef migrations add AddRefunds', [U]],
+    ['dotnet ef database update', []],
+    ['dotnet new classlib -o src/Shop.New', ['src/Shop.New']],
+    ['git apply fix.patch', [U]],
+    ['git checkout -- src/Api/Orders/OrderRefunds.cs', ['src/Api/Orders/OrderRefunds.cs']],
+    ['git restore src/A.cs', ['src/A.cs']],
+    ['cd src && echo x > A.cs', ['A.cs']],
+  ];
+  for (const [command, want] of cases) assert.deepStrictEqual(writeTargets(command).sort(), [...want].sort(), command);
+});
