@@ -4,7 +4,7 @@
 
 - **`<docs-path>/architecture/ARCHITECTURE.md`** - the structure map's required shape
 - **`<docs-path>/architecture/ASSESSMENT.md`** - the reasoned evaluation: the four-question findings gate, the count rule, the three buckets, the shape, the format budget
-- **Write protocol** (how step 5 lands the docs) - the stamp, the branch delta, diagrams and format, the folder, the budget check and the spill
+- **Write protocol** (how step 5 lands the docs) - the stamp, section format, ORIENTATION.md, watch.json, branches, diagrams and format, the folder, the budget check and the spill
 - **`.claude/rules/baseline-project-architecture.md`** - the awareness rule's template and byte budget
 
 ## <docs-path>/architecture/ARCHITECTURE.md - the structure map

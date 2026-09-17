@@ -7,8 +7,7 @@ are exempt), so the receipts must survive that cap rather than be re-answered aw
 
 ## The confirmation block
 
-- **Files written** - created vs refreshed, sections touched; the awareness rule created/refreshed; a branch
-  delta vs a main-doc refresh, per the stamp.
+- **Files written** - created vs refreshed, sections touched; the awareness rule created/refreshed.
 - **Gather rounds** - rounds used and whether the picture settled within the 3-round cap.
 - **Structure headline** - one line: project type + architecture style.
 - **Assessment shape** - the per-bucket counts, the Must-fix tier tally, the top few highest-leverage fixes the
