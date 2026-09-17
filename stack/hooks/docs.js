@@ -515,8 +515,35 @@ function writeInPlace(file, sec, text) {
   return { wrote: path.relative(ROOT, file), inPlace: true, added: !own };
 }
 
+// Parent and child overrides never coexist: a section already served from an ancestor's override lands inside
+// that ancestor's file instead of a file of its own, and setting a parent absorbs (and drops) any override of
+// its own descendants - one override file per nested block, so every reader sees exactly one.
 function writeOverride(file, sec, text, b) {
   const dir = path.join(BRANCHES, safe(b));
+  const current = sections(file);
+  const hit = current.find((s) => s.id === `${key(file)}#${sec}`);
+  if (hit && hit.overrideOf && hit.overrideOf !== sec) {
+    const ancestor = current.find((s) => sectionId(s) === hit.overrideOf);
+    const spliced = spliceSection(ancestor.text.split('\n'), { start: hit.start - ancestor.start, end: hit.end - ancestor.start }, text);
+    const target = path.join(dir, ...overlayParts(file, hit.overrideOf));
+    const base = path.join(dir, '.base', ...overlayParts(file, hit.overrideOf));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${norm(spliced.join('\n'))}\n`);
+    writeBaseMeta(dir, b);
+    return { wrote: path.relative(ROOT, target), base: path.relative(ROOT, base), into: hit.overrideOf };
+  }
+  const mainlineForDrop = parse(file, fs.readFileSync(file, 'utf8'));
+  const dropParent = mainlineForDrop.find((s) => s.id === `${key(file)}#${sec}`);
+  if (dropParent) {
+    for (const [id, opath] of sectionOverrides(file, dir)) {
+      if (id === sec) continue;
+      const descMain = mainlineForDrop.find((s) => sectionId(s) === id);
+      if (descMain && descMain.start > dropParent.start && descMain.end <= dropParent.end) {
+        fs.rmSync(opath, { force: true });
+        fs.rmSync(path.join(dir, '.base', ...overlayParts(file, id)), { force: true });
+      }
+    }
+  }
   const target = path.join(dir, ...overlayParts(file, sec));
   const base = path.join(dir, '.base', ...overlayParts(file, sec));
   if (!fs.existsSync(base)) {

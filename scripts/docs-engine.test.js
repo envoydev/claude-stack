@@ -9,6 +9,9 @@ const { repo, section } = require('./docs-fixture');
 const PATTERNS = section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') + '\n'
   + section('users', 'src/Api/Users/**', 'Users are soft-deleted, never removed.');
 
+const NESTED = '## orders\n<!-- id: orders -->\nOrders rule.\n\n### paging\n<!-- id: paging -->\nTen rows.\n\n'
+  + '## users\n<!-- id: users -->\nUsers are soft-deleted, never removed.\n';
+
 test('show prints one section, several ids print each, toc lists ids', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
@@ -149,6 +152,35 @@ test('a stamp rewritten on both sides alone never conflicts', () => {
     r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nStable text.\n');
     r.git('switch', '-q', 'feat/x');
     assert.doesNotMatch(r.cli(['show', 'patterns#orders']).stdout, /CONFLICT/);
+  } finally { r.rm(); }
+});
+
+test("a child section set inside an overridden parent lands in the parent's override and reads back", () => {
+  const r = repo({ docs: { 'references/patterns.md': NESTED } });
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nOrders rule, branch.\n\n### paging\n<!-- id: paging -->\nTen rows.\n');
+    r.cli(['set', 'patterns#paging'], '### paging\n<!-- id: paging -->\nTwenty rows.\n');
+    assert.match(r.cli(['show', 'patterns#paging']).stdout, /Twenty rows\./);
+    const out = r.cli(['show', 'patterns#orders']).stdout;
+    assert.match(out, /Orders rule, branch\./);
+    assert.match(out, /Twenty rows\./);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-x/references/patterns/paging.md'), 'no separate child override file');
+    assert.ok(r.exists('.claude/docs/.branches/feat-x/references/patterns/orders.md'), 'the parent override still exists');
+  } finally { r.rm(); }
+});
+
+test('setting a parent drops a nested child override its text now carries', () => {
+  const r = repo({ docs: { 'references/patterns.md': NESTED } });
+  try {
+    r.git('switch', '-qc', 'feat/y');
+    r.cli(['set', 'patterns#paging'], '### paging\n<!-- id: paging -->\nTwelve rows.\n');
+    assert.ok(r.exists('.claude/docs/.branches/feat-y/references/patterns/paging.md'));
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nParent rewritten.\n\n### paging\n<!-- id: paging -->\nTwelve rows.\n');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-y/references/patterns/paging.md'), 'the child override is dropped');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-y/.base/references/patterns/paging.md'), 'its base twin is dropped too');
+    assert.match(r.cli(['show', 'patterns#paging']).stdout, /Twelve rows\./);
+    assert.match(r.cli(['show', 'patterns#orders']).stdout, /Parent rewritten\./);
   } finally { r.rm(); }
 });
 
