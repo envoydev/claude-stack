@@ -483,3 +483,63 @@ test('status: mode, branch, overrides and conflicts; a shallow clone skips promo
     fs.rmSync(clone, { recursive: true, force: true });
   } finally { r.rm(); }
 });
+
+test('lint: duplicate id, missing id, conflict markers, size at 6000 passes and 6001 fails', () => {
+  const body = (n) => 'x'.repeat(n);
+  const head = '## big\n<!-- id: big -->\n';
+  const r = repo({ docs: {
+    'references/a.md': `${head}${body(6000 - head.length)}\n\n## dup\n<!-- id: same -->\nOne.\n\n## dup two\n<!-- id: same -->\nTwo.\n\n## no id here\nText.\n`,
+    'references/b.md': `## over\n<!-- id: over -->\n${body(6001 - '## over\n<!-- id: over -->\n'.length)}\n`,
+    'references/c.md': '## merged\n<!-- id: merged -->\n<<<<<<< mainline\nx\n=======\ny\n>>>>>>> feat\n',
+  } });
+  try {
+    const out = r.cli(['lint']);
+    assert.strictEqual(out.status, 1);
+    assert.doesNotMatch(out.stdout, /oversized section \(\d+ chars, cap 6000\): a#big/, '6000 passes');
+    assert.match(out.stdout, /oversized section \(6001 chars, cap 6000\): b#over/);
+    assert.match(out.stdout, /duplicate id a#same/);
+    assert.match(out.stdout, /section without an id: references\/a 'no id here'/);
+    assert.match(out.stdout, /merge conflict markers in references\/c/);
+  } finally { r.rm(); }
+});
+
+test('lint: ORIENTATION.md at 4096 bytes passes, 4097 fails; watch.json problems are reported', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': 'o'.repeat(4096) } });
+  try {
+    assert.doesNotMatch(r.cli(['lint']).stdout, /ORIENTATION\.md is/);
+    r.write('.claude/docs/architecture/ORIENTATION.md', 'o'.repeat(4097));
+    assert.match(r.cli(['lint']).stdout, /ORIENTATION\.md is 4097 bytes, cap 4096/);
+    r.write('.claude/docs/architecture/watch.json', '{ not json');
+    assert.match(r.cli(['lint']).stdout, /watch\.json is not valid JSON/);
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ watch: [{ kind: 'root', globs: ['src/*/Program.cs'], sections: ['patterns#nope'] }] }));
+    assert.match(r.cli(['lint']).stdout, /watch\.json 'root' names a section that does not exist: patterns#nope/);
+  } finally { r.rm(); }
+});
+
+test('seed-ids adds missing ids once; a second run changes nothing; duplicate headings get distinct ids', () => {
+  const r = repo({ docs: { 'references/p.md': '## Orders\nA.\n\n## Orders\nB.\n\n## Users\n<!-- id: users -->\nC.\n' } });
+  try {
+    assert.match(r.cli(['seed-ids']).stdout, /^2 ids added/);
+    const once = r.read('.claude/docs/architecture/references/p.md');
+    assert.match(once, /<!-- id: orders -->[\s\S]*<!-- id: orders-2 -->/);
+    assert.match(r.cli(['seed-ids']).stdout, /^0 ids added/);
+    assert.strictEqual(r.read('.claude/docs/architecture/references/p.md'), once);
+  } finally { r.rm(); }
+});
+
+test('watch: globs and new module folders map to their sections; missing or malformed watch.json hits nothing', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    assert.match(r.cli(['watch', 'src/Api/Program.cs']).stdout, /no watch\.json/);
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }],
+      newModule: { globs: ['src/*/Features/*/'], sections: ['patterns#users'] },
+    }));
+    const hit = r.cli(['watch', 'src/Api/Program.cs', 'src/Api/Orders/Refund.cs']).stdout;
+    assert.match(hit, /composition root: src\/Api\/Program\.cs -> patterns#orders/);
+    assert.doesNotMatch(hit, /Refund/);
+    assert.match(r.cli(['watch', '--dir', 'src/Api/Features/Billing']).stdout, /new module: src\/Api\/Features\/Billing\/ -> patterns#users/);
+    r.write('.claude/docs/architecture/watch.json', '[]');
+    assert.match(r.cli(['watch', 'src/Api/Program.cs']).stdout, /nothing hit/);
+  } finally { r.rm(); }
+});

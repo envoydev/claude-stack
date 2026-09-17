@@ -778,6 +778,146 @@ function status() {
   };
 }
 
+function lint() {
+  const problems = [];
+  const notes = [];
+  for (const f of docFiles()) {
+    const raw = fs.readFileSync(f, 'utf8');
+    if (/^(<{7}|>{7})( |$)/m.test(raw)) problems.push(`merge conflict markers in ${relKey(f)} - resolve them before any reader trusts this file`);
+    const hist = isHistory(f);
+    const seen = new Map();
+    const secs = parse(f, raw);
+    for (const s of secs) {
+      if (!s.declaredId) problems.push(`section without an id: ${relKey(f)} '${s.heading}' - run docs.js seed-ids`);
+      else if (seen.has(s.declaredId)) problems.push(`duplicate id ${key(f)}#${s.declaredId} (lines ${seen.get(s.declaredId) + 1} and ${s.start + 1})`);
+      else seen.set(s.declaredId, s.start);
+      if (!hist && s.ownChars > MAX_SECTION_CHARS) problems.push(`oversized section (${s.ownChars} chars, cap ${MAX_SECTION_CHARS}): ${key(f)}#${s.declaredId || slug(s.heading)} - split it`);
+    }
+    if (!hist && secs.length && !secs.some((s) => s.covers.length)) notes.push(`no section declares covers: ${relKey(f)}`);
+  }
+  if (fs.existsSync(BLOCK_FILE)) {
+    const bytes = fs.statSync(BLOCK_FILE).size;
+    if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
+    for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
+  } else notes.push('no ORIENTATION.md: sessions start with no map');
+  const w = loadWatch();
+  problems.push(...w.problems);
+  const ids = new Set(allSections().map((s) => s.id));
+  for (const e of [...w.watch, ...(w.newModule ? [{ kind: 'newModule', sections: w.newModule.sections }] : [])]) {
+    for (const id of e.sections) if (!ids.has(id)) problems.push(`watch.json '${e.kind}' names a section that does not exist: ${id}`);
+  }
+  if (overlayDir()) {
+    const st = status();
+    for (const id of st.conflicts) problems.push(`this branch's version of ${id} conflicts with mainline's newer text - docs.js show ${id} --conflict`);
+    for (const id of st.orphans) problems.push(`this branch overrides ${id}, which mainline removed`);
+  }
+  return { problems, notes };
+}
+
+function seedIds() {
+  let added = 0;
+  for (const f of docFiles()) {
+    const lines = fs.readFileSync(f, 'utf8').split('\n');
+    const used = new Set(parse(f, lines.join('\n')).map((s) => s.declaredId).filter(Boolean));
+    const out = [];
+    let fenced = false;
+    let here = 0;
+    for (let i = 0; i < lines.length; i++) {
+      out.push(lines[i]);
+      if (/^```/.test(lines[i])) fenced = !fenced;
+      if (fenced) continue;
+      const m = /^(#{2,4})\s+(.+?)\s*$/.exec(lines[i]);
+      if (!m || ID.test(metaUnder(lines, i))) continue;
+      const baseId = slug(m[2].replace(/[`*]/g, '')) || 'section';
+      let id = baseId;
+      for (let n = 2; used.has(id); n++) id = `${baseId}-${n}`;
+      used.add(id);
+      out.push(`<!-- id: ${id} -->`);
+      here++;
+    }
+    if (here) fs.writeFileSync(f, out.join('\n'));
+    added += here;
+  }
+  return added;
+}
+
+const WATCH_ROOTS = ['src', 'tests'];
+function loadWatch() {
+  const empty = { sourceRoots: WATCH_ROOTS, watch: [], newModule: null };
+  if (!fs.existsSync(WATCH_FILE)) return { ...empty, problems: [], missing: true };
+  let j;
+  try { j = JSON.parse(fs.readFileSync(WATCH_FILE, 'utf8')); } catch (e) { return { ...empty, problems: [`watch.json is not valid JSON: ${e.message}`] }; }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return { ...empty, problems: ['watch.json must be an object with sourceRoots, watch and newModule'] };
+  const problems = [];
+  const strings = (v, what) => {
+    if (v === undefined) return null;
+    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !x)) { problems.push(`watch.json ${what} must be a non-empty list of strings`); return null; }
+    return v;
+  };
+  const sourceRoots = (strings(j.sourceRoots, 'sourceRoots') || WATCH_ROOTS).map((r) => r.replace(/\/+$/, ''));
+  const watch = [];
+  if (j.watch !== undefined && !Array.isArray(j.watch)) problems.push('watch.json watch must be a list');
+  for (const [i, e] of (Array.isArray(j.watch) ? j.watch : []).entries()) {
+    const globs = strings(e && e.globs, `watch[${i}].globs`);
+    const secs = strings(e && e.sections, `watch[${i}].sections`);
+    if (globs && secs) watch.push({ kind: typeof e.kind === 'string' && e.kind ? e.kind : `watch[${i}]`, globs, sections: secs });
+  }
+  let newModule = null;
+  if (j.newModule !== undefined) {
+    const globs = strings(j.newModule && j.newModule.globs, 'newModule.globs');
+    const secs = strings(j.newModule && j.newModule.sections, 'newModule.sections');
+    if (globs && secs) newModule = { globs: globs.map((g) => (g.endsWith('/') ? g : `${g}/`)), sections: secs };
+  }
+  return { sourceRoots, watch, newModule, problems };
+}
+
+function watchHits(files, dirs = []) {
+  const w = loadWatch();
+  const hits = [];
+  for (const e of w.watch) {
+    const hit = files.filter((f) => matches(e.globs, f));
+    if (hit.length) hits.push({ kind: e.kind, files: hit, sections: e.sections });
+  }
+  if (w.newModule) {
+    const hit = dirs.map((d) => `${d.replace(/\/+$/, '')}/`).filter((d) => matches(w.newModule.globs, d));
+    if (hit.length) hits.push({ kind: 'new module', files: hit, sections: w.newModule.sections });
+  }
+  return hits;
+}
+
+// The tree as a session found it: HEAD, the blob of every file already dirty or untracked, and every folder that held
+// a file. changedSince() compares against it, so a change a script made counts as much as a tool write.
+function snapshot() {
+  const dirty = {};
+  for (const f of porcelainPaths()) dirty[f] = blobOf(f);
+  const dirs = new Set();
+  for (const f of (git(['ls-files', '-co', '--exclude-standard']) || '').split('\n').filter(Boolean)) {
+    const parts = f.split('/');
+    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
+  }
+  return { head: git(['rev-parse', 'HEAD']), dirty, dirs: [...dirs].slice(0, 20000) };
+}
+
+function changedSince(snap) {
+  const out = new Set();
+  if (!snap) return { files: [], dirs: [] };
+  if (snap.head) for (const f of (git(['diff', '--name-only', `${snap.head}..HEAD`]) || '').split('\n').filter(Boolean)) out.add(f);
+  const before = snap.dirty || {};
+  for (const f of porcelainPaths()) if (before[f] !== blobOf(f)) out.add(f);
+  for (const f of Object.keys(before)) if (!out.has(f) && before[f] !== blobOf(f)) out.add(f);
+  const known = new Set(snap.dirs || []);
+  const created = new Set();
+  for (const f of out) {
+    const parts = f.split('/');
+    for (let i = 1; i < parts.length; i++) {
+      const d = parts.slice(0, i).join('/');
+      if (!known.has(d) && fs.existsSync(path.join(ROOT, d))) created.add(d);
+    }
+  }
+  const docs = `${docsRel()}/`;
+  return { files: [...out].filter((f) => !f.startsWith(docs)), dirs: [...created].filter((d) => !`${d}/`.startsWith(docs)) };
+}
+
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
   git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
@@ -785,6 +925,7 @@ module.exports = {
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
+  lint, seedIds, loadWatch, watchHits, snapshot, changedSince,
 };
 if (require.main !== module) return;
 
@@ -848,6 +989,23 @@ const commands = {
       ...(s.shallow ? ['shallow clone: merged branches cannot be detected'] : []),
       ...(s.legacyDelta ? ['BRANCH-DELTA.md from an older capture: nothing reads it any more - a capture on that branch folds its decisions into sections; it is never deleted for you'] : []),
     ].join('\n'));
+  },
+  lint: () => {
+    const { problems, notes } = lint();
+    for (const p of problems) console.log(`PROBLEM ${p}`);
+    for (const n of notes) console.log(`note    ${n}`);
+    console.log(`${problems.length} problems, ${notes.length} notes`);
+    process.exit(problems.length ? 1 : 0);
+  },
+  'seed-ids': () => console.log(`${seedIds()} ids added`),
+  watch: () => {
+    const w = loadWatch();
+    if (w.missing) { console.log('no watch.json - run the architecture capture to write one'); return; }
+    const at = args.indexOf('--dir');
+    const dirs = at >= 0 ? args.slice(at + 1) : [];
+    const files = at >= 0 ? args.slice(0, at) : args;
+    const hits = watchHits(files, dirs);
+    console.log(hits.length ? hits.map((h) => `${h.kind}: ${h.files.join(', ')} -> ${h.sections.join(', ')}`).join('\n') : 'nothing hit');
   },
 };
 if (commands[cmd]) commands[cmd]();
