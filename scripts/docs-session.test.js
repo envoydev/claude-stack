@@ -50,7 +50,8 @@ test('on mainline the start hook promotes a merged branch and says so', () => {
     const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
     assert.match(text, /Branch feat\/cap was merged: 1 doc section\(s\) folded into mainline/);
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
-    assert.match(r.read('.claude/docs-log.jsonl'), /"event":"promote"/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"promote"/);
+    assert.ok(!r.exists('.claude/docs-log.jsonl'), 'the ledger lives under the docs root, beside hook-blocks');
   } finally { r.rm(); }
 });
 
@@ -67,7 +68,7 @@ test('every log row carries the session it came from', () => {
     r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/logged');
     r.hook({ hook_event_name: 'SessionStart', session_id: one });
     r.hook({ hook_event_name: 'PreToolUse', session_id: two, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Orders/Refund.cs' } });
-    const all = r.read('.claude/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
+    const all = r.read('.claude/docs/docs-log.jsonl').trim().split('\n').map((l) => JSON.parse(l));
     // `doc-set` rows come from the docs.js CLI, which is a plain command and has no session to name.
     const rows = all.filter((x) => x.event !== 'doc-set');
     assert.ok(rows.length >= 2, 'both sessions logged');
@@ -166,7 +167,7 @@ test('no covering section: two holds pointing at the doc list, then the change g
     assert.match(r.hook(edit).stdout, /see what is documented: node \.claude\/hooks\/docs\.js files/);
     assert.ok(denied(r.hook(edit)));
     assert.ok(!denied(r.hook(edit)));
-    assert.match(r.read('.claude/docs-log.jsonl'), /"event":"bypass"/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"bypass"/);
   } finally { r.rm(); }
 });
 
@@ -177,6 +178,27 @@ test('shell reads are never held; shell writes are', () => {
     assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -n Refund src/Api/Orders/Refund.cs 2>/dev/null' }, s))));
     assert.ok(!denied(r.hook(pre('Bash', { command: 'dotnet test tests/Api > run.log 2>&1' }, s))));
     assert.ok(denied(r.hook(pre('Bash', { command: "cat > src/Api/Orders/Refund.cs <<'EOF'\nclass Refund {}\nEOF" }, s))));
+  } finally { r.rm(); }
+});
+
+// Both installer twins wire this hook on `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`.
+// Judging only `Bash` left the gate open on every Windows session and earned a doc read no consult credit.
+test('PowerShell is the same shell route as Bash: its writes are held and its doc reads count', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    assert.ok(!denied(r.hook(pre('PowerShell', { command: 'Select-String -Pattern Refund -Path src/Api/Orders/Refund.cs' }, s))), 'a shell read is never held');
+    // The shared syntax is what writeTargets parses on either shell: redirection, and the rm/mv/cp/mkdir aliases
+    // PowerShell carries for its own Remove-Item / Move-Item / Copy-Item.
+    assert.ok(denied(r.hook(pre('PowerShell', { command: "'class Refund {}' > src/Api/Orders/Refund.cs" }, s))), 'a redirect write is held');
+    const sRm = sid();
+    assert.ok(denied(r.hook(pre('PowerShell', { command: 'rm src/Api/Orders/Refund.cs' }, sRm))), 'an alias write is held');
+    const s2 = sid();
+    r.hook(pre('PowerShell', { command: 'node .claude/hooks/docs.js show patterns#orders' }, s2));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))), 'a docs.js show through PowerShell unlocks the gate');
+    const s3 = sid();
+    r.hook(pre('PowerShell', { command: 'Get-Content .claude/docs/architecture/references/patterns.md' }, s3));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s3))), 'a doc file read through PowerShell earns consult credit');
   } finally { r.rm(); }
 });
 

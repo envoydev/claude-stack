@@ -300,9 +300,17 @@ function isMainline(b) {
   MAINLINE_CACHE.set(b, result);
   return result;
 }
+// safe() folds 'feature/login' and 'feature-login' onto ONE directory name, so two branches can land on one
+// overlay: the second would read the first's decisions as its own, overwrite them, and have them promoted under
+// its name. BASE.json records the branch the overlay was written for, and that record decides who owns it - a
+// branch that is not the owner reads mainline and is refused every write here.
+const overlayOwner = (dir) => { const m = readMetaAt(dir); return m && typeof m.branch === 'string' && m.branch ? m.branch : null; };
+const overlayClash = (dir, b) => { const owner = overlayOwner(dir); return Boolean(owner && owner !== b); };
 const overlayDir = () => {
   const b = branch();
-  return b && hasGit() && !tracked() && !isMainline(b) ? path.join(BRANCHES, safe(b)) : null;
+  if (!b || !hasGit() || tracked() || isMainline(b)) return null;
+  const dir = path.join(BRANCHES, safe(b));
+  return overlayClash(dir, b) ? null : dir;
 };
 
 function docFiles() {
@@ -461,6 +469,33 @@ const porcelainPaths = () => (git(['status', '--porcelain', '--untracked-files=a
     return (rest.includes(' -> ') ? rest.split(' -> ') : [rest]).map((p) => p.replace(/^"|"$/g, ''));
   }).slice(0, 2000);
 const blobOf = (f) => (fs.existsSync(path.join(ROOT, f)) ? (git(['hash-object', f]) || '').slice(0, 12) : '-');
+// One `git hash-object` per file is one PROCESS per file - 800 dirty files measured 4.5s for the snapshot alone,
+// and Stop pays changedSince at the END of every turn until a watch entry hits, so past roughly a thousand dirty
+// files the wired 10s timeout kills the hook and the end-of-session ask silently never fires. `--stdin-paths`
+// hashes the whole list in one process (the same 800 measured at 24ms). A path that is gone never reaches git:
+// ONE missing path fails the whole batch.
+function blobsOf(files) {
+  const out = new Map();
+  const live = [];
+  for (const f of files) {
+    if (out.has(f)) continue;
+    const there = fs.existsSync(path.join(ROOT, f));
+    out.set(f, there ? '' : '-');
+    if (there) live.push(f);
+  }
+  if (!live.length) return out;
+  // `--stdin-paths` reads one path per LINE, so a name holding a newline cannot be batched at all.
+  // `stdio` is spelled out: the helper's own 'ignore' on stdin would hand git an immediate EOF and it would hash
+  // nothing, silently falling back to one call per file (measured SLOWER than no batching at all).
+  const hashed = live.some((f) => /[\n\r]/.test(f)) ? null
+    : git(['hash-object', '--stdin-paths'], { raw: true, input: `${live.join('\n')}\n`, stdio: ['pipe', 'pipe', 'ignore'] });
+  const rows = hashed === null ? [] : hashed.split('\n').filter(Boolean);
+  if (rows.length === live.length) { live.forEach((f, i) => out.set(f, rows[i].slice(0, 12))); return out; }
+  // git refuses the WHOLE batch over one path it cannot hash (a directory, an unreadable file). One call per file
+  // then: a hiccup costs time rather than reporting every file in the tree as changed.
+  for (const f of live) out.set(f, blobOf(f));
+  return out;
+}
 const docsRel = () => path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
 
 // Every mainline ref that actually exists here: the local branches, their origin/<name> remote-tracking twins,
@@ -616,6 +651,8 @@ function writeInPlace(file, sec, text) {
 // its own descendants - one override file per nested block, so every reader sees exactly one.
 function writeOverride(file, sec, text, b) {
   const dir = path.join(BRANCHES, safe(b));
+  const owner = overlayOwner(dir);
+  if (owner && owner !== b) return { error: `${path.relative(ROOT, dir)} holds ${owner}'s doc versions, not ${b}'s (both names fold onto one directory) - rename one branch, or promote/prune ${owner} first` };
   const current = sections(file);
   const hit = current.find((s) => s.id === `${key(file)}#${sec}`);
   if (hit && hit.overrideOf && hit.overrideOf !== sec) {
@@ -715,10 +752,14 @@ const onMainlineFirstParent = (sha, base) => {
 // when a merge commit here names its tip.
 function mergedBranches() {
   if (!hasGit() || tracked() || isShallow()) return [];
-  const current = safe(branch() || '');
+  const here = branch() || '';
+  const current = safe(here);
   const out = [];
   for (const name of overlayNames()) {
-    if (name === current) continue;
+    // Skip the overlay of the branch checked out here - by OWNER, not by directory name: 'feature/login' and
+    // 'feature-login' share a directory, and skipping by name alone would hide the owner's landed work from
+    // every session that happens to sit on the other branch.
+    if (name === current && !overlayClash(path.join(BRANCHES, name), here)) continue;
     const stored = readMeta(name);
     if (!stored || !stored.head) continue;
     const tip = branchTip(stored);
@@ -746,9 +787,45 @@ function mergedBranches() {
   return out;
 }
 
+// promote is a read-modify-write of the mainline doc file per section, and it deletes the overlay afterwards. Two
+// sessions starting on mainline at the same moment (a session start auto-promotes) can each read the file before
+// either writes: one promoted section is lost AND both overlays are removed, so that branch's text is gone for
+// good. One lock file per docs root, taken with O_EXCL - the loser does nothing and says so rather than racing.
+// Only a lock older than LOCK_STALE_MS is broken: a promote of every override of one branch is milliseconds, so a
+// minute can only mean a killed process.
+const LOCK_STALE_MS = 60000;
+function takeLock() {
+  const file = path.join(BRANCHES, '.promote.lock');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(file, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`, { flag: 'wx' });
+      return () => { try { fs.rmSync(file, { force: true }); } catch {} };
+    } catch (e) {
+      if (e.code !== 'EEXIST') return null;
+      let ageMs = LOCK_STALE_MS + 1;
+      try { ageMs = Date.now() - fs.statSync(file).mtimeMs; } catch {}
+      if (ageMs < LOCK_STALE_MS) return null;
+      try { fs.rmSync(file, { force: true }); } catch { return null; }
+    }
+  }
+  return null;
+}
+
 function promote(name) {
   const dir = path.join(BRANCHES, safe(name));
   if (!fs.existsSync(dir)) return { error: `no doc overrides for ${name}` };
+  // Both names fold onto one directory. Promoting by a name that is a live branch of its own, while the overlay
+  // records a DIFFERENT branch, would fold one branch's decisions into mainline under the other's name.
+  const owner = overlayOwner(dir);
+  if (owner && owner !== name && branchTips().has(name)) {
+    return { error: `${path.relative(ROOT, dir)} holds ${owner}'s doc versions, not ${name}'s (both names fold onto one directory) - promote ${owner} instead` };
+  }
+  const release = takeLock();
+  if (!release) return { results: [], removed: false, changed: false, locked: true };
+  try { return promoteLocked(name, dir); } finally { release(); }
+}
+
+function promoteLocked(name, dir) {
   const results = [];
   let freshConflict = false;
   for (const over of overrideFiles(dir)) {
@@ -813,7 +890,9 @@ function promote(name) {
 function autoPromote() {
   const b = branch();
   if (!b || !isMainline(b) || tracked()) return [];
-  return mergedBranches().map((m) => ({ branch: m.branch, how: m.how, ...promote(m.name) }));
+  // By the branch the overlay records, never by its directory name: the two differ whenever the name was folded
+  // (any slash), and only the recorded one passes promote's own owner check.
+  return mergedBranches().map((m) => ({ branch: m.branch, how: m.how, ...promote(m.branch) }));
 }
 
 // The overlays no promote will ever pick up by itself, in one pass over the branches (mergedBranches is the
@@ -884,8 +963,17 @@ function status() {
   const gitRepo = hasGit();
   const view = overlayDir() ? docFiles().flatMap((f) => sections(f).filter((s) => s.overrideOf)) : [];
   const stuck = unpromotable();
+  // Overlays that nothing can reach any more: the docs root used to be ignored, someone committed it, tracked()
+  // flipped to git mode, and every branch version under .branches/ became unreadable and unpromotable at once.
+  const stranded = gitRepo && tracked() ? overlayNames() : [];
+  // Which branch the directory this one would use actually belongs to, when it is not this branch (safe() folds
+  // 'feature/login' and 'feature-login' together). Non-null means this session reads mainline and writes nothing.
+  const clash = b && gitRepo && !tracked() && !isMainline(b) && overlayClash(path.join(BRANCHES, safe(b)), b)
+    ? overlayOwner(path.join(BRANCHES, safe(b))) : null;
   return {
-    mode: !gitRepo ? 'no git (docs written in place)' : tracked() ? 'git (docs are committed - git versions them per branch)' : 'overlay (docs are ignored by git - branch versions live in .branches/)',
+    // The third pillar - the end-of-session watch check - compares the tree against a git snapshot, so without a
+    // repo it can never fire, and only this line can say so.
+    mode: !gitRepo ? 'no git (docs written in place; the end-of-session check cannot see what changed)' : tracked() ? 'git (docs are committed - git versions them per branch)' : 'overlay (docs are ignored by git - branch versions live in .branches/)',
     branch: b || (gitRepo && git(['rev-parse', 'HEAD']) ? 'detached HEAD' : 'no branch'),
     detached: Boolean(gitRepo && !b && git(['rev-parse', 'HEAD'])),
     mainline: isMainline(b),
@@ -897,6 +985,8 @@ function status() {
     liveOnMainline: stuck.onMainline,
     shallow: gitRepo && isShallow(),
     legacyDelta: fs.existsSync(path.join(DOCS, 'BRANCH-DELTA.md')),
+    stranded,
+    clash,
   };
 }
 
@@ -1010,8 +1100,7 @@ function watchHits(files, dirs = []) {
 // The tree as a session found it: HEAD, the blob of every file already dirty or untracked, and every folder that held
 // a file. changedSince() compares against it, so a change a script made counts as much as a tool write.
 function snapshot() {
-  const dirty = {};
-  for (const f of porcelainPaths()) dirty[f] = blobOf(f);
+  const dirty = Object.fromEntries(blobsOf(porcelainPaths()));
   const dirs = new Set();
   for (const f of (git(['ls-files', '-co', '--exclude-standard']) || '').split('\n').filter(Boolean)) {
     const parts = f.split('/');
@@ -1025,8 +1114,12 @@ function changedSince(snap) {
   if (!snap) return { files: [], dirs: [] };
   if (snap.head) for (const f of (git(['diff', '--name-only', `${snap.head}..HEAD`]) || '').split('\n').filter(Boolean)) out.add(f);
   const before = snap.dirty || {};
-  for (const f of porcelainPaths()) if (before[f] !== blobOf(f)) out.add(f);
-  for (const f of Object.keys(before)) if (!out.has(f) && before[f] !== blobOf(f)) out.add(f);
+  const listed = new Set(porcelainPaths());
+  // Every path is hashed ONCE: what is dirty now, plus what was dirty at snapshot time and is not listed any more
+  // (committed, reverted or deleted) - those still need their blob to say whether the content moved.
+  for (const [f, blob] of blobsOf([...listed, ...Object.keys(before).filter((f) => !listed.has(f))])) {
+    if (before[f] !== blob) out.add(f);
+  }
   const known = new Set(snap.dirs || []);
   const created = new Set();
   for (const f of out) {
@@ -1044,7 +1137,7 @@ module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
   git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
-  set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf,
+  set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, seedIds, loadWatch, watchHits, snapshot, changedSince,
@@ -1053,7 +1146,9 @@ if (require.main !== module) return;
 
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
-const docsLog = (row) => { try { fs.appendFileSync(path.join(ROOT, '.claude', 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`); } catch {} };
+// Under the docs root, beside hook-blocks/ and tools-usage/: every other ledger in this stack lives there, and
+// under .claude/ a project that commits that folder accumulated this one in git.
+const docsLog = (row) => { try { fs.mkdirSync(DOCS_ROOT, { recursive: true }); fs.appendFileSync(path.join(DOCS_ROOT, 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...row })}\n`); } catch {} };
 const commands = {
   toc: () => console.log(toc(args[0])),
   show: () => {
@@ -1085,6 +1180,7 @@ const commands = {
       if (isShallow()) { console.log('shallow clone: merged branches cannot be detected - nothing promoted'); return; }
       const rows = autoPromote();
       if (!rows.length) { console.log('nothing merged'); return; }
+      if (rows.every((p) => p.locked)) { console.log('another promote is running: nothing promoted'); return; }
       for (const p of rows) {
         if (p.changed) docsLog({ event: 'promote', branch: p.branch, how: p.how, results: p.results });
         for (const x of p.results) console.log(`${p.branch} (${p.how}) ${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
@@ -1093,6 +1189,7 @@ const commands = {
     }
     const p = promote(args[0]);
     if (p.error) { console.log(p.error); process.exit(1); }
+    if (p.locked) { console.log('another promote is running: nothing promoted'); return; }
     if (p.changed) docsLog({ event: 'promote', branch: args[0], how: 'manual', results: p.results });
     for (const x of p.results) console.log(`${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
     process.exit(p.results.some((x) => x.result === 'conflict') ? 1 : 0);
@@ -1110,6 +1207,8 @@ const commands = {
       ...(s.deletedUnmerged.length ? [`deleted branches never detected as merged: ${s.deletedUnmerged.join(', ')}`] : []),
       ...(s.liveOnMainline && s.liveOnMainline.length ? [`branches sitting on mainline with no proof they merged: ${s.liveOnMainline.join(', ')} - if one landed, 'promote <branch>' folds it in; one that only caught up needs nothing`] : []),
       ...(s.shallow ? ['shallow clone: merged branches cannot be detected'] : []),
+      ...(s.stranded.length ? [`stranded branch versions: ${s.stranded.join(', ')} - the docs are committed now, so git versions them per branch and nothing reads or promotes .branches/ any more; re-apply what is still wanted with 'set', then 'prune <branch>'`] : []),
+      ...(s.clash ? [`.branches/${safe(s.branch)} belongs to ${s.clash}, whose name folds onto the same directory - this branch reads mainline and cannot write a branch version; rename one branch, or promote/prune ${s.clash} first`] : []),
       ...(s.legacyDelta ? ['BRANCH-DELTA.md from an older capture: nothing reads it any more - a capture on that branch folds its decisions into sections; it is never deleted for you'] : []),
     ].join('\n'));
   },

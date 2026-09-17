@@ -3,9 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { repo, section } = require('./docs-fixture');
+const { repo, section, HOOKS } = require('./docs-fixture');
 
 const PATTERNS = section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') + '\n'
   + section('users', 'src/Api/Users/**', 'Users are soft-deleted, never removed.');
@@ -790,5 +791,141 @@ test('lint: a watch entry missing sections and a newModule missing globs are bot
     const clean = r.cli(['lint']);
     assert.strictEqual(clean.status, 0, clean.stdout);
     assert.doesNotMatch(clean.stdout, /is missing/);
+  } finally { r.rm(); }
+});
+
+// --- the seams the final whole-branch review found ---
+
+// One `git hash-object` per dirty file is one PROCESS per file. Stop runs changedSince at the end of every turn
+// until a watch entry hits, so this is the per-turn floor of a session whose tree is dirty.
+test('a dirty tree costs one batched hash, never one git process per file', () => {
+  const files = {};
+  for (let i = 0; i < 200; i++) files[`src/Api/T${i}.cs`] = `class T${i} {}\n`;
+  const r = repo({ files, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const engine = requireEngine(r.root);
+    for (let i = 0; i < 200; i++) r.write(`src/Api/T${i}.cs`, `class T${i} { int x; }\n`);
+    for (let i = 0; i < 200; i++) r.write(`src/Api/U${i}.cs`, `class U${i} {}\n`);
+    const t0 = Date.now();
+    const snap = engine.snapshot();
+    r.write('src/Api/T0.cs', 'class T0 { int y; }\n');
+    const changed = engine.changedSince(snap);
+    const ms = Date.now() - t0;
+    assert.strictEqual(Object.keys(snap.dirty).length, 400, 'every dirty and untracked path is snapshotted');
+    assert.ok(changed.files.includes('src/Api/T0.cs'), `expected T0.cs among ${changed.files.length} changed files`);
+    assert.ok(!changed.files.includes('src/Api/T1.cs'), 'a file that did not move is not reported');
+    assert.ok(ms < 2500, `400 dirty files took ${ms}ms - one git hash-object per file (measured 6.4s at 400, 13.2s at 800, past the wired 10s hook timeout, which kills the end-of-session ask)`);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('the batched hash answers exactly what one hash-object per file answers', () => {
+  const r = repo({ files: { 'src/Api/Kept.cs': 'class Kept {}\n', 'src/Api/Gone.cs': 'class Gone {}\n' } });
+  try {
+    const engine = requireEngine(r.root);
+    r.write('src/Api/New.cs', 'class New {}\n');
+    fs.rmSync(path.join(r.root, 'src', 'Api', 'Gone.cs'));
+    const paths = ['src/Api/Kept.cs', 'src/Api/New.cs', 'src/Api/Gone.cs', 'src/Api/Kept.cs'];
+    const batched = engine.blobsOf(paths);
+    for (const p of paths) assert.strictEqual(batched.get(p), engine.blobOf(p), `${p} hashes the same either way`);
+    assert.strictEqual(batched.get('src/Api/Gone.cs'), '-', 'a path that is gone never reaches git');
+    assert.strictEqual(batched.size, 3, 'a repeated path is hashed once');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Two sessions starting on mainline at the same moment each read the doc file before either writes: one
+// promoted section is lost and BOTH overlays are deleted, so that branch's text is gone for good.
+test('promote does nothing while another promote holds the lock', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    branchWithDecision(r, 'feat/cap', ORDERS('Refunds are capped at 10.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/cap');
+    r.write('.claude/docs/.branches/.promote.lock', '{"pid":1}\n');
+    const out = r.cli(['promote', '--merged']);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/, 'mainline is not written while the lock is held');
+    assert.ok(r.exists('.claude/docs/.branches/feat-cap/references/patterns/orders.md'), 'the overlay survives a skipped promote');
+    assert.match(out.stdout, /another promote is running/);
+    fs.rmSync(path.join(r.root, '.claude', 'docs', '.branches', '.promote.lock'));
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: merged/, 'the next run picks it up');
+    assert.ok(!r.exists('.claude/docs/.branches/.promote.lock'), 'the lock is released');
+  } finally { r.rm(); }
+});
+
+test('a stale lock left by a killed process never blocks a promote forever', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    branchWithDecision(r, 'feat/cap', ORDERS('Refunds are capped at 10.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/cap');
+    const lock = path.join(r.root, '.claude', 'docs', '.branches', '.promote.lock');
+    fs.writeFileSync(lock, '{"pid":1}\n');
+    const old = (Date.now() - 10 * 60 * 1000) / 1000;
+    fs.utimesSync(lock, old, old);
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: merged/);
+  } finally { r.rm(); }
+});
+
+// safe() folds both names onto '.branches/feature-login'. Without an owner check the second branch reads the
+// first branch's decisions as its own, overwrites them, and a promote folds them in under the wrong name.
+test('two branch names that collide under safe() never share one overlay', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feature/login');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Slash branch decision.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.git('switch', '-qc', 'feature-login');
+    assert.doesNotMatch(r.cli(['show', 'patterns#orders']).stdout, /Slash branch decision/, 'the dash branch reads mainline, not the slash branch');
+    const st = r.cli(['status']).stdout;
+    assert.match(st, /overrides: none/);
+    assert.match(st, /feature\/login/, 'status names the branch that owns the directory');
+    const w = r.cli(['set', 'patterns#orders'], ORDERS('Dash branch decision.'));
+    assert.strictEqual(w.status, 1, 'the write is refused, never blended into the other branch');
+    assert.match(w.stdout, /feature\/login/);
+    assert.match(r.read('.claude/docs/.branches/feature-login/references/patterns/orders.md'), /Slash branch decision/, 'the owner keeps its text');
+    r.git('switch', '-q', 'develop');
+    const p = r.cli(['promote', 'feature-login']);
+    assert.strictEqual(p.status, 1, 'promoting by the colliding live name is refused');
+    assert.match(p.stdout, /feature\/login/);
+  } finally { r.rm(); }
+});
+
+// The third pillar reads git. Without a repo it can never fire, and only the mode line can say so.
+test('status says the end-of-session check is blind without git', () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-nogit-')));
+  try {
+    fs.mkdirSync(path.join(root, '.claude', 'docs', 'architecture', 'references'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'docs', 'architecture', 'references', 'patterns.md'), PATTERNS);
+    const out = spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), 'status'], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' },
+    });
+    assert.strictEqual(out.status, 0);
+    assert.match(out.stdout, /^mode: no git \(docs written in place; the end-of-session check cannot see what changed\)/m);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// Committing a docs root that used to be ignored flips tracked() - and every overlay under .branches/ becomes
+// unreadable and unpromotable at once, with no word anywhere.
+test('status reports overlays stranded by committing a previously ignored docs root', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/cap');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.')).status, 0);
+    assert.match(r.cli(['status']).stdout, /^mode: overlay/m);
+    r.write('.gitignore', '.claude/docs/docs-log.jsonl\n.claude/docs/.branches/\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'commit the docs');
+    const out = r.cli(['status']).stdout;
+    assert.match(out, /^mode: git/m);
+    assert.match(out, /stranded/);
+    assert.match(out, /feat-cap/);
+  } finally { r.rm(); }
+});
+
+// The only ledger in this stack that was not under <docs-path>: hook-blocks and tools-usage are both there,
+// and a project that commits .claude/ accumulated this one in git.
+test('the engine log lands under the docs root, beside hook-blocks', () => {
+  const r = repo({ docsPath: 'docs', files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Refunds are capped at 10.')).status, 0);
+    assert.ok(r.exists('docs/docs-log.jsonl'), 'the log is written under the docs root');
+    assert.match(r.read('docs/docs-log.jsonl'), /"event":"doc-set"/);
+    assert.ok(!r.exists('.claude/docs-log.jsonl'), 'and never under .claude/ any more');
   } finally { r.rm(); }
 });

@@ -24,9 +24,21 @@ const statePath = (s) => path.join(os.tmpdir(), `docs-session-${String(s || 'non
 const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
 const saveState = (s, v) => { try { fs.writeFileSync(statePath(s), JSON.stringify(v)); } catch {} };
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
+// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
+// `tool_input.command` exactly as Bash does, and both installer twins wire this hook on the matcher
+// `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`. Judging only `Bash` left the first-change
+// gate open on every Windows session and earned a doc read through PowerShell no consult credit.
+const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
-// tells them apart.
-const log = (root, input, row) => { try { fs.appendFileSync(path.join(root, '.claude', 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`); } catch {} };
+// tells them apart. It lives under the docs root beside hook-blocks/ and tools-usage/ - every other ledger in
+// this stack does, and under .claude/ a project that commits that folder accumulated this one in git.
+const log = (root, input, row) => {
+  try {
+    const dir = path.resolve(root, docsRootEnv());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'docs-log.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...row })}\n`);
+  } catch {}
+};
 
 function orientation(root, docs) {
   let block = '';
@@ -156,7 +168,7 @@ function consultedBy(input, paths, docsRel) {
   if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
   const isDoc = (p) => p === docsRel || p.startsWith(`${docsRel}/`);
   const hits = paths.filter(isDoc);
-  if (hits.length && (/^(Read|Grep|Glob)$/.test(name) || (name === 'Bash' && !writeTargets(command).length))) return hits;
+  if (hits.length && (/^(Read|Grep|Glob)$/.test(name) || (isShellTool(name) && !writeTargets(command).length))) return hits;
   return [];
 }
 
@@ -178,16 +190,16 @@ function preToolUse(input, root, docs, state) {
     log(root, input, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
     return;
   }
-  // Only these five tools can name a source target, so nothing else pays for the watch list.
+  // Only these six tools can name a source target, so nothing else pays for the watch list.
   const name = input.tool_name || '';
-  if (!/^(Edit|Write|MultiEdit|NotebookEdit|Bash)$/.test(name)) return;
+  if (!/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) && !isShellTool(name)) return;
   let roots = ['src', 'tests'];
   try { roots = docs.loadWatch().sourceRoots; } catch {}
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
   let targets = [];
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) targets = paths.filter(inRoots);
-  else if (name === 'Bash') targets = relative(root, writeTargets(command).map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x))).filter(inRoots);
+  else if (isShellTool(name)) targets = relative(root, writeTargets(command).map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x))).filter(inRoots);
   if (!targets.length) return;
   const allow = () => {
     state.edits++;
