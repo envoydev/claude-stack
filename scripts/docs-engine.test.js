@@ -543,3 +543,49 @@ test('watch: globs and new module folders map to their sections; missing or malf
     assert.match(r.cli(['watch', 'src/Api/Program.cs']).stdout, /nothing hit/);
   } finally { r.rm(); }
 });
+
+// changedSince/snapshot carry no CLI verb of their own, so this drives the engine as a module: require
+// stack/hooks/docs.js directly with CLAUDE_PROJECT_DIR pointed at the throwaway repo. The module is cached by
+// resolved path, so the cache entry is cleared before and after - each test that does this gets a fresh ROOT.
+const ENGINE_PATH = require.resolve(path.join(require('./docs-fixture').HOOKS, 'docs.js'));
+function requireEngine(root) {
+  delete require.cache[ENGINE_PATH];
+  process.env.CLAUDE_PROJECT_DIR = root;
+  process.env.CLAUDE_STACK_DOCS_PATH = '.claude/docs';
+  process.env.CLAUDE_DOCS_PATH = '';
+  return require(ENGINE_PATH);
+}
+
+test('changedSince reports both sides of a staged rename', () => {
+  const r = repo({ files: { 'src/Api/Old.cs': 'class Old {}\n' } });
+  try {
+    const engine = requireEngine(r.root);
+    const snap = engine.snapshot();
+    r.git('mv', 'src/Api/Old.cs', 'src/Api/New.cs');
+    const changed = engine.changedSince(snap);
+    assert.ok(changed.files.includes('src/Api/Old.cs'), `expected Old.cs in ${JSON.stringify(changed.files)}`);
+    assert.ok(changed.files.includes('src/Api/New.cs'), `expected New.cs in ${JSON.stringify(changed.files)}`);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('lint: a watch entry missing sections and a newModule missing globs are both reported; a complete watch.json lints clean', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'root', globs: ['src/*/Program.cs'] }],
+      newModule: { sections: ['patterns#users'] },
+    }));
+    const broken = r.cli(['lint']);
+    assert.strictEqual(broken.status, 1);
+    assert.match(broken.stdout, /watch\.json watch\[0\]\.sections is missing/);
+    assert.match(broken.stdout, /watch\.json newModule\.globs is missing/);
+
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }],
+      newModule: { globs: ['src/*/Features/*/'], sections: ['patterns#users'] },
+    }));
+    const clean = r.cli(['lint']);
+    assert.strictEqual(clean.status, 0, clean.stdout);
+    assert.doesNotMatch(clean.stdout, /is missing/);
+  } finally { r.rm(); }
+});

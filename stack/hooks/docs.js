@@ -247,9 +247,7 @@ function outgrownFiles(section) {
 function captureStamp(covers) {
   const head = git(['rev-parse', '--short', 'HEAD']);
   if (!head) return '';
-  const dirty = (git(['status', '--porcelain', '--untracked-files=all'], { raw: true }) || '').split('\n').filter(Boolean)
-    .map((l) => l.slice(3).split(' -> ').pop().replace(/^"|"$/g, ''));
-  const withList = dirty.filter((f) => covers.length && matches(covers, f)).slice(0, 40)
+  const withList = porcelainPaths().filter((f) => covers.length && matches(covers, f)).slice(0, 40)
     .map((f) => `${f}=${fs.existsSync(path.join(ROOT, f)) ? (git(['hash-object', f]) || '').slice(0, 12) : '-'}`);
   return `<!-- captured: ${head}${withList.length ? ` with: ${withList.join(', ')}` : ''} -->`;
 }
@@ -444,8 +442,13 @@ function conflictView(ref, branchName) {
   return `${key(file)}#${id} - mainline against ${label}${m.conflicts ? '' : ' (no conflict left)'}\nSave the reconciled section with: node .claude/hooks/docs.js set ${key(file)}#${id}\n\n${m.text}`;
 }
 
+// A rename row ('R  old -> new') carries both sides: the old path is otherwise never seen again, so a caller
+// watching it would miss its disappearance. Every other row still yields its one path.
 const porcelainPaths = () => (git(['status', '--porcelain', '--untracked-files=all'], { raw: true }) || '')
-  .split('\n').filter(Boolean).map((l) => l.slice(3).split(' -> ').pop().replace(/^"|"$/g, '')).slice(0, 2000);
+  .split('\n').filter(Boolean).flatMap((l) => {
+    const rest = l.slice(3);
+    return (rest.includes(' -> ') ? rest.split(' -> ') : [rest]).map((p) => p.replace(/^"|"$/g, ''));
+  }).slice(0, 2000);
 const blobOf = (f) => (fs.existsSync(path.join(ROOT, f)) ? (git(['hash-object', f]) || '').slice(0, 12) : '-');
 const docsRel = () => path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
 
@@ -849,8 +852,8 @@ function loadWatch() {
   try { j = JSON.parse(fs.readFileSync(WATCH_FILE, 'utf8')); } catch (e) { return { ...empty, problems: [`watch.json is not valid JSON: ${e.message}`] }; }
   if (!j || typeof j !== 'object' || Array.isArray(j)) return { ...empty, problems: ['watch.json must be an object with sourceRoots, watch and newModule'] };
   const problems = [];
-  const strings = (v, what) => {
-    if (v === undefined) return null;
+  const strings = (v, what, required) => {
+    if (v === undefined) { if (required) problems.push(`watch.json ${what} is missing`); return null; }
     if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !x)) { problems.push(`watch.json ${what} must be a non-empty list of strings`); return null; }
     return v;
   };
@@ -858,14 +861,14 @@ function loadWatch() {
   const watch = [];
   if (j.watch !== undefined && !Array.isArray(j.watch)) problems.push('watch.json watch must be a list');
   for (const [i, e] of (Array.isArray(j.watch) ? j.watch : []).entries()) {
-    const globs = strings(e && e.globs, `watch[${i}].globs`);
-    const secs = strings(e && e.sections, `watch[${i}].sections`);
+    const globs = strings(e && e.globs, `watch[${i}].globs`, true);
+    const secs = strings(e && e.sections, `watch[${i}].sections`, true);
     if (globs && secs) watch.push({ kind: typeof e.kind === 'string' && e.kind ? e.kind : `watch[${i}]`, globs, sections: secs });
   }
   let newModule = null;
   if (j.newModule !== undefined) {
-    const globs = strings(j.newModule && j.newModule.globs, 'newModule.globs');
-    const secs = strings(j.newModule && j.newModule.sections, 'newModule.sections');
+    const globs = strings(j.newModule && j.newModule.globs, 'newModule.globs', true);
+    const secs = strings(j.newModule && j.newModule.sections, 'newModule.sections', true);
     if (globs && secs) newModule = { globs: globs.map((g) => (g.endsWith('/') ? g : `${g}/`)), sections: secs };
   }
   return { sourceRoots, watch, newModule, problems };
