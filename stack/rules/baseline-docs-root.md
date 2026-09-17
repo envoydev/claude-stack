@@ -31,8 +31,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   root - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never its own
   default location.
 - Reading a capture doc: every one opens with `Captured: <branch>@<short-sha>, <date>` (`+dirty` =
-  the tree held uncommitted work), and these docs do not switch with git branches, so the stamp says
-  which code the doc describes. A foreign-branch stamp, or `+dirty`, means approximate at best -
+  the tree held uncommitted work), and the architecture docs follow the checked-out branch through the docs hook
+  (`docs.js status` says how), so the stamp says which code the doc describes. A foreign-branch stamp, or `+dirty`, means approximate at best -
   verify against the code before relying on it, never as ground truth for HEAD. Nothing re-captures
   automatically: a flow SUGGESTS a capture at close only when that capture's output is missing or no
   longer reflects what the run changed - never as a default next step, and never the capture that

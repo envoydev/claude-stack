@@ -72,7 +72,7 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
 The map is capped and checked; the assessment was not, and it is the doc the `project-architecture-quality-loop` reads at INTAKE on every round, so its weight is paid again each time - and a rule with no threshold never fires.
 
 - **Target: ~300 lines for `ASSESSMENT.md` itself.** Double the map's, because an entry carries reasoning the map does not - but a number, and a checked one: `wc -l` it after the write, and over target run the spill pass. Spilling is not deleting: the entry's title, tier, one-line cost and its Remediation and Strength-check fields stay inline; the supporting detail - the located-code walkthrough, the measurement, the alternatives weighed - moves to `<docs-path>/architecture/references/<topic>.md` and the entry links it. Ranking still comes first, so the top of the doc is actionable before anything is spilled.
-- **Per-round history is NOT part of this doc.** A running log of what each capture or loop round did is orientation for one reader on one day, and it grows without bound while every intake pays for it. Keep at most the **last 3 rounds** inline as a short table - date, what changed, entries opened/closed - and move everything older to `<docs-path>/architecture/references/assessment-rounds.md`, appended to, never rewritten. A project that keeps no log keeps none; nothing here asks for one.
+- **Per-round history is NOT part of this doc.** A running log of what each capture or loop round did is orientation for one reader on one day, and it grows without bound while every intake pays for it. Keep at most the **last 3 rounds** inline as a short table - date, what changed, entries opened/closed - and move everything older to `<docs-path>/architecture/history/assessment-rounds.md`, appended to, never rewritten. A project that keeps no log keeps none; nothing here asks for one. Files under history/ are readable but never offered as pointers and never pushed.
 
 ## Write protocol - how step 5 lands the docs
 
@@ -81,29 +81,45 @@ skill body's precondition); this section is the mechanics of the write itself.
 
 ### The stamp
 
-Every doc this capture writes opens with `Captured: <branch>@<short-sha>, <YYYY-MM-DD>`. Append `+dirty` to the
-sha when the working tree holds uncommitted changes (`git status --porcelain` non-empty): a dirty capture describes
-code no commit contains, and the suffix is what stops a later update from trusting it. Prefer capturing on a clean
-tree; a dirty one is allowed but marked. In ARCHITECTURE.md the stamp is followed by the fixed pointer sentence
-`On another branch, check architecture/BRANCH-DELTA.md for that branch's recorded changes.` - so any later reader
-(and the next capture) knows exactly which code the map describes and where a branch's own picture lives; a
-reader on a different branch treats the main content as the base picture, approximate for their branch.
+Every doc this capture writes opens with `Captured: <branch>@<short-sha>, <YYYY-MM-DD>`. Append `+dirty` to the sha when the working tree holds uncommitted changes (`git status --porcelain` non-empty). Prefer capturing on a clean tree; a dirty one is allowed but marked. Section-level stamps (`<!-- captured: -->`) are written by `docs.js set`, never by hand.
 
-The `+dirty` escape hatch on an UPDATE: when the SAME uncommitted files still sit in the tree unchanged since the
-capture (provable - their mtimes at or before the prior capture's write, or a matching `git stash create` sha), the
-dirty set is accounted for and the update may stay inline, saying so in the report. The escalation to per-module
-dispatch is for a dirty set the diff CANNOT account for, not for the suffix itself.
+The `+dirty` escape hatch on an UPDATE: when the SAME uncommitted files still sit in the tree unchanged since the capture (provable - their mtimes at or before the prior capture's write, or a matching `git stash create` sha), the dirty set is accounted for and the update may stay inline, saying so in the report. The escalation to per-module dispatch is for a dirty set the diff CANNOT account for, not for the suffix itself.
 
-### The branch delta
+### Section format
 
-On a foreign branch (the ORIENT branch check), write `<docs-path>/architecture/BRANCH-DELTA.md` INSTEAD of touching
-the main docs: its own stamp plus ONLY what this branch changes against the base map - a new/removed module, a
-moved boundary, a new dependency edge, a pattern introduced - table-formatted, replaced whole on each delta capture,
-never a second full map. A capture running on the main docs' own branch again refreshes the main docs and then
-judges the delta against the code it just mapped: delta changes now PRESENT in this branch (the branch merged -
-the fresh map already covers them) -> DELETE the delta; changes still absent (the branch lives unmerged) -> the
-delta STAYS, it is another branch's record. A delta capture leaves the generated awareness rule untouched - the
-rule keeps describing the base map.
+Every `##`, `###` and `####` heading in ARCHITECTURE.md, ASSESSMENT.md and `references/*.md` carries its metadata as comment lines directly under it:
+
+    ## The registration contract
+    <!-- id: the-registration-contract -->
+    <!-- covers: src/*/Program.cs, src/**/*Registrar.cs -->
+
+- `id` - lowercase slug, unique in its file, kept across heading rewordings: every pointer, override and watch entry uses it. `docs.js seed-ids` adds missing ones.
+- `covers` - the code globs the section describes, as narrow as the truth allows; a section about an area covers the area.
+- Content: decisions, rules, boundaries, contracts, exceptions, each with its reason. No inventories - counts, file lists, route lists go stale on every change and the code answers them.
+- Size: a section's own text (heading to its next heading) targets 3,000 chars and must stay under 6,000 - `docs.js lint` fails above it; split by sub-decision.
+
+### ORIENTATION.md
+
+Pushed into every session and subagent by the docs hook, so it is the most expensive file per byte: at most 4,096 bytes (`wc -c`, and `docs.js lint` enforces it). It holds the one-line project shape, the module map in a few lines, the house contracts a newcomer breaks first, and one line per reference file naming its best entry section id. Every `file#id` it names must exist (`docs.js lint` checks).
+
+### watch.json
+
+The files whose change can move an architecture decision, mapped to the sections that own each decision - the docs hook asks for those sections at session end only when one of these files changed:
+
+    {
+      "sourceRoots": ["src", "tests"],
+      "watch": [
+        { "kind": "composition root", "globs": ["src/*/Program.cs", "src/**/*Registrar.cs"], "sections": ["slice-anatomy#the-registration-contract"] },
+        { "kind": "architecture tests", "globs": ["tests/*ArchitectureTests/**"], "sections": ["boundaries#constraints-new-work-must-satisfy"] }
+      ],
+      "newModule": { "globs": ["src/*/Features/*/"], "sections": ["modules#module-map"] }
+    }
+
+Derive the entries from the capture, never from a template: composition roots and registrars, architecture tests, published contract files, project and package references, migrations, auth policy setup - each that exists here, with the section that states its rule. `sourceRoots` are the folders a change is gated in. `newModule` fires when a session creates a folder matching it.
+
+### Branches
+
+The docs hook's engine owns branch versions (step 1): never write a branch delta file. Committed docs change on the branch and merge with it. Ignored docs on a feature branch change through `docs.js set`; the next session on mainline after the branch merges folds them in by itself.
 
 ### Diagrams and format
 
@@ -134,20 +150,13 @@ entry so the quality loop picks it up.
 Step 6 writes this from the fresh capture, wholesale, to the template below. `<docs-path>` is baked to the LITERAL
 resolved root this capture wrote under - the generated rule is a deterministic pointer and must name the real
 path, never a placeholder (the rule cannot itself follow the remap convention it exists to reinforce). Create
-`.claude/rules/` when absent. The summary lines come from THIS run's capture, never stale-copied; the trigger
-paragraph is fixed. Budget: ~700 bytes, checked with `wc -c` and reported on the `Rule:` line.
+`.claude/rules/` when absent. The body is fixed apart from `<docs-path>`, so nothing here goes stale between
+captures. Budget: 300 bytes, checked with `wc -c` and reported on the `Rule:` line.
 
 ```markdown
 ---
-description: Project architecture awareness - generated by /project-architecture-analyzer; edit via a re-run, not by hand.
+description: Project architecture docs pointer - generated by /project-architecture-analyzer; edit via a re-run.
 ---
 
-# Architecture
-
-<one line: project type + architecture style, from the capture - e.g. 'ASP.NET Core modular monolith, vertical slices'>
-<one line: the modules/layers, named - e.g. 'Modules: Orders, Catalog, Identity; shared kernel in BuildingBlocks'>
-
-The full map is `<docs-path>/architecture/ARCHITECTURE.md` (deep-dives under `<docs-path>/architecture/references/`,
-the reasoned assessment in `<docs-path>/architecture/ASSESSMENT.md`) - read the map before planning or
-designing any structural change, instead of re-deriving the project.
+Architecture docs: `<docs-path>/architecture/`. Read by section before a structural change: `node .claude/hooks/docs.js where <path>`, then `show <file>#<id>`.
 ```

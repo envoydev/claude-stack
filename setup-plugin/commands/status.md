@@ -166,7 +166,7 @@ as the docs-root rule states) plus serena's local memory:
 |---|---|---|---|
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/ASSESSMENT.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
-| architecture/BRANCH-DELTA.md | no | - | - |
+| architecture/watch.json | yes | - | 2026-07-24 |
 | PROJECT-CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | related-context/PROJECT-RELATED-CONTEXT.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
@@ -179,6 +179,7 @@ stamp older than the file mtime is normal (loops edit docs without re-capturing)
 both, judge nothing. Rows are fixed - a capture never run shows `no`, so the user sees what is
 MISSING as clearly as what exists. One row is conditional, not a gap: related-context/PROJECT-RELATED-CONTEXT.md
 applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
+A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a note, never deleted.
 
 ## 4. Close
 

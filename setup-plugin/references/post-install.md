@@ -133,9 +133,8 @@ language server, re-index for serena (SERENA_HOME=.serena/home, `serena project 
 whether the Serena memories still describe this branch accurately.
 ```
 
-The capture docs handle the same event through their `Captured:` stamps - a stamp from another
-branch means the doc is approximate for HEAD, and the owning capture skill re-runs it when it
-matters.
+The architecture docs handle a branch switch themselves: the docs hook serves the branch's own
+section versions and folds a merged branch back into mainline at the next session start.
 
 ## Done looks like
 

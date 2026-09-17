@@ -4618,7 +4618,7 @@
    "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): project-code-style-analyzer previously mandated delete-first.",
    "owner": {
     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
-    "marker": "REPLACE it, never delete it"
+    "marker": "READ the existing rule first so the Write is legal"
    },
    "sites": [
     {
