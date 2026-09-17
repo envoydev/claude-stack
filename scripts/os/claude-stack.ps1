@@ -755,6 +755,10 @@ $Hooks = @(
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@SessionStart::'     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
   'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
+  'docs-session.js::@SessionStart::'              # the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then ORIENTATION.md, this branch's overrides and how to read by section
+  'docs-session.js::@SubagentStart::'             # the same orientation for a dispatched subagent - SessionStart context never reaches one
+  'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::'  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
+  'docs-session.js::@Stop::'                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -911,7 +915,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -eq 'inject-code-style') { continue }                                               # legacy generated
+    if ($f.BaseName -eq 'inject-code-style' -or $f.BaseName -eq 'docs') { continue }                    # legacy generated; the docs hook's engine
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -1779,6 +1783,9 @@ function Get-Hooks {
   # the fresh-session hooks' model -> context window table: data, not a wired hook - copied only
   # beside a hook that reads it
   if ($files -contains 'guard-stop-contract.js' -or $files -contains 'guard-fresh-session-start.js') { $files += 'model-windows.json' }
+  # the docs hook's engine: required by docs-session.js from its own directory, and run by the model as
+  # `node .claude/hooks/docs.js` - copied only beside the hook
+  if ($files -contains 'docs-session.js') { $files += 'docs.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -2269,6 +2276,21 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_PUSH_GATE -NotePropertyValue '1'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_PUSH_GATE seeded (1)'
+  }
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_BLOCK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_BLOCK -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_BLOCK seeded (1)'
+  }
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_GATE']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_GATE -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_GATE seeded (1)'
+  }
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_ASK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_ASK -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)'
   }
   # rotate ask: the stop contract asks once per credential exposure; '0' turns the ask off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_ROTATE_ASK']) {

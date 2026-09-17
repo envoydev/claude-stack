@@ -96,6 +96,45 @@
         "type": "window",
         "min": 100000
       }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_BLOCK",
+      "default": "1",
+      "ask": false,
+      "what": "the architecture docs hook's session-start block: ORIENTATION.md, this branch's doc overrides and conflicts, and how to read by section (also sent to dispatched subagents). `0` stops the push; promotion of merged branches still runs.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_GATE",
+      "default": "1",
+      "ask": false,
+      "what": "the first change under a source root waits until a covering doc section was read, and the hold hands that section over inline (at most two holds a session). `0` turns the hold off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_ASK",
+      "default": "1",
+      "ask": false,
+      "what": "at session end, a change that hit the capture's watch.json asks once for the owning sections to be rewritten when a rule moved, or confirmed. `0` turns the ask off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
     }
   ]
 }

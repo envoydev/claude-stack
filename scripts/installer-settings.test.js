@@ -209,6 +209,9 @@ const SEEDS = [
     ['CLAUDE_STACK_FRESH_SESSION_200K', '150000'],
     ['CLAUDE_STACK_FRESH_SESSION_DEFAULT', '180000'],
     ['CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW', '1000000'],
+    ['CLAUDE_STACK_DOCS_BLOCK', '1'],
+    ['CLAUDE_STACK_DOCS_GATE', '1'],
+    ['CLAUDE_STACK_DOCS_ASK', '1'],
 ];
 
 function assertSeedLines(sb, out, twin)
@@ -293,3 +296,44 @@ test('ps1: the CLAUDE.md seed stamps the H1 placeholder with the repo folder nam
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
+
+// docs.js is the engine the docs hook requires from its own directory: it must land beside the hook and only there,
+// and the hook must be wired on all four events it serves.
+function assertDocsHook(sb, run, twin)
+{
+    fs.writeFileSync(sb.sel, 'skill angular-conventions\nrule markdown-docs\nhook docs-session\n');
+    run(sb, 'install');
+    const hooks = path.join(sb.repo, '.claude', 'hooks');
+    assert.ok(fs.existsSync(path.join(hooks, 'docs-session.js')), `${twin}: the hook lands`);
+    assert.strictEqual(fs.readFileSync(path.join(hooks, 'docs.js'), 'utf8'), fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'docs.js'), 'utf8'), `${twin}: the engine lands beside it, byte-equal`);
+    const wiring = JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8')).hooks;
+    for (const ev of ['SessionStart', 'SubagentStart', 'PreToolUse', 'Stop'])
+    {
+        const entries = (wiring[ev] || []).filter((e) => JSON.stringify(e).includes('docs-session.js'));
+        assert.strictEqual(entries.length, 1, `${twin}: wired once on ${ev}`);
+        assert.strictEqual(entries[0].hooks[0].timeout, 10, `${twin}: ${ev} carries the 10s timeout`);
+    }
+}
+function assertNoEngineWithoutHook(sb, run, twin)
+{
+    fs.writeFileSync(sb.sel, 'skill angular-conventions\nrule markdown-docs\nhook guard-secret-value\n');
+    run(sb, 'install');
+    assert.ok(!fs.existsSync(path.join(sb.repo, '.claude', 'hooks', 'docs.js')), `${twin}: no engine without the hook`);
+}
+
+test('sh: the docs engine lands beside the docs hook, wired on four events', () => assertDocsHook(sandbox(), runSh, 'sh'));
+test('ps1: the docs engine lands beside the docs hook, wired on four events (pwsh required)', { skip: skipNoPwsh }, () => assertDocsHook(sandbox(), runPs, 'ps1'));
+test('sh: no docs engine without the docs hook', () => assertNoEngineWithoutHook(sandbox(), runSh, 'sh'));
+test('ps1: no docs engine without the docs hook (pwsh required)', { skip: skipNoPwsh }, () => assertNoEngineWithoutHook(sandbox(), runPs, 'ps1'));
+
+// docs.js is the only .js beside the hooks that is not a hook: an --installed-only update must not read it back as one.
+function assertEngineNotAHook(sb, run, updateIo, twin)
+{
+    fs.writeFileSync(sb.sel, 'skill angular-conventions\nrule markdown-docs\nhook docs-session\n');
+    run(sb, 'install');
+    const out = updateIo(sb);
+    assert.doesNotMatch(out, /hook docs\b(?!-session)/, `${twin}: the engine is never named as a hook`);
+    assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'hooks', 'docs.js')), `${twin}: the engine is refreshed beside its hook`);
+}
+test('sh: --installed-only never reads the docs engine back as a hook', () => assertEngineNotAHook(sandbox(), runSh, updateIoSh, 'sh'));
+test('ps1: -InstalledOnly never reads the docs engine back as a hook (pwsh required)', { skip: skipNoPwsh }, () => assertEngineNotAHook(sandbox(), runPs, updateIoPs, 'ps1'));

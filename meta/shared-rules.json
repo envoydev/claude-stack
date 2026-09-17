@@ -56,6 +56,14 @@
     {
      "file": "stack/hooks/instrument-tool-usage.js",
      "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+    },
+    {
+     "file": "stack/hooks/docs.js",
+     "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+    },
+    {
+     "file": "stack/hooks/docs-session.js",
+     "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
     }
    ]
   },

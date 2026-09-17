@@ -1104,6 +1104,7 @@
       "typescript-lsp"
     ],
     "hooks": [
+      "docs-session",
       "guard-answer-length",
       "guard-catastrophic-rm",
       "guard-cross-project-write",

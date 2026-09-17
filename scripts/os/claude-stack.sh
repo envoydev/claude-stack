@@ -688,6 +688,10 @@ HOOKS=(
   "guard-answer-length.js::@UserPromptSubmit::"   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   "guard-answer-length.js::@SessionStart::"     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
   "guard-answer-length.js::@Stop::"               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
+  "docs-session.js::@SessionStart::"              # the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then ORIENTATION.md, this branch's overrides and how to read by section
+  "docs-session.js::@SubagentStart::"             # the same orientation for a dispatched subagent - SessionStart context never reaches one
+  "docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::"  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
+  "docs-session.js::@Stop::"                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows HOOKS. The stamp records these
@@ -841,7 +845,7 @@ if [ "$INSTALLED_ONLY" = true ]; then
     done
     for f in "$_io_claude"/hooks/*.js; do
       [ -f "$f" ] || continue; _io_b="$(basename "${f%.js}")"
-      case "$_io_b" in inject-code-style) continue ;; esac
+      case "$_io_b" in inject-code-style|docs) continue ;; esac   # docs.js is the docs hook's engine, not a hook
       printf 'hook %s\n' "$_io_b"
     done
     if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
@@ -1620,6 +1624,11 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
     *" guard-stop-contract.js "*|*" guard-fresh-session-start.js "*)
       _install_from_src stack/hooks hook "$root/.claude/hooks" noexec model-windows.json ;;
   esac
+  # the docs hook's engine: required by docs-session.js from its own directory, and run by the model as
+  # `node .claude/hooks/docs.js` - copied only beside the hook
+  case " ${files[*]-} " in
+    *" docs-session.js "*) _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js ;;
+  esac
 }
 
 download_agents() {  # copy each subagent .md into .claude/agents/; per-agent fail-soft (keeps repo copy)
@@ -2055,6 +2064,15 @@ if "CLAUDE_STACK_INSTRUMENT" not in env:
 if "CLAUDE_STACK_PUSH_GATE" not in env:
     env["CLAUDE_STACK_PUSH_GATE"] = "1"; changed = True
     print("  settings.json env: CLAUDE_STACK_PUSH_GATE seeded (1)")
+if "CLAUDE_STACK_DOCS_BLOCK" not in env:
+    env["CLAUDE_STACK_DOCS_BLOCK"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_BLOCK seeded (1)")
+if "CLAUDE_STACK_DOCS_GATE" not in env:
+    env["CLAUDE_STACK_DOCS_GATE"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_GATE seeded (1)")
+if "CLAUDE_STACK_DOCS_ASK" not in env:
+    env["CLAUDE_STACK_DOCS_ASK"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)")
 # rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
