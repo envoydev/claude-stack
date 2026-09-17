@@ -50,9 +50,13 @@ const git = (args, { raw = false, ...opts } = {}) => {
 };
 
 const safe = (b) => String(b).replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '') || 'detached';
+// Six git-state probes - branch, hasGit, tracked, isShallow, mainlineRefs, isMainline - are re-derived by every
+// caller (autoPromote, refreshBaseMeta, status, lint and loadWatch each ask again). A process runs one CLI command
+// or one hook event and nothing here changes underfoot, so the first answer is cached for the rest of the process.
+let BRANCH_CACHE;
 function branch() {
-  const b = git(['rev-parse', '--abbrev-ref', 'HEAD']);
-  return !b || b === 'HEAD' ? null : b;
+  if (BRANCH_CACHE === undefined) { const b = git(['rev-parse', '--abbrev-ref', 'HEAD']); BRANCH_CACHE = !b || b === 'HEAD' ? null : b; }
+  return BRANCH_CACHE;
 }
 
 const slug = (h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
@@ -278,16 +282,23 @@ function merge3(ours, base, theirs, name) {
 }
 
 // Committed docs need no overlay: git versions them per branch, merges them and carries them to a clone.
+let TRACKED_CACHE;
 function tracked() {
-  return git(['ls-files', '--error-unmatch', DOCS]) !== null;
+  if (TRACKED_CACHE === undefined) TRACKED_CACHE = git(['ls-files', '--error-unmatch', DOCS]) !== null;
+  return TRACKED_CACHE;
 }
-const hasGit = () => git(['rev-parse', '--git-dir']) !== null;
+let HAS_GIT_CACHE;
+const hasGit = () => (HAS_GIT_CACHE === undefined ? (HAS_GIT_CACHE = git(['rev-parse', '--git-dir']) !== null) : HAS_GIT_CACHE);
+const MAINLINE_CACHE = new Map();
 function isMainline(b) {
   if (!b) return false;
+  if (MAINLINE_CACHE.has(b)) return MAINLINE_CACHE.get(b);
   const names = MAINLINE.slice();
   const originHead = git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
   if (originHead) names.push(originHead.split('/').pop());
-  return names.includes(b);
+  const result = names.includes(b);
+  MAINLINE_CACHE.set(b, result);
+  return result;
 }
 const overlayDir = () => {
   const b = branch();
@@ -456,14 +467,16 @@ const docsRel = () => path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
 // and origin/HEAD's target. A git-flow repo (work on develop, origin/HEAD -> main) has several of these, and
 // they can be commits apart - a stale local mainline must never be the nearest candidate just because it is
 // local, so a branch cut from the remote-tracking ref is measured against that ref too.
+let MAINLINE_REFS_CACHE;
 function mainlineRefs() {
+  if (MAINLINE_REFS_CACHE) return MAINLINE_REFS_CACHE;
   const refs = MAINLINE.filter((n) => git(['rev-parse', '--verify', '--quiet', `refs/heads/${n}`]) !== null);
   const originHead = git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
   if (originHead) refs.push(originHead);
   for (const n of MAINLINE) {
     if (git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${n}`]) !== null) refs.push(`origin/${n}`);
   }
-  return [...new Set(refs)];
+  return (MAINLINE_REFS_CACHE = [...new Set(refs)]);
 }
 
 // The files this branch COMMITTED since it left mainline, by their blob at HEAD: the evidence that lets a later
@@ -617,7 +630,8 @@ function show(ref) {
 }
 
 const overlayNames = () => (fs.existsSync(BRANCHES) ? fs.readdirSync(BRANCHES, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : []);
-const isShallow = () => git(['rev-parse', '--is-shallow-repository']) === 'true';
+let SHALLOW_CACHE;
+const isShallow = () => (SHALLOW_CACHE === undefined ? (SHALLOW_CACHE = git(['rev-parse', '--is-shallow-repository']) === 'true') : SHALLOW_CACHE);
 const overrideFiles = (dir) => walkFiles(dir).filter((f) => {
   const parts = path.relative(dir, f).split(path.sep);
   return !parts.includes('.base') && !parts.includes('.conflict');
