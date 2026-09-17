@@ -498,6 +498,14 @@ const isAncestor = (sha, ref) => {
   if (!ANCESTRY.has(k)) ANCESTRY.set(k, spawnSync('git', ['merge-base', '--is-ancestor', sha, ref], { cwd: ROOT }).status === 0);
   return ANCESTRY.get(k);
 };
+// Is this a commit the repo actually has? A recorded fork point can name one it does not - pruned, re-cloned,
+// hand-edited - and then `head !== base` is true by accident and every measurement from it is fiction.
+const COMMITS = new Map();
+const isCommit = (sha) => {
+  if (!sha) return false;
+  if (!COMMITS.has(sha)) COMMITS.set(sha, git(['rev-parse', '--verify', `${sha}^{commit}`]) !== null);
+  return COMMITS.get(sha);
+};
 // Has this commit already reached mainline? Measured against every mainline ref that exists, so the answer does not
 // depend on which branch the session happens to sit on.
 const inMainline = (sha) => mainlineRefs().some((ref) => isAncestor(sha, ref));
@@ -690,8 +698,17 @@ const mergedInto = (tip) => (git(['rev-list', '--parents', '--ancestry-path', '-
 // and that commit becomes somebody's SECOND parent the moment another mainline ref merges the branch it sits on
 // (develop released into main, the shape this repo itself uses) - so the merge commit would name a branch that
 // committed nothing. A commit on a mainline ref's own first-parent chain is mainline's work, never a branch's.
-const onMainlineFirstParent = (sha, base) => mainlineRefs()
-  .some((ref) => (git(['rev-list', '--first-parent', `${base}..${ref}`]) || '').split('\n').includes(sha));
+// Memoised: each walk is O(commits since the fork point), and mergedBranches runs twice in one session start
+// (autoPromote, then status), asking about the same few tips each time.
+const FIRST_PARENT = new Map();
+const onMainlineFirstParent = (sha, base) => {
+  const k = `${sha}|${base}`;
+  if (!FIRST_PARENT.has(k)) {
+    FIRST_PARENT.set(k, mainlineRefs()
+      .some((ref) => (git(['rev-list', '--first-parent', `${base}..${ref}`]) || '').split('\n').includes(sha)));
+  }
+  return FIRST_PARENT.get(k);
+};
 
 // A branch landed when its last recorded commit is part of HEAD - provided it had commits of its own - or when every
 // file it changed now holds, at HEAD, the content the branch gave it (a squash or a rebase leaves no ancestor), or
@@ -709,7 +726,11 @@ function mergedBranches() {
     // its first commit. Once its tip IS in mainline only the snapshot can still say what the branch's own work was,
     // so there the stored numbers stand and the merge commit carries the proof instead.
     const meta = tip && tip !== stored.head && !inMainline(tip) ? metaFor(stored.branch || name, tip) : stored;
-    const ownCommits = meta.head !== meta.base;
+    // Both routes below that reason from the fork point stand down when it is not a commit this repo has: with a
+    // base nothing can be measured against, `head !== base` means nothing and the first-parent guard cannot tell
+    // mainline's own commits apart. The blob route carries its own evidence and is left alone.
+    const baseOk = isCommit(meta.base);
+    const ownCommits = baseOk && meta.head !== meta.base;
     const ancestor = ownCommits && isAncestor(meta.head, 'HEAD');
     const files = Object.entries(meta.files || {});
     const landed = !ancestor && files.length > 0 && files.every(([f, blob]) => (blob === '-'
@@ -718,7 +739,7 @@ function mergedBranches() {
     // Only a snapshot the ref has outgrown needs this route: when the two agree, the ancestor check above already
     // asked about that same commit. Everything else here keeps a branch that committed nothing of its own out of
     // it: the tip must have left the RECORDED fork point, and it must not be a commit mainline itself made.
-    const byMerge = !ancestor && !landed && Boolean(tip) && tip !== stored.head && tip !== meta.base
+    const byMerge = !ancestor && !landed && baseOk && Boolean(tip) && tip !== stored.head && tip !== meta.base
       && isAncestor(tip, 'HEAD') && !onMainlineFirstParent(tip, meta.base) && mergedInto(tip);
     if (ancestor || landed || byMerge) out.push({ name, branch: meta.branch || name, how: ancestor ? 'ancestor' : landed ? 'blobs' : 'merge' });
   }
@@ -800,7 +821,9 @@ function autoPromote() {
 //   deleted   - the branch is gone and nothing proved it merged; only the user knows which it was.
 //   onMainline - the branch is alive and its tip already sits in mainline with no proof it landed. A branch that
 //     merely caught up looks exactly like one whose sections were written before its first commit and was then
-//     fast-forwarded in, so the engine cannot choose - but saying nothing leaves the second kind stranded in silence.
+//     fast-forwarded in, so the engine cannot choose - but saying nothing leaves the second kind stranded in
+//     silence. A branch still sitting ON its own fork point is not either of those: it has committed nothing, so
+//     nothing of it can have landed, and inviting a promote there would publish an unfinished decision.
 function unpromotable() {
   if (!hasGit() || tracked()) return { deleted: [], onMainline: [] };
   const live = liveBranches();
@@ -810,7 +833,7 @@ function unpromotable() {
   // Only a session ON mainline can act on the second list, and only there is HEAD the ref to ask - which is also
   // the question mergedBranches just asked about most of these tips, so the answer is usually already paid for.
   const here = !isMainline(branch()) ? [] : rest.filter((n) => live.has(n))
-    .filter((n) => { const t = branchTip(readMeta(n)); return Boolean(t) && isAncestor(t, 'HEAD'); });
+    .filter((n) => { const m = readMeta(n); const t = branchTip(m); return Boolean(t) && t !== m.base && isAncestor(t, 'HEAD'); });
   return { deleted: rest.filter((n) => !live.has(n)), onMainline: here };
 }
 const deletedUnmerged = () => unpromotable().deleted;

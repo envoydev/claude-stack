@@ -340,6 +340,66 @@ for (const moveOn of [false, true]) {
   });
 }
 
+// The most ordinary state in this workflow: a branch cut, a decision written, nothing committed yet, mainline
+// moving on. Nothing landed and nothing is stranded, so naming it would invite a fold that publishes an
+// unfinished decision. A branch that has never committed is the one shape here that IS decidable: tip === base.
+test('a branch that has never committed anything is never called unpromotable', () => {
+  const r = repo({ files: { 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/never-committed');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Still thinking.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.write('README.md', 'y\n'); r.git('commit', '-qam', 'develop moves on');
+    const out = r.cli(['status']).stdout;
+    assert.doesNotMatch(out, /no proof they merged/, 'nothing about it is unclear');
+    assert.doesNotMatch(out, /deleted branches/);
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-never-committed'));
+  } finally { r.rm(); }
+});
+
+// A fork point the repo does not have - pruned, re-cloned, hand-edited - makes head !== base true by accident,
+// and every route that reads the fork point then reasons from a commit that does not exist.
+test('an overlay whose recorded fork point does not resolve is never promoted', () => {
+  const r = repo({ files: { 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('branch', 'main');
+    r.git('switch', '-qc', 'feat/behind');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Still being decided.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.write('README.md', 'y\n'); r.git('commit', '-qam', 'develop moves');
+    r.git('switch', '-q', 'feat/behind');
+    r.git('merge', '-q', '--ff-only', 'develop');
+    r.git('switch', '-q', 'main');
+    r.git('merge', '-q', '--no-ff', '-m', 'release', 'develop');
+    const metaPath = path.join(r.root, '.claude/docs/.branches/feat-behind/BASE.json');
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    fs.writeFileSync(metaPath, `${JSON.stringify({ ...meta, base: 'f'.repeat(40) }, null, 2)}\n`);
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-behind'), 'the overlay survives an unreadable fork point');
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /ledgered before the payment call/);
+  } finally { r.rm(); }
+});
+
+// The same broken fork point must not cost a branch whose blobs speak for themselves.
+test('a squashed branch is still promoted by blobs when its fork point does not resolve', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/blobbed');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int B; }\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'b');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('Blob rule.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--squash', 'feat/blobbed'); r.git('commit', '-qm', 'squash');
+    r.git('branch', '-D', 'feat/blobbed');
+    const metaPath = path.join(r.root, '.claude/docs/.branches/feat-blobbed/BASE.json');
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    fs.writeFileSync(metaPath, `${JSON.stringify({ ...meta, base: 'f'.repeat(40) }, null, 2)}\n`);
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/blobbed \(blobs\) patterns#orders: merged/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Blob rule\./);
+  } finally { r.rm(); }
+});
+
 // The same release shape, with a branch that really did commit and land: the guard above must not cost this one.
 test('a branch merged into develop and released into main is still promoted there', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'README.md': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
