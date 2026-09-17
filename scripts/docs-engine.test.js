@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { repo, section } = require('./docs-fixture');
 
 const PATTERNS = section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') + '\n'
@@ -257,7 +258,60 @@ test('a branch with no commits of its own is never taken as merged', () => {
   } finally { r.rm(); }
 });
 
-test('a promote conflict keeps that override; a reconciled mainline lets the next promote finish', () => {
+test('a branch cut from develop with no commits is never promoted when origin/HEAD is main', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const remote = `${r.root}-remote`;
+  try {
+    spawnSync('git', ['init', '-q', '--bare', remote]);
+    r.git('branch', 'main');
+    r.git('remote', 'add', 'origin', remote);
+    r.git('push', '-q', 'origin', 'develop', 'main');
+    r.git('remote', 'set-head', 'origin', 'main');
+    r.write('README.md', 'ahead\n'); r.git('add', '-A'); r.git('commit', '-qm', 'develop moves ahead');
+
+    // a branch cut here has no commits of its own - it must not be taken as merged, whatever origin/HEAD says.
+    r.git('switch', '-qc', 'feat/fresh');
+    r.cli(['set', 'patterns#orders'], ORDERS('Not yet.'));
+    r.git('switch', '-q', 'develop');
+    assert.match(r.cli(['promote', '--merged']).stdout, /nothing merged/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-fresh'));
+
+    // a branch with a commit of its own, merged into develop, is still promoted correctly.
+    r.git('switch', '-qc', 'feat/real');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int R; }\n'); r.git('commit', '-qam', 'r');
+    r.cli(['set', 'patterns#orders'], ORDERS('Real rule.'));
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/real');
+    assert.match(r.cli(['promote', '--merged']).stdout, /feat\/real \(ancestor\) patterns#orders: merged/);
+  } finally { r.rm(); fs.rmSync(remote, { recursive: true, force: true }); }
+});
+
+test('two branches adding the same new section: the second promote conflicts, not overwrites', () => {
+  const r = repo({ files: { 'src/Api/Orders/A.cs': 'class A {}\n', 'src/Api/Orders/B.cs': 'class B {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/a');
+    r.write('src/Api/Orders/A.cs', 'class A { int X; }\n'); r.git('commit', '-qam', 'a');
+    r.cli(['set', 'patterns#paging'], '## Paging\n<!-- id: paging -->\nFrom A.\n');
+    r.git('switch', '-q', 'develop');
+
+    r.git('switch', '-qc', 'feat/b');
+    r.write('src/Api/Orders/B.cs', 'class B { int X; }\n'); r.git('commit', '-qam', 'b');
+    r.cli(['set', 'patterns#paging'], '## Paging\n<!-- id: paging -->\nFrom B.\n');
+    r.git('switch', '-q', 'develop');
+
+    r.git('merge', '-q', '--no-ff', '-m', 'merge a', 'feat/a');
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#paging: added/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /From A\./);
+
+    r.git('merge', '-q', '--no-ff', '-m', 'merge b', 'feat/b');
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#paging: conflict \(both added this section\)/);
+    const doc = r.read('.claude/docs/architecture/references/patterns.md');
+    assert.match(doc, /From A\./);
+    assert.doesNotMatch(doc, /From B\./);
+  } finally { r.rm(); }
+});
+
+test('a promote conflict keeps that override; setting the section on mainline resolves it', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'The cap is 5.') } });
   try {
     branchWithDecision(r, 'feat/c', ORDERS('The cap is 10.'));
@@ -267,9 +321,26 @@ test('a promote conflict keeps that override; a reconciled mainline lets the nex
     assert.match(first.stdout, /patterns#orders: conflict/);
     assert.ok(r.exists('.claude/docs/.branches/feat-c/references/patterns/orders.md'));
     assert.match(r.cli(['show', 'patterns#orders', '--conflict', 'feat/c']).stdout, /<<<<<<< mainline/);
-    r.cli(['set', 'patterns#orders'], ORDERS('The cap is 10.'));
-    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: merged/);
+    const resolved = r.cli(['set', 'patterns#orders'], ORDERS('The cap is 10.'));
+    assert.match(resolved.stdout, /resolved the pending doc conflict with: feat-c/);
     assert.ok(!r.exists('.claude/docs/.branches/feat-c'));
+  } finally { r.rm(); }
+});
+
+test("keeping mainline's text resolves a conflict too", () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'The cap is 5.') } });
+  try {
+    branchWithDecision(r, 'feat/e', ORDERS('The cap is 10.'));
+    r.cli(['set', 'patterns#orders'], ORDERS('The cap is 20.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/e');
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: conflict/);
+    assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: conflict/);
+    const lines = r.read('.claude/docs/.branches/promoted.jsonl').trim().split('\n');
+    assert.strictEqual(lines.length, 1, 'a repeated, unchanged conflict never appends another row');
+    const resolved = r.cli(['set', 'patterns#orders'], ORDERS('The cap is 20.'));
+    assert.match(resolved.stdout, /resolved the pending doc conflict with: feat-e/);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-e'));
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /The cap is 20\./);
   } finally { r.rm(); }
 });
 
@@ -300,6 +371,41 @@ test('status lists a deleted unmerged branch; promote <branch> folds it in, prun
     assert.match(r.cli(['promote', 'feat-gone']).stdout, /patterns#orders: merged/);
     assert.match(r.cli(['prune', 'feat-drop']).stdout, /pruned: feat-drop/);
     assert.ok(!r.exists('.claude/docs/.branches/feat-drop'));
+  } finally { r.rm(); }
+});
+
+test('prune without a branch drops only overlays of deleted branches idle for 30 days', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const old = new Date(Date.now() - 40 * 86400000).toISOString();
+    const backdate = (rel) => {
+      const meta = JSON.parse(r.read(rel));
+      meta.updated = old;
+      r.write(rel, `${JSON.stringify(meta, null, 2)}\n`);
+    };
+
+    // idle: BASE.json itself says it was last touched 40 days ago - pruned.
+    branchWithDecision(r, 'feat/idle', ORDERS('Idle rule.'));
+    r.git('branch', '-D', 'feat/idle');
+    backdate('.claude/docs/.branches/feat-idle/BASE.json');
+
+    // recent: BASE.json still says 'now' - a backdated directory mtime must not fool prune into dropping it.
+    branchWithDecision(r, 'feat/recent', ORDERS('Recent rule.'));
+    r.git('branch', '-D', 'feat/recent');
+    const oldTime = new Date(Date.now() - 40 * 86400000);
+    fs.utimesSync(path.join(r.root, '.claude/docs/.branches/feat-recent'), oldTime, oldTime);
+
+    // merged: idle by BASE.json's clock too, but still merged into develop - promote owns it, not bulk prune.
+    branchWithDecision(r, 'feat/merged', ORDERS('Merged rule.'));
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/merged');
+    r.git('branch', '-D', 'feat/merged');
+    backdate('.claude/docs/.branches/feat-merged/BASE.json');
+
+    const out = r.cli(['prune']).stdout;
+    assert.strictEqual(out.trim(), 'pruned: feat-idle');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-idle'));
+    assert.ok(r.exists('.claude/docs/.branches/feat-recent'), 'BASE.json says now, so it is kept despite the backdated directory');
+    assert.ok(r.exists('.claude/docs/.branches/feat-merged'), 'a merged overlay belongs to promote, not to bulk prune');
   } finally { r.rm(); }
 });
 

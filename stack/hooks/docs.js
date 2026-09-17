@@ -449,10 +449,14 @@ const porcelainPaths = () => (git(['status', '--porcelain', '--untracked-files=a
 const blobOf = (f) => (fs.existsSync(path.join(ROOT, f)) ? (git(['hash-object', f]) || '').slice(0, 12) : '-');
 const docsRel = () => path.relative(ROOT, DOCS_ROOT).split(path.sep).join('/');
 
-function mainlineRef() {
+// Every mainline ref that actually exists here: the local branches plus origin/HEAD's target. A git-flow repo
+// (work on develop, origin/HEAD -> main) has both, and they can be commits apart - the nearest one, not either
+// one by name, is what tells a branch with no commits of its own from one that is genuinely ahead.
+function mainlineRefs() {
+  const refs = MAINLINE.filter((n) => git(['rev-parse', '--verify', '--quiet', `refs/heads/${n}`]) !== null);
   const originHead = git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
-  if (originHead) return originHead;
-  return MAINLINE.find((n) => git(['rev-parse', '--verify', '--quiet', `refs/heads/${n}`]) !== null) || null;
+  if (originHead) refs.push(originHead);
+  return refs;
 }
 
 // The files this branch COMMITTED since it left mainline, by their blob at HEAD: the evidence that lets a later
@@ -467,9 +471,10 @@ function branchFiles(base) {
 }
 
 function writeBaseMeta(dir, b) {
-  const main = mainlineRef();
   const head = git(['rev-parse', 'HEAD']);
-  const base = (main && git(['merge-base', 'HEAD', main])) || head;
+  const merged = mainlineRefs().map((ref) => git(['merge-base', 'HEAD', ref])).filter(Boolean)
+    .map((mb) => ({ mb, count: Number(git(['rev-list', '--count', `${mb}..HEAD`]) || 0) }));
+  const base = merged.length ? merged.reduce((best, x) => (x.count < best.count ? x : best)).mb : head;
   const meta = { branch: b, base, head, files: branchFiles(base), updated: new Date().toISOString() };
   fs.writeFileSync(path.join(dir, 'BASE.json'), `${JSON.stringify(meta, null, 2)}\n`);
 }
@@ -507,12 +512,30 @@ function set(ref, newText) {
   return writeOverride(file, sec, text, b);
 }
 
+// A promote conflict can otherwise only be resolved by adopting the branch's lines. Writing this section on
+// mainline - by any text, including mainline's own unchanged one - is the human's deliberate call: it clears
+// every branch's pending conflict marker for this id, discarding that branch's override rather than blending
+// it again.
 function writeInPlace(file, sec, text) {
   const raw = fs.readFileSync(file, 'utf8');
   const own = parse(file, raw).find((s) => s.id === `${key(file)}#${sec}`);
   const next = own ? spliceSection(raw.split('\n'), own, text).join('\n') : `${norm(raw)}\n\n${norm(text)}\n`;
   fs.writeFileSync(file, next);
-  return { wrote: path.relative(ROOT, file), inPlace: true, added: !own };
+  const resolved = [];
+  if (hasGit() && !tracked() && isMainline(branch())) {
+    const parts = overlayParts(file, sec);
+    for (const name of overlayNames()) {
+      const bdir = path.join(BRANCHES, name);
+      const marker = path.join(bdir, '.conflict', ...parts);
+      if (!fs.existsSync(marker)) continue;
+      fs.rmSync(path.join(bdir, ...parts), { force: true });
+      fs.rmSync(path.join(bdir, '.base', ...parts), { force: true });
+      fs.rmSync(marker, { force: true });
+      if (overrideFiles(bdir).length === 0) fs.rmSync(bdir, { recursive: true, force: true });
+      resolved.push(name);
+    }
+  }
+  return { wrote: path.relative(ROOT, file), inPlace: true, added: !own, resolved };
 }
 
 // Parent and child overrides never coexist: a section already served from an ancestor's override lands inside
@@ -588,7 +611,10 @@ function show(ref) {
 
 const overlayNames = () => (fs.existsSync(BRANCHES) ? fs.readdirSync(BRANCHES, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : []);
 const isShallow = () => git(['rev-parse', '--is-shallow-repository']) === 'true';
-const overrideFiles = (dir) => walkFiles(dir).filter((f) => !path.relative(dir, f).split(path.sep).includes('.base'));
+const overrideFiles = (dir) => walkFiles(dir).filter((f) => {
+  const parts = path.relative(dir, f).split(path.sep);
+  return !parts.includes('.base') && !parts.includes('.conflict');
+});
 
 // A branch landed when its last recorded commit is part of HEAD - provided it had commits of its own - or when every
 // file it changed now holds, at HEAD, the content the branch gave it (a squash or a rebase leaves no ancestor).
@@ -615,12 +641,23 @@ function promote(name) {
   const dir = path.join(BRANCHES, safe(name));
   if (!fs.existsSync(dir)) return { error: `no doc overrides for ${name}` };
   const results = [];
+  let freshConflict = false;
   for (const over of overrideFiles(dir)) {
     const rel = path.relative(dir, over).split(path.sep);
     const id = path.basename(rel.pop(), '.md');
     const mainline = `${path.join(DOCS, ...rel)}.md`;
     const label = `${path.basename(mainline, '.md')}#${id}`;
-    if (!fs.existsSync(mainline)) { results.push({ id: label, result: 'conflict', why: 'mainline has no such doc file', path: over }); continue; }
+    const marker = path.join(dir, '.conflict', ...rel, `${id}.md`);
+    // A standing conflict is flagged with a marker holding mainline's text at THIS moment - not to compare
+    // against later (any set of the section on mainline resolves it, whatever it says), just for reference.
+    // Only a marker that did not already exist counts toward whether this run changed anything.
+    const flagConflict = (why, mainlineText) => {
+      if (!fs.existsSync(marker)) freshConflict = true;
+      fs.mkdirSync(path.dirname(marker), { recursive: true });
+      fs.writeFileSync(marker, `${stripStamp(mainlineText || '')}\n`);
+      results.push({ id: label, result: 'conflict', why, path: over });
+    };
+    if (!fs.existsSync(mainline)) { flagConflict('mainline has no such doc file', ''); continue; }
     const raw = fs.readFileSync(mainline, 'utf8');
     const hit = parse(mainline, raw).find((s) => s.id === label);
     const base = safeRead(path.join(dir, '.base', ...rel, `${id}.md`));
@@ -628,24 +665,37 @@ function promote(name) {
     const covers = (t) => globList((COVERS.exec(norm(t).split('\n').slice(0, 10).join('\n')) || [])[1] || '');
     const restamp = (t) => withStamp(t, captureStamp(covers(t)));
     if (!hit) {
-      if (norm(base)) { results.push({ id: label, result: 'conflict', why: 'mainline removed this section', path: over }); continue; }
+      if (norm(base)) { flagConflict('mainline removed this section', ''); continue; }
       fs.writeFileSync(mainline, `${norm(raw)}\n\n${norm(restamp(mine))}\n`);
       results.push({ id: label, result: 'added', path: over });
       continue;
     }
-    const m = merge3(stripStamp(hit.text), stripStamp(norm(base) ? base : hit.text), stripStamp(mine), name);
-    if (m.error || m.conflicts) { results.push({ id: label, result: 'conflict', why: m.error || 'both sides changed the same lines', path: over }); continue; }
+    // An empty base with mainline HOLDING the id means some other branch's own promote already added it (this
+    // override's base was captured before that landed) - the same text is a no-op merge, different text is a
+    // second, independent decision for the same id and is never silently taken as the winner.
+    if (!norm(base)) {
+      if (stripStamp(hit.text) !== stripStamp(mine)) { flagConflict('both added this section', hit.text); continue; }
+      fs.writeFileSync(mainline, spliceSection(raw.split('\n'), hit, norm(restamp(mine))).join('\n'));
+      results.push({ id: label, result: 'merged', path: over });
+      continue;
+    }
+    const m = merge3(stripStamp(hit.text), stripStamp(base), stripStamp(mine), name);
+    if (m.error || m.conflicts) { flagConflict(m.error || 'both sides changed the same lines', hit.text); continue; }
     fs.writeFileSync(mainline, spliceSection(raw.split('\n'), hit, norm(restamp(m.text))).join('\n'));
     results.push({ id: label, result: 'merged', path: over });
   }
   for (const r of results.filter((x) => x.result !== 'conflict')) {
     fs.rmSync(r.path, { force: true });
     fs.rmSync(path.join(dir, '.base', path.relative(dir, r.path)), { force: true });
+    fs.rmSync(path.join(dir, '.conflict', path.relative(dir, r.path)), { force: true });
   }
   const removed = overrideFiles(dir).length === 0;
   if (removed) fs.rmSync(dir, { recursive: true, force: true });
-  try { fs.appendFileSync(path.join(BRANCHES, 'promoted.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), branch: safe(name), results: results.map(({ id, result }) => ({ id, result })) })}\n`); } catch {}
-  return { results: results.map(({ id, result, why }) => ({ id, result, why })), removed };
+  const changed = results.some((x) => x.result !== 'conflict') || freshConflict;
+  if (changed) {
+    try { fs.appendFileSync(path.join(BRANCHES, 'promoted.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), branch: safe(name), results: results.map(({ id, result }) => ({ id, result })) })}\n`); } catch {}
+  }
+  return { results: results.map(({ id, result, why }) => ({ id, result, why })), removed, changed };
 }
 
 function autoPromote() {
@@ -661,6 +711,23 @@ function deletedUnmerged() {
   return overlayNames().filter((n) => !live.has(n) && !merged.has(n));
 }
 
+// The newest mtime of any file under a directory - a fallback clock for an overlay whose BASE.json cannot
+// say when it was last touched (missing, unreadable, or written before 'updated' existed).
+function newestFileMs(dir) {
+  let max = fs.statSync(dir).mtimeMs;
+  const walk = (d) => {
+    let entries = [];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else max = Math.max(max, fs.statSync(p).mtimeMs);
+    }
+  };
+  walk(dir);
+  return max;
+}
+
 function prune(name) {
   if (name) {
     const dir = path.join(BRANCHES, safe(name));
@@ -668,12 +735,17 @@ function prune(name) {
     fs.rmSync(dir, { recursive: true, force: true });
     return [safe(name)];
   }
+  if (!hasGit()) return [];
   const live = new Set((git(['for-each-ref', '--format=%(refname:short)', 'refs/heads']) || '').split('\n').filter(Boolean).map(safe));
+  const merged = new Set(mergedBranches().map((m) => m.name));
   const dropped = [];
   for (const n of overlayNames()) {
-    if (live.has(n)) continue;
+    if (live.has(n) || merged.has(n)) continue;
     const dir = path.join(BRANCHES, n);
-    if ((Date.now() - fs.statSync(dir).mtimeMs) / 86400000 < 30) continue;
+    const meta = readMeta(n);
+    const updatedMs = meta && meta.updated ? Date.parse(meta.updated) : NaN;
+    const ageMs = Date.now() - (Number.isFinite(updatedMs) ? updatedMs : newestFileMs(dir));
+    if (ageMs / 86400000 < 30) continue;
     fs.rmSync(dir, { recursive: true, force: true });
     dropped.push(n);
   }
@@ -703,7 +775,7 @@ module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
   git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
-  set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRef, porcelainPaths, blobOf,
+  set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
 };
@@ -736,6 +808,7 @@ const commands = {
     if (r.error) { console.log(r.error); process.exit(1); }
     docsLog({ event: 'doc-set', ref, wrote: r.wrote, inPlace: Boolean(r.inPlace) });
     console.log(r.inPlace ? `wrote ${ref} into ${r.wrote}` : `wrote ${r.wrote} (base kept at ${r.base}) - this branch only`);
+    if (r.resolved && r.resolved.length) console.log(`resolved the pending doc conflict with: ${r.resolved.join(', ')}`);
   },
   promote: () => {
     if (args[0] === '--merged') {
@@ -743,14 +816,14 @@ const commands = {
       const rows = autoPromote();
       if (!rows.length) { console.log('nothing merged'); return; }
       for (const p of rows) {
-        docsLog({ event: 'promote', branch: p.branch, how: p.how, results: p.results });
+        if (p.changed) docsLog({ event: 'promote', branch: p.branch, how: p.how, results: p.results });
         for (const x of p.results) console.log(`${p.branch} (${p.how}) ${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
       }
       return;
     }
     const p = promote(args[0]);
     if (p.error) { console.log(p.error); process.exit(1); }
-    docsLog({ event: 'promote', branch: args[0], how: 'manual', results: p.results });
+    if (p.changed) docsLog({ event: 'promote', branch: args[0], how: 'manual', results: p.results });
     for (const x of p.results) console.log(`${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
     process.exit(p.results.some((x) => x.result === 'conflict') ? 1 : 0);
   },
