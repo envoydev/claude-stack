@@ -428,17 +428,24 @@ const overlayDir = () => {
   return overlayClash(dir, b) ? null : dir;
 };
 
-// One domain's own files - root, references/, history/ - the shape every domain is read from.
+// One domain's own files - root, references/, history/ - the shape every domain is read from. A file
+// the domain's own watch.json (or, for architecture, the ORIENTATION.md default folded in below) lists
+// under notOwned never counts as one of them: never sectioned, never overlaid, never a lint target.
 function domainFiles(d) {
   const out = [];
-  const add = (dir) => {
+  const skip = notOwnedOf(d);
+  const add = (dir, prefix) => {
     if (!fs.existsSync(dir)) return;
-    for (const f of fs.readdirSync(dir)) if (f.endsWith('.md') && f !== 'ORIENTATION.md' && f !== 'BRANCH-DELTA.md') out.push(path.join(dir, f));
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.md') || f === 'BRANCH-DELTA.md') continue;
+      if (skip.length && matches(skip, prefix ? `${prefix}/${f}` : f)) continue;
+      out.push(path.join(dir, f));
+    }
   };
   const dir = domainDir(d);
-  add(dir);
-  add(path.join(dir, 'references'));
-  add(path.join(dir, 'history'));
+  add(dir, '');
+  add(path.join(dir, 'references'), 'references');
+  add(path.join(dir, 'history'), 'history');
   return out;
 }
 // Every domain's own files - domains() already grandfathers 'architecture' in, so this needs no
@@ -793,6 +800,14 @@ const overlayParts = (file, id) => [fileDomain(file), ...relKey(file).split('/')
 function set(ref, newText, expect) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return { error: 'name one section: set <file>#<id> - whole-file writes are not supported' };
+  // Resolved separately from findFile below: a notOwned file is excluded from domainFiles (never
+  // sectioned), so findFile alone cannot tell 'unowned' apart from 'no such file' - parseRef still
+  // names the domain either way, which is all this refusal needs.
+  let parsed;
+  try { parsed = parseRef(fileKey); } catch (e) { return { error: e.message }; }
+  if (parsed.domain && matches(notOwnedOf(parsed.domain), parsed.file)) {
+    return { error: `${parsed.file} is maintained by another skill - this engine does not write it` };
+  }
   let file;
   try { file = findFile(fileKey); } catch (e) { return { error: e.message }; }
   if (!file) return { error: `no such doc file: ${fileKey}` };
@@ -1302,9 +1317,11 @@ function lint() {
   } else notes.push('no ORIENTATION.md: sessions start with no map');
   const w = loadWatch();
   problems.push(...w.problems);
-  const ids = new Set(allSections().map((s) => s.id));
-  for (const e of [...w.watch, ...(w.newModule ? [{ kind: 'newModule', sections: w.newModule.sections }] : [])]) {
-    for (const id of e.sections) if (!ids.has(id)) problems.push(`watch.json '${e.kind}' names a section that does not exist: ${id}`);
+  // askRef resolves a sections entry the same way every reader does - bare or domain-qualified,
+  // through parseRef - rather than a bare-id Set membership check that would false-flag a qualified
+  // entry as missing.
+  for (const e of [...w.watch, ...w.newModule.map((nm) => ({ kind: 'newModule', sections: nm.sections, domain: nm.domain }))]) {
+    for (const id of e.sections) if (!askRef(id)) problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
   }
   if (overlayDir()) {
     const st = status();
@@ -1342,33 +1359,68 @@ function seedIds() {
 }
 
 const WATCH_ROOTS = ['src', 'tests'];
-function loadWatch() {
-  const empty = { sourceRoots: WATCH_ROOTS, watch: [], newModule: null };
-  if (!fs.existsSync(WATCH_FILE)) return { ...empty, problems: [], missing: true };
+// One domain's own watch.json - sourceRoots, watch[] of {kind, globs, sections}, newModule and notOwned,
+// exactly the shape every shipped watch.json already uses. A sections entry may be bare or
+// domain-qualified; both are resolved by the reader (askRef, via parseRef) rather than here, so nothing
+// about this shape changes for an existing file.
+function watchOf(domain) {
+  const empty = { sourceRoots: WATCH_ROOTS, watch: [], newModule: null, notOwned: [] };
+  const file = path.join(domainDir(domain), 'watch.json');
+  if (!fs.existsSync(file)) return { ...empty, problems: [], missing: true };
   let j;
-  try { j = JSON.parse(fs.readFileSync(WATCH_FILE, 'utf8')); } catch (e) { return { ...empty, problems: [`watch.json is not valid JSON: ${e.message}`] }; }
-  if (!j || typeof j !== 'object' || Array.isArray(j)) return { ...empty, problems: ['watch.json must be an object with sourceRoots, watch and newModule'] };
+  try { j = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return { ...empty, problems: [`${domain}/watch.json is not valid JSON: ${e.message}`] }; }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return { ...empty, problems: [`${domain}/watch.json must be an object with sourceRoots, watch, newModule and notOwned`] };
   const problems = [];
   const strings = (v, what, required) => {
-    if (v === undefined) { if (required) problems.push(`watch.json ${what} is missing`); return null; }
-    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !x)) { problems.push(`watch.json ${what} must be a non-empty list of strings`); return null; }
+    if (v === undefined) { if (required) problems.push(`${domain}/watch.json ${what} is missing`); return null; }
+    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !x)) { problems.push(`${domain}/watch.json ${what} must be a non-empty list of strings`); return null; }
     return v;
   };
   const sourceRoots = (strings(j.sourceRoots, 'sourceRoots') || WATCH_ROOTS).map((r) => r.replace(/\/+$/, ''));
   const watch = [];
-  if (j.watch !== undefined && !Array.isArray(j.watch)) problems.push('watch.json watch must be a list');
+  if (j.watch !== undefined && !Array.isArray(j.watch)) problems.push(`${domain}/watch.json watch must be a list`);
   for (const [i, e] of (Array.isArray(j.watch) ? j.watch : []).entries()) {
     const globs = strings(e && e.globs, `watch[${i}].globs`, true);
     const secs = strings(e && e.sections, `watch[${i}].sections`, true);
-    if (globs && secs) watch.push({ kind: typeof e.kind === 'string' && e.kind ? e.kind : `watch[${i}]`, globs, sections: secs });
+    if (globs && secs) watch.push({ kind: typeof e.kind === 'string' && e.kind ? e.kind : `watch[${i}]`, globs, sections: secs, domain });
   }
   let newModule = null;
   if (j.newModule !== undefined) {
     const globs = strings(j.newModule && j.newModule.globs, 'newModule.globs', true);
     const secs = strings(j.newModule && j.newModule.sections, 'newModule.sections', true);
-    if (globs && secs) newModule = { globs: globs.map((g) => (g.endsWith('/') ? g : `${g}/`)), sections: secs };
+    if (globs && secs) newModule = { globs: globs.map((g) => (g.endsWith('/') ? g : `${g}/`)), sections: secs, domain };
   }
-  return { sourceRoots, watch, newModule, problems };
+  let notOwned = [];
+  if (j.notOwned !== undefined) {
+    if (!Array.isArray(j.notOwned) || j.notOwned.some((x) => typeof x !== 'string' || !x)) problems.push(`${domain}/watch.json notOwned must be a list of strings`);
+    else notOwned = j.notOwned;
+  }
+  return { sourceRoots, watch, newModule, notOwned, problems };
+}
+// The declared notOwned list, exactly as that domain's own watch.json states it - no default folded
+// in, so a caller that wants the whole effective list (domainFiles, set) goes through notOwnedOf below.
+const unowned = (domain) => watchOf(domain).notOwned;
+// ORIENTATION.md is architecture's own generated, byte-capped file (see BLOCK_FILE/BLOCK_BYTES in
+// lint) - unowned by the write path whatever that domain's watch.json says, so no existing watch.json
+// needs a notOwned entry added for it. Folded into the SAME glob-matching mechanism a domain's own
+// declared list extends, rather than a second hardcoded filename check beside it.
+const notOwnedOf = (domain) => (domain === 'architecture' ? [...new Set(['ORIENTATION.md', ...unowned(domain)])] : unowned(domain));
+
+// Every domain's own watch.json, read on its own and merged: a malformed or missing one never blinds
+// another domain's watch. sourceRoots union (the 'first change under a source root' gate reads every
+// domain's own roots at once); watch and newModule concatenate, each entry still carrying which domain
+// it came from so a hit can be attributed and the section resolved without guessing.
+function loadWatch() {
+  const per = domains().map((d) => ({ d, w: watchOf(d) }));
+  const present = per.filter((p) => !p.w.missing);
+  const sourceRoots = [...new Set(present.flatMap((p) => p.w.sourceRoots))];
+  return {
+    sourceRoots: sourceRoots.length ? sourceRoots : WATCH_ROOTS,
+    watch: present.flatMap((p) => p.w.watch),
+    newModule: present.flatMap((p) => (p.w.newModule ? [p.w.newModule] : [])),
+    problems: per.flatMap((p) => p.w.problems),
+    missing: present.length === 0,
+  };
 }
 
 function watchHits(files, dirs = []) {
@@ -1376,11 +1428,11 @@ function watchHits(files, dirs = []) {
   const hits = [];
   for (const e of w.watch) {
     const hit = files.filter((f) => matches(e.globs, f));
-    if (hit.length) hits.push({ kind: e.kind, files: hit, sections: e.sections });
+    if (hit.length) hits.push({ kind: e.kind, files: hit, sections: e.sections, domain: e.domain });
   }
-  if (w.newModule) {
-    const hit = dirs.map((d) => `${d.replace(/\/+$/, '')}/`).filter((d) => matches(w.newModule.globs, d));
-    if (hit.length) hits.push({ kind: 'new module', files: hit, sections: w.newModule.sections });
+  for (const nm of w.newModule) {
+    const hit = dirs.map((d) => `${d.replace(/\/+$/, '')}/`).filter((d) => matches(nm.globs, d));
+    if (hit.length) hits.push({ kind: 'new module', files: hit, sections: nm.sections, domain: nm.domain });
   }
   return hits;
 }
@@ -1428,7 +1480,7 @@ module.exports = {
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
-  lint, seedIds, loadWatch, watchHits, snapshot, changedSince,
+  lint, seedIds, loadWatch, watchHits, watchOf, unowned, snapshot, changedSince,
   sectionHash, firstSentence, askRef,
 };
 if (require.main !== module) return;

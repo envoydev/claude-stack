@@ -1364,6 +1364,93 @@ test('lint: a watch entry missing sections and a newModule missing globs are bot
   } finally { r.rm(); }
 });
 
+// Task 4: each domain's watch.json is read on its own - loadWatch/watchHits no longer read one
+// docs-root-wide file.
+
+test('two domains each watch their own globs; a changed file hits only its own domain, and hits carry the domain', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n', 'style/Linter.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }],
+    }));
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({
+      watch: [{ kind: 'linter', globs: ['style/*.cs'], sections: ['CODE-STYLE#csharp'] }],
+    }));
+    r.write('.claude/docs/code-style/CODE-STYLE.md', section('csharp', '*.cs', 'Style rule.'));
+    const text = r.cli(['watch', 'src/Api/Program.cs', 'style/Linter.cs']).stdout;
+    assert.match(text, /composition root: src\/Api\/Program\.cs -> patterns#orders/);
+    assert.match(text, /linter: style\/Linter\.cs -> CODE-STYLE#csharp/);
+    const docs = requireEngine(r.root);
+    const hits = docs.watchHits(['src/Api/Program.cs', 'style/Linter.cs']);
+    assert.strictEqual(hits.find((h) => h.kind === 'composition root').domain, 'architecture');
+    assert.strictEqual(hits.find((h) => h.kind === 'linter').domain, 'code-style');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('an empty watch.json is a domain that watches nothing; a malformed watch.json in one domain does not break its neighbour', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }],
+    }));
+    r.write('.claude/docs/related-projects/watch.json', '{}');
+    const docs = requireEngine(r.root);
+    const hits = docs.watchHits(['src/Api/Program.cs']);
+    assert.deepEqual(hits.filter((h) => h.domain === 'related-projects'), [], 'an empty watch.json watches nothing');
+    assert.strictEqual(hits.find((h) => h.domain === 'architecture').sections[0], 'patterns#orders', 'its neighbour still hits normally');
+
+    r.write('.claude/docs/related-projects/watch.json', '{ not json');
+    const stillHits = docs.watchHits(['src/Api/Program.cs']);
+    assert.strictEqual(stillHits.find((h) => h.domain === 'architecture').sections[0], 'patterns#orders', 'a malformed watch.json beside it does not break architecture');
+    const problems = docs.lint().problems;
+    assert.match(problems.join('\n'), /related-projects\/watch\.json is not valid JSON/);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('lint resolves a domain-qualified sections entry through parseRef, not a bare-id set membership check', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['architecture/references/patterns#orders'] }],
+    }));
+    const clean = r.cli(['lint']);
+    assert.strictEqual(clean.status, 0, clean.stdout);
+    assert.doesNotMatch(clean.stdout, /names a section that does not exist/);
+
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['architecture/references/patterns#nope'] }],
+    }));
+    const broken = r.cli(['lint']);
+    assert.strictEqual(broken.status, 1);
+    assert.match(broken.stdout, /watch\.json 'composition root' names a section that does not exist: architecture\/references\/patterns#nope/);
+  } finally { r.rm(); }
+});
+
+test('set refuses a file the domain declares notOwned, naming the file and not the id', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'NOTES.md': '## Notes\n<!-- id: notes -->\nEditorial notes.\n' } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ notOwned: ['NOTES.md'] }));
+    const out = r.cli(['set', 'architecture/NOTES#notes'], 'rewritten by the engine\n');
+    assert.strictEqual(out.status, 1, out.stdout);
+    assert.match(out.stdout, /NOTES\.md is maintained by another skill - this engine does not write it/);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/NOTES.md'), /rewritten by the engine/, 'nothing was written');
+    // notOwned also keeps the file out of the corpus entirely - never sectioned, never a lint target.
+    const docs = requireEngine(r.root);
+    assert.ok(!docs.docFiles().some((f) => f.endsWith('NOTES.md')), 'a notOwned file is not in the domain\'s own files');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('ORIENTATION.md stays refused under the same notOwned mechanism, with no notOwned entry declared', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': 'o'.repeat(10) } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', '{}');
+    const out = r.cli(['set', 'architecture/ORIENTATION#x'], 'new text\n');
+    assert.strictEqual(out.status, 1, out.stdout);
+    assert.match(out.stdout, /ORIENTATION\.md is maintained by another skill - this engine does not write it/);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/ORIENTATION.md'), /new text/);
+  } finally { r.rm(); }
+});
+
 // --- the seams the final whole-branch review found ---
 
 // One `git hash-object` per dirty file is one PROCESS per file. Stop runs changedSince at the end of every turn
