@@ -1564,6 +1564,61 @@ test('the notOwned refusal reaches the bare spelling too, not only the domain-qu
   } finally { r.rm(); }
 });
 
+// --- task-4-review.md, second pass: two residuals fixed rather than parked ---
+
+// Residual 1: parseRef strips a trailing '.md' before it ever reaches domainFiles' lookup, but
+// notOwnedMatch (set's own bare-ref path, since a notOwned file is excluded from domainFiles and
+// parseRef can therefore never name a domain for it) appended '.md' onto the UNSTRIPPED fileKey - so
+// 'NOTES.md' became the candidate 'NOTES.md.md', which never matches the declared 'NOTES.md'. The bare
+// spelling ('NOTES#notes') and the domain-qualified spelling ('architecture/NOTES.md#notes', which
+// never reaches notOwnedMatch at all) both worked; only bare-plus-'.md' fell through - and that is the
+// spelling docs-session.js:221 documents to the reader as equivalent to the other two.
+test('the notOwned refusal reaches the bare-plus-.md spelling too, not only bare and domain-qualified', () => {
+  const r = repo({ docs: { 'NOTES.md': '## Notes\n<!-- id: notes -->\nEditorial notes.\n' } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ notOwned: ['NOTES.md'] }));
+    const out = r.cli(['set', 'NOTES.md#notes'], 'rewritten by the engine\n');
+    assert.strictEqual(out.status, 1, out.stdout);
+    assert.match(out.stdout, /NOTES\.md is maintained by another skill - this engine does not write it/);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/NOTES.md'), /rewritten by the engine/, 'nothing was written');
+  } finally { r.rm(); }
+});
+
+// Residual 2: watchOf(domain) is exported and cached (WATCH_CACHE) - the object it returns, and every
+// array reachable from it, IS the cached value, not a view of it. unowned() (also exported) hands back
+// watchOf(domain).notOwned directly. Before the fix, a caller that pushed, sorted or spliced any of
+// these arrays corrupted every later read of that domain in the same process - including the notOwned
+// refusal the two tests above depend on. Frozen once per domain at cache-write time (not on every read,
+// so the caching two rounds of review paid for stays paid for): a mutation attempt now throws instead of
+// silently landing, and every field watchOf exposes (sourceRoots, watch - and its nested globs/sections -
+// newModule, notOwned) is covered by the same recursive freeze, not just notOwned.
+test('watchOf and unowned hand back frozen structures: a caller cannot push, sort or splice into the cache', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      sourceRoots: ['src'],
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }],
+      notOwned: ['ZZZ.md', 'NOTES.md'],
+    }));
+    const docs = requireEngine(r.root);
+    const notOwned = docs.unowned('architecture');
+    assert.deepEqual(notOwned, ['ZZZ.md', 'NOTES.md']);
+    assert.throws(() => notOwned.push('EVIL.md'), TypeError, 'unowned() must not hand back a growable array');
+    assert.throws(() => notOwned.sort(), TypeError, 'sort reorders in place, which a frozen array must refuse too');
+    assert.throws(() => notOwned.splice(0, 1), TypeError);
+
+    const w = docs.watchOf('architecture');
+    assert.throws(() => w.watch.push({ kind: 'evil', globs: ['*'], sections: ['x'] }), TypeError, "watchOf's other fields are exposed the same way - not gold-plated, actually reachable through loadWatch");
+    assert.throws(() => w.watch[0].globs.push('**'), TypeError, 'a nested array reachable through the cached object is frozen too');
+    assert.throws(() => w.sourceRoots.push('evil'), TypeError);
+
+    // The cache is provably unaffected by every attempt above: the next read is byte-for-byte what the first was.
+    assert.deepEqual(docs.unowned('architecture'), ['ZZZ.md', 'NOTES.md'], 'a mutation attempt on one read must not reach the next');
+    assert.deepEqual(docs.watchOf('architecture').watch[0].globs, ['src/*/Program.cs']);
+    assert.deepEqual(docs.watchOf('architecture').sourceRoots, ['src']);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 // --- the seams the final whole-branch review found ---
 
 // One `git hash-object` per dirty file is one PROCESS per file. Stop runs changedSince at the end of every turn

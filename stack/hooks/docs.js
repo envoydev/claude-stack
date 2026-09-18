@@ -485,6 +485,11 @@ const findFile = (fileKey) => {
   const file = path.join(domainDir(parsed.domain), parsed.file);
   return domainFiles(parsed.domain).includes(file) ? file : undefined;
 };
+// A trailing '.md' is one of the three spellings docs-session.js documents to users as equivalent
+// ('patterns#orders', 'references/patterns#orders', 'patterns.md#orders') - stripped once, here, so every
+// caller that peels a '.md' off a file key agrees on what counts rather than each carrying its own idea
+// (this exact spelling class already caused a regression that 614 tests missed on this branch).
+const stripMd = (s) => String(s).replace(/\.md$/, '');
 // A ref is <domain>/<file>#<id>. A leading segment names a domain only when domains() actually has it -
 // so a domain's own references/ or history/ subfolder (and a typo of a real domain name) is never
 // mistaken for one. Everything else is the BARE <file>#<id> - subfolder path and all - which keeps
@@ -499,11 +504,9 @@ function parseRef(ref) {
   const first = slash < 0 ? null : s.slice(0, slash);
   const isDomain = Boolean(first) && domains().includes(first);
   const bare = isDomain ? s.slice(slash + 1) : s;
-  // A trailing '.md' is one of the three spellings docs-session.js documents to users as equivalent
-  // ('patterns#orders', 'references/patterns#orders', 'patterns.md#orders') - relKey and key are both
-  // already extension-stripped, so the lookup strips it here too, once, rather than a second explicit
-  // tier the way findFile used to carry on its own.
-  const fileKey = bare.split('#')[0].replace(/\.md$/, '');
+  // relKey and key are both already extension-stripped, so the lookup strips it here too, once, rather
+  // than a second explicit tier the way findFile used to carry on its own.
+  const fileKey = stripMd(bare.split('#')[0]);
   if (!fileKey) throw new Error(`not a section ref: ${JSON.stringify(ref)} - want <file>#<id> or <domain>/<file>#<id>`);
   const findIn = (d) => domainFiles(d).find((f) => relKey(f) === fileKey || key(f) === fileKey);
   if (isDomain) {
@@ -1399,10 +1402,26 @@ const WATCH_ROOTS = ['src', 'tests'];
 // exactly the shape every shipped watch.json already uses. A sections entry may be bare or
 // domain-qualified; both are resolved by the reader (askRef, via parseRef) rather than here, so nothing
 // about this shape changes for an existing file.
+// watchOf is exported, and so is unowned (one of its own arrays) - loadWatch is exported too, and while it
+// builds a fresh outer object, the watch/newModule entries inside it are the very same nested objects this
+// cache holds. Whatever any of them hand back IS the cached value, not a view of it, so a caller that
+// sorts, pushes or splices into it would corrupt every later read of this domain for the rest of the
+// process - including the notOwned refusal above. Frozen once here, at cache-write time rather than once
+// per read, so a mutation attempt throws instead of landing, without paying an allocation on every
+// domainFiles/notOwnedOf call the way a copy-per-read would - the cache above exists precisely to keep
+// that call cheap. Generic over the shape rather than naming sourceRoots/watch/newModule/notOwned one by
+// one, so it keeps covering every field without needing a matching edit here when one is added.
+const deepFreeze = (v) => {
+  if (v && typeof v === 'object' && !Object.isFrozen(v)) {
+    Object.freeze(v);
+    Object.values(v).forEach(deepFreeze);
+  }
+  return v;
+};
 function watchOf(domain) {
   if (!WATCH_CACHE) WATCH_CACHE = new Map();
   if (WATCH_CACHE.has(domain)) return WATCH_CACHE.get(domain);
-  const result = watchOfUncached(domain);
+  const result = deepFreeze(watchOfUncached(domain));
   WATCH_CACHE.set(domain, result);
   return result;
 }
@@ -1457,9 +1476,13 @@ const notOwnedOf = (domain) => (domain === 'architecture' ? [...new Set(['ORIENT
 // search runs over domainFiles, which has already excluded the file, so 'no such doc file' is what a bare
 // spelling gets today even though the domain-qualified spelling of the SAME file gets the true refusal.
 // Checked across every domain's notOwnedOf, in the layouts domainFiles itself reads a file under (root,
-// references/, history/) when fileKey names no subfolder of its own.
+// references/, history/) when fileKey names no subfolder of its own. fileKey arrives exactly as set()
+// split it off the ref - '.md' and all when the caller typed it - so it is stripped with the same stripMd
+// parseRef uses before a '.md' is appended back on below; without that, 'NOTES.md' built the candidate
+// 'NOTES.md.md', which never matches the declared 'NOTES.md'.
 function notOwnedMatch(fileKey) {
-  const candidates = fileKey.includes('/') ? [fileKey] : [fileKey, `references/${fileKey}`, `history/${fileKey}`];
+  const stripped = stripMd(fileKey);
+  const candidates = stripped.includes('/') ? [stripped] : [stripped, `references/${stripped}`, `history/${stripped}`];
   for (const d of domains()) {
     for (const c of candidates) {
       const target = `${c}.md`;
