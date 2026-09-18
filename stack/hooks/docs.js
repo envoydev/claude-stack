@@ -40,6 +40,18 @@ const DOCS = path.join(DOCS_ROOT, 'architecture');
 const BLOCK_FILE = path.join(DOCS, 'ORIENTATION.md');
 const WATCH_FILE = path.join(DOCS, 'watch.json');
 const BRANCHES = path.join(DOCS_ROOT, '.branches');
+// A domain is a top-level folder under the docs root holding a watch.json. Convention, not a registry:
+// adding one needs no engine change. A dotted folder is never a domain - .branches is state, not docs.
+const domains = () => {
+  try {
+    return fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => e.name)
+      .filter((n) => fs.existsSync(path.join(DOCS_ROOT, n, 'watch.json')))
+      .sort();
+  } catch { return []; }
+};
+const domainDir = (name) => path.join(DOCS_ROOT, name);
 const MAINLINE = ['develop', 'main', 'master', 'trunk'];
 const MAX_SECTION_CHARS = 6000;
 const SHOW_CHARS = 14000;
@@ -1279,7 +1291,7 @@ function changedSince(snap) {
 }
 
 module.exports = {
-  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
+  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES, domains, domainDir,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,

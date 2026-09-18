@@ -933,6 +933,18 @@ function requireEngine(root) {
   return require(ENGINE_PATH);
 }
 
+test('a folder is a domain only when it holds a watch.json', () => {
+  const r = repo();
+  try {
+    r.write('.claude/docs/architecture/watch.json', '{}');
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    r.write('.claude/docs/quality/ASSESSMENT.md', '# x');
+    r.write('.claude/docs/.branches/watch.json', '{}');
+    const docs = requireEngine(r.root);
+    assert.deepEqual(docs.domains(), ['architecture', 'code-style']);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('changedSince reports both sides of a staged rename', () => {
   const r = repo({ files: { 'src/Api/Old.cs': 'class Old {}\n' } });
   try {
