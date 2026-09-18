@@ -1076,9 +1076,9 @@ test('a cross-domain filename collision refuses the write instead of picking the
     r.write('.claude/docs/code-style/NOTES.md', setText('orders', 'orders', 'Style text.'));
     const out = r.cli(['set', 'NOTES#orders'], setText('orders', 'orders', 'STYLE TEXT THE AUTHOR MEANT FOR code-style.'));
     assert.strictEqual(out.status, 1, out.stdout);
-    // Task 3: set now resolves through parseRef, whose refusal names the whole ref (file and section) so the
-    // fix it suggests can be pasted back verbatim - not just the file, which findFile alone could offer.
-    assert.match(out.stdout, /NOTES#orders is in architecture and code-style - name one, as <domain>\/NOTES#orders/);
+    // findFile now delegates to parseRef (fix round 2), but set still calls it with the bare file key
+    // alone (the id is split off first, same as always), so the refusal names only the file, same as before.
+    assert.match(out.stdout, /NOTES is in architecture and code-style - name one, as <domain>\/NOTES/);
     assert.doesNotMatch(r.read('.claude/docs/architecture/NOTES.md'), /STYLE TEXT/, 'architecture was not silently written');
     assert.doesNotMatch(r.read('.claude/docs/code-style/NOTES.md'), /STYLE TEXT/, 'code-style was not written either - the ref must be qualified');
   } finally { r.rm(); }
@@ -1168,6 +1168,114 @@ test('promote folds two domains independently and removes the whole branch overl
     assert.match(r.read('.claude/docs/architecture/NOTES.md'), /architecture text\./);
     assert.match(r.read('.claude/docs/code-style/NOTES.md'), /style text\./);
     assert.ok(!r.exists('.claude/docs/.branches/feat-two-domains'), 'the whole branch overlay is gone once every domain folded');
+  } finally { r.rm(); }
+});
+
+// Fix round 2 (task-3-review.md): promoteLocked composed a mainline path from rel[0] with no check that
+// it named a real domain, or that the composed file was actually that domain's own. Two shapes an
+// overlay written before this task (or before domains existed at all) can have on disk.
+
+// A hand-written overlay skips set(), so it must also hand-write the BASE.json set() would have written -
+// mergedBranches() reads it to know the branch exists and what its tip was, regardless of the overlay's
+// own shape underneath.
+function writeBaseMeta(r, dir, branch, base, head) {
+  r.write(`${dir}/BASE.json`, `${JSON.stringify({ branch, base, head, files: {}, updated: new Date().toISOString() }, null, 2)}\n`);
+}
+
+test('promote migrates a pre-domain overlay with no domain segment into the grandfathered architecture domain', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/pre-domain');
+    const base = r.git('rev-parse', 'HEAD');
+    r.write('src/marker.txt', 'x\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'work');
+    const head = r.git('rev-parse', 'HEAD');
+    // The shape overlayParts produced before this task: straight to the relKey, no leading domain
+    // segment at all - the only shape possible before domains existed, since 'architecture' was the
+    // whole engine.
+    r.write('.claude/docs/.branches/feat-pre-domain/references/patterns/paging.md', '### paging\n<!-- id: paging -->\nTwelve rows.\n');
+    r.write('.claude/docs/.branches/feat-pre-domain/.base/references/patterns/paging.md', '');
+    writeBaseMeta(r, '.claude/docs/.branches/feat-pre-domain', 'feat/pre-domain', base, head);
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/pre-domain');
+    const out = r.cli(['promote', '--merged']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /patterns#paging: added/);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /Twelve rows\./, 'folded into the real file, not left invisible');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-pre-domain'), 'the overlay is gone once its only entry folded');
+  } finally { r.rm(); }
+});
+
+test('promote refuses a stranded overlay that would otherwise fold into a decoy file, and keeps its text', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' } });
+  // A file sitting at the docs ROOT, owned by no domain - what a domain's own root file (e.g.
+  // architecture/ASSESSMENT.md) decays into once read with a domain segment that no longer resolves
+  // (Task 10 moves exactly this file to quality/ASSESSMENT.md).
+  r.write('.claude/docs/architecture/watch.json', '{}');
+  r.write('.claude/docs/ASSESSMENT.md', '# Assessment\nExisting content, never touched by docs.js.\n');
+  try {
+    r.git('switch', '-qc', 'feat/stray');
+    const base = r.git('rev-parse', 'HEAD');
+    r.write('src/marker.txt', 'x\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'work');
+    const head = r.git('rev-parse', 'HEAD');
+    // Hand-written: set() always writes the new, domain-qualified shape now, so this is what an overlay
+    // from before domains existed - or one whose domain later moved - looks like on disk, its segment
+    // coinciding with an unrelated file's name.
+    r.write('.claude/docs/.branches/feat-stray/ASSESSMENT/brand-new.md', '## brand new\n<!-- id: brand-new -->\nBranch text that must not be lost.\n');
+    r.write('.claude/docs/.branches/feat-stray/.base/ASSESSMENT/brand-new.md', '');
+    writeBaseMeta(r, '.claude/docs/.branches/feat-stray', 'feat/stray', base, head);
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/stray');
+    const out = r.cli(['promote', '--merged']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /conflict/, 'reported, not silently folded');
+    assert.doesNotMatch(r.read('.claude/docs/ASSESSMENT.md'), /Branch text that must not be lost/, 'the decoy file at the docs root was never written to');
+    assert.ok(r.exists('.claude/docs/.branches/feat-stray/ASSESSMENT/brand-new.md'), 'the branch text is kept, not deleted, while its domain cannot be resolved');
+    assert.match(r.read('.claude/docs/.branches/feat-stray/ASSESSMENT/brand-new.md'), /Branch text that must not be lost/);
+  } finally { r.rm(); }
+});
+
+// MAJOR: set's own collision refusal recommends a <domain>/<file>#<id> spelling; every reader must
+// accept it too, not just set.
+
+test('show, toc and hash resolve a domain-qualified ref the same way set already does', () => {
+  const r = repo();
+  r.write('.claude/docs/architecture/watch.json', '{}');
+  r.write('.claude/docs/architecture/NOTES.md', '# Notes\n');
+  r.write('.claude/docs/code-style/watch.json', '{}');
+  r.write('.claude/docs/code-style/NOTES.md', '# Notes\n');
+  try {
+    assert.strictEqual(r.cli(['set', 'code-style/NOTES#style'], 'style text.\n').status, 0);
+    assert.match(r.cli(['show', 'code-style/NOTES#style']).stdout, /style text\./, 'show accepts the spelling set recommends');
+    assert.match(r.cli(['toc', 'code-style/NOTES']).stdout, /NOTES#style/, 'toc accepts it too');
+    const h = r.cli(['hash', 'code-style/NOTES#style']);
+    assert.strictEqual(h.status, 0, h.stdout);
+    assert.match(h.stdout.trim(), /^[0-9a-f]{12}$/, 'hash resolves the qualified ref instead of failing to find the section');
+  } finally { r.rm(); }
+});
+
+// MINOR: findFile's tiered search (an exact relKey match wins outright, the basename tier never even
+// runs) and parseRef's merged search (relKey or basename, either counts) must not disagree.
+
+test('a bare ref that resolves by relKey in one domain and by basename in another is a refused collision under both show and set, not a silent tier pick', () => {
+  const r = repo();
+  r.write('.claude/docs/architecture/watch.json', '{}');
+  r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+  r.write('.claude/docs/code-style/watch.json', '{}');
+  r.write('.claude/docs/code-style/patterns.md', section('csharp', '*.cs', 'Style rule.'));
+  try {
+    // 'patterns' matches code-style/patterns.md by an exact relKey and architecture/references/patterns.md
+    // only by basename. Before this fix, findFile's tiering took the exact-relKey match and never looked
+    // at architecture's file at all - a silent pick in the one tier findFile's own collision check does
+    // not cover. Both entry points must refuse now, naming both domains.
+    // show never sets a nonzero exit code on a refusal (same as the pre-existing 'no such doc file' case
+    // above) - only its stdout carries the message, so only stdout is asserted here.
+    const shown = r.cli(['show', 'patterns#csharp']);
+    assert.match(shown.stdout, /patterns is in architecture and code-style - name one/);
+    const written = r.cli(['set', 'patterns#csharp'], setText('csharp', 'csharp', 'x'));
+    assert.strictEqual(written.status, 1, written.stdout);
+    assert.match(written.stdout, /patterns is in architecture and code-style - name one/);
   } finally { r.rm(); }
 });
 

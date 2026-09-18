@@ -461,13 +461,16 @@ const knownKey = (f) => `${fileDomain(f)}/${relKey(f)}`;
 // A collision refuses rather than picks: docFiles() now spans every domain, and two domains can hold a
 // same-relKey file (every domain owns a references/ subfolder, and a shared topic name there is
 // ordinary) - a silent first-match would write a section into the wrong domain, the same failure
-// parseRef exists to prevent.
+// parseRef exists to prevent. Delegating to parseRef - rather than a second, independently-tiered search
+// - is what makes a <domain>/<file> prefix resolve here too, and keeps a bare key resolving exactly the
+// same way under show/toc/conflictView as it already does under set: findFile's own tiering used to let
+// an exact relKey match in one domain win outright, silently skipping a basename-only match in another,
+// where parseRef's per-domain search counts both and refuses. One algorithm now, not two.
 const findFile = (fileKey) => {
-  const files = docFiles();
-  const byRel = files.filter((f) => relKey(f) === fileKey);
-  const tier = byRel.length ? byRel : files.filter((f) => key(f) === fileKey || path.basename(f) === fileKey);
-  if (tier.length > 1) throw new Error(`${fileKey} is in ${tier.map((f) => fileDomain(f)).join(' and ')} - name one, as <domain>/${fileKey}`);
-  return tier[0];
+  const parsed = parseRef(fileKey);
+  if (!parsed.domain) return undefined;
+  const file = path.join(domainDir(parsed.domain), parsed.file);
+  return domainFiles(parsed.domain).includes(file) ? file : undefined;
 };
 // A ref is <domain>/<file>#<id>. A leading segment names a domain only when domains() actually has it -
 // so a domain's own references/ or history/ subfolder (and a typo of a real domain name) is never
@@ -786,14 +789,9 @@ const overlayParts = (file, id) => [fileDomain(file), ...relKey(file).split('/')
 function set(ref, newText, expect) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return { error: 'name one section: set <file>#<id> - whole-file writes are not supported' };
-  // parseRef resolves a bare ref exactly as findFile always did (same collision refusal, same domain search)
-  // and additionally understands a <domain>/<file> prefix, which findFile alone cannot. A null domain, or a
-  // domain whose guessed file parseRef could not actually find, both mean the same thing findFile's missing
-  // return meant: no such doc file.
-  let parsed;
-  try { parsed = parseRef(ref); } catch (e) { return { error: e.message }; }
-  const file = parsed.domain ? path.join(domainDir(parsed.domain), parsed.file) : undefined;
-  if (!file || !domainFiles(parsed.domain).includes(file)) return { error: `no such doc file: ${fileKey}` };
+  let file;
+  try { file = findFile(fileKey); } catch (e) { return { error: e.message }; }
+  if (!file) return { error: `no such doc file: ${fileKey}` };
   if (!/^[\w.-]+$/.test(sec)) return { error: `not a valid section id: ${sec}` };
   if (!String(newText).trim()) return { error: 'empty section text: nothing written' };
   const gitRepo = hasGit();
@@ -901,13 +899,20 @@ function allSections() {
 }
 
 // One section as the finish ask needs it: the heading a person would say it by, where it lives, its first sentence,
-// and the hash a later `set --expect` refuses a stale rewrite against.
-function askRef(id) {
-  const s = allSections().find((x) => x.id === id);
+// and the hash a later `set --expect` refuses a stale rewrite against. Takes a ref (bare or <domain>/<file>#<id>),
+// not a bare section id directly - a section's own id never carries a domain, so a domain-qualified ref must be
+// routed through findFile like every other reader before it can be matched against one.
+function askRef(ref) {
+  const [fileKey, sec] = String(ref).split('#');
+  if (!sec) return null;
+  let file;
+  try { file = findFile(fileKey); } catch { return null; }
+  if (!file) return null;
+  const s = allSections().find((x) => x.id === `${key(file)}#${sec}`);
   if (!s) return null;
   // A section that is a heading and nothing else has no sentence to quote, and a bare '""' in the ask reads like a
   // bug rather than like an empty section.
-  return { id, heading: s.heading, file: path.relative(ROOT, s.from).split(path.sep).join('/'), first: firstSentence(s.text) || '(no text yet - this section is a heading only)', hash: sectionHash(s.text) };
+  return { id: String(ref), heading: s.heading, file: path.relative(ROOT, s.from).split(path.sep).join('/'), first: firstSentence(s.text) || '(no text yet - this section is a heading only)', hash: sectionHash(s.text) };
 }
 
 function toc(fileKey) {
@@ -1052,8 +1057,24 @@ function promoteLocked(name, dir) {
     // rel's own leading segment is the domain overlayParts wrote (kept in rel for the .base/.conflict
     // paths below, which mirror overlayParts' own shape); only the mainline file lives outside it.
     const [domain, ...relParts] = rel;
-    const mainline = `${path.join(domainDir(domain), ...relParts)}.md`;
-    const label = `${path.basename(mainline, '.md')}#${id}`;
+    let mainline = domain ? `${path.join(domainDir(domain), ...relParts)}.md` : null;
+    // The segment on disk is trusted only once it names a real domain, and - when the path it composes
+    // happens to already exist - only once that existing file is actually one of that domain's own.
+    // A composed path that does not exist at all is the ordinary 'mainline dropped this file' conflict
+    // below, already safe; an EXISTING one that is not this domain's is the dangerous case (fold into
+    // it and its own doc file is silently corrupted, then the overlay holding the only other copy is
+    // deleted): an overlay from before this task, or one whose domain has since moved (Task 10 moves
+    // architecture/ASSESSMENT.md to quality/ASSESSMENT.md), can compose a path that happens to exist as
+    // an unrelated file. The one case fixed automatically: NO domain segment at all, because
+    // 'architecture' was the only domain the engine ever wrote before domains existed, so the whole rel
+    // IS the old relKey - provable, not a guess. Anything else is reported, never guessed.
+    let stranded = !mainline || !domains().includes(domain)
+      || (fs.existsSync(mainline) && !domainFiles(domain).includes(mainline));
+    if (stranded && domains().includes('architecture')) {
+      const legacy = `${path.join(domainDir('architecture'), ...rel)}.md`;
+      if (domainFiles('architecture').includes(legacy)) { mainline = legacy; stranded = false; }
+    }
+    const label = stranded ? [...rel, id].join('/') : `${path.basename(mainline, '.md')}#${id}`;
     const marker = path.join(dir, '.conflict', ...rel, `${id}.md`);
     // A standing conflict is flagged with a marker holding mainline's text at THIS moment - not to compare
     // against later (any set of the section on mainline resolves it, whatever it says), just for reference.
@@ -1064,6 +1085,10 @@ function promoteLocked(name, dir) {
       fs.writeFileSync(marker, `${stripStamp(mainlineText || '')}\n`);
       results.push({ id: label, result: 'conflict', why, path: over });
     };
+    if (stranded) {
+      flagConflict('its overlay path names no domain this install has - an overlay from before domains existed, or one whose domain moved; nothing was folded or removed - move the text under the right domain by hand, then promote again', '');
+      continue;
+    }
     // No marker here: a missing doc file is a conflict `set` can never match (there is no file to write the
     // section into), so a marker for it could only ever be cleared by prune - which drops the whole branch,
     // including any of its other, perfectly fine overrides. It stays a plain, always-reported conflict.
