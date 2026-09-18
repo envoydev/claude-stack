@@ -1063,6 +1063,65 @@ test('a second domain becomes readable by show without a watch.json in every old
   } finally { r.rm(); }
 });
 
+// Fix round 2 (task-2-fix-review.md): findFile shares parseRef's collision refusal, the grandfather
+// clause is one place so every entry point agrees, the not-found hint names distinguishable candidates,
+// and resetDomains gets a real caller.
+
+test('a cross-domain filename collision refuses the write instead of picking the alphabetically-first domain', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', '{}');
+    r.write('.claude/docs/architecture/NOTES.md', setText('orders', 'orders', 'Architecture text.'));
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    r.write('.claude/docs/code-style/NOTES.md', setText('orders', 'orders', 'Style text.'));
+    const out = r.cli(['set', 'NOTES#orders'], setText('orders', 'orders', 'STYLE TEXT THE AUTHOR MEANT FOR code-style.'));
+    assert.strictEqual(out.status, 1, out.stdout);
+    assert.match(out.stdout, /NOTES is in architecture and code-style - name one/);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/NOTES.md'), /STYLE TEXT/, 'architecture was not silently written');
+    assert.doesNotMatch(r.read('.claude/docs/code-style/NOTES.md'), /STYLE TEXT/, 'code-style was not written either - the ref must be qualified');
+  } finally { r.rm(); }
+});
+
+test('a watch-less architecture/ gives the same domain and file from every entry point', () => {
+  // repo() never writes a watch.json unless a test does - this one deliberately never does.
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const docs = requireEngine(r.root);
+    assert.deepEqual(docs.domains(), ['architecture'], 'architecture counts without a watch.json of its own');
+    const bare = docs.parseRef('patterns#orders');
+    const qualified = docs.parseRef('architecture/references/patterns#orders');
+    assert.strictEqual(bare.domain, 'architecture');
+    assert.strictEqual(bare.file, 'references/patterns.md');
+    assert.strictEqual(qualified.domain, 'architecture', 'the qualified spelling must not throw on the very installs that exist today');
+    assert.strictEqual(qualified.file, 'references/patterns.md');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a not-found ref names domain-qualified candidates in the Known list, not the same bare name twice', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', '{}');
+    r.write('.claude/docs/architecture/NOTES.md', setText('orders', 'orders', 'Architecture text.'));
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    r.write('.claude/docs/code-style/NOTES.md', setText('orders', 'orders', 'Style text.'));
+    const out = r.cli(['show', 'nope#x']).stdout;
+    assert.match(out, /Known: .*architecture\/NOTES.*code-style\/NOTES/);
+  } finally { r.rm(); }
+});
+
+test('resetDomains clears the cache a fixture needs to see a domain added after the module was required', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', '{}');
+    const docs = requireEngine(r.root);
+    assert.deepEqual(docs.domains(), ['architecture']);
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    assert.deepEqual(docs.domains(), ['architecture'], 'still cached, stale on purpose');
+    docs.resetDomains();
+    assert.deepEqual(docs.domains(), ['architecture', 'code-style'], 'fresh after the reset');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('changedSince reports both sides of a staged rename', () => {
   const r = repo({ files: { 'src/Api/Old.cs': 'class Old {}\n' } });
   try {

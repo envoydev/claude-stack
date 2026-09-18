@@ -53,11 +53,17 @@ let DOMAINS_CACHE;
 const domains = () => {
   if (DOMAINS_CACHE) return DOMAINS_CACHE;
   try {
-    return (DOMAINS_CACHE = fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
+    const found = fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
       .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !RESERVED_DOMAIN_NAMES.has(e.name))
       .map((e) => e.name)
-      .filter((n) => fs.existsSync(path.join(DOCS_ROOT, n, 'watch.json')))
-      .sort());
+      .filter((n) => fs.existsSync(path.join(DOCS_ROOT, n, 'watch.json')));
+    // 'architecture' counts even without a watch.json of its own: it was the one docs folder long
+    // before watch.json (or domains) existed, so every doc written before domains existed lives there
+    // regardless. Grandfathered in this ONE place so docFiles/findFile/parseRef all agree instead of
+    // three different answers for one file - Task 10's migration seeds a watch.json into every
+    // architecture/ that lacks one, after which this line is the only thing to delete.
+    if (!found.includes('architecture') && fs.existsSync(path.join(DOCS_ROOT, 'architecture'))) found.push('architecture');
+    return (DOMAINS_CACHE = found.sort());
   } catch { return []; }
 };
 const domainDir = (name) => path.join(DOCS_ROOT, name);
@@ -435,24 +441,33 @@ function domainFiles(d) {
   add(path.join(dir, 'history'));
   return out;
 }
-// Every domain's own files, plus 'architecture' even without a watch.json of its own - it was the one
-// docs folder long before watch.json (or domains) existed, every doc written before domains existed
-// lives there, and a fixture that skips writing one (most of this suite) must still read it.
+// Every domain's own files - domains() already grandfathers 'architecture' in, so this needs no
+// special case of its own.
 function docFiles() {
   const out = [];
-  for (const d of new Set(['architecture', ...domains()])) out.push(...domainFiles(d));
+  for (const d of domains()) out.push(...domainFiles(d));
   return out.sort();
 }
-// The domain a file's relKey measures from - its own, so two domains can hold a same-named file without
-// either one's relKey wandering into the other's tree. Falls back to 'architecture' for a file docFiles()
-// picked up by the grandfather clause above (no watch.json of its own yet), matching relKey's old,
-// single-domain answer exactly.
-const fileDomainDir = (file) => domainDir(domains().find((d) => !path.relative(domainDir(d), file).startsWith('..')) || 'architecture');
+// The domain a file belongs to - its own name, so relKey measures from the right base and a collision
+// can name every domain that holds it. Falls back to 'architecture' only if somehow no domain claims the
+// file at all, which should not happen now that domains() grandfathers it in.
+const fileDomain = (file) => domains().find((d) => !path.relative(domainDir(d), file).startsWith('..')) || 'architecture';
+const fileDomainDir = (file) => domainDir(fileDomain(file));
 const relKey = (file) => path.relative(fileDomainDir(file), file).replace(/\.md$/, '').split(path.sep).join('/');
 const key = (file) => path.basename(file, '.md');
+// A file's key, qualified by its own domain - what a 'Known:' hint prints, so two domains holding the
+// same basename read as two distinguishable names rather than one repeated twice.
+const knownKey = (f) => `${fileDomain(f)}/${relKey(f)}`;
+// A collision refuses rather than picks: docFiles() now spans every domain, and two domains can hold a
+// same-relKey file (every domain owns a references/ subfolder, and a shared topic name there is
+// ordinary) - a silent first-match would write a section into the wrong domain, the same failure
+// parseRef exists to prevent.
 const findFile = (fileKey) => {
   const files = docFiles();
-  return files.find((f) => relKey(f) === fileKey) || files.find((f) => key(f) === fileKey || path.basename(f) === fileKey);
+  const byRel = files.filter((f) => relKey(f) === fileKey);
+  const tier = byRel.length ? byRel : files.filter((f) => key(f) === fileKey || path.basename(f) === fileKey);
+  if (tier.length > 1) throw new Error(`${fileKey} is in ${tier.map((f) => fileDomain(f)).join(' and ')} - name one, as <domain>/${fileKey}`);
+  return tier[0];
 };
 // A ref is <domain>/<file>#<id>. A leading segment names a domain only when domains() actually has it -
 // so a domain's own references/ or history/ subfolder (and a typo of a real domain name) is never
@@ -612,7 +627,8 @@ function sections(file) {
 // the branch's own; on mainline, name the branch whose promote conflicted.
 function conflictView(ref, branchName) {
   const [fileKey, id] = String(ref).split('#');
-  const file = findFile(fileKey);
+  let file;
+  try { file = findFile(fileKey); } catch (e) { return e.message; }
   if (!file || !id) return `name a section: show <file>#<id> --conflict [branch]`;
   const dir = branchName ? path.join(BRANCHES, safe(branchName)) : overlayDir();
   const label = branchName || branch() || 'branch';
@@ -767,7 +783,8 @@ const overlayParts = (file, id) => [...relKey(file).split('/'), `${id}.md`];
 function set(ref, newText, expect) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return { error: 'name one section: set <file>#<id> - whole-file writes are not supported' };
-  const file = findFile(fileKey);
+  let file;
+  try { file = findFile(fileKey); } catch (e) { return { error: e.message }; }
   if (!file) return { error: `no such doc file: ${fileKey}` };
   if (!/^[\w.-]+$/.test(sec)) return { error: `not a valid section id: ${sec}` };
   if (!String(newText).trim()) return { error: 'empty section text: nothing written' };
@@ -886,8 +903,9 @@ function askRef(id) {
 }
 
 function toc(fileKey) {
-  const file = findFile(fileKey);
-  if (!file) return `no such doc file: ${fileKey}. Known: ${docFiles().map(key).join(', ')}`;
+  let file;
+  try { file = findFile(fileKey); } catch (e) { return e.message; }
+  if (!file) return `no such doc file: ${fileKey}. Known: ${docFiles().map(knownKey).join(', ')}`;
   const secs = sections(file);
   if (!secs.length) return `${key(file)} has no headings (${fs.statSync(file).size} chars)`;
   return secs.map((s) => `${s.id}  ${'  '.repeat(s.level - 2)}${s.heading} (${s.chars} chars)${s.overrideOf ? (s.conflict ? ' [this branch, CONFLICT]' : ' [this branch]') : ''}`).join('\n');
@@ -895,8 +913,9 @@ function toc(fileKey) {
 
 function show(ref) {
   const [fileKey, sec] = String(ref).split('#');
-  const file = findFile(fileKey);
-  if (!file) return `no such doc file: ${fileKey}. Known: ${docFiles().map(key).join(', ')}`;
+  let file;
+  try { file = findFile(fileKey); } catch (e) { return e.message; }
+  if (!file) return `no such doc file: ${fileKey}. Known: ${docFiles().map(knownKey).join(', ')}`;
   if (!sec) return toc(fileKey);
   const secs = sections(file);
   const hit = secs.find((s) => s.id === `${key(file)}#${sec}`) || secs.find((s) => slug(s.heading).startsWith(sec));
