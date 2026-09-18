@@ -945,6 +945,43 @@ test('a folder is a domain only when it holds a watch.json', () => {
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// Two domains, each holding its own root doc - the shared setup for parseRef's bare, qualified and
+// ambiguous cases.
+function twoDomainFixture() {
+  const r = repo();
+  r.write('.claude/docs/architecture/watch.json', '{}');
+  r.write('.claude/docs/architecture/ARCHITECTURE.md', section('orders', 'src/Api/Orders/**', 'Orders rule.'));
+  r.write('.claude/docs/code-style/watch.json', '{}');
+  r.write('.claude/docs/code-style/CODE-STYLE.md', section('csharp', '*.cs', 'Style rule.'));
+  return r;
+}
+
+test('a bare ref resolves while exactly one domain holds that file', () => {
+  const r = twoDomainFixture();
+  try {
+    const docs = requireEngine(r.root);
+    assert.deepEqual(docs.parseRef('ARCHITECTURE#orders'), { domain: 'architecture', file: 'ARCHITECTURE.md', id: 'ARCHITECTURE#orders' });
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a qualified ref always resolves', () => {
+  const r = twoDomainFixture();
+  try {
+    const docs = requireEngine(r.root);
+    assert.equal(docs.parseRef('code-style/CODE-STYLE#csharp').domain, 'code-style');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('an ambiguous bare ref throws naming every candidate', () => {
+  const r = twoDomainFixture();
+  try {
+    r.write('.claude/docs/code-style/ARCHITECTURE.md', '## x\n<!-- id: ARCHITECTURE#x -->\n');
+    const docs = requireEngine(r.root);
+    assert.throws(() => docs.parseRef('ARCHITECTURE#x'),
+      /ARCHITECTURE#x is in architecture and code-style - name one/);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('changedSince reports both sides of a staged rename', () => {
   const r = repo({ files: { 'src/Api/Old.cs': 'class Old {}\n' } });
   try {

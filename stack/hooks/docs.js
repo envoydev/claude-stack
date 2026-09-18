@@ -42,13 +42,17 @@ const WATCH_FILE = path.join(DOCS, 'watch.json');
 const BRANCHES = path.join(DOCS_ROOT, '.branches');
 // A domain is a top-level folder under the docs root holding a watch.json. Convention, not a registry:
 // adding one needs no engine change. A dotted folder is never a domain - .branches is state, not docs.
+// Cached like the git-state probes below: parseRef calls this on every bare reference, and the docs root
+// does not gain a domain mid-process.
+let DOMAINS_CACHE;
 const domains = () => {
+  if (DOMAINS_CACHE) return DOMAINS_CACHE;
   try {
-    return fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
+    return (DOMAINS_CACHE = fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
       .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
       .map((e) => e.name)
       .filter((n) => fs.existsSync(path.join(DOCS_ROOT, n, 'watch.json')))
-      .sort();
+      .sort());
   } catch { return []; }
 };
 const domainDir = (name) => path.join(DOCS_ROOT, name);
@@ -429,6 +433,19 @@ const findFile = (fileKey) => {
   const files = docFiles();
   return files.find((f) => relKey(f) === fileKey) || files.find((f) => key(f) === fileKey || path.basename(f) === fileKey);
 };
+// A ref is <domain>/<file>#<id>. The BARE <file>#<id> keeps working while exactly one domain holds that
+// file - every doc, logged row and message written before domains existed uses it. Ambiguity is an error
+// naming both candidates: a silent pick would write a section into the wrong domain.
+function parseRef(ref) {
+  const slash = String(ref).lastIndexOf('/');
+  const bare = slash < 0 ? String(ref) : String(ref).slice(slash + 1);
+  const stated = slash < 0 ? null : String(ref).slice(0, slash);
+  const file = `${bare.split('#')[0]}.md`;
+  if (stated) return { domain: stated, file, id: bare };
+  const hits = domains().filter((d) => fs.existsSync(path.join(domainDir(d), file)));
+  if (hits.length > 1) throw new Error(`${bare} is in ${hits.join(' and ')} - name one, as <domain>/${bare}`);
+  return { domain: hits[0] || null, file, id: bare };
+}
 const safeRead = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
 const isHistory = (file) => relKey(file).startsWith('history/') || HISTORY.test(safeRead(file).slice(0, 600));
 
@@ -1292,7 +1309,7 @@ function changedSince(snap) {
 
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES, domains, domainDir,
-  git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
+  git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
