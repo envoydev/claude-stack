@@ -1139,6 +1139,30 @@ test('one changed file hitting a normal section and a protected one yields one a
   } finally { r.rm(); }
 });
 
+// The message has a singular and a PLURAL branch, and only the singular one was covered - so the plural
+// kept its pre-review wording ('sections a person owns') through a wording change the user made
+// deliberately, and nothing went red. A user-facing string with no test is a string that drifts.
+test('two protected sections warn in the plural, in the same words as the singular branch', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    r.write('.claude/docs/decisions/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['DECISIONS#refund-sync', 'DECISIONS#queue-depth'] }],
+      notOwned: ['DECISIONS.md'],
+    }));
+    r.write('.claude/docs/decisions/DECISIONS.md',
+      `${section('refund-sync', '', 'Refunds are deliberately synchronous.')}\n${section('queue-depth', '', 'The queue is bounded at 1000 on purpose.')}`);
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /2 DECISIONS recorded by a person cover this file:/, reason);
+    assert.match(reason, /"Refunds are deliberately synchronous\."/, reason);
+    assert.match(reason, /"The queue is bounded at 1000 on purpose\."/, reason);
+    // The guarantee that makes a warning a warning holds in the plural too.
+    assert.doesNotMatch(reason, /--expect|reply: docs ok|docs\.js set/, reason);
+  } finally { r.rm(); }
+});
+
 // Task 5's review measured that with four domains (hits walked strictly in domain-alphabetical order,
 // one cap of 3 shared by everything) only the first domain's entries plus one more ever got named - and
 // a protected section in the third domain would be starved by the first two before it was ever reached.

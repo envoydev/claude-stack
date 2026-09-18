@@ -613,7 +613,7 @@ function warnLines(files, refs) {
   return [
     ...(one
       ? [`A DECISION recorded by a person covers ${subject} - '${refs[0].heading}', in ${refs[0].file}:`, `  "${refs[0].first}"`]
-      : [`${refs.length} sections a person owns also document ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
+      : [`${refs.length} DECISIONS recorded by a person cover ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
     '',
     one
       ? 'If your change makes that untrue, say so in your report - this engine cannot rewrite it, only a person can.'
