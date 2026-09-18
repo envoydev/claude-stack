@@ -1,6 +1,6 @@
 ---
 name: project-code-style-analyzer
-description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh in place. It fans out code-style-analyzer agents (one per detected language), merges their reports into <docs-path>/PROJECT-CODE-STYLE.md, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh in place. It fans out code-style-analyzer agents (one per detected language), merges their reports into <docs-path>/code-style/CODE-STYLE.md, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. NOT for architecture (project-architecture-analyzer), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at write time. Two artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place and regenerates the rule from the fresh reports:
 
-1. `<docs-path>/PROJECT-CODE-STYLE.md` - the merged style doc: how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. It opens with the `Captured: <branch>@<short-sha>, <date>` lifecycle stamp (`+dirty` on an uncommitted tree) - the docs-root rule (`.claude/rules/baseline-docs-root.md`) owns what readers make of it.
+1. `<docs-path>/code-style/CODE-STYLE.md` - the merged style doc, a docs domain like every other: one file, a `##` section per language (not one file per language - a section's own `covers:` glob already routes a language's change to it), `references/` for anything too long for a section, and a `watch.json` naming which globs ask whether a language's section still holds. It captures how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. It opens with the `Captured: <branch>@<short-sha>, <date>` lifecycle stamp (`+dirty` on an uncommitted tree) - the docs-root rule (`.claude/rules/baseline-docs-root.md`) owns what readers make of it. `references/doc-shape.md` is the section format and write mechanics, including how a change lands on a branch - read it before MERGE.
 2. `.claude/rules/project-code-style.md` - a generated path-scoped rule carrying the condensed style core, its `paths:` globs built from the exact extensions the analysis observed. The rules channel delivers it mechanically wherever a matching file is touched - main session and dispatched subagents alike (a PreToolUse hook's injected context never reaches subagent tool calls, which is why this is a rule and not a hook). The full doc stays the deep reference; the rule is the always-delivered essence.
 
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the project-architecture-analyzer skill. Never fold one into the other.
@@ -27,8 +27,8 @@ A cheap Glob scan, in-session: `*.cs`, `*.xaml`, `*.ts`, `*.html`, `*.scss`/`*.c
 ### 2. FAN OUT - one code-style-analyzer per language, in parallel
 Dispatch all seats in a single message. Each dispatch prompt names its language-family scope and nothing else - the agent reads its config + representative code and returns the structured report (project type, observed extensions, enforcement map, enforced rules, idioms, uncertain/inconsistent). The agents write no files; their final messages are your merge input.
 
-### 3. MERGE - write <docs-path>/PROJECT-CODE-STYLE.md
-Consolidate the reports into one doc - apply the `markdown-style` skill so it reads as a quick reference, not a wall of prose. Five sections, in order: the opening line, **Project type**, the **Enforcement map** table, **Per language**, **Cross-cutting idioms**. Read `references/doc-shape.md` before writing - it says what each section carries and what a re-run reconciles.
+### 3. MERGE - write <docs-path>/code-style/CODE-STYLE.md
+Consolidate the reports into one doc - apply the `markdown-style` skill so it reads as a quick reference, not a wall of prose. Five sections, in order: the opening line, **Project type**, the **Enforcement map** table, one `##` heading **per language**, **Cross-cutting idioms**. Read `references/doc-shape.md` before writing - it says what each section carries, how a change lands when the branch keeps docs in an overlay, and what a re-run reconciles.
 
 ### 4. RULE - regenerate .claude/rules/project-code-style.md
 Build the extension union from the agents' **Language + extensions** sections ONLY - never pad it from assumption (a WPF repo gets `cs|xaml`, an Angular repo `ts|html|scss`, an ASP.NET repo `cs` - plus whatever else was genuinely observed, e.g. `sql`). Then generate from `references/code-style-rule.template.md`:
@@ -48,7 +48,7 @@ Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.js
 A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer-length hook blocks a wall of prose and tables are exempt):
 
 ```
-Doc:         <created | refreshed> - <docs-path>/PROJECT-CODE-STYLE.md, sections <the ones touched>
+Doc:         <created | refreshed> - <docs-path>/code-style/CODE-STYLE.md, sections <the ones touched>
 Rule:        <created | regenerated> - .claude/rules/project-code-style.md, globs <the observed extensions>
 Languages:   <the families DETECT found> via <code-style-analyzer seats | in-session>
 Divergences: <each divergence from a house convention skill, or `none`>
