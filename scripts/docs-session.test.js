@@ -496,9 +496,86 @@ test('one block per agent: the continuation stop and a later change are both sil
     assert.strictEqual(again.stdout, '', 'the continuation we caused never blocks');
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.UseCors();\napp.Run();\n');
     assert.strictEqual(r.hook(subStop(s, 'a1'), GIT).stdout, '', 'one block per agent, whatever it answered');
-    // The answer is observable ONLY here, as `last_assistant_message` on the stop our block caused - it is logged
-    // so the habit can be measured, and nothing is gated on it.
-    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-answer".*"ok":true/);
+    // What the agent DID is read from the ledger, not from its prose: no `set` landed for the asked section.
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-answer".*"outcome":"unchanged"/);
+  } finally { r.rm(); }
+});
+
+// The two exchanges below are the verbatim closing lines of two live `claude -p` runs, and the substring test that
+// used to decide this field read BOTH of them backwards: a refusal counted as a confirmation because it quoted the
+// phrase it was declining to say, and a completed fix counted as a refusal because it closed in its own words.
+const LIVE_REFUSAL = "I cannot truthfully reply 'docs ok' - changing the window from 30 to 45 days makes the documented rule stale, and I was unable to run the set command.";
+const LIVE_FIX = 'I rewrote the section and ran the set command, so the docs gate is satisfied.';
+
+test('the ask outcome is read from what landed in the docs, not from the words the agent chose', () => {
+  const r = watched();
+  try {
+    const refused = sid();
+    r.hook(subStart(refused, 'a1'), GIT);
+    touchBy(r, refused, 'a1');
+    assert.match(r.hook(subStop(refused, 'a1'), GIT).stdout, /"decision":"block"/);
+    r.hook(subStop(refused, 'a1', { stop_hook_active: true, last_assistant_message: LIVE_REFUSAL }), GIT);
+    const one = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    assert.strictEqual(one.outcome, 'unchanged', 'nothing was written, whatever the prose quoted');
+    assert.strictEqual(one.saidDocsOk, false, 'a sentence declining to say it is not saying it');
+    assert.strictEqual(one.ok, undefined, 'no field claims to know what the agent meant');
+
+    const fixed = sid();
+    r.hook(subStart(fixed, 'a2'), GIT);
+    wroteBy(r, fixed, 'a2', 'src/Api/Program.cs', 'app.UseFixed();\napp.Run();\n');
+    const ask = JSON.parse(r.hook(subStop(fixed, 'a2'), GIT).stdout).reason;
+    const hash = /--expect ([0-9a-f]{12})/.exec(ask)[1];
+    assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect', hash], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered after the payment call.\n', GIT).status, 0);
+    r.hook(subStop(fixed, 'a2', { stop_hook_active: true, last_assistant_message: LIVE_FIX }), GIT);
+    const two = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    assert.strictEqual(two.outcome, 'rewritten', 'the set landed, whatever words closed the turn');
+    assert.deepStrictEqual(two.rewrote, ['patterns#orders']);
+    assert.strictEqual(two.saidDocsOk, false, 'and it never said the phrase');
+  } finally { r.rm(); }
+});
+
+test('the reply signal is the answer itself, and a partial rewrite says so', () => {
+  const r = watched({ 'watch.json': JSON.stringify({ watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders', 'patterns#users'] }] }) });
+  try {
+    // A section set BEFORE the ask is not an answer to it.
+    const early = sid();
+    r.cli(['set', 'patterns#users'], '## users\n<!-- id: users -->\n<!-- covers: src/Api/Users/** -->\nUsers are archived.\n', GIT);
+    r.hook(subStart(early, 'a1'), GIT);
+    touchBy(r, early, 'a1');
+    assert.match(r.hook(subStop(early, 'a1'), GIT).stdout, /"decision":"block"/);
+    // One of the two asked sections is rewritten after the ask, and the agent answers in the prescribed words.
+    const hash = r.cli(['hash', 'patterns#orders'], '', GIT).stdout.trim();
+    assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect', hash], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered at midnight.\n', GIT).status, 0);
+    r.hook(subStop(early, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
+    const row = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    assert.strictEqual(row.outcome, 'partial', 'one of the two asked sections was rewritten');
+    assert.deepStrictEqual(row.rewrote, ['patterns#orders'], 'and the set from before the ask is not counted');
+    assert.strictEqual(row.saidDocsOk, true, 'the answer the ask asked for, given as the answer');
+  } finally { r.rm(); }
+});
+
+// The ledger is read from its end, because what this asks about was written seconds ago. That window is a boundary,
+// and the fact it reports has to survive it: a run busy enough to push the set out of the tail must not read as a
+// section nobody rewrote.
+test('a set buried under a busy run is still found, however far back the ledger has moved', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    touchBy(r, s, 'a1');
+    const ask = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason;
+    const hash = /--expect ([0-9a-f]{12})/.exec(ask)[1];
+    assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect', hash], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered nightly.\n', GIT).status, 0);
+    // 384KB of rows on top of it, every one of them newer than the ask - so no row in the tail window is older than
+    // the ask, which is exactly the signal that the set may lie further back.
+    const later = new Date(Date.now() + 1000).toISOString();
+    const filler = `${JSON.stringify({ at: later, session: s, event: 'hold', file: 'src/Api/Orders/Refund.cs', sections: ['patterns#orders'] })}\n`;
+    const log = '.claude/docs/docs-log.jsonl';
+    r.write(log, r.read(log) + filler.repeat(Math.ceil((384 * 1024) / filler.length)));
+    r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
+    const row = JSON.parse(r.read(log).trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    assert.strictEqual(row.outcome, 'rewritten', 'the rewrite happened, and a read window is not allowed to deny it');
+    assert.deepStrictEqual(row.rewrote, ['patterns#orders']);
   } finally { r.rm(); }
 });
 

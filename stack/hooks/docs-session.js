@@ -62,7 +62,7 @@ const saveState = (s, v, agent) => {
 // A dispatched agent gets a state file of its OWN, beside the session's and named for it. Same store, one key finer:
 // agents run in parallel, and a shared file they all read-modify-write loses rows - a lost 'blocked' row is a SECOND
 // block on an agent that already answered, which is worse than never asking.
-const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s, agent), 'utf8')); } catch {} return { snapshot: null, asked: [], blocked: false, answered: false, ...v }; };
+const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s, agent), 'utf8')); } catch {} return { snapshot: null, asked: [], askedAt: '', blocked: false, answered: false, ...v }; };
 // Both subagent payloads carry `agent_id` (documented on SubagentStart and SubagentStop alike) - that is the only
 // field that tells two seats of ONE type apart. The published examples spell the same field 'agent-abc123' at start
 // and 'def456' at stop, so the prefix is dropped before keying: a key that matched on only one of the two events
@@ -217,20 +217,76 @@ function subagentStart(input, root, docs) {
   if (process.env.CLAUDE_STACK_DOCS_BLOCK !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
 }
 
+// A section ref is spelled three ways on the CLI ('patterns#orders', 'references/patterns#orders',
+// 'patterns.md#orders'), all resolving to the same section, so the ledger and the ask are compared in one spelling.
+const normRef = (ref) => {
+  const i = String(ref).indexOf('#');
+  return i < 0 ? '' : `${path.basename(String(ref).slice(0, i), '.md')}#${String(ref).slice(i + 1)}`;
+};
+// The rows we are looking for were appended seconds ago, by the agent we just blocked, so the END of the file is
+// where they are - and a ledger that has run for months is not read into memory to answer that.
+const LEDGER_TAIL = 256 * 1024;
+// One window of the ledger, newest rows last. Returns whether it reached back PAST the ask: a window that did not is
+// a window that may have cut the answer off, which is the only reason to read more.
+function scanLedger(file, size, len, since, want, done) {
+  let reachedOlder = len >= size;
+  const buf = Buffer.alloc(len);
+  const fd = fs.openSync(file, 'r');
+  try { fs.readSync(fd, buf, 0, len, size - len); } finally { fs.closeSync(fd); }
+  for (const line of buf.toString('utf8').split('\n')) {
+    if (!line) continue;
+    // The first line of a tail is usually the back half of a row - it parses as nothing and is skipped.
+    let row; try { row = JSON.parse(line); } catch { continue; }
+    if (String(row.at) < since) { reachedOlder = true; continue; }
+    if (row.event === 'doc-set' && want.has(normRef(row.ref))) done.add(normRef(row.ref));
+  }
+  return reachedOlder;
+}
+// What the agent DID about the ask is a fact the engine already records: `docs.js set` writes a doc-set row naming
+// the section it wrote. That is read here instead of the agent's prose, which says what it MEANT and can say the
+// opposite of what happened - a refusal quoting the phrase it is declining, a finished rewrite closing in its own
+// words. Only a set at or after the ask counts: a rewrite from before it answers a different question.
+function setsSince(root, since, ids) {
+  const want = new Set(ids.map(normRef));
+  if (!want.size || !since) return [];
+  const done = new Set();
+  try {
+    const file = path.join(path.resolve(root, docsRootEnv()), 'docs-log.jsonl');
+    const size = fs.statSync(file).size;
+    const len = Math.min(size, LEDGER_TAIL);
+    // The tail is read first, and widened to the whole file only when every row in it was NEWER than the ask - the
+    // one case where the set can still lie further back, and the one case where a window would otherwise report a
+    // rewrite that happened as a section nobody touched.
+    if (!scanLedger(file, size, len, since, want, done) && len < size) scanLedger(file, size, size, since, want, done);
+  } catch {}
+  return ids.filter((id) => done.has(normRef(id)));
+}
+// A SEPARATE signal, never the outcome: whether the agent gave the ask's own words as its answer. The phrase has to
+// BE the reply - a line of its own, bare or quoted or bulleted - so a sentence that merely contains it, which is how
+// an agent declines ("I cannot truthfully reply 'docs ok'"), is not read as saying it.
+const DOCS_OK_LINE = /^[\s>*_`'"-]*docs ok[\s.!*_`'"]*$/i;
+const saidDocsOk = (text) => String(text == null ? '' : text).split(/\r?\n/).some((l) => DOCS_OK_LINE.test(l));
+
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
 // so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
 function subagentStop(input, root, docs) {
   if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
-  // The stop our own block caused. It carries the agent's ANSWER in `last_assistant_message`, the one place the
-  // answer is observable at all, so it is logged once and nothing more: no dedupe rests on it, because an agent
-  // that simply stopped and one that answered 'docs ok' are otherwise the same event.
+  // The stop our own block caused. The row it writes states what HAPPENED to the sections we asked about - which of
+  // them the agent rewrote through `docs.js set` - and nothing claims to know what it meant by stopping. Logged once
+  // and nothing more: no dedupe rests on it, because an agent that simply stopped and one that rewrote every section
+  // are otherwise the same event.
   if (input.stop_hook_active) {
     if (a.blocked && !a.answered) {
       a.answered = true;
       saveState(input.session_id, a, key);
-      log(root, input, { event: 'ask-answer', agent: key, sections: a.asked, ok: /\bdocs ok\b/i.test(String(input.last_assistant_message || '')) });
+      const asked = a.asked || [];
+      const rewrote = setsSince(root, a.askedAt, asked);
+      // Three states because two cannot tell them apart: where several sections were asked about, rewriting one of
+      // them is neither the job done nor nothing done, and that middle case is the one worth counting.
+      const outcome = rewrote.length === 0 ? 'unchanged' : rewrote.length === asked.length ? 'rewritten' : 'partial';
+      log(root, input, { event: 'ask-answer', agent: key, sections: asked, rewrote, outcome, saidDocsOk: saidDocsOk(input.last_assistant_message) });
     }
     return;
   }
@@ -283,6 +339,8 @@ function subagentStop(input, root, docs) {
   const reason = finishAsk(docs, files, refs);
   a.blocked = true;
   a.asked = [...a.asked, ...refs.map((r) => r.id)];
+  // The instant the ask was made, so a rewrite that landed before it is never counted as an answer to it.
+  a.askedAt = new Date().toISOString();
   saveState(input.session_id, a, key);
   log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
