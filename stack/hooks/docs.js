@@ -488,7 +488,7 @@ const findFile = (fileKey) => {
 // A trailing '.md' is one of the three spellings docs-session.js documents to users as equivalent
 // ('patterns#orders', 'references/patterns#orders', 'patterns.md#orders') - stripped once, here, so every
 // caller that peels a '.md' off a file key agrees on what counts rather than each carrying its own idea
-// (this exact spelling class already caused a regression that 614 tests missed on this branch).
+// (a '.md' peeled in one place and not another has already shipped a regression the whole suite missed).
 const stripMd = (s) => String(s).replace(/\.md$/, '');
 // A ref is <domain>/<file>#<id>. A leading segment names a domain only when domains() actually has it -
 // so a domain's own references/ or history/ subfolder (and a typo of a real domain name) is never
