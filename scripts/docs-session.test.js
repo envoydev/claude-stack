@@ -462,7 +462,10 @@ const subStop = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStop', sessi
 const watched = (extra) => repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Users/User.cs': 'class User {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH(), ...extra } });
 // A tool event fired INSIDE a subagent carries that agent's id, so the write is attributed to the seat that made it.
 const preBy = (s, id, file, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: file }, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
-const wroteBy = (r, s, id, file, body, env = GIT) => { r.hook(preBy(s, id, file), env); r.write(file, body); };
+// A write is attributed where the call PROCEEDS, so these helpers drive the allowed call - the gate's own hold, and
+// what it means for attribution, is the subject of its own tests rather than a side effect of every other one.
+const ALLOW = { CLAUDE_STACK_DOCS_GATE: '0' };
+const wroteBy = (r, s, id, file, body, env = GIT) => { r.hook(preBy(s, id, file), { ...env, ...ALLOW }); r.write(file, body); };
 const touch = (r) => r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
 const touchBy = (r, s, id, env = GIT) => wroteBy(r, s, id, 'src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n', env);
 
@@ -522,7 +525,7 @@ test('two agents that touch one section are both asked, and the second is shown 
     r.hook(subStart(s, 'a2'), GIT);
     // Both seats wrote the same file - the case the pair dedupe exists for.
     touchBy(r, s, 'a1');
-    r.hook(preBy(s, 'a2', 'src/Api/Program.cs'), GIT);
+    r.hook(preBy(s, 'a2', 'src/Api/Program.cs'), { ...GIT, ...ALLOW });
     const first = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.match(first.reason, /"Refunds are ledgered before the payment call\."/);
     r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered after the payment call.\n', GIT);
@@ -572,7 +575,7 @@ test('an agent payload with no id is keyed on its type, and two sections read as
     const s = sid();
     r.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_type: 'dotnet-implementer' }, GIT);
     // No agent_id on the tool event either: the type keys the attribution exactly as it keys the ask.
-    r.hook({ hook_event_name: 'PreToolUse', session_id: s, agent_type: 'dotnet-implementer', tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, GIT);
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, agent_type: 'dotnet-implementer', tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, { ...GIT, ...ALLOW });
     touch(r);
     const reason = JSON.parse(r.hook({ hook_event_name: 'SubagentStop', session_id: s, agent_type: 'dotnet-implementer' }, GIT).stdout).reason;
     assert.match(reason, /^2 sections document this file:$/m);
@@ -639,6 +642,118 @@ test('the main Stop never repeats an ask an agent already made, and still asks f
     const reason = JSON.parse(r.hook(stopEv(t), GIT).stdout).reason;
     assert.match(reason, /patterns#users/, reason);
     assert.doesNotMatch(reason, /patterns#orders/, 'and only that one');
+  } finally { r.rm(); }
+});
+
+// Separator normalisation. On win32 `path.relative` answers in backslashes while git answers in forward slashes, so
+// an unnormalised recorded path can never match a changed file and the whole ask goes dark - the same mismatch has
+// always defeated the first-change gate's own root check. Pinned on the COMPOSITION rather than the platform:
+// running this on real Windows is NOT RUN here.
+test('a recorded path is spelled the way git spells it, whatever the platform separator', () => {
+  const { toPosix } = require('../stack/hooks/docs-session.js');
+  const nodePath = require('node:path');
+  assert.strictEqual(toPosix(nodePath.win32.relative('C:\\proj', nodePath.win32.resolve('C:\\proj', 'src/Api/Program.cs')), '\\'), 'src/Api/Program.cs');
+  assert.strictEqual(toPosix('src\\Api\\Orders\\Refund.cs', '\\'), 'src/Api/Orders/Refund.cs');
+  // On posix a backslash is a legal character in a file name, so only the platform's own separator is translated.
+  assert.strictEqual(toPosix('weird\\name.cs', '/'), 'weird\\name.cs');
+  assert.strictEqual(toPosix('src/Api/Program.cs', '/'), 'src/Api/Program.cs');
+});
+
+// The hook's own orientation block teaches agents to run `docs.js show`, and the gate rewards pairing that read with
+// the change, so one shell command doing both is a shape this stack actively encourages.
+test('a shell command that reads a doc and writes in one go is still attributed', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'both'), GIT);
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, agent_id: 'both', agent_type: 'dotnet-implementer', tool_name: 'Bash', tool_input: { command: "node .claude/hooks/docs.js show patterns#orders; printf 'x\\n' > src/Api/Program.cs" } }, { ...GIT, ...ALLOW });
+    r.write('src/Api/Program.cs', 'x\n');
+    assert.match(r.hook(subStop(s, 'both'), GIT).stdout, /"decision":"block"/, 'the consult must not swallow the write');
+  } finally { r.rm(); }
+});
+
+test('a seat whose write cannot be named never claims a file another seat wrote', () => {
+  const r = watched({ 'watch.json': JSON.stringify({ watch: [
+    { kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] },
+    { kind: 'user surface', globs: ['src/*/Users/**'], sections: ['patterns#users'] },
+  ] }) });
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'blindseat'), GIT);
+    r.hook(subStart(s, 'otherseat'), GIT);
+    // `git apply` writes something this hook cannot name - the widening that used to hand it the whole tree.
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, agent_id: 'blindseat', agent_type: 'dotnet-implementer', tool_name: 'Bash', tool_input: { command: 'git apply fix.patch' } }, { ...GIT, ...ALLOW });
+    wroteBy(r, s, 'otherseat', 'src/Api/Users/User.cs', 'class User { int Id; }\n');
+    assert.strictEqual(r.hook(subStop(s, 'blindseat'), GIT).stdout, '', 'another seat\'s file is never handed to a blind write');
+    assert.match(r.hook(subStop(s, 'otherseat'), GIT).stdout, /patterns#users/, 'and the seat that wrote it is asked');
+  } finally { r.rm(); }
+});
+
+test('a blind write still answers for the change nobody else claimed', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'blindalone'), GIT);
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, agent_id: 'blindalone', agent_type: 'dotnet-implementer', tool_name: 'Bash', tool_input: { command: 'git apply fix.patch' } }, { ...GIT, ...ALLOW });
+    r.write('src/Api/Program.cs', 'app.UseApplied();\napp.Run();\n');
+    assert.match(r.hook(subStop(s, 'blindalone'), GIT).stdout, /patterns#orders/, 'it did write, and nothing says what');
+  } finally { r.rm(); }
+});
+
+// PreToolUse records INTENT. A write this hook DENIES never happens, so recording it lets a parallel seat's change
+// be read as this seat's work.
+test('a write this hook denied is never attributed to the seat that tried it', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'held'), GIT);
+    r.hook(subStart(s, 'writer'), GIT);
+    const denied = r.hook(preBy(s, 'held', 'src/Api/Program.cs'), GIT);
+    assert.match(denied.stdout, /"permissionDecision":"deny"/, 'the first change is held, so nothing was written');
+    // The writer's own change, with the gate out of the way so this call is the one that proceeds.
+    r.hook(preBy(s, 'writer', 'src/Api/Program.cs'), { ...GIT, CLAUDE_STACK_DOCS_GATE: '0' });
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    assert.strictEqual(r.hook(subStop(s, 'held'), GIT).stdout, '', 'the seat that wrote nothing is silent');
+    assert.match(r.hook(subStop(s, 'writer'), GIT).stdout, /"decision":"block"/, 'the seat that did write is asked');
+  } finally { r.rm(); }
+});
+
+// stop() is the only cover a SKILL has, and a skill's work is main-session work. Subtracting a seat's sections
+// outright silenced the session about them forever, including for its own later changes.
+test('the main session is asked about its OWN change to a section a seat already answered for', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    start(r, s);
+    r.hook(subStart(s, 'seat'), GIT);
+    touchBy(r, s, 'seat');
+    assert.match(r.hook(subStop(s, 'seat'), GIT).stdout, /patterns#orders/, 'the seat is asked');
+    // Now the session itself edits the same file - its own tool events carry no agent id.
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, { ...GIT, CLAUDE_STACK_DOCS_GATE: '0' });
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.UseCors();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(stopEv(s), GIT).stdout).reason, /patterns#orders/, 'the session answers for what it wrote itself');
+  } finally { r.rm(); }
+});
+
+test('the silence an unattributed agent falls into is logged, and the switch skips the record', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'ghost'), GIT);
+    r.write('src/Api/Program.cs', 'app.UseGhost();\napp.Run();\n');
+    assert.strictEqual(r.hook(subStop(s, 'ghost'), GIT).stdout, '');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-skipped".*"why":"no write attributed to this agent"/);
+    // A seat that wrote, where nothing it wrote changed: the route a separator mismatch or a crowded cap ends in.
+    const t = sid();
+    r.hook(subStart(t, 'stale'), GIT);
+    r.hook(preBy(t, 'stale', 'src/Api/Orders/Refund.cs'), { ...GIT, ...ALLOW });
+    r.write('src/Api/Program.cs', 'app.UseOther();\napp.Run();\n');
+    assert.strictEqual(r.hook(subStop(t, 'stale'), GIT).stdout, '');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"why":"nothing this agent wrote changed"/);
+    // With the ask switched off no write is recorded at all.
+    const u = sid();
+    r.hook(preBy(u, 'offseat', 'src/Api/Program.cs'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0', CLAUDE_STACK_DOCS_GATE: '0' });
+    assert.ok(!fs.existsSync(`${require('node:os').tmpdir()}/docs-session-${u}--offseat.json`), 'no state file is written for a switched-off ask');
   } finally { r.rm(); }
 });
 

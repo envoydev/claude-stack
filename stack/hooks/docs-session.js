@@ -9,8 +9,8 @@
 //   PreToolUse    -> records reads of the docs and attributes each write to the agent that made it; holds the FIRST
 //                    change under a source root until a section was read, handing the covering section over inline -
 //                    what a merge just folded into mainline comes first
-//   Stop          -> once per session: a change that hit watch.json asks for the owning sections to be rewritten when
-//                    a rule moved, or confirmed
+//   Stop          -> once per session, the same ask for what the SESSION wrote itself (a skill's work is main-session
+//                    work) plus every change no actor claimed - a script's output, a tool this hook is not wired on
 // CLAUDE_STACK_DOCS_BLOCK=0 / CLAUDE_STACK_DOCS_GATE=0 / CLAUDE_STACK_DOCS_ASK=0 turn the three parts off.
 'use strict';
 const fs = require('fs');
@@ -25,6 +25,11 @@ const FILES_NAMED = 4;
 const READ = 'node .claude/hooks/docs.js';
 
 const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
+// ONE spelling for every path this hook records, compares or matches against a source root: git answers in forward
+// slashes, and on win32 `path.relative` answers in backslashes, so an unnormalised path matches nothing git reports -
+// which silently took both the write attribution and the first-change gate's own root check down on every Windows
+// session. Only the platform's OWN separator is translated: on posix a backslash is a legal character in a file name.
+const toPosix = (p, sep = path.sep) => (sep === '/' ? p : String(p).split(sep).join('/'));
 const statePath = (s, agent) => path.join(os.tmpdir(), `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}${agent ? `--${agent}` : ''}.json`);
 const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
 const saveState = (s, v, agent) => { try { fs.writeFileSync(statePath(s, agent), JSON.stringify(v)); } catch {} };
@@ -38,30 +43,36 @@ const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSy
 // would snapshot an agent and then ask a different one. With no id at all the type is the best key left, and two
 // parallel seats of one type then share a snapshot and one block.
 const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent').replace(/^agent-/, '').replace(/[^\w-]/g, '').slice(0, 64) || 'agent';
-// A write, attributed to the agent that made it. `agent_id` / `agent_type` are populated on a TOOL event only when
-// the hook fires inside a subagent, so the main session records nothing here and its own Stop keeps reading the
-// whole tree. Recorded BEFORE the first-change gate below: a write the gate then holds never happened, but the stop
-// intersects against what actually CHANGED, so an attributed write that never landed drops out by itself.
+// Who made a write. `agent_id` / `agent_type` are populated on a TOOL event only when the hook fires INSIDE a
+// subagent, so the main session - and every skill, whose work is main-session work - records under one key of its
+// own and its Stop can answer for what it wrote itself.
+const MAIN_ACTOR = 'main';
+const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input) : MAIN_ACTOR);
+// A write, attributed to the actor that made it. Banked only where the call is allowed to PROCEED (see preToolUse):
+// a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
 const WROTE_CAP = 500;
-function recordWrite(input, wrote) {
-  if (!input.agent_id && !input.agent_type) return;
-  const key = agentKey(input);
+function recordWrite(root, input, wrote) {
+  if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return; // the switch turns the part off, record included
+  const key = actorKey(input);
   const a = loadAgent(input.session_id, key);
-  const next = [...new Set([...(a.wrote || []), ...wrote])].slice(0, WROTE_CAP);
-  if (next.length === (a.wrote || []).length) return;
-  a.wrote = next;
+  const had = (a.wrote || []).length;
+  const union = [...new Set([...(a.wrote || []), ...wrote])];
+  if (union.length === had) return;
+  // Past the cap an actor keeps its first WROTE_CAP paths and later ones are dropped, so a busy seat goes SILENT
+  // rather than answering for files it never wrote. Right direction, invisible without this row.
+  if (union.length > WROTE_CAP && had < WROTE_CAP) log(root, input, { event: 'wrote-cap', actor: key, cap: WROTE_CAP, dropped: union.length - WROTE_CAP });
+  a.wrote = union.slice(0, WROTE_CAP);
   saveState(input.session_id, a, key);
 }
-// Every section an agent of THIS session was already asked about, read from the sibling per-agent files. READ only:
-// writing the session's own row here would race preToolUse, and a file that cannot be read simply reinstates the
-// ask, which is the safe direction.
-function askedByAgents(session) {
+// Every path the OTHER actors of this session recorded. READ only: writing here would race preToolUse, and a file
+// that cannot be read simply leaves its paths unclaimed, which is the safe direction.
+function otherActorWrites(session, exceptKey) {
   const prefix = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
   const out = new Set();
   try {
     for (const f of fs.readdirSync(os.tmpdir())) {
-      if (!f.startsWith(prefix) || !f.endsWith('.json')) continue;
-      try { for (const id of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).asked || []) out.add(id); } catch {}
+      if (!f.startsWith(prefix) || !f.endsWith('.json') || f === `${prefix}${exceptKey}.json`) continue;
+      try { for (const p of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).wrote || []) out.add(p); } catch {}
     }
   } catch {}
   return out;
@@ -203,19 +214,35 @@ function subagentStop(input, root, docs) {
   // parallel by design. A seat that wrote nothing is silent (the brief's read-only seats, now true under parallel
   // dispatch); a seat that wrote is judged on its own files, and the tree still has to agree they CHANGED.
   const own = a.wrote || [];
-  if (!own.length) return;
+  if (!own.length) {
+    // Every route to a missed ask ends here: a tool event carrying no agent fields, a write through a tool this hook
+    // is not wired on, the two events spelling the key differently, the write cap, a separator that never matched.
+    // The block RATE is what says a gate earns its keep, so the silence is logged rather than looking like a gate
+    // nobody needed. A read-only seat logs one row too - that is the same fact, honestly counted.
+    log(root, input, { event: 'ask-skipped', why: 'no write attributed to this agent', agent: key, agentType: input.agent_type || '' });
+    return;
+  }
   let changed;
   let hits = [];
   try {
     changed = docs.changedSince(a.snapshot);
     if (!changed.files.length && !changed.dirs.length) return;
-    // A write whose target the shell route could not name ('dotnet ef migrations add', 'git apply'): the agent did
-    // write, and nothing says what, so it answers for the whole change rather than for none of it.
-    const blind = own.includes(UNKNOWN_SOURCE_WRITE);
-    const mine = new Set(own);
-    const mineFiles = blind ? changed.files : changed.files.filter((f) => mine.has(f));
-    const mineDirs = blind ? changed.dirs : changed.dirs.filter((d) => own.some((p) => p.startsWith(`${d}/`)));
-    if (!mineFiles.length && !mineDirs.length) return;
+    let mineFiles;
+    if (own.includes(UNKNOWN_SOURCE_WRITE)) {
+      // A write the shell route could not name ('git apply', 'dotnet ef migrations add' with no --project). The seat
+      // did write and nothing says what, so it answers for everything no OTHER actor claimed - which keeps it honest
+      // about its own work without handing it the file a seat beside it wrote.
+      const others = otherActorWrites(input.session_id, key);
+      mineFiles = changed.files.filter((f) => !others.has(f));
+    } else {
+      const mine = new Set(own);
+      mineFiles = changed.files.filter((f) => mine.has(f));
+    }
+    const mineDirs = changed.dirs.filter((d) => mineFiles.some((f) => f.startsWith(`${d}/`)));
+    if (!mineFiles.length && !mineDirs.length) {
+      log(root, input, { event: 'ask-skipped', why: 'nothing this agent wrote changed', agent: key, wrote: own.length });
+      return;
+    }
     hits = docs.watchHits(mineFiles, mineDirs);
   } catch { return; }
   if (!hits.length) return;
@@ -244,7 +271,7 @@ function toolPaths(input, root) {
       if (/[\w.-]\/[\w.-]/.test(w)) out.push(w.replace(/^[^\w./~-]+|[,:]+$/g, '').replace(/:\d+(:\d+)?$/, ''));
     }
   }
-  return [...new Set(out.map((p) => path.relative(root, path.resolve(root, p))).filter((p) => p && !p.startsWith('..')))];
+  return [...new Set(out.map((p) => toPosix(path.relative(root, path.resolve(root, p)))).filter((p) => p && !p.startsWith('..')))];
 }
 
 // The paths a shell command WRITES, not every path it mentions: redirect targets (never /dev/null or a file
@@ -280,7 +307,7 @@ function writeTargets(command) {
   }
   return [...new Set(out.filter((t) => t && t !== 'QUOTED'))];
 }
-const relative = (root, paths) => [...new Set(paths.map((p) => path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, '')))).filter((p) => p && !p.startsWith('..')))];
+const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
 function consultedBy(input, paths, docsRel) {
@@ -309,31 +336,37 @@ function blockRow(root, input, reason) {
 
 function preToolUse(input, root, docs, state) {
   const paths = toolPaths(input, root);
-  const docsRel = path.relative(root, docs.DOCS).split(path.sep).join('/');
-  const consults = consultedBy(input, paths, docsRel);
-  if (consults.length) {
-    state.consults.push(...consults);
-    saveState(input.session_id, state);
-    log(root, input, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
-    return;
-  }
+  const docsRel = toPosix(path.relative(root, docs.DOCS));
   // Only these six tools can name a source target, so nothing else pays for the watch list.
   const name = input.tool_name || '';
-  if (!/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) && !isShellTool(name)) return;
+  const isWrite = /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) || isShellTool(name);
   let roots = ['src', 'tests'];
-  try { roots = docs.loadWatch().sourceRoots; } catch {}
-  const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
+  if (isWrite) { try { roots = docs.loadWatch().sourceRoots; } catch {} }
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
   const shellWrites = isShellTool(name) ? writeTargets(command) : null;
   let wrote = [];
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) wrote = paths;
   else if (shellWrites) wrote = relative(root, shellWrites.map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x)));
-  // Attributed before the source-root filter: a watch entry may name a path no source root covers, and a write this
-  // hook never judges is still a write the agent made.
-  if (wrote.length) recordWrite(input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote);
+  // A PreToolUse write is INTENT. It is banked at each exit below that lets the call PROCEED and never on the deny,
+  // so a write this hook holds is not credited to the seat that tried it. Banked before the source-root filter,
+  // because a watch entry may name a path no source root covers and a write this hook never judges is still a write.
+  const attribute = () => { if (wrote.length) recordWrite(root, input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote); };
+  const consults = consultedBy(input, paths, docsRel);
+  if (consults.length) {
+    // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
+    // teach - so the read must not swallow the write.
+    attribute();
+    state.consults.push(...consults);
+    saveState(input.session_id, state);
+    log(root, input, { event: 'consult', refs: consults.slice(0, 5), tool: input.tool_name });
+    return;
+  }
+  if (!isWrite) return;
+  const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
   const targets = wrote.filter(inRoots);
-  if (!targets.length) return;
+  if (!targets.length) { attribute(); return; }
   const allow = () => {
+    attribute();
     state.edits++;
     saveState(input.session_id, state);
     if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
@@ -415,30 +448,33 @@ function stop(input, root, docs, state) {
   try {
     changed = docs.changedSince(state.snapshot);
     if (!changed.files.length && !changed.dirs.length) return;
-    hits = docs.watchHits(changed.files, changed.dirs);
+    // What the SESSION answers for: what it wrote ITSELF - a skill's work is main-session work, and its tool events
+    // carry no agent id - plus every change no actor claimed at all, which is how a script's output and a write
+    // through a tool this hook is not wired on still get asked about. What a SEAT wrote is that seat's to answer
+    // for and it was already asked there; repeating it here is the same block twice in a row, which is how a gate
+    // earns itself a CLAUDE_STACK_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
+    // later change to a section a seat answered for earlier.
+    const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
+    const seats = otherActorWrites(input.session_id, MAIN_ACTOR);
+    const files = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    const dirs = changed.dirs.filter((d) => files.some((f) => f.startsWith(`${d}/`)));
+    if (!files.length && !dirs.length) return;
+    hits = docs.watchHits(files, dirs);
   } catch { return; }
   if (!hits.length) return;
-  // A section an agent of this session already answered for is not asked again here: the same block twice in a row
-  // is how a gate earns itself a CLAUDE_STACK_DOCS_ASK=0, and the session is not the actor that made that change.
-  // Agent-to-agent dedupe is untouched - two agents still both get asked.
-  const seen = askedByAgents(input.session_id);
-  const ids = [...new Set(hits.flatMap((h) => h.sections))].filter((id) => !seen.has(id)).slice(0, ASK_SECTIONS);
-  if (!ids.length) return;
+  const ids = [...new Set(hits.flatMap((h) => h.sections))].slice(0, ASK_SECTIONS);
   const refs = ids.map((id) => docs.askRef(id)).filter(Boolean);
   if (!refs.length) return;
-  // Only the entries that still have something to ask about name their files, so the ask never names a file whose
-  // only section was already answered for.
-  const kept = hits.filter((h) => h.sections.some((id) => ids.includes(id)));
-  const files = [...new Set(kept.flatMap((h) => h.files))];
+  const files = [...new Set(hits.flatMap((h) => h.files))];
   state.asked = true;
   saveState(input.session_id, state);
   const reason = finishAsk(docs, files, refs);
-  log(root, input, { event: 'ask-update', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(kept.map((h) => h.kind))] });
+  log(root, input, { event: 'ask-update', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix };
 if (require.main === module) {
   try { main(); } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }
