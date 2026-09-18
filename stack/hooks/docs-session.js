@@ -2,7 +2,10 @@
 // docs-session.js - makes the architecture docs the starting point of a session and keeps them honest at its end.
 //   SessionStart  -> folds merged branches' doc versions into mainline, then pushes ORIENTATION.md, this branch's
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
-//   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one)
+//   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one), and
+//                    the snapshot the finish ask below compares against
+//   SubagentStop  -> what THAT agent changed, once: a changed file that hits watch.json blocks with the owning
+//                    sections quoted, so whoever made the change says whether the docs still hold
 //   PreToolUse    -> records reads of the docs; holds the FIRST change under a source root until a section was read,
 //                    handing the covering section over inline - what a merge just folded into mainline comes first
 //   Stop          -> once per session: a change that hit watch.json asks for the owning sections to be rewritten when
@@ -17,12 +20,23 @@ const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAU
 const MAX_HOLDS = 2;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
+const FILES_NAMED = 4;
 const READ = 'node .claude/hooks/docs.js';
 
 const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
-const statePath = (s) => path.join(os.tmpdir(), `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}.json`);
+const statePath = (s, agent) => path.join(os.tmpdir(), `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}${agent ? `--${agent}` : ''}.json`);
 const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
-const saveState = (s, v) => { try { fs.writeFileSync(statePath(s), JSON.stringify(v)); } catch {} };
+const saveState = (s, v, agent) => { try { fs.writeFileSync(statePath(s, agent), JSON.stringify(v)); } catch {} };
+// A dispatched agent gets a state file of its OWN, beside the session's and named for it. Same store, one key finer:
+// agents run in parallel, and a shared file they all read-modify-write loses rows - a lost 'blocked' row is a SECOND
+// block on an agent that already answered, which is worse than never asking.
+const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s, agent), 'utf8')); } catch {} return { snapshot: null, asked: [], blocked: false, answered: false, ...v }; };
+// Both subagent payloads carry `agent_id` (documented on SubagentStart and SubagentStop alike) - that is the only
+// field that tells two seats of ONE type apart. The published examples spell the same field 'agent-abc123' at start
+// and 'def456' at stop, so the prefix is dropped before keying: a key that matched on only one of the two events
+// would snapshot an agent and then ask a different one. With no id at all the type is the best key left, and two
+// parallel seats of one type then share a snapshot and one block.
+const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent').replace(/^agent-/, '').replace(/[^\w-]/g, '').slice(0, 64) || 'agent';
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
 // `tool_input.command` exactly as Bash does, and both installer twins wire this hook on the matcher
@@ -116,9 +130,67 @@ function main() {
   if (!fs.existsSync(docs.DOCS)) return;
   const state = loadState(input.session_id);
   if (event === 'SessionStart') return sessionStart(input, root, docs, state);
-  if (event === 'SubagentStart') { if (process.env.CLAUDE_STACK_DOCS_BLOCK !== '0') emit('SubagentStart', orientation(root, docs).join('\n')); return; }
+  if (event === 'SubagentStart') return subagentStart(input, root, docs);
+  if (event === 'SubagentStop') return subagentStop(input, root, docs);
   if (event === 'PreToolUse') return preToolUse(input, root, docs, state);
   if (event === 'Stop') return stop(input, root, docs, state);
+}
+
+function subagentStart(input, root, docs) {
+  // The snapshot is what makes the finish ask possible, and it is NOT the orientation block: the block's switch
+  // must not blind the ask, and the ask's switch must not cost a snapshot nobody will read.
+  if (process.env.CLAUDE_STACK_DOCS_ASK !== '0') {
+    const key = agentKey(input);
+    const a = loadAgent(input.session_id, key);
+    // Only the first start writes it: where two seats fold onto one key, the earlier snapshot keeps both their
+    // changes in view instead of hiding the first agent's work behind the second's start.
+    if (!a.snapshot) { try { a.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, a, key); }
+  }
+  if (process.env.CLAUDE_STACK_DOCS_BLOCK !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
+}
+
+// The agent that made a change is the only context that knows why it was made - the main session usually does not -
+// so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
+function subagentStop(input, root, docs) {
+  if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return;
+  const key = agentKey(input);
+  const a = loadAgent(input.session_id, key);
+  // The stop our own block caused. It carries the agent's ANSWER in `last_assistant_message`, the one place the
+  // answer is observable at all, so it is logged once and nothing more: no dedupe rests on it, because an agent
+  // that simply stopped and one that answered 'docs ok' are otherwise the same event.
+  if (input.stop_hook_active) {
+    if (a.blocked && !a.answered) {
+      a.answered = true;
+      saveState(input.session_id, a, key);
+      log(root, input, { event: 'ask-answer', agent: key, sections: a.asked, ok: /\bdocs ok\b/i.test(String(input.last_assistant_message || '')) });
+    }
+    return;
+  }
+  // One block per agent, whatever it answered, and never one for an agent whose start was never seen: with no
+  // snapshot there is nothing that says what this agent changed, and a guess would ask the wrong seat.
+  if (a.blocked || !a.snapshot || typeof docs.askRef !== 'function') return;
+  let changed;
+  let hits = [];
+  try {
+    changed = docs.changedSince(a.snapshot);
+    // A seat that changed nothing - every read-only seat there is - must never see this.
+    if (!changed.files.length && !changed.dirs.length) return;
+    hits = docs.watchHits(changed.files, changed.dirs);
+  } catch { return; }
+  if (!hits.length) return;
+  // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
+  // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
+  const ids = [...new Set(hits.flatMap((h) => h.sections))].filter((id) => !a.asked.includes(id)).slice(0, ASK_SECTIONS);
+  const refs = ids.map((id) => docs.askRef(id)).filter(Boolean);
+  if (!refs.length) return;
+  const files = [...new Set(hits.flatMap((h) => h.files))];
+  const reason = finishAsk(docs, files, refs);
+  a.blocked = true;
+  a.asked = [...a.asked, ...refs.map((r) => r.id)];
+  saveState(input.session_id, a, key);
+  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
 // What the tool is about to touch, project-relative.
@@ -247,8 +319,51 @@ function preToolUse(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
 }
 
+// The one ask this hook makes - a finished agent's SubagentStop and the main session's Stop send the same shape, so
+// there is a single thing to learn. It has to be answerable by someone who has never read these docs: the section
+// named the way a person would say it, the file it sits in, its CURRENT first sentence to compare the change
+// against, and what each answer costs. The quoted line is ONE sentence (docs.js caps it at 200 chars), so the ask is
+// a fixed size whatever the section grew to. The --expect hash is of the text being shown here: a rewrite of a
+// section that moved meanwhile is refused instead of silently dropping whoever moved it.
+function finishAsk(docs, files, refs) {
+  const one = refs.length === 1;
+  const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
+  const subject = files.length === 1 ? 'this file' : 'these files';
+  let mode = 'git';
+  let branch = '';
+  let mainline = true;
+  try { mode = docs.docsMode(); branch = docs.branch() || ''; mainline = docs.isMainline(branch); } catch {}
+  // What saving the doc costs, which is the whole difference between the two versioning modes. On mainline under
+  // local versioning there is no overlay and nothing to commit, so neither of the other two lines is true there.
+  const tail = mode === 'git'
+    ? [`         and commit the doc${one ? '' : 's'} with your code, so ${one ? 'it travels' : 'they travel'} with this branch.`]
+    : mainline
+      ? [`         and ${one ? 'it lands' : 'they land'} in the shared docs at once. Nothing to commit.`]
+      : [
+        `         and ${one ? 'it is' : 'they are'} stored for branch ${branch} only. ${one ? 'It moves' : 'They move'} into the`,
+        `         shared docs by ${one ? 'itself' : 'themselves'} once this branch is merged. Nothing to commit.`,
+      ];
+  return [
+    `Docs check: you changed ${named}`,
+    '',
+    ...(one
+      ? [`One section documents ${subject} - '${refs[0].heading}', in ${refs[0].file}:`, `  "${refs[0].first}"`]
+      : [`${refs.length} sections document ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
+    '',
+    one ? 'Does your change still leave that true?' : 'Do your changes still leave those true?',
+    '',
+    '  Yes -> reply: docs ok',
+    `  No  -> rewrite ${one ? 'the section' : 'each section your change made untrue'}, then run`,
+    ...refs.map((r) => `           ${READ} set ${r.id} --expect ${r.hash}`),
+    ...tail,
+  ].join('\n');
+}
+
+// The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
+// event of its own and its work lands here.
 function stop(input, root, docs, state) {
   if (process.env.CLAUDE_STACK_DOCS_ASK === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
+  if (typeof docs.askRef !== 'function') return;
   let changed;
   let hits = [];
   try {
@@ -258,30 +373,15 @@ function stop(input, root, docs, state) {
   } catch { return; }
   if (!hits.length) return;
   const ids = [...new Set(hits.flatMap((h) => h.sections))].slice(0, ASK_SECTIONS);
+  const refs = ids.map((id) => docs.askRef(id)).filter(Boolean);
+  if (!refs.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
-  const kinds = [...new Set(hits.map((h) => h.kind))];
   state.asked = true;
   saveState(input.session_id, state);
-  log(root, input, { event: 'ask-update', sections: ids, files: files.slice(0, 5), kinds });
-  let scope = 'It is written into the doc file itself.';
-  try {
-    const st = docs.status();
-    if (st.mode.startsWith('overlay') && !st.mainline) scope = `It is saved for branch ${st.branch} only; mainline keeps its own text until the branch merges.`;
-  } catch {}
-  const one = ids.length === 1;
-  process.stdout.write(JSON.stringify({
-    decision: 'block',
-    reason: [
-      `One check before you finish. You changed ${files.slice(0, 4).join(', ')}${files.length > 4 ? ` and ${files.length - 4} more` : ''} (${kinds.join(', ')}), which ${one ? 'this section owns' : 'these sections own'}: ${ids.join(', ')}.`,
-      `Open ${one ? 'it' : 'them'}: ${READ} show ${ids.join(' ')}`,
-      'For each: if your change moved a rule, boundary, contract or pattern it states, rewrite that section - heading included, changing only what your change made untrue - and save it:',
-      `  ${READ} set <file>#<id> <<'MD'`,
-      '  <the whole section>',
-      '  MD',
-      `${scope} Leave out the captured line; set stamps it.`,
-      `If ${one ? 'it still holds' : 'they still hold'}, reply 'docs still hold: ${ids.join(', ')}' and finish. Do not edit any other doc.`,
-    ].join('\n'),
-  }));
+  const reason = finishAsk(docs, files, refs);
+  log(root, input, { event: 'ask-update', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
 module.exports = { writeTargets, consultedBy, toolPaths };

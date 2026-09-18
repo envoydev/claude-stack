@@ -373,7 +373,7 @@ test('ps1: the CLAUDE.md seed stamps the H1 placeholder with the repo folder nam
 });
 
 // docs.js is the engine the docs hook requires from its own directory: it must land beside the hook and only there,
-// and the hook must be wired on all four events it serves.
+// and the hook must be wired on all five events it serves.
 function assertDocsHook(sb, run, twin)
 {
     fs.writeFileSync(sb.sel, 'skill angular-conventions\nrule markdown-docs\nhook docs-session\n');
@@ -382,7 +382,7 @@ function assertDocsHook(sb, run, twin)
     assert.ok(fs.existsSync(path.join(hooks, 'docs-session.js')), `${twin}: the hook lands`);
     assert.strictEqual(fs.readFileSync(path.join(hooks, 'docs.js'), 'utf8'), fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'docs.js'), 'utf8'), `${twin}: the engine lands beside it, byte-equal`);
     const wiring = JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8')).hooks;
-    for (const ev of ['SessionStart', 'SubagentStart', 'PreToolUse', 'Stop'])
+    for (const ev of ['SessionStart', 'SubagentStart', 'SubagentStop', 'PreToolUse', 'Stop'])
     {
         const entries = (wiring[ev] || []).filter((e) => JSON.stringify(e).includes('docs-session.js'));
         assert.strictEqual(entries.length, 1, `${twin}: wired once on ${ev}`);

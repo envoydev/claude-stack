@@ -402,8 +402,11 @@ test('a change to a watched file asks once, naming the section; a second stop is
     const out = r.hook(stopEv(s));
     const body = JSON.parse(out.stdout);
     assert.strictEqual(body.decision, 'block');
-    assert.match(body.reason, /You changed src\/Api\/Program\.cs \(composition root\), which this section owns: patterns#orders/);
-    assert.match(body.reason, /docs still hold: patterns#orders/);
+    // The main session's ask is the SAME ask a finished agent gets - one shape, one thing to learn.
+    assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n/);
+    assert.match(body.reason, /"Refunds are ledgered before the payment call\."/);
+    assert.match(body.reason, /  Yes -> reply: docs ok/);
+    assert.match(body.reason, /set patterns#orders --expect [0-9a-f]{12}/);
     assert.strictEqual(r.hook(stopEv(s)).stdout, '');
   } finally { r.rm(); }
 });
@@ -432,7 +435,8 @@ test('four owning sections: the ask names three', () => {
     const s = sid(); start(r, s);
     r.write('src/Api/Program.cs', 'y\n');
     const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
-    assert.match(reason, /these sections own: p#a, p#b, p#c\./);
+    assert.match(reason, /^3 sections document this file:/m);
+    assert.match(reason, /set p#a --expect [0-9a-f]{12}\n {11}node .*set p#b --expect [0-9a-f]{12}\n {11}node .*set p#c --expect [0-9a-f]{12}/);
     assert.doesNotMatch(reason, /p#d/);
   } finally { r.rm(); }
 });
@@ -442,10 +446,144 @@ test('a new module folder hits newModule; a committed script change counts', () 
   try {
     const s = sid(); start(r, s);
     r.write('src/Api/Features/Billing/Invoice.cs', 'class Invoice {}\n');
-    assert.match(JSON.parse(r.hook(stopEv(s)).stdout).reason, /new module[\s\S]*patterns#users/);
+    assert.match(JSON.parse(r.hook(stopEv(s)).stdout).reason, /Docs check: you changed src\/Api\/Features\/Billing\/[\s\S]*patterns#users/);
     const t = sid(); start(r, t);
     r.write('src/Api/Program.cs', 'changed by a script\n');
     r.git('commit', '-qam', 'script');
     assert.match(JSON.parse(r.hook(stopEv(t)).stdout).reason, /patterns#orders/);
+  } finally { r.rm(); }
+});
+
+// ---- the finish ask, per agent: what THAT agent changed, asked once, against the section's text as it stands now ----
+// The agent that made a change is the only context that knows why, so SubagentStop is where the ask has an answer.
+const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+const subStart = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStart', session_id: s, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
+const subStop = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStop', session_id: s, agent_id: id, agent_type: 'dotnet-implementer', stop_hook_active: false, ...extra });
+const watched = (extra) => repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH(), ...extra } });
+const touch = (r) => r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+
+test('a finished agent is asked about the section documenting what it changed, quoting its first sentence', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    // The start payload spells the id 'agent-a1' and the stop payload 'a1' in the published examples; the key
+    // survives either spelling, or the two events would never meet.
+    r.hook(subStart(s, 'agent-a1'), GIT);
+    touch(r);
+    const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
+    assert.strictEqual(body.decision, 'block');
+    assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12}\n {9}and commit the doc with your code, so it travels with this branch\.$/);
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update"/);
+    assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"SubagentStop"/);
+  } finally { r.rm(); }
+});
+
+test('one block per agent: the continuation stop and a later change are both silent', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    touch(r);
+    assert.match(r.hook(subStop(s, 'a1'), GIT).stdout, /"decision":"block"/);
+    const again = r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
+    assert.strictEqual(again.stdout, '', 'the continuation we caused never blocks');
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.UseCors();\napp.Run();\n');
+    assert.strictEqual(r.hook(subStop(s, 'a1'), GIT).stdout, '', 'one block per agent, whatever it answered');
+    // The answer is observable ONLY here, as `last_assistant_message` on the stop our block caused - it is logged
+    // so the habit can be measured, and nothing is gated on it.
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-answer".*"ok":true/);
+  } finally { r.rm(); }
+});
+
+test('an agent that changed nothing, or nothing the watch list names, is never asked', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'reviewer'), GIT);
+    assert.strictEqual(r.hook(subStop(s, 'reviewer'), GIT).stdout, '', 'a read-only seat must never see this');
+    const t = sid();
+    r.hook(subStart(t, 'impl'), GIT);
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
+    assert.strictEqual(r.hook(subStop(t, 'impl'), GIT).stdout, '', 'changed, but no watch entry hits');
+    // A stop with no start before it has no snapshot, so it cannot tell what this agent changed - silence, never a guess.
+    assert.strictEqual(r.hook(subStop(sid(), 'orphan'), GIT).stdout, '');
+  } finally { r.rm(); }
+});
+
+test('two agents that touch one section are both asked, and the second is shown the first rewrite', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    r.hook(subStart(s, 'a2'), GIT);
+    touch(r);
+    const first = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
+    assert.match(first.reason, /"Refunds are ledgered before the payment call\."/);
+    r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered after the payment call.\n', GIT);
+    const second = JSON.parse(r.hook(subStop(s, 'a2'), GIT).stdout);
+    assert.match(second.reason, /"Refunds are ledgered after the payment call\."/, 'the second agent reads what the first wrote, not what it started from');
+    assert.notStrictEqual(/--expect ([0-9a-f]{12})/.exec(first.reason)[1], /--expect ([0-9a-f]{12})/.exec(second.reason)[1], 'and a different hash, so the first rewrite cannot be dropped');
+  } finally { r.rm(); }
+});
+
+test('local versioning says where the doc is stored instead of telling it to commit', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    r.git('switch', '-qc', 'feat/refunds');
+    const s = sid();
+    r.hook(subStart(s, 'a1'));
+    touch(r);
+    const reason = JSON.parse(r.hook(subStop(s, 'a1')).stdout).reason;
+    assert.match(reason, /\n {9}and it is stored for branch feat\/refunds only\. It moves into the\n {9}shared docs by itself once this branch is merged\. Nothing to commit\.$/);
+    assert.doesNotMatch(reason, /commit the doc with your code/);
+    // On mainline the overlay is never written, so neither clause is true there.
+    r.git('switch', '-q', 'develop');
+    const t = sid();
+    r.hook(subStart(t, 'a2'));
+    r.write('src/Api/Program.cs', 'app.UseCors();\napp.Run();\n');
+    assert.match(JSON.parse(r.hook(subStop(t, 'a2')).stdout).reason, /\n {9}and it lands in the shared docs at once\. Nothing to commit\.$/);
+  } finally { r.rm(); }
+});
+
+test('the ask switch turns the whole thing off, snapshot included', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    touch(r);
+    assert.strictEqual(r.hook(subStop(s, 'a1'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' }).stdout, '', 'the ask is off');
+    const t = sid();
+    r.hook(subStart(t, 'a2'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' });
+    assert.strictEqual(r.hook(subStop(t, 'a2'), GIT).stdout, '', 'and no snapshot was taken to compare against');
+    // The orientation block has its own switch and is untouched by this one.
+    assert.match(r.hook(subStart(sid(), 'a3'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' }).stdout, /"hookEventName":"SubagentStart"/);
+  } finally { r.rm(); }
+});
+
+test('an agent payload with no id is keyed on its type, and two sections read as two', () => {
+  const r = watched({ 'watch.json': JSON.stringify({ watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders', 'patterns#users'] }] }) });
+  try {
+    const s = sid();
+    r.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_type: 'dotnet-implementer' }, GIT);
+    touch(r);
+    const reason = JSON.parse(r.hook({ hook_event_name: 'SubagentStop', session_id: s, agent_type: 'dotnet-implementer' }, GIT).stdout).reason;
+    assert.match(reason, /^2 sections document this file:$/m);
+    assert.match(reason, /\n  'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n    "Refunds are ledgered before the payment call\."\n/);
+    assert.match(reason, /\n  'users', in \.claude\/docs\/architecture\/references\/patterns\.md:\n    "Users are soft-deleted\."\n/);
+    assert.match(reason, /Do your changes still leave those true\?/);
+    assert.match(reason, /and commit the docs with your code, so they travel with this branch\.$/);
+  } finally { r.rm(); }
+});
+
+test('the quoted line is one sentence, capped, whatever the section grew to', () => {
+  const long = `${'Refunds go back to the original payment method and never after ninety days'.repeat(6)}. And a second sentence.`;
+  const r = watched({ 'references/patterns.md': section('orders', 'src/Api/Orders/**', long) });
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    touch(r);
+    const quoted = /\n {2}"([^"]*)"\n/.exec(JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason)[1];
+    assert.ok(quoted.length <= 200, `the quote is capped, got ${quoted.length}`);
+    assert.doesNotMatch(quoted, /second sentence/, 'one sentence, not the section');
   } finally { r.rm(); }
 });

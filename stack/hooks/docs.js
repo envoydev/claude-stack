@@ -7,8 +7,12 @@
 //   toc <file>                      a doc file's sections (id, heading, size)
 //   show <file>#<id>... [--conflict [branch]]
 //   files                           the doc files
-//   set <file>#<id> [textfile]      write one section (stdin without a file): in place on mainline, under git
-//                                   versioning or without git; into this branch's overlay otherwise
+//   set <file>#<id> [textfile] [--expect <hash>]
+//                                   write one section (stdin without a file): in place on mainline, under git
+//                                   versioning or without git; into this branch's overlay otherwise. --expect is
+//                                   the hash of the text the writer was shown - a mismatch refuses the write and
+//                                   hands the current text over, so two agents cannot drop each other's rewrite
+//   hash <file>#<id>                that section's current hash, for the --expect above
 //   status                          mode, branch, overrides, conflicts, orphans, outgrown count, deleted unmerged branches,
 //                                   and any disagreement between the declared mode and the repo
 //   stale                           sections whose covered code changed since they were written
@@ -26,6 +30,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -450,6 +455,19 @@ function parse(file, raw) {
 }
 
 const stripStamp = (t) => norm(t).split('\n').filter((l) => !STAMP.test(l)).join('\n');
+// What a section SAYS, with the capture stamp left out: the stamp line is regenerated on every write, so hashing it
+// would report a lost update whenever a section was re-saved with the same words. Twelve hex characters - this is a
+// concurrency check between two agents of one session, not a signature.
+const sectionHash = (text) => crypto.createHash('sha1').update(stripStamp(text)).digest('hex').slice(0, 12);
+// The section's FIRST SENTENCE, capped at QUOTE_CHARS: the finish ask quotes it so there is something concrete to
+// compare a change against, and a section that grew to 6000 chars must not grow the ask with it.
+const QUOTE_CHARS = 200;
+function firstSentence(text) {
+  const body = norm(text).split('\n').slice(1).find((l) => l.trim() && !COMMENT.test(l)) || '';
+  const m = /^(.*?[.!?])(\s|$)/.exec(body.trim());
+  const one = (m ? m[1] : body).trim();
+  return one.length > QUOTE_CHARS ? `${one.slice(0, QUOTE_CHARS - 3)}...` : one;
+}
 const stampLineOf = (t) => norm(t).split('\n').find((l) => STAMP.test(l)) || '';
 // A merged text carries no stamp (both sides were stripped): the given one goes back after the heading's comments.
 function withStamp(text, stamp) {
@@ -678,7 +696,11 @@ const readMeta = (name) => readMetaAt(path.join(BRANCHES, name));
 
 const overlayParts = (file, id) => [...relKey(file).split('/'), `${id}.md`];
 
-function set(ref, newText) {
+// `expect` is the hash of the text the writer was SHOWN (the finish ask hands it over). Two agents that both rewrite
+// one section used to race: the second `set` won silently and the first's text was gone. A mismatch refuses the write
+// and hands the current text back, so the second re-applies on top instead of overwriting what it never read. A `set`
+// with no hash is unchanged - nothing that exists today has to pass one.
+function set(ref, newText, expect) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return { error: 'name one section: set <file>#<id> - whole-file writes are not supported' };
   const file = findFile(fileKey);
@@ -689,6 +711,19 @@ function set(ref, newText) {
   const b = branch();
   if (gitRepo && !b && git(['rev-parse', 'HEAD']) !== null) return { error: 'detached HEAD: check out a branch before writing docs' };
   const hit = sections(file).find((s) => s.id === `${key(file)}#${sec}`);
+  if (expect && (!hit || sectionHash(hit.text) !== expect)) {
+    const now = hit ? hit.text : '';
+    const body = now.length > MAX_SECTION_CHARS ? `${now.slice(0, MAX_SECTION_CHARS)}\n... (${now.length - MAX_SECTION_CHARS} more chars: 'docs.js show ${fileKey}#${sec}')` : now;
+    return {
+      error: [
+        `${fileKey}#${sec} changed while you were working - nothing was written. Here it is now:`,
+        '', ...(hit ? [body] : ['(it is gone from the docs)']), '',
+        hit
+          ? `Re-apply only what your change made untrue on top of THAT text, then: docs.js set ${fileKey}#${sec} --expect ${sectionHash(hit.text)}`
+          : `Someone removed it while you worked. Write it back with: docs.js set ${fileKey}#${sec}`,
+      ].join('\n'),
+    };
+  }
   const lines = ensureHeadingAndId(newText, sec, `${'#'.repeat(hit ? hit.level : 2)} ${hit ? hit.heading : sec.replace(/-/g, ' ')}`);
   let j = 2;
   const meta = [];
@@ -774,6 +809,14 @@ function writeOverride(file, sec, text, b) {
 
 function allSections() {
   return docFiles().flatMap((f) => sections(f));
+}
+
+// One section as the finish ask needs it: the heading a person would say it by, where it lives, its first sentence,
+// and the hash a later `set --expect` refuses a stale rewrite against.
+function askRef(id) {
+  const s = allSections().find((x) => x.id === id);
+  if (!s) return null;
+  return { id, heading: s.heading, file: path.relative(ROOT, s.from).split(path.sep).join('/'), first: firstSentence(s.text), hash: sectionHash(s.text) };
 }
 
 function toc(fileKey) {
@@ -1241,6 +1284,7 @@ module.exports = {
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, seedIds, loadWatch, watchHits, snapshot, changedSince,
+  sectionHash, firstSentence, askRef,
 };
 if (require.main !== module) return;
 
@@ -1265,11 +1309,18 @@ const commands = {
     const rows = stale();
     console.log(rows.length ? rows.map((r) => `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`).join('\n') : 'no section has been outgrown');
   },
+  hash: () => {
+    const r = askRef(args[0]);
+    if (!r) { console.log(`no such section: ${args[0]}`); process.exit(1); }
+    console.log(r.hash);
+  },
   set: () => {
-    const [ref, from] = args;
+    const at = args.indexOf('--expect');
+    const expect = at >= 0 ? args[at + 1] : '';
+    const [ref, from] = at >= 0 ? [...args.slice(0, at), ...args.slice(at + 2)] : args;
     let text = '';
     try { text = from ? fs.readFileSync(from, 'utf8') : fs.readFileSync(0, 'utf8'); } catch (e) { console.log(`cannot read the new text: ${e.message}`); process.exit(1); }
-    const r = set(ref, text);
+    const r = set(ref, text, expect);
     if (r.error) { console.log(r.error); process.exit(1); }
     docsLog({ event: 'doc-set', ref, wrote: r.wrote, inPlace: Boolean(r.inPlace) });
     console.log(r.inPlace ? `wrote ${ref} into ${r.wrote}` : `wrote ${r.wrote} (base kept at ${r.base}) - this branch only`);
@@ -1340,6 +1391,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...>');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...>');
   process.exit(cmd ? 1 : 0);
 }

@@ -1102,3 +1102,60 @@ test('the engine log lands under the docs root, beside hook-blocks', () => {
     assert.ok(!r.exists('.claude/docs-log.jsonl'), 'and never under .claude/ any more');
   } finally { r.rm(); }
 });
+
+// ---- the lost update: two agents rewriting one section, the second silently winning ----
+// The finish ask shows a section's current text, so `set` can carry the hash of what it was SHOWN; a mismatch
+// refuses the write and hands the text that is there now over, instead of dropping the first rewrite.
+
+test('the hash is content only, so a re-stamp is no lost update', () => {
+  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const r = repo({ tracked: true, files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const before = r.cli(['hash', 'patterns#orders'], '', GIT).stdout.trim();
+    assert.match(before, /^[0-9a-f]{12}$/, 'a short content hash');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
+    r.git('commit', '-qam', 'cap');
+    // A new capture stamp, the same words: the stamp line moves on every write, and hashing it would refuse every
+    // second agent for a change nobody made.
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are ledgered before the payment call.'), GIT).status, 0);
+    assert.strictEqual(r.cli(['hash', 'patterns#orders'], '', GIT).stdout.trim(), before, 'same words, same hash');
+    assert.strictEqual(r.cli(['hash', 'patterns#nope'], '', GIT).status, 1, 'a section that is not there');
+  } finally { r.rm(); }
+});
+
+test('set --expect writes when the section is still the text the hash was taken from', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const h = r.cli(['hash', 'patterns#orders']).stdout.trim();
+    const out = r.cli(['set', 'patterns#orders', '--expect', h], setText('orders', 'orders', 'Refunds are capped at 10.'));
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
+  } finally { r.rm(); }
+});
+
+test('set --expect refuses a stale rewrite and hands over the text that is there now', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const stale = r.cli(['hash', 'patterns#orders']).stdout.trim();
+    // The first agent lands its rewrite.
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are ledgered AFTER the payment call.')).status, 0);
+    // The second was shown the old text and must not overwrite what it never read.
+    const out = r.cli(['set', 'patterns#orders', '--expect', stale], setText('orders', 'orders', 'Refunds are capped at 10.'));
+    assert.strictEqual(out.status, 1, 'refused');
+    assert.match(out.stdout, /patterns#orders changed while you were working - nothing was written\. Here it is now:/);
+    assert.match(out.stdout, /ledgered AFTER the payment call/, 'the new text is handed over');
+    assert.match(out.stdout, /--expect [0-9a-f]{12}/, 'with the hash to try again against');
+    assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/, 'nothing was written');
+  } finally { r.rm(); }
+});
+
+test('a section deleted under a waiting agent refuses too, and an empty hash is no check at all', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const out = r.cli(['set', 'patterns#gone', '--expect', 'abcabcabcabc'], '## gone\n<!-- id: gone -->\nText.\n');
+    assert.strictEqual(out.status, 1, 'a section the hash cannot belong to is never created blind');
+    assert.match(out.stdout, /patterns#gone changed while you were working/);
+    // `--expect` with nothing after it is an empty hash, which is no check - the write goes through as it always did.
+    assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect'], setText('orders', 'orders', 'Plain.')).status, 0);
+  } finally { r.rm(); }
+});

@@ -689,7 +689,8 @@ HOOKS=(
   "guard-answer-length.js::@SessionStart::"     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
   "guard-answer-length.js::@Stop::"               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
   "docs-session.js::@SessionStart::"              # the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then ORIENTATION.md, this branch's overrides and how to read by section
-  "docs-session.js::@SubagentStart::"             # the same orientation for a dispatched subagent - SessionStart context never reaches one
+  "docs-session.js::@SubagentStart::"             # the same orientation for a dispatched subagent - SessionStart context never reaches one, plus the snapshot the finish ask compares against
+  "docs-session.js::@SubagentStop::"              # the finish ask, per agent: what THAT agent changed, once - the seat that made the change is the only context that knows why
   "docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::"  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
   "docs-session.js::@Stop::"                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
