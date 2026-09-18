@@ -2,7 +2,8 @@
 // docs.js - the architecture docs engine. Sections are addressed by id, found from code paths, versioned per branch,
 // merged back when a branch lands, flagged when their code moved, and linted. Every command is deterministic: the
 // model pays only for the text a command prints.
-//   where <path...>                 sections covering these paths, the narrowest declared covers first
+//   where <path...>                 sections covering these paths, the narrowest declared covers first, the last
+//                                   slot kept for the section written about the whole area
 //   toc <file>                      a doc file's sections (id, heading, size)
 //   show <file>#<id>... [--conflict [branch]]
 //   files                           the doc files
@@ -120,17 +121,34 @@ const narrowCap = () => Math.max(40, Math.round(repoFiles().length * 0.03));
 // The narrowest declared cover answers first: a section written about src/Features/Notifications/** says more about a
 // notifications handler than a smaller one written about src/Features/**. Word matches come next, weighted by how rare
 // each word is across the docs, and the broad globs fill what is left. Review history is never offered.
-function where(paths, limit = 3) {
+// `first` names sections that are NEWS to the caller's reader - the session hook passes the decisions a merge folded
+// into mainline at THIS session's start. News outranks narrowness: the reader has not read them, and they changed
+// what mainline says. They answer only where they cover the path, and never take the last slot.
+function where(paths, limit = 3, first = []) {
   const want = [...new Set(paths.flatMap(tokens))];
   const current = allSections().filter((s) => !s.history);
   const cap = narrowCap();
-  const declared = current.filter((s) => s.covers.length && paths.some((p) => matches(s.covers, p)))
+  const covering = (s) => s.covers.length && paths.some((p) => matches(s.covers, p));
+  // Anything but a list of ids is no list of ids: a hand-edited or half-written caller state must cost the reader
+  // the boost, never the answer.
+  const news = Array.isArray(first) ? first : [];
+  const fresh = (news.length ? current.filter((s) => news.includes(s.id) && covering(s)) : []).slice(0, Math.max(limit - 1, 0));
+  const declared = current.filter((s) => covering(s) && !fresh.some((f) => f.id === s.id))
     .map((s) => ({ ...s, width: coverWidth(s.covers, paths) }))
     .sort((a, b) => a.width - b.width || Number(b.declared) - Number(a.declared) || a.chars - b.chars);
   const narrow = declared.filter((s) => s.width <= cap);
   const broad = declared.filter((s) => s.width > cap);
-  if (narrow.length >= limit) return narrow.slice(0, limit);
-  const out = narrow.slice();
+  const room = limit - fresh.length;
+  // A narrow section says what this file IS; a broad one says what every change in its area must satisfy. Narrow
+  // neighbours would otherwise fill the answer on their own and no area-wide section could ever be offered - which
+  // is how a decision written about a whole feature area went unread. The narrowest still answers first, and the
+  // gate still hands THAT one over inline; only the last slot is kept for the best broad section.
+  if (narrow.length >= room) {
+    const kept = narrow.slice(0, room - 1);
+    const pick = room > 1 ? broad.find((b) => kept.filter((k) => k.file === b.file).length < 2) : null;
+    return [...fresh, ...(pick ? [...kept, pick] : narrow.slice(0, room))];
+  }
+  const out = [...fresh, ...narrow];
   const seenFile = new Map();
   for (const s of out) seenFile.set(s.file, (seenFile.get(s.file) || 0) + 1);
   const take = (s) => {

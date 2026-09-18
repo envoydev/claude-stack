@@ -48,7 +48,8 @@ test('on mainline the start hook promotes a merged branch and says so', () => {
     r.git('switch', '-q', 'develop');
     r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/cap');
     const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
-    assert.match(text, /Branch feat\/cap was merged: 1 doc section\(s\) folded into mainline/);
+    // The id, not just the count: a merged decision the session is never told the name of is one it never reads.
+    assert.match(text, /Branch feat\/cap was merged: 1 doc section\(s\) folded into mainline and now hold its decisions: patterns#orders\./);
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
     assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"promote"/);
     assert.ok(!r.exists('.claude/docs-log.jsonl'), 'the ledger lives under the docs root, beside hook-blocks');
@@ -143,6 +144,59 @@ test('the first source change is held and handed the covering section; a show un
     const s2 = sid();
     r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders 2>&1' }, s2));
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s2))));
+  } finally { r.rm(); }
+});
+
+// The scenario this feature exists for: a teammate's branch merges and its decision is folded into mainline before
+// turn one. That decision was written about a whole feature area, so three narrower sections outranked it and the
+// gate never offered it - measured twice on a paid run, and the session failed the task both times. A decision that
+// arrived in THIS session's fold is what the gate hands over, wherever the ranking would have put it.
+test('a decision just folded in from a merged branch is what the gate hands over', () => {
+  const NARROW = ['a', 'b', 'c'].map((x) => section(x, 'src/Api/Orders/**', `Narrow rule ${x}.`)).join('\n');
+  const r = repo({
+    files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Orders/Order.cs': 'class Order {}\n', 'tests/Zeta/Quux.cs': 'x\n' },
+    docs: { 'references/patterns.md': NARROW, 'references/boundaries.md': section('paging', 'src/**', 'Pages hold 20 rows.') },
+  });
+  try {
+    r.git('switch', '-qc', 'feat/drawer');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Page; }\n'); r.git('commit', '-qam', 'drawer');
+    r.cli(['set', 'boundaries#paging'], '## paging\n<!-- id: paging -->\n<!-- covers: src/** -->\nA drawer list holds at most 10 rows.\n');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/drawer');
+    // Before the fold is announced to a session, the three narrower sections fill the answer, as they should.
+    const plain = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
+    assert.match(plain.stdout, /patterns#a covers src\/Api\/Orders\/Refund\.cs/, 'the narrowest answers first');
+    assert.doesNotMatch(plain.stdout, /boundaries#paging/);
+    const s = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s });
+    // A folded decision is never noise on a path it says nothing about.
+    assert.doesNotMatch(r.hook(pre('Edit', { file_path: 'tests/Zeta/Quux.cs' }, s)).stdout, /boundaries#paging/);
+    const held = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
+    assert.ok(denied(held));
+    assert.match(held.stdout, /boundaries#paging covers src\/Api\/Orders\/Refund\.cs - here it is/);
+    assert.match(held.stdout, /at most 10 rows/);
+    assert.match(held.stdout, /Also covering it: patterns#a/, 'the ranking still fills the rest');
+  } finally { r.rm(); }
+});
+
+// Two boundaries at once: a fold never takes the last slot, so the ranking always still answers; and the fold
+// reaches the gate even where the start block is switched off - that switch silences text, it does not blind a gate.
+test('a fold of two sections leaves the ranking its slot, block or no block', () => {
+  const NARROW = ['a', 'b', 'c'].map((x) => section(x, 'src/Api/Orders/**', `Narrow rule ${x}.`)).join('\n');
+  const BOUNDS = `${section('paging', 'src/**', 'Pages hold 20 rows.')}\n${section('envelope', 'src/**', 'Every route returns the envelope.')}`;
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': NARROW, 'references/boundaries.md': BOUNDS } });
+  try {
+    r.git('switch', '-qc', 'feat/drawer');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Page; }\n'); r.git('commit', '-qam', 'drawer');
+    r.cli(['set', 'boundaries#paging'], '## paging\n<!-- id: paging -->\n<!-- covers: src/** -->\nA drawer list holds at most 10 rows.\n');
+    r.cli(['set', 'boundaries#envelope'], '## envelope\n<!-- id: envelope -->\n<!-- covers: src/** -->\nA drawer list is enveloped like the rest.\n');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/drawer');
+    const s = sid();
+    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: s }, { CLAUDE_STACK_DOCS_BLOCK: '0' }).stdout, '', 'no block text');
+    const held = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
+    assert.match(held.stdout, /boundaries#paging covers src\/Api\/Orders\/Refund\.cs - here it is/);
+    assert.match(held.stdout, /Also covering it: boundaries#envelope .*patterns#a /, 'the second fold, then the ranking');
   } finally { r.rm(); }
 });
 

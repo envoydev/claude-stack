@@ -44,6 +44,27 @@ test('where names the narrowest covering section and never offers history', () =
   } finally { r.rm(); }
 });
 
+// A narrow section says what this file is; an area-wide one says what every change in that area must satisfy. Three
+// narrow neighbours used to fill the answer on their own, so the area-wide section was unreachable at the gate.
+test('where keeps the last slot for the area-wide section when narrow ones would fill it', () => {
+  const files = { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' };
+  for (let i = 0; i < 60; i++) files[`src/Api/Misc/M${i}.cs`] = 'class M {}\n';
+  const r = repo({
+    files,
+    docs: {
+      'references/patterns.md': ['a', 'b', 'c'].map((x) => section(x, 'src/Api/Orders/**', `Narrow rule ${x}.`)).join('\n'),
+      'ARCHITECTURE.md': section('everything', 'src/**', 'All routes return the envelope.'),
+    },
+  });
+  try {
+    const out = r.cli(['where', 'src/Api/Orders/Refund.cs']).stdout.trim().split('\n');
+    assert.strictEqual(out.length, 3, out.join(' | '));
+    assert.match(out[0], /^patterns#a /, 'the narrowest still answers first');
+    assert.match(out[1], /^patterns#b /);
+    assert.match(out[2], /^ARCHITECTURE#everything /, 'the area-wide section keeps the last slot');
+  } finally { r.rm(); }
+});
+
 test('the docs root follows CLAUDE_STACK_DOCS_PATH', () => {
   const r = repo({ docsPath: 'docs', docs: { 'references/patterns.md': PATTERNS } });
   try {

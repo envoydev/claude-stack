@@ -4,7 +4,7 @@
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
 //   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one)
 //   PreToolUse    -> records reads of the docs; holds the FIRST change under a source root until a section was read,
-//                    handing the covering section over inline
+//                    handing the covering section over inline - a decision this session's fold just brought in first
 //   Stop          -> once per session: a change that hit watch.json asks for the owning sections to be rewritten when
 //                    a rule moved, or confirmed
 // CLAUDE_STACK_DOCS_BLOCK=0 / CLAUDE_STACK_DOCS_GATE=0 / CLAUDE_STACK_DOCS_ASK=0 turn the three parts off.
@@ -21,7 +21,7 @@ const READ = 'node .claude/hooks/docs.js';
 
 const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
 const statePath = (s) => path.join(os.tmpdir(), `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}.json`);
-const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
+const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, folded: [], ...v }; };
 const saveState = (s, v) => { try { fs.writeFileSync(statePath(s), JSON.stringify(v)); } catch {} };
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
@@ -64,6 +64,11 @@ function sessionStart(input, root, docs, state) {
   // re-announced at every session start.
   const landed = promoted.filter((p) => p.changed);
   for (const p of landed) log(root, input, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
+  // What this fold changed under the session's feet, kept for the gate: these are decisions mainline did not hold a
+  // moment ago and this session has read none of them. Saved before the block switch, so turning the block off
+  // silences the announcement without blinding the gate.
+  const folded = landed.flatMap((p) => p.results.filter((x) => x.result !== 'conflict').map((x) => x.id));
+  if (folded.length) { state.folded = [...new Set([...state.folded, ...folded])]; saveState(input.session_id, state); }
   if (process.env.CLAUDE_STACK_DOCS_BLOCK === '0') return;
   let st = null;
   try { st = docs.status(); } catch {}
@@ -72,7 +77,11 @@ function sessionStart(input, root, docs, state) {
   for (const p of landed) {
     const ok = p.results.filter((x) => x.result !== 'conflict');
     const bad = p.results.filter((x) => x.result === 'conflict');
-    extra.push(`Branch ${p.branch} was merged: ${ok.length} doc section(s) folded into mainline.${bad.length ? ` To reconcile: ${bad.map((x) => `${x.id} (\`${READ} show ${x.id} --conflict ${p.branch}\`, then \`${READ} set ${x.id}\`)`).join(', ')}.` : ''}`);
+    // The ids, the way the branch-override line beside it names its own: a count tells the session that something
+    // it has not read just changed, and nothing about what to read. Six ids, then a count - the block is paid for
+    // by every session.
+    const names = ok.length ? ` and now hold its decisions: ${ok.slice(0, 6).map((x) => x.id).join(', ')}${ok.length > 6 ? ` (+${ok.length - 6} more)` : ''}` : '';
+    extra.push(`Branch ${p.branch} was merged: ${ok.length} doc section(s) folded into mainline${names}.${bad.length ? ` To reconcile: ${bad.map((x) => `${x.id} (\`${READ} show ${x.id} --conflict ${p.branch}\`, then \`${READ} set ${x.id}\`)`).join(', ')}.` : ''}`);
   }
   if (st && st.detached) extra.push('Detached HEAD: the docs are read-only until a branch is checked out.');
   // After a git merge of committed docs, or a hand edit: the two breakages that make a doc untrustworthy to read.
@@ -211,7 +220,7 @@ function preToolUse(input, root, docs, state) {
   state.holds++;
   saveState(input.session_id, state);
   let hits = [];
-  try { hits = docs.where(targets, 3); } catch {}
+  try { hits = docs.where(targets, 3, state.folded); } catch {}
   let reason;
   if (!hits.length) {
     reason = `Architecture docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
