@@ -91,9 +91,9 @@ test('overlay mode: a feature branch writes its own version and mainline keeps i
     r.git('commit', '-qam', 'cap');
     const out = r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are capped at 10 per order.'));
     assert.strictEqual(out.status, 0, out.stdout);
-    const over = '.claude/docs/.branches/feat-refund-cap/references/patterns/orders.md';
-    assert.ok(r.exists(over), 'the override sits at <branch>/<file>/<id>.md');
-    assert.match(r.read('.claude/docs/.branches/feat-refund-cap/.base/references/patterns/orders.md'), /ledgered before the payment call/, 'the base holds mainline text');
+    const over = '.claude/docs/.branches/feat-refund-cap/architecture/references/patterns/orders.md';
+    assert.ok(r.exists(over), 'the override sits at <branch>/<domain>/<file>/<id>.md');
+    assert.match(r.read('.claude/docs/.branches/feat-refund-cap/.base/architecture/references/patterns/orders.md'), /ledgered before the payment call/, 'the base holds mainline text');
     const meta = JSON.parse(r.read('.claude/docs/.branches/feat-refund-cap/BASE.json'));
     assert.strictEqual(meta.branch, 'feat/refund-cap');
     assert.strictEqual(meta.head, r.git('rev-parse', 'HEAD'));
@@ -148,7 +148,7 @@ test('declared local versioning keeps the branch overlay although the docs are c
     r.git('switch', '-qc', 'feat/declared-local');
     const out = r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are capped at 10.'), LOCAL);
     assert.strictEqual(out.status, 0, out.stdout);
-    assert.ok(r.exists('.claude/docs/.branches/feat-declared-local/references/patterns/orders.md'), 'the branch version lands in the overlay');
+    assert.ok(r.exists('.claude/docs/.branches/feat-declared-local/architecture/references/patterns/orders.md'), 'the branch version lands in the overlay');
     assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/, 'the committed text is untouched');
     assert.match(r.cli(['show', 'patterns#orders'], undefined, LOCAL).stdout, /capped at 10/, 'and the branch reads its own version');
     const st = r.cli(['status'], undefined, LOCAL).stdout;
@@ -198,7 +198,7 @@ test('git versioning stands promote down and strands an overlay written before t
 test('git versioning: the 30-day sweep stands down instead of deleting what a promote would have kept', () => {
   const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
-  const over = '.claude/docs/.branches/feat-landed/references/patterns/orders.md';
+  const over = '.claude/docs/.branches/feat-landed/architecture/references/patterns/orders.md';
   try {
     r.git('switch', '-qc', 'feat/landed');
     r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
@@ -244,7 +244,7 @@ test('a section new on a branch is written with an empty base and read as added'
   try {
     r.git('switch', '-qc', 'feat/new');
     assert.strictEqual(r.cli(['set', 'patterns#device-paging'], '## Device paging\n<!-- id: device-paging -->\nTen rows per page.\n').status, 0);
-    assert.strictEqual(r.read('.claude/docs/.branches/feat-new/.base/references/patterns/device-paging.md'), '');
+    assert.strictEqual(r.read('.claude/docs/.branches/feat-new/.base/architecture/references/patterns/device-paging.md'), '');
     assert.match(r.cli(['show', 'patterns#device-paging']).stdout, /Ten rows per page/);
     assert.match(r.cli(['toc', 'patterns']).stdout, /patterns#device-paging .*\[this branch\]/);
   } finally { r.rm(); }
@@ -305,8 +305,8 @@ test("a child section set inside an overridden parent lands in the parent's over
     const out = r.cli(['show', 'patterns#orders']).stdout;
     assert.match(out, /Orders rule, branch\./);
     assert.match(out, /Twenty rows\./);
-    assert.ok(!r.exists('.claude/docs/.branches/feat-x/references/patterns/paging.md'), 'no separate child override file');
-    assert.ok(r.exists('.claude/docs/.branches/feat-x/references/patterns/orders.md'), 'the parent override still exists');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-x/architecture/references/patterns/paging.md'), 'no separate child override file');
+    assert.ok(r.exists('.claude/docs/.branches/feat-x/architecture/references/patterns/orders.md'), 'the parent override still exists');
   } finally { r.rm(); }
 });
 
@@ -315,10 +315,10 @@ test('setting a parent drops a nested child override its text now carries', () =
   try {
     r.git('switch', '-qc', 'feat/y');
     r.cli(['set', 'patterns#paging'], '### paging\n<!-- id: paging -->\nTwelve rows.\n');
-    assert.ok(r.exists('.claude/docs/.branches/feat-y/references/patterns/paging.md'));
+    assert.ok(r.exists('.claude/docs/.branches/feat-y/architecture/references/patterns/paging.md'));
     r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nParent rewritten.\n\n### paging\n<!-- id: paging -->\nTwelve rows.\n');
-    assert.ok(!r.exists('.claude/docs/.branches/feat-y/references/patterns/paging.md'), 'the child override is dropped');
-    assert.ok(!r.exists('.claude/docs/.branches/feat-y/.base/references/patterns/paging.md'), 'its base twin is dropped too');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-y/architecture/references/patterns/paging.md'), 'the child override is dropped');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-y/.base/architecture/references/patterns/paging.md'), 'its base twin is dropped too');
     assert.match(r.cli(['show', 'patterns#paging']).stdout, /Twelve rows\./);
     assert.match(r.cli(['show', 'patterns#orders']).stdout, /Parent rewritten\./);
   } finally { r.rm(); }
@@ -718,7 +718,7 @@ test('a promote conflict keeps that override; setting the section on mainline re
     r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/c');
     const first = r.cli(['promote', '--merged']);
     assert.match(first.stdout, /patterns#orders: conflict/);
-    assert.ok(r.exists('.claude/docs/.branches/feat-c/references/patterns/orders.md'));
+    assert.ok(r.exists('.claude/docs/.branches/feat-c/architecture/references/patterns/orders.md'));
     assert.match(r.cli(['show', 'patterns#orders', '--conflict', 'feat/c']).stdout, /<<<<<<< mainline/);
     const resolved = r.cli(['set', 'patterns#orders'], ORDERS('The cap is 10.'));
     assert.match(resolved.stdout, /resolved the pending doc conflict with: feat-c/);
@@ -782,8 +782,8 @@ test('a doc file mainline no longer has stays a plain conflict, never traps an u
     const first = r.cli(['promote', '--merged']).stdout;
     assert.match(first, /patterns#orders: merged/);
     assert.match(first, /legacy#old-rule: conflict \(mainline has no such doc file\)/);
-    assert.ok(!r.exists('.claude/docs/.branches/feat-mix/.conflict/references/legacy/old-rule.md'), 'no marker for a missing doc file - set can never match one to clear it');
-    assert.ok(r.exists('.claude/docs/.branches/feat-mix/references/legacy/old-rule.md'), 'the conflicting override is kept as-is');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-mix/.conflict/architecture/references/legacy/old-rule.md'), 'no marker for a missing doc file - set can never match one to clear it');
+    assert.ok(r.exists('.claude/docs/.branches/feat-mix/architecture/references/legacy/old-rule.md'), 'the conflicting override is kept as-is');
 
     const second = r.cli(['promote', '--merged']).stdout;
     assert.match(second, /legacy#old-rule: conflict \(mainline has no such doc file\)/);
@@ -1076,7 +1076,9 @@ test('a cross-domain filename collision refuses the write instead of picking the
     r.write('.claude/docs/code-style/NOTES.md', setText('orders', 'orders', 'Style text.'));
     const out = r.cli(['set', 'NOTES#orders'], setText('orders', 'orders', 'STYLE TEXT THE AUTHOR MEANT FOR code-style.'));
     assert.strictEqual(out.status, 1, out.stdout);
-    assert.match(out.stdout, /NOTES is in architecture and code-style - name one/);
+    // Task 3: set now resolves through parseRef, whose refusal names the whole ref (file and section) so the
+    // fix it suggests can be pasted back verbatim - not just the file, which findFile alone could offer.
+    assert.match(out.stdout, /NOTES#orders is in architecture and code-style - name one, as <domain>\/NOTES#orders/);
     assert.doesNotMatch(r.read('.claude/docs/architecture/NOTES.md'), /STYLE TEXT/, 'architecture was not silently written');
     assert.doesNotMatch(r.read('.claude/docs/code-style/NOTES.md'), /STYLE TEXT/, 'code-style was not written either - the ref must be qualified');
   } finally { r.rm(); }
@@ -1120,6 +1122,53 @@ test('resetDomains clears the cache a fixture needs to see a domain added after 
     docs.resetDomains();
     assert.deepEqual(docs.domains(), ['architecture', 'code-style'], 'fresh after the reset');
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Task 3: the overlay carries the domain. A domain-qualified `set` used to be unreachable (findFile has no
+// notion of a domain prefix), so a same-named file in two domains could never actually collide in the
+// overlay before now - qualifying the ref is what makes the bug reachable at all.
+
+test('two domains holding the same filename do not collide in the overlay', () => {
+  const r = repo();
+  r.write('.claude/docs/architecture/watch.json', '{}');
+  r.write('.claude/docs/architecture/NOTES.md', '# Notes\n');
+  r.write('.claude/docs/code-style/watch.json', '{}');
+  r.write('.claude/docs/code-style/NOTES.md', '# Notes\n');
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    const archSet = r.cli(['set', 'architecture/NOTES#a'], 'architecture text.\n');
+    assert.strictEqual(archSet.status, 0, archSet.stdout);
+    const styleSet = r.cli(['set', 'code-style/NOTES#a'], 'style text.\n');
+    assert.strictEqual(styleSet.status, 0, styleSet.stdout);
+    const archOver = '.claude/docs/.branches/feat-x/architecture/NOTES/a.md';
+    const styleOver = '.claude/docs/.branches/feat-x/code-style/NOTES/a.md';
+    assert.ok(r.exists(archOver), 'architecture keeps its own overlay path');
+    assert.ok(r.exists(styleOver), 'code-style keeps a distinct overlay path, not overwriting architecture\'s');
+    assert.match(r.read(archOver), /architecture text\./);
+    assert.match(r.read(styleOver), /style text\./);
+  } finally { r.rm(); }
+});
+
+test('promote folds two domains independently and removes the whole branch overlay', () => {
+  const r = repo();
+  r.write('.claude/docs/architecture/watch.json', '{}');
+  r.write('.claude/docs/architecture/NOTES.md', '# Notes\n');
+  r.write('.claude/docs/code-style/watch.json', '{}');
+  r.write('.claude/docs/code-style/NOTES.md', '# Notes\n');
+  try {
+    r.git('switch', '-qc', 'feat/two-domains');
+    r.write('src/marker.txt', 'x\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'work on feat/two-domains');
+    assert.strictEqual(r.cli(['set', 'architecture/NOTES#a'], 'architecture text.\n').status, 0);
+    assert.strictEqual(r.cli(['set', 'code-style/NOTES#a'], 'style text.\n').status, 0);
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/two-domains');
+    const out = r.cli(['promote', '--merged']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(r.read('.claude/docs/architecture/NOTES.md'), /architecture text\./);
+    assert.match(r.read('.claude/docs/code-style/NOTES.md'), /style text\./);
+    assert.ok(!r.exists('.claude/docs/.branches/feat-two-domains'), 'the whole branch overlay is gone once every domain folded');
+  } finally { r.rm(); }
 });
 
 test('changedSince reports both sides of a staged rename', () => {
@@ -1204,7 +1253,7 @@ test('promote does nothing while another promote holds the lock', () => {
     r.write('.claude/docs/.branches/.promote.lock', '{"pid":1}\n');
     const out = r.cli(['promote', '--merged']);
     assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/, 'mainline is not written while the lock is held');
-    assert.ok(r.exists('.claude/docs/.branches/feat-cap/references/patterns/orders.md'), 'the overlay survives a skipped promote');
+    assert.ok(r.exists('.claude/docs/.branches/feat-cap/architecture/references/patterns/orders.md'), 'the overlay survives a skipped promote');
     assert.match(out.stdout, /another promote is running/);
     fs.rmSync(path.join(r.root, '.claude', 'docs', '.branches', '.promote.lock'));
     assert.match(r.cli(['promote', '--merged']).stdout, /patterns#orders: merged/, 'the next run picks it up');
@@ -1241,7 +1290,7 @@ test('two branch names that collide under safe() never share one overlay', () =>
     const w = r.cli(['set', 'patterns#orders'], ORDERS('Dash branch decision.'));
     assert.strictEqual(w.status, 1, 'the write is refused, never blended into the other branch');
     assert.match(w.stdout, /feature\/login/);
-    assert.match(r.read('.claude/docs/.branches/feature-login/references/patterns/orders.md'), /Slash branch decision/, 'the owner keeps its text');
+    assert.match(r.read('.claude/docs/.branches/feature-login/architecture/references/patterns/orders.md'), /Slash branch decision/, 'the owner keeps its text');
     r.git('switch', '-q', 'develop');
     const p = r.cli(['promote', 'feature-login']);
     assert.strictEqual(p.status, 1, 'promoting by the colliding live name is refused');

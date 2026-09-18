@@ -558,7 +558,7 @@ function withStamp(text, stamp) {
 
 function sectionOverrides(file, dir) {
   if (!dir) return new Map();
-  const sdir = path.join(dir, ...relKey(file).split('/'));
+  const sdir = path.join(dir, fileDomain(file), ...relKey(file).split('/'));
   if (!fs.existsSync(sdir)) return new Map();
   return new Map(fs.readdirSync(sdir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.md')).map((e) => [e.name.slice(0, -3), path.join(sdir, e.name)]));
 }
@@ -774,7 +774,10 @@ function readMetaAt(dir) {
 }
 const readMeta = (name) => readMetaAt(path.join(BRANCHES, name));
 
-const overlayParts = (file, id) => [...relKey(file).split('/'), `${id}.md`];
+// The domain goes first: two domains can hold the same relKey (every domain owns a references/ folder, and a
+// shared topic name there is ordinary), so without it their overrides, bases and conflict markers would land on
+// the same path and the second write would silently erase the first.
+const overlayParts = (file, id) => [fileDomain(file), ...relKey(file).split('/'), `${id}.md`];
 
 // `expect` is the hash of the text the writer was SHOWN (the finish ask hands it over). Two agents that both rewrite
 // one section used to race: the second `set` won silently and the first's text was gone. A mismatch refuses the write
@@ -783,9 +786,14 @@ const overlayParts = (file, id) => [...relKey(file).split('/'), `${id}.md`];
 function set(ref, newText, expect) {
   const [fileKey, sec] = String(ref).split('#');
   if (!sec) return { error: 'name one section: set <file>#<id> - whole-file writes are not supported' };
-  let file;
-  try { file = findFile(fileKey); } catch (e) { return { error: e.message }; }
-  if (!file) return { error: `no such doc file: ${fileKey}` };
+  // parseRef resolves a bare ref exactly as findFile always did (same collision refusal, same domain search)
+  // and additionally understands a <domain>/<file> prefix, which findFile alone cannot. A null domain, or a
+  // domain whose guessed file parseRef could not actually find, both mean the same thing findFile's missing
+  // return meant: no such doc file.
+  let parsed;
+  try { parsed = parseRef(ref); } catch (e) { return { error: e.message }; }
+  const file = parsed.domain ? path.join(domainDir(parsed.domain), parsed.file) : undefined;
+  if (!file || !domainFiles(parsed.domain).includes(file)) return { error: `no such doc file: ${fileKey}` };
   if (!/^[\w.-]+$/.test(sec)) return { error: `not a valid section id: ${sec}` };
   if (!String(newText).trim()) return { error: 'empty section text: nothing written' };
   const gitRepo = hasGit();
@@ -1041,7 +1049,10 @@ function promoteLocked(name, dir) {
   for (const over of overrideFiles(dir)) {
     const rel = path.relative(dir, over).split(path.sep);
     const id = path.basename(rel.pop(), '.md');
-    const mainline = `${path.join(DOCS, ...rel)}.md`;
+    // rel's own leading segment is the domain overlayParts wrote (kept in rel for the .base/.conflict
+    // paths below, which mirror overlayParts' own shape); only the mainline file lives outside it.
+    const [domain, ...relParts] = rel;
+    const mainline = `${path.join(domainDir(domain), ...relParts)}.md`;
     const label = `${path.basename(mainline, '.md')}#${id}`;
     const marker = path.join(dir, '.conflict', ...rel, `${id}.md`);
     // A standing conflict is flagged with a marker holding mainline's text at THIS moment - not to compare
