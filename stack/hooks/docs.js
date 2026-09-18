@@ -17,10 +17,11 @@
 //   lint                            metadata and budget problems (exit 1 when any)
 //   seed-ids                        give every section a stable id (idempotent)
 //   watch <path...>                 which watch.json entries these changed paths hit
-// Two modes, DECLARED at install time in CLAUDE_STACK_DOCS_VERSIONING: 'git' means the docs are committed and git
-// versions them per branch, so writes land in place and nothing is ever written under .branches/; 'local' means each
-// feature branch's sections live under <docs root>/.branches/<branch>/ until it merges. Absent - every install made
-// before the key existed - falls back to reading git, as this engine always did.
+// Two modes, DECLARED at install time by the docs-versioning env key (VERSIONING_KEYS below): 'git' means the docs
+// are committed and git versions them per branch, so writes land in place, nothing is ever written under .branches/
+// and the promote / prune machinery stands down; 'local' means each feature branch's sections live under
+// <docs root>/.branches/<branch>/ until it merges. Absent - every install made before the key existed - falls back
+// to reading git, as this engine always did.
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -333,17 +334,24 @@ function tracked() {
   if (TRACKED_CACHE === undefined) TRACKED_CACHE = git(['ls-files', '--error-unmatch', DOCS]) !== null;
   return TRACKED_CACHE;
 }
+// The env keys that can declare the mode, in precedence order. ONE list, and every message below names the key that
+// ACTUALLY answered rather than spelling one - a twin reading a different spelling then diverges on this line alone
+// instead of on the header, the two status lines and the two mismatch sentences.
+const VERSIONING_KEYS = ['CLAUDE_STACK_DOCS_VERSIONING'];
 // How the docs are versioned is an install-time DECISION, not a guess: 'git' = committed docs, git versions them per
 // branch (no overlay, ever); 'local' = the overlay model. An absent or unrecognised value falls back to what git
 // says, so an install made before the key existed keeps the behaviour it had until someone is asked.
 const declaredVersioning = () => {
-  const v = String(process.env.CLAUDE_STACK_DOCS_VERSIONING || '').trim().toLowerCase();
-  return v === 'git' || v === 'local' ? v : null;
+  for (const key of VERSIONING_KEYS) {
+    const v = String(process.env[key] || '').trim().toLowerCase();
+    if (v === 'git' || v === 'local') return { mode: v, key };
+  }
+  return null;
 };
 // ONE resolver, cached with the other git-state probes: a process runs one CLI command or one hook event, and
 // neither the environment nor the index changes underfoot.
 let MODE_CACHE;
-const docsMode = () => (MODE_CACHE || (MODE_CACHE = declaredVersioning() || (tracked() ? 'git' : 'local')));
+const docsMode = () => (MODE_CACHE || (MODE_CACHE = (declaredVersioning() || {}).mode || (tracked() ? 'git' : 'local')));
 const gitVersioned = () => docsMode() === 'git';
 // The declaration and the repo can disagree: docs committed under a 'local' install, or ignored under a 'git' one.
 // The SETTING wins - a doc write must never be silently untracked or silently local - so the disagreement is
@@ -353,11 +361,11 @@ function versioningMismatch() {
   const declared = declaredVersioning();
   if (!declared || !hasGit() || !fs.existsSync(DOCS)) return null;
   const where = path.relative(ROOT, DOCS).split(path.sep).join('/');
-  if (declared === 'git' && !tracked()) {
-    return `Versioning mismatch: settings.json declares 'git' (CLAUDE_STACK_DOCS_VERSIONING), but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed.`;
+  if (declared.mode === 'git' && !tracked()) {
+    return `Versioning mismatch: ${declared.key} declares 'git', but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed.`;
   }
-  if (declared === 'local' && tracked()) {
-    return `Versioning mismatch: settings.json declares 'local' (CLAUDE_STACK_DOCS_VERSIONING), but ${where} is tracked by git - the setting wins, so this branch's sections stay in the overlay under ${path.relative(ROOT, BRANCHES).split(path.sep).join('/')}/ until a promote folds them into the committed text.`;
+  if (declared.mode === 'local' && tracked()) {
+    return `Versioning mismatch: ${declared.key} declares 'local', but ${where} is tracked by git - the setting wins, so this branch's sections stay in the overlay under ${path.relative(ROOT, BRANCHES).split(path.sep).join('/')}/ until a promote folds them into the committed text.`;
   }
   return null;
 }
@@ -1015,7 +1023,11 @@ function prune(name) {
     fs.rmSync(dir, { recursive: true, force: true });
     return [safe(name)];
   }
-  if (!hasGit()) return [];
+  // The sweep keeps an overlay while mergedBranches() still names it, which is what stops it dropping a decision a
+  // promote could still fold in. Under git versioning that list is empty by design, so the guard would be half
+  // gone and a merged, never-promoted overlay would be deleted with its text: the whole machinery stands down
+  // here too, and `prune <branch>` above stays the way to drop one by name.
+  if (!hasGit() || gitVersioned()) return [];
   const live = liveBranches();
   const merged = new Set(mergedBranches().map((m) => m.name));
   const dropped = [];
@@ -1046,18 +1058,20 @@ function status() {
   const clash = b && gitRepo && !gitVersioned() && !isMainline(b) && overlayClash(path.join(BRANCHES, safe(b)), b)
     ? overlayOwner(path.join(BRANCHES, safe(b))) : null;
   const declared = declaredVersioning();
-  // The mode NAMES its source: 'declared' is a decision someone made at install time, the bare form is this engine
-  // reading git because nobody has been asked yet. The two leading words are the contract other readers key on.
-  const gitLine = declared ? 'git (declared by CLAUDE_STACK_DOCS_VERSIONING - git versions the docs per branch; no branch overlay)'
+  // The mode NAMES its source: 'declared by <the key that answered>' is a decision someone made at install time,
+  // the bare form is this engine reading git because nobody has been asked yet. The two leading words are the
+  // contract other readers key on.
+  const gitLine = declared ? `git (declared by ${declared.key} - git versions the docs per branch; no branch overlay)`
     : 'git (docs are committed - git versions them per branch)';
-  const overlayLine = declared ? 'overlay (declared by CLAUDE_STACK_DOCS_VERSIONING - branch versions live in .branches/)'
+  const overlayLine = declared ? `overlay (declared by ${declared.key} - branch versions live in .branches/)`
     : 'overlay (docs are ignored by git - branch versions live in .branches/)';
   return {
     // The third pillar - the end-of-session watch check - compares the tree against a git snapshot, so without a
     // repo it can never fire, and only this line can say so.
     mode: !gitRepo ? 'no git (docs written in place; the end-of-session check cannot see what changed)' : gitVersioned() ? gitLine : overlayLine,
     versioning: gitRepo ? docsMode() : 'none',
-    declared,
+    declared: declared ? declared.mode : null,
+    declaredBy: declared ? declared.key : null,
     docsTracked: gitRepo && tracked(),
     mismatch: versioningMismatch(),
     branch: b || (gitRepo && git(['rev-parse', 'HEAD']) ? 'detached HEAD' : 'no branch'),
@@ -1221,7 +1235,7 @@ function changedSince(snap) {
 
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
-  git, tracked, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
+  git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
@@ -1283,7 +1297,11 @@ const commands = {
     for (const x of p.results) console.log(`${x.id}: ${x.result}${x.why ? ` (${x.why})` : ''}`);
     process.exit(p.results.some((x) => x.result === 'conflict') ? 1 : 0);
   },
-  prune: () => { const d = prune(args[0]); console.log(d.length ? `pruned: ${d.join(', ')}` : 'nothing to prune'); },
+  prune: () => {
+    if (!args[0] && hasGit() && gitVersioned()) { console.log("git versioning: git carries the docs with the branch, so nothing is swept - 'prune <branch>' still drops one overlay by name"); return; }
+    const d = prune(args[0]);
+    console.log(d.length ? `pruned: ${d.join(', ')}` : 'nothing to prune');
+  },
   status: () => {
     const s = status();
     console.log([

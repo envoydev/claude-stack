@@ -137,7 +137,7 @@ test('declared git versioning writes in place although git ignores the docs', ()
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
     const st = r.cli(['status'], undefined, GIT).stdout;
     assert.match(st, /^mode: git \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
-    assert.match(st, /^Versioning mismatch: settings\.json declares 'git' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/m);
+    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/m);
   } finally { r.rm(); }
 });
 
@@ -153,7 +153,7 @@ test('declared local versioning keeps the branch overlay although the docs are c
     assert.match(r.cli(['show', 'patterns#orders'], undefined, LOCAL).stdout, /capped at 10/, 'and the branch reads its own version');
     const st = r.cli(['status'], undefined, LOCAL).stdout;
     assert.match(st, /^mode: overlay \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
-    assert.match(st, /^Versioning mismatch: settings\.json declares 'local' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
   } finally { r.rm(); }
 });
 
@@ -189,6 +189,54 @@ test('git versioning stands promote down and strands an overlay written before t
     assert.match(r.cli(['status'], undefined, GIT).stdout, /stranded branch versions: feat-left/);
     assert.strictEqual(r.cli(['prune', 'feat/left'], undefined, GIT).stdout.trim(), 'pruned: feat-left', 'the by-hand prune still clears one');
   } finally { r.rm(); }
+});
+
+// The 30-day sweep keeps an overlay while `mergedBranches()` still names it - that is what stops it deleting a
+// decision a promote could still fold in. In git mode that list is empty BY DESIGN, so the sweep lost half its
+// guard: a merged, never-promoted overlay whose branch is gone was deleted with its text. The whole promote /
+// prune machinery stands down under git versioning; naming one by hand still works.
+test('git versioning: the 30-day sweep stands down instead of deleting what a promote would have kept', () => {
+  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  const over = '.claude/docs/.branches/feat-landed/references/patterns/orders.md';
+  try {
+    r.git('switch', '-qc', 'feat/landed');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
+    r.git('commit', '-qam', 'cap');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are capped at 10.')).status, 0);
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/landed');
+    r.git('branch', '-D', 'feat/landed');
+    const metaFile = path.join(r.root, '.claude/docs/.branches/feat-landed/BASE.json');
+    const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+    meta.updated = new Date(Date.now() - 60 * 86400000).toISOString();   // the sweep's only other condition
+    fs.writeFileSync(metaFile, `${JSON.stringify(meta, null, 2)}\n`);
+    assert.match(r.cli(['prune'], undefined, GIT).stdout, /^git versioning: git carries the docs with the branch, so nothing is swept - 'prune <branch>' still drops one overlay by name$/m);
+    assert.ok(r.exists(over), 'the overlay text a promote would have folded in survives');
+    assert.strictEqual(r.cli(['prune', 'feat/landed'], undefined, GIT).stdout.trim(), 'pruned: feat-landed', 'naming it by hand still drops it');
+  } finally { r.rm(); }
+});
+
+// Every message names the key that ACTUALLY answered, read from one ordered list, so a twin that reads another
+// spelling diverges on that list alone instead of on five sentences - and no message can name a key nobody set.
+test('the mode messages name the env key that declared the mode, never a hardcoded one', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const enginePath = require.resolve('../stack/hooks/docs.js');
+  const saved = { ...process.env };
+  try {
+    Object.assign(process.env, { CLAUDE_PROJECT_DIR: r.root, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', CLAUDE_STACK_DOCS_VERSIONING: '' });
+    delete require.cache[enginePath];
+    const docs = require(enginePath);
+    docs.VERSIONING_KEYS.unshift('DOCS_VERSIONING_OTHER_SPELLING');
+    process.env.DOCS_VERSIONING_OTHER_SPELLING = 'git';
+    assert.match(docs.versioningMismatch(), /^Versioning mismatch: DOCS_VERSIONING_OTHER_SPELLING declares 'git', but \.claude\/docs\/architecture is not tracked by git/);
+    assert.match(docs.status().mode, /^git \(declared by DOCS_VERSIONING_OTHER_SPELLING - /);
+  } finally {
+    delete require.cache[enginePath];
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    r.rm();
+  }
 });
 
 test('a section new on a branch is written with an empty base and read as added', () => {

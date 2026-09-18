@@ -2062,9 +2062,12 @@ if "CLAUDE_STACK_DOCS_PATH" not in env:
 # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
 # or silently local - and `docs.js status` plus the session-start block say so.
 if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
-    _droot = os.path.dirname(os.path.dirname(path))
+    # Forward slashes DELIBERATELY, also on Windows: os.path.join would emit '\' under a Windows python and hand
+    # git a mixed-separator pathspec (C:/repo\docs\architecture), which can fail to match - and a false negative
+    # here seeds `local` over committed docs, the exact silent switch this seed exists to prevent.
+    _droot = os.path.dirname(os.path.dirname(path)).replace("\\", "/").rstrip("/")
     _dparts = [p for p in env["CLAUDE_STACK_DOCS_PATH"].replace("\\", "/").split("/") if p]
-    _ddir = os.path.join(_droot, *(_dparts + ["architecture"]))
+    _ddir = "/".join([_droot] + _dparts + ["architecture"])
     _committed = subprocess.call(["git", "ls-files", "--error-unmatch", "--", _ddir], cwd=_droot,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
     env["CLAUDE_STACK_DOCS_VERSIONING"] = "git" if _committed else "local"; changed = True

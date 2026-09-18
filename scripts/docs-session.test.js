@@ -112,11 +112,24 @@ test('the start block names a versioning mismatch in both directions', () => {
   const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
   try {
     assert.match(ctx(ignored.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' })),
-      /Versioning mismatch: settings\.json declares 'git' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/);
+      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/);
     assert.match(ctx(committed.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'local' })),
-      /Versioning mismatch: settings\.json declares 'local' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
+      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
     for (const r of [ignored, committed]) assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /Versioning mismatch/, 'nothing declared, nothing said');
   } finally { ignored.rm(); committed.rm(); }
+});
+
+// Flipping the setting is what makes stranding reachable, and only `docs.js status` knew about it - nothing runs
+// that by itself, so a branch version nobody can read any more went unannounced session after session.
+test('the start block names doc versions stranded by git versioning', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    r.git('switch', '-qc', 'feat/left');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nBranch rule.\n').status, 0);
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' }));
+    assert.match(text, /Doc versions stranded by this install's git versioning: feat-left - nothing reads or promotes \.branches\/ any more; re-apply what is still wanted with `node \.claude\/hooks\/docs\.js set <file>#<id>`, then `node \.claude\/hooks\/docs\.js prune <branch>`\./);
+    assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /stranded/, 'nothing is stranded while the overlay is the mode');
+  } finally { r.rm(); }
 });
 
 test('subagent start gets the orientation without branch lines or promotion', () => {

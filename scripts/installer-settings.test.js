@@ -272,6 +272,30 @@ function assertVersioningSeed(sb, run, twin)
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 }
 
+// Both probes hand `git ls-files` an ABSOLUTE pathspec. `os.path.join` and `Join-Path` emit the PLATFORM
+// separator, so under Windows the pathspec would mix separators (`C:/repo\docs/architecture`) and a false negative
+// there seeds `local` over committed docs - the silent switch the detected seed exists to prevent, and invisible,
+// since the seed line then reads like a normal fresh install. This suite never runs on Windows, so what is pinned
+// is the composition itself: the LINE must not depend on the platform, and its output is asserted by running it.
+const probeLine = (file, needle) => fs.readFileSync(file, 'utf8').split('\n').find(l => l.includes(needle));
+
+test('sh: the docs-versioning probe composes its pathspec with forward slashes, whatever the platform', () => {
+    const line = probeLine(SH, '_ddir =');
+    assert.ok(line, 'the sh probe still composes _ddir');
+    assert.doesNotMatch(line, /os\.path\.join/, 'os.path.join emits the platform separator under a Windows python');
+    const out = execFileSync('python3', ['-c', `_droot = "C:/repo"\n_dparts = ["docs", "generated"]\n${line.trim()}\nprint(_ddir)`], { encoding: 'utf8' }).trim();
+    assert.strictEqual(out, 'C:/repo/docs/generated/architecture', 'sh: the composed pathspec');
+});
+
+test('ps1: the docs-versioning probe composes its pathspec with forward slashes, whatever the platform (pwsh required)', { skip: skipNoPwsh }, () => {
+    const line = probeLine(PS1, '$docsDir =');
+    assert.ok(line, 'the ps1 probe still composes $docsDir');
+    assert.doesNotMatch(line, /Join-Path/, 'Join-Path emits the platform separator on Windows');
+    const script = `$root = 'C:/repo'; $data = [pscustomobject]@{ env = [pscustomobject]@{ CLAUDE_STACK_DOCS_PATH = 'docs/generated/' } }; ${line.trim()}; Write-Output $docsDir`;
+    const out = execFileSync('pwsh', ['-NoProfile', '-Command', script], { encoding: 'utf8' }).trim();
+    assert.strictEqual(out, 'C:/repo/docs/generated/architecture', 'ps1: the composed pathspec');
+});
+
 test('sh: the docs-versioning seed records what the repo does today, and never clobbers a chosen value', () => assertVersioningSeed(sandbox(), runSh, 'sh'));
 test('ps1: the docs-versioning seed records what the repo does today, and never clobbers a chosen value (pwsh required)', { skip: skipNoPwsh }, () => assertVersioningSeed(sandbox(), runPs, 'ps1'));
 

@@ -2271,7 +2271,10 @@ function Set-HookSettings {
   # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
   # or silently local - and `docs.js status` plus the session-start block say so.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']) {
-    $docsDir = Join-Path $root ((($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/')) + '/architecture')
+    # Forward slashes DELIBERATELY, also on Windows: Join-Path would emit '\' there and hand git a
+    # mixed-separator pathspec (C:/repo\docs/architecture), which can fail to match - and a false negative here
+    # seeds 'local' over committed docs, the exact silent switch this seed exists to prevent.
+    $docsDir = (($root -replace '\\', '/').TrimEnd('/')) + '/' + (($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/')) + '/architecture'
     # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
     try { & git -C $root ls-files --error-unmatch -- $docsDir *> $null; $committed = ($LASTEXITCODE -eq 0) } catch { $committed = $false }
     $versioning = if ($committed) { 'git' } else { 'local' }
