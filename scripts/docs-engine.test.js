@@ -1364,6 +1364,34 @@ test('lint: a watch entry missing sections and a newModule missing globs are bot
   } finally { r.rm(); }
 });
 
+// Task 6b review, finding 1 (BLOCKER): a watch entry naming a section of a file its OWN domain declares
+// notOwned is the intended shape for a decisions domain - askRef alone can never see a protected file (it
+// is excluded from domainFiles, which is what makes the write refusal hold), so lint used to false-flag
+// every such entry as missing. protectedRef(e.domain, id) is the same fallback resolveHit already applies
+// for the runtime ask; lint must accept it too, or every decisions/ install fails on a clean checkout. A
+// genuinely missing section - one neither askRef nor protectedRef can find - must still fail.
+test('lint accepts a watch entry naming a protected section, and still fails one naming a genuinely missing one', () => {
+  const r = repo({ docs: {} });
+  try {
+    r.write('.claude/docs/decisions/DECISIONS.md', '## Refund sync\n<!-- id: refund-sync -->\nRefunds are synced nightly.\n');
+    r.write('.claude/docs/decisions/watch.json', JSON.stringify({
+      notOwned: ['DECISIONS.md'],
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['DECISIONS#refund-sync'] }],
+    }));
+    const clean = r.cli(['lint']);
+    assert.strictEqual(clean.status, 0, clean.stdout);
+    assert.doesNotMatch(clean.stdout, /names a section that does not exist/, clean.stdout);
+
+    r.write('.claude/docs/decisions/watch.json', JSON.stringify({
+      notOwned: ['DECISIONS.md'],
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['DECISIONS#nope'] }],
+    }));
+    const broken = r.cli(['lint']);
+    assert.strictEqual(broken.status, 1);
+    assert.match(broken.stdout, /decisions\/watch\.json 'composition root' names a section that does not exist: DECISIONS#nope/);
+  } finally { r.rm(); }
+});
+
 // Task 4: each domain's watch.json is read on its own - loadWatch/watchHits no longer read one
 // docs-root-wide file.
 

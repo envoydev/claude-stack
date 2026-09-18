@@ -1388,9 +1388,12 @@ function lint() {
   problems.push(...w.problems);
   // askRef resolves a sections entry the same way every reader does - bare or domain-qualified,
   // through parseRef - rather than a bare-id Set membership check that would false-flag a qualified
-  // entry as missing.
+  // entry as missing. askRef alone can never see a section of a file the entry's OWN domain declares
+  // notOwned - that file is excluded from domainFiles, which is what makes the write refusal hold - so a
+  // watch entry naming one, the intended shape for a decisions domain, needs protectedRef(e.domain, id)
+  // tried too before it is reported missing.
   for (const e of [...w.watch, ...w.newModule.map((nm) => ({ kind: 'newModule', sections: nm.sections, domain: nm.domain }))]) {
-    for (const id of e.sections) if (!askRef(id)) problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
+    for (const id of e.sections) if (!askRef(id) && !protectedRef(e.domain, id)) problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
   }
   const dir = overlayDir();
   if (dir) {

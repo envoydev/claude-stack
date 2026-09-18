@@ -501,6 +501,31 @@ test('one block per agent: the continuation stop and a later change are both sil
   } finally { r.rm(); }
 });
 
+// Task 6b review, finding 7: a warning-only ask-answer row reads sections: [], outcome: 'unchanged' - the
+// same shape as a turn nothing was ever asked about at all, so the block ledger cannot tell a warning
+// apart from a no-op without joining back to the ask-update row. `warned` is one extra field carrying the
+// same ids ask-update already logs under `warnings`, so the row is self-describing on its own.
+test('a warning-only turn is recorded distinctly from an ordinary unchanged ask', () => {
+  const r = repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    r.write('.claude/docs/decisions/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['DECISIONS#refund-sync'] }],
+      notOwned: ['DECISIONS.md'],
+    }));
+    r.write('.claude/docs/decisions/DECISIONS.md', section('refund-sync', '', 'Refunds are deliberately synchronous.'));
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    touchBy(r, s, 'a1');
+    const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
+    assert.strictEqual(body.decision, 'block');
+    r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'noted' }), GIT);
+    const row = JSON.parse(r.read('.claude/docs/docs-log.jsonl').trim().split('\n').filter((l) => l.includes('"ask-answer"')).pop());
+    assert.strictEqual(row.outcome, 'unchanged', 'no ask was ever made, only a warning - nothing to rewrite');
+    assert.deepStrictEqual(row.sections, [], 'a warning id never enters a.asked or the outcome it drives');
+    assert.deepStrictEqual(row.warned, ['decisions/DECISIONS#refund-sync'], 'now on THIS row, not only findable by joining back to ask-update');
+  } finally { r.rm(); }
+});
+
 // The two exchanges below are the verbatim closing lines of two live `claude -p` runs, and the substring test that
 // used to decide this field read BOTH of them backwards: a refusal counted as a confirmation because it quoted the
 // phrase it was declining to say, and a completed fix counted as a refusal because it closed in its own words.
@@ -1067,7 +1092,7 @@ test('a watch entry naming a section in a protected file produces a warning, not
     assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n/);
     assert.match(reason, /A DECISION recorded by a person covers this file - 'policy', in \.claude\/docs\/architecture\/NOTES\.md:/, reason);
     assert.match(reason, /"Refunds are deliberately synchronous - the caller must see the failure\."/);
-    assert.match(reason, /If your change makes that untrue, say so in your report/);
+    assert.match(reason, /If your change makes that untrue, say so in your answer/);
     assert.doesNotMatch(reason, /reply: docs ok/, 'a warning offers no docs-ok affordance');
     assert.doesNotMatch(reason, /--expect/, 'a warning offers no --expect hash');
     assert.doesNotMatch(reason, /docs\.js set/, 'a warning offers no set command');
@@ -1131,11 +1156,16 @@ test('one changed file hitting a normal section and a protected one yields one a
     assert.match(reason, /set patterns#orders --expect [0-9a-f]{12}/);
     assert.match(reason, /A DECISION recorded by a person covers this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
     assert.match(reason, /"Refunds are deliberately synchronous\."/);
-    // Never merged into one block, and the warning never borrows the ask's command: nothing past where
-    // the warning starts mentions a set command, an --expect hash or the docs-ok reply.
+    // Never merged into one block, and the warning LEADS: it can never be discharged, while the ask right
+    // after it can be closed with one reply - a reader who answers the ask must not have already stopped
+    // reading before reaching the warning. Also, the warning never borrows the ask's command: nothing
+    // between where it starts and where the ask begins mentions a set command, an --expect hash or the
+    // docs-ok reply.
     const warnIdx = reason.indexOf("A DECISION recorded by a person");
+    const askIdx = reason.indexOf("One section documents this file");
     assert.ok(warnIdx > 0, reason);
-    assert.doesNotMatch(reason.slice(warnIdx), /--expect|reply: docs ok|docs\.js set/);
+    assert.ok(askIdx > warnIdx, reason);
+    assert.doesNotMatch(reason.slice(warnIdx, askIdx), /--expect|reply: docs ok|docs\.js set/);
   } finally { r.rm(); }
 });
 
@@ -1194,5 +1224,38 @@ test('four domains where the third declares a protected section: the warning is 
     const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
     assert.match(reason, /A DECISION recorded by a person covers this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
     assert.match(reason, /"Refunds are deliberately synchronous\."/);
+  } finally { r.rm(); }
+});
+
+// Task 6b review, finding 2: fixing domain starvation above also reorders sections WITHIN a single domain
+// once it has more than one matching watch entry - the fill loop draws one id per QUEUE per pass, and a
+// queue is one watch entry, not one domain. Measured by the review: one domain, entry A (3 sections) then
+// entry B (1 section), cap 3 - straight walk gave A#one, A#two, A#three; round-robin gives A#one, B#four,
+// A#two, dropping A#three instead of starving B. Breadth over depth is the deliberate call (see the
+// comment above sectionRefs); this pins today's order so a further change to the fill order is a decision,
+// not an accident.
+test('round-robin fills breadth-first across watch entries even within one domain, dropping the longer entry\'s last id before the shorter one is ever skipped', () => {
+  const r = repo({
+    files: { 'src/Api/Program.cs': 'app.Run();\n' },
+    docs: {
+      'references/patterns.md': ['one', 'two', 'three'].map((x) => section(x, '', `${x} text.`)).join('\n'),
+      'other.md': section('four', '', 'four text.'),
+    },
+  });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [
+        { kind: 'A', globs: ['src/*/Program.cs'], sections: ['patterns#one', 'patterns#two', 'patterns#three'] },
+        { kind: 'B', globs: ['src/*/Program.cs'], sections: ['other#four'] },
+      ],
+    }));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    const at = (needle) => reason.indexOf(needle);
+    assert.ok(at('patterns#one') >= 0 && at('other#four') >= 0 && at('patterns#two') >= 0, reason);
+    assert.ok(at('patterns#one') < at('other#four') && at('other#four') < at('patterns#two'), `expected the order one, four, two:\n${reason}`);
+    assert.strictEqual(at('patterns#three'), -1, 'the cap is 3: the id round-robin never reaches (patterns#three) is dropped, not entry B');
   } finally { r.rm(); }
 });

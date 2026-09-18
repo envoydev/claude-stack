@@ -62,7 +62,7 @@ const saveState = (s, v, agent) => {
 // A dispatched agent gets a state file of its OWN, beside the session's and named for it. Same store, one key finer:
 // agents run in parallel, and a shared file they all read-modify-write loses rows - a lost 'blocked' row is a SECOND
 // block on an agent that already answered, which is worse than never asking.
-const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s, agent), 'utf8')); } catch {} return { snapshot: null, asked: [], askedAt: '', blocked: false, answered: false, ...v }; };
+const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s, agent), 'utf8')); } catch {} return { snapshot: null, asked: [], warned: [], askedAt: '', blocked: false, answered: false, ...v }; };
 // Both subagent payloads carry `agent_id` (documented on SubagentStart and SubagentStop alike) - that is the only
 // field that tells two seats of ONE type apart. The published examples spell the same field 'agent-abc123' at start
 // and 'def456' at stop, so the prefix is dropped before keying: a key that matched on only one of the two events
@@ -307,14 +307,28 @@ function resolveHit(docs, h, id) {
 // first plus one more ever got named. Round-robin means no domain is starved purely by where its name
 // sorts. Each pool is still capped at `limit` on its own. Deduped on the RESOLVED ref's id, not the raw
 // watch.json spelling, since two domains' identical bare spellings resolve to two different final refs.
+// A queue is one watch ENTRY, not one domain, so this also reorders sections within a single domain once
+// it has more than one matching entry - deliberately kept, not a side effect to undo: breadth across
+// entries (naming more DIFFERENT decisions) is worth more at the cap than depth into the one that sorted
+// first. A project with only one matching entry per hit sees no change at all.
 function sectionRefs(docs, hits, limit, exclude = () => false) {
   const seenAsk = new Set();
   const seenWarn = new Set();
   const asks = [];
   const warnings = [];
   const queues = hits.map((h) => ({ h, ids: [...h.sections] }));
+  // Almost no install declares notOwned anywhere, so almost no run can ever fill the warning pool - and
+  // resolveHit's fallback, askRef, walks allSections() (every doc file, re-read and re-parsed) on every
+  // call. Without knowing that up front, `warnings.length < limit` never goes false when warnings stay 0
+  // forever, so the loop below keeps draining every remaining id - one full walk each - just to keep
+  // confirming what this one cheap check (one domain's declared list, not a file read) already knows.
+  // Measured in isolation (30 doc files x 15 sections, 30 watch ids offered, cap 3, no domain declaring
+  // notOwned): the old shape called resolveHit all 30 times (42.6ms median); this one stops at 3, the same
+  // 3 asks it always found (4.2ms median) - a ~10x cut, growing with corpus size since each stopped call
+  // was its own full walk.
+  const canWarn = [...new Set(queues.map((q) => q.h.domain))].some((d) => { try { return docs.unowned(d).length > 0; } catch { return true; } });
   let more = true;
-  while (more && (asks.length < limit || warnings.length < limit)) {
+  while (more && (asks.length < limit || (canWarn && warnings.length < limit))) {
     more = false;
     for (const q of queues) {
       if (!q.ids.length) continue;
@@ -354,7 +368,11 @@ function subagentStop(input, root, docs) {
       // Three states because two cannot tell them apart: where several sections were asked about, rewriting one of
       // them is neither the job done nor nothing done, and that middle case is the one worth counting.
       const outcome = rewrote.length === 0 ? 'unchanged' : rewrote.length === asked.length ? 'rewritten' : 'partial';
-      log(root, input, { event: 'ask-answer', agent: key, sections: asked, rewrote, outcome, saidDocsOk: saidDocsOk(input.last_assistant_message) });
+      // Separate from `sections` on purpose (see the comment on a.warned below): a warning-only turn reads
+      // sections: [], outcome: 'unchanged' - true, not false, but indistinguishable from a turn nothing ever
+      // asked about at all. `warned` is what lets the block ledger tell the two apart without joining back
+      // to the ask-update row that named them.
+      log(root, input, { event: 'ask-answer', agent: key, sections: asked, warned: a.warned || [], rewrote, outcome, saidDocsOk: saidDocsOk(input.last_assistant_message) });
     }
     return;
   }
@@ -407,8 +425,10 @@ function subagentStop(input, root, docs) {
   a.blocked = true;
   // Only ASK ids: a warning can never appear in setsSince (the write refusal means `docs.js set` never
   // records one), so folding its id in here would only ever pull the outcome below toward 'partial' or
-  // 'unchanged' for a section nothing was ever asking to be rewritten.
+  // 'unchanged' for a section nothing was ever asking to be rewritten. Warning ids are tracked separately,
+  // in a.warned, purely so the ask-answer row above can name them - never read back into an outcome.
   a.asked = [...a.asked, ...asks.map((r) => r.id)];
+  a.warned = [...(a.warned || []), ...warnings.map((r) => r.id)];
   // The instant the ask was made, so a rewrite that landed before it is never counted as an answer to it.
   a.askedAt = new Date().toISOString();
   saveState(input.session_id, a, key);
@@ -616,18 +636,21 @@ function warnLines(files, refs) {
       : [`${refs.length} DECISIONS recorded by a person cover ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
     '',
     one
-      ? 'If your change makes that untrue, say so in your report - this engine cannot rewrite it, only a person can.'
-      : 'If your change makes any of those untrue, say so in your report - this engine cannot rewrite them, only a person can.',
+      ? 'If your change makes that untrue, say so in your answer - this engine cannot rewrite it, only a person can.'
+      : 'If your change makes any of those untrue, say so in your answer - this engine cannot rewrite them, only a person can.',
   ];
 }
 
-// One ask block, then one warning block, never merged into a single confusing one - and the warning never
-// borrows a command from its neighbour, because none of the lines it prints ever comes from askLines.
+// The warning block leads, the ask block follows - never merged into a single confusing one, and the
+// warning never borrows a command from its neighbour, because none of the lines it prints ever comes from
+// askLines. An ask can be discharged with one reply ('docs ok') and ends the turn as far as a reader can
+// tell; a warning can never be discharged at all. Printing it after that affordance would let a reader who
+// answers the ask stop reading before ever reaching it, so the undischargeable half comes first.
 function finishAsk(docs, files, asks, warnings = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const parts = [`Docs check: you changed ${named}`];
-  if (asks.length) parts.push('', ...askLines(docs, files, asks));
   if (warnings.length) parts.push('', ...warnLines(files, warnings));
+  if (asks.length) parts.push('', ...askLines(docs, files, asks));
   return parts.join('\n');
 }
 
