@@ -431,7 +431,15 @@ function writeTargets(command) {
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
-function consultedBy(input, paths, docsRel) {
+// `docRoots` is a LIST now, one entry per domain (each domain's own root, project-relative) - a project can be
+// documented in code-style/ or related-projects/ alone, and a read under any one of them is a real consult, not
+// just one under architecture/. Deliberately NOT the whole docs root: DOCS_ROOT also holds hook-blocks/,
+// docs-log.jsonl, .branches/ and cross-project-tasks/, none of which is a section covering a file, and crediting
+// any of them would turn the gate off by accident for a session that merely happens to touch one. A branch
+// override under .branches/ is not credited either, on the same reasoning - it mixes real override text
+// (<id>.md) with pure internal state (BASE.json, .base/, .conflict markers), and the intended way to read an
+// override is `docs.js show <ref>`, which the branch above already credits wherever the text physically lives.
+function consultedBy(input, paths, docRoots) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const command = typeof t.command === 'string' ? t.command : '';
@@ -441,7 +449,7 @@ function consultedBy(input, paths, docsRel) {
       .filter((r) => !r.startsWith('-') && /^[A-Za-z][\w.\/-]*(#[\w-]+)?$/.test(r));
   }
   if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
-  const isDoc = (p) => p === docsRel || p.startsWith(`${docsRel}/`);
+  const isDoc = (p) => docRoots.some((d) => p === d || p.startsWith(`${d}/`));
   const hits = paths.filter(isDoc);
   if (hits.length && (/^(Read|Grep|Glob)$/.test(name) || (isShellTool(name) && !writeTargets(command).length))) return hits;
   return [];
@@ -457,7 +465,10 @@ function blockRow(root, input, reason) {
 
 function preToolUse(input, root, docs, state) {
   const paths = toolPaths(input, root);
-  const docsRel = toPosix(path.relative(root, docs.DOCS));
+  // One root per domain, not one hardcoded architecture/ - a project documented only in code-style/ must still
+  // get credit for reading it. domains() is already required to succeed for this hook to have run at all (see
+  // main()'s own gate above), so no extra guard is needed here.
+  const docRoots = docs.domains().map((d) => toPosix(path.relative(root, docs.domainDir(d))));
   // Only these six tools can name a source target, so nothing else pays for the watch list.
   const name = input.tool_name || '';
   const isWrite = /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) || isShellTool(name);
@@ -472,7 +483,7 @@ function preToolUse(input, root, docs, state) {
   // so a write this hook holds is not credited to the seat that tried it. Banked before the source-root filter,
   // because a watch entry may name a path no source root covers and a write this hook never judges is still a write.
   const attribute = () => { if (wrote.length) recordWrite(root, input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote); };
-  const consults = consultedBy(input, paths, docsRel);
+  const consults = consultedBy(input, paths, docRoots);
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.

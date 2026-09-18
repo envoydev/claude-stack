@@ -1020,3 +1020,33 @@ test('a domain whose watch.json is malformed does not take another domain\'s ask
     assert.match(reason, /"Braces open on the same line\."/, 'the malformed neighbour never blinds this domain\'s ask');
   } finally { r.rm(); }
 });
+
+// consultedBy used to credit a read only under architecture/. A project documented in code-style/ alone must get
+// the same credit toward the first-change gate - the covers glob deliberately does not match the write target, so
+// the only way this write goes through unheld is if the earlier Read itself was credited.
+test('a doc read under any domain earns consult credit, not just architecture/', () => {
+  const r = repo({ files: { 'src/Api/Format.cs': 'x\n' } });
+  try {
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({ sourceRoots: ['src'] }));
+    r.write('.claude/docs/code-style/STYLE.md', section('format', 'nomatch/**', 'Braces open on the same line.'));
+    const s = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/code-style/STYLE.md` }, s));
+    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/Format.cs', content: 'x' }, s))), 'a code-style/ read releases the gate on the first try');
+  } finally { r.rm(); }
+});
+
+// The credit is scoped to domain directories, never the whole docs root - hook-blocks/ and docs-log.jsonl sit
+// beside the domain folders under the same root, and neither is a section covering a file.
+test('a read under hook-blocks/ or docs-log.jsonl earns no consult credit', () => {
+  const r = repo({ files: { 'src/Api/Format.cs': 'x\n' } });
+  try {
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({ sourceRoots: ['src'] }));
+    r.write('.claude/docs/code-style/STYLE.md', section('format', 'nomatch/**', 'Braces open on the same line.'));
+    r.write('.claude/docs/docs-log.jsonl', '{}\n');
+    r.write('.claude/docs/hook-blocks/x.jsonl', '{}\n');
+    const s = sid();
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/docs-log.jsonl` }, s));
+    r.hook(pre('Read', { file_path: `${r.root}/.claude/docs/hook-blocks/x.jsonl` }, s));
+    assert.ok(denied(r.hook(pre('Write', { file_path: 'src/Api/Format.cs', content: 'x' }, s))), 'reading the ledger or the block log is not a doc consult');
+  } finally { r.rm(); }
+});
