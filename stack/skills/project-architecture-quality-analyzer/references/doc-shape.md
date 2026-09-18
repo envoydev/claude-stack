@@ -2,6 +2,9 @@
 
 ## Contents
 
+- **Why this doc lives outside the docs-domain engine** - `quality/` is recomputed, never versioned
+- **`<docs-path>/decisions/` - the domain a person writes, this skill only reads** - the shape that
+  makes gate question 4 answerable at all, and the one document family this engine refuses to write
 - **The findings gate** - the four questions a candidate must pass before it is a finding
 - **The count rule** - an output, never a target, in both directions
 - **The three buckets** - every surviving item lands in exactly one
@@ -22,6 +25,67 @@ here, and this skill never invokes it. On a project that commits its docs, plain
 any other tracked file, with no per-branch overlay; on a project whose docs root is local-only, this file is
 local too, same as the rest of the root.
 
+## <docs-path>/decisions/ - the domain a person writes, this skill only reads
+
+Unlike `quality/`, `<docs-path>/decisions/` IS a docs domain: it carries its own `watch.json`, so
+`domains()` in `.claude/hooks/docs.js` picks it up and the engine sections, lints and watches it like
+any other - with one deliberate difference, declared in that same `watch.json`.
+
+**`DECISIONS.md` is the index. Existing ADR files stay exactly where they are, as siblings.** Nothing is
+rewritten or renamed - each ADR gains a `<!-- id: -->` and a `<!-- covers: -->` comment under its
+heading, the same section format every domain uses, so the engine can find and quote it. `DECISIONS.md`
+is the one file a reader starts from, one line per ADR.
+
+**The domain declares every one of its own documents `notOwned`, by GLOB, never by listing filenames.**
+ADR files are unbounded - a name-by-name list would go stale the moment someone adds a record - so
+`decisions/watch.json` covers the whole domain with one glob:
+
+    {
+      "notOwned": ["**.md"],
+      "watch": [
+        { "kind": "refund flow", "globs": ["src/Payments/RefundService.cs"], "sections": ["0001-refunds-synchronous#refunds-stay-synchronous"] }
+      ]
+    }
+
+`**.md` is the spelling proven against the real engine's `matches()` / `globRe` (docs.js), not assumed:
+`globRe` treats a bare `*` as stopping at one path segment, so the plausible-looking `**/*.md` actually
+MISSES every file that sits directly in `decisions/` - `DECISIONS.md` and every ADR - and protects only
+`references/` and `history/`, leaving the very files this exists to protect writable. `*.md` alone has
+the opposite gap: it protects the root siblings but not `references/` or `history/`. `**.md` is the one
+spelling that matches both a bare filename and any path under a subfolder, so it covers the whole
+domain - root, `references/` and `history/` alike.
+
+With every `.md` in the domain declared `notOwned`, `domainFiles('decisions')` is empty - proven on a
+temp fixture, not assumed: `docs.js files`, `docs.js lint`, `docs.js status`, `docs.js where`,
+`docs.js seed-ids` and `docs.js promote` all ran clean against a decisions domain with zero domainFiles,
+and the session-start block named the domain
+without listing a file for it. An empty domain is the intended shape once every document in it is
+protected, not a bug case to guard against.
+
+**Why a person, and only a person, writes here.** A decision record says why something is the way it is
+on purpose - not what the code currently does, which is recomputable, but what someone chose and why,
+which is not. The findings gate's fourth question below is 'has the project already decided this', and
+an analyzer that could answer its own gate by writing to the log it reads would be marking its own
+homework: the record would drift toward whatever the last automated run preferred, and every re-run
+would reopen an argument that was supposed to be settled. `notOwned` makes the rule unbreakable rather
+than merely stated: every write to this domain, from any actor and any spelling, is refused by the
+engine itself (`docs.js set` answers 'is maintained by another skill - this engine does not write it').
+
+**Falsifiable by code, not only protected from it.** `decisions/watch.json` still carries ordinary
+`watch` entries - `covers:` globs on each ADR's own section, naming the code that decision constrains,
+exactly like any other domain's sections. When a change hits one of those globs, the session hook warns
+instead of asking: it names the decision and quotes its first sentence, and offers no command - this
+engine cannot rewrite a person's record, so it never pretends it can.
+
+**What a person does when the warning fires.** The warning is not a gate on the turn - the whole
+obligation it carries is that the agent reports the contradiction plainly rather than routing around it.
+From there the call is a person's, not the engine's: either the decision no longer holds (write a new
+ADR and mark the old one superseded, per `docs-as-code`'s ADR guidance), or the code drifted from a
+decision still in force (fix or revert the change). Both outcomes are legitimate; the engine picks
+neither, because picking would be exactly the homework-marking the single-writer rule above exists to
+prevent. The one wrong answer is silence - an agent that saw the warning and said nothing has hidden a
+contradiction the whole mechanism exists to surface.
+
 ## The findings gate - pass all four questions or it is not a finding
 
 Before ANY candidate is recorded as a weakness, answer all four explicitly; an unanswerable question is a fail, and a failed candidate is routed (Worth knowing, or folded into an existing entry) or dropped - never tiered:
@@ -29,7 +93,7 @@ Before ANY candidate is recorded as a weakness, answer all four explicitly; an u
 1. **What breaks?** The concrete wrong outcome - wrong or lost data, a crash or 5xx, a security hole, a change that cannot be made safely, or time repeatedly lost by the next developer. 'It differs from how another codebase or a reference doc would do it' is not an answer.
 2. **Who notices, and when?** A user, an operator, or the next person to touch this code - named, with the trigger condition.
 3. **Is it actually new?** Unchanged code whose behaviour the last run's `<docs-path>/quality/ASSESSMENT.md` already records - a known limit, an accepted tradeoff, an existing entry - is a re-measurement, not a discovery: fold the sharper number into the existing entry. Never open a new entry for it, and never re-tier the old one upward merely because it now has a number.
-4. **Has the project already decided this?** Read the decision log FIRST (`<docs-path>/decisions/`, where that domain exists - or wherever the project keeps ADRs). A recorded decision is not a defect, and re-raising it each round is exactly the failure this gate exists to stop.
+4. **Has the project already decided this?** Read the decision log FIRST (`<docs-path>/decisions/` per the shape above, where that domain has been seeded - or wherever the project keeps ADRs otherwise). A recorded decision is not a defect, and re-raising it each round is exactly the failure this gate exists to stop.
 
 **The external-preference rule.** A convention skill, reference doc, or industry pattern preferring a different approach is not evidence of a weakness. Where this project has a mechanism that works, it wins unless you can show it FAILING - a real miss, a real regression it let through. A candidate whose only support is 'a reference prefers X' lands under Worth knowing at most, never tiered.
 
