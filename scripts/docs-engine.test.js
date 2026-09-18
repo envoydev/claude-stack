@@ -1400,10 +1400,35 @@ test('an empty watch.json is a domain that watches nothing; a malformed watch.js
     assert.strictEqual(hits.find((h) => h.domain === 'architecture').sections[0], 'patterns#orders', 'its neighbour still hits normally');
 
     r.write('.claude/docs/related-projects/watch.json', '{ not json');
+    // watchOf is cached per domain (finding 4 of the fix round) - resetDomains is the same escape hatch
+    // that already clears DOMAINS_CACHE for a fixture that changes the docs root after require().
+    docs.resetDomains();
     const stillHits = docs.watchHits(['src/Api/Program.cs']);
     assert.strictEqual(stillHits.find((h) => h.domain === 'architecture').sections[0], 'patterns#orders', 'a malformed watch.json beside it does not break architecture');
     const problems = docs.lint().problems;
     assert.match(problems.join('\n'), /related-projects\/watch\.json is not valid JSON/);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('watchOf is cached per domain: once warm, a repeated parseRef call reads no watch.json again', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', '{}');
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    const docs = requireEngine(r.root);
+    docs.parseRef('patterns#orders'); // warm the cache: domainFiles -> notOwnedOf -> watchOf, per domain
+    const before = fs.readFileSync;
+    let calls = 0;
+    fs.readFileSync = (...a) => { if (String(a[0]).endsWith('watch.json')) calls++; return before(...a); };
+    try {
+      for (let i = 0; i < 5; i++) docs.parseRef('patterns#orders');
+    } finally { fs.readFileSync = before; }
+    assert.strictEqual(calls, 0, `expected no watch.json reads once warm (measured pre-cache: 5 reads per parseRef call), got ${calls}`);
+    docs.resetDomains();
+    let after = 0;
+    fs.readFileSync = (...a) => { if (String(a[0]).endsWith('watch.json')) after++; return before(...a); };
+    try { docs.parseRef('patterns#orders'); } finally { fs.readFileSync = before; }
+    assert.ok(after > 0, 'resetDomains clears the watch cache too, or a fixture that rewrites watch.json after require() would go stale');
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
@@ -1448,6 +1473,94 @@ test('ORIENTATION.md stays refused under the same notOwned mechanism, with no no
     assert.strictEqual(out.status, 1, out.stdout);
     assert.match(out.stdout, /ORIENTATION\.md is maintained by another skill - this engine does not write it/);
     assert.doesNotMatch(r.read('.claude/docs/architecture/ORIENTATION.md'), /new text/);
+  } finally { r.rm(); }
+});
+
+// --- task-4-review.md fix round: worst finding first ---
+
+// Finding 1 (MEDIUM): askRef matched a section by `${key(file)}#${sec}` alone, which is basename-scoped -
+// two domains sharing a references/ basename (ordinary: every domain owns one) let a domain-qualified
+// watch.json entry resolve into the WRONG domain's file, and lint blessed it.
+test('a domain-qualified sections entry never resolves through a same-basename file in another domain', () => {
+  const r = repo({ docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['architecture/references/patterns#users'] }],
+    }));
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    // code-style owns a references/patterns.md of its own with the section architecture's watch.json names -
+    // same basename, different domain, the shape this plan's own ledger calls ordinary.
+    r.write('.claude/docs/code-style/references/patterns.md', section('users', 'src/Api/Users/**', 'Users are soft-deleted, never removed.'));
+    const out = r.cli(['lint']);
+    assert.strictEqual(out.status, 1, out.stdout);
+    assert.match(out.stdout, /watch\.json 'composition root' names a section that does not exist: architecture\/references\/patterns#users/);
+  } finally { r.rm(); }
+});
+
+// Same fixture, read through the module directly: proves show and askRef now agree (the review's other
+// proof - hash disagreeing with show for the same ref).
+test('askRef and show agree on a domain-qualified ref, even when another domain shares its basename', () => {
+  const r = repo({ docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') } });
+  try {
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    r.write('.claude/docs/code-style/references/patterns.md', section('users', 'src/Api/Users/**', 'Users are soft-deleted, never removed.'));
+    const docs = requireEngine(r.root);
+    assert.strictEqual(docs.askRef('architecture/references/patterns#users'), null, 'architecture does not have this section - askRef must not borrow code-style\'s');
+    assert.match(docs.show('code-style/references/patterns#users'), /soft-deleted/, 'it still resolves on the domain that actually owns it');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// A section served from a BRANCH OVERLAY has s.from pointing at the overlay file, not the mainline file -
+// the reviewer's own one-clause suggestion (`x.from === file`) would silently stop askRef from resolving
+// any overridden section. Proves the fix taken here (`x.file`, which parse() sets once to the mainline
+// file and sections() never reassigns) still resolves one.
+test('askRef still resolves a section overridden on a branch (from is the overlay path, file is not)', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/x');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nRefunds are ledgered at midnight.\n').status, 0);
+    const docs = requireEngine(r.root);
+    const ref = docs.askRef('architecture/references/patterns#orders');
+    assert.ok(ref, 'an overridden section must still resolve, not just a mainline one');
+    assert.match(ref.first, /ledgered at midnight/, 'and it reads the branch override, not the mainline text under it');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// Finding 2 (MEDIUM): declaring notOwned on a file that already carries a branch overlay orphans that
+// overlay silently - nothing on disk is lost, but show/status/lint all go quiet and promote's own `why`
+// names three causes, none of which is this one, with advice that cannot work for it.
+test('declaring notOwned on a file that already has a branch overlay orphans it visibly, not silently', () => {
+  const r = repo({ docs: { 'NOTES.md': '## Notes\n<!-- id: notes -->\nEditorial notes.\n' } });
+  try {
+    r.git('switch', '-qc', 'feat/notes');
+    assert.strictEqual(r.cli(['set', 'NOTES#notes'], 'Branch-local notes.\n').status, 0);
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ notOwned: ['NOTES.md'] }));
+    assert.ok(r.exists('.claude/docs/.branches/feat-notes/architecture/NOTES/notes.md'), 'nothing is destroyed on disk');
+
+    const lintOut = r.cli(['lint']);
+    assert.match(lintOut.stdout, /NOTES\.md.*notOwned/i, 'lint names the orphaned overlay - where a person would look');
+
+    const promoteOut = r.cli(['promote', 'feat/notes']);
+    assert.match(promoteOut.stdout, /notOwned/i, "promote's why names the real cause");
+    assert.doesNotMatch(promoteOut.stdout, /move the text under the right domain by hand, then promote again/, 'advice that cannot work for a notOwned file is not given for this cause');
+  } finally { r.rm(); }
+});
+
+// Finding 3 (LOW): the good refusal fired only on the domain-qualified spelling (parseRef can name a
+// domain for it explicitly) - a bare ref to the same file never resolves a domain at all, because
+// parseRef's own domain search runs over domainFiles, which already excludes a notOwned file. The bare
+// spelling is what docs-session.js documents to users and what every pre-domain ref uses.
+test('the notOwned refusal reaches the bare spelling too, not only the domain-qualified one', () => {
+  const r = repo({ docs: { 'NOTES.md': '## Notes\n<!-- id: notes -->\nEditorial notes.\n', 'ORIENTATION.md': 'o'.repeat(10) } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ notOwned: ['NOTES.md'] }));
+    const notes = r.cli(['set', 'NOTES#notes'], 'rewritten by the engine\n');
+    assert.strictEqual(notes.status, 1, notes.stdout);
+    assert.match(notes.stdout, /NOTES\.md is maintained by another skill - this engine does not write it/);
+
+    const orientation = r.cli(['set', 'ORIENTATION#x'], 'new text\n');
+    assert.strictEqual(orientation.status, 1, orientation.stdout);
+    assert.match(orientation.stdout, /ORIENTATION\.md is maintained by another skill - this engine does not write it/);
   } finally { r.rm(); }
 });
 
