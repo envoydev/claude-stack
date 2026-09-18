@@ -1871,7 +1871,7 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   # NB: program via -c (not `python3 - <<heredoc`): a pipe + heredoc both target stdin and the pipe
   # wins, so a heredoc program would never run. -c frees stdin for the piped hook specs.
   local prog; prog=$(cat <<'PY'
-import json, os, sys
+import json, os, subprocess, sys
 path = sys.argv[1]
 deny_specs, mcp_names, retired_hooks, retired_deny, bucket = [], [], [], [], None
 for a in sys.argv[2:]:
@@ -2054,6 +2054,21 @@ for _key, _bad_seed, _to in (("CLAUDE_STACK_FRESH_SESSION_DEFAULT", "250000", "1
 if "CLAUDE_STACK_DOCS_PATH" not in env:
     env["CLAUDE_STACK_DOCS_PATH"] = ".claude/docs"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_PATH seeded (.claude/docs)")
+# how those docs are VERSIONED - a DECISION, not a guess: "git" = they are committed and git versions
+# them per branch (writes land in the doc file, nothing is ever written under <docs-path>/.branches/),
+# "local" = the machine-local overlay, where a feature branch's sections live under
+# <docs-path>/.branches/<branch>/ until it merges. Seeded from what this repo does TODAY, so an install
+# made before this key existed keeps exactly the behaviour it had and no update switches it silently.
+# From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
+# or silently local - and `docs.js status` plus the session-start block say so.
+if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
+    _droot = os.path.dirname(os.path.dirname(path))
+    _dparts = [p for p in env["CLAUDE_STACK_DOCS_PATH"].replace("\\", "/").split("/") if p]
+    _ddir = os.path.join(_droot, *(_dparts + ["architecture"]))
+    _committed = subprocess.call(["git", "ls-files", "--error-unmatch", "--", _ddir], cwd=_droot,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+    env["CLAUDE_STACK_DOCS_VERSIONING"] = "git" if _committed else "local"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
@@ -2534,6 +2549,9 @@ The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude/settings.json env (
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
 re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
+Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how the architecture docs are
+versioned - 'git' when they are committed (git versions them per branch), 'local' for the
+machine-local overlay under <docs-path>/.branches/. The install seeded what this repo does today.
 
 The same env block carries the fresh-session gate's three knobs (seeded, absent-only, so a
 hand-edited value survives every update):

@@ -105,6 +105,20 @@ test('the start block names conflict markers and duplicate ids, and a detached H
   } finally { r.rm(); }
 });
 
+// The declared mode wins over what the repo does, so a session that is about to write a doc is told when the two
+// disagree - in place with nothing versioning it, or into an overlay beside a committed file.
+test('the start block names a versioning mismatch in both directions', () => {
+  const ignored = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    assert.match(ctx(ignored.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' })),
+      /Versioning mismatch: settings\.json declares 'git' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/);
+    assert.match(ctx(committed.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'local' })),
+      /Versioning mismatch: settings\.json declares 'local' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
+    for (const r of [ignored, committed]) assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /Versioning mismatch/, 'nothing declared, nothing said');
+  } finally { ignored.rm(); committed.rm(); }
+});
+
 test('subagent start gets the orientation without branch lines or promotion', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
   try {

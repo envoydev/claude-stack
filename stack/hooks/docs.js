@@ -7,17 +7,20 @@
 //   toc <file>                      a doc file's sections (id, heading, size)
 //   show <file>#<id>... [--conflict [branch]]
 //   files                           the doc files
-//   set <file>#<id> [textfile]      write one section (stdin without a file): in place on mainline, with committed
-//                                   docs or without git; into this branch's overlay otherwise
-//   status                          mode, branch, overrides, conflicts, orphans, outgrown count, deleted unmerged branches
+//   set <file>#<id> [textfile]      write one section (stdin without a file): in place on mainline, under git
+//                                   versioning or without git; into this branch's overlay otherwise
+//   status                          mode, branch, overrides, conflicts, orphans, outgrown count, deleted unmerged branches,
+//                                   and any disagreement between the declared mode and the repo
 //   stale                           sections whose covered code changed since they were written
 //   promote <branch> | --merged     fold a branch's overrides into mainline, section by section, three ways
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
 //   lint                            metadata and budget problems (exit 1 when any)
 //   seed-ids                        give every section a stable id (idempotent)
 //   watch <path...>                 which watch.json entries these changed paths hit
-// Two modes, decided by git and never by a setting: committed docs are versioned by git per branch, so writes land in
-// place; ignored docs keep each feature branch's sections under <docs root>/.branches/<branch>/.
+// Two modes, DECLARED at install time in CLAUDE_STACK_DOCS_VERSIONING: 'git' means the docs are committed and git
+// versions them per branch, so writes land in place and nothing is ever written under .branches/; 'local' means each
+// feature branch's sections live under <docs root>/.branches/<branch>/ until it merges. Absent - every install made
+// before the key existed - falls back to reading git, as this engine always did.
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -322,11 +325,41 @@ function merge3(ours, base, theirs, name) {
   return { text: r.stdout, conflicts: r.status };
 }
 
-// Committed docs need no overlay: git versions them per branch, merges them and carries them to a clone.
+// The RAW git fact: are the doc files committed? Only two callers want it - the mode fallback below, and the
+// mismatch report, which exists precisely to say that this fact and the declared mode disagree. Everything that
+// DECIDES behaviour asks gitVersioned() instead.
 let TRACKED_CACHE;
 function tracked() {
   if (TRACKED_CACHE === undefined) TRACKED_CACHE = git(['ls-files', '--error-unmatch', DOCS]) !== null;
   return TRACKED_CACHE;
+}
+// How the docs are versioned is an install-time DECISION, not a guess: 'git' = committed docs, git versions them per
+// branch (no overlay, ever); 'local' = the overlay model. An absent or unrecognised value falls back to what git
+// says, so an install made before the key existed keeps the behaviour it had until someone is asked.
+const declaredVersioning = () => {
+  const v = String(process.env.CLAUDE_STACK_DOCS_VERSIONING || '').trim().toLowerCase();
+  return v === 'git' || v === 'local' ? v : null;
+};
+// ONE resolver, cached with the other git-state probes: a process runs one CLI command or one hook event, and
+// neither the environment nor the index changes underfoot.
+let MODE_CACHE;
+const docsMode = () => (MODE_CACHE || (MODE_CACHE = declaredVersioning() || (tracked() ? 'git' : 'local')));
+const gitVersioned = () => docsMode() === 'git';
+// The declaration and the repo can disagree: docs committed under a 'local' install, or ignored under a 'git' one.
+// The SETTING wins - a doc write must never be silently untracked or silently local - so the disagreement is
+// REPORTED in these words, by `status` and by the session-start block alike, instead of being resolved the other
+// way behind the user. Without a repo, or before the docs exist, there is no fact to disagree with.
+function versioningMismatch() {
+  const declared = declaredVersioning();
+  if (!declared || !hasGit() || !fs.existsSync(DOCS)) return null;
+  const where = path.relative(ROOT, DOCS).split(path.sep).join('/');
+  if (declared === 'git' && !tracked()) {
+    return `Versioning mismatch: settings.json declares 'git' (CLAUDE_STACK_DOCS_VERSIONING), but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed.`;
+  }
+  if (declared === 'local' && tracked()) {
+    return `Versioning mismatch: settings.json declares 'local' (CLAUDE_STACK_DOCS_VERSIONING), but ${where} is tracked by git - the setting wins, so this branch's sections stay in the overlay under ${path.relative(ROOT, BRANCHES).split(path.sep).join('/')}/ until a promote folds them into the committed text.`;
+  }
+  return null;
 }
 let HAS_GIT_CACHE;
 const hasGit = () => (HAS_GIT_CACHE === undefined ? (HAS_GIT_CACHE = git(['rev-parse', '--git-dir']) !== null) : HAS_GIT_CACHE);
@@ -349,7 +382,7 @@ const overlayOwner = (dir) => { const m = readMetaAt(dir); return m && typeof m.
 const overlayClash = (dir, b) => { const owner = overlayOwner(dir); return Boolean(owner && owner !== b); };
 const overlayDir = () => {
   const b = branch();
-  if (!b || !hasGit() || tracked() || isMainline(b)) return null;
+  if (!b || !hasGit() || gitVersioned() || isMainline(b)) return null;
   const dir = path.join(BRANCHES, safe(b));
   return overlayClash(dir, b) ? null : dir;
 };
@@ -620,7 +653,7 @@ function writeBaseMeta(dir, b, ref = 'HEAD') {
 function refreshBaseMeta() {
   const dir = overlayDir();
   if (dir && fs.existsSync(dir)) writeBaseMeta(dir, branch());
-  if (!hasGit() || tracked()) return;
+  if (!hasGit() || gitVersioned()) return;
   const current = safe(branch() || '');
   for (const name of overlayNames()) {
     if (name === current) continue;
@@ -657,7 +690,7 @@ function set(ref, newText) {
   const own = globList((COVERS.exec(kept.join('\n')) || [])[1] || '');
   const stampLine = gitRepo ? captureStamp(own.length ? own : (hit ? hit.covers : [])) : '';
   const text = [lines[0], lines[1], ...kept, ...(stampLine ? [stampLine] : []), ...lines.slice(j)].join('\n');
-  if (!gitRepo || tracked() || isMainline(b)) return writeInPlace(file, sec, text);
+  if (!gitRepo || gitVersioned() || isMainline(b)) return writeInPlace(file, sec, text);
   return writeOverride(file, sec, text, b);
 }
 
@@ -671,7 +704,7 @@ function writeInPlace(file, sec, text) {
   const next = own ? spliceSection(raw.split('\n'), own, text).join('\n') : `${norm(raw)}\n\n${norm(text)}\n`;
   fs.writeFileSync(file, next);
   const resolved = [];
-  if (hasGit() && !tracked() && isMainline(branch())) {
+  if (hasGit() && !gitVersioned() && isMainline(branch())) {
     const parts = overlayParts(file, sec);
     for (const name of overlayNames()) {
       const bdir = path.join(BRANCHES, name);
@@ -792,7 +825,7 @@ const onMainlineFirstParent = (sha, base) => {
 // file it changed now holds, at HEAD, the content the branch gave it (a squash or a rebase leaves no ancestor), or
 // when a merge commit here names its tip.
 function mergedBranches() {
-  if (!hasGit() || tracked() || isShallow()) return [];
+  if (!hasGit() || gitVersioned() || isShallow()) return [];
   const here = branch() || '';
   const current = safe(here);
   const out = [];
@@ -930,7 +963,7 @@ function promoteLocked(name, dir) {
 
 function autoPromote() {
   const b = branch();
-  if (!b || !isMainline(b) || tracked()) return [];
+  if (!b || !isMainline(b) || gitVersioned()) return [];
   // By the branch the overlay records, never by its directory name: the two differ whenever the name was folded
   // (any slash), and only the recorded one passes promote's own owner check.
   return mergedBranches().map((m) => ({ branch: m.branch, how: m.how, ...promote(m.branch) }));
@@ -945,7 +978,7 @@ function autoPromote() {
 //     silence. A branch still sitting ON its own fork point is not either of those: it has committed nothing, so
 //     nothing of it can have landed, and inviting a promote there would publish an unfinished decision.
 function unpromotable() {
-  if (!hasGit() || tracked()) return { deleted: [], onMainline: [] };
+  if (!hasGit() || gitVersioned()) return { deleted: [], onMainline: [] };
   const live = liveBranches();
   const current = safe(branch() || '');
   const merged = new Set(mergedBranches().map((m) => m.name));
@@ -1004,17 +1037,29 @@ function status() {
   const gitRepo = hasGit();
   const view = overlayDir() ? docFiles().flatMap((f) => sections(f).filter((s) => s.overrideOf)) : [];
   const stuck = unpromotable();
-  // Overlays that nothing can reach any more: the docs root used to be ignored, someone committed it, tracked()
-  // flipped to git mode, and every branch version under .branches/ became unreadable and unpromotable at once.
-  const stranded = gitRepo && tracked() ? overlayNames() : [];
+  // Overlays that nothing can reach any more: the install moved to git versioning - the setting was answered, or a
+  // previously ignored docs root was committed - and every branch version under .branches/ became unreadable and
+  // unpromotable at once.
+  const stranded = gitRepo && gitVersioned() ? overlayNames() : [];
   // Which branch the directory this one would use actually belongs to, when it is not this branch (safe() folds
   // 'feature/login' and 'feature-login' together). Non-null means this session reads mainline and writes nothing.
-  const clash = b && gitRepo && !tracked() && !isMainline(b) && overlayClash(path.join(BRANCHES, safe(b)), b)
+  const clash = b && gitRepo && !gitVersioned() && !isMainline(b) && overlayClash(path.join(BRANCHES, safe(b)), b)
     ? overlayOwner(path.join(BRANCHES, safe(b))) : null;
+  const declared = declaredVersioning();
+  // The mode NAMES its source: 'declared' is a decision someone made at install time, the bare form is this engine
+  // reading git because nobody has been asked yet. The two leading words are the contract other readers key on.
+  const gitLine = declared ? 'git (declared by CLAUDE_STACK_DOCS_VERSIONING - git versions the docs per branch; no branch overlay)'
+    : 'git (docs are committed - git versions them per branch)';
+  const overlayLine = declared ? 'overlay (declared by CLAUDE_STACK_DOCS_VERSIONING - branch versions live in .branches/)'
+    : 'overlay (docs are ignored by git - branch versions live in .branches/)';
   return {
     // The third pillar - the end-of-session watch check - compares the tree against a git snapshot, so without a
     // repo it can never fire, and only this line can say so.
-    mode: !gitRepo ? 'no git (docs written in place; the end-of-session check cannot see what changed)' : tracked() ? 'git (docs are committed - git versions them per branch)' : 'overlay (docs are ignored by git - branch versions live in .branches/)',
+    mode: !gitRepo ? 'no git (docs written in place; the end-of-session check cannot see what changed)' : gitVersioned() ? gitLine : overlayLine,
+    versioning: gitRepo ? docsMode() : 'none',
+    declared,
+    docsTracked: gitRepo && tracked(),
+    mismatch: versioningMismatch(),
     branch: b || (gitRepo && git(['rev-parse', 'HEAD']) ? 'detached HEAD' : 'no branch'),
     detached: Boolean(gitRepo && !b && git(['rev-parse', 'HEAD'])),
     mainline: isMainline(b),
@@ -1176,7 +1221,7 @@ function changedSince(snap) {
 
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES,
-  git, tracked, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
+  git, tracked, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
@@ -1218,6 +1263,9 @@ const commands = {
   },
   promote: () => {
     if (args[0] === '--merged') {
+      // Not 'nothing merged', which would claim a look that never happened: in git mode the branch's doc changes
+      // arrive with its code, and .branches/ is not read at all.
+      if (hasGit() && gitVersioned()) { console.log('git versioning: git carries the docs with the branch, so there is nothing to promote'); return; }
       if (isShallow()) { console.log('shallow clone: merged branches cannot be detected - nothing promoted'); return; }
       const rows = autoPromote();
       if (!rows.length) { console.log('nothing merged'); return; }
@@ -1240,6 +1288,7 @@ const commands = {
     const s = status();
     console.log([
       `mode: ${s.mode}`,
+      ...(s.mismatch ? [s.mismatch] : []),
       `branch: ${s.branch}${s.mainline ? ' (mainline)' : ''}`,
       `overrides: ${s.overrides.length ? s.overrides.join(', ') : 'none'}`,
       ...(s.conflicts.length ? [`conflicts: ${s.conflicts.join(', ')}`] : []),
@@ -1248,7 +1297,7 @@ const commands = {
       ...(s.deletedUnmerged.length ? [`deleted branches never detected as merged: ${s.deletedUnmerged.join(', ')}`] : []),
       ...(s.liveOnMainline && s.liveOnMainline.length ? [`branches sitting on mainline with no proof they merged: ${s.liveOnMainline.join(', ')} - if one landed, 'promote <branch>' folds it in; one that only caught up needs nothing`] : []),
       ...(s.shallow ? ['shallow clone: merged branches cannot be detected'] : []),
-      ...(s.stranded.length ? [`stranded branch versions: ${s.stranded.join(', ')} - the docs are committed now, so git versions them per branch and nothing reads or promotes .branches/ any more; re-apply what is still wanted with 'set', then 'prune <branch>'`] : []),
+      ...(s.stranded.length ? [`stranded branch versions: ${s.stranded.join(', ')} - this install versions the docs with git, so nothing reads or promotes .branches/ any more; re-apply what is still wanted with 'set', then 'prune <branch>'`] : []),
       ...(s.clash ? [`.branches/${safe(s.branch)} belongs to ${s.clash}, whose name folds onto the same directory - this branch reads mainline and cannot write a branch version; rename one branch, or promote/prune ${s.clash} first`] : []),
       ...(s.legacyDelta ? ['BRANCH-DELTA.md from an older capture: nothing reads it any more - a capture on that branch folds its decisions into sections; it is never deleted for you'] : []),
     ].join('\n'));

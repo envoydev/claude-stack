@@ -133,8 +133,11 @@ language server, re-index for serena (SERENA_HOME=.serena/home, `serena project 
 whether the Serena memories still describe this branch accurately.
 ```
 
-The architecture docs handle a branch switch themselves: the docs hook serves the branch's own
-section versions and folds a merged branch back into mainline at the next session start.
+The architecture docs handle a branch switch themselves: under `local` versioning the docs hook
+serves the branch's own section versions and folds a merged branch back into mainline at the next
+session start; under `git` versioning the branch's commits carry its docs and git does the merge.
+Which one this install uses is `CLAUDE_STACK_DOCS_VERSIONING` in the settings.json `env` block, and
+`node .claude/hooks/docs.js status` names it.
 
 ## Done looks like
 

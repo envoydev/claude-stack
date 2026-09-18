@@ -122,6 +122,75 @@ test('in place: on mainline, with committed docs, and without git', () => {
   } finally { a.rm(); b.rm(); }
 });
 
+// How the docs are versioned is an install-time DECISION carried in settings.json env, not a guess the engine makes
+// from git. The declaration WINS in both directions - a doc write must never be silently untracked or silently
+// local - and the engine says so where the setting and the repo disagree.
+test('declared git versioning writes in place although git ignores the docs', () => {
+  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/declared-git');
+    const out = r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are capped at 10.'), GIT);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /into .*patterns\.md/);
+    assert.ok(!r.exists('.claude/docs/.branches'), 'git versioning never writes an overlay');
+    assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
+    const st = r.cli(['status'], undefined, GIT).stdout;
+    assert.match(st, /^mode: git \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
+    assert.match(st, /^Versioning mismatch: settings\.json declares 'git' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/m);
+  } finally { r.rm(); }
+});
+
+test('declared local versioning keeps the branch overlay although the docs are committed', () => {
+  const LOCAL = { CLAUDE_STACK_DOCS_VERSIONING: 'local' };
+  const r = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/declared-local');
+    const out = r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Refunds are capped at 10.'), LOCAL);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.ok(r.exists('.claude/docs/.branches/feat-declared-local/references/patterns/orders.md'), 'the branch version lands in the overlay');
+    assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/, 'the committed text is untouched');
+    assert.match(r.cli(['show', 'patterns#orders'], undefined, LOCAL).stdout, /capped at 10/, 'and the branch reads its own version');
+    const st = r.cli(['status'], undefined, LOCAL).stdout;
+    assert.match(st, /^mode: overlay \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
+    assert.match(st, /^Versioning mismatch: settings\.json declares 'local' \(CLAUDE_STACK_DOCS_VERSIONING\), but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+  } finally { r.rm(); }
+});
+
+// Every install made before the key existed carries no value, and nothing may change under it until someone is asked.
+test('absent, empty or unknown versioning falls back to what git tracks, and nothing is called a mismatch', () => {
+  const ignored = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    for (const v of ['', 'auto', 'yes', 'true']) {
+      const extra = { CLAUDE_STACK_DOCS_VERSIONING: v };
+      const a = ignored.cli(['status'], undefined, extra).stdout;
+      const b = committed.cli(['status'], undefined, extra).stdout;
+      assert.match(a, /^mode: overlay \(docs are ignored by git - branch versions live in \.branches\/\)/m, `ignored docs at '${v}'`);
+      assert.match(b, /^mode: git \(docs are committed - git versions them per branch\)/m, `committed docs at '${v}'`);
+      for (const out of [a, b]) assert.doesNotMatch(out, /Versioning mismatch/, `nothing declared, nothing to mismatch at '${v}'`);
+    }
+    assert.match(ignored.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: ' GIT ' }).stdout, /^mode: git \(declared/m, 'the value is trimmed and read case-insensitively');
+  } finally { ignored.rm(); committed.rm(); }
+});
+
+// In git mode the automatic halves have nothing to do - git carries the docs with the branch - and an overlay
+// written before the setting changed is stranded, exactly as it is when a previously ignored docs root is committed.
+test('git versioning stands promote down and strands an overlay written before the flip', () => {
+  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.git('switch', '-qc', 'feat/left');
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], setText('orders', 'orders', 'Branch rule.')).status, 0);
+    assert.match(r.cli(['show', 'patterns#orders'], undefined, GIT).stdout, /ledgered before the payment call/, 'git mode reads mainline, not the overlay');
+    r.git('switch', '-q', 'develop');
+    assert.match(r.cli(['promote', '--merged'], undefined, GIT).stdout, /^git versioning: git carries the docs with the branch, so there is nothing to promote$/m);
+    assert.ok(r.exists('.claude/docs/.branches/feat-left'), 'and nothing is folded in or deleted behind the setting');
+    assert.match(r.cli(['status'], undefined, GIT).stdout, /stranded branch versions: feat-left/);
+    assert.strictEqual(r.cli(['prune', 'feat/left'], undefined, GIT).stdout.trim(), 'pruned: feat-left', 'the by-hand prune still clears one');
+  } finally { r.rm(); }
+});
+
 test('a section new on a branch is written with an empty base and read as added', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {

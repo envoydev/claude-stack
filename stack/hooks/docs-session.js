@@ -79,6 +79,9 @@ function sessionStart(input, root, docs, state) {
     extra.push(`Branch ${p.branch} was merged: ${ok.length} doc section(s) folded into mainline${names}.${bad.length ? ` To reconcile: ${bad.map((x) => `${x.id} (\`${READ} show ${x.id} --conflict ${p.branch}\`, then \`${READ} set ${x.id}\`)`).join(', ')}.` : ''}`);
   }
   if (st && st.detached) extra.push('Detached HEAD: the docs are read-only until a branch is checked out.');
+  // The declared mode wins over what git does, so where the two disagree the session is told before it writes a doc:
+  // one line, the engine's own wording, and nothing at all when the install declares nothing or the two agree.
+  if (st && st.mismatch) extra.push(st.mismatch);
   // After a git merge of committed docs, or a hand edit: the two breakages that make a doc untrustworthy to read.
   let broken = [];
   try { broken = docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}

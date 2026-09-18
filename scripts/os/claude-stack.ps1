@@ -2263,6 +2263,22 @@ function Set-HookSettings {
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_DOCS_PATH seeded (.claude/docs)'
   }
+  # how those docs are VERSIONED - a DECISION, not a guess: 'git' = they are committed and git versions
+  # them per branch (writes land in the doc file, nothing is ever written under <docs-path>/.branches/),
+  # 'local' = the machine-local overlay, where a feature branch's sections live under
+  # <docs-path>/.branches/<branch>/ until it merges. Seeded from what this repo does TODAY, so an install
+  # made before this key existed keeps exactly the behaviour it had and no update switches it silently.
+  # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
+  # or silently local - and `docs.js status` plus the session-start block say so.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']) {
+    $docsDir = Join-Path $root ((($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/')) + '/architecture')
+    # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
+    try { & git -C $root ls-files --error-unmatch -- $docsDir *> $null; $committed = ($LASTEXITCODE -eq 0) } catch { $committed = $false }
+    $versioning = if ($committed) { 'git' } else { 'local' }
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_VERSIONING -NotePropertyValue $versioning
+    $changed = $true
+    Log "  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded ($versioning)"
+  }
   # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_INSTRUMENT']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
@@ -2853,6 +2869,9 @@ Write-Host "The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude\setting
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
 Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
+Write-Host "Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how the architecture docs are"
+Write-Host "versioned - 'git' when they are committed (git versions them per branch), 'local' for the"
+Write-Host 'machine-local overlay under <docs-path>/.branches/. The install seeded what this repo does today.'
 Write-Host ''
 Write-Host 'The same env block carries the fresh-session gate''s three knobs (seeded, absent-only, so a'
 Write-Host 'hand-edited value survives every update):'

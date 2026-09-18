@@ -202,6 +202,7 @@ test('ps1: update adopts a hook the release ADDED, and never resurrects one the 
 // audited runs stated it anyway and one of them named keys it had never probed.
 const SEEDS = [
     ['CLAUDE_STACK_DOCS_PATH', '.claude/docs'],
+    ['CLAUDE_STACK_DOCS_VERSIONING', 'local'],
     ['CLAUDE_STACK_INSTRUMENT', '0'],
     ['CLAUDE_STACK_PUSH_GATE', '1'],
     ['CLAUDE_STACK_ROTATE_ASK', '1'],
@@ -236,6 +237,43 @@ test('ps1: every env key the install seeds is REPORTED, and a second run reports
     const again = runPs(sb, 'update');
     for (const [key] of SEEDS) assert.ok(!again.includes(`env: ${key} seeded`), `ps1: ${key} is not re-reported when it is already set`);
 });
+
+// The one seed that is not a constant: how the docs are versioned is a DECISION the install writes down, and it is
+// seeded from what the repo does TODAY - so an install made before the key existed keeps the behaviour it had
+// instead of being switched onto the overlay (or off it) by an update nobody was asked about. A value already in
+// the file is never touched, whatever the repo says.
+const gitIn = (repo, ...args) => execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=t', ...args], { cwd: repo, encoding: 'utf8' });
+
+function assertVersioningSeed(sb, run, twin)
+{
+    try
+    {
+        // a repo that COMMITS its docs is seeded 'git', not the plain default
+        fs.mkdirSync(path.join(sb.repo, '.claude', 'docs', 'architecture'), { recursive: true });
+        fs.writeFileSync(path.join(sb.repo, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');
+        gitIn(sb.repo, 'add', '-f', '.claude/docs');
+        gitIn(sb.repo, 'commit', '-qm', 'docs');
+        const out = run(sb, 'install');
+        assert.ok(out.includes('settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: committed docs are seeded git`);
+        assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'git', `${twin}: and the value landed`);
+        // an update over an install that predates the key seeds it by the same detection, never by a constant
+        const file = path.join(sb.repo, '.claude', 'settings.json');
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        delete data.env.CLAUDE_STACK_DOCS_VERSIONING;
+        fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+        assert.ok(run(sb, 'update').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: the update re-seeds what the repo does, not the catalog default`);
+        // and a value the user chose is left alone, whatever the repo does
+        const mine = JSON.parse(fs.readFileSync(file, 'utf8'));
+        mine.env.CLAUDE_STACK_DOCS_VERSIONING = 'local';
+        fs.writeFileSync(file, `${JSON.stringify(mine, null, 2)}\n`);
+        assert.ok(!run(sb, 'update').includes('CLAUDE_STACK_DOCS_VERSIONING seeded'), `${twin}: an existing value is never re-seeded`);
+        assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'local', `${twin}: and never clobbered`);
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+}
+
+test('sh: the docs-versioning seed records what the repo does today, and never clobbers a chosen value', () => assertVersioningSeed(sandbox(), runSh, 'sh'));
+test('ps1: the docs-versioning seed records what the repo does today, and never clobbers a chosen value (pwsh required)', { skip: skipNoPwsh }, () => assertVersioningSeed(sandbox(), runPs, 'ps1'));
 
 test('sh: the slug, the sentry token and the context7 key the run is handed land in the ACCOUNT settings.json at project scope', () => {
     const sb = sandbox();
