@@ -200,6 +200,32 @@ test('a fold of two sections leaves the ranking its slot, block or no block', ()
   } finally { r.rm(); }
 });
 
+// Which fold is INLINED is the expensive choice, so it is not the order the doc files happen to be scanned in that
+// decides it: among freshly folded sections the narrowest cover answers first, exactly as it does everywhere else.
+test('two folded sections are handed over narrowest first, not in scan order', () => {
+  const r = repo({
+    files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Users/User.cs': 'class User {}\n' },
+    docs: {
+      'ARCHITECTURE.md': section('everything', 'src/**', 'Every route returns the envelope.'),
+      'references/patterns.md': section('a', 'src/Api/Orders/**', 'A refund is ledgered first.'),
+    },
+  });
+  try {
+    r.git('switch', '-qc', 'feat/two');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n'); r.git('commit', '-qam', 'two');
+    r.cli(['set', 'ARCHITECTURE#everything'], '## everything\n<!-- id: everything -->\n<!-- covers: src/** -->\nEvery route returns the envelope, admin included.\n');
+    r.cli(['set', 'patterns#a'], '## a\n<!-- id: a -->\n<!-- covers: src/Api/Orders/** -->\nA refund is ledgered at most once.\n');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/two');
+    const s = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s });
+    const held = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
+    assert.match(held.stdout, /patterns#a covers src\/Api\/Orders\/Refund\.cs - here it is/, 'the narrower fold is inlined');
+    assert.match(held.stdout, /ledgered at most once/);
+    assert.match(held.stdout, /Also covering it: ARCHITECTURE#everything/, 'the wider fold is still named');
+  } finally { r.rm(); }
+});
+
 test('where, toc and status do not unlock; a Read of a doc file does', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {

@@ -117,6 +117,10 @@ const globWidth = (g) => {
 const coverWidth = (covers, paths) => Math.max(1, Math.min(...covers.filter((g) => paths.some((p) => matches([g], p))).map(globWidth)));
 // A glob spanning more than this is about an area, not about the file in hand.
 const narrowCap = () => Math.max(40, Math.round(repoFiles().length * 0.03));
+// ONE order for every list where() builds: the narrowest declared cover, then the section that declares its own
+// covers, then the shorter text. A second list ordered any other way (by the order the doc files happen to be
+// scanned in, say) would decide the expensive inline slot by accident.
+const narrowestFirst = (a, b) => a.width - b.width || Number(b.declared) - Number(a.declared) || a.chars - b.chars;
 
 // The narrowest declared cover answers first: a section written about src/Features/Notifications/** says more about a
 // notifications handler than a smaller one written about src/Features/**. Word matches come next, weighted by how rare
@@ -132,10 +136,9 @@ function where(paths, limit = 3, first = []) {
   // Anything but a list of ids is no list of ids: a hand-edited or half-written caller state must cost the reader
   // the boost, never the answer.
   const news = Array.isArray(first) ? first : [];
-  const fresh = (news.length ? current.filter((s) => news.includes(s.id) && covering(s)) : []).slice(0, Math.max(limit - 1, 0));
-  const declared = current.filter((s) => covering(s) && !fresh.some((f) => f.id === s.id))
-    .map((s) => ({ ...s, width: coverWidth(s.covers, paths) }))
-    .sort((a, b) => a.width - b.width || Number(b.declared) - Number(a.declared) || a.chars - b.chars);
+  const ranked = (list) => list.map((s) => ({ ...s, width: coverWidth(s.covers, paths) })).sort(narrowestFirst);
+  const fresh = ranked(news.length ? current.filter((s) => news.includes(s.id) && covering(s)) : []).slice(0, Math.max(limit - 1, 0));
+  const declared = ranked(current.filter((s) => covering(s) && !fresh.some((f) => f.id === s.id)));
   const narrow = declared.filter((s) => s.width <= cap);
   const broad = declared.filter((s) => s.width > cap);
   const room = limit - fresh.length;
