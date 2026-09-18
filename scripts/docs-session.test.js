@@ -127,9 +127,38 @@ test('the start block names doc versions stranded by git versioning', () => {
     r.git('switch', '-qc', 'feat/left');
     assert.strictEqual(r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nBranch rule.\n').status, 0);
     const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' }));
-    assert.match(text, /Doc versions stranded by this install's git versioning: feat-left - nothing reads or promotes \.branches\/ any more; re-apply what is still wanted with `node \.claude\/hooks\/docs\.js set <file>#<id>`, then `node \.claude\/hooks\/docs\.js prune <branch>`\./);
+    // The 30-day sweep stands down under git versioning, so this line returns every session until the overlay is
+    // gone: it names the command that ends it, with the branch filled in, or it is a nag nobody can act on.
+    assert.match(text, /Doc versions stranded by this install's git versioning: feat-left - nothing reads or promotes \.branches\/ any more, and this line returns every session until they are gone: re-apply what is still wanted with `node \.claude\/hooks\/docs\.js set <file>#<id>`, then end it with `node \.claude\/hooks\/docs\.js prune feat-left`\./);
     assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /stranded/, 'nothing is stranded while the overlay is the mode');
+    r.git('switch', '-qc', 'feat/right');
+    assert.strictEqual(r.cli(['set', 'patterns#users'], '## users\n<!-- id: users -->\nSecond branch rule.\n').status, 0);
+    const two = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' }));
+    assert.match(two, /stranded by this install's git versioning: feat-left, feat-right - /);
+    assert.match(two, /prune feat-left` \(one prune per name\)\./, 'with more than one name the command is an example, and says so');
   } finally { r.rm(); }
+});
+
+// A hook file and its engine are copied side by side, but an install that fails part way (or a hand-copied hook)
+// leaves a NEWER docs-session.js beside an OLDER docs.js. Every field this block reads must be guarded: an
+// unguarded read throws before anything is written, and the session gets no orientation at all.
+test('a status object from an older engine still produces the start block', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  const dir = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'docs-skew-'));
+  try {
+    const { HOOKS } = require('./docs-fixture');
+    const path = require('node:path');
+    const engine = fs.readFileSync(path.join(HOOKS, 'docs.js'), 'utf8');
+    assert.match(engine, /\n {4}stranded,\n/, 'the field this skew drops');
+    fs.writeFileSync(path.join(dir, 'docs.js'), engine.replace(/\n {4}stranded,\n/, '\n'));
+    fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(dir, 'docs-session.js'));
+    const out = require('node:child_process').spawnSync(process.execPath, [path.join(dir, 'docs-session.js')], {
+      cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', CLAUDE_STACK_DOCS_VERSIONING: 'git' },
+    });
+    assert.strictEqual(out.stderr, '', 'the older engine is not an error');
+    assert.match(ctx(out), /Orders own refunds/, 'the session is still oriented');
+  } finally { r.rm(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('subagent start gets the orientation without branch lines or promotion', () => {

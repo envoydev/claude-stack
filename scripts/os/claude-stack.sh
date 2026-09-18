@@ -2068,7 +2068,10 @@ if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     _droot = os.path.dirname(os.path.dirname(path)).replace("\\", "/").rstrip("/")
     _dparts = [p for p in env["CLAUDE_STACK_DOCS_PATH"].replace("\\", "/").split("/") if p]
     _ddir = "/".join([_droot] + _dparts + ["architecture"])
-    _committed = subprocess.call(["git", "ls-files", "--error-unmatch", "--", _ddir], cwd=_droot,
+    # `or "/"`: at the filesystem root _droot is the empty string, and an empty cwd raises FileNotFoundError -
+    # which would abandon the whole settings write over a probe whose answer is optional. The pathspec is right
+    # either way ("" + "/docs/architecture").
+    _committed = subprocess.call(["git", "ls-files", "--error-unmatch", "--", _ddir], cwd=_droot or "/",
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
     env["CLAUDE_STACK_DOCS_VERSIONING"] = "git" if _committed else "local"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])

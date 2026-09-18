@@ -8,7 +8,9 @@
 //
 // Usage: node stamp-docs-root.js [project-root]        (default: cwd - rules/ + settings.json under <root>/.claude)
 //        node stamp-docs-root.js --claude-dir <dir>    (a global install: the account dir itself, e.g. ~/.claude-work)
-//        node stamp-docs-root.js [project-root] --reprobe-versioning
+//        node stamp-docs-root.js [project-root] --reprobe-versioning <value-this-run-seeded>
+//                                                   (re-probe the docs-versioning mode at the path the file now
+//                                                    holds; refused unless the file still holds that value)
 // Exit 0 always - a missing rule file or unreadable settings is a fail-soft no-op with a message.
 
 const fs = require('node:fs');
@@ -63,10 +65,18 @@ function stamp(root)
 // held when the INSTALL ran. On the setup route the user's chosen docs root is applied AFTER that, so a key seeded
 // against the old path can describe the wrong folder. The walk that MOVES the path re-probes here, in the same
 // step that re-stamps the rule, and only when its own run seeded the key: a value an earlier install wrote is a
-// decision, and re-probing it would silently switch an existing install. Forward slashes on every OS, like the
-// installers' own probe - a mixed-separator pathspec can fail to match under Git for Windows.
-function reprobeVersioning(root)
+// decision, and re-probing it would silently switch an existing install. That condition is CHECKED, not trusted:
+// the caller passes the value its own install seeded and the re-probe refuses when the file holds anything else -
+// a user's answer on the environment screen, or an older install's value, reads as a mismatch and is left alone.
+// Forward slashes on every OS, like the installers' own probe - a mixed-separator pathspec can fail to match under
+// Git for Windows.
+function reprobeVersioning(root, seeded)
 {
+    if (seeded !== 'git' && seeded !== 'local')
+    {
+        console.log("stamp-docs-root: --reprobe-versioning needs the value the install seeded ('git' or 'local') - nothing re-probed");
+        return;
+    }
     const settingsFile = path.join(root, '.claude', 'settings.json');
     let data;
     try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
@@ -74,6 +84,11 @@ function reprobeVersioning(root)
     if (!data || typeof data !== 'object' || !data.env || !data.env.CLAUDE_STACK_DOCS_VERSIONING)
     {
         console.log('stamp-docs-root: no CLAUDE_STACK_DOCS_VERSIONING in the env block - nothing to re-probe');
+        return;
+    }
+    if (data.env.CLAUDE_STACK_DOCS_VERSIONING !== seeded)
+    {
+        console.log(`stamp-docs-root: the env block holds '${data.env.CLAUDE_STACK_DOCS_VERSIONING}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
         return;
     }
     const docs = `${String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}/architecture`;
@@ -98,14 +113,17 @@ if (require.main === module)
 {
     const argv = process.argv.slice(2);
     const i = argv.indexOf('--claude-dir');
-    const root = path.resolve(argv.find(a => !a.startsWith('--')) || '.');
+    const reprobeAt = argv.indexOf('--reprobe-versioning');
+    // The word after a flag is that flag's VALUE, never the positional project root - both flags take one.
+    const values = new Set([i + 1, reprobeAt + 1].filter(k => k > 0));
+    const root = path.resolve(argv.find((a, k) => !a.startsWith('--') && !values.has(k)) || '.');
     if (i >= 0 && argv[i + 1]) stampDir(path.resolve(argv[i + 1]));
     else stamp(root);
-    if (argv.includes('--reprobe-versioning'))
+    if (reprobeAt >= 0)
     {
         // A global install has no project repo to probe, and its docs root is not a path in one.
         if (i >= 0 && argv[i + 1]) console.log('stamp-docs-root: --reprobe-versioning needs a project root - skipped for a global install');
-        else reprobeVersioning(root);
+        else reprobeVersioning(root, argv[reprobeAt + 1]);
     }
 }
 

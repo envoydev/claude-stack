@@ -55,7 +55,9 @@ test('missing rule file is a fail-soft no-op with exit 0', () => {
 // the setup route the user's chosen docs root is applied afterwards. The walk that moves the path re-probes at the
 // new one - and only when its own run seeded the key, so a decision an earlier install wrote is never re-probed.
 const gitIn = (root, ...args) => execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' });
-const reprobe = root => execFileSync('node', [SCRIPT, root, '--reprobe-versioning'], { encoding: 'utf8' });
+// The flag carries the value the install SEEDED, and the script refuses when the file holds anything else: the
+// condition that an existing install is never switched silently is then machine-checked, not advisory prose.
+const reprobe = (root, seeded = 'local') => execFileSync('node', [SCRIPT, root, '--reprobe-versioning', seeded], { encoding: 'utf8' });
 const envOf = root => JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8')).env;
 
 function projectWithCommittedDocs(docsPath, versioning)
@@ -75,7 +77,23 @@ test('--reprobe-versioning re-reads the mode at the docs path that ended up in t
     {
         assert.match(reprobe(root), /docs versioning re-probed at docs\/architecture: 'git'/);
         assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'git');
-        assert.match(reprobe(root), /docs versioning already 'git' at docs\/architecture/, 'a second run says so and rewrites nothing');
+        assert.match(reprobe(root, 'git'), /docs versioning already 'git' at docs\/architecture/, 'a second run says so and rewrites nothing');
+        assert.match(reprobe(root), /holds 'git', not the 'local'/, 'and the same command twice stops at the guard');
+        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'git');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--reprobe-versioning refuses when the file holds a value this run did not seed', () => {
+    const root = projectWithCommittedDocs('docs', 'local');   // a decision already in the file
+    try
+    {
+        const out = reprobe(root, 'git');                     // ... and an install that seeded something else
+        assert.match(out, /holds 'local', not the 'git'/);
+        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'local', 'a decision is never re-probed away');
+        assert.match(execFileSync('node', [SCRIPT, root, '--reprobe-versioning'], { encoding: 'utf8' }),
+            /needs the value the install seeded/, 'and the flag without its value probes nothing');
+        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'local');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -88,7 +106,7 @@ test('--reprobe-versioning is a no-op where there is no key, no repo or no proje
     {
         assert.match(reprobe(noKey), /no CLAUDE_STACK_DOCS_VERSIONING/);
         assert.strictEqual(envOf(noKey).CLAUDE_STACK_DOCS_VERSIONING, undefined, 'a key nobody set is never introduced here');
-        assert.match(reprobe(noRepo), /not a git repository/);
+        assert.match(reprobe(noRepo, 'git'), /not a git repository/);
         assert.strictEqual(envOf(noRepo).CLAUDE_STACK_DOCS_VERSIONING, 'git', 'and the value is left alone');
         fs.mkdirSync(path.join(acct, 'rules'), { recursive: true });
         fs.copyFileSync(SOURCE_RULE, path.join(acct, 'rules', 'baseline-docs-root.md'));

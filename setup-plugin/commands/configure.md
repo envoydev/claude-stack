@@ -331,9 +331,10 @@ moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (global install: `--claude-dir <account dir>`): it rewrites the 'This install's root:'
 line in `.claude/rules/baseline-docs-root.md` from the settings.json value just written, so the
 always-on awareness matches the env (every install/update run re-stamps it too). Add
-`--reprobe-versioning` to that same command only when this run's own install SEEDED the docs-versioning key (its
-seed line said so) and the user left it at that value - the seed was probed at the old docs path; a key an
-earlier install wrote, or one the user just changed, is a decision and is never re-probed. Nothing else
+`--reprobe-versioning <value>` to that same command when this run's own install SEEDED the docs-versioning key,
+passing the value its seed line named (`git` or `local`) - the seed was probed at the old docs path. The script
+REFUSES when the file no longer holds that value, so a key an earlier install wrote, or one the user just
+changed, is never re-probed: pass the seeded value and let the check answer. Nothing else
 needs editing. Apply on consent with a
 merge touching ONLY the chosen keys - everything else in settings.json is preserved. Area
 skipped, or nothing changed: one narration line, nothing written.

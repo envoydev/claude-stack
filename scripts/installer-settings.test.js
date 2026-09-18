@@ -287,6 +287,19 @@ test('sh: the docs-versioning probe composes its pathspec with forward slashes, 
     assert.strictEqual(out, 'C:/repo/docs/generated/architecture', 'sh: the composed pathspec');
 });
 
+// A project AT the filesystem root leaves _droot an empty string, and an empty cwd= is not a directory: python
+// raises FileNotFoundError, which nothing here catches, so the whole settings.json write is abandoned over a
+// probe whose answer is optional. The composition is fine ('' + '/docs/architecture' is the right absolute path);
+// only the working directory has to survive it.
+test('sh: the docs-versioning probe survives a project root at the filesystem root', () => {
+    const src = fs.readFileSync(SH, 'utf8').split('\n');
+    const at = src.findIndex(l => l.includes('_committed = subprocess.call('));
+    assert.ok(at > 0, 'the sh probe still shells out to git ls-files');
+    const call = `${src[at].trim()}\n${src[at + 1].trim()}`;   // one call, wrapped inside its parens
+    const out = execFileSync('python3', ['-c', `import subprocess\n_droot = ""\n_ddir = "/docs/architecture"\n${call}\nprint("probed %s" % _committed)`], { encoding: 'utf8' }).trim();
+    assert.strictEqual(out, 'probed False', 'sh: no repo there, and no exception either');
+});
+
 test('ps1: the docs-versioning probe composes its pathspec with forward slashes, whatever the platform (pwsh required)', { skip: skipNoPwsh }, () => {
     const line = probeLine(PS1, '$docsDir =');
     assert.ok(line, 'the ps1 probe still composes $docsDir');
