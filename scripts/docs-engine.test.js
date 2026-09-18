@@ -982,6 +982,87 @@ test('an ambiguous bare ref throws naming every candidate', () => {
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// Round 2 (review findings 1, 2, 3, 6): a domain's own references/ subfolder must never be mistaken for
+// a domain name, a stated domain must keep its subfolder rather than swallow it, a typo must not silently
+// compose a path, and the promise has to hold for refs this repo actually ships - not just hand-picked
+// shapes.
+
+test('a bare ref carrying a subfolder resolves by which domain holds it, not by treating the subfolder as a domain', () => {
+  const r = twoDomainFixture();
+  try {
+    r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+    const docs = requireEngine(r.root);
+    assert.deepEqual(docs.parseRef('references/patterns#orders'),
+      { domain: 'architecture', file: 'references/patterns.md', id: 'references/patterns#orders' });
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a domain-qualified ref keeps its subfolder instead of folding it into the domain name', () => {
+  const r = twoDomainFixture();
+  try {
+    r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+    const docs = requireEngine(r.root);
+    assert.deepEqual(docs.parseRef('architecture/references/patterns#orders'),
+      { domain: 'architecture', file: 'references/patterns.md', id: 'references/patterns#orders' });
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a mistyped or unknown leading segment throws instead of composing a path into a folder that is not a domain', () => {
+  const r = twoDomainFixture();
+  try {
+    const docs = requireEngine(r.root);
+    assert.throws(() => docs.parseRef('architcture/ARCHITECTURE#orders'),
+      /no domain or subfolder resolves architcture\/ARCHITECTURE#orders/);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('an empty ref or one ending in a slash is refused rather than composed into a file named .md', () => {
+  const r = twoDomainFixture();
+  try {
+    const docs = requireEngine(r.root);
+    assert.throws(() => docs.parseRef(''), /not a section ref/);
+    assert.throws(() => docs.parseRef('architecture/'), /not a section ref/);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+// The compatibility proof itself: a bare id straight out of a shipped watch.json's sections array
+// (project-architecture-analyzer/references/doc-shapes.md's own example uses this shape, e.g.
+// 'modules#module-map') and the 'references/<topic>#<id>' spelling docs-session.js documents as an
+// equivalent way to write the same ref (stack/hooks/docs-session.js:220) - both must resolve to the one
+// file that actually holds the section, architecture/references/patterns.md, not to a nonexistent
+// architecture/patterns.md.
+test('a real watch.json sections entry and the references/ spelling both resolve to the file that holds them', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'root', globs: ['src/**'], sections: ['patterns#orders'] }],
+    }));
+    const docs = requireEngine(r.root);
+    const bare = docs.parseRef('patterns#orders');
+    assert.strictEqual(bare.domain, 'architecture');
+    assert.strictEqual(bare.file, 'references/patterns.md');
+    assert.ok(fs.existsSync(path.join(r.root, '.claude', 'docs', 'architecture', bare.file)), bare.file);
+
+    const withFolder = docs.parseRef('references/patterns#orders');
+    assert.strictEqual(withFolder.domain, 'architecture');
+    assert.strictEqual(withFolder.file, 'references/patterns.md');
+    assert.ok(fs.existsSync(path.join(r.root, '.claude', 'docs', 'architecture', withFolder.file)));
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a second domain becomes readable by show without a watch.json in every old fixture', () => {
+  const r = repo({
+    files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' },
+    docs: { 'references/patterns.md': PATTERNS },
+  });
+  try {
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    r.write('.claude/docs/code-style/CODE-STYLE.md', section('csharp', '*.cs', 'Style rule.'));
+    assert.match(r.cli(['show', 'patterns#orders']).stdout, /ledgered before the payment call/, 'architecture stays readable with no watch.json of its own');
+    assert.match(r.cli(['show', 'CODE-STYLE#csharp']).stdout, /Style rule\./, 'code-style is readable too, via the bare key match - domain-qualified show/set/toc is a later task');
+  } finally { r.rm(); }
+});
+
 test('changedSince reports both sides of a staged rename', () => {
   const r = repo({ files: { 'src/Api/Old.cs': 'class Old {}\n' } });
   try {

@@ -42,20 +42,26 @@ const WATCH_FILE = path.join(DOCS, 'watch.json');
 const BRANCHES = path.join(DOCS_ROOT, '.branches');
 // A domain is a top-level folder under the docs root holding a watch.json. Convention, not a registry:
 // adding one needs no engine change. A dotted folder is never a domain - .branches is state, not docs.
+// 'references' and 'history' are reserved and never a domain either: every domain owns a subfolder by
+// each name, so a domain sharing that name would make a bare ref's leading segment ambiguous between
+// the two.
 // Cached like the git-state probes below: parseRef calls this on every bare reference, and the docs root
-// does not gain a domain mid-process.
+// does not gain a domain mid-process. resetDomains() below is the escape hatch a fixture needs when it
+// adds a domain after the module was already required.
+const RESERVED_DOMAIN_NAMES = new Set(['references', 'history']);
 let DOMAINS_CACHE;
 const domains = () => {
   if (DOMAINS_CACHE) return DOMAINS_CACHE;
   try {
     return (DOMAINS_CACHE = fs.readdirSync(DOCS_ROOT, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !RESERVED_DOMAIN_NAMES.has(e.name))
       .map((e) => e.name)
       .filter((n) => fs.existsSync(path.join(DOCS_ROOT, n, 'watch.json')))
       .sort());
   } catch { return []; }
 };
 const domainDir = (name) => path.join(DOCS_ROOT, name);
+const resetDomains = () => { DOMAINS_CACHE = undefined; };
 const MAINLINE = ['develop', 'main', 'master', 'trunk'];
 const MAX_SECTION_CHARS = 6000;
 const SHOW_CHARS = 14000;
@@ -416,35 +422,64 @@ const overlayDir = () => {
   return overlayClash(dir, b) ? null : dir;
 };
 
-function docFiles() {
+// One domain's own files - root, references/, history/ - the shape every domain is read from.
+function domainFiles(d) {
   const out = [];
   const add = (dir) => {
     if (!fs.existsSync(dir)) return;
     for (const f of fs.readdirSync(dir)) if (f.endsWith('.md') && f !== 'ORIENTATION.md' && f !== 'BRANCH-DELTA.md') out.push(path.join(dir, f));
   };
-  add(DOCS);
-  add(path.join(DOCS, 'references'));
-  add(path.join(DOCS, 'history'));
+  const dir = domainDir(d);
+  add(dir);
+  add(path.join(dir, 'references'));
+  add(path.join(dir, 'history'));
+  return out;
+}
+// Every domain's own files, plus 'architecture' even without a watch.json of its own - it was the one
+// docs folder long before watch.json (or domains) existed, every doc written before domains existed
+// lives there, and a fixture that skips writing one (most of this suite) must still read it.
+function docFiles() {
+  const out = [];
+  for (const d of new Set(['architecture', ...domains()])) out.push(...domainFiles(d));
   return out.sort();
 }
-const relKey = (file) => path.relative(DOCS, file).replace(/\.md$/, '').split(path.sep).join('/');
+// The domain a file's relKey measures from - its own, so two domains can hold a same-named file without
+// either one's relKey wandering into the other's tree. Falls back to 'architecture' for a file docFiles()
+// picked up by the grandfather clause above (no watch.json of its own yet), matching relKey's old,
+// single-domain answer exactly.
+const fileDomainDir = (file) => domainDir(domains().find((d) => !path.relative(domainDir(d), file).startsWith('..')) || 'architecture');
+const relKey = (file) => path.relative(fileDomainDir(file), file).replace(/\.md$/, '').split(path.sep).join('/');
 const key = (file) => path.basename(file, '.md');
 const findFile = (fileKey) => {
   const files = docFiles();
   return files.find((f) => relKey(f) === fileKey) || files.find((f) => key(f) === fileKey || path.basename(f) === fileKey);
 };
-// A ref is <domain>/<file>#<id>. The BARE <file>#<id> keeps working while exactly one domain holds that
-// file - every doc, logged row and message written before domains existed uses it. Ambiguity is an error
-// naming both candidates: a silent pick would write a section into the wrong domain.
+// A ref is <domain>/<file>#<id>. A leading segment names a domain only when domains() actually has it -
+// so a domain's own references/ or history/ subfolder (and a typo of a real domain name) is never
+// mistaken for one. Everything else is the BARE <file>#<id> - subfolder path and all - which keeps
+// working while exactly one domain holds a file matching it, wherever that domain keeps it (root,
+// references/ or history/): every doc, logged row and message written before domains existed uses this
+// spelling. Ambiguity is an error naming every candidate; a slash that resolves to no domain at all is an
+// error too - a silent pick, or a silent null, would write a section into the wrong domain (or into one
+// that was never named).
 function parseRef(ref) {
-  const slash = String(ref).lastIndexOf('/');
-  const bare = slash < 0 ? String(ref) : String(ref).slice(slash + 1);
-  const stated = slash < 0 ? null : String(ref).slice(0, slash);
-  const file = `${bare.split('#')[0]}.md`;
-  if (stated) return { domain: stated, file, id: bare };
-  const hits = domains().filter((d) => fs.existsSync(path.join(domainDir(d), file)));
-  if (hits.length > 1) throw new Error(`${bare} is in ${hits.join(' and ')} - name one, as <domain>/${bare}`);
-  return { domain: hits[0] || null, file, id: bare };
+  const s = String(ref);
+  const slash = s.indexOf('/');
+  const first = slash < 0 ? null : s.slice(0, slash);
+  const isDomain = Boolean(first) && domains().includes(first);
+  const bare = isDomain ? s.slice(slash + 1) : s;
+  const fileKey = bare.split('#')[0];
+  if (!fileKey) throw new Error(`not a section ref: ${JSON.stringify(ref)} - want <file>#<id> or <domain>/<file>#<id>`);
+  const findIn = (d) => domainFiles(d).find((f) => relKey(f) === fileKey || key(f) === fileKey);
+  if (isDomain) {
+    const found = findIn(first);
+    return { domain: first, file: found ? `${relKey(found)}.md` : `${fileKey}.md`, id: bare };
+  }
+  const matches = domains().map((d) => ({ d, f: findIn(d) })).filter((m) => m.f);
+  if (matches.length > 1) throw new Error(`${bare} is in ${matches.map((m) => m.d).join(' and ')} - name one, as <domain>/${bare}`);
+  if (!matches.length && first) throw new Error(`no domain or subfolder resolves ${bare} - name one, as <domain>/${bare}`);
+  const [hit] = matches;
+  return { domain: hit ? hit.d : null, file: hit ? `${relKey(hit.f)}.md` : `${fileKey}.md`, id: bare };
 }
 const safeRead = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
 const isHistory = (file) => relKey(file).startsWith('history/') || HISTORY.test(safeRead(file).slice(0, 600));
@@ -1308,7 +1343,7 @@ function changedSince(snap) {
 }
 
 module.exports = {
-  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES, domains, domainDir,
+  ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, WATCH_FILE, BRANCHES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
   parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
