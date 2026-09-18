@@ -125,11 +125,17 @@ const log = (root, input, row) => {
 function orientation(root, docs) {
   let block = '';
   try { block = fs.readFileSync(docs.BLOCK_FILE, 'utf8').trim(); } catch {}
+  // ORIENTATION.md stays architecture's own file, read exactly as before - a domain gets no per-domain twin.
+  // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
+  // project whose docs are code-style/ and related-projects/ (no architecture/ at all) is named correctly here.
+  let doms = [];
+  try { doms = docs.domains(); } catch {}
+  const rootRel = path.relative(root, docs.DOCS_ROOT).split(path.sep).join('/');
   return [
     'How this project is documented - read this before deciding how to implement anything.',
     ...(block ? ['', block] : []),
     '',
-    `The docs live under \`${path.relative(root, docs.DOCS).split(path.sep).join('/')}/\`. Read them by section, not whole files:`,
+    `The docs live under \`${rootRel}/\` (${doms.join(', ')}). Read them by section, not whole files:`,
     `\`${READ} where <path>\` names the sections covering a file; \`${READ} show <file>#<id>\` prints one.`,
     'For a specific symbol the CODE wins; the docs give the decisions, the conventions and the reasons.',
   ];
@@ -195,7 +201,12 @@ function main() {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
   const docs = require('./docs.js');
-  if (!fs.existsSync(docs.DOCS)) return;
+  // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
+  // without one - see docs.js's own domains()). A project whose docs are code-style/ and related-projects/,
+  // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
+  // whole-hook gate reads every domain, not one hardcoded folder. An empty list is still the right reason to
+  // return: nothing under the docs root declares itself a domain.
+  if (!docs.domains().length) return;
   const state = loadState(input.session_id);
   if (event === 'SessionStart') return sessionStart(input, root, docs, state);
   if (event === 'SubagentStart') return subagentStart(input, root, docs);
@@ -267,6 +278,31 @@ function setsSince(root, since, ids) {
 const DOCS_OK_LINE = /^[\s>*_`'"-]*docs ok[\s.!*_`'"]*$/i;
 const saidDocsOk = (text) => String(text == null ? '' : text).split(/\r?\n/).some((l) => DOCS_OK_LINE.test(l));
 
+// A watch.json entry's sections are stored verbatim, and watchHits tags every hit with the domain that entry
+// came from. Two domains can declare the exact same bare spelling ('patterns#orders'), each meaning its OWN
+// file - so resolving is done per hit, never by flattening every hit's ids into one Set first (that dedupe is
+// what used to let one domain's watch entry collapse onto another's, or drop an id neither of them meant).
+// The bare spelling is tried first: unchanged messages in the common case, where exactly one domain holds a
+// matching file. Only when that fails - which happens when a second domain now holds a same-named file too -
+// is the hit's OWN domain used to disambiguate, so the ask is answered by the right domain's file rather than
+// silently dropped (askRef returns null either way; a domain-qualified ref that still cannot be found stays
+// dropped, same as an id that never existed). Deduped on the RESOLVED ref's id, not the raw watch.json
+// spelling, since two domains' identical bare spellings resolve to two different final refs.
+function sectionRefs(docs, hits, limit, exclude = () => false) {
+  const seen = new Set();
+  const out = [];
+  for (const h of hits) {
+    for (const id of h.sections) {
+      if (out.length >= limit) return out;
+      const ref = docs.askRef(id) || docs.askRef(`${h.domain}/${id}`);
+      if (!ref || seen.has(ref.id) || exclude(ref.id)) continue;
+      seen.add(ref.id);
+      out.push(ref);
+    }
+  }
+  return out;
+}
+
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
 // so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
 function subagentStop(input, root, docs) {
@@ -332,8 +368,7 @@ function subagentStop(input, root, docs) {
   if (!hits.length) return;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
-  const ids = [...new Set(hits.flatMap((h) => h.sections))].filter((id) => !a.asked.includes(id)).slice(0, ASK_SECTIONS);
-  const refs = ids.map((id) => docs.askRef(id)).filter(Boolean);
+  const refs = sectionRefs(docs, hits, ASK_SECTIONS, (id) => a.asked.includes(id));
   if (!refs.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   const reason = finishAsk(docs, files, refs);
@@ -548,8 +583,7 @@ function stop(input, root, docs, state) {
     hits = docs.watchHits(files, dirs);
   } catch { return; }
   if (!hits.length) return;
-  const ids = [...new Set(hits.flatMap((h) => h.sections))].slice(0, ASK_SECTIONS);
-  const refs = ids.map((id) => docs.askRef(id)).filter(Boolean);
+  const refs = sectionRefs(docs, hits, ASK_SECTIONS);
   if (!refs.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   state.asked = true;

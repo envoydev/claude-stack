@@ -925,3 +925,98 @@ test('the quoted line is one sentence, capped, whatever the section grew to', ()
     assert.doesNotMatch(quoted, /second sentence/, 'one sentence, not the section');
   } finally { r.rm(); }
 });
+
+// ---- Task 5: the session hook reads every domain, not just architecture/ ----
+
+test('a project with code-style/ and no architecture/ still gets a SessionStart block and a finish ask', () => {
+  const r = repo({ files: { 'src/Api/Format.cs': 'class Format {}\n' } });
+  try {
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({
+      watch: [{ kind: 'style', globs: ['src/**/*.cs'], sections: ['STYLE#format'] }],
+    }));
+    r.write('.claude/docs/code-style/STYLE.md', section('format', 'src/**/*.cs', 'Braces open on the same line.'));
+    const s = sid();
+    const startOut = r.hook({ hook_event_name: 'SessionStart', session_id: s });
+    const text = ctx(startOut);
+    assert.match(startOut.stdout, /"hookEventName":"SessionStart"/, 'a SessionStart block even with no architecture/ at all');
+    assert.match(text, /How this project is documented/);
+    assert.match(text, /docs live under `\.claude\/docs\/` \(code-style\)/);
+    r.write('src/Api/Format.cs', 'class Format { }\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /^Docs check: you changed src\/Api\/Format\.cs\n/);
+    assert.match(reason, /"Braces open on the same line\."/);
+    assert.match(reason, /set STYLE#format --expect [0-9a-f]{12}/);
+  } finally { r.rm(); }
+});
+
+test('a changed .cs file hitting a section in a code-style watch produces an ask naming that section', () => {
+  const r = watched(); // architecture still watches src/*/Program.cs, unrelated to this hit
+  try {
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({
+      watch: [{ kind: 'style', globs: ['src/**/*.cs'], sections: ['STYLE#format'] }],
+    }));
+    r.write('.claude/docs/code-style/STYLE.md', section('format', 'src/**/*.cs', 'Braces open on the same line.'));
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    wroteBy(r, s, 'a1', 'src/Api/Orders/Refund.cs', 'class Refund { int Id; }\n');
+    const reason = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason;
+    assert.match(reason, /^Docs check: you changed src\/Api\/Orders\/Refund\.cs\n/);
+    assert.match(reason, /"Braces open on the same line\."/);
+    assert.match(reason, /set STYLE#format --expect [0-9a-f]{12}/);
+  } finally { r.rm(); }
+});
+
+test('the same filename in two domains, each with its own watch entry, produces two asks that name the right sections', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    // Both domains declare the exact same BARE spelling for their own section - the ambiguity a bare ref can now
+    // hit, since a watch.json's sections are stored verbatim and two domains can each hold a file named NOTES.md.
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({
+      watch: [{ kind: 'style', globs: ['src/*/Program.cs'], sections: ['NOTES#note'] }],
+    }));
+    r.write('.claude/docs/code-style/NOTES.md', section('note', '', 'Braces open on the same line.'));
+    r.write('.claude/docs/related-projects/watch.json', JSON.stringify({
+      watch: [{ kind: 'related', globs: ['src/*/Program.cs'], sections: ['NOTES#note'] }],
+    }));
+    r.write('.claude/docs/related-projects/NOTES.md', section('note', '', 'See the shared auth service.'));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /^2 sections document this file:/m, reason);
+    // Neither dropped (both quotes present) and neither crossed (each quote sits beside its OWN domain's file).
+    assert.match(reason, /\.claude\/docs\/code-style\/NOTES\.md:\n {4}"Braces open on the same line\."/, reason);
+    assert.match(reason, /\.claude\/docs\/related-projects\/NOTES\.md:\n {4}"See the shared auth service\."/, reason);
+    assert.match(reason, /set code-style\/NOTES#note --expect [0-9a-f]{12}/, reason);
+    assert.match(reason, /set related-projects\/NOTES#note --expect [0-9a-f]{12}/, reason);
+  } finally { r.rm(); }
+});
+
+test('four domains present and the orientation lines survive', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    for (const d of ['code-style', 'related-projects', 'testing']) r.write(`.claude/docs/${d}/watch.json`, '{}');
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
+    assert.match(text, /How this project is documented - read this before deciding how to implement anything\./);
+    assert.match(text, /docs live under `\.claude\/docs\/` \(architecture, code-style, related-projects, testing\)/);
+    assert.match(text, /node \.claude\/hooks\/docs\.js where <path>/);
+    assert.match(text, /node \.claude\/hooks\/docs\.js show <file>#<id>/);
+    assert.match(text, /Orders own refunds/, 'ORIENTATION.md itself is still architecture-only and still carried');
+  } finally { r.rm(); }
+});
+
+test('a domain whose watch.json is malformed does not take another domain\'s ask down with it', () => {
+  const r = repo({ files: { 'src/Api/Format.cs': 'class Format {}\n' } });
+  try {
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({
+      watch: [{ kind: 'style', globs: ['src/**/*.cs'], sections: ['STYLE#format'] }],
+    }));
+    r.write('.claude/docs/code-style/STYLE.md', section('format', 'src/**/*.cs', 'Braces open on the same line.'));
+    r.write('.claude/docs/related-projects/watch.json', '{ not json');
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Format.cs', 'class Format { }\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /"Braces open on the same line\."/, 'the malformed neighbour never blinds this domain\'s ask');
+  } finally { r.rm(); }
+});
