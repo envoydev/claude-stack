@@ -459,8 +459,12 @@ test('a new module folder hits newModule; a committed script change counts', () 
 const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
 const subStart = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStart', session_id: s, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
 const subStop = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStop', session_id: s, agent_id: id, agent_type: 'dotnet-implementer', stop_hook_active: false, ...extra });
-const watched = (extra) => repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH(), ...extra } });
+const watched = (extra) => repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Users/User.cs': 'class User {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH(), ...extra } });
+// A tool event fired INSIDE a subagent carries that agent's id, so the write is attributed to the seat that made it.
+const preBy = (s, id, file, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: file }, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
+const wroteBy = (r, s, id, file, body, env = GIT) => { r.hook(preBy(s, id, file), env); r.write(file, body); };
 const touch = (r) => r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+const touchBy = (r, s, id, env = GIT) => wroteBy(r, s, id, 'src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n', env);
 
 test('a finished agent is asked about the section documenting what it changed, quoting its first sentence', () => {
   const r = watched();
@@ -469,7 +473,7 @@ test('a finished agent is asked about the section documenting what it changed, q
     // The start payload spells the id 'agent-a1' and the stop payload 'a1' in the published examples; the key
     // survives either spelling, or the two events would never meet.
     r.hook(subStart(s, 'agent-a1'), GIT);
-    touch(r);
+    touchBy(r, s, 'a1');
     const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.strictEqual(body.decision, 'block');
     assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12}\n {9}and commit the doc with your code, so it travels with this branch\.$/);
@@ -483,7 +487,7 @@ test('one block per agent: the continuation stop and a later change are both sil
   try {
     const s = sid();
     r.hook(subStart(s, 'a1'), GIT);
-    touch(r);
+    touchBy(r, s, 'a1');
     assert.match(r.hook(subStop(s, 'a1'), GIT).stdout, /"decision":"block"/);
     const again = r.hook(subStop(s, 'a1', { stop_hook_active: true, last_assistant_message: 'docs ok' }), GIT);
     assert.strictEqual(again.stdout, '', 'the continuation we caused never blocks');
@@ -503,7 +507,7 @@ test('an agent that changed nothing, or nothing the watch list names, is never a
     assert.strictEqual(r.hook(subStop(s, 'reviewer'), GIT).stdout, '', 'a read-only seat must never see this');
     const t = sid();
     r.hook(subStart(t, 'impl'), GIT);
-    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
+    wroteBy(r, t, 'impl', 'src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
     assert.strictEqual(r.hook(subStop(t, 'impl'), GIT).stdout, '', 'changed, but no watch entry hits');
     // A stop with no start before it has no snapshot, so it cannot tell what this agent changed - silence, never a guess.
     assert.strictEqual(r.hook(subStop(sid(), 'orphan'), GIT).stdout, '');
@@ -516,7 +520,9 @@ test('two agents that touch one section are both asked, and the second is shown 
     const s = sid();
     r.hook(subStart(s, 'a1'), GIT);
     r.hook(subStart(s, 'a2'), GIT);
-    touch(r);
+    // Both seats wrote the same file - the case the pair dedupe exists for.
+    touchBy(r, s, 'a1');
+    r.hook(preBy(s, 'a2', 'src/Api/Program.cs'), GIT);
     const first = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.match(first.reason, /"Refunds are ledgered before the payment call\."/);
     r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\nRefunds are ledgered after the payment call.\n', GIT);
@@ -532,7 +538,7 @@ test('local versioning says where the doc is stored instead of telling it to com
     r.git('switch', '-qc', 'feat/refunds');
     const s = sid();
     r.hook(subStart(s, 'a1'));
-    touch(r);
+    touchBy(r, s, 'a1', {});
     const reason = JSON.parse(r.hook(subStop(s, 'a1')).stdout).reason;
     assert.match(reason, /\n {9}and it is stored for branch feat\/refunds only\. It moves into the\n {9}shared docs by itself once this branch is merged\. Nothing to commit\.$/);
     assert.doesNotMatch(reason, /commit the doc with your code/);
@@ -540,7 +546,7 @@ test('local versioning says where the doc is stored instead of telling it to com
     r.git('switch', '-q', 'develop');
     const t = sid();
     r.hook(subStart(t, 'a2'));
-    r.write('src/Api/Program.cs', 'app.UseCors();\napp.Run();\n');
+    wroteBy(r, t, 'a2', 'src/Api/Program.cs', 'app.UseCors();\napp.Run();\n', {});
     assert.match(JSON.parse(r.hook(subStop(t, 'a2')).stdout).reason, /\n {9}and it lands in the shared docs at once\. Nothing to commit\.$/);
   } finally { r.rm(); }
 });
@@ -550,7 +556,7 @@ test('the ask switch turns the whole thing off, snapshot included', () => {
   try {
     const s = sid();
     r.hook(subStart(s, 'a1'), GIT);
-    touch(r);
+    touchBy(r, s, 'a1');
     assert.strictEqual(r.hook(subStop(s, 'a1'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' }).stdout, '', 'the ask is off');
     const t = sid();
     r.hook(subStart(t, 'a2'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' });
@@ -565,6 +571,8 @@ test('an agent payload with no id is keyed on its type, and two sections read as
   try {
     const s = sid();
     r.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_type: 'dotnet-implementer' }, GIT);
+    // No agent_id on the tool event either: the type keys the attribution exactly as it keys the ask.
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, agent_type: 'dotnet-implementer', tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, GIT);
     touch(r);
     const reason = JSON.parse(r.hook({ hook_event_name: 'SubagentStop', session_id: s, agent_type: 'dotnet-implementer' }, GIT).stdout).reason;
     assert.match(reason, /^2 sections document this file:$/m);
@@ -575,13 +583,84 @@ test('an agent payload with no id is keyed on its type, and two sections read as
   } finally { r.rm(); }
 });
 
+// The brief's line 72: a read-only seat must never see this at all. changedSince() is a whole-TREE diff, so before
+// writes were attributed, a reviewer running BESIDE a writer was told it changed the writer's file. This stack
+// dispatches in parallel by design, so this is the common case, not a corner.
+test('a read-only seat that ran beside a writer is never asked', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'writer'), GIT);
+    r.hook(subStart(s, 'reviewer'), GIT);
+    touchBy(r, s, 'writer');
+    assert.strictEqual(r.hook(subStop(s, 'reviewer'), GIT).stdout, '', 'the seat that opened nothing is never told it changed something');
+    assert.match(r.hook(subStop(s, 'writer'), GIT).stdout, /"decision":"block"/, 'and the seat that wrote is still asked');
+  } finally { r.rm(); }
+});
+
+test('two writers in parallel are each asked about their own file only', () => {
+  const r = watched({ 'watch.json': JSON.stringify({ watch: [
+    { kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] },
+    { kind: 'user surface', globs: ['src/*/Users/**'], sections: ['patterns#users'] },
+  ] }) });
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'w1'), GIT);
+    r.hook(subStart(s, 'w2'), GIT);
+    touchBy(r, s, 'w1');
+    wroteBy(r, s, 'w2', 'src/Api/Users/User.cs', 'class User { int Id; }\n');
+    const one = JSON.parse(r.hook(subStop(s, 'w1'), GIT).stdout).reason;
+    assert.match(one, /^Docs check: you changed src\/Api\/Program\.cs\n/, one);
+    assert.doesNotMatch(one, /patterns#users/, 'never the other seat\'s section');
+    const two = JSON.parse(r.hook(subStop(s, 'w2'), GIT).stdout).reason;
+    assert.match(two, /^Docs check: you changed src\/Api\/Users\/User\.cs\n/, two);
+    assert.doesNotMatch(two, /patterns#orders/, 'nor the other way round');
+  } finally { r.rm(); }
+});
+
+// A single-seat run used to end with the same wall of text twice in a row - the shape that earns a gate its =0.
+test('the main Stop never repeats an ask an agent already made, and still asks for the rest', () => {
+  const r = watched({ 'watch.json': JSON.stringify({ watch: [
+    { kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] },
+    { kind: 'user surface', globs: ['src/*/Users/**'], sections: ['patterns#users'] },
+  ] }) });
+  try {
+    const s = sid();
+    start(r, s);
+    r.hook(subStart(s, 'w1'), GIT);
+    touchBy(r, s, 'w1');
+    const asked = JSON.parse(r.hook(subStop(s, 'w1'), GIT).stdout).reason;
+    assert.match(asked, /patterns#orders/);
+    assert.strictEqual(r.hook(stopEv(s), GIT).stdout, '', 'the session does not repeat what the seat was already asked');
+    // A section no agent was asked about is still the session's to answer for.
+    const t = sid();
+    start(r, t);
+    r.write('src/Api/Users/User.cs', 'class User { int Age; }\n');
+    const reason = JSON.parse(r.hook(stopEv(t), GIT).stdout).reason;
+    assert.match(reason, /patterns#users/, reason);
+    assert.doesNotMatch(reason, /patterns#orders/, 'and only that one');
+  } finally { r.rm(); }
+});
+
+test('a heading-only section is quoted as empty rather than as nothing at all', () => {
+  const r = watched({ 'references/patterns.md': '## Order refunds\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\n' });
+  try {
+    const s = sid();
+    r.hook(subStart(s, 'a1'), GIT);
+    touchBy(r, s, 'a1');
+    const reason = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason;
+    assert.doesNotMatch(reason, /\n {2}""\n/, 'an empty quote reads like a bug');
+    assert.match(reason, /\n {2}"\(no text yet - this section is a heading only\)"\n/, reason);
+  } finally { r.rm(); }
+});
+
 test('the quoted line is one sentence, capped, whatever the section grew to', () => {
   const long = `${'Refunds go back to the original payment method and never after ninety days'.repeat(6)}. And a second sentence.`;
   const r = watched({ 'references/patterns.md': section('orders', 'src/Api/Orders/**', long) });
   try {
     const s = sid();
     r.hook(subStart(s, 'a1'), GIT);
-    touch(r);
+    touchBy(r, s, 'a1');
     const quoted = /\n {2}"([^"]*)"\n/.exec(JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason)[1];
     assert.ok(quoted.length <= 200, `the quote is capped, got ${quoted.length}`);
     assert.doesNotMatch(quoted, /second sentence/, 'one sentence, not the section');

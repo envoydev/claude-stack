@@ -1155,7 +1155,14 @@ test('a section deleted under a waiting agent refuses too, and an empty hash is 
     const out = r.cli(['set', 'patterns#gone', '--expect', 'abcabcabcabc'], '## gone\n<!-- id: gone -->\nText.\n');
     assert.strictEqual(out.status, 1, 'a section the hash cannot belong to is never created blind');
     assert.match(out.stdout, /patterns#gone changed while you were working/);
-    // `--expect` with nothing after it is an empty hash, which is no check - the write goes through as it always did.
-    assert.strictEqual(r.cli(['set', 'patterns#orders', '--expect'], setText('orders', 'orders', 'Plain.')).status, 0);
+    // `--expect` with its hash lost (a copy-paste, an empty shell variable, a truncated line) must REFUSE. Skipping
+    // the compare there is the one path where a stale write lands while the writer believes it is guarded.
+    const naked = r.cli(['set', 'patterns#orders', '--expect'], setText('orders', 'orders', 'Unguarded.'));
+    assert.strictEqual(naked.status, 1, naked.stdout);
+    assert.match(naked.stdout, /--expect needs a hash/);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /Unguarded\./, 'and nothing was written');
+    const empty = r.cli(['set', 'patterns#orders', '--expect', ''], setText('orders', 'orders', 'Also unguarded.'));
+    assert.strictEqual(empty.status, 1, 'an explicitly empty hash is the same mistake');
+    assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /Also unguarded\./);
   } finally { r.rm(); }
 });

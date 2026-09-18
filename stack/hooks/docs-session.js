@@ -4,10 +4,11 @@
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
 //   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one), and
 //                    the snapshot the finish ask below compares against
-//   SubagentStop  -> what THAT agent changed, once: a changed file that hits watch.json blocks with the owning
-//                    sections quoted, so whoever made the change says whether the docs still hold
-//   PreToolUse    -> records reads of the docs; holds the FIRST change under a source root until a section was read,
-//                    handing the covering section over inline - what a merge just folded into mainline comes first
+//   SubagentStop  -> what THAT agent WROTE, once: a file it wrote that also changed and hits watch.json blocks with
+//                    the owning sections quoted, so whoever made the change says whether the docs still hold
+//   PreToolUse    -> records reads of the docs and attributes each write to the agent that made it; holds the FIRST
+//                    change under a source root until a section was read, handing the covering section over inline -
+//                    what a merge just folded into mainline comes first
 //   Stop          -> once per session: a change that hit watch.json asks for the owning sections to be rewritten when
 //                    a rule moved, or confirmed
 // CLAUDE_STACK_DOCS_BLOCK=0 / CLAUDE_STACK_DOCS_GATE=0 / CLAUDE_STACK_DOCS_ASK=0 turn the three parts off.
@@ -37,6 +38,34 @@ const loadAgent = (s, agent) => { let v = {}; try { v = JSON.parse(fs.readFileSy
 // would snapshot an agent and then ask a different one. With no id at all the type is the best key left, and two
 // parallel seats of one type then share a snapshot and one block.
 const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent').replace(/^agent-/, '').replace(/[^\w-]/g, '').slice(0, 64) || 'agent';
+// A write, attributed to the agent that made it. `agent_id` / `agent_type` are populated on a TOOL event only when
+// the hook fires inside a subagent, so the main session records nothing here and its own Stop keeps reading the
+// whole tree. Recorded BEFORE the first-change gate below: a write the gate then holds never happened, but the stop
+// intersects against what actually CHANGED, so an attributed write that never landed drops out by itself.
+const WROTE_CAP = 500;
+function recordWrite(input, wrote) {
+  if (!input.agent_id && !input.agent_type) return;
+  const key = agentKey(input);
+  const a = loadAgent(input.session_id, key);
+  const next = [...new Set([...(a.wrote || []), ...wrote])].slice(0, WROTE_CAP);
+  if (next.length === (a.wrote || []).length) return;
+  a.wrote = next;
+  saveState(input.session_id, a, key);
+}
+// Every section an agent of THIS session was already asked about, read from the sibling per-agent files. READ only:
+// writing the session's own row here would race preToolUse, and a file that cannot be read simply reinstates the
+// ask, which is the safe direction.
+function askedByAgents(session) {
+  const prefix = `docs-session-${String(session || 'none').replace(/[^\w-]/g, '')}--`;
+  const out = new Set();
+  try {
+    for (const f of fs.readdirSync(os.tmpdir())) {
+      if (!f.startsWith(prefix) || !f.endsWith('.json')) continue;
+      try { for (const id of JSON.parse(fs.readFileSync(path.join(os.tmpdir(), f), 'utf8')).asked || []) out.add(id); } catch {}
+    }
+  } catch {}
+  return out;
+}
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
 // `tool_input.command` exactly as Bash does, and both installer twins wire this hook on the matcher
@@ -169,13 +198,25 @@ function subagentStop(input, root, docs) {
   // One block per agent, whatever it answered, and never one for an agent whose start was never seen: with no
   // snapshot there is nothing that says what this agent changed, and a guess would ask the wrong seat.
   if (a.blocked || !a.snapshot || typeof docs.askRef !== 'function') return;
+  // What THIS agent wrote, not what the tree did. `changedSince` is a whole-TREE diff, so a seat that opened nothing
+  // was otherwise told it changed whatever the writer running BESIDE it changed - and this stack dispatches in
+  // parallel by design. A seat that wrote nothing is silent (the brief's read-only seats, now true under parallel
+  // dispatch); a seat that wrote is judged on its own files, and the tree still has to agree they CHANGED.
+  const own = a.wrote || [];
+  if (!own.length) return;
   let changed;
   let hits = [];
   try {
     changed = docs.changedSince(a.snapshot);
-    // A seat that changed nothing - every read-only seat there is - must never see this.
     if (!changed.files.length && !changed.dirs.length) return;
-    hits = docs.watchHits(changed.files, changed.dirs);
+    // A write whose target the shell route could not name ('dotnet ef migrations add', 'git apply'): the agent did
+    // write, and nothing says what, so it answers for the whole change rather than for none of it.
+    const blind = own.includes(UNKNOWN_SOURCE_WRITE);
+    const mine = new Set(own);
+    const mineFiles = blind ? changed.files : changed.files.filter((f) => mine.has(f));
+    const mineDirs = blind ? changed.dirs : changed.dirs.filter((d) => own.some((p) => p.startsWith(`${d}/`)));
+    if (!mineFiles.length && !mineDirs.length) return;
+    hits = docs.watchHits(mineFiles, mineDirs);
   } catch { return; }
   if (!hits.length) return;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
@@ -283,9 +324,14 @@ function preToolUse(input, root, docs, state) {
   try { roots = docs.loadWatch().sourceRoots; } catch {}
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
-  let targets = [];
-  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) targets = paths.filter(inRoots);
-  else if (isShellTool(name)) targets = relative(root, writeTargets(command).map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x))).filter(inRoots);
+  const shellWrites = isShellTool(name) ? writeTargets(command) : null;
+  let wrote = [];
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) wrote = paths;
+  else if (shellWrites) wrote = relative(root, shellWrites.map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x)));
+  // Attributed before the source-root filter: a watch entry may name a path no source root covers, and a write this
+  // hook never judges is still a write the agent made.
+  if (wrote.length) recordWrite(input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote);
+  const targets = wrote.filter(inRoots);
   if (!targets.length) return;
   const allow = () => {
     state.edits++;
@@ -372,14 +418,22 @@ function stop(input, root, docs, state) {
     hits = docs.watchHits(changed.files, changed.dirs);
   } catch { return; }
   if (!hits.length) return;
-  const ids = [...new Set(hits.flatMap((h) => h.sections))].slice(0, ASK_SECTIONS);
+  // A section an agent of this session already answered for is not asked again here: the same block twice in a row
+  // is how a gate earns itself a CLAUDE_STACK_DOCS_ASK=0, and the session is not the actor that made that change.
+  // Agent-to-agent dedupe is untouched - two agents still both get asked.
+  const seen = askedByAgents(input.session_id);
+  const ids = [...new Set(hits.flatMap((h) => h.sections))].filter((id) => !seen.has(id)).slice(0, ASK_SECTIONS);
+  if (!ids.length) return;
   const refs = ids.map((id) => docs.askRef(id)).filter(Boolean);
   if (!refs.length) return;
-  const files = [...new Set(hits.flatMap((h) => h.files))];
+  // Only the entries that still have something to ask about name their files, so the ask never names a file whose
+  // only section was already answered for.
+  const kept = hits.filter((h) => h.sections.some((id) => ids.includes(id)));
+  const files = [...new Set(kept.flatMap((h) => h.files))];
   state.asked = true;
   saveState(input.session_id, state);
   const reason = finishAsk(docs, files, refs);
-  log(root, input, { event: 'ask-update', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  log(root, input, { event: 'ask-update', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(kept.map((h) => h.kind))] });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }

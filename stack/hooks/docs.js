@@ -816,7 +816,9 @@ function allSections() {
 function askRef(id) {
   const s = allSections().find((x) => x.id === id);
   if (!s) return null;
-  return { id, heading: s.heading, file: path.relative(ROOT, s.from).split(path.sep).join('/'), first: firstSentence(s.text), hash: sectionHash(s.text) };
+  // A section that is a heading and nothing else has no sentence to quote, and a bare '""' in the ask reads like a
+  // bug rather than like an empty section.
+  return { id, heading: s.heading, file: path.relative(ROOT, s.from).split(path.sep).join('/'), first: firstSentence(s.text) || '(no text yet - this section is a heading only)', hash: sectionHash(s.text) };
 }
 
 function toc(fileKey) {
@@ -1316,6 +1318,9 @@ const commands = {
   },
   set: () => {
     const at = args.indexOf('--expect');
+    // A flag that silently does nothing is worse than no flag: this is the one path where a stale write lands while
+    // the writer believes it is guarded, so a lost hash refuses rather than degrading to an unguarded write.
+    if (at >= 0 && !args[at + 1]) { console.log(`--expect needs a hash: 'docs.js hash ${args[0] || '<file>#<id>'}' prints the current one`); process.exit(1); }
     const expect = at >= 0 ? args[at + 1] : '';
     const [ref, from] = at >= 0 ? [...args.slice(0, at), ...args.slice(at + 2)] : args;
     let text = '';
