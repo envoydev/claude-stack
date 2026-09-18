@@ -612,7 +612,7 @@ function warnLines(files, refs) {
   const subject = files.length === 1 ? 'this file' : 'these files';
   return [
     ...(one
-      ? [`A section a person owns also documents ${subject} - '${refs[0].heading}', in ${refs[0].file}:`, `  "${refs[0].first}"`]
+      ? [`A DECISION recorded by a person covers ${subject} - '${refs[0].heading}', in ${refs[0].file}:`, `  "${refs[0].first}"`]
       : [`${refs.length} sections a person owns also document ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
     '',
     one

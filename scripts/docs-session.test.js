@@ -1065,7 +1065,7 @@ test('a watch entry naming a section in a protected file produces a warning, not
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
     assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n/);
-    assert.match(reason, /A section a person owns also documents this file - 'policy', in \.claude\/docs\/architecture\/NOTES\.md:/, reason);
+    assert.match(reason, /A DECISION recorded by a person covers this file - 'policy', in \.claude\/docs\/architecture\/NOTES\.md:/, reason);
     assert.match(reason, /"Refunds are deliberately synchronous - the caller must see the failure\."/);
     assert.match(reason, /If your change makes that untrue, say so in your report/);
     assert.doesNotMatch(reason, /reply: docs ok/, 'a warning offers no docs-ok affordance');
@@ -1104,7 +1104,7 @@ test('the alpha/beta case: a domain\'s protected file is never answered by anoth
     start(r, s);
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
-    assert.match(reason, /A section a person owns also documents this file - 'note', in \.claude\/docs\/alpha\/NOTES\.md:/, reason);
+    assert.match(reason, /A DECISION recorded by a person covers this file - 'note', in \.claude\/docs\/alpha\/NOTES\.md:/, reason);
     assert.match(reason, /"Alpha decision text\."/);
     assert.doesNotMatch(reason, /Beta text/, 'alpha\'s entry must never quote beta\'s text');
     assert.doesNotMatch(reason, /set [\w/-]*NOTES#note/, 'never hands over a set into either file - a warning carries no command at all');
@@ -1129,11 +1129,11 @@ test('one changed file hitting a normal section and a protected one yields one a
     assert.match(reason, /One section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:/, reason);
     assert.match(reason, /"Refunds are ledgered before the payment call\."/);
     assert.match(reason, /set patterns#orders --expect [0-9a-f]{12}/);
-    assert.match(reason, /A section a person owns also documents this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
+    assert.match(reason, /A DECISION recorded by a person covers this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
     assert.match(reason, /"Refunds are deliberately synchronous\."/);
     // Never merged into one block, and the warning never borrows the ask's command: nothing past where
     // the warning starts mentions a set command, an --expect hash or the docs-ok reply.
-    const warnIdx = reason.indexOf("A section a person owns");
+    const warnIdx = reason.indexOf("A DECISION recorded by a person");
     assert.ok(warnIdx > 0, reason);
     assert.doesNotMatch(reason.slice(warnIdx), /--expect|reply: docs ok|docs\.js set/);
   } finally { r.rm(); }
@@ -1168,7 +1168,7 @@ test('four domains where the third declares a protected section: the warning is 
     start(r, s);
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
-    assert.match(reason, /A section a person owns also documents this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
+    assert.match(reason, /A DECISION recorded by a person covers this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
     assert.match(reason, /"Refunds are deliberately synchronous\."/);
   } finally { r.rm(); }
 });

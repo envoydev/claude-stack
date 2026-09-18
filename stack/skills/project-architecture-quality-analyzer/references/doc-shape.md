@@ -5,7 +5,7 @@
 - **The findings gate** - the four questions a candidate must pass before it is a finding
 - **The count rule** - an output, never a target, in both directions
 - **The three buckets** - every surviving item lands in exactly one
-- **The shape** - Strengths, Must fix, Worth knowing, Deliberate tradeoffs, Summary
+- **The shape** - Strengths, Must fix, Worth knowing, Deliberate tradeoffs, Proposed decisions, Summary
 - **Format discipline** - the budget, and why there is no per-branch section protocol here
 - **Write mechanics** - the stamp, the folder, the single overwrite
 
