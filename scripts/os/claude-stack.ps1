@@ -427,16 +427,17 @@ else {
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (78).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (79).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
   'envoydev/claude-stack|dev-log-convert'           # UA/EN work notes -> structured English work log; trigger 'dev-log'
   'envoydev/claude-stack|explain-code-tutor'        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   'envoydev/claude-stack|project-quality-loop'             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
-  'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the project-architecture-analyzer capture writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
+  'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only
   'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
-  'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + ASSESSMENT.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  'envoydev/claude-stack|project-architecture-quality-analyzer' # deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only
   'envoydev/claude-stack|project-test-coverage-analyzer' # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
   'envoydev/claude-stack|project-test-coverage-loop'     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
   'envoydev/claude-stack|project-version-upgrade'        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
@@ -2808,7 +2809,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-related-
   Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
 }
 if (-not ((Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-architecture.md')) -and (Test-Path -LiteralPath (Join-Path $genRules 'project-code-style.md')))) {
-  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-agent-capabilities.md'))) {
   Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"

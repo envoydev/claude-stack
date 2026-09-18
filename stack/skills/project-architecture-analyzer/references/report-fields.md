@@ -10,8 +10,6 @@ are exempt), so the receipts must survive that cap rather than be re-answered aw
 - **Files written** - created vs refreshed, sections touched; the awareness rule created/refreshed.
 - **Gather rounds** - rounds used and whether the picture settled within the 3-round cap.
 - **Structure headline** - one line: project type + architecture style.
-- **Assessment shape** - the per-bucket counts, the Must-fix tier tally, the top few highest-leverage fixes the
-  quality loop should take first.
 - **Unverified** - anything unverified and what would settle it.
 
 ## The receipt lines
@@ -20,10 +18,8 @@ are exempt), so the receipts must survive that cap rather than be re-answered aw
 |---|---|---|
 | `Vocabulary:` | the skills step 3 actually loaded, or `none - <role> absent, read the code` | the vocabulary load |
 | `References:` | which of this skill's `references/` files this run actually Read (`hazards.md`, `doc-shapes.md`, `vocabulary-roles.md`, `report-fields.md`) | the contract reads |
-| `Decisions:` | the ADRs / decision records step 1 actually opened, or `none found at <path looked>` | the decision-log read |
-| `Write gate:` | the answer to the pre-write AskUserQuestion, verbatim - or the reason the run skipped the ask (`first capture - no docs to replace`, `zero drift - nothing written`) | the ask before the first byte |
-| `Write passes:` | per doc, what step 5's precondition allows: `ARCHITECTURE.md 1, ASSESSMENT.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened | the verification-first precondition |
-| `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, and rejected (naming the question each rejected one failed); an UPDATE whose reconcile surfaced no candidates writes `Findings gate: 0 candidates - reconcile only, no hazard hunt` rather than dropping the field | the four-question gate |
+| `Write gate:` | the answer to the pre-write AskUserQuestion, verbatim - or the reason the run skipped the ask (`first capture - no doc to replace`, `zero drift - nothing written`) | the ask before the first byte |
+| `Write passes:` | what step 5's precondition allows: `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened | the verification-first precondition |
 | `Rule:` | the awareness rule's measured byte count from `wc -c` | the 300-byte budget check |
 | `Model:` | see below | the run-start model check |
 

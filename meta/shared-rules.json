@@ -1577,18 +1577,18 @@
    ]
   },
   "assessment-coverage-carve-out": {
-   "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to project-test-coverage-analyzer's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shapes.md; restated at the AGGREGATE reasoning step and in the skill description because a live run flagged coverage as a weakness with the reference-only statement.",
+   "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to project-test-coverage-analyzer's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill description because a live run flagged coverage as a weakness with the reference-only statement. Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "Test-suite weaknesses are OUT OF SCOPE"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "Coverage never enters the weakness list"
     },
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "the assessment keeps only structural testability blockers, never coverage gaps"
     }
    ]
@@ -2270,40 +2270,40 @@
    ]
   },
   "assessment-strength-check": {
-   "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shapes; restated at the capture's WRITE step.",
+   "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "erode a listed strength"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "erode a listed strength"
     }
    ]
   },
   "finding-count-is-output": {
-   "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shapes' count rule; restated in the capture's REPORT step.",
+   "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "an output, never a target"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "an output, never a target"
     }
    ]
   },
   "findings-gate-four-questions": {
-   "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the architecture doc-shapes; the coverage capture carries an adapted binding for weak-point candidates.",
+   "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "pass all four questions or it is not a finding"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "all four questions answered explicitly"
     },
     {
