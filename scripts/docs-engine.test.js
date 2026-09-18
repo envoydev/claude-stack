@@ -1619,6 +1619,43 @@ test('watchOf and unowned hand back frozen structures: a caller cannot push, sor
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// --- Task 6b: a protected file can still be QUOTED, read-only, for the warning docs-session.js builds ---
+
+test('protectedRef quotes a section of a file its own domain declares notOwned, and set against it is still refused', () => {
+  const r = repo({ docs: { 'NOTES.md': section('note', '', 'A person wrote this decision by hand.') } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ notOwned: ['NOTES.md'] }));
+    const docs = requireEngine(r.root);
+    const ref = docs.protectedRef('architecture', 'NOTES#note');
+    assert.ok(ref, 'a protected file must still resolve through the read-only route');
+    assert.strictEqual(ref.heading, 'note');
+    assert.match(ref.first, /A person wrote this decision by hand\./);
+    assert.strictEqual(ref.file, '.claude/docs/architecture/NOTES.md');
+    // Still excluded from domainFiles - the read route is separate from the mechanism the write refusal
+    // depends on, not a widening of it.
+    assert.ok(!docs.docFiles().some((f) => f.endsWith('NOTES.md')), 'a notOwned file stays out of domainFiles');
+    const out = r.cli(['set', 'architecture/NOTES#note'], 'rewritten by the engine\n');
+    assert.strictEqual(out.status, 1, out.stdout);
+    assert.match(out.stdout, /NOTES\.md is maintained by another skill - this engine does not write it/);
+    assert.doesNotMatch(r.read('.claude/docs/architecture/NOTES.md'), /rewritten by the engine/, 'still nothing written');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('protectedRef never resolves a different domain\'s file, protected or not, and a wrongly-domain-qualified ref finds nothing', () => {
+  const r = repo();
+  try {
+    r.write('.claude/docs/alpha/watch.json', JSON.stringify({ notOwned: ['NOTES.md'] }));
+    r.write('.claude/docs/alpha/NOTES.md', section('note', '', 'Alpha decision text.'));
+    r.write('.claude/docs/beta/watch.json', '{}');
+    r.write('.claude/docs/beta/NOTES.md', section('note', '', 'Beta text.'));
+    const docs = requireEngine(r.root);
+    assert.strictEqual(docs.protectedRef('beta', 'NOTES#note'), null, 'beta does not declare NOTES.md notOwned - nothing to warn about under beta');
+    assert.strictEqual(docs.protectedRef('beta', 'alpha/NOTES#note'), null, 'a ref qualified for a domain other than the one asked never resolves');
+    const ref = docs.protectedRef('alpha', 'NOTES#note');
+    assert.match(ref.first, /Alpha decision text/, 'only alpha\'s own copy resolves when alpha is asked');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 // --- the seams the final whole-branch review found ---
 
 // One `git hash-object` per dirty file is one PROCESS per file. Stop runs changedSince at the end of every turn

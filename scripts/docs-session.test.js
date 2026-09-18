@@ -1050,3 +1050,125 @@ test('a read under hook-blocks/ or docs-log.jsonl earns no consult credit', () =
     assert.ok(denied(r.hook(pre('Write', { file_path: 'src/Api/Format.cs', content: 'x' }, s))), 'reading the ledger or the block log is not a doc consult');
   } finally { r.rm(); }
 });
+
+// ---- Task 6b: a watch entry pointing at a protected file's section WARNS instead of going silent ----
+
+test('a watch entry naming a section in a protected file produces a warning, not an ask - no command anywhere in it', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'NOTES.md': section('policy', '', 'Refunds are deliberately synchronous - the caller must see the failure.') } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['NOTES#policy'] }],
+      notOwned: ['NOTES.md'],
+    }));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /^Docs check: you changed src\/Api\/Program\.cs\n/);
+    assert.match(reason, /A section a person owns also documents this file - 'policy', in \.claude\/docs\/architecture\/NOTES\.md:/, reason);
+    assert.match(reason, /"Refunds are deliberately synchronous - the caller must see the failure\."/);
+    assert.match(reason, /If your change makes that untrue, say so in your report/);
+    assert.doesNotMatch(reason, /reply: docs ok/, 'a warning offers no docs-ok affordance');
+    assert.doesNotMatch(reason, /--expect/, 'a warning offers no --expect hash');
+    assert.doesNotMatch(reason, /docs\.js set/, 'a warning offers no set command');
+  } finally { r.rm(); }
+});
+
+test('ORIENTATION.md still produces nothing - no ask, no warning - once other watch entries exist', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT, 'watch.json': WATCH() } });
+  try {
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.doesNotMatch(reason, /ORIENTATION/, 'nothing ever points a watch entry at it, so it never surfaces');
+  } finally { r.rm(); }
+});
+
+// The proven bug from Task 5's review: domain alpha declares its own NOTES.md protected and watches
+// 'NOTES#note'; domain beta holds a NOTES.md of its own too. Alpha's copy used to be invisible to the
+// bare-resolution path, so the bare id resolved UNIQUELY (not ambiguously) to beta's file - no throw,
+// so the qualified fallback never ran, and alpha's watch entry quoted beta's text and handed over a
+// `set` that wrote into beta. Checking the hit's own domain for a protected match FIRST closes it.
+test('the alpha/beta case: a domain\'s protected file is never answered by another domain\'s same-named file', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    r.write('.claude/docs/alpha/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['NOTES#note'] }],
+      notOwned: ['NOTES.md'],
+    }));
+    r.write('.claude/docs/alpha/NOTES.md', section('note', '', 'Alpha decision text.'));
+    r.write('.claude/docs/beta/watch.json', '{}');
+    r.write('.claude/docs/beta/NOTES.md', section('note', '', 'Beta text.'));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /A section a person owns also documents this file - 'note', in \.claude\/docs\/alpha\/NOTES\.md:/, reason);
+    assert.match(reason, /"Alpha decision text\."/);
+    assert.doesNotMatch(reason, /Beta text/, 'alpha\'s entry must never quote beta\'s text');
+    assert.doesNotMatch(reason, /set [\w/-]*NOTES#note/, 'never hands over a set into either file - a warning carries no command at all');
+  } finally { r.rm(); }
+});
+
+test('one changed file hitting a normal section and a protected one yields one ask and one warning, never merged', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }],
+    }));
+    r.write('.claude/docs/decisions/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['DECISIONS#refund-sync'] }],
+      notOwned: ['DECISIONS.md'],
+    }));
+    r.write('.claude/docs/decisions/DECISIONS.md', section('refund-sync', '', 'Refunds are deliberately synchronous.'));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /One section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:/, reason);
+    assert.match(reason, /"Refunds are ledgered before the payment call\."/);
+    assert.match(reason, /set patterns#orders --expect [0-9a-f]{12}/);
+    assert.match(reason, /A section a person owns also documents this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
+    assert.match(reason, /"Refunds are deliberately synchronous\."/);
+    // Never merged into one block, and the warning never borrows the ask's command: nothing past where
+    // the warning starts mentions a set command, an --expect hash or the docs-ok reply.
+    const warnIdx = reason.indexOf("A section a person owns");
+    assert.ok(warnIdx > 0, reason);
+    assert.doesNotMatch(reason.slice(warnIdx), /--expect|reply: docs ok|docs\.js set/);
+  } finally { r.rm(); }
+});
+
+// Task 5's review measured that with four domains (hits walked strictly in domain-alphabetical order,
+// one cap of 3 shared by everything) only the first domain's entries plus one more ever got named - and
+// a protected section in the third domain would be starved by the first two before it was ever reached.
+// Asks and warnings now fill SEPARATE pools, so a warning is never crowded out by an ask that merely
+// sorted earlier.
+test('four domains where the third declares a protected section: the warning is delivered, not starved by the first two filling the ask cap', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['patterns#orders', 'patterns#users'] }],
+    }));
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['STYLE#format', 'STYLE#indent'] }],
+    }));
+    r.write('.claude/docs/code-style/STYLE.md', `${section('format', '', 'Braces open on the same line.')}\n${section('indent', '', 'Two spaces, never tabs.')}`);
+    // 'decisions' sorts third among these four domain names, exactly the position Task 5's review named.
+    r.write('.claude/docs/decisions/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['DECISIONS#refund-sync'] }],
+      notOwned: ['DECISIONS.md'],
+    }));
+    r.write('.claude/docs/decisions/DECISIONS.md', section('refund-sync', '', 'Refunds are deliberately synchronous.'));
+    r.write('.claude/docs/testing/watch.json', JSON.stringify({
+      watch: [{ kind: 'composition root', globs: ['src/*/Program.cs'], sections: ['TEST#coverage'] }],
+    }));
+    r.write('.claude/docs/testing/TEST.md', section('coverage', '', 'Every handler gets an integration test.'));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /A section a person owns also documents this file - 'refund sync', in \.claude\/docs\/decisions\/DECISIONS\.md:/, reason);
+    assert.match(reason, /"Refunds are deliberately synchronous\."/);
+  } finally { r.rm(); }
+});

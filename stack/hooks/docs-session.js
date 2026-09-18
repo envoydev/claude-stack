@@ -282,33 +282,57 @@ const saidDocsOk = (text) => String(text == null ? '' : text).split(/\r?\n/).som
 // came from. Two domains can declare the exact same bare spelling ('patterns#orders'), each meaning its OWN
 // file - so resolving is done per hit, never by flattening every hit's ids into one Set first (that dedupe is
 // what used to let one domain's watch entry collapse onto another's, or drop an id neither of them meant).
-// The bare spelling is tried first: unchanged messages in the common case, where exactly one domain holds a
-// matching file. Only when the bare form is genuinely AMBIGUOUS - parseRef throws because TWO domains both
-// own a matching file - does the qualified fallback (this hit's own domain) correctly pick this hit's own
-// file over the other domain's; reordering the two tries would change nothing here, since an ambiguous bare
-// key can never resolve to the wrong domain by accident (it throws, askRef catches it, the fallback runs).
-// KNOWN GAP, not fixed here: a domain's own notOwned file drops out of domainFiles entirely, so it is no
-// longer a candidate when the bare form asks 'how many domains own a matching file' - a domain that protects
-// its own NOTES.md and watches 'NOTES#note' can have that bare id resolve UNIQUELY to a different domain's
-// NOTES.md instead of being flagged ambiguous, quoting that other domain's text and handing over a `set`
-// that writes into it. The qualified fallback never even runs in that case, because the bare form already
-// (wrongly) succeeded. Needs the protected-file read path a later task builds. (askRef returns null when
-// neither form resolves at all; a domain-qualified ref that still cannot be found stays dropped, same as an
-// id that never existed.) Deduped on the RESOLVED ref's id, not the raw watch.json spelling, since two
-// domains' identical bare spellings resolve to two different final refs.
+// docs.protectedRef is tried FIRST, scoped to the hit's OWN domain: a domain's own notOwned file drops out of
+// domainFiles entirely, so a bare id that names it can resolve UNIQUELY to a different domain's same-named
+// file instead of being flagged ambiguous - the qualified fallback below never even runs in that case,
+// because the bare form already (wrongly) succeeds. Checking the hit's own domain for a protected match before
+// any bare resolution runs closes that hole: a hit is never answered by a different domain's file. Only once
+// protectedRef says no does the ordinary bare-then-qualified resolution run, unchanged from before - bare
+// first is still safe there, since a bare key that is genuinely ambiguous between two ordinary (non-protected)
+// files still throws in parseRef and askRef still catches it, same as always.
+function resolveHit(docs, h, id) {
+  // Guarded like askRef's own callers below: an older docs.js copy beside this hook has no protectedRef
+  // at all, and the safe degradation there is the resolution this file already had, not a thrown error.
+  const warn = typeof docs.protectedRef === 'function' ? docs.protectedRef(h.domain, id) : null;
+  if (warn) return { warn };
+  const ask = docs.askRef(id) || docs.askRef(`${h.domain}/${id}`);
+  return ask ? { ask } : null;
+}
+
+// Two pools, not one: an ask offers a rewrite, a warning offers none, and they must never compete for the
+// same slots - a warning that lost its place to an ask which merely sorted earlier would be the exact
+// silence this task exists to end. Filled by ROUND-ROBIN across hits (one id per hit per pass) rather than
+// the straight walk this replaced, which let the first hit - hits arrive in domain-alphabetical order - fill
+// every slot in a pool before a later domain's hit was ever tried; measured with four domains, only the
+// first plus one more ever got named. Round-robin means no domain is starved purely by where its name
+// sorts. Each pool is still capped at `limit` on its own. Deduped on the RESOLVED ref's id, not the raw
+// watch.json spelling, since two domains' identical bare spellings resolve to two different final refs.
 function sectionRefs(docs, hits, limit, exclude = () => false) {
-  const seen = new Set();
-  const out = [];
-  for (const h of hits) {
-    for (const id of h.sections) {
-      if (out.length >= limit) return out;
-      const ref = docs.askRef(id) || docs.askRef(`${h.domain}/${id}`);
-      if (!ref || seen.has(ref.id) || exclude(ref.id)) continue;
-      seen.add(ref.id);
-      out.push(ref);
+  const seenAsk = new Set();
+  const seenWarn = new Set();
+  const asks = [];
+  const warnings = [];
+  const queues = hits.map((h) => ({ h, ids: [...h.sections] }));
+  let more = true;
+  while (more && (asks.length < limit || warnings.length < limit)) {
+    more = false;
+    for (const q of queues) {
+      if (!q.ids.length) continue;
+      more = true;
+      const resolved = resolveHit(docs, q.h, q.ids.shift());
+      if (!resolved) continue;
+      if (resolved.warn) {
+        if (warnings.length >= limit || seenWarn.has(resolved.warn.id) || exclude(resolved.warn.id)) continue;
+        seenWarn.add(resolved.warn.id);
+        warnings.push(resolved.warn);
+      } else {
+        if (asks.length >= limit || seenAsk.has(resolved.ask.id) || exclude(resolved.ask.id)) continue;
+        seenAsk.add(resolved.ask.id);
+        asks.push(resolved.ask);
+      }
     }
   }
-  return out;
+  return { asks, warnings };
 }
 
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
@@ -376,16 +400,19 @@ function subagentStop(input, root, docs) {
   if (!hits.length) return;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
-  const refs = sectionRefs(docs, hits, ASK_SECTIONS, (id) => a.asked.includes(id));
-  if (!refs.length) return;
+  const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS, (id) => a.asked.includes(id));
+  if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
-  const reason = finishAsk(docs, files, refs);
+  const reason = finishAsk(docs, files, asks, warnings);
   a.blocked = true;
-  a.asked = [...a.asked, ...refs.map((r) => r.id)];
+  // Only ASK ids: a warning can never appear in setsSince (the write refusal means `docs.js set` never
+  // records one), so folding its id in here would only ever pull the outcome below toward 'partial' or
+  // 'unchanged' for a section nothing was ever asking to be rewritten.
+  a.asked = [...a.asked, ...asks.map((r) => r.id)];
   // The instant the ask was made, so a rewrite that landed before it is never counted as an answer to it.
   a.askedAt = new Date().toISOString();
   saveState(input.session_id, a, key);
-  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  log(root, input, { event: 'ask-update', agent: key, agentType: input.agent_type || '', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
@@ -544,9 +571,8 @@ function preToolUse(input, root, docs, state) {
 // against, and what each answer costs. The quoted line is ONE sentence (docs.js caps it at 200 chars), so the ask is
 // a fixed size whatever the section grew to. The --expect hash is of the text being shown here: a rewrite of a
 // section that moved meanwhile is refused instead of silently dropping whoever moved it.
-function finishAsk(docs, files, refs) {
+function askLines(docs, files, refs) {
   const one = refs.length === 1;
-  const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const subject = files.length === 1 ? 'this file' : 'these files';
   let mode = 'git';
   let branch = '';
@@ -563,8 +589,6 @@ function finishAsk(docs, files, refs) {
         `         shared docs by ${one ? 'itself' : 'themselves'} once this branch is merged. Nothing to commit.`,
       ];
   return [
-    `Docs check: you changed ${named}`,
-    '',
     ...(one
       ? [`One section documents ${subject} - '${refs[0].heading}', in ${refs[0].file}:`, `  "${refs[0].first}"`]
       : [`${refs.length} sections document ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
@@ -575,7 +599,36 @@ function finishAsk(docs, files, refs) {
     `  No  -> rewrite ${one ? 'the section' : 'each section your change made untrue'}, then run`,
     ...refs.map((r) => `           ${READ} set ${r.id} --expect ${r.hash}`),
     ...tail,
-  ].join('\n');
+  ];
+}
+
+// The warning half - a protected section quoted exactly the way an ask quotes one, so it reads the same at a
+// glance, but with no command anywhere near it: this engine's own write refusal already means nothing here
+// can save a rewrite of that file, so offering `set` would be a command nobody may act on. It has to be
+// readable without knowing any of this machinery: name what happened in plain words (a person owns this
+// text), quote it, and say what to do about a contradiction - report it, not fix it.
+function warnLines(files, refs) {
+  const one = refs.length === 1;
+  const subject = files.length === 1 ? 'this file' : 'these files';
+  return [
+    ...(one
+      ? [`A section a person owns also documents ${subject} - '${refs[0].heading}', in ${refs[0].file}:`, `  "${refs[0].first}"`]
+      : [`${refs.length} sections a person owns also document ${subject}:`, ...refs.flatMap((r) => ['', `  '${r.heading}', in ${r.file}:`, `    "${r.first}"`])]),
+    '',
+    one
+      ? 'If your change makes that untrue, say so in your report - this engine cannot rewrite it, only a person can.'
+      : 'If your change makes any of those untrue, say so in your report - this engine cannot rewrite them, only a person can.',
+  ];
+}
+
+// One ask block, then one warning block, never merged into a single confusing one - and the warning never
+// borrows a command from its neighbour, because none of the lines it prints ever comes from askLines.
+function finishAsk(docs, files, asks, warnings = []) {
+  const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
+  const parts = [`Docs check: you changed ${named}`];
+  if (asks.length) parts.push('', ...askLines(docs, files, asks));
+  if (warnings.length) parts.push('', ...warnLines(files, warnings));
+  return parts.join('\n');
 }
 
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
@@ -602,13 +655,13 @@ function stop(input, root, docs, state) {
     hits = docs.watchHits(files, dirs);
   } catch { return; }
   if (!hits.length) return;
-  const refs = sectionRefs(docs, hits, ASK_SECTIONS);
-  if (!refs.length) return;
+  const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS);
+  if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   state.asked = true;
   saveState(input.session_id, state);
-  const reason = finishAsk(docs, files, refs);
-  log(root, input, { event: 'ask-update', sections: refs.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
+  const reason = finishAsk(docs, files, asks, warnings);
+  log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }

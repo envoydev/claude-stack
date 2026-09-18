@@ -957,6 +957,45 @@ function askRef(ref) {
   return { id: String(ref), heading: s.heading, file: path.relative(ROOT, s.from).split(path.sep).join('/'), first: firstSentence(s.text) || '(no text yet - this section is a heading only)', hash: sectionHash(s.text) };
 }
 
+// A section in a file the DOMAIN declares notOwned - askRef's opposite number: that file carries no
+// parsed sections at all (notOwnedOf excludes it from domainFiles, which is the one mechanism that
+// makes the write refusal hold at every path - see set() above), so there is nothing for allSections()
+// to have found. This reads the file directly, off mainline only, for QUOTING alone: nothing here is a
+// write path, and a protected file is never served from a branch overlay (nothing here is allowed to
+// write one - an overlay predating the notOwned declaration is the separate, already-handled orphan
+// case lint and promote report on their own).
+// Scoped to ONE domain, on purpose, not searched across every domain the way a bare ref otherwise is:
+// the caller (docs-session.js's sectionRefs) checks a watch hit's OWN domain here BEFORE any bare or
+// cross-domain resolution runs, which is what keeps a hit from ever being answered by a different
+// domain's same-named file once its own copy was made invisible by notOwned.
+function protectedRef(domain, ref) {
+  if (!domains().includes(domain)) return null;
+  const s = String(ref);
+  const slash = s.indexOf('/');
+  const first = slash < 0 ? null : s.slice(0, slash);
+  // A ref qualified for a DIFFERENT domain never names this domain's protected file - only a bare ref
+  // or one qualified for THIS domain does, the two spellings a watch entry's own domain uses for its
+  // own section.
+  if (first && domains().includes(first) && first !== domain) return null;
+  const bare = first && domains().includes(first) ? s.slice(slash + 1) : s;
+  const [fileKeyRaw, sec] = bare.split('#');
+  if (!sec) return null;
+  const fileKey = stripMd(fileKeyRaw);
+  const candidates = fileKey.includes('/') ? [fileKey] : [fileKey, `references/${fileKey}`, `history/${fileKey}`];
+  const rel = candidates.find((c) => matches(notOwnedOf(domain), `${c}.md`));
+  if (!rel) return null;
+  const file = path.join(domainDir(domain), `${rel}.md`);
+  if (!fs.existsSync(file)) return null;
+  const hit = parse(file, fs.readFileSync(file, 'utf8')).find((x) => x.id === `${key(file)}#${sec}`);
+  if (!hit) return null;
+  return {
+    id: `${domain}/${rel}#${sec}`,
+    heading: hit.heading,
+    file: path.relative(ROOT, file).split(path.sep).join('/'),
+    first: firstSentence(hit.text) || '(no text yet - this section is a heading only)',
+  };
+}
+
 function toc(fileKey) {
   let file;
   try { file = findFile(fileKey); } catch (e) { return e.message; }
@@ -1583,7 +1622,7 @@ module.exports = {
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, seedIds, loadWatch, watchHits, watchOf, unowned, snapshot, changedSince,
-  sectionHash, firstSentence, askRef,
+  sectionHash, firstSentence, askRef, protectedRef,
 };
 if (require.main !== module) return;
 
