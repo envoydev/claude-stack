@@ -32,7 +32,33 @@ const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') 
 const toPosix = (p, sep = path.sep) => (sep === '/' ? p : String(p).split(sep).join('/'));
 const statePath = (s, agent) => path.join(os.tmpdir(), `docs-session-${String(s || 'none').replace(/[^\w-]/g, '')}${agent ? `--${agent}` : ''}.json`);
 const loadState = (s) => { let v = {}; try { v = JSON.parse(fs.readFileSync(statePath(s), 'utf8')); } catch {} return { consults: [], holds: 0, edits: 0, asked: false, snapshot: null, ...v }; };
-const saveState = (s, v, agent) => { try { fs.writeFileSync(statePath(s, agent), JSON.stringify(v)); } catch {} };
+// This hook's own litter: one state file per session plus one per actor, in a directory its sibling scan then reads.
+// Swept opportunistically when a NEW state file appears - once per process, so a busy session pays it once and a
+// tool call that only updates an existing file pays nothing. Bounded and fail-silent throughout: a slow, unreadable
+// or undeletable temp directory must never cost this hook its 10s timeout. A file exactly at the cutoff is KEPT.
+// The work is bounded by TIME rather than by a count of files: a count cap is reached first by the very litter this
+// sweep exists to clear, and a sweep that gives up before it frees anything never shrinks the directory it is
+// walking. 50ms out of the wired 10s, and whatever is left over is taken by the next run.
+const SWEEP_MS = 7 * 24 * 3600 * 1000;
+const SWEEP_BUDGET_MS = 50;
+let swept = false;
+function sweepOldState(now = Date.now(), dir = os.tmpdir()) {
+  const deadline = Date.now() + SWEEP_BUDGET_MS;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith('docs-session-') || !f.endsWith('.json')) continue;
+      if (Date.now() > deadline) return;
+      try { if (now - fs.statSync(path.join(dir, f)).mtimeMs > SWEEP_MS) fs.rmSync(path.join(dir, f), { force: true }); } catch {}
+    }
+  } catch {}
+}
+const saveState = (s, v, agent) => {
+  const file = statePath(s, agent);
+  let fresh = false;
+  try { fresh = !fs.existsSync(file); } catch {}
+  try { fs.writeFileSync(file, JSON.stringify(v)); } catch {}
+  if (fresh && !swept) { swept = true; sweepOldState(); }
+};
 // A dispatched agent gets a state file of its OWN, beside the session's and named for it. Same store, one key finer:
 // agents run in parallel, and a shared file they all read-modify-write loses rows - a lost 'blocked' row is a SECOND
 // block on an agent that already answered, which is worse than never asking.
@@ -46,7 +72,9 @@ const agentKey = (input) => String(input.agent_id || input.agent_type || 'agent'
 // Who made a write. `agent_id` / `agent_type` are populated on a TOOL event only when the hook fires INSIDE a
 // subagent, so the main session - and every skill, whose work is main-session work - records under one key of its
 // own and its Stop can answer for what it wrote itself.
-const MAIN_ACTOR = 'main';
+// The dot is load-bearing: agentKey strips every character outside [\w-], so no agent name can ever produce this
+// key and no seat can land in the main session's file. Structural, not a convention to remember.
+const MAIN_ACTOR = 'main.session';
 const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input) : MAIN_ACTOR);
 // A write, attributed to the actor that made it. Banked only where the call is allowed to PROCEED (see preToolUse):
 // a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
@@ -474,7 +502,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState };
 if (require.main === module) {
   try { main(); } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

@@ -757,6 +757,73 @@ test('the silence an unattributed agent falls into is logged, and the switch ski
   } finally { r.rm(); }
 });
 
+// The main actor's key holds a character agentKey can never emit, so no agent name can ever land in its file -
+// structurally, rather than because no shipped seat happens to be called that today.
+test('a seat whose type is literally main never shares the main session actor', () => {
+  const r = watched();
+  try {
+    const s = sid();
+    start(r, s);
+    const seat = { session_id: s, agent_type: 'main' };
+    r.hook({ hook_event_name: 'SubagentStart', ...seat }, GIT);
+    r.hook({ hook_event_name: 'PreToolUse', ...seat, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, { ...GIT, ...ALLOW });
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    assert.match(r.hook({ hook_event_name: 'SubagentStop', ...seat }, GIT).stdout, /"decision":"block"/, 'the seat is asked');
+    assert.strictEqual(r.hook(stopEv(s), GIT).stdout, '', 'and the session never reads the seat\'s work as its own');
+  } finally { r.rm(); }
+});
+
+// The litter is this hook's own: one state file per session plus one per actor, and the sibling scan reads the
+// directory they sit in. A file exactly at the cutoff is KEPT - only one strictly older is dropped.
+const DAY = 24 * 3600 * 1000;
+const plantOld = (dir, name, ageMs) => {
+  const f = require('node:path').join(dir, name);
+  fs.writeFileSync(f, '{}');
+  const t = (Date.now() - ageMs) / 1000;
+  fs.utimesSync(f, t, t);
+  return f;
+};
+const scratch = () => fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'sweep-'));
+
+test('state files older than seven days are swept, at the boundary and only ours', () => {
+  const { sweepOldState } = require('../stack/hooks/docs-session.js');
+  const dir = scratch();
+  try {
+    const under = plantOld(dir, 'docs-session-under.json', 6 * DAY);
+    const at = plantOld(dir, 'docs-session-at.json', 7 * DAY);
+    const over = plantOld(dir, 'docs-session-over.json', 8 * DAY);
+    const foreign = plantOld(dir, 'not-a-docs-session.json', 30 * DAY);
+    const notJson = plantOld(dir, 'docs-session-keep.log', 30 * DAY);
+    // 'now' is taken from the boundary file's own recorded mtime, so 'exactly seven days' is exact rather than
+    // however many milliseconds the test itself took.
+    sweepOldState(fs.statSync(at).mtimeMs + 7 * DAY, dir);
+    assert.ok(fs.existsSync(under), 'six days old is kept');
+    assert.ok(fs.existsSync(at), 'exactly at the cutoff is kept');
+    assert.ok(!fs.existsSync(over), 'eight days old is swept');
+    assert.ok(fs.existsSync(foreign), 'a file that is not ours is never touched');
+    assert.ok(fs.existsSync(notJson), 'nor anything that is not a state file');
+    // A directory that cannot be read is not an error.
+    assert.doesNotThrow(() => sweepOldState(Date.now(), require('node:path').join(dir, 'gone')));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the sweep runs by itself when a new state file appears, and never fails the hook', () => {
+  // TMPDIR is where os.tmpdir() reads from, so the hook's own state and its sweep both land in this scratch
+  // directory - the machine's temp directory is left alone.
+  const dir = scratch();
+  const r = watched();
+  try {
+    const old = plantOld(dir, 'docs-session-stale.json', 30 * DAY);
+    const fresh = plantOld(dir, 'docs-session-fresh.json', 1 * DAY);
+    const out = r.hook(subStart(sid(), 'sweeper'), { ...GIT, TMPDIR: dir });
+    assert.strictEqual(out.status, 0);
+    assert.strictEqual(out.stderr, '', 'the sweep is never fatal');
+    assert.ok(!fs.existsSync(old), 'a month-old state file is gone once a new one is written');
+    assert.ok(fs.existsSync(fresh), 'a live one is untouched');
+    assert.ok(fs.readdirSync(dir).some((f) => /^docs-session-.*--sweeper\.json$/.test(f)), 'and this agent has its own state');
+  } finally { r.rm(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('a heading-only section is quoted as empty rather than as nothing at all', () => {
   const r = watched({ 'references/patterns.md': '## Order refunds\n<!-- id: orders -->\n<!-- covers: src/Api/Orders/** -->\n' });
   try {
