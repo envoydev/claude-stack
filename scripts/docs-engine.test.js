@@ -243,6 +243,41 @@ test('a merge commit is detected and promoted; the overlay goes; promoted.jsonl 
   } finally { r.rm(); }
 });
 
+// A model that ASKS where a decision lives must not get a worse answer than one that just edits. The gate's own
+// ranking was boosted by what a merge had just folded in; this proves the plain CLI reads that from the engine's
+// own promote record, with no hook anywhere in the run, and that the boost expires.
+test('where names a freshly promoted section first, and stops when the fold is old', () => {
+  const NARROW = ['a', 'b', 'c'].map((x) => section(x, 'src/Api/Orders/**', `Narrow rule ${x}.`)).join('\n');
+  const r = repo({
+    files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Users/User.cs': 'class User {}\n' },
+    docs: { 'references/patterns.md': NARROW, 'references/boundaries.md': section('paging', 'src/**', 'Pages hold 20 rows.') },
+  });
+  try {
+    r.git('switch', '-qc', 'feat/drawer');
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Page; }\n'); r.git('commit', '-qam', 'drawer');
+    r.cli(['set', 'boundaries#paging'], '## paging\n<!-- id: paging -->\n<!-- covers: src/** -->\nA drawer list holds at most 10 rows.\n');
+    r.git('switch', '-q', 'develop');
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/drawer');
+    const cold = r.cli(['where', 'src/Api/Orders/Refund.cs']).stdout;
+    assert.match(cold.split('\n')[0], /^patterns#a /, 'nothing promoted yet: the narrowest answers');
+    assert.strictEqual(r.cli(['promote', '--merged']).status, 0);
+    const fresh = r.cli(['where', 'src/Api/Orders/Refund.cs']).stdout;
+    assert.match(fresh.split('\n')[0], /^boundaries#paging /, 'what just landed answers first');
+    assert.match(fresh, /patterns#a /, 'and the ranking still fills the rest');
+    const log = '.claude/docs/.branches/promoted.jsonl';
+    const rows = r.read(log).trim().split('\n').map((l) => JSON.parse(l));
+    r.write(log, `${rows.map((x) => JSON.stringify({ ...x, at: new Date(Date.now() - 9 * 3600 * 1000).toISOString() })).join('\n')}\n`);
+    const stale = r.cli(['where', 'src/Api/Orders/Refund.cs']).stdout;
+    assert.match(stale.split('\n')[0], /^patterns#a /, 'a fold nobody read for a working day is no longer news');
+    assert.doesNotMatch(stale, /boundaries#paging/);
+    // A half-written or hand-edited ledger costs the boost, never the answer.
+    r.write(log, `not json at all\n{"at":"nope","results":[{"id":"boundaries#paging"}]}\n{"at":"${new Date().toISOString()}","results":"x"}\n`);
+    const junk = r.cli(['where', 'src/Api/Orders/Refund.cs']);
+    assert.strictEqual(junk.status, 0);
+    assert.match(junk.stdout.split('\n')[0], /^patterns#a /);
+  } finally { r.rm(); }
+});
+
 test('a squash merge is detected by blobs', () => {
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {

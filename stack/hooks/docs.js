@@ -122,20 +122,40 @@ const narrowCap = () => Math.max(40, Math.round(repoFiles().length * 0.03));
 // scanned in, say) would decide the expensive inline slot by accident.
 const narrowestFirst = (a, b) => a.width - b.width || Number(b.declared) - Number(a.declared) || a.chars - b.chars;
 
+// What a merge folded into mainline and nobody has caught up with: the ids promoteLocked wrote into its own ledger
+// (promoted.jsonl, beside the overlays) within the last FRESH_FOLD_MS. This is an ENGINE fact rather than a session
+// one on purpose - the gate and the `where` command must give the same answer, or a model that checks the docs
+// before it edits gets a worse answer than one that does not, which is exactly backwards. The window is this
+// stack's own receipt window: a working day later the fold is simply what the docs say. A missing or unreadable
+// ledger means nothing is fresh, which is the plain ranking.
+const FRESH_FOLD_MS = 8 * 3600 * 1000;
+function freshlyPromoted(now = Date.now()) {
+  let rows;
+  try { rows = fs.readFileSync(path.join(BRANCHES, 'promoted.jsonl'), 'utf8').split('\n').filter(Boolean); } catch { return []; }
+  const out = [];
+  for (const line of rows.slice(-100)) { // nobody prunes this ledger: only its tail can be recent
+    let row;
+    try { row = JSON.parse(line); } catch { continue; }
+    const at = Date.parse(row && row.at);
+    if (!Number.isFinite(at) || now - at > FRESH_FOLD_MS) continue;
+    for (const x of Array.isArray(row.results) ? row.results : []) {
+      if (x && typeof x.id === 'string' && x.result !== 'conflict') out.push(x.id);
+    }
+  }
+  return [...new Set(out)];
+}
+
 // The narrowest declared cover answers first: a section written about src/Features/Notifications/** says more about a
 // notifications handler than a smaller one written about src/Features/**. Word matches come next, weighted by how rare
 // each word is across the docs, and the broad globs fill what is left. Review history is never offered.
-// `first` names sections that are NEWS to the caller's reader - the session hook passes the decisions a merge folded
-// into mainline at THIS session's start. News outranks narrowness: the reader has not read them, and they changed
-// what mainline says. They answer only where they cover the path, and never take the last slot.
-function where(paths, limit = 3, first = []) {
+// A section a merge just folded in is NEWS, and news outranks narrowness: the reader has not read it, and it changed
+// what mainline says. It answers only where it covers the path, and never takes the last slot.
+function where(paths, limit = 3) {
+  const news = freshlyPromoted();
   const want = [...new Set(paths.flatMap(tokens))];
   const current = allSections().filter((s) => !s.history);
   const cap = narrowCap();
   const covering = (s) => s.covers.length && paths.some((p) => matches(s.covers, p));
-  // Anything but a list of ids is no list of ids: a hand-edited or half-written caller state must cost the reader
-  // the boost, never the answer.
-  const news = Array.isArray(first) ? first : [];
   const ranked = (list) => list.map((s) => ({ ...s, width: coverWidth(s.covers, paths) })).sort(narrowestFirst);
   const fresh = ranked(news.length ? current.filter((s) => news.includes(s.id) && covering(s)) : []).slice(0, Math.max(limit - 1, 0));
   const declared = ranked(current.filter((s) => covering(s) && !fresh.some((f) => f.id === s.id)));
