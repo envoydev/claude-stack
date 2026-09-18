@@ -283,11 +283,19 @@ const saidDocsOk = (text) => String(text == null ? '' : text).split(/\r?\n/).som
 // file - so resolving is done per hit, never by flattening every hit's ids into one Set first (that dedupe is
 // what used to let one domain's watch entry collapse onto another's, or drop an id neither of them meant).
 // The bare spelling is tried first: unchanged messages in the common case, where exactly one domain holds a
-// matching file. Only when that fails - which happens when a second domain now holds a same-named file too -
-// is the hit's OWN domain used to disambiguate, so the ask is answered by the right domain's file rather than
-// silently dropped (askRef returns null either way; a domain-qualified ref that still cannot be found stays
-// dropped, same as an id that never existed). Deduped on the RESOLVED ref's id, not the raw watch.json
-// spelling, since two domains' identical bare spellings resolve to two different final refs.
+// matching file. Only when the bare form is genuinely AMBIGUOUS - parseRef throws because TWO domains both
+// own a matching file - does the qualified fallback (this hit's own domain) correctly pick this hit's own
+// file over the other domain's; reordering the two tries would change nothing here, since an ambiguous bare
+// key can never resolve to the wrong domain by accident (it throws, askRef catches it, the fallback runs).
+// KNOWN GAP, not fixed here: a domain's own notOwned file drops out of domainFiles entirely, so it is no
+// longer a candidate when the bare form asks 'how many domains own a matching file' - a domain that protects
+// its own NOTES.md and watches 'NOTES#note' can have that bare id resolve UNIQUELY to a different domain's
+// NOTES.md instead of being flagged ambiguous, quoting that other domain's text and handing over a `set`
+// that writes into it. The qualified fallback never even runs in that case, because the bare form already
+// (wrongly) succeeded. Needs the protected-file read path a later task builds. (askRef returns null when
+// neither form resolves at all; a domain-qualified ref that still cannot be found stays dropped, same as an
+// id that never existed.) Deduped on the RESOLVED ref's id, not the raw watch.json spelling, since two
+// domains' identical bare spellings resolve to two different final refs.
 function sectionRefs(docs, hits, limit, exclude = () => false) {
   const seen = new Set();
   const out = [];
@@ -511,7 +519,7 @@ function preToolUse(input, root, docs, state) {
   try { hits = docs.where(targets, 3); } catch {}
   let reason;
   if (!hits.length) {
-    reason = `Architecture docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
+    reason = `Docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
   } else {
     const [first, ...rest] = hits;
     const body = first.text.length > INLINE_CHARS ? `${first.text.slice(0, INLINE_CHARS)}\n... (${first.text.length - INLINE_CHARS} more chars: \`${READ} show ${first.id}\`)` : first.text;
@@ -519,7 +527,7 @@ function preToolUse(input, root, docs, state) {
     saveState(input.session_id, state);
     log(root, input, { event: 'consult', refs: [first.id], tool: 'gate-inline' });
     reason = [
-      `Architecture docs not read yet in this session. ${first.id} covers ${targets[0]} - here it is:`,
+      `Docs not read yet in this session. ${first.id} covers ${targets[0]} - here it is:`,
       '', body, '',
       ...(rest.length ? [`Also covering it: ${rest.map((h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`).join(', ')}`, ''] : []),
       'That is the convention this change follows. Now make the change.',
