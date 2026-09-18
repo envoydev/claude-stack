@@ -486,7 +486,11 @@ function parseRef(ref) {
   const first = slash < 0 ? null : s.slice(0, slash);
   const isDomain = Boolean(first) && domains().includes(first);
   const bare = isDomain ? s.slice(slash + 1) : s;
-  const fileKey = bare.split('#')[0];
+  // A trailing '.md' is one of the three spellings docs-session.js documents to users as equivalent
+  // ('patterns#orders', 'references/patterns#orders', 'patterns.md#orders') - relKey and key are both
+  // already extension-stripped, so the lookup strips it here too, once, rather than a second explicit
+  // tier the way findFile used to carry on its own.
+  const fileKey = bare.split('#')[0].replace(/\.md$/, '');
   if (!fileKey) throw new Error(`not a section ref: ${JSON.stringify(ref)} - want <file>#<id> or <domain>/<file>#<id>`);
   const findIn = (d) => domainFiles(d).find((f) => relKey(f) === fileKey || key(f) === fileKey);
   if (isDomain) {
@@ -1051,8 +1055,8 @@ function promote(name) {
 function promoteLocked(name, dir) {
   const results = [];
   let freshConflict = false;
-  for (const over of overrideFiles(dir)) {
-    const rel = path.relative(dir, over).split(path.sep);
+  for (let over of overrideFiles(dir)) {
+    let rel = path.relative(dir, over).split(path.sep);
     const id = path.basename(rel.pop(), '.md');
     // rel's own leading segment is the domain overlayParts wrote (kept in rel for the .base/.conflict
     // paths below, which mirror overlayParts' own shape); only the mainline file lives outside it.
@@ -1072,7 +1076,27 @@ function promoteLocked(name, dir) {
       || (fs.existsSync(mainline) && !domainFiles(domain).includes(mainline));
     if (stranded && domains().includes('architecture')) {
       const legacy = `${path.join(domainDir('architecture'), ...rel)}.md`;
-      if (domainFiles('architecture').includes(legacy)) { mainline = legacy; stranded = false; }
+      if (domainFiles('architecture').includes(legacy)) {
+        // The rescue moves the FILES onto the domain-qualified shape, not just the `mainline` pointer: a
+        // marker later written under the legacy rel would sit where writeInPlace never looks (it always
+        // builds a marker path from overlayParts, domain-qualified), so a migrated overlay's own
+        // conflict could never be resolved the documented way. Moving the override, its .base twin and
+        // any .conflict twin already on disk onto 'architecture/' first means every line below - base
+        // read, marker path, post-fold cleanup - runs over one spelling, the same as an overlay this
+        // version wrote itself.
+        const migrate = (root) => {
+          const from = path.join(root, ...rel, `${id}.md`);
+          const to = path.join(root, 'architecture', ...rel, `${id}.md`);
+          if (fs.existsSync(from)) { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.renameSync(from, to); }
+          return to;
+        };
+        over = migrate(dir);
+        migrate(path.join(dir, '.base'));
+        migrate(path.join(dir, '.conflict'));
+        rel = ['architecture', ...rel];
+        mainline = legacy;
+        stranded = false;
+      }
     }
     const label = stranded ? [...rel, id].join('/') : `${path.basename(mainline, '.md')}#${id}`;
     const marker = path.join(dir, '.conflict', ...rel, `${id}.md`);
@@ -1086,7 +1110,7 @@ function promoteLocked(name, dir) {
       results.push({ id: label, result: 'conflict', why, path: over });
     };
     if (stranded) {
-      flagConflict('its overlay path names no domain this install has - an overlay from before domains existed, or one whose domain moved; nothing was folded or removed - move the text under the right domain by hand, then promote again', '');
+      flagConflict('its overlay path does not resolve to a file any domain in this install owns - an overlay from before domains existed with no matching architecture file, one whose domain moved, or one nested deeper than a domain keeps its own files; nothing was folded or removed - move the text under the right domain by hand, then promote again', '');
       continue;
     }
     // No marker here: a missing doc file is a conflict `set` can never match (there is no file to write the

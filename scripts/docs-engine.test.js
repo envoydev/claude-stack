@@ -1050,6 +1050,22 @@ test('a real watch.json sections entry and the references/ spelling both resolve
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// Fix round 2 (task-3-fix-review.md, finding 1): docs-session.js:221 tells users three spellings
+// resolve to the same section - 'patterns#orders', 'references/patterns#orders' and
+// 'patterns.md#orders'. findFile used to carry its own explicit basename tier that stripped '.md';
+// parseRef's merged search compares a fileKey against relKey/key, both already extension-stripped, so
+// a literal '.md' fileKey matched neither once findFile started delegating to it.
+test('the "<file>.md#<id>" spelling stays resolvable through parseRef and every reader, extension and all', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const docs = requireEngine(r.root);
+    const withExt = docs.parseRef('patterns.md#orders');
+    assert.strictEqual(withExt.domain, 'architecture');
+    assert.strictEqual(withExt.file, 'references/patterns.md');
+    assert.match(r.cli(['show', 'patterns.md#orders']).stdout, /ledgered before the payment call/, 'show resolves the .md spelling too');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('a second domain becomes readable by show without a watch.json in every old fixture', () => {
   const r = repo({
     files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' },
@@ -1233,6 +1249,41 @@ test('promote refuses a stranded overlay that would otherwise fold into a decoy 
     assert.doesNotMatch(r.read('.claude/docs/ASSESSMENT.md'), /Branch text that must not be lost/, 'the decoy file at the docs root was never written to');
     assert.ok(r.exists('.claude/docs/.branches/feat-stray/ASSESSMENT/brand-new.md'), 'the branch text is kept, not deleted, while its domain cannot be resolved');
     assert.match(r.read('.claude/docs/.branches/feat-stray/ASSESSMENT/brand-new.md'), /Branch text that must not be lost/);
+  } finally { r.rm(); }
+});
+
+// Fix round 2 (task-3-fix-review.md, finding 2): the rescue must move the override, its .base twin and
+// any .conflict twin onto the domain-qualified shape, not just redirect `mainline` - otherwise a
+// migrated overlay's own conflict marker lands under the legacy rel, where writeInPlace (which always
+// builds a marker path from overlayParts, domain-qualified) never looks, and the documented resolve -
+// set the section on mainline - silently does nothing.
+test("a migrated overlay's conflict marker lands where writeInPlace looks, so resolving it on mainline clears it", () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': ORDERS('The cap is 5.') } });
+  try {
+    r.git('switch', '-qc', 'feat/legacy');
+    const base = r.git('rev-parse', 'HEAD');
+    r.write('src/marker.txt', 'x\n');
+    r.git('add', '-A'); r.git('commit', '-qm', 'work');
+    const head = r.git('rev-parse', 'HEAD');
+    // The pre-domain shape (no leading domain segment), with a base that still matches what mainline
+    // held when the branch forked.
+    r.write('.claude/docs/.branches/feat-legacy/references/patterns/orders.md', ORDERS('The cap is 10.'));
+    r.write('.claude/docs/.branches/feat-legacy/.base/references/patterns/orders.md', ORDERS('The cap is 5.'));
+    writeBaseMeta(r, '.claude/docs/.branches/feat-legacy', 'feat/legacy', base, head);
+    r.git('switch', '-q', 'develop');
+    // Mainline changes the same section before the merge, so the migrated fold lands as a genuine
+    // conflict, not a clean add.
+    assert.strictEqual(r.cli(['set', 'patterns#orders'], ORDERS('The cap is 20.')).status, 0);
+    r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/legacy');
+    const first = r.cli(['promote', '--merged']);
+    assert.match(first.stdout, /patterns#orders: conflict/);
+    assert.ok(r.exists('.claude/docs/.branches/feat-legacy/architecture/references/patterns/orders.md'), 'the override itself moved under architecture/, not just the mainline pointer');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-legacy/references/patterns/orders.md'), 'the legacy override file itself is gone, renamed rather than copied');
+    assert.ok(r.exists('.claude/docs/.branches/feat-legacy/.base/architecture/references/patterns/orders.md'), 'the .base twin moved too');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-legacy/.base/references/patterns/orders.md'), 'the legacy .base file itself is gone');
+    const resolved = r.cli(['set', 'patterns#orders'], ORDERS('The cap is 20.'));
+    assert.match(resolved.stdout, /resolved the pending doc conflict with: feat-legacy/, 'writeInPlace found the marker where the migration put it');
+    assert.ok(!r.exists('.claude/docs/.branches/feat-legacy'), 'the whole overlay is gone once its only conflict resolves');
   } finally { r.rm(); }
 });
 
