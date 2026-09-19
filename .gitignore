@@ -56,6 +56,12 @@ examples/**/VERIFY-REPORT.md
 # superpowers / brainstorming scratch specs are local-only.
 **/docs/superpowers/
 
+# .superpowers/: the subagent-driven-development workspace - ledger, task briefs, implementer and
+# review reports. The tooling that writes it treats it as git-ignored scratch, and it names absolute
+# local paths, so in a PUBLIC repo one `git add -A` away from committing them. Ignored, not tracked:
+# the durable record of a plan is its commits, not the reports that argued for them.
+.superpowers/
+
 # docs/usefull/: locally saved copies of third-party pages (token-optimization articles, the
 # official best-practices page) read by the audits - reference material, never redistributed.
 docs/usefull/
