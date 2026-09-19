@@ -11,16 +11,23 @@
 // <root>/.mcp.json, else the account's <configDir>/.claude.json `mcpServers.memory`. No registration
 // found -> exit 1. `--memory-dir` overrides the source notes folder (for tests); its default is
 // <configDir>/projects/<slug>/memory/, where configDir is --config-dir, else CLAUDE_CONFIG_DIR, else
-// ~/.claude, and slug is the git top-level directory's absolute path with every path separator
-// replaced by '-' (worktrees resolve to the MAIN repo's directory via `git rev-parse
-// --path-format=absolute --git-common-dir`, since Claude Code's own auto-memory is shared by every
-// worktree of one repo - confirmed against this machine's real ~/.claude/projects/ folder names).
+// ~/.claude, and slug is the git top-level directory's absolute path with every NON-ALPHANUMERIC
+// character replaced by '-' (Claude Code's own rule - fix round 2, Critical #1; worktrees resolve to
+// the MAIN repo's directory via `git rev-parse --path-format=absolute --git-common-dir`, since
+// Claude Code's own auto-memory is shared by every worktree of one repo - confirmed against this
+// machine's real ~/.claude/projects/ folder names).
 //
-// Idempotence: relies on the memory MCP's OWN duplicate-content detection. Storing the same content
-// twice against the same database returns a "Duplicate content detected" message wrapped in a
-// successful (isError:false) tool result rather than adding a second row - verified against the real
-// mcp-memory-service 11.13.0 server on an empty temp db. That message is read as "already present",
-// never as a failure; any OTHER "Error storing memory" text is a hard failure (exit 1).
+// Idempotence (fix round 2, Important #2): PRIMARILY a read-only node:sqlite precheck against the
+// registration's own MCP_MEMORY_SQLITE_PATH, for a live row (`deleted_at IS NULL`) holding the exact
+// same content - skips the store call outright on a hit, so nothing depends on the server's free-text
+// wording. SECOND line, only for notes the precheck did not resolve (node:sqlite unavailable below
+// Node 22.13 - noted in the printed summary when it applies -, the db file not created yet, or the
+// registration's env carries no MCP_MEMORY_SQLITE_PATH): the memory MCP's OWN duplicate-content
+// detection. Storing the same content twice against the same database returns a "Duplicate content
+// detected" message wrapped in a successful (isError:false) tool result rather than adding a second
+// row - verified against the real mcp-memory-service 11.13.0 server on an empty temp db. That message
+// is read as "already present", never as a failure; any OTHER "Error storing memory" text is a hard
+// failure (exit 1).
 //
 // Kind mapping (note frontmatter type -> memory_type, read from metadata.type or a top-level type
 // key - real notes on this machine carry it nested under metadata.type). Fix round 1: the controller
@@ -33,8 +40,10 @@
 //   user -> preference_signal, feedback -> user_correction, project/reference/anything else
 //   (including missing) -> reference.
 // Tags: `project:<name>` (name = basename of the git top-level dir, commas stripped) plus the note's
-// own `name` (frontmatter `name`, else the filename without its extension). Content: the frontmatter
-// `description` as the first line, then the body. MEMORY.md is the index, never imported.
+// own `name` (frontmatter `name`, else the filename without its extension; commas stripped there too
+// - fix round 2, Minor #3). Content: the frontmatter `description` as the first line, then the body
+// (with every `\r` stripped from the body - fix round 2, Minor #4). MEMORY.md is the index, never
+// imported.
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -93,9 +102,14 @@ function gitTopLevel(projectRoot)
     }
 }
 
+// Fix round 2, Critical #1: Claude Code's own docs (context7 /websites/code_claude, "Where
+// transcripts are stored") state the rule plainly - every non-alphanumeric character is replaced by
+// '-', not just path separators. A path holding a dot, underscore, space or other punctuation
+// anywhere (common: 'first.last'-style home directories) used to compute a folder that does not
+// exist, silently read back as 'nothing to import'.
 function slugify(absPath)
 {
-    return absPath.replace(/[\\/]/g, '-');
+    return absPath.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 function defaultMemoryDir(projectRoot, configDir)
@@ -151,7 +165,9 @@ function parseNote(raw, filename)
     const name = meta.name || path.basename(filename, path.extname(filename));
     const description = typeof meta.description === 'string' ? meta.description.trim() : '';
     const rawType = (meta.metadata && meta.metadata.type) || meta.type || '';
-    body = body.replace(/^\s+/, '').replace(/\s+$/, '');
+    // Fix round 2, Minor #4: strip every '\r' (not just outer whitespace) so a CRLF-authored note
+    // (e.g. on Windows) never stores a body with embedded '\r' characters.
+    body = body.replace(/\r/g, '').replace(/^\s+/, '').replace(/\s+$/, '');
     return { name, description, rawType, body };
 }
 
@@ -171,6 +187,53 @@ function extractResultText(result)
             .join('\n');
     }
     return '';
+}
+
+// Fix round 2, Important #2: idempotence was keyed only to the server's free-text 'duplicate content
+// detected' wording, which is not pinned to any server version (the installer registers whatever is
+// newest at provision time). Before calling memory_store at all, read the REGISTERED db file
+// read-only for a live row holding the exact same content and skip the store outright when one
+// exists - the message check that follows a store call stays as a second line, for whenever this
+// precheck cannot run.
+function loadSqlite()
+{
+    // Test hook: forces the same fallback path a genuinely unavailable node:sqlite takes, so the
+    // fallback is exercisable on any Node version, not only below 22.13.
+    if (process.env.CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE === '1') return null;
+    try
+    {
+        // Silences the (harmless) ExperimentalWarning node:sqlite prints below Node 24 - same
+        // pattern this plan uses elsewhere for the same module.
+        process.removeAllListeners('warning');
+        return require('node:sqlite');
+    }
+    catch (e)
+    {
+        return null; // Node < 22.13 without --experimental-sqlite - node:sqlite is unavailable
+    }
+}
+
+function openDbReadOnly(DatabaseSync, dbPath)
+{
+    try { return new DatabaseSync(dbPath, { readOnly: true }); }
+    catch (e)
+    {
+        try { return new DatabaseSync(`file:${dbPath}?mode=ro&immutable=1`, { readOnly: true }); }
+        catch (e2) { return null; } // e.g. the db file does not exist yet (first-ever import)
+    }
+}
+
+function hasLiveDuplicate(db, content)
+{
+    try
+    {
+        const row = db.prepare('SELECT 1 FROM memories WHERE content = ? AND deleted_at IS NULL LIMIT 1').get(content);
+        return !!row;
+    }
+    catch (e)
+    {
+        return false; // a query failure is 'no precheck available' for this note, never a false match
+    }
 }
 
 function startServer(entry, cwd)
@@ -279,6 +342,18 @@ async function runImport(projectRoot, configDir, memoryDir)
         return parseNote(raw, f);
     });
 
+    // The db precheck is a pure local file read - resolved before spawning the server at all. The
+    // registration's own env names the exact file the server itself will open.
+    let db = null;
+    let sqliteNote = '';
+    const dbPath = entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
+    if (dbPath)
+    {
+        const sqlite = loadSqlite();
+        if (sqlite) db = openDbReadOnly(sqlite.DatabaseSync, dbPath);
+        else sqliteNote = ' (node:sqlite unavailable - idempotence checked via the server response text only)';
+    }
+
     const child = startServer(entry, projectRoot);
     let killed = false;
     const killChild = () =>
@@ -306,9 +381,11 @@ async function runImport(projectRoot, configDir, memoryDir)
         for (const note of notes)
         {
             if (Date.now() > deadline) throw new Error('import timed out after 5 minutes');
-            const kind = mapKind(note.rawType);
             const content = buildContent(note.description, note.body);
-            const tags = [`project:${projectName}`, note.name];
+            if (db && hasLiveDuplicate(db, content)) { present++; continue; }
+
+            const kind = mapKind(note.rawType);
+            const tags = [`project:${projectName}`, note.name.replace(/,/g, '')];
             const resp = await rpc.call('tools/call', {
                 name: 'memory_store',
                 arguments: { content, metadata: { tags, type: kind } },
@@ -320,15 +397,17 @@ async function runImport(projectRoot, configDir, memoryDir)
             // Read the text: the server wraps BOTH a genuine failure and a benign duplicate-content
             // report as isError:false text starting 'Error storing memory:' - only the duplicate
             // case counts as 'already present'; anything else with that prefix is a hard failure.
+            // Second line only - the db precheck above is the primary idempotence check.
             if (/duplicate content detected/i.test(text)) present++;
             else if (/error storing memory/i.test(text)) throw new Error(`memory_store failed for '${note.name}': ${text}`);
             else imported++;
         }
-        return { ok: true, message: `${imported} imported, ${present} already present, from ${memoryDir}` };
+        return { ok: true, message: `${imported} imported, ${present} already present, from ${memoryDir}${sqliteNote}` };
     }
     finally
     {
         killChild();
+        if (db) { try { db.close(); } catch (e) { /* already closed */ } }
     }
 }
 

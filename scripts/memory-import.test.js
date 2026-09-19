@@ -19,6 +19,9 @@ const memoryImport = require('./memory-import.js');
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 const hasUvx = spawnSync('uvx', ['--version'], { encoding: 'utf8' }).status === 0;
 const skipNoUvx = hasUvx ? false : 'uvx not installed - real mcp-memory-service integration test skipped';
+let hasSqlite = true;
+try { require('node:sqlite'); } catch (e) { hasSqlite = false; }
+const skipNoSqlite = hasSqlite ? false : 'node:sqlite unavailable on this Node (< 22.13) - db precheck tests skipped';
 
 function mkTmp(prefix)
 {
@@ -42,6 +45,10 @@ function sandbox(opts = {})
 
     const env = { FAKE_MEMORY_DB: db, FAKE_MEMORY_CALLS_LOG: callsLog };
     if (opts.failContent) env.FAKE_MEMORY_FAIL_CONTENT = opts.failContent;
+    // Wires MCP_MEMORY_SQLITE_PATH into the registration's env, exactly like the real installer does -
+    // the import script reads this to find the db it precheck-queries directly, independent of
+    // whatever the fake server itself does with it (it ignores it entirely).
+    if (opts.sqliteDbPath) env.MCP_MEMORY_SQLITE_PATH = opts.sqliteDbPath;
 
     if (opts.registerIn !== 'account')
     {
@@ -83,6 +90,26 @@ function snapshot(dir)
 {
     const names = fs.readdirSync(dir).sort();
     return names.map((n) => `${n}\0${fs.readFileSync(path.join(dir, n), 'utf8')}`).join('');
+}
+
+// Builds a real sqlite db at dbPath from the shipped fixture schema (scripts/fixtures/memory-schema.sql
+// - the same `memories` table shape captured from the real 11.13.0 server) and inserts the given rows,
+// for the db-precheck tests to seed a 'live' or 'soft-deleted' row directly, independent of the fake
+// server (which never touches this file itself).
+function makeFixtureDb(dbPath, rows)
+{
+    const { DatabaseSync } = require('node:sqlite');
+    const schema = fs.readFileSync(path.join(ROOT, 'scripts', 'fixtures', 'memory-schema.sql'), 'utf8');
+    const db = new DatabaseSync(dbPath);
+    db.exec(schema);
+    const insert = db.prepare(
+        'INSERT INTO memories (content_hash, content, tags, memory_type, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    for (const r of rows)
+    {
+        insert.run(r.hash, r.content, r.tags || '', r.memory_type || 'reference', r.created_at || Date.now() / 1000, r.deleted_at ?? null);
+    }
+    db.close();
 }
 
 test.after(() =>
@@ -147,6 +174,16 @@ test('slugify: replaces every path separator with a dash (matches this machine\'
         '-Users-mac-Programming-Projects-Personal-claude-stack');
 });
 
+test('slugify: fix round 2 Critical #1 - replaces EVERY non-alphanumeric character, not just path separators', () =>
+{
+    // Claude Code's own docs: "<project> is your working directory path with non-alphanumeric
+    // characters replaced by -". A dot, underscore, space or non-ASCII letter anywhere in the path
+    // (not just the leaf folder) used to survive through the old separators-only regex.
+    assert.strictEqual(memoryImport.slugify('/tmp/reviewtest/my.proj_v2 test'), '-tmp-reviewtest-my-proj-v2-test');
+    assert.strictEqual(memoryImport.slugify('/Users/first.last/Projects/app'), '-Users-first-last-Projects-app');
+    assert.strictEqual(memoryImport.slugify('/Users/josé/Projects/café'), '-Users-jos--Projects-caf-');
+});
+
 test('3 notes import with the right memory_type, tags and content; MEMORY.md is skipped; source untouched', () =>
 {
     const sb = sandbox();
@@ -175,6 +212,89 @@ test('3 notes import with the right memory_type, tags and content; MEMORY.md is 
 
     assert.strictEqual(byName['feedback-shorter'].memory_type, 'user_correction');
     assert.strictEqual(byName['reference-tracker'].memory_type, 'reference');
+
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('a note-name comma is stripped from its tag, like the project tag (fix round 2, Minor #3)', () =>
+{
+    const sb = sandbox();
+    writeNote(sb.memoryDir, 'a.md', { name: 'a, with a comma', description: 'd', type: 'user', body: 'b' });
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    const calls = readCalls(sb.callsLog);
+    assert.strictEqual(calls.length, 1);
+    assert.deepStrictEqual(calls[0].tags, [`project:${path.basename(sb.projectRoot)}`, 'a with a comma']);
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('a CRLF note body is stored with every \\r stripped (fix round 2, Minor #4)', () =>
+{
+    const sb = sandbox();
+    fs.writeFileSync(path.join(sb.memoryDir, 'a.md'),
+        '---\r\nname: a\r\ndescription: d\r\nmetadata:\r\n  type: user\r\n---\r\n\r\nline one\r\nline two\r\n');
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    const calls = readCalls(sb.callsLog);
+    assert.strictEqual(calls.length, 1);
+    assert.ok(!calls[0].content.includes('\r'), `content still carries \\r: ${JSON.stringify(calls[0].content)}`);
+    assert.strictEqual(calls[0].content, 'd\n\nline one\nline two');
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('db precheck (fix round 2, Important #2): a live row with the exact same content is "already present" without ever calling the server', { skip: skipNoSqlite }, () =>
+{
+    const sb = sandbox();
+    const sqliteDbPath = path.join(sb.work, 'precheck.db');
+    makeFixtureDb(sqliteDbPath, [{ hash: 'h1', content: 'd\n\nb', tags: 'project:x,a', memory_type: 'preference_signal', deleted_at: null }]);
+    // Re-register with the sqlite path wired in (sandbox() already ran once above without it).
+    fs.writeFileSync(path.join(sb.projectRoot, '.mcp.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: sb.db, FAKE_MEMORY_CALLS_LOG: sb.callsLog, MCP_MEMORY_SQLITE_PATH: sqliteDbPath } } },
+    }, null, 2));
+    writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' }); // content = 'd\n\nb', matches the seeded row
+
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /memory import: 0 imported, 1 already present, from /);
+    assert.strictEqual(readCalls(sb.callsLog).length, 0, 'the precheck must skip the memory_store call entirely on a hit');
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('db precheck: a soft-deleted row (deleted_at set) does not count as present - falls through to a real store', { skip: skipNoSqlite }, () =>
+{
+    const sb = sandbox();
+    const sqliteDbPath = path.join(sb.work, 'precheck.db');
+    makeFixtureDb(sqliteDbPath, [{ hash: 'h1', content: 'd\n\nb', tags: 'project:x,a', memory_type: 'preference_signal', deleted_at: 1700000000 }]);
+    fs.writeFileSync(path.join(sb.projectRoot, '.mcp.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: sb.db, FAKE_MEMORY_CALLS_LOG: sb.callsLog, MCP_MEMORY_SQLITE_PATH: sqliteDbPath } } },
+    }, null, 2));
+    writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' });
+
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
+    assert.strictEqual(readCalls(sb.callsLog).length, 1, 'a soft-deleted row must not suppress the store call');
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('db precheck: forcing node:sqlite unavailable falls back to the server message check, and the output says so', () =>
+{
+    const sb = sandbox({ sqliteDbPath: path.join('/does/not/matter', 'memory.db') }); // never opened - sqlite is forced off below
+    writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'desc', type: 'user', body: 'body' });
+
+    const first = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir],
+        { env: { ...process.env, CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE: '1' } });
+    assert.strictEqual(first.status, 0, first.stderr);
+    assert.match(first.stdout, /memory import: 1 imported, 0 already present, from .*\(node:sqlite unavailable - idempotence checked via the server response text only\)/);
+
+    const second = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir],
+        { env: { ...process.env, CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE: '1' } });
+    assert.strictEqual(second.status, 0, second.stderr);
+    assert.match(second.stdout, /memory import: 0 imported, 1 already present, from .*\(node:sqlite unavailable/);
+    // Still resolved via the server's own duplicate-message fallback - one call each run.
+    assert.strictEqual(readCalls(sb.callsLog).length, 2);
 
     fs.rmSync(sb.work, { recursive: true, force: true });
 });
@@ -294,6 +414,31 @@ test('default notes folder is derived from the git top-level slug (worktree-awar
     fs.rmSync(sb.work, { recursive: true, force: true });
 });
 
+test('default notes folder resolves correctly when the project path holds a dot and a space (fix round 2, Critical #1)', () =>
+{
+    const work = mkTmp('memimport-');
+    const projectRoot = path.join(work, 'my.repo dir'); // the exact class of path the old bug missed
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+    const acctDir = path.join(work, 'acct');
+    fs.mkdirSync(acctDir);
+    fs.writeFileSync(path.join(projectRoot, '.mcp.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(work, 'fake-db.json'), FAKE_MEMORY_CALLS_LOG: path.join(work, 'calls.jsonl') } } },
+    }, null, 2));
+
+    const memoryDir = memoryImport.defaultMemoryDir(projectRoot, acctDir);
+    assert.ok(!memoryDir.includes('.repo') && !memoryDir.includes(' dir'), `slug leaked raw punctuation into the path: ${memoryDir}`);
+    fs.mkdirSync(memoryDir, { recursive: true });
+    writeNote(memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' });
+
+    const res = runScript(['--project-root', projectRoot, '--config-dir', acctDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /,
+        `expected the note to be found and imported, got: ${res.stdout}${res.stderr}`);
+    fs.rmSync(work, { recursive: true, force: true });
+});
+
 // Integration: the REAL mcp-memory-service 11.13.0 server, empty temp db, sqlite_vec backend.
 // MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1 is required on every launch against a non-empty db (the
 // installer's exact registration installs no ML backend - spike-facts.md CONTRADICTS SPEC #1) - the
@@ -332,6 +477,14 @@ test('integration: imports notes through the real mcp-memory-service server', { 
         { encoding: 'utf8', timeout: 120000 });
     assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
     assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
+
+    // Re-run: by now the real db file exists on disk, so this exercises the db-precheck path (fix
+    // round 2, Important #2) against a genuine mcp-memory-service database, not just the fake server.
+    const res2 = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot, '--config-dir', acctDir, '--memory-dir', memoryDir],
+        { encoding: 'utf8', timeout: 120000 });
+    assert.strictEqual(res2.status, 0, `stdout: ${res2.stdout}\nstderr: ${res2.stderr}`);
+    assert.match(res2.stdout, /memory import: 0 imported, 1 already present, from /);
+    assert.doesNotMatch(res2.stdout, /node:sqlite unavailable/, 'node:sqlite is available on this test run - the precheck must have engaged');
 
     fs.rmSync(work, { recursive: true, force: true });
 });
