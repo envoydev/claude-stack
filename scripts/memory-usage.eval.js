@@ -145,6 +145,118 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   return { projectDir, dbPath, mcpConfigPath };
 }
 
+const INSTALLER_SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
+
+// Builds a temp project with the REAL installer from this worktree (--source), confirming
+// buildProjectSelf's hand-built approximation once Task 6 has landed. Selection is deliberately
+// narrow - just what the five scenarios need - not a full 79-skill install: `hook docs-session` is
+// selected (not just `hook memory-session`) because memory-session.js's related-projects lookup
+// requires docs.js, which ONLY ships alongside a SELECTED docs-session.js (claude-stack.sh ~line
+// 1784: memory-session.js's own companion copy is memory.js, not docs.js) - this also means the real
+// install additionally WIRES docs-session.js as a live hook, which buildProjectSelf deliberately does
+// not (see diffSetups() for the full comparison). `--scope project` + `--memory-level project` keep
+// everything inside this one throwaway directory; no CLAUDE_CONFIG_DIR override, so `claude mcp add`
+// and the auth the installer's own `claude` calls need both resolve through the real default account.
+function buildProjectInstall(projectDir, { agents = [] } = {}) {
+  fs.mkdirSync(projectDir, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+
+  const selectionPath = path.join(projectDir, '.eval-selection.txt');
+  const selectionLines = ['rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
+  fs.writeFileSync(selectionPath, `${selectionLines.join('\n')}\n`);
+
+  execFileSync('bash', [INSTALLER_SH, 'install', '--scope', 'project', '--selection', selectionPath, '--source', ROOT, '--memory-level', 'project'], {
+    cwd: projectDir, stdio: 'pipe', timeout: 180000,
+  });
+
+  return {
+    projectDir,
+    dbPath: path.join(projectDir, '.memory-mcp', 'memory.db'),
+    mcpConfigPath: path.join(projectDir, '.mcp.json'),
+  };
+}
+
+// Builds one project each way (self-built vs the real installer) and reports every difference in
+// what actually matters for the five scenarios: the rule, the hook files + their settings.json
+// wiring, the .mcp.json memory entry, and the agent file(s). Cleans both up itself.
+async function diffSetups(agents) {
+  const lines = [];
+  const selfDir = path.join(TMP_BASE, `diff-self-${crypto.randomBytes(6).toString('hex')}`);
+  const installDir = path.join(TMP_BASE, `diff-install-${crypto.randomBytes(6).toString('hex')}`);
+  let installSlug = null;
+  try {
+    const self = buildProjectSelf(selfDir, { agents });
+    let install;
+    try {
+      install = buildProjectInstall(installDir, { agents });
+    } catch (err) {
+      lines.push(`INSTALL BUILD FAILED: ${err && err.message ? err.message : err}`);
+      if (err && err.stderr) lines.push(String(err.stderr).slice(-2000));
+      return lines;
+    }
+
+    const readOr = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
+    const same = (a, b) => a === b;
+
+    // Rule
+    const ruleSelf = readOr(path.join(selfDir, '.claude', 'rules', 'baseline-memory.md'));
+    const ruleInstall = readOr(path.join(installDir, '.claude', 'rules', 'baseline-memory.md'));
+    lines.push(`rule baseline-memory.md: ${same(ruleSelf, ruleInstall) ? 'identical' : 'DIFFERS'}`);
+
+    // Hook engine files
+    for (const f of ['memory.js', 'memory-session.js', 'docs.js']) {
+      const a = readOr(path.join(selfDir, '.claude', 'hooks', f));
+      const b = readOr(path.join(installDir, '.claude', 'hooks', f));
+      lines.push(`hook ${f} content: ${same(a, b) ? 'identical' : (b === null ? 'MISSING in install' : 'DIFFERS')}`);
+    }
+    const installOnlyHooks = ['docs-session.js'].filter((f) => fs.existsSync(path.join(installDir, '.claude', 'hooks', f)));
+    if (installOnlyHooks.length) lines.push(`install-only hook file(s) (expected - needed to bring docs.js along): ${installOnlyHooks.join(', ')}`);
+
+    // .mcp.json memory entry (paths compared by suffix, since the real install resolves the realpath and the self-built one does not)
+    const mcpSelf = JSON.parse(readOr(path.join(selfDir, '.mcp.json')) || '{}').mcpServers.memory;
+    const mcpInstall = JSON.parse(readOr(path.join(installDir, '.mcp.json')) || '{}').mcpServers.memory;
+    const argsMatch = JSON.stringify(mcpSelf.args) === JSON.stringify(mcpInstall.args);
+    const envMatch = mcpSelf.env.MCP_MEMORY_STORAGE_BACKEND === mcpInstall.env.MCP_MEMORY_STORAGE_BACKEND
+      && mcpSelf.env.MCP_MEMORY_SQLITE_PRAGMAS === mcpInstall.env.MCP_MEMORY_SQLITE_PRAGMAS
+      && mcpInstall.env.MCP_MEMORY_SQLITE_PATH.endsWith('/.memory-mcp/memory.db');
+    lines.push(`.mcp.json memory command/args: ${mcpSelf.command === mcpInstall.command && argsMatch ? 'identical' : 'DIFFERS'}`);
+    lines.push(`.mcp.json memory env (backend/pragmas/path-shape): ${envMatch ? 'identical' : 'DIFFERS'}`);
+    if (mcpInstall.env.MCP_MEMORY_SQLITE_PATH !== path.join(installDir, '.memory-mcp', 'memory.db')) {
+      lines.push(`  note: install's db path is the REALPATH (${mcpInstall.env.MCP_MEMORY_SQLITE_PATH}), self-built uses the literal os.tmpdir() form - same file, different spelling`);
+    }
+
+    // Agents
+    for (const a of agents) {
+      const x = readOr(path.join(selfDir, '.claude', 'agents', `${a}.md`));
+      const y = readOr(path.join(installDir, '.claude', 'agents', `${a}.md`));
+      lines.push(`agent ${a}.md: ${same(x, y) ? 'identical' : 'DIFFERS'}`);
+    }
+
+    // settings.json wiring
+    const settingsSelf = JSON.parse(readOr(path.join(selfDir, '.claude', 'settings.json')) || '{}');
+    const settingsInstall = JSON.parse(readOr(path.join(installDir, '.claude', 'settings.json')) || '{}');
+    const memWireSelf = (settingsSelf.hooks && settingsSelf.hooks.SessionStart || []).some((e) => e.hooks.some((h) => h.command.includes('memory-session.js')));
+    const memWireInstall = (settingsInstall.hooks && settingsInstall.hooks.SessionStart || []).some((e) => e.hooks.some((h) => h.command.includes('memory-session.js')));
+    lines.push(`settings.json SessionStart -> memory-session.js wired: self=${memWireSelf} install=${memWireInstall}`);
+    const installExtraKeys = Object.keys(settingsInstall).filter((k) => !(k in settingsSelf));
+    lines.push(`settings.json keys only the real install writes: ${installExtraKeys.join(', ') || '(none)'}`);
+    const installExtraEventKeys = Object.keys(settingsInstall.hooks || {}).filter((k) => !((settingsSelf.hooks || {})[k]));
+    lines.push(`settings.json hook EVENTS only the real install wires (docs-session.js, from selecting it to get docs.js): ${installExtraEventKeys.join(', ') || '(none)'}`);
+
+    // Other install-only artifacts
+    for (const extra of ['CLAUDE.md', 'claude-stack.stamp']) {
+      lines.push(`.claude/${extra}: self=${fs.existsSync(path.join(selfDir, '.claude', extra))} install=${fs.existsSync(path.join(installDir, '.claude', extra))}`);
+    }
+    lines.push(`settings.json autoMemoryEnabled: self=${settingsSelf.autoMemoryEnabled} install=${settingsInstall.autoMemoryEnabled} (install switches Claude's own auto-memory off; self-built leaves it untouched)`);
+
+    installSlug = null; // no claude session was started for either build - nothing under ~/.claude/projects/ to clean here
+  } finally {
+    fs.rmSync(selfDir, { recursive: true, force: true });
+    fs.rmSync(installDir, { recursive: true, force: true });
+  }
+  return lines;
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Seeding: the real server, JSON-RPC over stdio - same route as scripts/memory-import.js
 // ---------------------------------------------------------------------------------------------------
@@ -519,7 +631,8 @@ async function runOne(scenario, runIndex, opts) {
   let slugDir = null;
   const record = { scenario: scenario.id, scenarioName: scenario.name, run: runIndex, runId };
   try {
-    const { dbPath, mcpConfigPath } = buildProjectSelf(projectDir, { agents: scenario.agents });
+    const build = opts.setup === 'install' ? buildProjectInstall : buildProjectSelf;
+    const { dbPath, mcpConfigPath } = build(projectDir, { agents: scenario.agents });
     const projectName = path.basename(projectDir);
     if (scenario.setup) await scenario.setup(mcpConfigPath, projectDir, projectName);
 
@@ -592,7 +705,7 @@ function summarize(records, scenarios) {
 }
 
 function parseArgs(argv) {
-  const out = { scenarios: [1, 2, 3, 4, 5], runs: 3, parallel: 5, model: 'sonnet', maxBudgetUsd: 1.5, timeoutMs: 360000 };
+  const out = { scenarios: [1, 2, 3, 4, 5], runs: 3, parallel: 5, model: 'sonnet', maxBudgetUsd: 1.5, timeoutMs: 360000, setup: 'self', diff: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--scenario') out.scenarios = argv[++i].split(',').map(Number);
@@ -601,8 +714,11 @@ function parseArgs(argv) {
     else if (a === '--model') out.model = argv[++i];
     else if (a === '--max-budget-usd') out.maxBudgetUsd = Number(argv[++i]);
     else if (a === '--timeout-ms') out.timeoutMs = Number(argv[++i]);
+    else if (a === '--setup') out.setup = argv[++i];
+    else if (a === '--diff') out.diff = true;
     else throw new Error(`unrecognized argument '${a}'`);
   }
+  if (out.setup !== 'self' && out.setup !== 'install') throw new Error(`--setup must be 'self' or 'install', got '${out.setup}'`);
   return out;
 }
 
@@ -612,6 +728,17 @@ async function main() {
   fs.mkdirSync(FIXTURES_DIR, { recursive: true });
   const scenarios = SCENARIOS.filter((s) => opts.scenarios.includes(s.id));
   if (!scenarios.length) throw new Error(`no scenario matched --scenario ${opts.scenarios.join(',')}`);
+
+  // --diff (or --setup install without it) always reports the self-built vs real-install difference
+  // FIRST - the whole point of the confirmation run is to know what the swap changes before trusting
+  // its scenario results.
+  if (opts.diff || opts.setup === 'install') {
+    console.log('setup diff (self-built vs real installer, --source this worktree):');
+    const agentUnion = [...new Set(scenarios.flatMap((s) => s.agents))];
+    const diffLines = await diffSetups(agentUnion.length ? agentUnion : ['evidence-gatherer']);
+    for (const l of diffLines) console.log(`  ${l}`);
+    console.log('');
+  }
 
   const tasks = [];
   for (const sc of scenarios) for (let run = 1; run <= opts.runs; run++) tasks.push({ sc, run });
