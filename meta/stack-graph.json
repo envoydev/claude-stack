@@ -280,7 +280,9 @@
       "plugins": []
     },
     "project-related-context": {
-      "mcps": [],
+      "mcps": [
+        "memory"
+      ],
       "plugins": []
     },
     "project-runtime-failure-signatures": {
@@ -1128,7 +1130,8 @@
       "guard-stop-contract",
       "guard-unapproved-dispatch",
       "guard-ungated-commit",
-      "instrument-tool-usage"
+      "instrument-tool-usage",
+      "memory-session"
     ]
   }
 }
