@@ -118,10 +118,15 @@ something this table reads. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
 
 `memory` is locked like `serena` and `context7` (every install carries it). Add ONE line under
-this table whenever the row is present - the shared-memory level, read with `node
-.claude/hooks/memory.js level` (`<level> <dbPath>`, or `none` if the read disagrees with the table
-row above - report that mismatch verbatim, never guess): render `memory level: <level> -
-<dbPath>`. No `memory` row at all: skip the line, nothing to read.
+this table whenever the row is present - the shared-memory level. Hooks install into a project's
+`.claude/hooks/` only, same as the secret-presence read above (`--scope global` installs skills
+`-g` and plugins/MCPs `--scope user`, but never copies hooks to the account dir - there is no
+account-level `memory.js` to fall back to). `.claude/hooks/memory.js` present: run `node
+.claude/hooks/memory.js level` and render `<level> <dbPath>` (or `none` if the read disagrees with
+the table row above - report that mismatch verbatim, never guess): `memory level: <level> -
+<dbPath>`. Absent (global mode, or the hook deselected in this project): do NOT attempt the read
+(it fails with `MODULE_NOT_FOUND`) - print `memory level: not checked - memory.js is not installed
+here` instead. No `memory` row at all: skip the line, nothing to read.
 
 **Plugins** - `claude plugin list` (fail-soft: without the CLI print the banner +
 `plugin CLI unavailable - skipped`):

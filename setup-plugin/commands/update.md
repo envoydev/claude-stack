@@ -175,7 +175,10 @@ only seeded when missing.
 is the no-questions fast path, and an existing registration is otherwise left exactly where it is. The
 installer re-points the registration to that level's database (nothing is copied or deleted, and an
 install carrying no memory registration yet gets one at that level) and prints one line naming the old
-and new database; any other value is refused before anything is written.
+and new database; any other value is refused before anything is written. Omit the flag on an install
+that has no memory registration at all yet (an `--installed-only` refresh pulling in `baseline-memory`
+for the first time, predating this feature) and the registration still lands - at `global`, the
+installer's own unflagged default - with no ask on this fast path.
 
 **Give that call a 10-minute timeout, and read its exit code.** A full refresh runs past the Bash
 tool's own default on a cold machine, and a timed-out call is BACKGROUNDED, not failed: the run then

@@ -92,11 +92,12 @@ change made only inside a consuming project is throwaway.
   - `memory-session.js` (`SessionStart`) with its engine `memory.js` (copied beside it, not wired -
     the `docs.js` pattern) - reads the shared memory database FILE directly (`node:sqlite`, no
     server, no model call) and injects this project's memories plus every `preference` /
-    `correction`, newest first, capped at 4KB like the docs start block; a related-projects domain
-    adds those projects' memories too, inside the same cap. `node .claude/hooks/memory.js level
-    [projectRoot]` is the same engine's CLI, read by `validate` and `status` (`<level> <dbPath>`, or
-    `none`). Fail-open: a missing database, a locked file, or `node:sqlite` unavailable on this
-    Node injects nothing and logs one line - never denies.
+    `correction` carrying no project tag, newest first, capped at 4KB like the docs start block; a
+    related-projects domain adds those projects' memories too, inside the same cap. `node
+    .claude/hooks/memory.js level [projectRoot]` is the same engine's CLI, read by `validate` and
+    `status` (`<level> <dbPath>`, or `none`). Fail-open: a missing database, a locked file, or
+    `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart
+    is never reported as a failure.
   The guided walk's hooks layer makes them selectable (a selection with no `hook` lines installs all).
 - `stack/agents/` - 43 Claude-contract subagents, copied into `.claude/agents/`:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
