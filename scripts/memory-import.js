@@ -24,17 +24,19 @@
 //     Code itself ignores that variable otherwise - FACT-AUTOMEM), else the slugified git top level;
 //   - every OTHER account dir on the machine found the same way: `$HOME/.claude`, every `$HOME/.claude-*`,
 //     and a live `CLAUDE_CONFIG_DIR` if one is set - so a second Claude account, or a `--space` install,
-//     is never skipped.
+//     is never skipped;
+//   - re-review (final-review-A.md, 'I7's wrong-folder guard'): every account dir's `projects/*/`
+//     folder NOT already covered above, whose own transcript's `cwd` (read line by line, stopping at
+//     the first line that carries one, bounded per file) names this project's main checkout or one of
+//     its worktrees - its `memory/` folder is added too, if it exists. This catches a note filed under
+//     a name the slug rule missed. A folder with sessions but no notes is the NORMAL case (measured:
+//     210 of 212 real project folders on one machine), never a failure.
 // The git top level is the MAIN repo's directory, never a worktree's own directory (worktrees share one
 // auto-memory folder) and never a submodule's `.git/modules/<name>` common dir (falls back to
 // `--show-toplevel`, which for a submodule is that submodule's own root).
 //
-// A computed folder that does not exist is normal (most accounts and levels do not apply) UNLESS every
-// candidate is empty or absent AND some account's `projects/*/<uuid>.jsonl` transcript records a real
-// session whose own `cwd` is this project root - that combination means the folder computation missed
-// the real one (an override this importer does not know about, a slug mismatch), and is reported as a
-// FAILURE (exit 1, naming the transcript) rather than silently 'nothing to import'. `--memory-dir` skips
-// this check too - an explicit answer is never second-guessed.
+// No notes anywhere, direct or through a transcript, is always 'nothing to import', exit 0 - never a
+// failure. `--memory-dir` skips all of the above - an explicit answer is never second-guessed.
 //
 // Idempotence: PRIMARILY a read-only node:sqlite precheck against the registration's own
 // MCP_MEMORY_SQLITE_PATH, for a live row (`deleted_at IS NULL`) holding the exact same content - skips
@@ -216,35 +218,86 @@ function accountConfigDirs(home, explicitConfigDir)
     return Array.from(set);
 }
 
-// Reads only the first line of a (possibly large) transcript, bounded to 64KB - never the whole file.
-// Every JSONL transcript line Claude Code writes carries its own `cwd`, so the first line is enough.
-function readFirstLineField(file, field)
+// Re-review (final-review-A.md, 'I7's wrong-folder guard'): a real transcript's `cwd` is almost never
+// on line 1 (measured: 0 of 298 real transcripts on one machine - line 1 is `ai-title` / `last-prompt`
+// / `queue-operation` / `mode` / `custom-title`). Reads line by line instead, stopping at the first
+// line that carries a `cwd` field, bounded to 512KB per file so one giant transcript never dominates
+// the scan - cheap because it stops the moment it finds what it is looking for, and a plain substring
+// check skips JSON.parse on every line that plainly has no `cwd`.
+const TRANSCRIPT_SCAN_CAP_BYTES = 512 * 1024;
+
+function findCwdInTranscript(file)
 {
     let fd;
     try { fd = fs.openSync(file, 'r'); }
     catch (e) { return null; }
     try
     {
-        const buf = Buffer.alloc(65536);
-        const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
-        const text = buf.toString('utf8', 0, bytesRead);
-        const nl = text.indexOf('\n');
-        const line = (nl === -1 ? text : text.slice(0, nl)).trim();
-        if (!line) return null;
-        const obj = JSON.parse(line);
-        return typeof obj[field] === 'string' ? obj[field] : null;
+        let leftover = '';
+        let readTotal = 0;
+        const chunk = Buffer.alloc(65536);
+        for (;;)
+        {
+            const bytesRead = fs.readSync(fd, chunk, 0, chunk.length, readTotal);
+            if (bytesRead === 0) break; // EOF
+            readTotal += bytesRead;
+            leftover += chunk.toString('utf8', 0, bytesRead);
+            let nlIdx;
+            while ((nlIdx = leftover.indexOf('\n')) !== -1)
+            {
+                const line = leftover.slice(0, nlIdx);
+                leftover = leftover.slice(nlIdx + 1);
+                if (line.indexOf('"cwd"') === -1) continue;
+                try
+                {
+                    const obj = JSON.parse(line);
+                    if (typeof obj.cwd === 'string' && obj.cwd) return obj.cwd;
+                }
+                catch (e) { /* not a clean JSON line - keep scanning */ }
+            }
+            if (readTotal >= TRANSCRIPT_SCAN_CAP_BYTES) return null;
+        }
+        if (leftover.indexOf('"cwd"') !== -1)
+        {
+            try
+            {
+                const obj = JSON.parse(leftover);
+                if (typeof obj.cwd === 'string' && obj.cwd) return obj.cwd;
+            }
+            catch (e) { /* trailing partial line - ignore */ }
+        }
+        return null;
     }
     catch (e) { return null; }
     finally { try { fs.closeSync(fd); } catch (e) { /* already closed */ } }
 }
 
-// final review A, I7: a missing notes folder is ONLY 'nothing to import' when no real session
-// ever ran here. Walks every scanned account dir's `projects/*/*.jsonl`, real-path-comparing each
-// transcript's own `cwd` against this project root - the first hit is reported, not collected.
-function findTranscriptForProject(configDirs, projectRoot)
+// A transcript's own `cwd` matches THIS project when it names the same main checkout - gitTopLevel
+// collapses any worktree of the same repo to that one root, so 'this project root or a worktree of
+// it' is a single comparison.
+function transcriptCwdMatchesProject(cwd, mainRootReal)
 {
-    let real;
-    try { real = fs.realpathSync(projectRoot); } catch (e) { real = path.resolve(projectRoot); }
+    const top = gitTopLevel(cwd);
+    let topReal;
+    try { topReal = fs.realpathSync(top); } catch (e) { topReal = path.resolve(top); }
+    return topReal === mainRootReal;
+}
+
+// Re-review, I7 (binding ruling): 'sessions but no notes' is the NORMAL case (measured: 210 of 212
+// real project folders with transcripts have no notes) - a wrong-folder guard that fails on it would
+// refuse the import, and so the switch-off, for almost every project. Never fails. Instead, every
+// account dir's `projects/*/` folder NOT already covered by the direct slug/override computation is
+// checked for a transcript whose `cwd` names this project's main checkout (or one of its worktrees);
+// the first match's own `memory/` folder is added as an EXTRA candidate, if it exists - this is how a
+// note filed under a name the slug rule missed (a rename, an old naming quirk) is still found.
+function extraDirsFromTranscripts(configDirs, projectRoot, alreadyCoveredDirs)
+{
+    const mainRoot = gitTopLevel(projectRoot);
+    let mainRootReal;
+    try { mainRootReal = fs.realpathSync(mainRoot); } catch (e) { mainRootReal = path.resolve(mainRoot); }
+
+    const covered = new Set(Array.from(alreadyCoveredDirs, (d) => path.resolve(d)));
+    const extra = [];
     for (const configDir of configDirs)
     {
         const projectsDir = path.join(configDir, 'projects');
@@ -254,23 +307,23 @@ function findTranscriptForProject(configDirs, projectRoot)
         for (const entry of entries)
         {
             if (!entry.isDirectory()) continue;
-            const dir = path.join(projectsDir, entry.name);
+            const folder = path.join(projectsDir, entry.name);
+            const candidateMemoryDir = path.join(folder, 'memory');
+            if (covered.has(path.resolve(candidateMemoryDir))) continue; // skip folders already covered
             let files;
-            try { files = fs.readdirSync(dir); }
+            try { files = fs.readdirSync(folder); }
             catch (e) { continue; }
+            let matched = false;
             for (const f of files)
             {
                 if (!f.endsWith('.jsonl')) continue;
-                const full = path.join(dir, f);
-                const cwd = readFirstLineField(full, 'cwd');
-                if (!cwd) continue;
-                let cwdReal;
-                try { cwdReal = fs.realpathSync(cwd); } catch (e) { cwdReal = path.resolve(cwd); }
-                if (cwdReal === real) return full;
+                const cwd = findCwdInTranscript(path.join(folder, f));
+                if (cwd && transcriptCwdMatchesProject(cwd, mainRootReal)) { matched = true; break; } // stop early
             }
+            if (matched && fs.existsSync(candidateMemoryDir)) extra.push(candidateMemoryDir);
         }
     }
-    return null;
+    return extra;
 }
 
 // Read command/args/env for the `memory` server exactly as it is registered: the project's
@@ -518,6 +571,9 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
         const override = readSettingsAutoMemoryDirectory(projectRoot, configDir, home);
         if (override) set.add(override);
         for (const cd of scannedConfigDirs) set.add(slugMemoryDir(projectRoot, cd, home));
+        // Re-review, I7: a folder the slug/override computation missed, found through its own
+        // transcript's cwd - never a failure (see extraDirsFromTranscripts).
+        for (const extraDir of extraDirsFromTranscripts(scannedConfigDirs, projectRoot, set)) set.add(extraDir);
         memoryDirs = Array.from(set);
     }
 
@@ -540,25 +596,10 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
     }
     const fromLabel = (existedDirs.length ? existedDirs : memoryDirs).join(', ');
 
-    if (noteEntries.length === 0)
-    {
-        // final review A, I7: an explicit --memory-dir is a deliberate answer, never
-        // second-guessed. Autodetection is what can miss the real folder, so only it gets checked.
-        if (!explicitMemoryDir)
-        {
-            const transcript = findTranscriptForProject(scannedConfigDirs, projectRoot);
-            if (transcript)
-            {
-                throw new Error(
-                    `no memory notes folder found for this project, but session transcript ${transcript} ` +
-                    "records a session whose cwd is this project root - the notes folder computation does " +
-                    "not match this machine's Claude Code configuration (check autoMemoryDirectory / " +
-                    "CLAUDE_CODE_PROJECT_DIR_NAME) - refusing to report this as 'nothing to import'",
-                );
-            }
-        }
-        return { ok: true, message: `nothing to import, from ${fromLabel}` };
-    }
+    // Re-review, I7 (binding ruling): no notes anywhere - including nothing found through a
+    // transcript match above - is always 'nothing to import', exit 0. Never a failure: a project
+    // with sessions but no notes is the normal case, not a sign the folder computation is wrong.
+    if (noteEntries.length === 0) return { ok: true, message: `nothing to import, from ${fromLabel}` };
 
     const entry = findMemoryRegistration(projectRoot, explicitConfigDir, home);
     if (!entry)

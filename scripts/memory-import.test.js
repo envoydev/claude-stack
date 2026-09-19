@@ -597,9 +597,9 @@ test('I7: notes are imported from every account dir on the machine in one pass, 
     fs.rmSync(fakeHome, { recursive: true, force: true });
 });
 
-test('I7: a missing notes folder with a matching session transcript elsewhere is a FAILURE, not "nothing to import"', () =>
+test('I7 (re-review): a slug-mismatched folder is found through its transcript, and its notes are imported too', () =>
 {
-    const fakeHome = mkTmp('memimport-transcript-');
+    const fakeHome = mkTmp('memimport-slugmiss-');
     const projectRoot = path.join(fakeHome, 'repo');
     fs.mkdirSync(projectRoot, { recursive: true });
     execFileSync('git', ['init', '-q', projectRoot]);
@@ -609,18 +609,82 @@ test('I7: a missing notes folder with a matching session transcript elsewhere is
         mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
             env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
     }, null, 2));
-    // No memory/ folder for the computed slug at all - but a transcript under a DIFFERENT (wrong)
-    // slug directory records a real session whose cwd is this project root.
-    const wrongProjectDir = path.join(fakeHome, '.claude', 'projects', 'some-other-slug');
-    fs.mkdirSync(wrongProjectDir, { recursive: true });
-    fs.writeFileSync(path.join(wrongProjectDir, 'session1.jsonl'), `${JSON.stringify({ cwd: projectRoot, type: 'user' })}\n`);
+
+    // Notes filed under a WRONG slug directory - the direct slug computation never finds this one.
+    const wrongProjectDir = path.join(fakeHome, '.claude', 'projects', 'some-renamed-slug');
+    fs.mkdirSync(path.join(wrongProjectDir, 'memory'), { recursive: true });
+    writeNote(path.join(wrongProjectDir, 'memory'), 'a.md', { name: 'a', description: 'found via transcript', type: 'reference', body: 'b' });
+    fs.writeFileSync(path.join(wrongProjectDir, 'session1.jsonl'),
+        `${[JSON.stringify({ type: 'ai-title', title: 'x' }), JSON.stringify({ cwd: projectRoot, type: 'user' })].join('\n')}\n`);
 
     const env = { ...process.env, HOME: fakeHome };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
-    assert.strictEqual(res.status, 1, `expected failure, got stdout: ${res.stdout}`);
-    assert.match(res.stderr, /session1\.jsonl/);
-    assert.match(res.stderr, /nothing to import/);
+    assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
+
+    const calls = readCalls(path.join(fakeHome, 'calls.jsonl'));
+    assert.strictEqual(calls.length, 1);
+    assert.ok(calls[0].tags.some((t) => t.startsWith('project:')), 'a note found through a transcript still gets the normal project tag');
+
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('I7 (re-review): a project with sessions but no notes -> exit 0, "nothing to import" (never a failure)', () =>
+{
+    const fakeHome = mkTmp('memimport-sessions-nonotes-');
+    const projectRoot = path.join(fakeHome, 'repo');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+
+    fs.writeFileSync(path.join(fakeHome, '.claude.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
+    }, null, 2));
+    // A transcript recording a real session here - but no memory/ folder at all under that project
+    // dir. This is the NORMAL case (measured: 210 of 212 real project folders on one machine).
+    const projDir = path.join(fakeHome, '.claude', 'projects', 'some-other-slug');
+    fs.mkdirSync(projDir, { recursive: true });
+    fs.writeFileSync(path.join(projDir, 'session1.jsonl'), `${JSON.stringify({ cwd: projectRoot, type: 'user' })}\n`);
+
+    const env = { ...process.env, HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
+    const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
+    assert.strictEqual(res.status, 0, `expected success, got stderr: ${res.stderr}`);
+    assert.match(res.stdout, /memory import: nothing to import, from /);
+
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('I7 (re-review): the transcript scan finds cwd on line 5, not just line 1 (real transcripts rarely carry it on line 1)', () =>
+{
+    const fakeHome = mkTmp('memimport-line5-');
+    const projectRoot = path.join(fakeHome, 'repo');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+
+    fs.writeFileSync(path.join(fakeHome, '.claude.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
+    }, null, 2));
+
+    const wrongProjectDir = path.join(fakeHome, '.claude', 'projects', 'another-slug');
+    fs.mkdirSync(path.join(wrongProjectDir, 'memory'), { recursive: true });
+    writeNote(path.join(wrongProjectDir, 'memory'), 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
+    const lines = [
+        JSON.stringify({ type: 'ai-title', title: 'one' }),
+        JSON.stringify({ type: 'last-prompt', text: 'two' }),
+        JSON.stringify({ type: 'queue-operation', op: 'three' }),
+        JSON.stringify({ type: 'mode', mode: 'four' }),
+        JSON.stringify({ cwd: projectRoot, type: 'user' }), // line 5
+    ];
+    fs.writeFileSync(path.join(wrongProjectDir, 'session1.jsonl'), `${lines.join('\n')}\n`);
+
+    const env = { ...process.env, HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
+    const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
+    assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
 
     fs.rmSync(fakeHome, { recursive: true, force: true });
 });
