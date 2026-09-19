@@ -47,7 +47,9 @@ An empty object, not an empty `watch` array inside a populated shape - the whole
 nothing to watch. `domains()` in `.claude/hooks/docs.js` counts any folder holding a `watch.json`
 as a domain regardless of its contents, so this still makes `related-projects/` section, lint and
 `docs.js status` like any other domain; there is simply no `watch` entry that could ever fire,
-because no file in THIS repo bears on whether a sibling's characterization still holds.
+because no file in THIS repo bears on whether a sibling's characterization still holds. It declares
+no `sourceRoots` either, and declaring none contributes none: adding this domain never widens
+another domain's first-change gate.
 
 ## The generated rule - copy target
 

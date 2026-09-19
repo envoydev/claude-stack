@@ -137,7 +137,7 @@ test('declared git versioning writes in place although git ignores the docs', ()
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
     const st = r.cli(['status'], undefined, GIT).stdout;
     assert.match(st, /^mode: git \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
-    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/m);
+    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/m);
   } finally { r.rm(); }
 });
 
@@ -153,7 +153,49 @@ test('declared local versioning keeps the branch overlay although the docs are c
     assert.match(r.cli(['show', 'patterns#orders'], undefined, LOCAL).stdout, /capped at 10/, 'and the branch reads its own version');
     const st = r.cli(['status'], undefined, LOCAL).stdout;
     assert.match(st, /^mode: overlay \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
-    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+  } finally { r.rm(); }
+});
+
+// Task 14 / whole-branch review finding 2: the committed-docs probe knows every DOMAIN, not architecture/ alone.
+// A project documented only in code-style/ (or decisions/, or related-projects/) is an ordinary shape - a
+// watch.json is what makes a domain and nothing requires architecture/ to be one. Probing architecture/ alone read
+// that project's COMMITTED docs as ignored: writes went into .branches/ inside a git-versioned docs root, status
+// reported 'docs are ignored by git', and versioningMismatch - the one line whose job is to report exactly this
+// disagreement - stayed silent, because it demanded architecture/ exist before it would speak.
+test('committed docs in a domain other than architecture/ are read as committed, by status and by where a write lands', () => {
+  const r = repo({
+    tracked: true,
+    files: {
+      'src/Api/Refund.cs': 'class Refund {}\n',
+      '.claude/docs/code-style/watch.json': JSON.stringify({ sourceRoots: ['src'] }),
+      '.claude/docs/code-style/CODE-STYLE.md': section('csharp', 'src/**.cs', 'Braces open on the same line.'),
+    },
+  });
+  try {
+    assert.ok(!r.exists('.claude/docs/architecture'), 'the whole case: there is no architecture/ folder at all');
+    assert.match(r.cli(['status']).stdout, /^mode: git \(docs are committed - git versions them per branch\)/m);
+    r.git('switch', '-qc', 'feat/style');
+    const out = r.cli(['set', 'CODE-STYLE#csharp'], '## csharp\n<!-- id: csharp -->\n<!-- covers: src/**.cs -->\nBraces open on the next line.\n');
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /into .*CODE-STYLE\.md/);
+    assert.ok(!r.exists('.claude/docs/.branches'), 'nothing is written under .branches/ inside a docs root git versions');
+    assert.match(r.read('.claude/docs/code-style/CODE-STYLE.md'), /next line/, 'the committed file itself carries the change');
+    // and a declaration that disagrees is REPORTED, naming the docs root the probe now answers for
+    const st = r.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: 'local' }).stdout;
+    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+  } finally { r.rm(); }
+});
+
+// The other half of the same rule: a watch.json is what makes a domain, so a docs root holding only watch-less
+// folders (quality/, related-context/) holds nothing this setting governs and reports no disagreement about it.
+test('a committed docs root holding no domain at all is no fact to disagree with', () => {
+  const r = repo({ tracked: true, files: { '.claude/docs/quality/ASSESSMENT.md': '# Findings\n' } });
+  try {
+    for (const mode of ['git', 'local']) {
+      const st = r.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: mode }).stdout;
+      assert.doesNotMatch(st, /Versioning mismatch/, `quality/ carries no watch.json, so it is no domain: '${mode}'`);
+    }
   } finally { r.rm(); }
 });
 
@@ -229,7 +271,7 @@ test('the mode messages name the env key that declared the mode, never a hardcod
     const docs = require(enginePath);
     docs.VERSIONING_KEYS.unshift('DOCS_VERSIONING_OTHER_SPELLING');
     process.env.DOCS_VERSIONING_OTHER_SPELLING = 'git';
-    assert.match(docs.versioningMismatch(), /^Versioning mismatch: DOCS_VERSIONING_OTHER_SPELLING declares 'git', but \.claude\/docs\/architecture is not tracked by git/);
+    assert.match(docs.versioningMismatch(), /^Versioning mismatch: DOCS_VERSIONING_OTHER_SPELLING declares 'git', but \.claude\/docs is not tracked by git/);
     assert.match(docs.status().mode, /^git \(declared by DOCS_VERSIONING_OTHER_SPELLING - /);
   } finally {
     delete require.cache[enginePath];

@@ -2340,11 +2340,26 @@ function Set-HookSettings {
   # or silently local - and `docs.js status` plus the session-start block say so.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']) {
     # Forward slashes DELIBERATELY, also on Windows: Join-Path would emit '\' there and hand git a
-    # mixed-separator pathspec (C:/repo\docs/architecture), which can fail to match - and a false negative here
+    # mixed-separator pathspec (C:/repo\docs/code-style), which can fail to match - and a false negative here
     # seeds 'local' over committed docs, the exact silent switch this seed exists to prevent.
-    $docsDir = (($root -replace '\\', '/').TrimEnd('/')) + '/' + (($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/')) + '/architecture'
-    # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
-    try { & git -C $root ls-files --error-unmatch -- $docsDir *> $null; $committed = ($LASTEXITCODE -eq 0) } catch { $committed = $false }
+    $docsBase = (($root -replace '\\', '/').TrimEnd('/')) + '/' + (($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/'))
+    # Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder a domain
+    # (architecture/ is grandfathered in without one), so a project documented only in code-style/, decisions/
+    # or related-projects/ is an ordinary shape - and probing one folder seeded 'local' over its committed
+    # docs, which then writes branch overlays into a docs root git is versioning. Same rule as docs.js
+    # domains(), reserved names and all; a watch-less folder like quality/ is no domain and no vote.
+    $domainDirs = @()
+    if (Test-Path -LiteralPath $docsBase) {
+      $domainDirs = @(Get-ChildItem -LiteralPath $docsBase -Directory -ErrorAction SilentlyContinue |
+        Where-Object { (-not $_.Name.StartsWith('.')) -and ($_.Name -notin @('references', 'history')) -and
+          (($_.Name -eq 'architecture') -or (Test-Path -LiteralPath (Join-Path $_.FullName 'watch.json'))) } |
+        ForEach-Object { "$docsBase/$($_.Name)" })
+    }
+    $committed = $false
+    foreach ($dir in $domainDirs) {
+      # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
+      try { & git -C $root ls-files --error-unmatch -- $dir *> $null; if ($LASTEXITCODE -eq 0) { $committed = $true; break } } catch { }
+    }
     $versioning = if ($committed) { 'git' } else { 'local' }
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_VERSIONING -NotePropertyValue $versioning
     $changed = $true
@@ -2940,7 +2955,7 @@ Write-Host "The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude\setting
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
 Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
-Write-Host "Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how the architecture docs are"
+Write-Host "Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how every capture's docs are"
 Write-Host "versioned - 'git' when they are committed (git versions them per branch), 'local' for the"
 Write-Host 'machine-local overlay under <docs-path>/.branches/. The install seeded what this repo does today.'
 Write-Host ''

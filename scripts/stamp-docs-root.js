@@ -91,22 +91,37 @@ function reprobeVersioning(root, seeded)
         console.log(`stamp-docs-root: the env block holds '${data.env.CLAUDE_STACK_DOCS_VERSIONING}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
         return;
     }
-    const docs = `${String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}/architecture`;
-    const target = `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/${docs}`;
+    const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const base = `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/${docs}`;
     if (spawnSync('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' }).status !== 0)
     {
         console.log('stamp-docs-root: not a git repository - docs versioning left as it is');
         return;
     }
-    const value = spawnSync('git', ['ls-files', '--error-unmatch', '--', target], { cwd: root, stdio: 'ignore' }).status === 0 ? 'git' : 'local';
+    // Every DOMAIN under the docs root, never architecture/ alone: a watch.json is what makes a folder a
+    // domain (architecture/ is grandfathered in without one), so a project documented only in code-style/,
+    // decisions/ or related-projects/ is an ordinary shape, and probing one folder re-probed 'local' over
+    // its committed docs - the wrong seed this flag exists to CORRECT. Same rule as docs.js domains(),
+    // reserved names and all; a watch-less folder like quality/ is no domain and no vote.
+    let domainDirs = [];
+    try
+    {
+        domainDirs = fs.readdirSync(base, { withFileTypes: true })
+            .filter(e => e.isDirectory() && !e.name.startsWith('.') && !['references', 'history'].includes(e.name))
+            .map(e => e.name)
+            .filter(n => n === 'architecture' || fs.existsSync(path.join(base, n, 'watch.json')))
+            .sort();
+    }
+    catch { domainDirs = []; }
+    const value = domainDirs.some(n => spawnSync('git', ['ls-files', '--error-unmatch', '--', `${base}/${n}`], { cwd: root, stdio: 'ignore' }).status === 0) ? 'git' : 'local';
     if (data.env.CLAUDE_STACK_DOCS_VERSIONING === value)
     {
-        console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs} - unchanged`);
+        console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs}/ - unchanged`);
         return;
     }
     data.env.CLAUDE_STACK_DOCS_VERSIONING = value;
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
-    console.log(`stamp-docs-root: docs versioning re-probed at ${docs}: '${value}'`);
+    console.log(`stamp-docs-root: docs versioning re-probed at ${docs}/: '${value}'`);
 }
 
 if (require.main === module)

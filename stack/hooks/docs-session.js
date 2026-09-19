@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// docs-session.js - makes the architecture docs the starting point of a session and keeps them honest at its end.
+// docs-session.js - makes the project's docs (every domain under the docs root) the starting point of a session
+// and keeps them honest at its end.
 //   SessionStart  -> folds merged branches' doc versions into mainline, then pushes ORIENTATION.md, this branch's
 //                    overrides and conflicts, and how to read by section; snapshots the tree for the end check
 //   SubagentStart -> the same orientation for a dispatched subagent (SessionStart context never reaches one), and
@@ -326,7 +327,14 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
   // notOwned): the old shape called resolveHit all 30 times (42.6ms median); this one stops at 3, the same
   // 3 asks it always found (4.2ms median) - a ~10x cut, growing with corpus size since each stopped call
   // was its own full walk.
-  const canWarn = [...new Set(queues.map((q) => q.h.domain))].some((d) => { try { return docs.unowned(d).length > 0; } catch { return true; } });
+  // notOwnedOf, not unowned: the cheap pre-check must read the SAME list the warning itself matches on
+  // (protectedRef -> notOwnedOf), which is what a domain DECLARED plus architecture's implicit ORIENTATION.md.
+  // Reading the declared list alone made this say 'no domain can warn' where the effective list still can,
+  // and the loop then stops before a warning the expensive path would have produced - one idea spelled twice,
+  // with the optimisation holding the shorter spelling. Guarded like resolveHit above: an older docs.js copy
+  // beside this hook exports no notOwnedOf, and the safe degradation there is the declared list it does have.
+  const effectiveNotOwned = (d) => (typeof docs.notOwnedOf === 'function' ? docs.notOwnedOf(d) : docs.unowned(d));
+  const canWarn = [...new Set(queues.map((q) => q.h.domain))].some((d) => { try { return effectiveNotOwned(d).length > 0; } catch { return true; } });
   let more = true;
   while (more && (asks.length < limit || (canWarn && warnings.length < limit))) {
     more = false;

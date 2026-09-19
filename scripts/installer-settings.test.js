@@ -280,37 +280,73 @@ function assertVersioningSeed(sb, run, twin)
 const probeLine = (file, needle) => fs.readFileSync(file, 'utf8').split('\n').find(l => l.includes(needle));
 
 test('sh: the docs-versioning probe composes its pathspec with forward slashes, whatever the platform', () => {
-    const line = probeLine(SH, '_ddir =');
-    assert.ok(line, 'the sh probe still composes _ddir');
+    const line = probeLine(SH, '_dbase =');
+    assert.ok(line, 'the sh probe still composes _dbase');
     assert.doesNotMatch(line, /os\.path\.join/, 'os.path.join emits the platform separator under a Windows python');
-    const out = execFileSync('python3', ['-c', `_droot = "C:/repo"\n_dparts = ["docs", "generated"]\n${line.trim()}\nprint(_ddir)`], { encoding: 'utf8' }).trim();
-    assert.strictEqual(out, 'C:/repo/docs/generated/architecture', 'sh: the composed pathspec');
+    const out = execFileSync('python3', ['-c', `_droot = "C:/repo"\n_dparts = ["docs", "generated"]\n${line.trim()}\nprint(_dbase)`], { encoding: 'utf8' }).trim();
+    assert.strictEqual(out, 'C:/repo/docs/generated', 'sh: the composed docs root');
+    // and the per-domain pathspec built on top of it is joined the same way - the git pathspec is the half that
+    // must not carry a platform separator; the watch.json existence check beside it is a local path and may.
+    const fold = probeLine(SH, '_committed = any(');
+    assert.ok(fold, 'the sh probe still folds every domain into one answer');
+    assert.ok(fold.includes('"%s/%s" % (_dbase, _d)'), 'sh: the per-domain pathspec is composed with a forward slash');
 });
 
-// A project AT the filesystem root leaves _droot an empty string, and an empty cwd= is not a directory: python
+// A project AT the filesystem root leaves the root an empty string, and an empty cwd= is not a directory: python
 // raises FileNotFoundError, which nothing here catches, so the whole settings.json write is abandoned over a
 // probe whose answer is optional. The composition is fine ('' + '/docs/architecture' is the right absolute path);
 // only the working directory has to survive it.
 test('sh: the docs-versioning probe survives a project root at the filesystem root', () => {
     const src = fs.readFileSync(SH, 'utf8').split('\n');
-    const at = src.findIndex(l => l.includes('_committed = subprocess.call('));
+    const at = src.findIndex(l => l.includes('def _dtracked('));
     assert.ok(at > 0, 'the sh probe still shells out to git ls-files');
-    const call = `${src[at].trim()}\n${src[at + 1].trim()}`;   // one call, wrapped inside its parens
-    const out = execFileSync('python3', ['-c', `import subprocess\n_droot = ""\n_ddir = "/docs/architecture"\n${call}\nprint("probed %s" % _committed)`], { encoding: 'utf8' }).trim();
+    const fn = src.slice(at, at + 3).join('\n');   // def + the one call, wrapped inside its parens
+    const out = execFileSync('python3', ['-c', `import subprocess\n${fn}\nprint("probed %s" % _dtracked("", "/docs/architecture"))`], { encoding: 'utf8' }).trim();
     assert.strictEqual(out, 'probed False', 'sh: no repo there, and no exception either');
 });
 
 test('ps1: the docs-versioning probe composes its pathspec with forward slashes, whatever the platform (pwsh required)', { skip: skipNoPwsh }, () => {
-    const line = probeLine(PS1, '$docsDir =');
-    assert.ok(line, 'the ps1 probe still composes $docsDir');
+    const line = probeLine(PS1, '$docsBase =');
+    assert.ok(line, 'the ps1 probe still composes $docsBase');
     assert.doesNotMatch(line, /Join-Path/, 'Join-Path emits the platform separator on Windows');
-    const script = `$root = 'C:/repo'; $data = [pscustomobject]@{ env = [pscustomobject]@{ CLAUDE_STACK_DOCS_PATH = 'docs/generated/' } }; ${line.trim()}; Write-Output $docsDir`;
+    const script = `$root = 'C:/repo'; $data = [pscustomobject]@{ env = [pscustomobject]@{ CLAUDE_STACK_DOCS_PATH = 'docs/generated/' } }; ${line.trim()}; Write-Output $docsBase`;
     const out = execFileSync('pwsh', ['-NoProfile', '-Command', script], { encoding: 'utf8' }).trim();
-    assert.strictEqual(out, 'C:/repo/docs/generated/architecture', 'ps1: the composed pathspec');
+    assert.strictEqual(out, 'C:/repo/docs/generated', 'ps1: the composed docs root');
+    assert.ok(probeLine(PS1, 'ForEach-Object { "$docsBase/').includes('$($_.Name)'), 'ps1: the per-domain pathspec is composed with a forward slash');
 });
 
 test('sh: the docs-versioning seed records what the repo does today, and never clobbers a chosen value', () => assertVersioningSeed(sandbox(), runSh, 'sh'));
 test('ps1: the docs-versioning seed records what the repo does today, and never clobbers a chosen value (pwsh required)', { skip: skipNoPwsh }, () => assertVersioningSeed(sandbox(), runPs, 'ps1'));
+
+// Task 14 / whole-branch review finding 2: the seed probed architecture/ alone, so a project documented in
+// code-style/ (or decisions/, or related-projects/) had its COMMITTED docs seeded 'local' - and a fresh install
+// always seeds 'local', so nothing downstream corrected it. A watch.json is what makes a folder a domain, which
+// is also the boundary: a committed folder without one casts no vote.
+function assertDomainVersioningSeed(run, twin)
+{
+    const style = sandbox();
+    const bare = sandbox();
+    try
+    {
+        for (const [sb, domain, withWatch] of [[style, 'code-style', true], [bare, 'quality', false]])
+        {
+            const dir = path.join(sb.repo, '.claude', 'docs', domain);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'DOC.md'), '# Doc\n');
+            if (withWatch) fs.writeFileSync(path.join(dir, 'watch.json'), '{}\n');
+            gitIn(sb.repo, 'add', '-f', '.claude/docs');
+            gitIn(sb.repo, 'commit', '-qm', 'docs');
+        }
+        assert.ok(run(style, 'install').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: a committed code-style/ domain is committed docs`);
+        assert.strictEqual(projectEnv(style).CLAUDE_STACK_DOCS_VERSIONING, 'git', `${twin}: and the value landed`);
+        assert.ok(run(bare, 'install').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (local)'), `${twin}: a committed folder with no watch.json is no domain`);
+        assert.strictEqual(projectEnv(bare).CLAUDE_STACK_DOCS_VERSIONING, 'local', `${twin}: and the value landed`);
+    }
+    finally { for (const sb of [style, bare]) fs.rmSync(sb.work, { recursive: true, force: true }); }
+}
+
+test('sh: the docs-versioning seed reads every domain under the docs root, not architecture/ alone', () => assertDomainVersioningSeed(runSh, 'sh'));
+test('ps1: the docs-versioning seed reads every domain under the docs root, not architecture/ alone (pwsh required)', { skip: skipNoPwsh }, () => assertDomainVersioningSeed(runPs, 'ps1'));
 
 test('sh: the slug, the sentry token and the context7 key the run is handed land in the ACCOUNT settings.json at project scope', () => {
     const sb = sandbox();

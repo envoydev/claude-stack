@@ -112,9 +112,9 @@ test('the start block names a versioning mismatch in both directions', () => {
   const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
   try {
     assert.match(ctx(ignored.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' })),
-      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs\/architecture is not tracked by git - the setting wins, so doc sections are written in place/);
+      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/);
     assert.match(ctx(committed.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'local' })),
-      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs\/architecture is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
+      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
     for (const r of [ignored, committed]) assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /Versioning mismatch/, 'nothing declared, nothing said');
   } finally { ignored.rm(); committed.rm(); }
 });
@@ -345,6 +345,24 @@ test('source roots come from watch.json; CLAUDE_STACK_DOCS_GATE=0 turns the gate
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))));
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { CLAUDE_STACK_DOCS_GATE: '0' })));
   } finally { r.rm(); }
+});
+
+// Task 14 / whole-branch review finding 3: a domain that declares no sourceRoots contributes none. The shipped
+// related-projects/watch.json is `{}` and its own shape doc says it declares nothing to watch - but the per-domain
+// default folded src + tests into the union, so adding it to an 'app'-only project widened the gate to
+// app,src,tests: the first change under src/ or tests/ was held for a section no domain documents, and `where`
+// had nothing to hand over. The default belongs to the union alone, where a project that declares nothing
+// anywhere still gets it.
+test('an empty watch.json declares no source roots, and never widens another domain\'s', () => {
+  const r = repo({ files: { 'app/Orders/Refund.cs': 'x\n', 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'app/Orders/**', 'App rule.'), 'watch.json': JSON.stringify({ sourceRoots: ['app'] }) } });
+  const bare = repo({ files: { 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'src/**', 'Src rule.'), 'watch.json': '{}' } });
+  try {
+    r.write('.claude/docs/related-projects/watch.json', '{}');
+    r.write('.claude/docs/related-projects/RELATED-PROJECTS.md', section('sibling', '', 'A sibling repo.'));
+    assert.ok(denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()))), 'the declared root still holds');
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))), 'and src/ is not adopted from an empty watch.json');
+    assert.ok(denied(bare.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))), 'a project declaring no root anywhere still gets the src/tests default');
+  } finally { r.rm(); bare.rm(); }
 });
 
 test('writeTargets: the paths a shell command writes, from real runs', () => {
@@ -1257,5 +1275,34 @@ test('round-robin fills breadth-first across watch entries even within one domai
     assert.ok(at('patterns#one') >= 0 && at('other#four') >= 0 && at('patterns#two') >= 0, reason);
     assert.ok(at('patterns#one') < at('other#four') && at('other#four') < at('patterns#two'), `expected the order one, four, two:\n${reason}`);
     assert.strictEqual(at('patterns#three'), -1, 'the cap is 3: the id round-robin never reaches (patterns#three) is dropped, not entry B');
+  } finally { r.rm(); }
+});
+
+// ---- Task 14 / whole-branch review finding 1: lint and this hook must resolve a watch entry the SAME way ----
+// A bare 'patterns#orders' is the spelling every existing install's watch.json holds, and it turns ambiguous the
+// moment a second domain owns a references/patterns.md too - which the engine's own comment calls ordinary, since
+// every domain owns a references/ folder. The hook falls back to the domain-qualified spelling and asks about the
+// right section; lint had no such fallback and called the same entry missing. Three shipped skills name lint the
+// arbiter and tell an agent to FIX a PROBLEM line, so the false positive instructs the repair of a CORRECT entry -
+// and the ask asserted here is what dies with it. Driven through both readers in one test on purpose: the defect
+// was in neither one alone, it was in the two disagreeing.
+test('a bare watch entry ambiguous across two domains is asked about by the hook and never called missing by lint', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({
+      sourceRoots: ['src'],
+      watch: [{ kind: 'orders', globs: ['src/Api/Orders/**'], sections: ['patterns#orders'] }],
+    }));
+    r.write('.claude/docs/code-style/watch.json', '{}');
+    r.write('.claude/docs/code-style/references/patterns.md', section('orders', '', 'Style patterns live here.'));
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Orders/Refund.cs', 'class Refund { int Cap; }\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /"Refunds are ledgered before the payment call\."/, 'the hook resolves the bare entry to its own domain\'s file');
+    assert.doesNotMatch(reason, /Style patterns live here/, 'and never to the other domain\'s same-named file');
+    const out = r.cli(['lint']);
+    assert.doesNotMatch(out.stdout, /names a section that does not exist/, `lint must resolve what the hook resolved:\n${out.stdout}`);
+    assert.strictEqual(out.status, 0, out.stdout);
   } finally { r.rm(); }
 });

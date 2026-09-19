@@ -2102,18 +2102,32 @@ if "CLAUDE_STACK_DOCS_PATH" not in env:
 # made before this key existed keeps exactly the behaviour it had and no update switches it silently.
 # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
 # or silently local - and `docs.js status` plus the session-start block say so.
+# `or "/"`: at the filesystem root the project root is the empty string, and an empty cwd raises
+# FileNotFoundError - which would abandon the whole settings write over a probe whose answer is optional.
+# The pathspec is right either way ("" + "/docs/architecture").
+def _dtracked(_root, _dir):
+    return subprocess.call(["git", "ls-files", "--error-unmatch", "--", _dir], cwd=_root or "/",
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
 if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     # Forward slashes DELIBERATELY, also on Windows: os.path.join would emit '\' under a Windows python and hand
-    # git a mixed-separator pathspec (C:/repo\docs\architecture), which can fail to match - and a false negative
+    # git a mixed-separator pathspec (C:/repo\docs\code-style), which can fail to match - and a false negative
     # here seeds `local` over committed docs, the exact silent switch this seed exists to prevent.
     _droot = os.path.dirname(os.path.dirname(path)).replace("\\", "/").rstrip("/")
     _dparts = [p for p in env["CLAUDE_STACK_DOCS_PATH"].replace("\\", "/").split("/") if p]
-    _ddir = "/".join([_droot] + _dparts + ["architecture"])
-    # `or "/"`: at the filesystem root _droot is the empty string, and an empty cwd raises FileNotFoundError -
-    # which would abandon the whole settings write over a probe whose answer is optional. The pathspec is right
-    # either way ("" + "/docs/architecture").
-    _committed = subprocess.call(["git", "ls-files", "--error-unmatch", "--", _ddir], cwd=_droot or "/",
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+    _dbase = "/".join([_droot] + _dparts)
+    # Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder a domain
+    # (architecture/ is grandfathered in without one), so a project documented only in code-style/,
+    # decisions/ or related-projects/ is an ordinary shape - and probing one folder seeded `local` over its
+    # committed docs, which then writes branch overlays into a docs root git is versioning. Same rule as
+    # docs.js domains(), reserved names and all; a watch-less folder like quality/ is no domain and no vote.
+    try:
+        _dnames = sorted(_d for _d in os.listdir(_dbase)
+                         if not _d.startswith(".") and _d not in ("references", "history")
+                         and os.path.isdir(os.path.join(_dbase, _d))
+                         and (_d == "architecture" or os.path.exists(os.path.join(_dbase, _d, "watch.json"))))
+    except OSError:
+        _dnames = []
+    _committed = any(_dtracked(_droot, "%s/%s" % (_dbase, _d)) for _d in _dnames)
     env["CLAUDE_STACK_DOCS_VERSIONING"] = "git" if _committed else "local"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
@@ -2596,7 +2610,7 @@ The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude/settings.json env (
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
 re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
-Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how the architecture docs are
+Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how every capture's docs are
 versioned - 'git' when they are committed (git versions them per branch), 'local' for the
 machine-local overlay under <docs-path>/.branches/. The install seeded what this repo does today.
 

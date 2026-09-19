@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// docs.js - the architecture docs engine. Sections are addressed by id, found from code paths, versioned per branch,
+// docs.js - the docs engine, over every DOMAIN under the docs root (a top-level folder holding a watch.json, plus
+// the grandfathered architecture/). Sections are addressed by id, found from code paths, versioned per branch,
 // merged back when a branch lands, flagged when their code moved, and linted. Every command is deterministic: the
 // model pays only for the text a command prints.
 //   where <path...>                 sections covering these paths, the narrowest declared covers first, the last
@@ -372,9 +373,17 @@ function merge3(ours, base, theirs, name) {
 // The RAW git fact: are the doc files committed? Only two callers want it - the mode fallback below, and the
 // mismatch report, which exists precisely to say that this fact and the declared mode disagree. Everything that
 // DECIDES behaviour asks gitVersioned() instead.
+// Every DOMAIN is probed, never one folder: a watch.json is what makes a domain and nothing requires
+// architecture/ to be one of them, so a project documented in code-style/, related-projects/ or decisions/
+// alone is an ordinary shape. Probing architecture/ alone answered 'not committed' for exactly that project -
+// which then wrote per-branch OVERLAYS into a docs root git is versioning, and had `status` call committed
+// docs ignored. ANY tracked domain is enough: the doc text is committed where it matters, and a domain added
+// today but not committed yet must not flip a committed install onto the overlay. No domain at all - a fresh
+// project, or a docs root holding only watch-less folders like quality/ - reads as not tracked, exactly as an
+// absent architecture/ did.
 let TRACKED_CACHE;
 function tracked() {
-  if (TRACKED_CACHE === undefined) TRACKED_CACHE = git(['ls-files', '--error-unmatch', DOCS]) !== null;
+  if (TRACKED_CACHE === undefined) TRACKED_CACHE = domains().some((d) => git(['ls-files', '--error-unmatch', domainDir(d)]) !== null);
   return TRACKED_CACHE;
 }
 // The env keys that can declare the mode, in precedence order. ONE list, and every message below names the key that
@@ -402,8 +411,13 @@ const gitVersioned = () => docsMode() === 'git';
 // way behind the user. Without a repo, or before the docs exist, there is no fact to disagree with.
 function versioningMismatch() {
   const declared = declaredVersioning();
-  if (!declared || !hasGit() || !fs.existsSync(DOCS)) return null;
-  const where = path.relative(ROOT, DOCS).split(path.sep).join('/');
+  // 'Are there docs at all', not 'does architecture/ exist': the disagreement is about the docs this engine
+  // actually reads, which are every domain's files. A docs root holding no domain governs nothing, so there is
+  // still no fact to disagree with - and the one line whose job is to report the disagreement used to stay
+  // silent for every project documented outside architecture/, the case it exists for.
+  if (!declared || !hasGit() || !domains().length) return null;
+  // The docs ROOT, since tracked() now answers for every domain under it rather than one folder.
+  const where = docsRel();
   if (declared.mode === 'git' && !tracked()) {
     return `Versioning mismatch: ${declared.key} declares 'git', but ${where} is not tracked by git - the setting wins, so doc sections are written in place and nothing versions them until the docs are committed.`;
   }
@@ -466,8 +480,10 @@ function docFiles() {
   return out.sort();
 }
 // The domain a file belongs to - its own name, so relKey measures from the right base and a collision
-// can name every domain that holds it. Falls back to 'architecture' only if somehow no domain claims the
-// file at all, which should not happen now that domains() grandfathers it in.
+// can name every domain that holds it. The 'architecture' fallback is defensive and no caller reaches it:
+// every one passes a file that came from docFiles/domainFiles, from findFile, or composed under
+// domainDir, so it is already inside a domain. Kept rather than deleted because the alternative for a
+// file from somewhere else is relKey measuring from undefined - a wrong path instead of a legacy one.
 const fileDomain = (file) => domains().find((d) => !path.relative(domainDir(d), file).startsWith('..')) || 'architecture';
 const fileDomainDir = (file) => domainDir(fileDomain(file));
 const relKey = (file) => path.relative(fileDomainDir(file), file).replace(/\.md$/, '').split(path.sep).join('/');
@@ -1390,14 +1406,25 @@ function lint() {
   } else notes.push('no ORIENTATION.md: sessions start with no map');
   const w = loadWatch();
   problems.push(...w.problems);
-  // askRef resolves a sections entry the same way every reader does - bare or domain-qualified,
-  // through parseRef - rather than a bare-id Set membership check that would false-flag a qualified
-  // entry as missing. askRef alone can never see a section of a file the entry's OWN domain declares
-  // notOwned - that file is excluded from domainFiles, which is what makes the write refusal hold - so a
-  // watch entry naming one, the intended shape for a decisions domain, needs protectedRef(e.domain, id)
-  // tried too before it is reported missing.
+  // Resolved through ALL THREE attempts the session hook makes (docs-session.js resolveHit), in its order,
+  // because lint is the arbiter three shipped skills tell an agent to obey: a PROBLEM line here gets a
+  // watch entry edited or deleted, so an entry the hook resolves and lint calls missing instructs the repair
+  // of correct configuration and silently ends the finish ask for that section.
+  //   protectedRef(e.domain, id) - askRef can never see a section of a file the entry's OWN domain declares
+  //     notOwned (that file is excluded from domainFiles, which is what makes the write refusal hold), so a
+  //     watch entry naming one - the intended shape for a decisions domain - resolves only here.
+  //   askRef(id) - the bare spelling, resolved the same way every reader does, through parseRef, rather
+  //     than a bare-id Set membership check that would false-flag a qualified entry as missing.
+  //   askRef(`${e.domain}/${id}`) - the domain-qualified fallback. A bare 'patterns#orders' is what every
+  //     watch.json written before domains existed holds, and it turns AMBIGUOUS (parseRef throws, askRef
+  //     catches and returns null) the moment a second domain owns a references/patterns.md of its own -
+  //     which is ordinary, since every domain owns a references/ folder. The entry's own domain is what
+  //     disambiguates it, exactly as it does at the hook.
   for (const e of [...w.watch, ...w.newModule.map((nm) => ({ kind: 'newModule', sections: nm.sections, domain: nm.domain }))]) {
-    for (const id of e.sections) if (!askRef(id) && !protectedRef(e.domain, id)) problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
+    for (const id of e.sections) {
+      if (protectedRef(e.domain, id) || askRef(id) || askRef(`${e.domain}/${id}`)) continue;
+      problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
+    }
   }
   const dir = overlayDir();
   if (dir) {
@@ -1472,7 +1499,13 @@ function watchOf(domain) {
   return result;
 }
 function watchOfUncached(domain) {
-  const empty = { sourceRoots: WATCH_ROOTS, watch: [], newModule: null, notOwned: [] };
+  // sourceRoots empty, not WATCH_ROOTS: a domain that declares none contributes none. The default belongs to
+  // the UNION in loadWatch (nothing declared anywhere -> WATCH_ROOTS), and having it here as well made a
+  // domain's silence widen every other domain's declaration - the shipped `{}` watch.json, documented as
+  // declaring nothing, turned a project whose source root is 'app' into 'app,src,tests', so the first-change
+  // gate held changes under src/ and tests/ that no domain documents and `where` had nothing to hand over.
+  // A single-domain install is unchanged: its empty union still falls back to WATCH_ROOTS.
+  const empty = { sourceRoots: [], watch: [], newModule: null, notOwned: [] };
   const file = path.join(domainDir(domain), 'watch.json');
   if (!fs.existsSync(file)) return { ...empty, problems: [], missing: true };
   let j;
@@ -1484,7 +1517,7 @@ function watchOfUncached(domain) {
     if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !x)) { problems.push(`${domain}/watch.json ${what} must be a non-empty list of strings`); return null; }
     return v;
   };
-  const sourceRoots = (strings(j.sourceRoots, 'sourceRoots') || WATCH_ROOTS).map((r) => r.replace(/\/+$/, ''));
+  const sourceRoots = (strings(j.sourceRoots, 'sourceRoots') || []).map((r) => r.replace(/\/+$/, ''));
   const watch = [];
   if (j.watch !== undefined && !Array.isArray(j.watch)) problems.push(`${domain}/watch.json watch must be a list`);
   for (const [i, e] of (Array.isArray(j.watch) ? j.watch : []).entries()) {
@@ -1570,6 +1603,9 @@ function notOwnedOverride(dir, over) {
 // another domain's watch. sourceRoots union (the 'first change under a source root' gate reads every
 // domain's own roots at once); watch and newModule concatenate, each entry still carrying which domain
 // it came from so a hit can be attributed and the section resolved without guessing.
+// WATCH_ROOTS is the fallback HERE and nowhere else: a union of DECLARED roots, defaulted once when no
+// domain declared any (a pre-watch.json install, or one whose only watch.json is empty). Per-domain
+// defaulting would let one domain's silence widen another's declaration.
 function loadWatch() {
   const per = domains().map((d) => ({ d, w: watchOf(d) }));
   const present = per.filter((p) => !p.w.missing);
@@ -1640,7 +1676,7 @@ module.exports = {
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
-  lint, seedIds, loadWatch, watchHits, watchOf, unowned, snapshot, changedSince,
+  lint, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
   sectionHash, firstSentence, askRef, protectedRef,
 };
 if (require.main !== module) return;
@@ -1741,7 +1777,7 @@ const commands = {
   'seed-ids': () => console.log(`${seedIds()} ids added`),
   watch: () => {
     const w = loadWatch();
-    if (w.missing) { console.log('no watch.json - run the architecture capture to write one'); return; }
+    if (w.missing) { console.log('no watch.json in any domain - run a docs capture to write one'); return; }
     const at = args.indexOf('--dir');
     const dirs = at >= 0 ? args.slice(at + 1) : [];
     const files = at >= 0 ? args.slice(0, at) : args;
