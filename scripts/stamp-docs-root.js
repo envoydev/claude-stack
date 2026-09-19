@@ -11,6 +11,10 @@
 //        node stamp-docs-root.js [project-root] --reprobe-versioning <value-this-run-seeded>
 //                                                   (re-probe the docs-versioning mode at the path the file now
 //                                                    holds; refused unless the file still holds that value)
+//        node stamp-docs-root.js [project-root] --seed-versioning
+//                                                   (CLAUDE_STACK_DOCS_VERSIONING absent -> write probeVersioning's
+//                                                    answer for the docs root the file holds; present -> untouched.
+//                                                    Project root only - a global install is skipped with a message.)
 // Exit 0 always - a missing rule file or unreadable settings is a fail-soft no-op with a message.
 
 const fs = require('node:fs');
@@ -136,12 +140,43 @@ function reprobeVersioning(root, seeded)
     console.log(`stamp-docs-root: docs versioning re-probed at ${docs}/: '${value}'`);
 }
 
+// The MISSING-row case `validate.md` (and any other reader) uses instead of the environment.json catalog default:
+// that default is a CONSTANT ('git'), but this one key is DETECTED - writing the constant over a project whose docs
+// are kept out of git is the exact silent switch the rule exists to prevent. Present already: left byte-for-byte,
+// same guard as reprobeVersioning's 'a decision is never touched'. Merges only this one key.
+function seedVersioning(root)
+{
+    const settingsFile = path.join(root, '.claude', 'settings.json');
+    let data;
+    try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
+    catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - nothing seeded`); return; }
+    if (!data || typeof data !== 'object')
+    {
+        console.log(`stamp-docs-root: ${settingsFile} is not a JSON object - nothing seeded`);
+        return;
+    }
+    if (data.env && data.env.CLAUDE_STACK_DOCS_VERSIONING)
+    {
+        console.log(`stamp-docs-root: CLAUDE_STACK_DOCS_VERSIONING already '${data.env.CLAUDE_STACK_DOCS_VERSIONING}' - nothing seeded`);
+        return;
+    }
+    const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const value = probeVersioning(root, docs);
+    const why = value === 'local' ? 'the docs are kept out of git' : 'the docs are not kept out of git';
+    data.env = data.env || {};
+    data.env.CLAUDE_STACK_DOCS_VERSIONING = value;
+    fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
+    console.log(`stamp-docs-root: settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
+}
+
 if (require.main === module)
 {
     const argv = process.argv.slice(2);
     const i = argv.indexOf('--claude-dir');
     const reprobeAt = argv.indexOf('--reprobe-versioning');
-    // The word after a flag is that flag's VALUE, never the positional project root - both flags take one.
+    const seedAt = argv.indexOf('--seed-versioning');
+    // The word after a flag is that flag's VALUE, never the positional project root - both value-taking flags do this;
+    // --seed-versioning takes none, so it never claims the next word.
     const values = new Set([i + 1, reprobeAt + 1].filter(k => k > 0));
     const root = path.resolve(argv.find((a, k) => !a.startsWith('--') && !values.has(k)) || '.');
     if (i >= 0 && argv[i + 1]) stampDir(path.resolve(argv[i + 1]));
@@ -152,6 +187,11 @@ if (require.main === module)
         if (i >= 0 && argv[i + 1]) console.log('stamp-docs-root: --reprobe-versioning needs a project root - skipped for a global install');
         else reprobeVersioning(root, argv[reprobeAt + 1]);
     }
+    if (seedAt >= 0)
+    {
+        if (i >= 0 && argv[i + 1]) console.log('stamp-docs-root: --seed-versioning needs a project root - skipped for a global install');
+        else seedVersioning(root);
+    }
 }
 
-module.exports = { stamp, stampDir, resolveDocsRoot, reprobeVersioning, probeVersioning };
+module.exports = { stamp, stampDir, resolveDocsRoot, reprobeVersioning, probeVersioning, seedVersioning };

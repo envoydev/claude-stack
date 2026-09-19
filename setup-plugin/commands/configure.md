@@ -310,7 +310,13 @@ front of the user in its own words; do not carry a copy of the rows here, or the
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row whose key is missing from the file is one the
 release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
-disk is the old spelling, and accepting it moves the value, never resets it.
+disk is the old spelling, and accepting it moves the value, never resets it. `CLAUDE_STACK_DOCS_VERSIONING`
+is the ONE row this does not apply to when it is missing: its value is DETECTED, not constant, so offering
+the catalog's `git` there would write it over a project whose docs are kept out of git - the switch the
+rule exists to prevent. Preview it read-only instead - `node .claude/hooks/docs.js status` (project mode;
+with the key absent its `mode:` line falls back to the same rule) - and offer THAT probed value
+(`git`/`local`, the bare `git (docs are not kept out of git - ...)` or `overlay (docs are kept out of
+git - ...)` line names it and why) as the recommended answer, never the catalog default.
 
 One behaviour lives here rather than in the catalog, because it is about what this step DOES: a
 docs-root change re-stamps the deployed rule (below) and moves no existing docs. Claude Code's own
@@ -336,7 +342,12 @@ passing the value its seed line named (`git` or `local`) - the seed was probed a
 REFUSES when the file no longer holds that value, so a key an earlier install wrote, or one the user just
 changed, is never re-probed: pass the seeded value and let the check answer. Nothing else
 needs editing. Apply on consent with a
-merge touching ONLY the chosen keys - everything else in settings.json is preserved. Area
+merge touching ONLY the chosen keys - everything else in settings.json is preserved, EXCEPT a
+MISSING `CLAUDE_STACK_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that
+one by running `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead
+of folding it into the merge, so the write re-probes at write time rather than trusting a preview a
+few turns stale, and report its printed line. A typed override (Other) for that same row is a
+deliberate decision like any other row's and goes through the generic merge as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
 ## 10. Permission mode

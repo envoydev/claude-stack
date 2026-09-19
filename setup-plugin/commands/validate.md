@@ -248,6 +248,14 @@ table of the actionable rows only - an install whose env already matches gets th
 - **MISSING** - a catalog row with no key in the file. This is the release-introduced case: a
   variable added upstream after this install was made, which no artifact diff can surface because
   it was never a file. Reason column: `not set - introduced after this install`. The catalog carries no version per row, so never print one.
+  `CLAUDE_STACK_DOCS_VERSIONING` is the ONE exception to 'offer the catalog default': its value is DETECTED, not
+  constant, so writing the constant over a project whose docs are kept out of git is the exact silent switch
+  the rule exists to prevent. PREVIEW it read-only before the table - `node .claude/hooks/docs.js status`
+  (project mode; with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
+  kept out of git - ...)` or `overlay (docs are kept out of git - ...)` names the probed value (`git`/`local`) and
+  the reason in one line; show THAT value in the table, never the catalog's `git`. Reason column: `not set -
+  probed '<value>': <the mode line's own parenthetical>`. Every other MISSING row still offers the catalog
+  default unchanged.
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
@@ -383,7 +391,12 @@ dormancy alone is never a removal argument.
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
 are applied here too, as a merge on the scope's settings.json touching ONLY those keys - seeds and
-renames included - and named in the post-check the same way an added artifact is. Emit + prereq-check it -
+renames included - and named in the post-check the same way an added artifact is. An accepted
+MISSING `CLAUDE_STACK_DOCS_VERSIONING` row is the one exception: never fold it into that generic
+merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
+(project mode only, per its own message), which re-probes at the write instead of trusting the
+table's preview a step stale, and report its printed line. Every other accepted row still goes
+through the generic merge. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
 (`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
