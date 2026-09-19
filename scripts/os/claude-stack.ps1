@@ -20,7 +20,16 @@
 
 .PARAMETER Space
   Any word -> install into the ~/.claude-<Space> account (CLAUDE_CONFIG_DIR is exported for the claude
-  CLI) and use a separate memory_<Space>.db. Omit for the default ~/.claude account + shared memory.db.
+  CLI). Omit for the default ~/.claude account. Does NOT by itself change where the memory MCP's db
+  lives - pair it with -MemoryLevel scoped for a memory_<Space>.db.
+
+.PARAMETER MemoryLevel
+  Where the memory MCP's own SQLite db lives: 'global' = ~/.memory-mcp/memory.db (default when nothing
+  is registered yet), 'scoped' = ~/.memory-mcp/memory_<Space or default>.db, 'project' =
+  <project>\.memory-mcp\memory.db (self-ignored via a generated .memory-mcp/.gitignore). Given, that
+  level's path is used. Absent: an existing registration keeps its db path BYTE-FOR-BYTE (only the
+  runtime extra + pragmas are upgraded); no existing registration = global. A level change never
+  copies or deletes a db.
 
 .PARAMETER Scope
   'project' (default) installs INTO this repo; 'global' installs into the active account. Overrides the
@@ -158,6 +167,10 @@ param(
   # Optional: WRITE CLAUDE_STACK_DOCS_VERSIONING ('git' or 'local') into the project settings.json env, over a value
   # already there. Empty -> seeded only when absent. e.g.: .\claude-stack.ps1 update -DocsVersioning local
   [string]$DocsVersioning = '',
+  # Optional: where the memory MCP's db lives - 'global' (default, ~/.memory-mcp/memory.db), 'scoped'
+  # (memory_<Space or default>.db) or 'project' (<project>\.memory-mcp\memory.db). Empty -> an existing
+  # registration's db path is kept unchanged; global with none. e.g.: .\claude-stack.ps1 install -MemoryLevel project
+  [string]$MemoryLevel = '',
   # Optional: install the GitHub CLI (gh) via winget if missing; prompts for `gh auth login`
   # when unauthenticated. e.g.: .\claude-stack.ps1 install -GitHubCli
   [switch]$GitHubCli,
@@ -377,6 +390,13 @@ if ($DocsVersioning -notin @('', 'git', 'local')) {
   Write-Host "-DocsVersioning must be 'git' or 'local' (got '$DocsVersioning')" -ForegroundColor Red
   exit 1
 }
+# -MemoryLevel: lower-cased like the other enums; empty means 'not given' - the existing-registration
+# (else global) rule decides. Refused HERE, before anything is written.
+$MemoryLevel = $MemoryLevel.ToLowerInvariant()
+if ($MemoryLevel -notin @('', 'global', 'scoped', 'project')) {
+  Write-Host "-MemoryLevel must be 'global', 'scoped' or 'project' (got '$MemoryLevel')" -ForegroundColor Red
+  exit 1
+}
 # -PlaywrightBrowsers / -PlaywrightEnabled: lower-cased like the other enums and put in ONE canonical order
 # (chrome, msedge, firefox, webkit) so a server list never depends on how the flag was typed. Empty
 # browsers = 'resolve later' from what is registered (the playwright block after the selection).
@@ -415,9 +435,9 @@ if ($Space) {
   $spaceAccount = Join-Path $HOME (".claude-" + $Space)
   # Distinguish an existing account from a brand-new one so a typo'd space ('wrok') is visible, not silent.
   if (Test-Path -LiteralPath $spaceAccount -PathType Container) {
-    Log "space '$Space' -> existing account $spaceAccount (CLAUDE_CONFIG_DIR exported for the claude CLI); memory DB memory_$Space.db."
+    Log "space '$Space' -> existing account $spaceAccount (CLAUDE_CONFIG_DIR exported for the claude CLI); pass -MemoryLevel scoped for a matching memory_$Space.db (default without that flag: global)."
   } else {
-    Log "space '$Space' -> creating NEW account $spaceAccount (typo? did you mean an existing one?); memory DB memory_$Space.db."
+    Log "space '$Space' -> creating NEW account $spaceAccount (typo? did you mean an existing one?); pass -MemoryLevel scoped for a matching memory_$Space.db (default without that flag: global)."
   }
   if ($env:CLAUDE_CONFIG_DIR -and $env:CLAUDE_CONFIG_DIR -ne $spaceAccount) {
     Log "space '$Space' overrides CLAUDE_CONFIG_DIR ($env:CLAUDE_CONFIG_DIR)."
@@ -441,6 +461,14 @@ if ($Scope -eq 'project') {
 else {
   $ClaudeScope = 'user'
 }
+
+# The project root a -MemoryLevel project db (and the notes import) is scoped to - the git top-level
+# when this run sits inside one, else (project scope only, a non-git project) the current directory
+# itself. A global-scope run outside any project (not inside a git repo) has no root at all - both the
+# level resolution and Import-MemoryNotes read that as 'no project' and fail-soft.
+$MemoryProjectRoot = (& git rev-parse --show-toplevel 2>$null)
+if ($LASTEXITCODE -ne 0) { $MemoryProjectRoot = '' }
+if (-not $MemoryProjectRoot -and $ClaudeScope -eq 'project') { $MemoryProjectRoot = (Get-Location).Path }
 
 # ===========================================================================
 # MANIFEST - edit these, then run.
@@ -610,7 +638,9 @@ $McpMemoryVer     = Get-PypiLatest 'mcp-memory-service'
 $Ctx7Pin   = if ($McpContext7Ver)   { '@' + $McpContext7Ver }   else { '' }
 $PwPin     = if ($McpPlaywrightVer) { '@' + $McpPlaywrightVer } else { '' }
 $SerenaPin = if ($McpSerenaVer)     { '@' + $McpSerenaVer }     else { '' }
-$MemoryPin = if ($McpMemoryVer)     { '@' + $McpMemoryVer }     else { '' }
+# The memory pin is spelled '==<ver>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<ver>',
+# FACT-EMBED) - not '@<ver>' like the others, which have no extras suffix to sit next to.
+$MemoryPin = if ($McpMemoryVer)     { '==' + $McpMemoryVer }     else { '' }
 # Report what pinned vs. fell back to unpinned - the whole point of this step is 'frozen until update'.
 $resolvedVers = [ordered]@{ 'context7' = $McpContext7Ver; 'playwright' = $McpPlaywrightVer; 'serena' = $McpSerenaVer; 'memory' = $McpMemoryVer }
 foreach ($k in $resolvedVers.Keys) {
@@ -618,13 +648,116 @@ foreach ($k in $resolvedVers.Keys) {
   else { Log "  !! could not resolve $k latest - installing unpinned (re-run when online to pin it)" }
 }
 
-$MemoryBackend = 'sqlite_vec'  # separation is by DB path (below); backend stays sqlite_vec (the only valid local backend)
-$MemoryDbFile  = if ($Space) { "memory_$Space.db" } else { 'memory.db' }
+$MemoryBackend = 'sqlite_vec'   # the only valid local backend; level (below) picks the db PATH
 # Native separator: '\' on Windows (Join-Path yields a backslashed root), '/' under pwsh on mac/Linux -
 # so the DB is the same file a sh install writes. JSON serialization escapes a backslash automatically.
-$MemoryEntry   = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
-                 ' -e MCP_MEMORY_SQLITE_PATH=${HOME_MEMORY_DIR}' + [IO.Path]::DirectorySeparatorChar + $MemoryDbFile +
-                 ' -- uvx --with numpy --from mcp-memory-service' + $MemoryPin + ' memory server'
+$HomeMemoryDir = Join-Path $HOME '.memory-mcp'
+
+# -MemoryLevel: where the memory MCP's own SQLite db lives (FACT-SCHEMA / cross-task-facts.md) - global
+# ~/.memory-mcp/memory.db, scoped ~/.memory-mcp/memory_<space|default>.db, project
+# <project>\.memory-mcp\memory.db. Given, that level's default path is used (refusing 'project' with no
+# identifiable project root). Absent: an EXISTING registration (project .mcp.json, else the account
+# .claude.json) keeps its MCP_MEMORY_SQLITE_PATH byte-for-byte - only the runtime extra + pragmas are
+# upgraded below, never the path; no existing registration = global. A level change never copies or
+# deletes a db - whichever file the old memories are in stays there (logged below).
+# Mirrors stack/hooks/memory.js's pathForLevel/levelOfPath/registeredDbPath, reimplemented here (not
+# require()'d): the sh twin needs its own copy of the formula regardless, and this runs before the
+# source snapshot's hooks are copied.
+function Get-MemoryDefaultPath([string]$Level) {
+  switch ($Level) {
+    'global'  { return (Join-Path $HomeMemoryDir 'memory.db') }
+    'scoped'  { $s = if ($Space) { $Space } else { 'default' }; return (Join-Path $HomeMemoryDir "memory_$s.db") }
+    'project' { return (Join-Path (Join-Path $MemoryProjectRoot '.memory-mcp') 'memory.db') }
+  }
+}
+# The inverse - 'global'/'scoped'/'project' for a path matching one of the three shapes EXACTLY (never
+# a prefix/substring match, so a foreign path is never mistaken for one of ours); '' otherwise.
+function Get-MemoryLevelOfPath([string]$P) {
+  if (-not $P) { return '' }
+  try {
+    if ($MemoryProjectRoot -and $P -eq (Join-Path (Join-Path $MemoryProjectRoot '.memory-mcp') 'memory.db')) { return 'project' }
+    if ($P -eq (Join-Path $HomeMemoryDir 'memory.db')) { return 'global' }
+    if ((Split-Path $P -Parent) -eq $HomeMemoryDir -and (Split-Path $P -Leaf) -match '^memory_[^/\\]+\.db$') { return 'scoped' }
+  } catch { return '' }
+  return ''
+}
+# The CURRENTLY REGISTERED db path, if any - project .mcp.json first, else the account .claude.json
+# (mirrors memory.js's registeredDbPath). '' when there is no registration, node is missing, or a file
+# cannot be read/parsed; never throws (every read is its own try/catch, inside the node script itself).
+function Get-MemoryRegisteredPath {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return '' }
+  $memScript = @'
+const fs=require("fs");const path=require("path");
+const [projectRoot,homeDir,configDir]=process.argv.slice(1);
+function expandHome(p){ if(typeof p!=="string"||!p) return p; let out=p;
+  if(out==="~"||out.startsWith("~"+path.sep)||out.startsWith("~/")) out=path.join(homeDir,out.slice(1));
+  return out.replace(/\$\{HOME\}/g,homeDir).replace(/\$HOME\b/g,homeDir); }
+function readJson(f){ try{return JSON.parse(fs.readFileSync(f,"utf8"));}catch{return null;} }
+function envPath(entry){ const p=entry&&entry.env&&entry.env.MCP_MEMORY_SQLITE_PATH;
+  return typeof p==="string"&&p?path.normalize(expandHome(p)):null; }
+try{
+  if(projectRoot){
+    const mcp=readJson(path.join(projectRoot,".mcp.json"));
+    const found=envPath(mcp&&mcp.mcpServers&&mcp.mcpServers.memory);
+    if(found){ console.log(found); process.exit(0); }
+  }
+}catch{}
+try{
+  const account=readJson(path.join(configDir,".claude.json"));
+  if(account){
+    const userScope=envPath(account.mcpServers&&account.mcpServers.memory);
+    if(userScope){ console.log(userScope); process.exit(0); }
+    const proj=account.projects&&account.projects[projectRoot];
+    const projScope=envPath(proj&&proj.mcpServers&&proj.mcpServers.memory);
+    if(projScope){ console.log(projScope); process.exit(0); }
+  }
+}catch{}
+'@
+  try { return (((& node -e $memScript $MemoryProjectRoot $HOME $ConfigDir 2>$null) -join "`n").Trim()) } catch { return '' }
+}
+
+if ($MemoryLevel) {
+  $MemLevel = $MemoryLevel
+  if ($MemLevel -eq 'project' -and -not $MemoryProjectRoot) {
+    Write-Host '-MemoryLevel project needs a project (not inside a git repo)' -ForegroundColor Red
+    exit 1
+  }
+  $MemoryDbPath = Get-MemoryDefaultPath $MemLevel
+} else {
+  $existingMemPath = Get-MemoryRegisteredPath
+  if ($existingMemPath) {
+    $MemoryDbPath = $existingMemPath
+    $MemLevel = Get-MemoryLevelOfPath $MemoryDbPath
+    if (-not $MemLevel) { $MemLevel = 'custom' }
+    Log "memory: no -MemoryLevel given - keeping the existing registration's db path unchanged ($MemLevel): $MemoryDbPath"
+  } else {
+    $MemLevel = 'global'
+    $MemoryDbPath = Get-MemoryDefaultPath 'global'
+  }
+}
+
+# project level: the db lives INSIDE the project, self-ignored so it is never committed - a
+# '.memory-mcp\.gitignore' holding '*' only when absent (FACT-GITIGNORE: neither twin otherwise ever
+# writes to a project's .gitignore; this file lives fully inside the folder it ignores, so that
+# precedent is untouched - the project's own .gitignore is never opened). Also covers a KEPT existing
+# path that happens to already be project-shaped.
+if ($MemLevel -eq 'project' -and $MemoryProjectRoot) {
+  $memProjDir = Join-Path $MemoryProjectRoot '.memory-mcp'
+  if (-not (Test-Path -LiteralPath $memProjDir)) { New-Item -ItemType Directory -Path $memProjDir -Force | Out-Null }
+  $memGitignore = Join-Path $memProjDir '.gitignore'
+  if (-not (Test-Path -LiteralPath $memGitignore)) {
+    [System.IO.File]::WriteAllText($memGitignore, "*`n", (New-Object System.Text.UTF8Encoding($false)))
+  }
+}
+
+# FACT-EMBED: the '[sqlite]' extra is what gives real (ONNX, 384-dim) embeddings - without it the
+# server hash-embeds the first launch and then REFUSES to start on every later one once the db holds
+# rows. FACT-PRAGMA: the service's own busy_timeout default is 5000ms; MCP_MEMORY_SQLITE_PRAGMAS raises
+# it (and the python-level connect timeout with it) - always added since 5000 < 15000.
+$MemoryEntry = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
+               ' -e MCP_MEMORY_SQLITE_PATH=${MEMORY_DB_PATH}' +
+               ' -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000' +
+               ' -- uvx --with numpy --from mcp-memory-service[sqlite]' + $MemoryPin + ' memory server'
 
 # npx-launched MCPs (context7, angular-cli, playwright): on Windows the spawned stdio server can't
 # resolve the bare `npx` shim (it's npx.cmd), so it dies with JSON-RPC -32000 - wrap in `cmd /c`.
@@ -742,7 +875,7 @@ $Mcps = @(
   $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
   $SentryEntry  # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; -SentrySlug seeds the slug); -SentryAuth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
-  $MemoryEntry  # memory: cross-project recall - the subagent handoff runs on serena; comment out in a standalone project
+  $MemoryEntry  # memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; -MemoryLevel picks where its db lives
   $Context7Entry                              # up-to-date library/framework/SDK docs (beats recalled API knowledge)
 )
 
@@ -780,6 +913,7 @@ $Hooks = @(
   'docs-session.js::@SubagentStop::'              # the finish ask, per agent: what THAT agent changed, once - the seat that made the change is the only context that knows why
   'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::'  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
   'docs-session.js::@Stop::'                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
+  'memory-session.js::@SessionStart::'            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -937,7 +1071,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -eq 'inject-code-style' -or $f.BaseName -eq 'docs') { continue }                    # legacy generated; the docs hook's engine
+    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory')) { continue }                    # legacy generated; docs.js/memory.js are engines, not hooks
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -1562,9 +1696,11 @@ function Resolve-McpArgv([string]$Spec) {
   # resolved path that contains a space (C:\Users\Jane Doe) stays ONE argument instead of splitting
   # into two. .Split(' ') yields an array (no glob expansion, unlike bash word-splitting).
   # HOME_MEMORY_DIR: the shared memory root ($HOME\.memory-mcp) - always resolved at install time to a
-  # fixed home path, so a Cursor install on the same machine points to the same DB.
+  # fixed home path, so a Cursor install on the same machine points to the same DB. MEMORY_DB_PATH: the
+  # memory MCP's resolved db path (level-dependent, may itself sit under a project root with a space) -
+  # same placeholder-after-split technique, never pre-substituted into the manifest string.
   $memDir = Join-Path $HOME '.memory-mcp'
-  return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('${HOME_MEMORY_DIR}', $memDir) })
+  return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('${HOME_MEMORY_DIR}', $memDir).Replace('${MEMORY_DB_PATH}', $MemoryDbPath) })
 }
 
 function Register-Mcp([string]$Name, [string]$Spec) {
@@ -1808,6 +1944,8 @@ function Get-Hooks {
   # the docs hook's engine: required by docs-session.js from its own directory, and run by the model as
   # `node .claude/hooks/docs.js` - copied only beside the hook
   if ($files -contains 'docs-session.js') { $files += 'docs.js' }
+  # the memory hook's engine: required by memory-session.js from its own directory - same split.
+  if ($files -contains 'memory-session.js') { $files += 'memory.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -2522,6 +2660,83 @@ function Set-HookSettings {
   }
 }
 
+# ---------------------------------------------------------------------------
+# MEMORY IMPORT + SWITCH-OFF (once): after the memory MCP is registered, migrate Claude's own
+# per-project auto-memory notes into it (scripts/memory-import.js, run from the run's SOURCE
+# snapshot - it lives in scripts/, never copied into the project), then flip autoMemoryEnabled off in
+# the target settings file: project .claude/settings.json, or the ACCOUNT settings.json at global
+# scope. Runs ONCE - skipped once that file already holds autoMemoryEnabled:false. A global scope run
+# with no identifiable project (not inside a git repo) has nothing to import from and is skipped, logged.
+# Twin of import_memory_notes in claude-stack.sh (which reaches the same shapes through node -e too).
+# ---------------------------------------------------------------------------
+function Get-MemoryTargetSettings {
+  if ($ClaudeScope -eq 'project') {
+    if ($MemoryProjectRoot) { return (Join-Path $MemoryProjectRoot '.claude/settings.json') }
+    return ''
+  }
+  return (Join-Path $ConfigDir 'settings.json')
+}
+
+# $Path -> 'true'/'false'/'absent'/'malformed' ('absent' also covers a missing file).
+function Get-MemoryAutoState([string]$Path) {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return 'malformed' }
+  $memStateScript = @'
+const fs=require("fs");
+try{
+  const raw=fs.readFileSync(process.argv[1],"utf8");
+  let d; try{d=JSON.parse(raw);}catch(e){console.log("malformed");process.exit(0);}
+  if(!d||typeof d!=="object"||Array.isArray(d)){console.log("malformed");process.exit(0);}
+  console.log(Object.prototype.hasOwnProperty.call(d,"autoMemoryEnabled")?String(d.autoMemoryEnabled):"absent");
+}catch(e){ console.log(e.code==="ENOENT"?"absent":"malformed"); }
+'@
+  try { return (((& node -e $memStateScript $Path 2>$null) -join "`n").Trim()) } catch { return 'malformed' }
+}
+
+# Merge autoMemoryEnabled:false into $Path, leaving every other key untouched. Refuses (logs, writes
+# nothing) on a file that fails to parse as a JSON object - the install continues either way.
+function Set-MemoryAutoOff([string]$Path) {
+  $memWriteScript = @'
+const fs=require("fs");const path=require("path");
+const p=process.argv[1];
+let d={};
+try{
+  const raw=fs.readFileSync(p,"utf8");
+  if(raw.trim()){ d=JSON.parse(raw); }
+}catch(e){
+  if(e.code!=="ENOENT"){ console.log("  !! "+p+" is not valid JSON - autoMemoryEnabled left untouched; fix it and re-run"); process.exit(1); }
+}
+if(typeof d!=="object"||d===null||Array.isArray(d)){ console.log("  !! "+p+" top level is not an object - autoMemoryEnabled left untouched"); process.exit(1); }
+d.autoMemoryEnabled=false;
+fs.mkdirSync(path.dirname(p),{recursive:true});
+fs.writeFileSync(p, JSON.stringify(d,null,2)+"\n");
+console.log("  settings.json: autoMemoryEnabled set to false ("+p+")");
+'@
+  try { & node -e $memWriteScript $Path } catch {}
+}
+
+function Import-MemoryNotes {
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { return }   # ClaudeMissing already reported elsewhere
+  if ($ClaudeScope -ne 'project' -and -not $MemoryProjectRoot) {
+    Log 'memory: global install scope with no identifiable project (not inside a git repo) - skipping the notes import; Claude''s own memory stays on'
+    return
+  }
+  $target = Get-MemoryTargetSettings
+  if (-not $target) { return }
+  if ((Get-MemoryAutoState $target) -eq 'false') { return }   # already switched off - never re-run
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Log '  !! node not found - the memory notes import was skipped; Claude''s own memory stays on until it succeeds'; return }
+  if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { Log '  !! uvx not found - the memory notes import was skipped; Claude''s own memory stays on until it succeeds'; return }
+  if (-not (Get-StackSrc)) { Log '  !! stack source unavailable - the memory notes import was skipped; Claude''s own memory stays on until it succeeds'; return }
+  $importer = Join-Path $script:StackSrc (Join-Path 'scripts' 'memory-import.js')
+  if (-not (Test-Path -LiteralPath $importer)) { Log "  !! $importer not found in the source snapshot - memory notes import skipped"; return }
+  Log 'memory: importing Claude''s existing notes into the memory MCP (first run downloads the embedding model, ~1 min)'
+  try { & node $importer --project-root $MemoryProjectRoot --config-dir $ConfigDir } catch {}
+  if ($LASTEXITCODE -eq 0) {
+    Set-MemoryAutoOff $target
+  } else {
+    Log '  !! memory notes import failed - Claude''s own memory stays ON until a later run imports successfully'
+  }
+}
+
 # ===========================================================================
 # UPDATE - bring everything to latest
 # ===========================================================================
@@ -2914,8 +3129,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Import-MemoryNotes; Get-Agents; Get-Rules; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Import-MemoryNotes; Update-Agents; Update-Rules; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -2926,7 +3141,8 @@ Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
 $hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 $summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
-if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
+$summary += "; memory=$MemLevel ($MemoryDbPath)"
+if ($Space) { $summary += "; space=$Space" }
 # Always stated, both ways: a run that RESET the pins to catalog defaults printed no line at all, so
 # the close had nothing to cite and asserted the reset from memory instead.
 if ($KeepPins) { $summary += '; keep-pins=on' } else { $summary += '; keep-pins=off (agent model/effort pins reset to catalog defaults)' }
