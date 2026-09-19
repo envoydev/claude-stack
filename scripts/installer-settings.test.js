@@ -546,3 +546,77 @@ test('ps1: malformed settings.json still resolves the default docs root and migr
     try { assertMigratesOnMalformedSettings(sb, runPs, 'ps1'); }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
+
+// Found by the temp-project matrix: the migration moved three docs onto the domain layout, and the
+// installers' own next-steps log - printed on EVERY install and update, to the one reader who has not
+// captured anything yet - still sent them to the paths the migration had just emptied. The
+// related-context line is the costly one: that folder survives as the plain drop box for sibling-repo
+// working papers, so the text pointed the adopter's orientation doc at a folder the engine
+// deliberately never reads. The skill descriptions and the HTML inventory were both re-pointed;
+// only the two twins' log text and their manifest comments were left behind, which is exactly the
+// parity gap the source-of-truth rule exists to catch. Asserted on the OUTPUT, not on the source, so
+// it holds however the line is composed.
+const RETIRED_DOC_PATHS = ['PROJECT-CODE-STYLE.md', 'PROJECT-RELATED-CONTEXT.md'];
+function assertNextStepsNamesTheDomainPaths(sb, run, twin)
+{
+    for (const action of ['install', 'update'])
+    {
+        const out = run(sb, action);
+        assert.match(out, /related-projects\/RELATED-PROJECTS\.md under the docs root/, `${twin} (${action}): the related-projects capture is named at its domain path`);
+        assert.match(out, /code-style\/CODE-STYLE\.md under the docs root/, `${twin} (${action}): the code-style capture is named at its domain path`);
+        for (const retired of RETIRED_DOC_PATHS) assert.ok(!out.includes(retired), `${twin} (${action}): the next steps still name the retired path ${retired}`);
+        assert.ok(!/related-context\/[A-Z]/.test(out), `${twin} (${action}): the drop box is never named as the home of a captured doc`);
+    }
+}
+test('sh: the next steps name each capture doc at its domain path, never the retired one', () => {
+    const sb = sandbox();
+    try { assertNextStepsNamesTheDomainPaths(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: the next steps name each capture doc at its domain path, never the retired one (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertNextStepsNamesTheDomainPaths(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// Found by the temp-project matrix: a settings.json whose top level is a JSON ARRAY (or a string,
+// number or boolean) PARSES. The sh twin refuses that shape outright; the ps1 twin only checked for
+// null, so every Add-Member in Set-HookSettings ran against each ELEMENT of the array - the second one
+// threw 'member already exists' and, under $ErrorActionPreference 'Stop', aborted the whole run before
+// Move-DocsDomains, leaving a half-finished install whose docs were never migrated. Both twins must
+// warn, exit 0, leave the file exactly as it was, and still complete every later step.
+// '-is [pscustomobject]' cannot make this call: PowerShell wraps a plain value in a PSObject, so it
+// answers True for a String, an Int64 and a Boolean (measured, pwsh 7.6.3) - the .NET type is the test.
+const NON_OBJECT_SETTINGS = ['[1,2,3]', '"text"', '123', 'true', '[]', 'null'];
+// Both streams: each twin reports the refusal on a different one (the sh python writes the diagnosis
+// to stderr and logs 'wiring failed' on stdout; Write-Warning is stderr too), and the point of the
+// test is that the run SURVIVES, which only an exit status can show.
+const runBoth = (sb, twin, action) =>
+{
+    const r = twin === 'sh'
+        ? spawnSync('bash', [SH, action, '--scope', 'project', '--selection', sb.sel, '--source', ROOT], { cwd: sb.repo, encoding: 'utf8', env: sb.env })
+        : spawnSync('pwsh', ['-NoProfile', '-File', PS1, action, '-Scope', 'project', '-Selection', sb.sel, '-Source', ROOT], { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+    return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+};
+function assertNonObjectSettingsIsRefusedNotFatal(twin)
+{
+    for (const body of NON_OBJECT_SETTINGS)
+    {
+        const sb = sandbox();
+        try
+        {
+            runBoth(sb, twin, 'install');
+            fs.writeFileSync(path.join(sb.repo, '.claude', 'settings.json'), body);
+            const base = seedLegacyDocsLayout(sb);
+            const r = runBoth(sb, twin, 'update');
+            assert.strictEqual(r.status, 0, `${twin}: ${body} aborted the run (status ${r.status})`);
+            assert.match(r.out, /settings\.json top level is not an object - left untouched/, `${twin}: ${body} is diagnosed as a non-object`);
+            assert.strictEqual(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8'), body, `${twin}: ${body} - the file was rewritten`);
+            // the run carried on: every step after the settings pass still did its work
+            assertMigrated(base, `${twin} (${body})`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    }
+}
+test('sh: a settings.json that parses but is not an object is refused without failing the run', () => assertNonObjectSettingsIsRefusedNotFatal('sh'));
+test('ps1: a settings.json that parses but is not an object is refused without failing the run (pwsh required)', { skip: skipNoPwsh }, () => assertNonObjectSettingsIsRefusedNotFatal('ps1'));

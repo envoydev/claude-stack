@@ -435,14 +435,14 @@ $Skills = @(
   'envoydev/claude-stack|explain-code-tutor'        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   'envoydev/claude-stack|project-quality-loop'             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
   'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only
-  'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
+  'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only
   'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only
   'envoydev/claude-stack|project-architecture-quality-analyzer' # deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only
   'envoydev/claude-stack|project-test-coverage-analyzer' # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
   'envoydev/claude-stack|project-test-coverage-loop'     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
   'envoydev/claude-stack|project-version-upgrade'        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
   'envoydev/claude-stack|project-agent-capabilities'           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only
-  'envoydev/claude-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-context/PROJECT-RELATED-CONTEXT.md; manual /-only
+  'envoydev/claude-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only
   'envoydev/claude-stack|project-build-from-scratch' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   'envoydev/claude-stack|project-solve-cross-task'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
   'envoydev/claude-stack|project-verify-plan'      # audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review
@@ -815,8 +815,8 @@ $Agents = @(
   'angular-test-resolver.md'         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
   'architecture-analyzer.md'                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the architecture + test-coverage captures fan it out, also independently callable
   'test-coverage-analyzer.md'             # analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the project-test-coverage-analyzer skill fans it out over the raw results; never runs the suite
-  'code-style-analyzer.md'                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
-  'related-project-analyzer.md'           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-context/PROJECT-RELATED-CONTEXT.md
+  'code-style-analyzer.md'                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/code-style/CODE-STYLE.md + the generated project-code-style rule from its structured reports
+  'related-project-analyzer.md'           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md
   'ci-failure-diagnoser.md'          # analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route
   'runtime-failure-diagnoser.md'               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
   'evidence-gatherer.md'             # diagnosis support (sonnet/low): read-only - a diagnoser dispatches it to reproduce/confirm and return a compact digest, keeping log volume off the opus seat
@@ -2127,8 +2127,26 @@ function Set-HookSettings {
   if (Test-Path -LiteralPath $settings) {
     # Refuse to touch a settings.json that does not parse - a rewrite from scratch would replace the
     # project's whole file (permissions, statusLine, env) with just the stack's entries.
-    try { $data = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json } catch { $data = $null }
-    if ($null -eq $data) { Write-Warning '  settings.json is not valid JSON - left untouched; fix it and re-run'; return }
+    # The catch and the null are two DIFFERENT answers: ConvertFrom-Json throws on text that is not
+    # JSON at all, and returns $null for the valid documents '[]' and 'null'. Told apart by a flag, so
+    # each gets the same diagnosis its sh counterpart gives (python: a parse error vs. a non-dict).
+    $parsed = $true
+    try { $data = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json } catch { $data = $null; $parsed = $false }
+    if (-not $parsed) { Write-Warning '  settings.json is not valid JSON - left untouched; fix it and re-run'; return }
+    if ($null -eq $data) { Write-Warning '  settings.json top level is not an object - left untouched'; return }
+    # A JSON array, string, number or boolean PARSES but is no settings object, and every Add-Member
+    # below would then run against each ELEMENT instead of the file: measured on a temp project,
+    # '[1,2,3]' threw 'member already exists' on the second element, and with $ErrorActionPreference
+    # 'Stop' that aborted the whole run - before Move-DocsDomains, so the docs migration never ran and
+    # the install was left half done. The sh twin already refuses this shape ('settings.json top level
+    # is not an object'); this is the missing half of that pair.
+    # Tested by the .NET type, never by '-is [pscustomobject]': PowerShell wraps a plain value in a
+    # PSObject, so that operator answers True for a String, an Int64 and a Boolean alike (measured on
+    # pwsh 7.6). Only an ARRAY answers False, which would have let three of the five shapes through.
+    if ($data.GetType().FullName -ne 'System.Management.Automation.PSCustomObject') {
+      Write-Warning '  settings.json top level is not an object - left untouched'
+      return
+    }
   }
 
   if (-not $data.PSObject.Properties['hooks']) { $data | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) }
@@ -2854,10 +2872,10 @@ if ((Test-Path -LiteralPath $seedFile) -and ((Get-Content -LiteralPath $seedFile
   Log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-related-context.md'))) {
-  Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
+  Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-projects/RELATED-PROJECTS.md under the docs root"
 }
 if (-not ((Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-architecture.md')) -and (Test-Path -LiteralPath (Join-Path $genRules 'project-code-style.md')))) {
-  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture/ARCHITECTURE.md + awareness rule) and /project-code-style-analyzer (code-style/CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-agent-capabilities.md'))) {
   Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"

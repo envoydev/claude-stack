@@ -103,8 +103,9 @@ change made only inside a consuming project is throwaway.
     `architecture-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`. The architecture capture is deliberate-only (the
-  `project-architecture-analyzer` skill writes `<docs-path>/architecture/ARCHITECTURE.md`,
-  `ASSESSMENT.md` and `baseline-project-architecture.md`; never in a build flow).
+  `project-architecture-analyzer` skill writes `<docs-path>/architecture/ARCHITECTURE.md` and
+  `baseline-project-architecture.md`; the findings split out to `project-architecture-quality-analyzer`,
+  which writes `<docs-path>/quality/ASSESSMENT.md`; never in a build flow).
   `project-solve-cross-task` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`). cursor-stack ships adapted twins of all 43 - a protocol change here usually
@@ -233,11 +234,13 @@ mirrored there in the same sitting.
   standalone project). Which repos are related lives in the generated
   `.claude/rules/baseline-project-related-context.md` (the `/project-related-context` skill), not memory.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
-  (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, `ASSESSMENT.md`, owned by
+  (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `project-architecture-analyzer`) are the DURABLE truth every seat reads to orient, refreshed
   deliberately (that skill or `project-architecture-quality-loop`), never after each change. The code
-  style lives in `<docs-path>/PROJECT-CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
-  (owned by `project-code-style-analyzer`). serena memory (`<feature>__<contract_version>__<seat>`,
+  style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
+  (owned by `project-code-style-analyzer`). The findings (`<docs-path>/quality/ASSESSMENT.md`, owned by
+  `project-architecture-quality-analyzer`) are the opposite of durable - recomputed fresh every run, so
+  `quality/` carries no `watch.json` and is no docs domain at all. serena memory (`<feature>__<contract_version>__<seat>`,
   never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.
 - **Never `Read` a whole file to find a symbol** (hard rule, both stacks): locate via serena

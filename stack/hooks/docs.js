@@ -1522,13 +1522,25 @@ const notOwnedOf = (domain) => (domain === 'architecture' ? [...new Set(['ORIENT
 // split it off the ref - '.md' and all when the caller typed it - so it is stripped with the same stripMd
 // parseRef uses before a '.md' is appended back on below; without that, 'NOTES.md' built the candidate
 // 'NOTES.md.md', which never matches the declared 'NOTES.md'.
+// The file must also EXIST - the same check protectedRef makes, for the same reason. A notOwned list
+// is a GLOB list, and a domain is free to declare a catch-all: `decisions/watch.json` ships
+// `notOwned: ["**.md"]`, because ADR filenames are unbounded and a name-by-name list goes stale. A
+// glob that broad matches any name at all, so without this check every bare ref that resolved no
+// domain - a typo of a real doc, a file that was never written - came back 'is maintained by another
+// skill' instead of 'no such doc file', from the FIRST domain whose glob happened to match. Measured
+// on a temp project: with a decisions domain present, `set ARCHITECTUR#modules` (one letter short of a
+// real doc) reported the doc protected while `show` on the same name reported it missing - two answers
+// to one question, and the wrong one tells an agent to stop rather than retry the spelling. The
+// domain-QUALIFIED spelling deliberately keeps claiming a file that does not exist (set's first
+// branch): there the caller named the protected domain itself, so 'this engine does not write it' is
+// the true answer to 'create an ADR here', not a diagnosis of a missing file.
 function notOwnedMatch(fileKey) {
   const stripped = stripMd(fileKey);
   const candidates = stripped.includes('/') ? [stripped] : [stripped, `references/${stripped}`, `history/${stripped}`];
   for (const d of domains()) {
     for (const c of candidates) {
       const target = `${c}.md`;
-      if (matches(notOwnedOf(d), target)) return { domain: d, file: target };
+      if (matches(notOwnedOf(d), target) && fs.existsSync(path.join(domainDir(d), target))) return { domain: d, file: target };
     }
   }
   return null;
