@@ -202,6 +202,25 @@ test('--seed-versioning is a fail-soft no-op on malformed settings.json, exit 0'
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+// JSON that PARSES but has the wrong shape. Each of these used to get past the object check: a top-level []
+// and an `env: []` printed 'seeded' while the key was silently dropped on write, and a string env threw,
+// exiting 1. A false 'seeded' is the worse half - validate reads that line as the outcome.
+test('--seed-versioning refuses JSON of the wrong shape: no write, a message, exit 0', () => {
+    for (const body of ['[]', '{"env":"x"}', '{"env":[]}', '{"env":null}', '"text"', '42'])
+    {
+        const root = makeProject(body);
+        const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));
+        try
+        {
+            const out = seed(root);   // execFileSync throws on a non-zero exit - reaching here proves exit 0
+            assert.match(out, /not a JSON object - nothing seeded/, `${body}: ${out}`);
+            assert.doesNotMatch(out, /seeded '/, `${body} must not report a seed it never wrote`);
+            assert.deepStrictEqual(fs.readFileSync(path.join(root, '.claude', 'settings.json')), before, body);
+        }
+        finally { fs.rmSync(root, { recursive: true, force: true }); }
+    }
+});
+
 test('--seed-versioning preserves every other env key and merges only the one it owns', () => {
     const root = makeProject(JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs', CLAUDE_STACK_INSTRUMENT: '1' } }));
     try

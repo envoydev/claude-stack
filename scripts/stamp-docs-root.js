@@ -150,9 +150,18 @@ function seedVersioning(root)
     let data;
     try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - nothing seeded`); return; }
-    if (!data || typeof data !== 'object')
+    // An array is typeof 'object' too, and a property set on one is dropped by JSON.stringify - so without
+    // the isArray checks a top-level [] or an `env: []` printed 'seeded' while writing nothing, and a string
+    // `env` threw under strict mode, breaking the exit-0 promise. Each shape refuses before any write.
+    const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isObject(data))
     {
         console.log(`stamp-docs-root: ${settingsFile} is not a JSON object - nothing seeded`);
+        return;
+    }
+    if (data.env !== undefined && !isObject(data.env))
+    {
+        console.log(`stamp-docs-root: ${settingsFile} has an env that is not a JSON object - nothing seeded`);
         return;
     }
     if (data.env && data.env.CLAUDE_STACK_DOCS_VERSIONING)
