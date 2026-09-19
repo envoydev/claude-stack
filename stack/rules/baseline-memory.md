@@ -7,18 +7,18 @@ description: House baseline - what belongs in shared memory. Always-on (no paths
 ## What memory is for
 
 Project truth lives in the docs domains (`baseline-docs-root.md` names the root); memory holds what
-they do not - preferences, corrections, lessons. It is cross-project, not a second copy of a project's
-documented facts.
+they do not - preferences, corrections, lessons. It is shared across accounts, not a second copy of a
+project's documented facts.
 
 ## What to save
 
-- The user corrects you, states a preference, or you learn a project fact no docs domain already
-  holds: save it with `memory_store`. Set `metadata.type` to the kind - `preference`, `correction`, or
-  `project-fact`. Tag `project:<name>` (the repo's folder name) - except a preference that holds in
-  every project, which carries no project tag.
+- The user corrects you, states a preference, or you learn a project fact no docs domain holds: save
+  it with `memory_store`, `metadata.type` set to `preference_signal` (preference), `user_correction`
+  (correction), or `reference` (project fact). Tag `project:<name>` (the repo's folder name) - a
+  preference true in every project carries none.
 - An agent saves only a lesson worth keeping past its own task - a build quirk, a fix that worked, a
-  trap - typed `lesson`, tagged `agent:<agent-name>` and `project:<name>`. Task progress and handoffs
-  go to serena's memory, never here.
+  trap - typed `learning` (lesson), tagged `agent:<agent-name>` and `project:<name>`. Task progress and
+  handoffs go to serena's memory, never here.
 
 ## Before you ask or read
 
