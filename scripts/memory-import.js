@@ -2,55 +2,74 @@
 'use strict';
 // One-time import: Claude Code's own per-project auto-memory notes (~/.claude/projects/<slug>/memory/
 // *.md, one file per note plus an index MEMORY.md) into the shared `memory` MCP, so a project can
-// switch Claude's own memory off without losing what it already learned. Read-only against the
+// switch Claude's own memory off without losing what it already learned. Read-only against every
 // source notes folder - it is never written to.
 //
 // Usage: node scripts/memory-import.js --project-root <root> [--config-dir <dir>] [--memory-dir <dir>]
 //
 // The server is spawned EXACTLY as the `memory` entry registers it: read command/args/env from
-// <root>/.mcp.json, else the account's <configDir>/.claude.json `mcpServers.memory`. No registration
-// found -> exit 1. `--memory-dir` overrides the source notes folder (for tests); its default is
-// <configDir>/projects/<slug>/memory/, where configDir is --config-dir, else CLAUDE_CONFIG_DIR, else
-// ~/.claude, and slug is the git top-level directory's absolute path with every NON-ALPHANUMERIC
-// character replaced by '-' (Claude Code's own rule - fix round 2, Critical #1; worktrees resolve to
-// the MAIN repo's directory via `git rev-parse --path-format=absolute --git-common-dir`, since
-// Claude Code's own auto-memory is shared by every worktree of one repo - confirmed against this
-// machine's real ~/.claude/projects/ folder names).
+// <root>/.mcp.json, else the account's registration file (final review A, I1: the DEFAULT
+// account's file is `$HOME/.claude.json` - a sibling of the `.claude` dir, never inside it; only an
+// explicit `--config-dir` or a live `CLAUDE_CONFIG_DIR` moves it to `<dir>/.claude.json`).
 //
-// Idempotence (fix round 2, Important #2): PRIMARILY a read-only node:sqlite precheck against the
-// registration's own MCP_MEMORY_SQLITE_PATH, for a live row (`deleted_at IS NULL`) holding the exact
-// same content - skips the store call outright on a hit, so nothing depends on the server's free-text
-// wording. SECOND line, only for notes the precheck did not resolve (node:sqlite unavailable below
-// Node 22.13 - noted in the printed summary when it applies -, the db file not created yet, or the
-// registration's env carries no MCP_MEMORY_SQLITE_PATH): the memory MCP's OWN duplicate-content
-// detection. Storing the same content twice against the same database returns a "Duplicate content
-// detected" message wrapped in a successful (isError:false) tool result rather than adding a second
-// row - verified against the real mcp-memory-service 11.13.0 server on an empty temp db. That message
-// is read as "already present", never as a failure; any OTHER "Error storing memory" text is a hard
-// failure (exit 1).
+// `--memory-dir` pins a single explicit notes folder (tests, or a caller that already knows the
+// answer) and skips everything below. Left out, the importer AUTODETECTS every notes folder that
+// could hold this project's notes and imports all of them in one pass, tagging every note the same
+// way regardless of which one it came from (final review A, I7):
+//   - the settings-chain `autoMemoryDirectory` override, read from <project>/.claude/settings.local.json,
+//     then <project>/.claude/settings.json, then the primary account's settings.json (most specific
+//     wins) - an absolute or `~/`-relative path that replaces the computed folder outright;
+//   - the primary account's own computed folder: `<configDir>/projects/<name>/memory`, where <name> is
+//     `CLAUDE_CODE_PROJECT_DIR_NAME` ONLY when the live `CLAUDE_CONFIG_DIR` env var is also set (Claude
+//     Code itself ignores that variable otherwise - FACT-AUTOMEM), else the slugified git top level;
+//   - every OTHER account dir on the machine found the same way: `$HOME/.claude`, every `$HOME/.claude-*`,
+//     and a live `CLAUDE_CONFIG_DIR` if one is set - so a second Claude account, or a `--space` install,
+//     is never skipped.
+// The git top level is the MAIN repo's directory, never a worktree's own directory (worktrees share one
+// auto-memory folder) and never a submodule's `.git/modules/<name>` common dir (falls back to
+// `--show-toplevel`, which for a submodule is that submodule's own root).
 //
-// Kind mapping (note frontmatter type -> memory_type, read from metadata.type or a top-level type
-// key - real notes on this machine carry it nested under metadata.type). Fix round 1: the controller
-// ruled to use the mcp-memory-service server's own BUILT-IN ontology subtypes (all three are
-// `observation` subtypes per its models/ontology.py TAXONOMY, and validate_memory_type stores the
-// subtype string itself, canonicalized - not the parent base type) rather than registering
-// MCP_CUSTOM_MEMORY_TYPES in the server's env, so the import works against any registration with no
-// JSON to quote through two installer twins. `learning` is a real base type in that same ontology but
-// is reserved for agent-written lessons - the import never writes it.
+// A computed folder that does not exist is normal (most accounts and levels do not apply) UNLESS every
+// candidate is empty or absent AND some account's `projects/*/<uuid>.jsonl` transcript records a real
+// session whose own `cwd` is this project root - that combination means the folder computation missed
+// the real one (an override this importer does not know about, a slug mismatch), and is reported as a
+// FAILURE (exit 1, naming the transcript) rather than silently 'nothing to import'. `--memory-dir` skips
+// this check too - an explicit answer is never second-guessed.
+//
+// Idempotence: PRIMARILY a read-only node:sqlite precheck against the registration's own
+// MCP_MEMORY_SQLITE_PATH, for a live row (`deleted_at IS NULL`) holding the exact same content - skips
+// the store call outright on a hit. SECOND line, only for notes the precheck did not resolve
+// (node:sqlite unavailable below Node 22.13, the db file not created yet, or the registration's env
+// carries no MCP_MEMORY_SQLITE_PATH): the memory MCP's OWN duplicate-content detection, read from the
+// store response text. final review A, M1: every store call also carries its own `conversation_id`
+// (the documented bypass for the server's semantic-similarity dedup, FACT-TOOLS), so two genuinely
+// distinct notes are never collapsed as 'too similar' to each other or to something imported earlier -
+// idempotence for a genuine re-import stays on the db precheck (and, second line, the response text).
+//
+// Kind mapping (note frontmatter type -> memory_type, read from metadata.type or a top-level type key -
+// real notes on this machine carry it nested under metadata.type). The mcp-memory-service server's own
+// BUILT-IN ontology subtypes are used (fix round 1 ruling) rather than registering
+// MCP_CUSTOM_MEMORY_TYPES, so the import works against any registration with no JSON to quote through
+// two installer twins:
 //   user -> preference_signal, feedback -> user_correction, project/reference/anything else
 //   (including missing) -> reference.
-// Tags: `project:<name>` (name = basename of the git top-level dir, commas stripped) plus the note's
-// own `name` (frontmatter `name`, else the filename without its extension; commas stripped there too
-// - fix round 2, Minor #3). Content: the frontmatter `description` as the first line, then the body
-// (with every `\r` stripped from the body - fix round 2, Minor #4). MEMORY.md is the index, never
-// imported.
+// Tags: the note's own `name` (frontmatter `name`, else the filename without its extension; commas
+// stripped) plus, for every kind EXCEPT `user`, `project:<name>` (name = basename of the git top-level
+// dir, commas stripped). final review A, M2: a `user` note describes the PERSON, not the project - it
+// is imported with no project tag at all, so it reads back as a global preference. Content: the
+// frontmatter `description` as the first line, then the body (every `\r` stripped from the body).
+// MEMORY.md is the index, never imported.
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn, execFileSync } = require('node:child_process');
-const yaml = require('js-yaml');
+const { randomUUID } = require('node:crypto');
 
 const CALL_TIMEOUT_MS = 30000;
+// final review A, I6: FACT-EMBED measured a 41.3s cold first launch (wheels plus the 166MB ONNX
+// model) - well past the old 30s. `initialize` alone gets the longer budget; the overall 5-minute cap
+// (which bounds the whole run, initialize included) is unchanged.
+const INIT_TIMEOUT_MS = 180000;
 const OVERALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 const KIND_MAP = {
@@ -85,7 +104,10 @@ function defaultConfigDir()
 }
 
 // The main repo root for this working tree - a worktree's own directory shares its parent repo's
-// auto-memory folder, so the slug always names the MAIN checkout, never the worktree path.
+// auto-memory folder, so the slug always names the MAIN checkout, never the worktree path. Final
+// review A, I7: a submodule's common dir is `<super>/.git/modules/<name>` - basename `<name>`, not
+// `.git` - which is NOT a project root (it lives inside the superproject's own `.git`), so that shape
+// falls back to `--show-toplevel` (the submodule's own working-tree root) instead.
 function gitTopLevel(projectRoot)
 {
     try
@@ -94,28 +116,26 @@ function gitTopLevel(projectRoot)
             'git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
             { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
         ).trim();
-        return path.basename(commonDir) === '.git' ? path.dirname(commonDir) : commonDir;
+        if (commonDir && path.basename(commonDir) === '.git') return path.dirname(commonDir);
     }
-    catch (e)
+    catch (e) { /* not a git repo, or git missing - fall through to --show-toplevel */ }
+    try
     {
-        return projectRoot; // not a git repo (or git missing) - fall back to the project root itself
+        const top = execFileSync(
+            'git', ['rev-parse', '--show-toplevel'],
+            { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        ).trim();
+        if (top) return top;
     }
+    catch (e) { /* not a git repo, or git missing - fall through to projectRoot itself */ }
+    return projectRoot;
 }
 
-// Fix round 2, Critical #1: Claude Code's own docs (context7 /websites/code_claude, "Where
-// transcripts are stored") state the rule plainly - every non-alphanumeric character is replaced by
-// '-', not just path separators. A path holding a dot, underscore, space or other punctuation
-// anywhere (common: 'first.last'-style home directories) used to compute a folder that does not
-// exist, silently read back as 'nothing to import'.
+// Claude Code's own docs (context7 /websites/code_claude, "Where transcripts are stored") state the
+// rule plainly - every non-alphanumeric character is replaced by '-', not just path separators.
 function slugify(absPath)
 {
     return absPath.replace(/[^a-zA-Z0-9]/g, '-');
-}
-
-function defaultMemoryDir(projectRoot, configDir)
-{
-    const slug = slugify(gitTopLevel(projectRoot));
-    return path.join(configDir, 'projects', slug, 'memory');
 }
 
 function readJsonSafe(file)
@@ -124,9 +144,147 @@ function readJsonSafe(file)
     catch (e) { return null; }
 }
 
+function expandTilde(p, home)
+{
+    if (typeof p !== 'string' || !p) return p;
+    if (p === '~') return home;
+    if (p.startsWith('~/') || p.startsWith(`~${path.sep}`)) return path.join(home, p.slice(2));
+    return p;
+}
+
+// final review A, I7: `autoMemoryDirectory` can override the notes folder outright (absolute or
+// `~/`-relative). Read from the same settings chain Claude Code itself reads, most specific first;
+// `configDir` here is the PRIMARY account (the one `--config-dir` / `CLAUDE_CONFIG_DIR` names, else the
+// default `$HOME/.claude`) - the override is a property of this launch's configuration, not of any one
+// sibling account being scanned.
+function readSettingsAutoMemoryDirectory(projectRoot, configDir, home)
+{
+    const candidates = [
+        path.join(projectRoot, '.claude', 'settings.local.json'),
+        path.join(projectRoot, '.claude', 'settings.json'),
+        path.join(configDir, 'settings.json'),
+    ];
+    for (const file of candidates)
+    {
+        const data = readJsonSafe(file);
+        const v = data && typeof data.autoMemoryDirectory === 'string' ? data.autoMemoryDirectory.trim() : '';
+        if (v) return expandTilde(v, home);
+    }
+    return null;
+}
+
+// The computed default notes folder for ONE account dir: `CLAUDE_CODE_PROJECT_DIR_NAME` names it
+// literally, but ONLY when the live `CLAUDE_CONFIG_DIR` env var equals this exact configDir - Claude
+// Code ignores that variable when `CLAUDE_CONFIG_DIR` is unset (FACT-AUTOMEM), and a name meant for one
+// account must never leak into another account's folder.
+function slugMemoryDir(projectRoot, configDir, home)
+{
+    const resolvedConfigDir = path.resolve(configDir);
+    const envConfigDir = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : null;
+    const dirName = (envConfigDir && envConfigDir === resolvedConfigDir && process.env.CLAUDE_CODE_PROJECT_DIR_NAME)
+        ? process.env.CLAUDE_CODE_PROJECT_DIR_NAME
+        : slugify(gitTopLevel(projectRoot));
+    return path.join(configDir, 'projects', dirName, 'memory');
+}
+
+// The primary account's own computed notes folder - settings override first, else the slug rule. Kept
+// as its own function (used directly by tests, and as the first entry the full scan builds from).
+function defaultMemoryDir(projectRoot, configDir, home = os.homedir())
+{
+    const override = readSettingsAutoMemoryDirectory(projectRoot, configDir, home);
+    if (override) return override;
+    return slugMemoryDir(projectRoot, configDir, home);
+}
+
+// final review A, I7: every account dir on the machine that could hold this project's notes -
+// the explicit --config-dir / CLAUDE_CONFIG_DIR (already the primary), $HOME/.claude, and every
+// $HOME/.claude-<space> sibling. Order is stable but not meaningful - the caller dedupes.
+function accountConfigDirs(home, explicitConfigDir)
+{
+    const set = new Set();
+    const add = (d) => { if (d) set.add(path.resolve(d)); };
+    add(explicitConfigDir);
+    if (process.env.CLAUDE_CONFIG_DIR) add(process.env.CLAUDE_CONFIG_DIR);
+    add(path.join(home, '.claude'));
+    let entries = [];
+    try { entries = fs.readdirSync(home, { withFileTypes: true }); }
+    catch (e) { entries = []; }
+    for (const e of entries)
+    {
+        if (e.isDirectory() && e.name.startsWith('.claude-')) add(path.join(home, e.name));
+    }
+    return Array.from(set);
+}
+
+// Reads only the first line of a (possibly large) transcript, bounded to 64KB - never the whole file.
+// Every JSONL transcript line Claude Code writes carries its own `cwd`, so the first line is enough.
+function readFirstLineField(file, field)
+{
+    let fd;
+    try { fd = fs.openSync(file, 'r'); }
+    catch (e) { return null; }
+    try
+    {
+        const buf = Buffer.alloc(65536);
+        const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
+        const text = buf.toString('utf8', 0, bytesRead);
+        const nl = text.indexOf('\n');
+        const line = (nl === -1 ? text : text.slice(0, nl)).trim();
+        if (!line) return null;
+        const obj = JSON.parse(line);
+        return typeof obj[field] === 'string' ? obj[field] : null;
+    }
+    catch (e) { return null; }
+    finally { try { fs.closeSync(fd); } catch (e) { /* already closed */ } }
+}
+
+// final review A, I7: a missing notes folder is ONLY 'nothing to import' when no real session
+// ever ran here. Walks every scanned account dir's `projects/*/*.jsonl`, real-path-comparing each
+// transcript's own `cwd` against this project root - the first hit is reported, not collected.
+function findTranscriptForProject(configDirs, projectRoot)
+{
+    let real;
+    try { real = fs.realpathSync(projectRoot); } catch (e) { real = path.resolve(projectRoot); }
+    for (const configDir of configDirs)
+    {
+        const projectsDir = path.join(configDir, 'projects');
+        let entries;
+        try { entries = fs.readdirSync(projectsDir, { withFileTypes: true }); }
+        catch (e) { continue; }
+        for (const entry of entries)
+        {
+            if (!entry.isDirectory()) continue;
+            const dir = path.join(projectsDir, entry.name);
+            let files;
+            try { files = fs.readdirSync(dir); }
+            catch (e) { continue; }
+            for (const f of files)
+            {
+                if (!f.endsWith('.jsonl')) continue;
+                const full = path.join(dir, f);
+                const cwd = readFirstLineField(full, 'cwd');
+                if (!cwd) continue;
+                let cwdReal;
+                try { cwdReal = fs.realpathSync(cwd); } catch (e) { cwdReal = path.resolve(cwd); }
+                if (cwdReal === real) return full;
+            }
+        }
+    }
+    return null;
+}
+
 // Read command/args/env for the `memory` server exactly as it is registered: the project's
 // .mcp.json first, else the account file. Neither is ever written.
-function findMemoryRegistration(projectRoot, configDir)
+function accountRegistrationFile(explicitConfigDir, home)
+{
+    if (explicitConfigDir) return path.join(explicitConfigDir, '.claude.json');
+    if (process.env.CLAUDE_CONFIG_DIR) return path.join(path.resolve(process.env.CLAUDE_CONFIG_DIR), '.claude.json');
+    // final review A, I1: the DEFAULT account's own file is `$HOME/.claude.json` - a sibling of
+    // the `.claude` dir, never inside it (context7 /websites/code_claude confirms this placement).
+    return path.join(home, '.claude.json');
+}
+
+function findMemoryRegistration(projectRoot, explicitConfigDir, home)
 {
     const projMcp = path.join(projectRoot, '.mcp.json');
     if (fs.existsSync(projMcp))
@@ -135,7 +293,7 @@ function findMemoryRegistration(projectRoot, configDir)
         const entry = data && data.mcpServers && data.mcpServers.memory;
         if (entry && entry.command) return entry;
     }
-    const acctFile = path.join(configDir, '.claude.json');
+    const acctFile = accountRegistrationFile(explicitConfigDir, home);
     if (fs.existsSync(acctFile))
     {
         const data = readJsonSafe(acctFile);
@@ -147,26 +305,65 @@ function findMemoryRegistration(projectRoot, configDir)
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
+// final review A, C1: a flat frontmatter parser - no YAML library, so the importer runs from a
+// release snapshot with no node_modules. Covers exactly what real notes use: top-level `key: value`
+// pairs, one nested `metadata:` block (its own `key: value` pairs at deeper indent), single- or
+// double-quoted values alongside unquoted ones, and CRLF line endings (the outer frontmatter fence is
+// already `\r?\n`-tolerant; each inner line is stripped of a trailing `\r` here too).
+function stripQuotes(v)
+{
+    const t = v.trim();
+    if (t.length >= 2)
+    {
+        const first = t[0];
+        const last = t[t.length - 1];
+        if ((first === '"' && last === '"') || (first === "'" && last === "'")) return t.slice(1, -1);
+    }
+    return t;
+}
+
+function parseFrontmatter(block)
+{
+    const meta = {};
+    let inMetadata = false;
+    for (const rawLine of block.split('\n'))
+    {
+        const line = rawLine.replace(/\r$/, '');
+        if (!line.trim()) continue;
+        if (/^\s/.test(line))
+        {
+            if (!inMetadata) continue;
+            const m = /^\s+([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+            if (!m) continue;
+            meta.metadata[m[1]] = stripQuotes(m[2]);
+            continue;
+        }
+        inMetadata = false;
+        const m = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+        if (!m) continue;
+        const key = m[1];
+        const value = m[2];
+        if (key === 'metadata' && value === '') { meta.metadata = {}; inMetadata = true; continue; }
+        meta[key] = stripQuotes(value);
+    }
+    return meta;
+}
+
 function parseNote(raw, filename)
 {
-    let meta = null;
+    let meta = {};
     let body = raw;
     const m = FRONTMATTER_RE.exec(raw);
     if (m)
     {
-        try { meta = yaml.load(m[1]); } catch (e) { meta = null; }
-        if (!meta || typeof meta !== 'object') meta = {};
+        meta = parseFrontmatter(m[1]);
         body = raw.slice(m[0].length);
-    }
-    else
-    {
-        meta = {};
     }
     const name = meta.name || path.basename(filename, path.extname(filename));
     const description = typeof meta.description === 'string' ? meta.description.trim() : '';
     const rawType = (meta.metadata && meta.metadata.type) || meta.type || '';
-    // Fix round 2, Minor #4: strip every '\r' (not just outer whitespace) so a CRLF-authored note
-    // (e.g. on Windows) never stores a body with embedded '\r' characters.
+    // Strip every '\r' (not just outer whitespace) so a CRLF-authored note (e.g. on Windows) never
+    // stores a body with embedded '\r' characters.
     body = body.replace(/\r/g, '').replace(/^\s+/, '').replace(/\s+$/, '');
     return { name, description, rawType, body };
 }
@@ -189,12 +386,6 @@ function extractResultText(result)
     return '';
 }
 
-// Fix round 2, Important #2: idempotence was keyed only to the server's free-text 'duplicate content
-// detected' wording, which is not pinned to any server version (the installer registers whatever is
-// newest at provision time). Before calling memory_store at all, read the REGISTERED db file
-// read-only for a live row holding the exact same content and skip the store outright when one
-// exists - the message check that follows a store call stays as a second line, for whenever this
-// precheck cannot run.
 function loadSqlite()
 {
     // Test hook: forces the same fallback path a genuinely unavailable node:sqlite takes, so the
@@ -311,20 +502,65 @@ function createRpcClient(child)
     return { call, notify };
 }
 
-async function runImport(projectRoot, configDir, memoryDir)
+async function runImport(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
 {
-    let filenames;
-    try { filenames = fs.readdirSync(memoryDir); }
-    catch (e)
+    let memoryDirs;
+    let scannedConfigDirs;
+    if (explicitMemoryDir)
     {
-        if (e.code === 'ENOENT') return { ok: true, message: `nothing to import, from ${memoryDir}` };
-        throw new Error(`could not read ${memoryDir}: ${e.message}`);
+        memoryDirs = [explicitMemoryDir];
+        scannedConfigDirs = [configDir];
+    }
+    else
+    {
+        scannedConfigDirs = accountConfigDirs(home, explicitConfigDir);
+        const set = new Set();
+        const override = readSettingsAutoMemoryDirectory(projectRoot, configDir, home);
+        if (override) set.add(override);
+        for (const cd of scannedConfigDirs) set.add(slugMemoryDir(projectRoot, cd, home));
+        memoryDirs = Array.from(set);
     }
 
-    const noteFiles = filenames.filter((f) => f.endsWith('.md') && f !== 'MEMORY.md').sort();
-    if (noteFiles.length === 0) return { ok: true, message: `nothing to import, from ${memoryDir}` };
+    const noteEntries = [];
+    const existedDirs = [];
+    for (const dir of memoryDirs)
+    {
+        let filenames;
+        try { filenames = fs.readdirSync(dir); }
+        catch (e)
+        {
+            if (e.code === 'ENOENT') continue;
+            throw new Error(`could not read ${dir}: ${e.message}`);
+        }
+        existedDirs.push(dir);
+        for (const f of filenames.filter((n) => n.endsWith('.md') && n !== 'MEMORY.md').sort())
+        {
+            noteEntries.push({ dir, file: f });
+        }
+    }
+    const fromLabel = (existedDirs.length ? existedDirs : memoryDirs).join(', ');
 
-    const entry = findMemoryRegistration(projectRoot, configDir);
+    if (noteEntries.length === 0)
+    {
+        // final review A, I7: an explicit --memory-dir is a deliberate answer, never
+        // second-guessed. Autodetection is what can miss the real folder, so only it gets checked.
+        if (!explicitMemoryDir)
+        {
+            const transcript = findTranscriptForProject(scannedConfigDirs, projectRoot);
+            if (transcript)
+            {
+                throw new Error(
+                    `no memory notes folder found for this project, but session transcript ${transcript} ` +
+                    "records a session whose cwd is this project root - the notes folder computation does " +
+                    "not match this machine's Claude Code configuration (check autoMemoryDirectory / " +
+                    "CLAUDE_CODE_PROJECT_DIR_NAME) - refusing to report this as 'nothing to import'",
+                );
+            }
+        }
+        return { ok: true, message: `nothing to import, from ${fromLabel}` };
+    }
+
+    const entry = findMemoryRegistration(projectRoot, explicitConfigDir, home);
     if (!entry)
     {
         throw new Error(
@@ -333,13 +569,13 @@ async function runImport(projectRoot, configDir, memoryDir)
     }
 
     const projectName = path.basename(gitTopLevel(projectRoot)).replace(/,/g, '');
-    const notes = noteFiles.map((f) =>
+    const notes = noteEntries.map(({ dir, file }) =>
     {
-        const full = path.join(memoryDir, f);
+        const full = path.join(dir, file);
         let raw;
         try { raw = fs.readFileSync(full, 'utf8'); }
         catch (e) { throw new Error(`could not read ${full}: ${e.message}`); }
-        return parseNote(raw, f);
+        return parseNote(raw, file);
     });
 
     // The db precheck is a pure local file read - resolved before spawning the server at all. The
@@ -373,7 +609,7 @@ async function runImport(projectRoot, configDir, memoryDir)
             protocolVersion: '2024-11-05',
             capabilities: {},
             clientInfo: { name: 'claude-stack-memory-import', version: '1.0.0' },
-        }, Math.min(CALL_TIMEOUT_MS, timeLeft()));
+        }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
         rpc.notify('notifications/initialized');
 
         let imported = 0;
@@ -385,10 +621,17 @@ async function runImport(projectRoot, configDir, memoryDir)
             if (db && hasLiveDuplicate(db, content)) { present++; continue; }
 
             const kind = mapKind(note.rawType);
-            const tags = [`project:${projectName}`, note.name.replace(/,/g, '')];
+            const noteName = note.name.replace(/,/g, '');
+            // final review A, M2: a 'user' note describes the PERSON, not the project - no
+            // project: tag, so it reads back as a global preference. Every other kind keeps one.
+            const tags = note.rawType === 'user' ? [noteName] : [`project:${projectName}`, noteName];
             const resp = await rpc.call('tools/call', {
                 name: 'memory_store',
-                arguments: { content, metadata: { tags, type: kind } },
+                // final review A, M1: a fresh conversation_id per note bypasses the server's
+                // semantic-similarity dedup ACROSS calls (FACT-TOOLS), so two genuinely distinct
+                // notes are never silently collapsed into one. Idempotence for a genuine re-import
+                // stays on the db precheck above, second line the response text below.
+                arguments: { content, conversation_id: randomUUID(), metadata: { tags, type: kind } },
             }, Math.min(CALL_TIMEOUT_MS, timeLeft()));
 
             if (resp.error) throw new Error(`memory_store failed for '${note.name}': ${resp.error.message || JSON.stringify(resp.error)}`);
@@ -402,7 +645,7 @@ async function runImport(projectRoot, configDir, memoryDir)
             else if (/error storing memory/i.test(text)) throw new Error(`memory_store failed for '${note.name}': ${text}`);
             else imported++;
         }
-        return { ok: true, message: `${imported} imported, ${present} already present, from ${memoryDir}${sqliteNote}` };
+        return { ok: true, message: `${imported} imported, ${present} already present, from ${fromLabel}${sqliteNote}` };
     }
     finally
     {
@@ -416,9 +659,11 @@ async function main()
     const args = parseArgs(process.argv.slice(2));
     if (!args.projectRoot) throw new Error('--project-root is required');
     const projectRoot = path.resolve(args.projectRoot);
-    const configDir = args.configDir ? path.resolve(args.configDir) : defaultConfigDir();
-    const memoryDir = args.memoryDir ? path.resolve(args.memoryDir) : defaultMemoryDir(projectRoot, configDir);
-    return runImport(projectRoot, configDir, memoryDir);
+    const home = os.homedir();
+    const explicitConfigDir = args.configDir ? path.resolve(args.configDir) : null;
+    const configDir = explicitConfigDir || defaultConfigDir();
+    const memoryDir = args.memoryDir ? path.resolve(args.memoryDir) : null;
+    return runImport(projectRoot, configDir, explicitConfigDir, home, memoryDir);
 }
 
 if (require.main === module)
@@ -434,4 +679,7 @@ if (require.main === module)
     });
 }
 
-module.exports = { mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir };
+module.exports = {
+    mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir,
+    INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
+};

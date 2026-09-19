@@ -161,6 +161,23 @@ test('parseNote: also reads a top-level type key, and falls back to the filename
     assert.strictEqual(noFrontmatter.body, 'just some text');
 });
 
+test('parseNote (C1: hand-rolled parser, no js-yaml): quoted values are unwrapped, unquoted ones are not', () =>
+{
+    const dq = memoryImport.parseNote(
+        '---\nname: "a, b"\ndescription: "A quoted, description"\nmetadata:\n  type: "reference"\n---\nbody\n', 'x.md');
+    assert.strictEqual(dq.name, 'a, b');
+    assert.strictEqual(dq.description, 'A quoted, description');
+    assert.strictEqual(dq.rawType, 'reference');
+
+    const sq = memoryImport.parseNote("---\nname: 'single'\nmetadata:\n  type: 'user'\n---\nbody\n", 'x.md');
+    assert.strictEqual(sq.name, 'single');
+    assert.strictEqual(sq.rawType, 'user');
+
+    const unquoted = memoryImport.parseNote('---\nname: plain\nmetadata:\n  type: project\n---\nbody\n', 'x.md');
+    assert.strictEqual(unquoted.name, 'plain');
+    assert.strictEqual(unquoted.rawType, 'project');
+});
+
 test('buildContent: description first, then body - falls back to whichever is present', () =>
 {
     assert.strictEqual(memoryImport.buildContent('desc', 'body'), 'desc\n\nbody');
@@ -168,10 +185,10 @@ test('buildContent: description first, then body - falls back to whichever is pr
     assert.strictEqual(memoryImport.buildContent('desc', ''), 'desc');
 });
 
-test('slugify: replaces every path separator with a dash (matches this machine\'s real project folder names)', () =>
+test('slugify: replaces every path separator with a dash (matches a real project folder name shape)', () =>
 {
-    assert.strictEqual(memoryImport.slugify('/Users/mac/Programming/Projects/Personal/claude-stack'),
-        '-Users-mac-Programming-Projects-Personal-claude-stack');
+    assert.strictEqual(memoryImport.slugify('/home/user/Projects/example-app'),
+        '-home-user-Projects-example-app');
 });
 
 test('slugify: fix round 2 Critical #1 - replaces EVERY non-alphanumeric character, not just path separators', () =>
@@ -205,10 +222,14 @@ test('3 notes import with the right memory_type, tags and content; MEMORY.md is 
     assert.ok(!calls.some((c) => c.tags.includes('MEMORY')));
 
     const projectName = path.basename(sb.projectRoot);
-    const byName = Object.fromEntries(calls.map((c) => [c.tags[1], c]));
+    const byName = Object.fromEntries(calls.map((c) => [c.tags[c.tags.length - 1], c]));
     assert.strictEqual(byName['user-role'].memory_type, 'preference_signal');
-    assert.deepStrictEqual(byName['user-role'].tags, [`project:${projectName}`, 'user-role']);
+    // M2: a 'user' note describes the person, not the project - no project: tag, so it is a single-
+    // element tag list (unlike every other kind, which keeps one).
+    assert.deepStrictEqual(byName['user-role'].tags, ['user-role']);
     assert.strictEqual(byName['user-role'].content, 'The user is a backend engineer\n\nPrefers terse answers.');
+    assert.ok(byName['feedback-shorter'].tags.includes(`project:${projectName}`));
+    assert.ok(byName['reference-tracker'].tags.includes(`project:${projectName}`));
 
     assert.strictEqual(byName['feedback-shorter'].memory_type, 'user_correction');
     assert.strictEqual(byName['reference-tracker'].memory_type, 'reference');
@@ -219,7 +240,9 @@ test('3 notes import with the right memory_type, tags and content; MEMORY.md is 
 test('a note-name comma is stripped from its tag, like the project tag (fix round 2, Minor #3)', () =>
 {
     const sb = sandbox();
-    writeNote(sb.memoryDir, 'a.md', { name: 'a, with a comma', description: 'd', type: 'user', body: 'b' });
+    // 'reference' (not 'user') so the project: tag is present too - this test covers comma-stripping
+    // on both halves of the tag list.
+    writeNote(sb.memoryDir, 'a.md', { name: 'a, with a comma', description: 'd', type: 'reference', body: 'b' });
     const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
     assert.strictEqual(res.status, 0, res.stderr);
     const calls = readCalls(sb.callsLog);
@@ -408,7 +431,9 @@ test('default notes folder is derived from the git top-level slug (worktree-awar
     fs.mkdirSync(memoryDir, { recursive: true });
     writeNote(memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' });
 
-    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir]);
+    // Autodetection also scans every account dir on the machine (final review A, I7) - HOME is
+    // sandboxed to an empty temp dir so that scan never touches the real machine's ~/.claude.
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: { ...process.env, HOME: sb.work } });
     assert.strictEqual(res.status, 0, res.stderr);
     assert.match(res.stdout, new RegExp(`memory import: 1 imported, 0 already present, from ${memoryDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     fs.rmSync(sb.work, { recursive: true, force: true });
@@ -432,10 +457,257 @@ test('default notes folder resolves correctly when the project path holds a dot 
     fs.mkdirSync(memoryDir, { recursive: true });
     writeNote(memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' });
 
-    const res = runScript(['--project-root', projectRoot, '--config-dir', acctDir]);
+    const res = runScript(['--project-root', projectRoot, '--config-dir', acctDir], { env: { ...process.env, HOME: work } });
     assert.strictEqual(res.status, 0, res.stderr);
     assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /,
         `expected the note to be found and imported, got: ${res.stdout}${res.stderr}`);
+    fs.rmSync(work, { recursive: true, force: true });
+});
+
+test('M1: each memory_store call carries its own conversation_id, so distinct notes are never collapsed under one (semantic-dedup bypass)', () =>
+{
+    const sb = sandbox();
+    writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'd1', type: 'reference', body: 'b1' });
+    writeNote(sb.memoryDir, 'b.md', { name: 'b', description: 'd2', type: 'reference', body: 'b2' });
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    const calls = readCalls(sb.callsLog);
+    assert.strictEqual(calls.length, 2);
+    assert.ok(calls[0].conversation_id, 'memory_store must carry a conversation_id');
+    assert.ok(calls[1].conversation_id, 'memory_store must carry a conversation_id');
+    assert.notStrictEqual(calls[0].conversation_id, calls[1].conversation_id, 'two distinct notes must not share a conversation_id');
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('M2: a "user" note imports with no project: tag - it becomes a global preference; other kinds keep one', () =>
+{
+    const sb = sandbox();
+    writeNote(sb.memoryDir, 'user-role.md', { name: 'user-role', description: 'd', type: 'user', body: 'b' });
+    writeNote(sb.memoryDir, 'reference-x.md', { name: 'reference-x', description: 'd2', type: 'reference', body: 'b2' });
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 0, res.stderr);
+    const calls = readCalls(sb.callsLog);
+    const userCall = calls.find((c) => c.tags.includes('user-role'));
+    const refCall = calls.find((c) => c.tags.includes('reference-x'));
+    assert.deepStrictEqual(userCall.tags, ['user-role'], 'a user-kind note must carry no project: tag');
+    assert.ok(refCall.tags.some((t) => t.startsWith('project:')), 'a non-user-kind note keeps its project: tag');
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('I6: initialize gets a 180s timeout (FACT-EMBED measured a 41.3s cold first launch); the 5-minute overall cap is unchanged', () =>
+{
+    assert.strictEqual(memoryImport.INIT_TIMEOUT_MS, 180000);
+    assert.strictEqual(memoryImport.OVERALL_TIMEOUT_MS, 5 * 60 * 1000);
+});
+
+test('C1: the importer runs from a git-archive snapshot with no node_modules (release-archive shape)', () =>
+{
+    const snap = mkTmp('memimport-snapshot-');
+    // Extract the committed tree (git archive HEAD) - the exact shape a release download has: no
+    // node_modules anywhere. Then overwrite the importer (and the fake server) with THIS working
+    // tree's copy, since HEAD predates the fix under test.
+    execFileSync('git', ['archive', 'HEAD', '-o', path.join(snap, 'archive.tar')], { cwd: ROOT });
+    execFileSync('tar', ['-xf', path.join(snap, 'archive.tar'), '-C', snap]);
+    fs.rmSync(path.join(snap, 'archive.tar'));
+    fs.copyFileSync(SCRIPT, path.join(snap, 'scripts', 'memory-import.js'));
+    fs.copyFileSync(FAKE_SERVER, path.join(snap, 'scripts', 'fixtures', 'fake-memory-server.js'));
+    assert.ok(!fs.existsSync(path.join(snap, 'node_modules')), 'the archive snapshot must carry no node_modules');
+
+    const snapScript = path.join(snap, 'scripts', 'memory-import.js');
+    const snapServer = path.join(snap, 'scripts', 'fixtures', 'fake-memory-server.js');
+
+    const sb = sandbox();
+    // Re-register against the SNAPSHOT's own copy of the fake server, not the dev checkout's.
+    fs.writeFileSync(path.join(sb.projectRoot, '.mcp.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [snapServer],
+            env: { FAKE_MEMORY_DB: sb.db, FAKE_MEMORY_CALLS_LOG: sb.callsLog } } },
+    }, null, 2));
+    writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
+
+    const res = spawnSync(process.execPath,
+        [snapScript, '--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir],
+        { encoding: 'utf8', timeout: 60000 });
+    assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.doesNotMatch(res.stderr, /Cannot find module 'js-yaml'/);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
+
+    fs.rmSync(snap, { recursive: true, force: true });
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('I1: the default account registration file is $HOME/.claude.json, not $HOME/.claude/.claude.json (CLAUDE_CONFIG_DIR unset)', () =>
+{
+    const fakeHome = mkTmp('memimport-home-');
+    const projectRoot = path.join(fakeHome, 'repo');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+    // Registration sits at the ACCOUNT level, sibling of the .claude dir, never inside it.
+    fs.writeFileSync(path.join(fakeHome, '.claude.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
+    }, null, 2));
+    // slugify(gitTopLevel(...)), not the raw path - macOS resolves /var to /private/var through git,
+    // and the importer's own slug computation follows that same resolution.
+    const notesDir = path.join(fakeHome, '.claude', 'projects', memoryImport.slugify(memoryImport.gitTopLevel(projectRoot)), 'memory');
+    fs.mkdirSync(notesDir, { recursive: true });
+    writeNote(notesDir, 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
+
+    const env = { ...process.env, HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
+    const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
+    assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
+
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('I7: notes are imported from every account dir on the machine in one pass, same project tag', () =>
+{
+    const fakeHome = mkTmp('memimport-multiacct-');
+    const projectRoot = path.join(fakeHome, 'repo');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+    const slug = memoryImport.slugify(memoryImport.gitTopLevel(projectRoot));
+
+    fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(fakeHome, '.claude.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
+    }, null, 2));
+
+    const defaultNotes = path.join(fakeHome, '.claude', 'projects', slug, 'memory');
+    fs.mkdirSync(defaultNotes, { recursive: true });
+    writeNote(defaultNotes, 'a.md', { name: 'a', description: 'from the default account', type: 'reference', body: 'body a' });
+
+    const spaceNotes = path.join(fakeHome, '.claude-work', 'projects', slug, 'memory');
+    fs.mkdirSync(spaceNotes, { recursive: true });
+    writeNote(spaceNotes, 'b.md', { name: 'b', description: 'from a second account', type: 'reference', body: 'body b' });
+
+    const env = { ...process.env, HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
+    const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
+    assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.match(res.stdout, /memory import: 2 imported, 0 already present, from /);
+
+    const calls = readCalls(path.join(fakeHome, 'calls.jsonl'));
+    assert.strictEqual(calls.length, 2);
+    const projectName = path.basename(projectRoot);
+    assert.ok(calls.every((c) => c.tags.includes(`project:${projectName}`)), "both accounts' notes must carry the same project tag");
+
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('I7: a missing notes folder with a matching session transcript elsewhere is a FAILURE, not "nothing to import"', () =>
+{
+    const fakeHome = mkTmp('memimport-transcript-');
+    const projectRoot = path.join(fakeHome, 'repo');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+
+    fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(fakeHome, '.claude.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
+    }, null, 2));
+    // No memory/ folder for the computed slug at all - but a transcript under a DIFFERENT (wrong)
+    // slug directory records a real session whose cwd is this project root.
+    const wrongProjectDir = path.join(fakeHome, '.claude', 'projects', 'some-other-slug');
+    fs.mkdirSync(wrongProjectDir, { recursive: true });
+    fs.writeFileSync(path.join(wrongProjectDir, 'session1.jsonl'), `${JSON.stringify({ cwd: projectRoot, type: 'user' })}\n`);
+
+    const env = { ...process.env, HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
+    const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
+    assert.strictEqual(res.status, 1, `expected failure, got stdout: ${res.stdout}`);
+    assert.match(res.stderr, /session1\.jsonl/);
+    assert.match(res.stderr, /nothing to import/);
+
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('no notes anywhere and no transcript -> exit 0, "nothing to import" (autodetect path)', () =>
+{
+    const fakeHome = mkTmp('memimport-empty-');
+    const projectRoot = path.join(fakeHome, 'repo');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    execFileSync('git', ['init', '-q', projectRoot]);
+    fs.writeFileSync(path.join(fakeHome, '.claude.json'), JSON.stringify({
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
+    }, null, 2));
+    const env = { ...process.env, HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
+    const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /memory import: nothing to import, from /);
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('autoMemoryDirectory in project settings.json overrides the computed notes folder', () =>
+{
+    const sb = sandbox();
+    execFileSync('git', ['init', '-q', sb.projectRoot]);
+    const overrideDir = path.join(sb.work, 'custom-memory-dir');
+    fs.mkdirSync(overrideDir, { recursive: true });
+    writeNote(overrideDir, 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
+
+    fs.mkdirSync(path.join(sb.projectRoot, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(sb.projectRoot, '.claude', 'settings.json'),
+        JSON.stringify({ autoMemoryDirectory: overrideDir }, null, 2));
+
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: { ...process.env, HOME: sb.work } });
+    assert.strictEqual(res.status, 0, res.stderr);
+    assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('CLAUDE_CODE_PROJECT_DIR_NAME picks the notes folder only when CLAUDE_CONFIG_DIR is also set (FACT-AUTOMEM)', () =>
+{
+    const sb = sandbox();
+    execFileSync('git', ['init', '-q', sb.projectRoot]);
+    const namedDir = path.join(sb.acctDir, 'projects', 'my-custom-name', 'memory');
+    fs.mkdirSync(namedDir, { recursive: true });
+    writeNote(namedDir, 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
+
+    // Without a live CLAUDE_CONFIG_DIR, the variable is ignored - the (nonexistent) slugged folder is
+    // used instead, so nothing is found.
+    const envWithout = { ...process.env, HOME: sb.work, CLAUDE_CODE_PROJECT_DIR_NAME: 'my-custom-name' };
+    delete envWithout.CLAUDE_CONFIG_DIR;
+    const withoutConfigDir = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: envWithout });
+    assert.strictEqual(withoutConfigDir.status, 0, withoutConfigDir.stderr);
+    assert.match(withoutConfigDir.stdout, /memory import: nothing to import, from /);
+
+    // With CLAUDE_CONFIG_DIR live and equal to this account dir, the named folder is honoured.
+    const withConfigDir = runScript(['--project-root', sb.projectRoot],
+        { env: { ...process.env, HOME: sb.work, CLAUDE_CONFIG_DIR: sb.acctDir, CLAUDE_CODE_PROJECT_DIR_NAME: 'my-custom-name' } });
+    assert.strictEqual(withConfigDir.status, 0, withConfigDir.stderr);
+    assert.match(withConfigDir.stdout, /memory import: 1 imported, 0 already present, from /);
+
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
+test('gitTopLevel: a submodule\'s .git/modules/<n> common dir falls back to --show-toplevel, not the modules dir itself', () =>
+{
+    const work = mkTmp('memimport-submodule-');
+    const innerSrc = path.join(work, 'inner-src');
+    fs.mkdirSync(innerSrc, { recursive: true });
+    execFileSync('git', ['init', '-q', innerSrc]);
+    execFileSync('git', ['-C', innerSrc, 'config', 'user.email', 'a@example.test']);
+    execFileSync('git', ['-C', innerSrc, 'config', 'user.name', 'a']);
+    fs.writeFileSync(path.join(innerSrc, 'f.txt'), 'x');
+    execFileSync('git', ['-C', innerSrc, 'add', 'f.txt']);
+    execFileSync('git', ['-C', innerSrc, 'commit', '-q', '-m', 'init']);
+
+    const outer = path.join(work, 'outer');
+    fs.mkdirSync(outer, { recursive: true });
+    execFileSync('git', ['init', '-q', outer]);
+    execFileSync('git', ['-C', outer, 'config', 'user.email', 'a@example.test']);
+    execFileSync('git', ['-C', outer, 'config', 'user.name', 'a']);
+    execFileSync('git', ['-C', outer, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', innerSrc, 'sub']);
+
+    const subRoot = path.join(outer, 'sub');
+    assert.strictEqual(fs.realpathSync(memoryImport.gitTopLevel(subRoot)), fs.realpathSync(subRoot));
+
     fs.rmSync(work, { recursive: true, force: true });
 });
 

@@ -86,7 +86,7 @@ rl.on('line', (line) =>
         {
             const content = toolArgs.content;
             const metadata = toolArgs.metadata || {};
-            logCall({ content, tags: metadata.tags, memory_type: metadata.type });
+            logCall({ content, tags: metadata.tags, memory_type: metadata.type, conversation_id: toolArgs.conversation_id });
             if (failContent && content === failContent)
             {
                 send({ jsonrpc: '2.0', id, result: textResult('Error storing memory: simulated failure for test') });
