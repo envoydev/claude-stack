@@ -14,12 +14,42 @@
 // genuine (non-duplicate) 'Error storing memory' response, to exercise the import script's hard
 // failure path - mirrors the real server wrapping BOTH a benign duplicate and a real failure in an
 // isError:false 'Error storing memory: ...' text (verified against mcp-memory-service 11.13.0).
+//
+// MCP_MEMORY_SQLITE_PATH (optional, read the same as the real registration's env): on a successful
+// (non-duplicate, non-fail) store, a live row is ALSO inserted into this real sqlite db (schema:
+// scripts/fixtures/memory-schema.sql) if it already exists - matching a real server actually
+// persisting what it acknowledges, so the importer's post-shutdown verification (fix round 3) sees a
+// genuine row for every test that exercises the happy path through this fake server. A db that does
+// not exist here yet, or node:sqlite being unavailable, is silently skipped (best-effort only).
+// FAKE_MEMORY_SKIP_SQLITE_WRITE=1 turns that write off - the deliberate 'acknowledged but not
+// persisted' shape fix round 3's own regression test needs.
 const fs = require('node:fs');
 const readline = require('node:readline');
 
 const dbPath = process.env.FAKE_MEMORY_DB;
 const callsLogPath = process.env.FAKE_MEMORY_CALLS_LOG || null;
 const failContent = process.env.FAKE_MEMORY_FAIL_CONTENT || null;
+const sqlitePath = process.env.MCP_MEMORY_SQLITE_PATH || null;
+const skipSqliteWrite = process.env.FAKE_MEMORY_SKIP_SQLITE_WRITE === '1';
+
+function writeLiveRowToRealDb(content, tags, memoryType)
+{
+    if (!sqlitePath || skipSqliteWrite) return;
+    let DatabaseSync;
+    try { ({ DatabaseSync } = require('node:sqlite')); } catch (e) { return; }
+    let db;
+    try { db = new DatabaseSync(sqlitePath); } catch (e) { return; } // e.g. no fixture db here - fine
+    try
+    {
+        const tagsStr = Array.isArray(tags) ? tags.join(',') : (tags || '');
+        const hash = `fake-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        db.prepare(
+            'INSERT INTO memories (content_hash, content, tags, memory_type, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)',
+        ).run(hash, content, tagsStr, memoryType || '', Date.now() / 1000);
+    }
+    catch (e) { /* best-effort - a missing table etc. never breaks the fake server's own response */ }
+    finally { try { db.close(); } catch (e) { /* already closed */ } }
+}
 
 function loadDb()
 {
@@ -104,6 +134,7 @@ rl.on('line', (line) =>
             const row = { id: db.length + 1, content, tags: metadata.tags, memory_type: metadata.type };
             db.push(row);
             saveDb(db);
+            writeLiveRowToRealDb(content, metadata.tags, metadata.type);
             send({ jsonrpc: '2.0', id, result: textResult(`Memory stored successfully (hash: fake${row.id})`) });
             return;
         }

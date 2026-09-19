@@ -480,12 +480,70 @@ function hasLiveDuplicate(db, content)
     }
 }
 
+// Fix round 3 (binding): NEVER `immutable=1` here - that flag ignores the WAL, so a row the server just
+// committed can read back as missing even though it is safely on disk (the suspected cause of the 1-of-
+// 15 real-run miss this fixes). A plain read-only open first; if THAT fails, read-write - by the time
+// this is called the server that held the file is confirmed exited, so nothing else has it open.
+function openDbForVerify(DatabaseSync, dbPath)
+{
+    try { return new DatabaseSync(dbPath, { readOnly: true }); }
+    catch (e)
+    {
+        try { return new DatabaseSync(dbPath); }
+        catch (e2) { return null; }
+    }
+}
+
+// Fix round 3 (binding): confirms every note this run counted as imported or already present is
+// actually a live row, after the server has fully exited. Returns the names of any note NOT found;
+// throws only when the db cannot be reopened at all (a real anomaly - the server was writing to this
+// exact file moments ago).
+function verifyNotesPersisted(DatabaseSync, dbPath, notes)
+{
+    const db = openDbForVerify(DatabaseSync, dbPath);
+    if (!db) throw new Error(`could not re-open ${dbPath} to confirm the import after the server exited`);
+    try
+    {
+        const missing = [];
+        for (const note of notes)
+        {
+            const content = buildContent(note.description, note.body);
+            const row = db.prepare('SELECT 1 FROM memories WHERE content = ? AND deleted_at IS NULL LIMIT 1').get(content);
+            if (!row) missing.push(note.name);
+        }
+        return missing;
+    }
+    finally { try { db.close(); } catch (e) { /* already closed */ } }
+}
+
 function startServer(entry, cwd)
 {
     const command = entry.command;
     const args = Array.isArray(entry.args) ? entry.args : [];
     const env = Object.assign({}, process.env, entry.env || {});
     return spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+}
+
+// Fix round 3 (binding): a pending write must not be cut off by an immediate SIGKILL. Closes stdin
+// (the server's own natural shutdown trigger) and waits for its 'exit', bounded - only killing it if
+// it has not exited on its own within that window. Resolves once the process is confirmed gone either
+// way, so the caller can safely re-open its db file next.
+const SHUTDOWN_WAIT_MS = 5000;
+
+function shutdownServer(child)
+{
+    return new Promise((resolve) =>
+    {
+        if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; } // already exited
+        let timer;
+        const finish = () => { clearTimeout(timer); resolve(); };
+        child.once('exit', finish);
+        try { child.stdin.end(); } catch (e) { /* already closed */ }
+        timer = setTimeout(() =>
+        {
+            try { child.kill('SIGKILL'); } catch (e) { /* already gone */ }
+        }, SHUTDOWN_WAIT_MS);
+    });
 }
 
 // A minimal JSON-RPC-over-stdio client: one line per message, both directions - no MCP client
@@ -622,28 +680,23 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
     // The db precheck is a pure local file read - resolved before spawning the server at all. The
     // registration's own env names the exact file the server itself will open.
     let db = null;
+    let sqlite = null;
     let sqliteNote = '';
     const dbPath = entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
     if (dbPath)
     {
-        const sqlite = loadSqlite();
+        sqlite = loadSqlite();
         if (sqlite) db = openDbReadOnly(sqlite.DatabaseSync, dbPath);
         else sqliteNote = ' (node:sqlite unavailable - idempotence checked via the server response text only)';
     }
 
     const child = startServer(entry, projectRoot);
-    let killed = false;
-    const killChild = () =>
-    {
-        if (killed) return;
-        killed = true;
-        try { child.kill('SIGKILL'); } catch (e) { /* already gone */ }
-    };
-
     const rpc = createRpcClient(child);
     const deadline = Date.now() + OVERALL_TIMEOUT_MS;
     const timeLeft = () => Math.max(1, deadline - Date.now());
 
+    let imported = 0;
+    let present = 0;
     try
     {
         await rpc.call('initialize', {
@@ -653,8 +706,6 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
         }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
         rpc.notify('notifications/initialized');
 
-        let imported = 0;
-        let present = 0;
         for (const note of notes)
         {
             if (Date.now() > deadline) throw new Error('import timed out after 5 minutes');
@@ -686,13 +737,35 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
             else if (/error storing memory/i.test(text)) throw new Error(`memory_store failed for '${note.name}': ${text}`);
             else imported++;
         }
-        return { ok: true, message: `${imported} imported, ${present} already present, from ${fromLabel}${sqliteNote}` };
     }
     finally
     {
-        killChild();
+        // Fix round 3 (binding): close stdin and wait for the server's own exit (bounded) before
+        // ever killing it, so a write still landing after the last response is not cut off.
+        await shutdownServer(child);
         if (db) { try { db.close(); } catch (e) { /* already closed */ } }
     }
+
+    // Fix round 3 (binding): 1 of 15 real update-path runs switched Claude's own memory off while a
+    // seeded note was NOT in the db afterwards (a store answering before its write committed, or a
+    // read that missed the WAL - cause unknown, made impossible instead of diagnosed). Only reached
+    // when the store loop above completed without throwing. Re-opens the db FRESH, after the server
+    // has fully exited, and confirms every note this run counted (imported or already present) is a
+    // live row - never with `immutable=1` (see verifyNotesPersisted).
+    if (dbPath && sqlite)
+    {
+        const missing = verifyNotesPersisted(sqlite.DatabaseSync, dbPath, notes);
+        if (missing.length)
+        {
+            throw new Error(
+                `memory_store reported success for ${missing.length} note(s) not found in the db after the ` +
+                `server exited (never acceptable - a store may have answered before its write committed): ` +
+                `${missing.join(', ')}`,
+            );
+        }
+    }
+
+    return { ok: true, message: `${imported} imported, ${present} already present, from ${fromLabel}${sqliteNote}` };
 }
 
 async function main()

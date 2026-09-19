@@ -322,6 +322,30 @@ test('db precheck: forcing node:sqlite unavailable falls back to the server mess
     fs.rmSync(sb.work, { recursive: true, force: true });
 });
 
+test('N3 (fix round 3, binding): a fake server that acknowledges a store but never writes it -> exit 1', { skip: skipNoSqlite }, () =>
+{
+    const sb = sandbox();
+    const sqliteDbPath = path.join(sb.work, 'ghost.db');
+    makeFixtureDb(sqliteDbPath, []); // real schema, zero rows
+    fs.writeFileSync(path.join(sb.projectRoot, '.mcp.json'), JSON.stringify({
+        // FAKE_MEMORY_SKIP_SQLITE_WRITE=1: the fake server otherwise mirrors a real store into this
+        // db too (so every other test's happy path has a genuine row) - here it deliberately does
+        // NOT, simulating exactly the bug fix round 3 closes: acknowledged, never persisted.
+        mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
+            env: { FAKE_MEMORY_DB: sb.db, FAKE_MEMORY_CALLS_LOG: sb.callsLog, MCP_MEMORY_SQLITE_PATH: sqliteDbPath, FAKE_MEMORY_SKIP_SQLITE_WRITE: '1' } } },
+    }, null, 2));
+    writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
+
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir]);
+    assert.strictEqual(res.status, 1, `expected failure, got stdout: ${res.stdout}`);
+    assert.match(res.stderr, /not found in the db after the server exited/);
+    assert.ok(res.stderr.includes(': a'), `the missing note's own name should be named: ${res.stderr}`);
+    // The fake server DID answer success - proves this is caught by the post-shutdown verification,
+    // not by the server response text or the pre-store db precheck.
+    assert.strictEqual(readCalls(sb.callsLog).length, 1);
+    fs.rmSync(sb.work, { recursive: true, force: true });
+});
+
 test('a re-run imports 0 and reports 3 already present (relies on the server\'s own duplicate report)', () =>
 {
     const sb = sandbox();
