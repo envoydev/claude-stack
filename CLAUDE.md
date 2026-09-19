@@ -52,9 +52,10 @@ change made only inside a consuming project is throwaway.
   - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `CLAUDE_STACK_PUSH_GATE=0` turns the push half off.
-  - `guard-stop-contract.js` (`Stop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion` branch that
-    never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
-    pending' close; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
+  - `guard-stop-contract.js` (`Stop` + `SubagentStop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion`
+    branch that never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
+    pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
+    ScheduleWakeup) with no background work of its own - a fork read its parent's pending fork as its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`CLAUDE_STACK_ROTATE_ASK=0` off).
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `CLAUDE_STACK_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or

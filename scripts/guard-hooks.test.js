@@ -1853,3 +1853,77 @@ test('PowerShell route: the cross-project write guard resolves the same target',
   assert.equal(run('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `echo hi > ${outside}` } }), 2, 'and the Bash spelling agrees');
   assert.equal(pwsh('guard-cross-project-write.js', 'echo hi > README.md'), 0, 'an in-project relative target passes');
 });
+
+// ---- SubagentStop: a subagent that stops on a wait nobody will end ----------------------------
+// Field report (2026-09-19, win32, v2.1.268): a fork with a multi-step brief made 2 tool calls in 18s,
+// wrote nothing, and closed on 'That wakeup wasn't the right tool here (no /loop in play) - cancelled
+// it. I'll just wait for the pilot fork's completion notification.' The pilot fork and the wait were the
+// PARENT's; a subagent with no background work of its own is never notified or re-invoked, so the
+// stop was final. The transcript shape below is the one the harness writes (measured on a real fork):
+// a pointer to the parent's context, the parent's own Agent dispatch, the tool_result carrying the
+// fork boilerplate, then the fork's own turns - rows before the boilerplate are the parent's.
+const FORK_CLOSE = "That wakeup wasn't the right tool here (no /loop in play) - cancelled it. I'll just wait for the pilot fork's completion notification.";
+function forkTranscript(name, ownTools, { parentBackground = false, fork = true } = {}) {
+  const tu = (id, tool, input) => ({ type: 'tool_use', id, name: tool, input });
+  const head = fork ? [
+    { type: 'fork-context-ref' },
+    { type: 'assistant', isSidechain: true, message: { content: [tu('p1', 'Agent', { subagent_type: 'fork', prompt: 'run the script, write the files', run_in_background: parentBackground })] } },
+    { type: 'user', isSidechain: true, message: { content: [{ type: 'tool_result', tool_use_id: 'p1', content: 'launched' }, { type: 'text', text: '<fork-boilerplate>\nYou are a worker fork.\n</fork-boilerplate>\nRun the script, then write the files.' }] } },
+  ] : [{ type: 'user', isSidechain: true, message: { content: 'Run the script, then write the files.' } }];
+  const own = ownTools.map((t, i) => ({ type: 'assistant', isSidechain: true, message: { content: [tu(`o${i}`, t.name, t.input || {})] } }));
+  return transcript(name, [...head, ...own]);
+}
+const WAKEUP_PAIR = [{ name: 'ScheduleWakeup', input: { delaySeconds: 60, prompt: 'x', reason: 'y', noop: false } }, { name: 'ScheduleWakeup', input: { stop: true } }];
+function subStop(tp, text, { agentId, agentType = 'fork', logDir } = {}) {
+  return runIn('guard-stop-contract.js', {
+    hook_event_name: 'SubagentStop', session_id: 'sub-stop', agent_id: agentId || `a${Math.random().toString(16).slice(2, 14)}`,
+    agent_type: agentType, agent_transcript_path: tp, last_assistant_message: text,
+  }, { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir || fs.mkdtempSync(path.join(TMP, 'sub-')) } });
+}
+
+test('guard-stop-contract: the field-report fork - stopped on a wait with no background work of its own - is held and told to do its task', () => {
+  const r = subStop(forkTranscript('fork-report', WAKEUP_PAIR), FORK_CLOSE);
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /no background work of its own|started no background work/i);
+  assert.match(r.stderr, /the session that dispatched you/i);
+  assert.match(r.stderr, /BLOCKED/);
+});
+
+test('guard-stop-contract: a subagent waiting on background work it started itself is not held', () => {
+  const tools = [{ name: 'Bash', input: { command: 'npm test', run_in_background: true } }];
+  assert.equal(subStop(forkTranscript('fork-own-bg', tools), 'Tests are running; I will wait for the background task notification.').status, 0);
+  const monitor = [{ name: 'Monitor', input: { command: 'tail -f x' } }];
+  assert.equal(subStop(forkTranscript('fork-own-monitor', monitor), "I'll wait for the monitor to report.").status, 0);
+});
+
+test('guard-stop-contract: the parent\'s own background dispatch, inherited above the boilerplate, is not the fork\'s', () => {
+  assert.equal(subStop(forkTranscript('fork-parent-bg', WAKEUP_PAIR, { parentBackground: true }), FORK_CLOSE).status, 2);
+});
+
+test('guard-stop-contract: a subagent that did its work and reports is never held', () => {
+  const tools = [{ name: 'Bash', input: { command: 'node build.js' } }, { name: 'Write', input: { file_path: 'out/a.md', content: 'a' } }];
+  assert.equal(subStop(forkTranscript('fork-done', tools), 'Wrote out/a.md and out/b.md; build.js exited 0.').status, 0);
+  // 'wait' describing the CODE, not the agent, is a report too.
+  assert.equal(subStop(forkTranscript('fork-desc', tools), 'The retry loop waits for the lock before writing, so the files land in order.').status, 0);
+});
+
+test('guard-stop-contract: a subagent that called ScheduleWakeup is held even when its close names no wait', () => {
+  assert.equal(subStop(forkTranscript('fork-wakeup-only', WAKEUP_PAIR), 'Cancelled the wakeup.').status, 2);
+});
+
+test('guard-stop-contract: a plain (non-fork) subagent stopping on a wait with nothing of its own running is held too', () => {
+  assert.equal(subStop(forkTranscript('plain-wait', [], { fork: false }), "I'll wait for the other agent to finish first.", { agentType: 'general-purpose' }).status, 2);
+});
+
+test('guard-stop-contract: the hold fires once per subagent - the second stop goes through', () => {
+  const logDir = fs.mkdtempSync(path.join(TMP, 'sub-once-'));
+  const tp = forkTranscript('fork-once', WAKEUP_PAIR);
+  assert.equal(subStop(tp, FORK_CLOSE, { agentId: 'aonce1', logDir }).status, 2);
+  assert.equal(subStop(tp, FORK_CLOSE, { agentId: 'aonce1', logDir }).status, 0, 'never a loop');
+  assert.equal(subStop(tp, FORK_CLOSE, { agentId: 'aonce2', logDir }).status, 2, 'another subagent is its own case');
+});
+
+test('guard-stop-contract: an unreadable subagent transcript never holds (no proof it started nothing)', () => {
+  assert.equal(subStop(path.join(TMP, 'no-such-transcript.jsonl'), FORK_CLOSE).status, 0);
+  assert.equal(subStop(undefined, FORK_CLOSE).status, 0);
+});

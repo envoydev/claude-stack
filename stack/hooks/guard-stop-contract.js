@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// Two wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
+// Three wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
 // fresh-session construction check (the flow skills' stop contracts) both failed as prose in
 // every audited strengthening - measured across 123 sessions: ~25 sessions ended turns on
 // 'say the word' / 'want me to X?' prose (stalls of 13min-37h, one plaintext-credential
@@ -16,6 +16,8 @@
 //   or resume fresh. It fires only after the work is done (never mid-response, which is what the
 //   old PreToolUse denial did), and re-arms only when the context has grown 1.5x since the last
 //   one - so a long session is asked once per real cost step, not once per question.
+// SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
+//   its own, is held once and told to do its directive (see the branch below for the field report).
 // PreToolUse (AskUserQuestion) wiring: INJECTION ONLY - `hookSpecificOutput.additionalContext`,
 //   presence-only, never ranks an option and never denies. It carries the four checks that have no
 //   other route (stale ask scope, a recommendation contradicting an un-actioned request, the
@@ -492,6 +494,65 @@ function breadcrumb(why) {
     const dir = process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir();
     fs.appendFileSync(`${dir}/guard-stop-contract.log`, `${new Date().toISOString()} ${why}\n`);
   } catch { /* never let logging break the gate */ }
+}
+
+// --- SubagentStop: a subagent that stops on a wait nobody will end ------------------------------
+// Field report (2026-09-19, win32, v2.1.268): a fork with a multi-step brief made 2 tool calls in 18s,
+// wrote nothing, and closed on "That wakeup wasn't the right tool here (no /loop in play) - cancelled
+// it. I'll just wait for the pilot fork's completion notification." The pilot fork, the wakeup and the
+// wait were the PARENT's: a fork inherits the parent's whole history, and the harness's own
+// <fork-boilerplate> ('you are NOT a continuation of that agent') did not stop it reading that history
+// as its own situation. A subagent that ends its turn with no background work of its own is never
+// notified or re-invoked, so the stop was final and the brief silently dropped. Exit 2 on SubagentStop
+// continues the subagent's conversation (hooks reference, exit-code table), so it is held ONCE when
+// BOTH hold:
+//   - its close claims a first-person wait, or it called ScheduleWakeup itself (the main session's
+//     /loop pacing - never a subagent's job);
+//   - its OWN rows (after the fork boilerplate; every row for a plain subagent) launched nothing that
+//     could report back: no run_in_background call, no Agent / Task, no Monitor.
+// No readable transcript is no proof it started nothing, so that passes.
+const WAIT_CLAIM_RE = /\b(?:I(?:['’]ll| will| am going to|['’]m going to|['’]m| am)|let me)\s+(?:just\s+|now\s+|simply\s+)?(?:wait|waiting|hold(?:ing)? off)\b|\bwaiting\s+(?:for|on)\s+(?:the|its|their|a|an|that)\b[^.]{0,80}\b(?:notification|to (?:finish|complete|report|land|return))\b/i;
+function subagentOwnTools(file) {
+  let rows;
+  try {
+    if (!file || fs.statSync(file).size > 50 * 1024 * 1024) return null;
+    rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  } catch { return null; }
+  const textOf = (r) => {
+    const c = r && r.message && r.message.content;
+    if (typeof c === 'string') return c;
+    return Array.isArray(c) ? c.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n') : '';
+  };
+  let start = 0;
+  rows.forEach((r, i) => { if (r.type === 'user' && textOf(r).includes('<fork-boilerplate>')) start = i + 1; });
+  const tools = [];
+  for (const r of rows.slice(start)) {
+    const c = r.type === 'assistant' && r.message && r.message.content;
+    if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_use') tools.push(b);
+  }
+  return tools;
+}
+if (payload.hook_event_name === 'SubagentStop') {
+  const text = (typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '').replace(/```[\s\S]*?```/g, ' ');
+  const tools = subagentOwnTools(payload.agent_transcript_path);
+  if (!tools) process.exit(0);
+  const wakeup = tools.some((b) => b.name === 'ScheduleWakeup');
+  const claim = WAIT_CLAIM_RE.exec(text.slice(-800));
+  if (!wakeup && !claim) process.exit(0);
+  const reportsBack = tools.some((b) => (b.input && b.input.run_in_background === true) || /^(Agent|Task|Monitor)$/.test(b.name));
+  if (reportsBack) process.exit(0);
+  const key = String(payload.agent_id || payload.agent_transcript_path).replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  const held = `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
+  if (fs.existsSync(held)) process.exit(0); // held once already - never a loop
+  try { fs.writeFileSync(held, new Date().toISOString()); } catch { /* the hold still fires; only the once-marker is lost */ }
+  blockDetail('subagent-wait', claim ? claim[0] : 'ScheduleWakeup');
+  process.stderr.write(
+    'You are a subagent, and you started no background work of your own - nothing will notify or re-invoke you, '
+    + 'so ending this turn ends your task undone. The wait, wakeup, loop or other agents in the history above '
+    + 'belong to the session that dispatched you, not to you. Do the task in your directive now. '
+    + "If you truly cannot, reply with 'BLOCKED: <reason>' and stop.\n");
+  process.exit(2);
 }
 
 if (payload.hook_event_name === 'Stop') {

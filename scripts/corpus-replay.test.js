@@ -159,3 +159,28 @@ test('corpus-replay: a declared-unexercised route does not read as dead, an unde
   assert.match(rowFor(undeclared.out, 'guard-catastrophic-rm.js::PreToolUse:Bash'), /DEAD/);
   assert.equal(undeclared.status, 1, 'an undeclared silence fails');
 });
+
+test('corpus-replay: a subagent transcript is replayed as ONE SubagentStop, judged on its final text and own rows', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-sub-'));
+  const sub = path.join(dir, 's1', 'subagents');
+  fs.mkdirSync(sub, { recursive: true });
+  const tu = (id, name, input) => ({ type: 'assistant', isSidechain: true, message: { content: [{ type: 'tool_use', id, name, input }] } });
+  const say = (text) => ({ type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text }] } });
+  const head = [
+    { type: 'fork-context-ref' },
+    tu('p1', 'Agent', { subagent_type: 'fork', prompt: 'write the files' }),
+    { type: 'user', isSidechain: true, message: { content: [{ type: 'tool_result', tool_use_id: 'p1', content: 'ok' }, { type: 'text', text: '<fork-boilerplate>\nYou are a worker fork.\n</fork-boilerplate>' }] } },
+  ];
+  const write = (name, rows) => {
+    fs.writeFileSync(path.join(sub, `agent-${name}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    fs.writeFileSync(path.join(sub, `agent-${name}.meta.json`), JSON.stringify({ agentType: 'fork', isFork: true }));
+  };
+  write('stuck', [...head, tu('w1', 'ScheduleWakeup', { delaySeconds: 60 }), say("I'll just wait for the pilot fork's completion notification.")]);
+  write('done', [...head, tu('b1', 'Bash', { command: 'node build.js' }), say('Wrote out/a.md; build.js exited 0.')]);
+  try {
+    const { err } = run(dir, '--extract-only');
+    assert.match(err, /subagent stops 2/);
+    const { out } = run(dir, '--hook', 'SubagentStop');
+    assert.match(rowFor(out, 'guard-stop-contract.js::SubagentStop'), /\| 2 \| 1 \|/, 'the stuck fork is held, the finished one is not');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
