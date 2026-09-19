@@ -825,6 +825,7 @@ CLAUDE_RULES=(
   "baseline-git.md"
   "baseline-navigation.md"
   "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
+  "baseline-memory.md"        # what goes to the memory MCP - locks it in, like baseline-navigation locks serena
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "javascript-conventions.md"  # JS-family conventions, path-scoped js/jsx/mjs/cjs

@@ -66,6 +66,19 @@ test('a kept rule makes its mcp required; the capabilities skill locks none', ()
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
+// memory is locked the SAME way serena is: baseline-memory.md names the server in backticks, the
+// graph picks up the body mention as a rule -> mcp edge, and recommendations.json's `always` set
+// keeps the rule (so the closure of every install requires the mcp) while `general` drops it - a
+// server cannot be both offered-not-seeded and locked at once.
+test('memory is locked like serena - baseline-memory pulls it in, general no longer offers it', () => {
+    const c = computeClosure(graph, { rules: ['baseline-memory'] });
+    assert.ok(c.mcps.includes('memory'), 'baseline-memory genuinely depends on the memory mcp');
+    const recommendations = require('../meta/recommendations.json');
+    assert.ok((recommendations.always.rules || []).includes('baseline-memory'), 'baseline-memory is an always-on rule');
+    assert.ok((recommendations.always.mcps || []).includes('memory'), 'memory is locked into every install');
+    assert.ok(!((recommendations.general || {}).mcps || []).includes('memory'), 'memory left the general (addable) list');
+});
+
 test('hooks are leaf picks: kept as-is, emitted, and checked against the catalog', () => {
     const c = computeClosure(graph, { hooks: ['guard-catastrophic-rm'] });
     assert.deepStrictEqual(c.hooks, ['guard-catastrophic-rm'], 'a picked hook survives the closure untouched');

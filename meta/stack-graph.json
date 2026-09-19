@@ -926,6 +926,15 @@
       ],
       "paths": []
     },
+    "baseline-memory": {
+      "skills": [],
+      "agents": [],
+      "mcps": [
+        "memory"
+      ],
+      "plugins": [],
+      "paths": []
+    },
     "baseline-navigation": {
       "skills": [],
       "agents": [],

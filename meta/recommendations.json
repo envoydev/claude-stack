@@ -14,6 +14,7 @@
    "baseline-docs-root",
    "baseline-git",
    "baseline-interaction",
+   "baseline-memory",
    "baseline-navigation",
    "baseline-quality-gates",
    "baseline-security",
@@ -21,7 +22,8 @@
   ],
   "mcps": [
    "serena",
-   "context7"
+   "context7",
+   "memory"
   ],
   "plugins": [
    "superpowers",
@@ -71,9 +73,6 @@
   ],
   "agents": [
    "related-project-analyzer"
-  ],
-  "mcps": [
-   "memory"
   ],
   "plugins": [
    "claude-md-management"
