@@ -1,6 +1,6 @@
 ---
 name: project-related-context
-description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc under `<docs-path>/related-context/`. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (they belong in the MCP that holds cross-project recall, where one is registered)."
+description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `<docs-path>/related-projects/RELATED-PROJECTS.md`. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (they belong in the MCP that holds cross-project recall, where one is registered)."
 disable-model-invocation: true
 ---
 
@@ -9,7 +9,7 @@ disable-model-invocation: true
 You drive the deliberate capture of a project's related repositories, and you own both tiers of the house related-projects model:
 
 1. `.claude/rules/baseline-project-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
-2. `<docs-path>/related-context/PROJECT-RELATED-CONTEXT.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Its folder `<docs-path>/related-context/` is the ONE home for every doc tied to a sibling repo - cross-repo plans, change requests, issue notes, a sibling's run recipe - filed there by any session that produces one; a location outside the root takes the user's explicit approval first, per the docs-root baseline. This capture owns only the orientation doc: the other files in the folder are working papers it never rewrites or prunes.
+2. `<docs-path>/related-projects/RELATED-PROJECTS.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Its folder `<docs-path>/related-projects/` is a docs domain holding ONLY this doc, its `references/` and its `watch.json` - this capture is the sole author, and nothing else belongs there. Every OTHER doc tied to a sibling repo - a cross-repo plan, a change request, an issue note, a sibling's run recipe - is filed instead in the plain folder `<docs-path>/related-context/`, by any session that produces one; that folder carries no `watch.json` of its own, so the docs engine never lists, sections or asks about anything filed in it. A location outside the docs root takes the user's explicit approval first, per the docs-root baseline.
 
 Both are generated files; a re-run refreshes both in place. The rule's name is deliberately NOT in the stack installer's fetch manifest (and never may be - a fetch would overwrite the generated copy) and nothing prunes the rules directory, so both survive `stack update`. Under the default layout both are machine-local (`.claude/*` is gitignored and the docs root defaults inside it) - a fresh clone re-runs the capture; only a committed docs root ships the doc with the repo.
 
@@ -32,19 +32,34 @@ For each location: a path must exist (relative resolved from the project root), 
 ### 2. FAN OUT - one analyzer seat per sibling, in parallel
 Dispatch all seats in a single message. Each dispatch prompt carries: the HOST project's root and identity (name + package/assembly ids - read them once from the manifest files first), ONE sibling location, and its hint if given. The agents write no files; their final messages - one YAML entry + evidence + uncertainty each - are your merge input. An agent returning UNVERIFIED fields is a valid result: both tiers record what could not be read.
 
-### 3. MERGE - write <docs-path>/related-context/PROJECT-RELATED-CONTEXT.md
-Create `<docs-path>/related-context/` when absent. Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting at the docs root itself (the pre-folder home) is MOVED into the folder first and reconciled there - never left behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a quick reference. Shape:
+### 3. MERGE - write <docs-path>/related-projects/RELATED-PROJECTS.md
+`<docs-path>/related-projects/` is a docs domain like every other - it carries its own `watch.json`, so
+`domains()` in `.claude/hooks/docs.js` picks it up and the engine sections and lints it exactly like
+`architecture/` or `code-style/`. Create the folder when absent, with a `watch.json` holding `{}` -
+deliberately EMPTY: a sibling repo's characterization is not falsified by a change in THIS repo, so no
+glob exists whose match should ask whether an entry still holds; the empty file states that intent in
+the repo rather than leaving it to memory. Nothing here is `notOwned` either - this capture is the sole
+author of `RELATED-PROJECTS.md`, so an ordinary write (or an ordinary `docs.js set` on a branch) is
+always allowed, unlike `decisions/`.
+
+Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting loose at the docs root itself (the pre-folder
+home) is MOVED into `related-projects/` as `RELATED-PROJECTS.md` and reconciled there - never left
+behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a
+quick reference. Shape:
 
 1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the MCP that holds cross-project recall, never here (none registered: they stay session-local). Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
-2. **The entries** - one `related_projects:` YAML block, the house schema per sibling (name,
-   location, relation, first_read, seam, and its own `captured:` stamp).
-3. **Per sibling** - a short evidence note under its own heading: what grounds the relation and
-   seam (the located files, both sides), plus any uncertainty or UNVERIFIED marker carried over
-   verbatim. Keep each note lean - orientation, not an audit.
+2. **One `##` heading per sibling**, `<!-- id: <slug> -->` and deliberately NO `covers:` - nothing
+   in this repo's code should trigger a re-read of a sibling's own characterization (`docs.js lint`
+   notes a section that declares no `covers:`, but never fails on one). Each heading carries the
+   house schema entry as a fenced YAML block (location, relation, first_read, seam, its own
+   `captured:` stamp) followed by a short evidence note: what grounds the relation and seam (the
+   located files, both sides), plus any uncertainty or UNVERIFIED marker carried over verbatim. Keep
+   each note lean - orientation, not an audit.
 
-`references/artifact-shapes.md` carries both shapes verbatim - the entry schema with a filled
+`references/artifact-shapes.md` carries both shapes verbatim - the section entry with a filled
 example, and the generated rule below - plus the per-entry provenance rule that makes a
-branch-born seam readable. Read it before writing either file.
+branch-born seam readable, and the write mechanics for a mainline write versus a feature branch's
+overlay. Read it before writing either file.
 
 ### 4. RULE - write .claude/rules/baseline-project-related-context.md
 The awareness tier, generated from the same entries - a valid PATHLESS rule (frontmatter with a `description:` and NO `paths:`, so it is always-on). Keep it to the awareness minimum; describe edges, not roles:

@@ -4,15 +4,19 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
 
 # Generated docs root
 
-- EVERY doc file the assistant creates lives under ONE root: the architecture map (`architecture/`),
-  `PROJECT-CODE-STYLE.md`, the related-projects folder (`related-context/` - the orientation doc
-  `related-context/PROJECT-RELATED-CONTEXT.md` plus every doc about or for a sibling repo:
-  cross-repo plans, change requests, issue notes, run recipes), the quality-loop prompts
-  (`loops/`), the coverage capture (`test-coverage/`), the usage-audit bundles
-  (`claude-stack-usage-report/`), superpowers plans + specs, ADRs with no existing home (`decisions/`),
-  the instrumentation ledgers (`tools-usage/`), the task cards handed to another repo
-  (`cross-project-tasks/`), and any other generated artifact. A doc outside it is invisible to
-  every capture, status and prune step that reads `<docs-path>`, and to the next session.
+- EVERY doc file the assistant creates lives under ONE root, each capture in its own domain
+  folder: the architecture map (`architecture/`), the code-style capture (`code-style/CODE-STYLE.md`),
+  ADRs with no existing home (`decisions/`), the related-projects orientation doc
+  (`related-projects/RELATED-PROJECTS.md`), the quality-loop prompts (`loops/`), the coverage capture
+  (`test-coverage/`), the usage-audit bundles (`claude-stack-usage-report/`), superpowers plans + specs,
+  the instrumentation ledgers (`tools-usage/`), and the task cards handed to another repo
+  (`cross-project-tasks/`). Two folders hold no domain, by design: `quality/ASSESSMENT.md` is
+  recomputed fresh every run rather than versioned (no `watch.json`, so the engine never sections or
+  asks about it), and `related-context/` is a plain drop box for every OTHER sibling-repo doc - a
+  cross-repo plan, a change request, an issue note, a run recipe - filed there by any session that
+  produces one, with no `watch.json` either. Anything else generated lands under this root too. A doc
+  outside it - or outside its own domain's folder - is invisible to every capture, status and prune
+  step that reads `<docs-path>`, and to the next session.
 - Creating a doc OUTSIDE this root - a committed `docs/`, the repo root - happens only on the
   user's asked-first approval of that exact location (AskUserQuestion, per the interaction
   baseline); never silently, however conventional the spot looks. A sibling repo is never
