@@ -142,8 +142,6 @@ const NON_SKILL_TOKENS = new Set([
     'angular-cli',
     'chrome-devtools',
     'appium-mcp',
-    // a memory_type value named in baseline-memory.md - a metadata kind, not a skill.
-    'project-fact',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
