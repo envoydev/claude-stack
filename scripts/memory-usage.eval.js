@@ -99,6 +99,9 @@ const FIXTURES_DIR = path.join(ROOT, 'scripts', 'fixtures', 'memory-usage');
 // live; override for a later pin via env, never hardcode a second place.
 const MEMORY_VERSION = process.env.CLAUDE_STACK_EVAL_MEMORY_VERSION || '11.13.0';
 const TMP_BASE = process.env.CLAUDE_STACK_EVAL_SCRATCH || path.join(os.tmpdir(), 'claude-stack-memory-usage-eval');
+// A SIBLING of every per-run project/acct dir, never touched by cleanupRun() (which only ever removes
+// the three paths it is handed) - so a forensics dump written here survives cleanup on purpose.
+const FORENSICS_DIR = path.join(TMP_BASE, 'forensics');
 
 const splitTags = (tags) => String(tags || '').split(',').map((t) => t.trim()).filter(Boolean);
 const truncate = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? `${s.slice(0, n - 1)}...` : s; };
@@ -349,14 +352,51 @@ function seedPreFeatureNote(acctDir, projectDir) {
   fs.writeFileSync(path.join(memDir, 'pre-feature-fact.md'), PRE_FEATURE_NOTE);
 }
 
+// Dedicated to the update-path asserts - a PLAIN read-only open only, never the `immutable=1` URI
+// fallback the shared readDbRows() (used by scenario evaluation, out of scope for this fix) falls
+// back to on a failed first open. `immutable=1` tells SQLite the file will never change for the
+// lifetime of the connection, so it is free to ignore the `-wal` file entirely and answer from
+// whatever the base db file held at open time - a write sitting in the WAL, not yet checkpointed
+// back into the main file, reads back as 0 rows that are really there. Controller directive after
+// the S4 run-2 miss: treated as a real bug, not a transient - do not mask it behind that fallback.
+function readDbRowsForAssert(dbPath) {
+  let sqliteMod;
+  try { process.removeAllListeners('warning'); sqliteMod = require('node:sqlite'); } catch { return null; }
+  const { DatabaseSync } = sqliteMod;
+  let db;
+  try { db = new DatabaseSync(dbPath, { readOnly: true }); } catch { return null; }
+  try { return db.prepare('SELECT id, content, tags, memory_type, created_at FROM memories WHERE deleted_at IS NULL ORDER BY created_at DESC').all(); }
+  catch { return null; }
+  finally { try { db.close(); } catch { /* ignore */ } }
+}
+
+// On ANY failed post-update assert: copy the install log, the update log, and the db file plus its
+// `-wal`/`-shm` sidecars (whichever exist - WAL mode may or may not be in play) into a forensics
+// folder OUTSIDE the temp project (a FORENSICS_DIR sibling, never a path cleanupRun() touches), so
+// they survive the run's own cleanup. Returns the folder's path, which the caller folds into the
+// thrown error - "name it in the record".
+function writeUpdateForensics(projectDir, { preInstallLog, updateLog, dbPath }) {
+  const dir = path.join(FORENSICS_DIR, `${path.basename(projectDir)}-${crypto.randomBytes(4).toString('hex')}`);
+  fs.mkdirSync(dir, { recursive: true });
+  try { fs.writeFileSync(path.join(dir, 'pre-feature-install.log'), preInstallLog || ''); } catch { /* best effort */ }
+  try { fs.writeFileSync(path.join(dir, 'update.log'), updateLog || ''); } catch { /* best effort */ }
+  for (const suffix of ['', '-wal', '-shm']) {
+    const src = `${dbPath}${suffix}`;
+    if (fs.existsSync(src)) { try { fs.copyFileSync(src, path.join(dir, `memory.db${suffix}`)); } catch { /* best effort */ } }
+  }
+  return dir;
+}
+
 // Builds a project two ways in sequence: (1) `install` from the PRE-FEATURE snapshot (no memory
 // feature at all - the old installer has no `mcp memory` / `rule baseline-memory` / `--memory-level`
-// to select in the first place), then seeds a Claude-own-memory note for it, then (2) `update` from
-// THIS working tree's HEAD snapshot, which should register the memory MCP, drop baseline-memory.md
-// in, import the seeded note, and switch autoMemoryEnabled off. Both installer invocations run under
-// one sandboxed CLAUDE_CONFIG_DIR (never the real account - the whole point of a temp-project matrix,
-// CLAUDE.md's own invariant) so the note-seeding step has a folder to seed into that is not the real
-// ~/.claude, and never touches it.
+// to select in the first place; the scenario's own agent(s), if any, are selected here too - see the
+// note above the selection lines), then seeds a Claude-own-memory note for it, then (2) `update`
+// --installed-only from THIS working tree's HEAD snapshot - the real path a user's no-questions
+// `update` takes, not an explicit --selection - which should register the memory MCP, drop
+// baseline-memory.md in, import the seeded note, and switch autoMemoryEnabled off. Both installer
+// invocations run under one sandboxed CLAUDE_CONFIG_DIR (never the real account - the whole point of
+// a temp-project matrix, CLAUDE.md's own invariant) so the note-seeding step has a folder to seed
+// into that is not the real ~/.claude, and never touches it.
 //
 // Every failure - a spawn error, a non-zero installer exit, a failed assertion - is a thrown Error,
 // which runOne()'s existing try/catch already turns into a reported record (pass:false, error
@@ -377,14 +417,22 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // plugin/skill/agent lines) - the old installer has no memory categories to name, and this is
   // meant to be fast + deterministic, not a full-catalog install; hooks install in full regardless
   // ("a selection with no 'hook' lines installs all hooks", both installer twins' own --help text).
+  // The scenario's own agent(s) (evidence-gatherer for scenarios 3/4) are selected HERE, pre-feature,
+  // not in step 2 - step 2 now runs `--installed-only` (real-user update path, controller directive
+  // after the re-review: real users update through --installed-only, not --selection), which refreshes
+  // whatever is ALREADY installed rather than adding anything new; an agent named only in step 2's own
+  // selection would never have landed under that mode.
   const preSelectionPath = path.join(projectDir, '.eval-pre-feature-selection.txt');
-  fs.writeFileSync(preSelectionPath, 'rule baseline-navigation\n');
-  try {
-    execFileSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {
-      cwd: projectDir, stdio: 'pipe', timeout: 180000, env: sandboxEnv,
-    });
-  } catch (err) {
-    throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) failed: ${err && err.message ? err.message : err}${err && err.stderr ? ` - ${String(err.stderr).slice(-2000)}` : ''}`);
+  const preSelectionLines = ['rule baseline-navigation', ...agents.map((a) => `agent ${a}`)];
+  fs.writeFileSync(preSelectionPath, `${preSelectionLines.join('\n')}\n`);
+  // spawnSync (not execFileSync): the log is captured regardless of exit code, not only on a throw -
+  // needed so a LATER assert failure (the install itself having exited 0) can still dump what it saw.
+  const preInstallRes = spawnSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {
+    cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
+  });
+  const preInstallLog = `$ install --selection ${preSelectionPath} --source ${preSrc}\nexit=${preInstallRes.status}\n--- stdout ---\n${preInstallRes.stdout || ''}\n--- stderr ---\n${preInstallRes.stderr || ''}\n`;
+  if (preInstallRes.error || preInstallRes.status !== 0) {
+    throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) failed: ${preInstallRes.error ? preInstallRes.error.message : `exit ${preInstallRes.status}`} - ${String(preInstallRes.stderr || '').slice(-2000)}`);
   }
   const preMcp = fs.existsSync(path.join(projectDir, '.mcp.json')) ? JSON.parse(fs.readFileSync(path.join(projectDir, '.mcp.json'), 'utf8') || '{}') : {};
   const preHasMemory = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md')) || !!(preMcp.mcpServers && preMcp.mcpServers.memory);
@@ -397,17 +445,17 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   seedPreFeatureNote(acctDir, projectDir);
 
   // Step 2: update, from a release-shaped snapshot of THIS working tree's HEAD (C1's exact gap - no
-  // node_modules). Explicit --selection (not --installed-only): deterministic regardless of whether
-  // the update path's own 'always add locked categories' fix has landed yet.
-  const updateSelectionPath = path.join(projectDir, '.eval-update-selection.txt');
-  const updateSelectionLines = ['rule baseline-navigation', 'rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
-  fs.writeFileSync(updateSelectionPath, `${updateSelectionLines.join('\n')}\n`);
-  try {
-    execFileSync('bash', [path.join(relSrc, 'scripts', 'os', 'claude-stack.sh'), 'update', '--scope', 'project', '--selection', updateSelectionPath, '--source', relSrc, '--memory-level', 'project'], {
-      cwd: projectDir, stdio: 'pipe', timeout: 180000, env: sandboxEnv,
-    });
-  } catch (err) {
-    throw new Error(`update (HEAD, over the ${PRE_FEATURE_COMMIT} baseline) failed: ${err && err.message ? err.message : err}${err && err.stderr ? ` - ${String(err.stderr).slice(-2000)}` : ''}`);
+  // node_modules). `--installed-only` (not an explicit --selection) - the real path a user's
+  // no-questions `update` actually takes, per the re-review: baseline-memory / memory-session /
+  // docs-session / the memory MCP are all NEW categories this pre-feature project never had, so this
+  // depends on the installer treating them as locked/always-add rather than 'not currently installed,
+  // so not wanted' - the fix the controller flagged as landing separately. Do not run this until told to.
+  const updateRes = spawnSync('bash', [path.join(relSrc, 'scripts', 'os', 'claude-stack.sh'), 'update', '--scope', 'project', '--installed-only', '--source', relSrc, '--memory-level', 'project'], {
+    cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
+  });
+  const updateLog = `$ update --installed-only --source ${relSrc} --memory-level project\nexit=${updateRes.status}\n--- stdout ---\n${updateRes.stdout || ''}\n--- stderr ---\n${updateRes.stderr || ''}\n`;
+  if (updateRes.error || updateRes.status !== 0) {
+    throw new Error(`update --installed-only (HEAD, over the ${PRE_FEATURE_COMMIT} baseline) failed: ${updateRes.error ? updateRes.error.message : `exit ${updateRes.status}`} - ${String(updateRes.stderr || '').slice(-2000)}`);
   }
 
   const dbPath = path.join(projectDir, '.memory-mcp', 'memory.db');
@@ -415,28 +463,42 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
 
   // Assert per the brief: baseline-memory.md present, memory registered, the note imported (a row in
   // the db), autoMemoryEnabled false. Each check names exactly what it found, not just pass/fail, so
-  // a failure record is diagnosable from the JSON results file alone.
-  const asserts = [];
-  const ruleOk = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md'));
-  asserts.push(`baseline-memory.md present: ${ruleOk}`);
-  if (!ruleOk) throw new Error(`update assertion failed - baseline-memory.md missing after update (${asserts.join('; ')})`);
+  // a failure record is diagnosable from the JSON results file alone. Wrapped so ANY assert failure
+  // (controller directive after the S4 run-2 miss, now treated as a real bug, not a transient) dumps
+  // forensics - the install/update logs plus the db and its -wal/-shm sidecars - to a folder OUTSIDE
+  // the temp project, before cleanupRun() removes everything, and names that folder in the error text
+  // that ends up in the record.
+  try {
+    const asserts = [];
+    const ruleOk = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md'));
+    asserts.push(`baseline-memory.md present: ${ruleOk}`);
+    if (!ruleOk) throw new Error(`update assertion failed - baseline-memory.md missing after update (${asserts.join('; ')})`);
 
-  const mcpData = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8') || '{}');
-  const memEntry = mcpData.mcpServers && mcpData.mcpServers.memory;
-  asserts.push(`memory registered in .mcp.json: ${!!(memEntry && memEntry.command)}`);
-  if (!memEntry || !memEntry.command) throw new Error(`update assertion failed - no memory server registered in .mcp.json (${asserts.join('; ')})`);
+    const mcpData = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8') || '{}');
+    const memEntry = mcpData.mcpServers && mcpData.mcpServers.memory;
+    asserts.push(`memory registered in .mcp.json: ${!!(memEntry && memEntry.command)}`);
+    if (!memEntry || !memEntry.command) throw new Error(`update assertion failed - no memory server registered in .mcp.json (${asserts.join('; ')})`);
 
-  const settingsPath = path.join(projectDir, '.claude', 'settings.json');
-  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8') || '{}');
-  asserts.push(`autoMemoryEnabled false: ${settings.autoMemoryEnabled === false}`);
-  if (settings.autoMemoryEnabled !== false) throw new Error(`update assertion failed - autoMemoryEnabled is ${JSON.stringify(settings.autoMemoryEnabled)}, expected false (${asserts.join('; ')})`);
+    const settingsPath = path.join(projectDir, '.claude', 'settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8') || '{}');
+    asserts.push(`autoMemoryEnabled false: ${settings.autoMemoryEnabled === false}`);
+    if (settings.autoMemoryEnabled !== false) throw new Error(`update assertion failed - autoMemoryEnabled is ${JSON.stringify(settings.autoMemoryEnabled)}, expected false (${asserts.join('; ')})`);
 
-  const rows = readDbRows(dbPath) || [];
-  const importedRow = rows.find((r) => /8213/.test(r.content));
-  asserts.push(`note imported (a row in the db): ${!!importedRow}`);
-  if (!importedRow) throw new Error(`update assertion failed - no db row for the seeded pre-feature note (${rows.length} row(s) total) (${asserts.join('; ')})`);
+    // Plain read-only open ONLY - no immutable=1 URI fallback (readDbRowsForAssert, not the shared
+    // readDbRows()). Controller directive: immutable tells SQLite the file never changes, so a reader
+    // opened that way can ignore the -wal file entirely and see a stale, pre-write snapshot - 0 rows
+    // that are really there the moment a write landed in the WAL and had not yet been checkpointed
+    // into the main db file. That masked the real bug behind the S4 run-2 miss as a false 'no row'.
+    const rows = readDbRowsForAssert(dbPath) || [];
+    const importedRow = rows.find((r) => /8213/.test(r.content));
+    asserts.push(`note imported (a row in the db): ${!!importedRow}`);
+    if (!importedRow) throw new Error(`update assertion failed - no db row for the seeded pre-feature note (${rows.length} row(s) total) (${asserts.join('; ')})`);
 
-  return { projectDir, dbPath, mcpConfigPath, acctDir, updateAsserts: asserts };
+    return { projectDir, dbPath, mcpConfigPath, acctDir, updateAsserts: asserts };
+  } catch (assertErr) {
+    const forensicsDir = writeUpdateForensics(projectDir, { preInstallLog, updateLog, dbPath });
+    throw new Error(`${assertErr.message} - forensics: ${forensicsDir}`);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -987,6 +1049,7 @@ async function main() {
 module.exports = {
   SCENARIOS, buildProjectSelf, memoryRegistration, findProjectSlugDir,
   passMarkFor, summarize, PRE_FEATURE_COMMIT, extractGitArchive, buildProjectUpdate,
+  readDbRowsForAssert, writeUpdateForensics, FORENSICS_DIR,
 };
 
 if (require.main === module) {
