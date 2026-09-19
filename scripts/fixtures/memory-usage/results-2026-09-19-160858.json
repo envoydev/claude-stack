@@ -1,0 +1,228 @@
+{
+  "ranAt": "2026-09-19T16:08:58.218Z",
+  "model": "sonnet",
+  "runs": 3,
+  "parallel": 3,
+  "setup": "update",
+  "records": [
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 1,
+      "runId": "02fc02bb9ae7",
+      "exitCode": 0,
+      "costUsd": 0.101688,
+      "finalText": "Got it — saved as a project preference. All test files here will use the `.spec` suffix from now on.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #2 [preference_signal] tags=project:s1-run1-02fc02bb9ae7",
+      "pass": true
+    },
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 2,
+      "runId": "ad965a715e13",
+      "exitCode": 0,
+      "costUsd": 0.0916782,
+      "finalText": "Saved: test files in this project should use a `.spec` suffix going forward.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #2 [preference_signal] tags=project:s1-run2-ad965a715e13",
+      "pass": true
+    },
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 3,
+      "runId": "64bb85f5c988",
+      "exitCode": 0,
+      "costUsd": 0.09225420000000001,
+      "finalText": "Saved: test files will use a `.spec` suffix in this project going forward.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #2 [preference_signal] tags=project:s1-run3-64bb85f5c988",
+      "pass": true
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 1,
+      "runId": "9b8acce320a1",
+      "exitCode": 0,
+      "costUsd": 0.0563314,
+      "finalText": "12 DONE",
+      "toolEvidence": "SessionStart block carried the preference",
+      "dbEvidence": "answer ended with DONE: \"12 DONE\"",
+      "pass": true
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 2,
+      "runId": "53339c124e23",
+      "error": "'initialize' timed out after 120000ms",
+      "toolEvidence": "ERROR",
+      "dbEvidence": "'initialize' timed out after 120000ms",
+      "pass": false
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 3,
+      "runId": "09a765f41c79",
+      "exitCode": 0,
+      "costUsd": 0.0563074,
+      "finalText": "12 DONE",
+      "toolEvidence": "SessionStart block carried the preference",
+      "dbEvidence": "answer ended with DONE: \"12 DONE\"",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 1,
+      "runId": "0ddc4e989799",
+      "exitCode": 0,
+      "costUsd": 0.22793519999999995,
+      "finalText": "Dispatched the evidence-gatherer agent to reproduce `npm test`, pin down the exact error, and save a memory note if it finds a reusable quirk. It's running in the background - I'll report back once it completes.",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "row #2 tags=agent:evidence-gatherer,project:s3-run1-0ddc4e989799",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 2,
+      "runId": "fbfd489104c8",
+      "exitCode": 0,
+      "costUsd": 0.1629968,
+      "finalText": "Root cause: `npm test` runs `node test.js`, which calls `getRetryDelayMs()` from `retry.js`. That function reads `process.env.RETRY_DELAY_MS` with no default and throws if it's unset - and nothing in the repo ever sets it, so the test always fails.\n\nFix: `RETRY_DELAY_MS=250 npm test` (test.js asser...",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "row #2 tags=agent:evidence-gatherer,project:s3-run2-fbfd489104c8",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 3,
+      "runId": "a4f80e3a762f",
+      "exitCode": 0,
+      "costUsd": 0.1456118,
+      "finalText": "Evidence-gatherer agent dispatched to reproduce the `npm test` failure and diagnose root cause, with instructions to save any reusable finding to shared memory first. Will report back once it completes.",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "no agent-tagged learning row",
+      "pass": false
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 1,
+      "runId": "4af33d37636c",
+      "exitCode": 0,
+      "costUsd": 0.1347396,
+      "finalText": "Evidence-gatherer agent is running in the background to look up the staging database port in shared memory.",
+      "toolEvidence": "subagent memory_search/list x1",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 2,
+      "runId": "8a74b1c261a2",
+      "error": "update assertion failed - no db row for the seeded pre-feature note (0 row(s) total) (baseline-memory.md present: true; memory registered in .mcp.json: true; autoMemoryEnabled false: true; note imported (a row in the db): false)",
+      "toolEvidence": "ERROR",
+      "dbEvidence": "update assertion failed - no db row for the seeded pre-feature note (0 row(s) total) (baseline-memory.md present: true; memory registered in .mcp.json: true; autoMemoryEnabled false: true; note imported (a row in the db): false)",
+      "pass": false
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 3,
+      "runId": "1e6abd18bd1d",
+      "exitCode": 0,
+      "costUsd": 0.35249680000000005,
+      "finalText": "Dispatched - the evidence-gatherer is searching shared project memory for the staging database port. I'll report back once it completes.",
+      "toolEvidence": "subagent memory_search/list x1",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 1,
+      "runId": "5c44b54e38df",
+      "exitCode": 0,
+      "costUsd": 0.056709199999999994,
+      "finalText": "Port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 2,
+      "runId": "a92990710f21",
+      "exitCode": 0,
+      "costUsd": 0.056661199999999995,
+      "finalText": "Port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 3,
+      "runId": "5f08ffe611e3",
+      "exitCode": 0,
+      "costUsd": 0.0567332,
+      "finalText": "Port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    }
+  ],
+  "verdicts": [
+    {
+      "scenario": 1,
+      "name": "session writes",
+      "passes": 3,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 2,
+      "name": "session reads",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 3,
+      "name": "agent writes",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 4,
+      "name": "agent reads",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 5,
+      "name": "related project reads",
+      "passes": 3,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    }
+  ],
+  "totalCostUsd": 1.592143
+}

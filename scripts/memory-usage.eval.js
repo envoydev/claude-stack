@@ -361,10 +361,12 @@ function seedPreFeatureNote(acctDir, projectDir) {
 // Every failure - a spawn error, a non-zero installer exit, a failed assertion - is a thrown Error,
 // which runOne()'s existing try/catch already turns into a reported record (pass:false, error
 // message) rather than crashing the batch; nothing extra is needed here for that requirement.
-async function buildProjectUpdate(projectDir, { agents = [] } = {}) {
+async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const preSrc = preFeatureSrc();
   const relSrc = releaseSrcSnapshot();
-  const acctDir = path.join(path.dirname(projectDir), `${path.basename(projectDir)}-acct`);
+  // The caller (runOne) computes this BEFORE calling in, so it stays known for cleanup even if this
+  // function throws partway through; a standalone caller (a smoke test) gets the same derivation.
+  if (!acctDir) acctDir = path.join(path.dirname(projectDir), `${path.basename(projectDir)}-acct`);
   fs.mkdirSync(acctDir, { recursive: true });
   const sandboxEnv = { ...process.env, CLAUDE_CONFIG_DIR: acctDir };
 
@@ -810,13 +812,20 @@ async function runOne(scenario, runIndex, opts) {
   const projectDir = path.join(TMP_BASE, `s${scenario.id}-run${runIndex}-${runId}`);
   const sessionId = crypto.randomUUID();
   let slugDir = null;
-  let acctDir = null;
+  // Computed BEFORE build(), not read back from its return value: buildProjectUpdate creates acctDir
+  // as its very first step, so a THROWN assertion/install failure later in that same function must
+  // still leave this known for cleanup - reading it off a successful return only (the previous shape)
+  // silently orphaned the sandboxed account dir (and everything under it, including its own
+  // projects/<slug>/ folder) on every setup failure. Harmless for self/install (stays null, unused).
+  let acctDir = opts.setup === 'update' ? path.join(TMP_BASE, `${path.basename(projectDir)}-acct`) : null;
   const record = { scenario: scenario.id, scenarioName: scenario.name, run: runIndex, runId };
   try {
     const build = opts.setup === 'install' ? buildProjectInstall : opts.setup === 'update' ? buildProjectUpdate : buildProjectSelf;
-    const built = await build(projectDir, { agents: scenario.agents });
+    const built = opts.setup === 'update' ? await build(projectDir, { agents: scenario.agents, acctDir }) : await build(projectDir, { agents: scenario.agents });
     const { dbPath, mcpConfigPath } = built;
-    acctDir = built.acctDir || null;
+    // The four post-update asserts, always present on a successful buildProjectUpdate (a failing one
+    // throws instead, caught below, with the same four folded into record.error's text).
+    if (built.updateAsserts) record.updateAsserts = built.updateAsserts;
     const projectName = path.basename(projectDir);
     if (scenario.setup) await scenario.setup(mcpConfigPath, projectDir, projectName);
 
@@ -963,6 +972,14 @@ async function main() {
     records, verdicts, totalCostUsd: totalCost,
   }, null, 2));
   console.log(`results written to ${path.relative(ROOT, outFile)}`);
+
+  // The --setup update archive caches (preFeatureSrc()/releaseSrcSnapshot()) are shared across every
+  // run in THIS process for speed, never removed per-run - clean them up once, here, so a script
+  // invocation does not leave a pre-feature-src-<sha>/ and a fresh release-src-HEAD-<hex>/ behind on
+  // every single run (the latter never reused between invocations, since each carries its own random
+  // suffix - an unbounded leak otherwise).
+  if (preFeatureSrcDir) { try { fs.rmSync(preFeatureSrcDir, { recursive: true, force: true }); } catch { /* best effort */ } }
+  if (releaseSrcDir) { try { fs.rmSync(releaseSrcDir, { recursive: true, force: true }); } catch { /* best effort */ } }
 
   process.exitCode = verdicts.some((v) => v.passes < v.passMark) ? 1 : 0;
 }
