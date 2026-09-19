@@ -1080,10 +1080,13 @@ if [ "$INSTALLED_ONLY" = true ]; then
   # same way: a rule or server every install carries reached an existing one ONLY here - measured, a
   # pre-memory install updated to this release gained the start hook but never baseline-memory.md or
   # the memory server, the rule and the server the switch-off of Claude's own memory depends on. A
-  # layer this install does not carry at all (no rule, or no server, found above) stays absent, and a
-  # deliberate drop is the stamp's: named in the previous run's shipped-always-<layer>s and absent now.
+  # layer this install does not carry at all (no rule, or no server, found above) stays absent. There
+  # is NO drop exception here, unlike hooks: the always set is locked, like serena, so an always item
+  # absent from disk is adopted whatever the previous stamp says - a stamp that named the shipped list
+  # once read as a drop of everything a standalone run had failed to adopt, and memory never arrived.
   # The file sits next to this script (a checkout or an extracted snapshot) or in --source; a bare
-  # curl-piped run has neither and adopts nothing - the import gate below then keeps memory on.
+  # curl-piped run has neither and adopts nothing - the import gate below then keeps memory on, and
+  # the next run that finds the file adopts.
   _io_recs=""
   for _io_c in "$_io_script_dir/../../meta/recommendations.json" "${SOURCE_DIR:+$SOURCE_DIR/meta/recommendations.json}"; do
     if [ -n "$_io_c" ] && [ -f "$_io_c" ]; then _io_recs="$_io_c"; break; fi
@@ -1091,13 +1094,9 @@ if [ "$INSTALLED_ONLY" = true ]; then
   if [ -n "$_io_recs" ] && command -v node >/dev/null 2>&1; then
     for _io_cat in rule mcp; do
       grep -q "^$_io_cat " "$SELECTION" || continue
-      _io_prev="$(sed -n "s/^shipped-always-${_io_cat}s: //p" "$_io_claude/claude-stack.stamp" 2>/dev/null | head -1 || true)"
       _io_always="$(node -e 'try{const a=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).always||{})[process.argv[2]];if(Array.isArray(a))console.log(a.join(" "));}catch{}' "$_io_recs" "${_io_cat}s" 2>/dev/null || true)"
       for _io_n in $_io_always; do
         if grep -qxF "$_io_cat $_io_n" "$SELECTION"; then continue; fi
-        case ",$_io_prev," in
-          *",$_io_n,"*) log "installed-only: $_io_cat $_io_n was dropped from this install - leaving it out"; continue ;;
-        esac
         printf '%s %s\n' "$_io_cat" "$_io_n" >> "$SELECTION"
         log "installed-only: adopting $_io_cat $_io_n - always shipped by this release and absent here"
       done
@@ -2124,13 +2123,25 @@ write_stamp() {
     case ",$_sh_seen," in *",$_sh_n,"*) continue ;; esac
     _sh_seen="$_sh_seen,$_sh_n"; _stamp_hooks="${_stamp_hooks:+$_stamp_hooks,}$_sh_n"
   done
-  # The always-on rules and servers this release ships (the snapshot's meta/recommendations.json) - the
-  # same shipped-then record for the --installed-only adoption of that baseline. Empty when the snapshot
-  # or node cannot say, which the next run reads as 'nothing shipped then' (adopt once, like no key).
-  local _stamp_always_rules="" _stamp_always_mcps=""
+  # The locked baseline (the snapshot's meta/recommendations.json `always.rules` / `always.mcps`) this
+  # install actually CARRIES as the run ends: rule files under the repo's .claude/rules (where every
+  # scope's rules land), servers in this project's .mcp.json or, at global scope, the account's
+  # registration file. What is on disk, never what shipped - and no run reads it back as a drop: the
+  # always set is locked, so --installed-only adopts an absent item every time. (The shipped list
+  # recorded here once made the next update read everything a standalone run failed to adopt as
+  # dropped.) Empty when the snapshot or node cannot say.
+  local _stamp_always="" _stamp_always_rules="" _stamp_always_mcps="" _stamp_rules_dir="" _stamp_mcp_file
+  _stamp_rules_dir="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -z "$_stamp_rules_dir" ] || _stamp_rules_dir="$_stamp_rules_dir/.claude/rules"
+  case "$CLAUDE_SCOPE" in user) _stamp_mcp_file="$ACCOUNT_CLAUDE_JSON" ;; *) _stamp_mcp_file="$PWD/.mcp.json" ;; esac
   if command -v node >/dev/null 2>&1 && [ -f "$STACK_SRC/meta/recommendations.json" ]; then
-    _stamp_always_rules="$(node -e 'try{const a=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).always||{}).rules;if(Array.isArray(a))console.log(a.join(","));}catch{}' "$STACK_SRC/meta/recommendations.json" 2>/dev/null || true)"
-    _stamp_always_mcps="$(node -e 'try{const a=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).always||{}).mcps;if(Array.isArray(a))console.log(a.join(","));}catch{}' "$STACK_SRC/meta/recommendations.json" 2>/dev/null || true)"
+    _stamp_always="$(node -e 'const fs=require("fs"),path=require("path");const [recs,mcpFile,rulesDir]=process.argv.slice(1);
+let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,"utf8")).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,"utf8")).mcpServers||{};}catch{}
+const list=(x)=>(Array.isArray(x)?x:[]);
+console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+".md"))).join(","));
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(","));' "$STACK_SRC/meta/recommendations.json" "$_stamp_mcp_file" "$_stamp_rules_dir" 2>/dev/null || true)"
+    _stamp_always_rules="$(printf '%s\n' "$_stamp_always" | sed -n 1p)"
+    _stamp_always_mcps="$(printf '%s\n' "$_stamp_always" | sed -n 2p)"
   fi
   cat > "$dest" <<STAMP
 # claude-stack install stamp - machine-local, written by claude-stack.sh / claude-stack.ps1.
@@ -2146,8 +2157,8 @@ installed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 action: $ACTION
 scope: $CLAUDE_SCOPE
 shipped-hooks: $_stamp_hooks
-shipped-always-rules: $_stamp_always_rules
-shipped-always-mcps: $_stamp_always_mcps
+installed-always-rules: $_stamp_always_rules
+installed-always-mcps: $_stamp_always_mcps
 STAMP
   log "  stamp: $dest @ $(printf '%.12s' "$STACK_SHA")"
 }

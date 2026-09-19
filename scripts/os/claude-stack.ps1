@@ -1178,10 +1178,13 @@ if ($InstalledOnly) {
   # same way: a rule or server every install carries reached an existing one ONLY here - measured, a
   # pre-memory install updated to this release gained the start hook but never baseline-memory.md or
   # the memory server, the rule and the server the switch-off of Claude's own memory depends on. A
-  # layer this install does not carry at all (no rule, or no server, found above) stays absent, and a
-  # deliberate drop is the stamp's: named in the previous run's shipped-always-<layer>s and absent now.
+  # layer this install does not carry at all (no rule, or no server, found above) stays absent. There
+  # is NO drop exception here, unlike hooks: the always set is locked, like serena, so an always item
+  # absent from disk is adopted whatever the previous stamp says - a stamp that named the shipped list
+  # once read as a drop of everything a standalone run had failed to adopt, and memory never arrived.
   # The file sits next to this script (a checkout or an extracted snapshot) or in -Source; a run with
-  # neither adopts nothing - the import gate below then keeps memory on.
+  # neither adopts nothing - the import gate below then keeps memory on, and the next run that finds
+  # the file adopts.
   $ioRecs = ''
   foreach ($c in @((Join-Path $PSScriptRoot '..\..\meta\recommendations.json'), $(if ($Source) { Join-Path $Source 'meta/recommendations.json' } else { '' }))) {
     if ($c -and (Test-Path -LiteralPath $c)) { $ioRecs = $c; break }
@@ -1189,18 +1192,11 @@ if ($InstalledOnly) {
   if ($ioRecs) {
     $ioAlways = $null
     try { $ioAlways = (Get-Content -LiteralPath $ioRecs -Raw | ConvertFrom-Json).always } catch { $ioAlways = $null }
-    $ioStampFile = Join-Path $ioClaude 'claude-stack.stamp'
-    $ioStampLines = if (Test-Path -LiteralPath $ioStampFile) { @(Get-Content -LiteralPath $ioStampFile) } else { @() }
     foreach ($cat in @('rule', 'mcp')) {
       if (-not ($ioLines | Where-Object { $_.StartsWith("$cat ") })) { continue }
-      $ioPrev = @()
-      foreach ($l in $ioStampLines) {
-        if ($l -match "^shipped-always-$($cat)s:\s*(.*)$") { $ioPrev = @($Matches[1] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
-      }
       $ioNames = if ($ioAlways -and $ioAlways.PSObject.Properties["$($cat)s"]) { @($ioAlways."$($cat)s") } else { @() }
       foreach ($n in $ioNames) {
         if ($ioLines -contains "$cat $n") { continue }
-        if ($ioPrev -contains $n) { Log "installed-only: $cat $n was dropped from this install - leaving it out"; continue }
         $ioLines += "$cat $n"
         Log "installed-only: adopting $cat $n - always shipped by this release and absent here"
       }
@@ -2346,16 +2342,34 @@ function Write-Stamp {
     if ($stampHookNames -notcontains $n) { $stampHookNames += $n }
   }
   $stampHooks = $stampHookNames -join ','
-  # The always-on rules and servers this release ships (the snapshot's meta/recommendations.json) - the
-  # same shipped-then record for the -InstalledOnly adoption of that baseline. Empty when the snapshot
-  # cannot say, which the next run reads as 'nothing shipped then' (adopt once, like no key).
+  # The locked baseline (the snapshot's meta/recommendations.json `always.rules` / `always.mcps`) this
+  # install actually CARRIES as the run ends: rule files under the repo's .claude/rules (where every
+  # scope's rules land), servers in this project's .mcp.json or, at global scope, the account's
+  # registration file. What is on disk, never what shipped - and no run reads it back as a drop: the
+  # always set is locked, so -InstalledOnly adopts an absent item every time. (The shipped list
+  # recorded here once made the next update read everything a standalone run failed to adopt as
+  # dropped.) Empty when the snapshot or node cannot say. node, not ConvertFrom-Json: the account
+  # file can hold keys differing only in case, which ConvertFrom-Json refuses.
   $stampAlwaysRules = ''; $stampAlwaysMcps = ''
   $stampRecs = if ($script:StackSrc) { Join-Path $script:StackSrc 'meta/recommendations.json' } else { '' }
-  if ($stampRecs -and (Test-Path -LiteralPath $stampRecs)) {
+  if ($stampRecs -and (Test-Path -LiteralPath $stampRecs) -and (Get-Command node -ErrorAction SilentlyContinue)) {
+    $stampRepo = Get-RepoRoot
+    $stampRulesDir = if ($stampRepo) { Join-Path (Join-Path $stampRepo '.claude') 'rules' } else { '' }
+    $stampMcpFile = if ($ClaudeScope -eq 'user') { $AccountClaudeJson } else { Join-Path (Get-Location).Path '.mcp.json' }
+    # no double quotes in the program: Windows PowerShell 5.1 strips them from a native argument
+    $stampScript = @'
+const fs=require('fs'),path=require('path');const [recs,mcpFile,rulesDir]=process.argv.slice(1);
+let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,'utf8')).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,'utf8')).mcpServers||{};}catch{}
+const list=(x)=>(Array.isArray(x)?x:[]);
+console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+'.md'))).join(','));
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(','));
+'@
+    # the rules dir goes LAST: Windows PowerShell 5.1 drops an empty native argument, so an empty one
+    # anywhere else would shift the rest
     try {
-      $stampAlways = (Get-Content -LiteralPath $stampRecs -Raw | ConvertFrom-Json).always
-      if ($stampAlways.PSObject.Properties['rules']) { $stampAlwaysRules = @($stampAlways.rules) -join ',' }
-      if ($stampAlways.PSObject.Properties['mcps']) { $stampAlwaysMcps = @($stampAlways.mcps) -join ',' }
+      $stampAlways = @(& node -e $stampScript $stampRecs $stampMcpFile $stampRulesDir 2>$null)
+      if ($stampAlways.Count -ge 1) { $stampAlwaysRules = "$($stampAlways[0])".Trim() }
+      if ($stampAlways.Count -ge 2) { $stampAlwaysMcps = "$($stampAlways[1])".Trim() }
     } catch { $stampAlwaysRules = ''; $stampAlwaysMcps = '' }
   }
   $lines = @(
@@ -2372,8 +2386,8 @@ function Write-Stamp {
     "action: $Action"
     "scope: $ClaudeScope"
     "shipped-hooks: $stampHooks"
-    "shipped-always-rules: $stampAlwaysRules"
-    "shipped-always-mcps: $stampAlwaysMcps"
+    "installed-always-rules: $stampAlwaysRules"
+    "installed-always-mcps: $stampAlwaysMcps"
   )
   # LF + no BOM, byte-for-byte what the sh twin writes. Set-Content emits [Environment]::NewLine,
   # so on Windows the same stamp came out CRLF - and a reader that splits on `\n` then anchors a

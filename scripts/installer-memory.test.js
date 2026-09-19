@@ -19,6 +19,7 @@ const ROOT = path.join(__dirname, '..');
 const SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
 const PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
 const FAKE_SERVER = path.join(ROOT, 'scripts', 'fixtures', 'fake-memory-server.js');
+const MEMORY_SCHEMA = path.join(ROOT, 'scripts', 'fixtures', 'memory-schema.sql');
 const RECS = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8'));
 // the hook catalog the installer manifest ships, read from the manifest itself
 const ALL_SHIPPED_HOOKS = [...new Set([...fs.readFileSync(SH, 'utf8').matchAll(/^\s*"([a-z0-9-]+)\.js::/gm)].map((m) => m[1]))];
@@ -80,18 +81,37 @@ function sandbox(opts = {})
         ''].join('\r\n'));
     // uvx stub: `--version` (the prerequisites-check probe) answers directly - the real invocation
     // never returns until stdin closes, so falling through to the fake server there would hang every
-    // run. Anything else forwards straight to the fake memory server; this only ever actually runs
+    // run. Anything else runs the fake memory server through a launcher; this only ever actually runs
     // when memory-import.js spawns the registered `memory` entry (`claude mcp add` is metadata-only,
-    // never spawns the command it registers).
+    // never spawns the command it registers). The importer passes the registration's env, so the
+    // launcher sees the REGISTERED MCP_MEMORY_SQLITE_PATH: it creates that db from the fixture schema
+    // when absent (the real server creates its own on first start), and the fake server then writes a
+    // live row per store there - the row the importer re-opens the file to confirm.
+    const launcher = path.join(bin, 'fake-memory-launch.js');
+    fs.writeFileSync(launcher, [
+        '\'use strict\';',
+        'const fs = require(\'node:fs\');',
+        'const path = require(\'node:path\');',
+        'const db = process.env.MCP_MEMORY_SQLITE_PATH;',
+        'if (db && !fs.existsSync(db))',
+        '{',
+        '    fs.mkdirSync(path.dirname(db), { recursive: true });',
+        '    const { DatabaseSync } = require(\'node:sqlite\');',
+        '    const d = new DatabaseSync(db);',
+        `    d.exec(fs.readFileSync(${JSON.stringify(MEMORY_SCHEMA)}, 'utf8'));`,
+        '    d.close();',
+        '}',
+        `require(${JSON.stringify(FAKE_SERVER)});`,
+        ''].join('\n'));
     fs.writeFileSync(path.join(bin, 'uvx'), [
         '#!/bin/sh',
         'case "$*" in *--version*) echo "uvx 0.0.0 (stub)"; exit 0 ;; esac',
-        `exec node "${FAKE_SERVER}"`,
+        `exec node "${launcher}"`,
         ''].join('\n'), { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'uvx.cmd'), [
         '@echo off',
         'echo %*|findstr /C:"--version" >nul && (echo uvx 0.0.0 ^(stub^)& exit /b 0)',
-        `node "${FAKE_SERVER.replace(/\\/g, '\\\\')}"`,
+        `node "${launcher}"`,
         ''].join('\r\n'));
     const npxLog = path.join(work, 'npx-calls.log');
     fs.writeFileSync(path.join(bin, 'npx'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$NPX_STUB_LOG"', 'exit 0', ''].join('\n'), { mode: 0o755 });
@@ -114,6 +134,7 @@ function sandbox(opts = {})
     };
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY', 'SCOPE']) delete env[k];
     if (opts.failContent) env.FAKE_MEMORY_FAIL_CONTENT = opts.failContent;
+    if (opts.ghostWrite) env.FAKE_MEMORY_SKIP_SQLITE_WRITE = '1';
     return { work, repo, home, acct, sel, env, log, db, callsLog };
 }
 
@@ -184,6 +205,96 @@ function preFeatureInstall(sb, { stampExtra = '' } = {})
     // every other shipped hook reads as a deliberate drop, so the run adopts only memory-session
     const preHooks = ALL_SHIPPED_HOOKS.filter((h) => h !== 'memory-session');
     fs.writeFileSync(path.join(sb.repo, '.claude', 'claude-stack.stamp'), `sha: aaa\nversion: 0.2.85\nshipped-hooks: ${preHooks.join(',')}\n${stampExtra}`);
+}
+
+// The stamp's record of the locked baseline this install ACTUALLY carries: the always rules with a
+// file under .claude/rules and the always servers registered in .mcp.json, in the release's order.
+const stampOf = (sb) => fs.readFileSync(path.join(sb.repo, '.claude', 'claude-stack.stamp'), 'utf8');
+function expectedInstalledAlways(sb)
+{
+    const servers = fs.existsSync(path.join(sb.repo, '.mcp.json')) ? mcpServers(sb) : {};
+    return {
+        rules: RECS.always.rules.filter((r) => fs.existsSync(path.join(sb.repo, '.claude', 'rules', `${r}.md`))).join(','),
+        mcps: RECS.always.mcps.filter((m) => hasKey(servers, m)).join(','),
+    };
+}
+function assertStampRecordsDisk(twin, sb, when)
+{
+    const stamp = stampOf(sb);
+    const want = expectedInstalledAlways(sb);
+    assert.doesNotMatch(stamp, /^shipped-always-/m, `${twin} ${when}: the stamp still records the SHIPPED always list:\n${stamp}`);
+    assert.ok(stamp.includes(`installed-always-rules: ${want.rules}\n`), `${twin} ${when}: the stamp's always rules are not what is on disk (${want.rules}):\n${stamp}`);
+    assert.ok(stamp.includes(`installed-always-mcps: ${want.mcps}\n`), `${twin} ${when}: the stamp's always servers are not what is registered (${want.mcps}):\n${stamp}`);
+}
+
+// Shared fixtures are built once, on first use, and removed when the whole file is done. The hook is
+// registered HERE, at module level: a `test.after` called inside a test runs when THAT test ends, and
+// the next twin's test then read a deleted fixture.
+const sharedFixtureDirs = [];
+test.after(() => { for (const d of sharedFixtureDirs) fs.rmSync(d, { recursive: true, force: true }); });
+
+// The STANDALONE route (README: `bash .claude/claude-stack.sh update --installed-only`): the script
+// sits in a directory with no meta/ beside it and no --source, so it fetches its own snapshot - here
+// the clone fallback from a local repo whose main IS this HEAD (the archive URL does not exist).
+let standaloneRepo = null;
+function standaloneSource()
+{
+    if (standaloneRepo) return standaloneRepo;
+    const dir = mkTmp('instmem-standalone-src-');
+    standaloneRepo = path.join(dir, 'repo');
+    execFileSync('git', ['clone', '--no-hardlinks', '--depth', '1', `file://${ROOT}`, standaloneRepo], { stdio: 'ignore' });
+    execFileSync('git', ['-C', standaloneRepo, 'switch', '-C', 'main'], { stdio: 'ignore' });
+    sharedFixtureDirs.push(dir);
+    return standaloneRepo;
+}
+function runStandaloneInstalledOnly(twin, sb)
+{
+    const dir = path.join(sb.work, 'standalone', 'os');
+    fs.mkdirSync(dir, { recursive: true });
+    const env = { ...sb.env, STACK_SKILLS_REPO: `file://${standaloneSource()}`, STACK_SOURCE_CACHE: '0' };
+    if (twin === 'sh')
+    {
+        const copy = path.join(dir, 'claude-stack.sh');
+        fs.copyFileSync(SH, copy);
+        return execFileSync('bash', [copy, 'update', '--scope', 'project', '--installed-only'], { cwd: sb.repo, encoding: 'utf8', env });
+    }
+    const copy = path.join(dir, 'claude-stack.ps1');
+    fs.copyFileSync(PS1, copy);
+    return execFileSync('pwsh', ['-NoProfile', '-File', copy, 'update', '-Scope', 'project', '-InstalledOnly'], { cwd: sb.repo, encoding: 'utf8', env });
+}
+
+// A REAL pre-feature install: bb5c684 (v0.2.86, the last release before the memory feature) laid down
+// by ITS OWN installer from a `git archive` snapshot carrying the RELEASE-SOURCE a release archive has,
+// with a no-stack project's plugin-setup selection (the release's `always` set in every category).
+const PRE_FEATURE_SHA = 'bb5c684';
+const preFeatureReachable = spawnSync('git', ['-C', ROOT, 'cat-file', '-e', `${PRE_FEATURE_SHA}^{commit}`]).status === 0;
+let preFeatureDir = null;
+function preFeatureSnapshot()
+{
+    if (preFeatureDir) return preFeatureDir;
+    const dir = mkTmp('instmem-bb5c684-');
+    preFeatureDir = path.join(dir, 'src');
+    fs.mkdirSync(preFeatureDir);
+    const tar = path.join(dir, 'src.tar');
+    execFileSync('git', ['-C', ROOT, 'archive', '--format=tar', '-o', tar, PRE_FEATURE_SHA]);
+    execFileSync('tar', ['-xf', tar, '-C', preFeatureDir]);
+    const sha = execFileSync('git', ['-C', ROOT, 'rev-parse', PRE_FEATURE_SHA], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(preFeatureDir, 'RELEASE-SOURCE'), `sha: ${sha}\nref: main\nversion: 0.2.86\nbuilt: 2026-09-18T00:00:00Z\n`);
+    sharedFixtureDirs.push(dir);
+    return preFeatureDir;
+}
+function realPreFeatureInstall(twin, sb)
+{
+    const old = preFeatureSnapshot();
+    const always = JSON.parse(fs.readFileSync(path.join(old, 'meta', 'recommendations.json'), 'utf8')).always;
+    const cat = { skills: 'skill', agents: 'agent', rules: 'rule', mcps: 'mcp', plugins: 'plugin', hooks: 'hook' };
+    const sel = path.join(sb.work, 'sel-bb5c684.txt');
+    fs.writeFileSync(sel, Object.entries(always).flatMap(([k, v]) => v.map((n) => `${cat[k]} ${n}`)).join('\n') + '\n');
+    if (twin === 'sh')
+    {
+        return execFileSync('bash', [path.join(old, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', sel, '--source', old], { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+    }
+    return execFileSync('pwsh', ['-NoProfile', '-File', path.join(old, 'scripts', 'os', 'claude-stack.ps1'), 'install', '-Scope', 'project', '-Selection', sel, '-Source', old], { cwd: sb.repo, encoding: 'utf8', env: sb.env });
 }
 
 const mcpServers = (sb, dir = sb.repo) => JSON.parse(fs.readFileSync(path.join(dir, '.mcp.json'), 'utf8')).mcpServers;
@@ -448,6 +559,22 @@ for (const twin of TWINS)
         assert.ok(!hasKey(s, 'autoMemoryEnabled'), `${twin}: autoMemoryEnabled was written despite the import failing`);
     });
 
+    // A ghost write: the server acknowledges every store but nothing reaches the db file. The importer
+    // re-opens the db after the server exits and finds the note missing - an import failure, so
+    // Claude's own memory stays on.
+    test(`${twin}: the server acknowledges a store that never reaches the db -> import fails, autoMemoryEnabled NOT written`, { skip }, () =>
+    {
+        const sb = sandbox({ ghostWrite: true });
+        seedOneNote(sb);
+        const res = runExpectFail(twin, sb, 'install', [scopeFlag(twin), 'project', selFlag(twin), sb.sel]);
+        assert.strictEqual(res.status, 0, `${twin}: install did not continue after the ghost write:\n${res.stderr}`);
+        const out = res.stdout + res.stderr;
+        assert.strictEqual(storeCalls(sb).length, 1, `${twin}: the store was never even attempted`);
+        assert.match(out, /not found in the db after the/, `${twin}: the missing row was not reported:\n${out}`);
+        assert.match(out, /memory notes import failed/, `${twin}: the failure was not logged`);
+        assert.ok(!hasKey(settingsOf(sb), 'autoMemoryEnabled'), `${twin}: autoMemoryEnabled was written though the note never persisted`);
+    });
+
     test(`${twin}: fresh install with no notes to import still switches memory off (nothing to import = success)`, { skip }, () =>
     {
         const sb = sandbox();
@@ -486,9 +613,9 @@ for (const twin of TWINS)
         assert.ok(ruleAt >= 0 && importAt > ruleAt, `${twin}: the import ran before the rule landed (rule@${ruleAt}, import@${importAt})`);
         assert.strictEqual(storeCalls(sb).length, 1, `${twin}: the note was not imported`);
         assert.strictEqual(settingsOf(sb).autoMemoryEnabled, false, `${twin}: Claude's own memory was not switched off`);
-        const stamp = fs.readFileSync(path.join(sb.repo, '.claude', 'claude-stack.stamp'), 'utf8');
-        assert.ok(stamp.includes(`shipped-always-rules: ${RECS.always.rules.join(',')}\n`), `${twin}: the stamp does not record the always rules:\n${stamp}`);
-        assert.ok(stamp.includes(`shipped-always-mcps: ${RECS.always.mcps.join(',')}\n`), `${twin}: the stamp does not record the always mcps:\n${stamp}`);
+        assertStampRecordsDisk(twin, sb, 'after the adopting update');
+        assert.match(stampOf(sb), /^installed-always-rules: .*\bbaseline-memory\b/m, `${twin}: the adopted rule is missing from the stamp`);
+        assert.match(stampOf(sb), /^installed-always-mcps: .*\bmemory\b/m, `${twin}: the adopted server is missing from the stamp`);
     });
 
     test(`${twin}: update --installed-only --memory-level scoped over a pre-feature install -> the scoped db`, { skip }, () =>
@@ -504,19 +631,84 @@ for (const twin of TWINS)
         assert.strictEqual(settingsOf(sb).autoMemoryEnabled, false, `${twin}: Claude's own memory was not switched off`);
     });
 
-    // A drop made through configure is recorded by the stamp (shipped then, absent now) and stays a drop.
-    test(`${twin}: update --installed-only respects a stamp-recorded drop of baseline-memory and memory`, { skip }, () =>
+    // Locked means locked, like serena: an always rule or server absent from disk is adopted whatever
+    // the previous stamp says. A stamp that NAMES them (the shipped list a standalone run once wrote
+    // without adopting anything) is no drop record.
+    test(`${twin}: update --installed-only never reads a locked always item as dropped - a stamp naming baseline-memory and memory still adopts both`, { skip }, () =>
     {
         const sb = sandbox();
-        preFeatureInstall(sb, { stampExtra: `shipped-always-rules: ${RECS.always.rules.join(',')}\nshipped-always-mcps: ${RECS.always.mcps.join(',')}\n` });
+        preFeatureInstall(sb, { stampExtra: `shipped-always-rules: ${RECS.always.rules.join(',')}\nshipped-always-mcps: ${RECS.always.mcps.join(',')}\ninstalled-always-rules: ${RECS.always.rules.join(',')}\ninstalled-always-mcps: ${RECS.always.mcps.join(',')}\n` });
         seedOneNote(sb);
         const out = runInstalledOnly(twin, sb);
-        assert.match(out, /installed-only: rule baseline-memory was dropped from this install - leaving it out/, `${twin}: the drop was not reported:\n${out}`);
-        assert.match(out, /installed-only: mcp memory was dropped from this install - leaving it out/, `${twin}: the server drop was not reported`);
-        assert.ok(!fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')), `${twin}: a dropped rule was resurrected`);
-        assert.ok(!hasKey(mcpServers(sb), 'memory'), `${twin}: a dropped server was resurrected`);
-        assert.doesNotMatch(out, /importing Claude's existing notes/, `${twin}: the import ran with memory dropped`);
-        assert.ok(!hasKey(settingsOf(sb), 'autoMemoryEnabled'), `${twin}: Claude's own memory was switched off with the replacement dropped`);
+        assert.doesNotMatch(out, /installed-only: (rule|mcp) \S+ was dropped from this install/, `${twin}: a locked item was read as dropped:\n${out}`);
+        assert.match(out, /installed-only: adopting rule baseline-memory - always shipped by this release and absent here/, `${twin}: the rule was not adopted`);
+        assert.match(out, /installed-only: adopting mcp memory - always shipped by this release and absent here/, `${twin}: the server was not adopted`);
+        assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')), `${twin}: baseline-memory.md did not land`);
+        assert.ok(hasKey(mcpServers(sb), 'memory'), `${twin}: the memory server was not registered`);
+        assert.strictEqual(settingsOf(sb).autoMemoryEnabled, false, `${twin}: Claude's own memory was not switched off`);
+        assertStampRecordsDisk(twin, sb, 'after the update');
+    });
+
+    // N1: the standalone route finds no recommendations.json, so it adopts nothing - and its stamp must
+    // say so (what is on disk, not the shipped list), or the next update reads the locked baseline as
+    // dropped and the memory rule and server never arrive.
+    test(`${twin}: a standalone update --installed-only stamps only what is on disk, and the next update adopts baseline-memory + memory`, { skip }, () =>
+    {
+        const sb = sandbox();
+        preFeatureInstall(sb);
+        seedOneNote(sb);
+        const first = runStandaloneInstalledOnly(twin, sb);
+        assert.match(first, /stamp: \S*claude-stack\.stamp @ /, `${twin}: the standalone run resolved no source, or wrote no stamp:\n${first}`);
+        assertStampRecordsDisk(twin, sb, 'after the standalone update');
+        if (!fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')))
+        {
+            assert.ok(!hasKey(settingsOf(sb), 'autoMemoryEnabled'), `${twin}: Claude's own memory went off without the rule`);
+        }
+        const second = runInstalledOnly(twin, sb);
+        assert.doesNotMatch(second, /installed-only: (rule|mcp) \S+ was dropped from this install/, `${twin}: the second update read a locked item as dropped:\n${second}`);
+        assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')), `${twin}: baseline-memory.md never arrived`);
+        assert.ok(hasKey(mcpServers(sb), 'memory'), `${twin}: the memory server never arrived`);
+        assert.strictEqual(storeCalls(sb).length, 1, `${twin}: the note was not imported`);
+        assert.strictEqual(settingsOf(sb).autoMemoryEnabled, false, `${twin}: Claude's own memory was not switched off`);
+        assertStampRecordsDisk(twin, sb, 'after the second update');
+    });
+
+    // The same trap for a real user: the stamp a REAL v0.2.86 install writes, then the README's
+    // standalone refresh (adopts nothing - no recommendations.json beside the script), then the plugin
+    // update route (must adopt, not read the standalone stamp as a drop), then that route again (must
+    // change nothing: no adoption repeated, nothing dropped, no second import).
+    test(`${twin}: a real bb5c684 install (its own installer), a standalone update, then two checkout updates - baseline-memory + memory arrive once and stay`, { skip: skip || (!preFeatureReachable && `${PRE_FEATURE_SHA} is not in this clone's history`) }, () =>
+    {
+        const sb = sandbox();
+        realPreFeatureInstall(twin, sb);
+        const oldStamp = stampOf(sb);
+        assert.match(oldStamp, /^version: 0\.2\.86$/m, `${twin}: not the bb5c684 stamp:\n${oldStamp}`);
+        assert.match(oldStamp, /^shipped-hooks: /m, `${twin}: the bb5c684 stamp has no hook catalog:\n${oldStamp}`);
+        assert.doesNotMatch(oldStamp, /always-(rules|mcps)|memory-session/, `${twin}: the bb5c684 stamp already knows the memory feature:\n${oldStamp}`);
+        assert.ok(!fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')) && !hasKey(mcpServers(sb), 'memory'), `${twin}: the bb5c684 install already carries memory`);
+        seedOneNote(sb);
+
+        const standalone = runStandaloneInstalledOnly(twin, sb);
+        assert.match(standalone, /stamp: \S*claude-stack\.stamp @ /, `${twin}: the standalone run resolved no source, or wrote no stamp:\n${standalone}`);
+        assertStampRecordsDisk(twin, sb, 'after the standalone update');
+
+        const adopt = runInstalledOnly(twin, sb);
+        assert.doesNotMatch(adopt, /installed-only: (rule|mcp) \S+ was dropped from this install/, `${twin}: the checkout update read a locked item as dropped:\n${adopt}`);
+        assert.match(adopt, /installed-only: adopting rule baseline-memory - always shipped by this release and absent here/, `${twin}: the rule was not adopted`);
+        assert.match(adopt, /installed-only: adopting mcp memory - always shipped by this release and absent here/, `${twin}: the server was not adopted`);
+        assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')), `${twin}: baseline-memory.md did not land`);
+        assert.ok(hasKey(mcpServers(sb), 'memory'), `${twin}: the memory server was not registered`);
+        assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'hooks', 'memory-session.js')), `${twin}: the start hook is missing`);
+        assert.strictEqual(storeCalls(sb).length, 1, `${twin}: the note was not imported`);
+        assert.strictEqual(settingsOf(sb).autoMemoryEnabled, false, `${twin}: Claude's own memory was not switched off`);
+        assertStampRecordsDisk(twin, sb, 'after the adopting update');
+
+        const again = runInstalledOnly(twin, sb);
+        assert.doesNotMatch(again, /installed-only: (rule|mcp) \S+ was dropped from this install/, `${twin}: the re-run read a locked item as dropped:\n${again}`);
+        assert.doesNotMatch(again, /installed-only: adopting (rule|mcp) /, `${twin}: the re-run adopted again - it is not idempotent:\n${again}`);
+        assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'rules', 'baseline-memory.md')) && hasKey(mcpServers(sb), 'memory'), `${twin}: the re-run lost the rule or the server`);
+        assert.strictEqual(storeCalls(sb).length, 1, `${twin}: the re-run imported again`);
+        assertStampRecordsDisk(twin, sb, 'after the re-run');
     });
 
     // C3: a global install lands the rule and the start hook in THIS repo only, so it may switch
@@ -533,6 +725,13 @@ for (const twin of TWINS)
         const acctSettings = path.join(sb.acct, 'settings.json');
         if (fs.existsSync(acctSettings)) assert.ok(!hasKey(JSON.parse(fs.readFileSync(acctSettings, 'utf8')), 'autoMemoryEnabled'), `${twin}: the ACCOUNT settings were switched off`);
         assert.match(out, /memory: Claude's own memory is off in this repo only/, `${twin}: the next-steps card does not say where memory went off`);
+        // the account stamp records what this run left on disk: the rules in this repo (where every
+        // scope's rules land), the servers in the account registration file
+        const acctStamp = fs.readFileSync(path.join(sb.acct, 'claude-stack.stamp'), 'utf8');
+        const repoRules = RECS.always.rules.filter((r) => fs.existsSync(path.join(sb.repo, '.claude', 'rules', `${r}.md`))).join(',');
+        assert.match(repoRules, /baseline-memory/, `${twin}: the rule did not land in this repo`);
+        assert.ok(acctStamp.includes(`installed-always-rules: ${repoRules}\n`), `${twin}: the account stamp's always rules are not the ones on disk (${repoRules}):\n${acctStamp}`);
+        assert.ok(acctStamp.includes('installed-always-mcps: memory\n'), `${twin}: the account stamp's always servers are not the account registration's:\n${acctStamp}`);
     });
 
     test(`${twin}: the user's own MCP server, settings key and hook wiring survive a fresh install`, { skip }, () =>
