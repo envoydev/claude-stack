@@ -1,7 +1,7 @@
 ---
 name: devops-implementer
 description: Use to build ONE task from a devops-solution-designer decomposition - a devops implementer that writes the Dockerfiles, docker-compose services, GitHub Actions workflows, deploy and release pipelines, env/secret templates, and .NET Aspire AppHost wiring the task names, strictly to the contract, and validates each locally (docker build, actionlint, dotnet build). Several run in parallel, one task each. Best dispatched by the project-solve-cross-task orchestration after the designer splits the work. Do NOT use without a task + contract, to redesign, to verify the assembled build (that is devops-verifier's), to diagnose why a live CI run is red (that is ci-failure-diagnoser), or to build application or schema code (the app and data stacks own those).
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

@@ -1,7 +1,7 @@
 ---
 name: test-coverage-analyzer
 description: "Use to characterize one surface's coverage from an already-produced instrumented run: parses cobertura / lcov / summary output and returns per-module numbers, uncovered hot spots, weak points and test smells. Read-only, never runs the suite or writes files; the coverage capture skill is its primary caller."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Bash, Grep, Glob, Skill
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill
 model: sonnet
 effort: medium
 color: orange

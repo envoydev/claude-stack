@@ -1,7 +1,7 @@
 ---
 name: integration-reviewer
 description: "Use as the mandatory final gate before commit on cross-domain work, after each domain verifier signs off: a read-only check of the whole assembled feature against the frozen contract, the cross-stack seams, build, tests, migration and deploy safety; returns commit or punch-list. Never fixes; not for single-stack work."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright-chrome__*, mcp__playwright-msedge__*, mcp__playwright-firefox__*, mcp__playwright-webkit__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright-chrome__*, mcp__playwright-msedge__*, mcp__playwright-firefox__*, mcp__playwright-webkit__*
 model: sonnet
 effort: xhigh
 color: red

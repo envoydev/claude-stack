@@ -1,7 +1,7 @@
 ---
 name: architecture-analyzer
 description: "Use only as a read-only architecture data-gatherer for one module or topic: returns a structured verdict (purpose, public surface, dependencies, patterns, smells) tied to located symbols. Dispatched by the architecture capture and scoping passes. Does not map the whole project, diagnose bugs, or edit."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Bash, Grep, Glob
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Bash, Grep, Glob
 model: sonnet
 effort: medium
 color: orange

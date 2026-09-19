@@ -1,7 +1,7 @@
 ---
 name: web-angular-implementer
 description: "Use to build ONE task from a web-angular-solution-designer plan: writes the standalone components, services and signal state the task names (OnPush, signal inputs, RxJS teardown) plus TestBed harness tests, strictly to the contract. Several run in parallel. Not without a task + contract, and not to redesign or verify."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

@@ -1,7 +1,7 @@
 ---
 name: console-implementer
 description: Use to build ONE task from a console-solution-designer decomposition - a headless .NET C# implementer that writes the Generic Host wiring, `BackgroundService` / `IHostedService` workers, bot or gateway handlers, message consumers and console/CLI entry points the task names - config binding, options and graceful shutdown included - plus their xUnit, NSubstitute and host-level integration tests (fake gateway, `FakeTimeProvider`), strictly to the contract. Several run in parallel, one task each. Best dispatched by project-solve-cross-task after the designer splits the work. Do NOT use without a task + contract, to redesign, to verify the assembled build (that is console-verifier's), or to build another stack - an SCM-hosted Windows Service is windows-service-implementer's, the other C# stacks are ASP.NET Core (aspnet-implementer's), WPF desktop (wpf-implementer's) and WinForms desktop (winforms-implementer's), and schema DDL plus EF Core migrations are the data stack's data-implementer.
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__context7__*
 model: sonnet
 effort: medium
 color: green

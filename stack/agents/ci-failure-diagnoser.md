@@ -1,7 +1,7 @@
 ---
 name: ci-failure-diagnoser
 description: "Use when a CI pipeline or PR check is red: a read-only first pass that pulls the failing run logs via gh, tries one local repro, classifies each failure (compile, green-locally-red-on-runner, quality gate, signing, workflow drift, flake) and returns a verdict plus route. Not for a bug that reproduces locally with no CI run, and it never fixes."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Agent, Bash, Grep, Glob
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Skill, Agent, Bash, Grep, Glob
 model: opus
 effort: high
 color: orange

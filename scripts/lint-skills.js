@@ -142,6 +142,8 @@ const NON_SKILL_TOKENS = new Set([
     'angular-cli',
     'chrome-devtools',
     'appium-mcp',
+    // a memory_type value named in baseline-memory.md - a metadata kind, not a skill.
+    'project-fact',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
@@ -1069,6 +1071,27 @@ function lintAgentTools(label, text)
             + `spelling or drop it (tool names: https://code.claude.com/docs/en/tools-reference)`);
 }
 
+// 43. Every agent's `tools:` allowlist must grant the shared memory MCP's store, search and list
+// tools. The memory MCP is the required shared memory (CLAUDE.md's MCP catalog): a seat that can
+// search but not save, or save but not search, defeats the point - the spec gives every seat both,
+// read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
+// the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
+// included, so it has nothing to fix.
+const MEMORY_TOOLS = ['mcp__memory__memory_store', 'mcp__memory__memory_search', 'mcp__memory__memory_list'];
+
+function lintAgentMemoryTools(label, text)
+{
+    const line = /^tools:\s*(.+)$/m.exec(text || '');
+    if (!line) return [];
+
+    const tools = line[1].split(',').map(t => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+    const missing = MEMORY_TOOLS.filter(t => !tools.includes(t));
+    if (missing.length === 0) return [];
+
+    return [`${label} tools: allowlist is missing ${missing.join(', ')} - every seat must be able to `
+        + `search and save the shared memory`];
+}
+
 // 41. A reference over 100 lines opens with a table of contents, inside the first 15 lines. Without
 // one a seat has to read the whole file to find out whether the answer is in it, which is the exact
 // cost a reference exists to avoid - and the 2026-09-12 audits counted 21 such files across the
@@ -1776,6 +1799,9 @@ function main()
 
             // 40. ... and every name in that allowlist resolves to a real tool.
             for (const finding of lintAgentTools(`agents/${agentFile}`, text)) flag(finding);
+
+            // 43. ... and every allowlist grants the shared memory MCP's store, search and list tools.
+            for (const finding of lintAgentMemoryTools(`agents/${agentFile}`, text)) flag(finding);
         }
     }
 
@@ -2389,6 +2415,8 @@ module.exports = {
     lintOptionalCites,
     lintPluginCites,
     lintAgentTools,
+    lintAgentMemoryTools,
+    MEMORY_TOOLS,
     lintReferencePointers,
     lintReferenceContents,
     optionalSkills,

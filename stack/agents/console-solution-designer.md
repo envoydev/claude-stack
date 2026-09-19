@@ -1,7 +1,7 @@
 ---
 name: console-solution-designer
 description: Use when a headless .NET app feature needs designing before code - a read-only pass for a Generic Host worker, background service, bot (Discord.Net, Telegram.Bot), daemon, or one-shot CLI tool. Settles the host/DI composition seam, the hosted-service lifecycle (stop token, graceful shutdown), the gateway boundary and its resilience (reconnect/backoff, idempotency), then decomposes it into independent parallel tasks with explicit contracts and single owners for the shared seams (Program.cs, DI, registration order). Feeds the console-implementer fan-out and console-verifier. Do NOT use to write code; a worker targeting the Windows Service Control Manager is windows-service-solution-designer's, the other C# stacks - ASP.NET Core (aspnet-solution-designer's), WPF (wpf-solution-designer's), WinForms (winforms-solution-designer's) - are not this seat's, a pure SQL schema/index/migration change is data-solution-designer's, and a brand-new project from a spec is project-build-from-scratch.
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

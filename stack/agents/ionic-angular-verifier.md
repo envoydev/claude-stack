@@ -1,7 +1,7 @@
 ---
 name: ionic-angular-verifier
 description: Use once every ionic-angular-implementer task has landed - a read-only gate over assembled Ionic/Capacitor mobile work against the designer plan and TypeScript quality (the native-bridge, platform-parity, page-lifecycle and permission defects a jsdom suite greens falsely), reruns ionic build/test, drives the native flows through the project's native-mobile E2E MCP and the web-fallback path through its browser-automation MCP, and returns a per-task punch-list of fixes. Best as the closing gate of a mobile build, looping to sign-off. Do NOT use it to fix what it finds (returns to ionic-angular-implementer) or verify the other TypeScript stacks - Angular web is web-angular-verifier's, browser extensions are browser-extension-verifier's. Cross-domain assembly review is integration-reviewer; in-chat review of your own diff is project-verify-code (or /code-review).
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright-chrome__*, mcp__playwright-msedge__*, mcp__playwright-firefox__*, mcp__playwright-webkit__*, mcp__appium-mcp__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__playwright-chrome__*, mcp__playwright-msedge__*, mcp__playwright-firefox__*, mcp__playwright-webkit__*, mcp__appium-mcp__*
 model: sonnet
 effort: xhigh
 color: purple

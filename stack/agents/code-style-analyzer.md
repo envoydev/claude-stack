@@ -1,7 +1,7 @@
 ---
 name: code-style-analyzer
 description: "Use to characterize how the project actually writes code in one language: reads style configs and representative code and returns a structured style report (enforced rules, idioms, divergence from house conventions). Read-only, writes no files; the code-style capture skill is its primary caller."
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, LSP, Read, Bash, Grep, Glob, Skill
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill
 model: sonnet
 effort: medium
 color: teal
