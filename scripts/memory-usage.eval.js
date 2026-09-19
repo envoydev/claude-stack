@@ -17,6 +17,22 @@
 // That is behind ONE function so a later run can swap it for a real
 // `scripts/os/claude-stack.sh --source <worktree>` install without touching anything else.
 //
+// --setup self|install|update (default self): 'install' is a FRESH real install from this worktree
+// (buildProjectInstall - no notes to import, never exercises an update). 'update' (buildProjectUpdate)
+// is the edge case CLAUDE.md requires and 'install' does not - an update over an OLDER install: a
+// pre-feature project built by the installer as it stood one commit before this branch's own
+// memory-feature commits begin (a pinned SHA, `git archive`'d - a clean release-shaped snapshot, no
+// node_modules, no .git), a Claude-own-memory note seeded for it under a sandboxed CLAUDE_CONFIG_DIR
+// (never the real account), then updated in place by THIS working tree's HEAD (also `git archive`'d,
+// same release shape). Asserts baseline-memory.md landed, memory is registered, the seeded note
+// became a db row, and autoMemoryEnabled is false - each a thrown Error on failure, which the
+// existing per-run try/catch already turns into a reported FAIL record rather than a crash.
+//
+// Results are written to scripts/fixtures/memory-usage/results-<date>-<HHMMSS>.json - timestamped
+// (not just dated) so a same-day rerun never overwrites an earlier run's evidence. The printed and
+// recorded verdict's pass mark scales with --runs, fixed before the run: ceil(2/3 x runs) - 1 for
+// --runs 1, 2 for the default --runs 3.
+//
 // CLI flags (verified against `claude --help` on this machine, Claude Code 2.1.278, plus
 // https://code.claude.com/docs/en/cli-reference and /headless via context7):
 //   -p / --output-format stream-json --verbose   non-interactive, one JSON object per line, ending in
@@ -258,6 +274,170 @@ async function diffSetups(agents) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+// --setup update: a PRE-FEATURE install (the installer as it stood the commit before this branch's
+// own memory-feature commits begin) updated in place by the installer AT THE TIP OF THIS WORKING
+// TREE - the one edge case CLAUDE.md requires ("an update over an older install") that neither
+// buildProjectSelf nor buildProjectInstall exercises: both build a project that already has the
+// feature from a fresh install, never a project the feature was ADDED to later. Both installer
+// snapshots come from `git archive`, not a raw directory copy - CLAUDE.md's own release path
+// (releases/latest archive or a shallow clone) never carries node_modules or .git, and buildProjectInstall's
+// `--source ROOT` (the live checkout) does; this is the gap final-review-A.md C1 names, and I9 asks
+// this mode to exercise the release-shaped snapshot for that reason.
+// ---------------------------------------------------------------------------------------------------
+
+// The last commit before this branch's shared-memory feature work begins (cross-task-facts.md's own
+// commit log: f3fa404/76a8166/77105df/883a366/0fd7a72 are the feature commits; bb5c684 is the tip
+// immediately before them, still reachable from this branch's history). Pinned to a SHA, never a
+// branch name, so this stays the pre-feature baseline even as develop/main move on independently.
+const PRE_FEATURE_COMMIT = 'bb5c684';
+
+// `git archive <committish> | tar -x` into destDir - a clean tree (no .git, no node_modules, no
+// gitignored files), the same shape a real release archive or shallow-clone snapshot has. Piped
+// through node buffers rather than a shell pipeline so destDir never needs shell-quoting.
+function extractGitArchive(committish, destDir) {
+  fs.rmSync(destDir, { recursive: true, force: true });
+  fs.mkdirSync(destDir, { recursive: true });
+  const archive = spawnSync('git', ['archive', committish], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
+  if (archive.error || archive.status !== 0) {
+    throw new Error(`git archive ${committish} failed: ${archive.error ? archive.error.message : String(archive.stderr || '').slice(-2000)}`);
+  }
+  const tar = spawnSync('tar', ['-x', '-C', destDir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 });
+  if (tar.error || tar.status !== 0) {
+    throw new Error(`tar extract of ${committish} into ${destDir} failed: ${tar.error ? tar.error.message : String(tar.stderr || '').slice(-2000)}`);
+  }
+  return destDir;
+}
+
+// Both snapshots are fixed for the lifetime of one `main()` invocation (one pinned SHA, one HEAD) -
+// extracted once and reused across every --parallel run instead of once per run. Plain memoized
+// values, not promises: extractGitArchive is fully synchronous (spawnSync), so the first caller runs
+// it to completion before any concurrent caller (cooperatively scheduled, single-threaded) can observe
+// the cache as empty - no lock needed, unlike seedMemory's genuinely async server round-trips.
+let preFeatureSrcDir = null;
+function preFeatureSrc() {
+  if (!preFeatureSrcDir) preFeatureSrcDir = extractGitArchive(PRE_FEATURE_COMMIT, path.join(TMP_BASE, `pre-feature-src-${PRE_FEATURE_COMMIT}`));
+  return preFeatureSrcDir;
+}
+let releaseSrcDir = null;
+function releaseSrcSnapshot() {
+  if (!releaseSrcDir) releaseSrcDir = extractGitArchive('HEAD', path.join(TMP_BASE, `release-src-HEAD-${crypto.randomBytes(4).toString('hex')}`));
+  return releaseSrcDir;
+}
+
+// A single frontmatter'd note, the same shape Claude Code's own per-project auto-memory writes
+// (memory-import.js's parseNote: `type` / `name` / `description` + body). A distinctive fact
+// (port 8213) so the post-update db row is identifiable as THIS note, not a coincidence.
+const PRE_FEATURE_NOTE = `---
+type: reference
+name: pre-feature-fact
+description: The staging cache in this project listens on port 8213.
+---
+Recorded before the memory feature existed - proves an update's one-time import carries a project's
+existing auto-memory notes into the shared MCP.
+`;
+
+// Seeds <acctDir>/projects/<slug>/memory/<note>.md - exactly where memory-import.js's own
+// defaultMemoryDir() looks (configDir/projects/slug/memory), computed by REQUIRING that module's own
+// slugify()/gitTopLevel() rather than duplicating the regex, so this stays correct even after F1's
+// fix round changes it (memory-import.js is read here, never written - Task 8 does not own it).
+function seedPreFeatureNote(acctDir, projectDir) {
+  // eslint-disable-next-line global-require
+  const { slugify, gitTopLevel } = require(path.join(ROOT, 'scripts', 'memory-import.js'));
+  const slug = slugify(gitTopLevel(projectDir));
+  const memDir = path.join(acctDir, 'projects', slug, 'memory');
+  fs.mkdirSync(memDir, { recursive: true });
+  fs.writeFileSync(path.join(memDir, 'pre-feature-fact.md'), PRE_FEATURE_NOTE);
+}
+
+// Builds a project two ways in sequence: (1) `install` from the PRE-FEATURE snapshot (no memory
+// feature at all - the old installer has no `mcp memory` / `rule baseline-memory` / `--memory-level`
+// to select in the first place), then seeds a Claude-own-memory note for it, then (2) `update` from
+// THIS working tree's HEAD snapshot, which should register the memory MCP, drop baseline-memory.md
+// in, import the seeded note, and switch autoMemoryEnabled off. Both installer invocations run under
+// one sandboxed CLAUDE_CONFIG_DIR (never the real account - the whole point of a temp-project matrix,
+// CLAUDE.md's own invariant) so the note-seeding step has a folder to seed into that is not the real
+// ~/.claude, and never touches it.
+//
+// Every failure - a spawn error, a non-zero installer exit, a failed assertion - is a thrown Error,
+// which runOne()'s existing try/catch already turns into a reported record (pass:false, error
+// message) rather than crashing the batch; nothing extra is needed here for that requirement.
+async function buildProjectUpdate(projectDir, { agents = [] } = {}) {
+  const preSrc = preFeatureSrc();
+  const relSrc = releaseSrcSnapshot();
+  const acctDir = path.join(path.dirname(projectDir), `${path.basename(projectDir)}-acct`);
+  fs.mkdirSync(acctDir, { recursive: true });
+  const sandboxEnv = { ...process.env, CLAUDE_CONFIG_DIR: acctDir };
+
+  fs.mkdirSync(projectDir, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+
+  // Step 1: pre-feature install. A minimal, deliberately narrow selection (one always-on rule, no
+  // plugin/skill/agent lines) - the old installer has no memory categories to name, and this is
+  // meant to be fast + deterministic, not a full-catalog install; hooks install in full regardless
+  // ("a selection with no 'hook' lines installs all hooks", both installer twins' own --help text).
+  const preSelectionPath = path.join(projectDir, '.eval-pre-feature-selection.txt');
+  fs.writeFileSync(preSelectionPath, 'rule baseline-navigation\n');
+  try {
+    execFileSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {
+      cwd: projectDir, stdio: 'pipe', timeout: 180000, env: sandboxEnv,
+    });
+  } catch (err) {
+    throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) failed: ${err && err.message ? err.message : err}${err && err.stderr ? ` - ${String(err.stderr).slice(-2000)}` : ''}`);
+  }
+  const preMcp = fs.existsSync(path.join(projectDir, '.mcp.json')) ? JSON.parse(fs.readFileSync(path.join(projectDir, '.mcp.json'), 'utf8') || '{}') : {};
+  const preHasMemory = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md')) || !!(preMcp.mcpServers && preMcp.mcpServers.memory);
+  if (preHasMemory) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) unexpectedly already has the memory feature - not a valid pre-feature baseline`);
+
+  // A pre-feature project has no `memory` MCP registration yet, so there is nothing to seed a note
+  // INTO via the real server (unlike scenarios 2/4/5's seedMemory) - this note stands in for Claude's
+  // own auto-memory, written directly to where memory-import.js will find it, exactly as a real
+  // session would have left it there before this project ever had the shared MCP.
+  seedPreFeatureNote(acctDir, projectDir);
+
+  // Step 2: update, from a release-shaped snapshot of THIS working tree's HEAD (C1's exact gap - no
+  // node_modules). Explicit --selection (not --installed-only): deterministic regardless of whether
+  // the update path's own 'always add locked categories' fix has landed yet.
+  const updateSelectionPath = path.join(projectDir, '.eval-update-selection.txt');
+  const updateSelectionLines = ['rule baseline-navigation', 'rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
+  fs.writeFileSync(updateSelectionPath, `${updateSelectionLines.join('\n')}\n`);
+  try {
+    execFileSync('bash', [path.join(relSrc, 'scripts', 'os', 'claude-stack.sh'), 'update', '--scope', 'project', '--selection', updateSelectionPath, '--source', relSrc, '--memory-level', 'project'], {
+      cwd: projectDir, stdio: 'pipe', timeout: 180000, env: sandboxEnv,
+    });
+  } catch (err) {
+    throw new Error(`update (HEAD, over the ${PRE_FEATURE_COMMIT} baseline) failed: ${err && err.message ? err.message : err}${err && err.stderr ? ` - ${String(err.stderr).slice(-2000)}` : ''}`);
+  }
+
+  const dbPath = path.join(projectDir, '.memory-mcp', 'memory.db');
+  const mcpConfigPath = path.join(projectDir, '.mcp.json');
+
+  // Assert per the brief: baseline-memory.md present, memory registered, the note imported (a row in
+  // the db), autoMemoryEnabled false. Each check names exactly what it found, not just pass/fail, so
+  // a failure record is diagnosable from the JSON results file alone.
+  const asserts = [];
+  const ruleOk = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md'));
+  asserts.push(`baseline-memory.md present: ${ruleOk}`);
+  if (!ruleOk) throw new Error(`update assertion failed - baseline-memory.md missing after update (${asserts.join('; ')})`);
+
+  const mcpData = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8') || '{}');
+  const memEntry = mcpData.mcpServers && mcpData.mcpServers.memory;
+  asserts.push(`memory registered in .mcp.json: ${!!(memEntry && memEntry.command)}`);
+  if (!memEntry || !memEntry.command) throw new Error(`update assertion failed - no memory server registered in .mcp.json (${asserts.join('; ')})`);
+
+  const settingsPath = path.join(projectDir, '.claude', 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8') || '{}');
+  asserts.push(`autoMemoryEnabled false: ${settings.autoMemoryEnabled === false}`);
+  if (settings.autoMemoryEnabled !== false) throw new Error(`update assertion failed - autoMemoryEnabled is ${JSON.stringify(settings.autoMemoryEnabled)}, expected false (${asserts.join('; ')})`);
+
+  const rows = readDbRows(dbPath) || [];
+  const importedRow = rows.find((r) => /8213/.test(r.content));
+  asserts.push(`note imported (a row in the db): ${!!importedRow}`);
+  if (!importedRow) throw new Error(`update assertion failed - no db row for the seeded pre-feature note (${rows.length} row(s) total) (${asserts.join('; ')})`);
+
+  return { projectDir, dbPath, mcpConfigPath, acctDir, updateAsserts: asserts };
+}
+
+// ---------------------------------------------------------------------------------------------------
 // Seeding: the real server, JSON-RPC over stdio - same route as scripts/memory-import.js
 // ---------------------------------------------------------------------------------------------------
 
@@ -457,9 +637,10 @@ function readDbRows(dbPath) {
   return null;
 }
 
-function cleanupRun(projectDir, slugDir) {
+function cleanupRun(projectDir, slugDir, acctDir) {
   try { fs.rmSync(projectDir, { recursive: true, force: true }); } catch { /* best effort */ }
   if (slugDir) { try { fs.rmSync(slugDir, { recursive: true, force: true }); } catch { /* best effort */ } }
+  if (acctDir) { try { fs.rmSync(acctDir, { recursive: true, force: true }); } catch { /* best effort */ } }
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -629,10 +810,13 @@ async function runOne(scenario, runIndex, opts) {
   const projectDir = path.join(TMP_BASE, `s${scenario.id}-run${runIndex}-${runId}`);
   const sessionId = crypto.randomUUID();
   let slugDir = null;
+  let acctDir = null;
   const record = { scenario: scenario.id, scenarioName: scenario.name, run: runIndex, runId };
   try {
-    const build = opts.setup === 'install' ? buildProjectInstall : buildProjectSelf;
-    const { dbPath, mcpConfigPath } = build(projectDir, { agents: scenario.agents });
+    const build = opts.setup === 'install' ? buildProjectInstall : opts.setup === 'update' ? buildProjectUpdate : buildProjectSelf;
+    const built = await build(projectDir, { agents: scenario.agents });
+    const { dbPath, mcpConfigPath } = built;
+    acctDir = built.acctDir || null;
     const projectName = path.basename(projectDir);
     if (scenario.setup) await scenario.setup(mcpConfigPath, projectDir, projectName);
 
@@ -659,7 +843,7 @@ async function runOne(scenario, runIndex, opts) {
     record.dbEvidence = record.dbEvidence || record.error;
     record.pass = false;
   } finally {
-    cleanupRun(projectDir, slugDir);
+    cleanupRun(projectDir, slugDir, acctDir);
   }
   return record;
 }
@@ -694,13 +878,24 @@ function printTable(records) {
   for (const row of rows) console.log(line(row));
 }
 
-function summarize(records, scenarios) {
+// The pass mark scales with --runs, fixed BEFORE the run (never derived from how many records a
+// scenario actually produced): ceil(2/3 x runs) - runs 1 -> 1, runs 3 -> 2, runs 15 -> 10. A single
+// hardcoded '>= 2' (the old behavior) read every --runs-1 confirmation as FAIL regardless of outcome
+// (final-review-A.md I9: the --setup install confirmation run's own printed verdict line was wrong
+// for exactly this reason, even though every per-run 'pass' column was correct).
+function passMarkFor(runs) { return Math.ceil((2 / 3) * runs); }
+
+function summarize(records, scenarios, runs) {
   const bySc = new Map();
   for (const r of records) { if (!bySc.has(r.scenario)) bySc.set(r.scenario, []); bySc.get(r.scenario).push(r); }
+  const mark = passMarkFor(runs);
   return scenarios.map((sc) => {
     const list = bySc.get(sc.id) || [];
     const passes = list.filter((r) => r.pass).length;
-    return { scenario: sc.id, name: sc.name, passes, of: list.length, verdict: passes >= 2 ? 'PASS (2+/3 mark)' : 'FAIL (below 2/3 mark)' };
+    return {
+      scenario: sc.id, name: sc.name, passes, of: list.length, passMark: mark,
+      verdict: passes >= mark ? `PASS (${mark}+/${runs} mark)` : `FAIL (below ${mark}/${runs} mark)`,
+    };
   });
 }
 
@@ -718,7 +913,7 @@ function parseArgs(argv) {
     else if (a === '--diff') out.diff = true;
     else throw new Error(`unrecognized argument '${a}'`);
   }
-  if (out.setup !== 'self' && out.setup !== 'install') throw new Error(`--setup must be 'self' or 'install', got '${out.setup}'`);
+  if (!['self', 'install', 'update'].includes(out.setup)) throw new Error(`--setup must be 'self', 'install' or 'update', got '${out.setup}'`);
   return out;
 }
 
@@ -749,24 +944,33 @@ async function main() {
 
   console.log('');
   printTable(records);
-  const verdicts = summarize(records, scenarios);
+  const verdicts = summarize(records, scenarios, opts.runs);
   console.log('');
   for (const v of verdicts) console.log(`scenario ${v.scenario} (${v.name}): ${v.passes}/${v.of} - ${v.verdict}`);
   const totalCost = records.reduce((s, r) => s + (r.costUsd || 0), 0);
   console.log(`\ntotal spend: $${totalCost.toFixed(4)}`);
 
-  const date = new Date().toISOString().slice(0, 10);
-  const outFile = path.join(FIXTURES_DIR, `results-${date}.json`);
+  // Timestamped (date + time, not just date): a same-day rerun must never overwrite an earlier run's
+  // evidence (final-review-A.md I9 - 0fd7a72's 1-run confirmation silently replaced 77105df's 15-run
+  // release evidence at the same results-<date>.json path). Colons are invalid in Windows filenames,
+  // so HHMMSS, not ISO time.
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toISOString().slice(11, 19).replace(/:/g, '');
+  const outFile = path.join(FIXTURES_DIR, `results-${date}-${time}.json`);
   fs.writeFileSync(outFile, JSON.stringify({
-    ranAt: new Date().toISOString(), model: opts.model, runs: opts.runs, parallel: opts.parallel,
+    ranAt: now.toISOString(), model: opts.model, runs: opts.runs, parallel: opts.parallel, setup: opts.setup,
     records, verdicts, totalCostUsd: totalCost,
   }, null, 2));
   console.log(`results written to ${path.relative(ROOT, outFile)}`);
 
-  process.exitCode = verdicts.some((v) => v.passes < 2) ? 1 : 0;
+  process.exitCode = verdicts.some((v) => v.passes < v.passMark) ? 1 : 0;
 }
 
-module.exports = { SCENARIOS, buildProjectSelf, memoryRegistration, findProjectSlugDir };
+module.exports = {
+  SCENARIOS, buildProjectSelf, memoryRegistration, findProjectSlugDir,
+  passMarkFor, summarize, PRE_FEATURE_COMMIT, extractGitArchive, buildProjectUpdate,
+};
 
 if (require.main === module) {
   main().catch((err) => { console.error(err && err.stack ? err.stack : err); process.exitCode = 1; });
