@@ -1,0 +1,316 @@
+{
+  "ranAt": "2026-09-19T17:35:38.445Z",
+  "model": "sonnet",
+  "runs": 3,
+  "parallel": 3,
+  "setup": "update",
+  "records": [
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 1,
+      "runId": "aa40f4d22df5",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.14053100000000002,
+      "finalText": "Saved: test files in this project will use the `.spec` suffix from now on.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #2 [preference_signal] tags=project:s1-run1-aa40f4d22df5",
+      "pass": true
+    },
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 2,
+      "runId": "717f9ed083ae",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.13423880000000002,
+      "finalText": "Saved - test files will use the `.spec` suffix from now on in this project.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #2 [preference_signal] tags=project:s1-run2-717f9ed083ae",
+      "pass": true
+    },
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 3,
+      "runId": "cb7f5a7f0476",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.1343692,
+      "finalText": "Saved - test files in this project will use the `.spec` suffix going forward.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #2 [preference_signal] tags=project:s1-run3-cb7f5a7f0476",
+      "pass": true
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 1,
+      "runId": "df95271c473d",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.09445940000000001,
+      "finalText": "12 DONE",
+      "toolEvidence": "SessionStart block carried the preference",
+      "dbEvidence": "answer ended with DONE: \"12 DONE\"",
+      "pass": true
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 2,
+      "runId": "02e924d2f28f",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "error": "'initialize' timed out after 120000ms",
+      "toolEvidence": "ERROR",
+      "dbEvidence": "'initialize' timed out after 120000ms",
+      "pass": false
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 3,
+      "runId": "f20116dce05c",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.0945034,
+      "finalText": "12 DONE",
+      "toolEvidence": "SessionStart block carried the preference",
+      "dbEvidence": "answer ended with DONE: \"12 DONE\"",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 1,
+      "runId": "ae1d2b6aa841",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.2785785,
+      "finalText": "Dispatched the evidence-gatherer agent to reproduce the `npm test` failure and trace the root cause. It'll save a memory note if it finds a reusable quirk. I'll report back once it completes.",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "row #2 tags=agent:evidence-gatherer,project:s3-run1-ae1d2b6aa841",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 2,
+      "runId": "c2c1a6fc5cec",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.23974120000000004,
+      "finalText": "Dispatched the evidence-gatherer agent to run `npm test`, diagnose the root cause from actual output, and store a memory entry if it finds a reusable quirk/fix. It's running in the background - I'll report back once it completes.",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "no agent-tagged learning row",
+      "pass": false
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 3,
+      "runId": "5e37e988a567",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.2570445,
+      "finalText": "Evidence-gatherer agent is running in the background to reproduce the `npm test` failure and, if it confirms a real quirk, log it to shared memory. I'll report back once it finishes.",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "row #2 tags=agent:evidence-gatherer,project:s3-run3-5e37e988a567",
+      "pass": true
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 1,
+      "runId": "0c8be28b7057",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.40964579999999995,
+      "finalText": "Dispatched the evidence-gatherer agent to search shared project memory for the staging database port. It's running in the background - I'll report back once it completes.",
+      "toolEvidence": "subagent memory_search/list x1",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 2,
+      "runId": "18ed5f549ded",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "error": "'initialize' timed out after 120000ms",
+      "toolEvidence": "ERROR",
+      "dbEvidence": "'initialize' timed out after 120000ms",
+      "pass": false
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 3,
+      "runId": "39b59e76c739",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.43706449999999997,
+      "finalText": "Dispatched the evidence-gatherer agent to check shared project memory for the staging database port. Running in the background - I'll report back once it completes.",
+      "toolEvidence": "subagent memory_search/list x1",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 1,
+      "runId": "cff227a2f7ab",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "error": "'initialize' timed out after 120000ms",
+      "toolEvidence": "ERROR",
+      "dbEvidence": "'initialize' timed out after 120000ms",
+      "pass": false
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 2,
+      "runId": "ae9b4f1e40b7",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.09505720000000001,
+      "finalText": "Port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 3,
+      "runId": "f3726a67de11",
+      "updateAsserts": [
+        "baseline-memory.md present: true",
+        "memory registered in .mcp.json: true",
+        "autoMemoryEnabled false: true",
+        "note imported (a row in the db): true"
+      ],
+      "exitCode": 0,
+      "costUsd": 0.0948812,
+      "finalText": "Port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    }
+  ],
+  "verdicts": [
+    {
+      "scenario": 1,
+      "name": "session writes",
+      "passes": 3,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 2,
+      "name": "session reads",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 3,
+      "name": "agent writes",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 4,
+      "name": "agent reads",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 5,
+      "name": "related project reads",
+      "passes": 2,
+      "of": 3,
+      "passMark": 2,
+      "verdict": "PASS (2+/3 mark)"
+    }
+  ],
+  "totalCostUsd": 2.4101147
+}
