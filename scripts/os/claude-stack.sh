@@ -1665,6 +1665,45 @@ open(rule, "w", encoding="utf-8").write(s.replace("__DOCS_ROOT__", val))
 PY
 }
 
+_resolve_docs_root() {  # $1 = repo root - print the resolved docs-path value: settings.json CLAUDE_STACK_DOCS_PATH, else the pre-0.2.43 CLAUDE_DOCS_PATH key, else the default - same resolution stamp_docs_root_rule stamps into the rule
+  local root="$1"
+  python3 - "$root/.claude/settings.json" <<'PY'
+import json, sys
+settings = sys.argv[1]
+val = ".claude/docs"
+try:
+    env = json.load(open(settings)).get("env", {})
+    v = env.get("CLAUDE_STACK_DOCS_PATH", "") or env.get("CLAUDE_DOCS_PATH", "")
+    if v: val = v
+except Exception:
+    pass
+print(val)
+PY
+}
+
+_migrate_docs_file() {  # $1 = old absolute path, $2 = new absolute path, $3 = label for the log line - ABSENT-ONLY: never overwrites an existing new file, never touches a missing old one (a plain rename/move, so content is unchanged)
+  local old="$1" new="$2" label="$3"
+  [ -f "$old" ] || return 0
+  if [ -e "$new" ]; then
+    log "  docs migration ($label): $new already exists - $old left in place, nothing overwritten"
+    return 0
+  fi
+  mkdir -p "$(dirname "$new")"
+  mv "$old" "$new"
+  log "  docs migration ($label): ${old##*/} -> $new"
+}
+
+migrate_docs_domains() {  # INSTALL + UPDATE: three absent-only moves onto the docs-domain layout - a file a capture used to write at the OLD path now writes at the NEW one, so an existing install's file is relocated once, byte-identical, and never overwrites a file already at the new path. Touches nothing else: related-context/ keeps every sibling-repo working paper - the capture's own drop-box for cross-repo plans, change requests, issue notes - exactly where it is; only the orientation doc this capture wrote moves out of it.
+  local root docs_root base
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  command -v python3 >/dev/null || { log "  !! python3 not found - skipping docs-domain migration (move by hand if upgrading: PROJECT-CODE-STYLE.md -> code-style/CODE-STYLE.md, architecture/ASSESSMENT.md -> quality/ASSESSMENT.md, related-context/PROJECT-RELATED-CONTEXT.md -> related-projects/RELATED-PROJECTS.md)"; return 0; }
+  docs_root="$(_resolve_docs_root "$root")"
+  base="$root/${docs_root%/}"
+  _migrate_docs_file "$base/PROJECT-CODE-STYLE.md" "$base/code-style/CODE-STYLE.md" "code style"
+  _migrate_docs_file "$base/architecture/ASSESSMENT.md" "$base/quality/ASSESSMENT.md" "architecture quality"
+  _migrate_docs_file "$base/related-context/PROJECT-RELATED-CONTEXT.md" "$base/related-projects/RELATED-PROJECTS.md" "related projects"
+}
+
 seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one)
   local root dest src
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping CLAUDE.md"; return 0; }
@@ -2457,9 +2496,9 @@ install_github_cli
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project; ensure_playwright_browser
+  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser
 else
-  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project; ensure_playwright_browser
+  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; migrate_docs_domains; seed_serena_project; ensure_playwright_browser
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed

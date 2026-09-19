@@ -44,6 +44,7 @@
   "skills": [
    "project-agent-capabilities",
    "project-architecture-analyzer",
+   "project-architecture-quality-analyzer",
    "project-architecture-quality-loop",
    "project-code-style-analyzer",
    "project-commit-checkpoint",

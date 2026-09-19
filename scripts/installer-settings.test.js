@@ -412,3 +412,137 @@ function assertEngineNotAHook(sb, run, updateIo, twin)
 }
 test('sh: --installed-only never reads the docs engine back as a hook', () => assertEngineNotAHook(sandbox(), runSh, updateIoSh, 'sh'));
 test('ps1: -InstalledOnly never reads the docs engine back as a hook (pwsh required)', { skip: skipNoPwsh }, () => assertEngineNotAHook(sandbox(), runPs, updateIoPs, 'ps1'));
+
+// --- docs-domain migration: three absent-only moves onto the new layout, for an install that ---
+// predates the domain layout. related-context/ is deliberately the shared drop-box for every
+// sibling-repo working paper a session produces - the capture owns only the orientation doc, so
+// the migration must move exactly that one file and leave every other paper in the folder in place.
+const LEGACY_CODE_STYLE = '# Code style\nlegacy content, byte for byte\n';
+const LEGACY_ASSESSMENT = '# Assessment\nlegacy content, byte for byte\n';
+const LEGACY_RELATED = '# Related\nlegacy content, byte for byte\n';
+function seedLegacyDocsLayout(sb, docsPath = '.claude/docs')
+{
+    const base = path.join(sb.repo, docsPath);
+    fs.mkdirSync(base, { recursive: true });
+    fs.writeFileSync(path.join(base, 'PROJECT-CODE-STYLE.md'), LEGACY_CODE_STYLE);
+    fs.mkdirSync(path.join(base, 'architecture'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'architecture', 'ASSESSMENT.md'), LEGACY_ASSESSMENT);
+    fs.mkdirSync(path.join(base, 'related-context', 'frontend-run-recipe'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'related-context', 'PROJECT-RELATED-CONTEXT.md'), LEGACY_RELATED);
+    // three sibling-repo working papers that are NOT the orientation doc - the negative proof
+    fs.writeFileSync(path.join(base, 'related-context', 'backend-change-request.md'), '# CR\n');
+    fs.writeFileSync(path.join(base, 'related-context', 'shared-contracts-notes.md'), '# Notes\n');
+    fs.writeFileSync(path.join(base, 'related-context', 'frontend-run-recipe', 'RECIPE.md'), '# Recipe\n');
+    return base;
+}
+function assertMigrated(base, twin)
+{
+    assert.ok(!fs.existsSync(path.join(base, 'PROJECT-CODE-STYLE.md')), `${twin}: old code-style path removed`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'code-style', 'CODE-STYLE.md'), 'utf8'), LEGACY_CODE_STYLE, `${twin}: code-style content byte-identical after the move`);
+    assert.ok(!fs.existsSync(path.join(base, 'architecture', 'ASSESSMENT.md')), `${twin}: old assessment path removed`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'quality', 'ASSESSMENT.md'), 'utf8'), LEGACY_ASSESSMENT, `${twin}: assessment content byte-identical after the move`);
+    assert.ok(!fs.existsSync(path.join(base, 'related-context', 'PROJECT-RELATED-CONTEXT.md')), `${twin}: old orientation doc removed`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'related-projects', 'RELATED-PROJECTS.md'), 'utf8'), LEGACY_RELATED, `${twin}: related-projects content byte-identical after the move`);
+    // the negative proof: every OTHER file in related-context/ is untouched, in place
+    assert.strictEqual(fs.readFileSync(path.join(base, 'related-context', 'backend-change-request.md'), 'utf8'), '# CR\n', `${twin}: an unrelated working paper changed`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'related-context', 'shared-contracts-notes.md'), 'utf8'), '# Notes\n', `${twin}: an unrelated working paper changed`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'related-context', 'frontend-run-recipe', 'RECIPE.md'), 'utf8'), '# Recipe\n', `${twin}: a nested working paper changed`);
+    assert.deepStrictEqual(fs.readdirSync(path.join(base, 'related-context')).sort(), ['backend-change-request.md', 'frontend-run-recipe', 'shared-contracts-notes.md'], `${twin}: related-context/ holds exactly the three untouched working papers`);
+}
+function assertDocsMigration(sb, run, twin)
+{
+    run(sb, 'install');   // an install predating the domain layout - no legacy docs yet
+    const base = seedLegacyDocsLayout(sb);   // simulate that older install's captured docs
+    const out = run(sb, 'update');
+    assert.match(out, /docs migration \(code style\): PROJECT-CODE-STYLE\.md ->/, `${twin}: the rename is reported, not just the move`);
+    assertMigrated(base, twin);
+    // idempotent: a second update changes nothing further and errors on nothing
+    const before = {
+        cs: fs.readFileSync(path.join(base, 'code-style', 'CODE-STYLE.md'), 'utf8'),
+        asmt: fs.readFileSync(path.join(base, 'quality', 'ASSESSMENT.md'), 'utf8'),
+        rel: fs.readFileSync(path.join(base, 'related-projects', 'RELATED-PROJECTS.md'), 'utf8'),
+    };
+    run(sb, 'update');
+    assertMigrated(base, twin);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'code-style', 'CODE-STYLE.md'), 'utf8'), before.cs, `${twin}: a second run left code-style untouched`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'quality', 'ASSESSMENT.md'), 'utf8'), before.asmt, `${twin}: a second run left quality untouched`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'related-projects', 'RELATED-PROJECTS.md'), 'utf8'), before.rel, `${twin}: a second run left related-projects untouched`);
+}
+test('sh: update migrates the pre-domain doc layout absent-only, byte-identical, and is idempotent', () => {
+    const sb = sandbox();
+    try { assertDocsMigration(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: update migrates the pre-domain doc layout absent-only, byte-identical, and is idempotent (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertDocsMigration(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// A fresh install has no legacy files at all - the migration must be a quiet no-op, never
+// fabricating the new folders or files out of nothing.
+function assertFreshInstallNoOp(sb, run, twin)
+{
+    run(sb, 'install');
+    const base = path.join(sb.repo, '.claude', 'docs');
+    assert.ok(!fs.existsSync(path.join(base, 'code-style')), `${twin}: no code-style folder invented on a fresh install`);
+    assert.ok(!fs.existsSync(path.join(base, 'quality')), `${twin}: no quality folder invented on a fresh install`);
+    assert.ok(!fs.existsSync(path.join(base, 'related-projects')), `${twin}: no related-projects folder invented on a fresh install`);
+}
+test('sh: a fresh install performs no docs migration', () => {
+    const sb = sandbox();
+    try { assertFreshInstallNoOp(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: a fresh install performs no docs migration (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertFreshInstallNoOp(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// A project already carrying ITS OWN file at the new path (hand-written, or already captured
+// under the new layout) must never be clobbered - the old orphan is left exactly as it was rather
+// than silently deleted or overwritten.
+function assertNeverClobbers(sb, run, twin)
+{
+    run(sb, 'install');
+    const base = seedLegacyDocsLayout(sb);
+    const mine = '# Code style\nthe project\'s own, already at the new path\n';
+    fs.mkdirSync(path.join(base, 'code-style'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'code-style', 'CODE-STYLE.md'), mine);
+    const out = run(sb, 'update');
+    assert.strictEqual(fs.readFileSync(path.join(base, 'code-style', 'CODE-STYLE.md'), 'utf8'), mine, `${twin}: the file already at the new path was overwritten`);
+    assert.strictEqual(fs.readFileSync(path.join(base, 'PROJECT-CODE-STYLE.md'), 'utf8'), LEGACY_CODE_STYLE, `${twin}: the old file was deleted instead of left as the visible orphan`);
+    assert.match(out, /already exists.*PROJECT-CODE-STYLE\.md left in place, nothing overwritten/, `${twin}: the collision is reported, not silent`);
+}
+test('sh: a file already at the new path is never clobbered - the old one is left in place', () => {
+    const sb = sandbox();
+    try { assertNeverClobbers(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: a file already at the new path is never clobbered - the old one is left in place (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertNeverClobbers(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// Missing or malformed settings.json must still resolve the default docs root and migrate there,
+// the same fail-soft-to-default behaviour Set-DocsRootStamp / stamp_docs_root_rule already pin.
+function assertMigratesOnMalformedSettings(sb, run, twin)
+{
+    run(sb, 'install');
+    fs.writeFileSync(path.join(sb.repo, '.claude', 'settings.json'), '{broken');
+    const base = seedLegacyDocsLayout(sb);   // at the default .claude/docs path
+    run(sb, 'update');
+    assertMigrated(base, twin);
+}
+test('sh: malformed settings.json still resolves the default docs root and migrates', () => {
+    const sb = sandbox();
+    try { assertMigratesOnMalformedSettings(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: malformed settings.json still resolves the default docs root and migrates (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertMigratesOnMalformedSettings(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});

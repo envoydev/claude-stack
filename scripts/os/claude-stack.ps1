@@ -1831,6 +1831,54 @@ function Set-DocsRootStamp {
   } catch { Log "  !! docs-root stamp failed on $rule - the rule keeps the env-wins fallback (that RULE file is the write target, not the install stamp)" }
 }
 
+function Resolve-DocsRoot {
+  # Resolve the docs-path value the same way Set-DocsRootStamp does: settings.json
+  # CLAUDE_STACK_DOCS_PATH, else the pre-0.2.43 CLAUDE_DOCS_PATH key, else the default.
+  param([string]$root)
+  $val = '.claude/docs'
+  $settings = Join-Path $root '.claude/settings.json'
+  if (Test-Path $settings) {
+    try {
+      $data = Get-Content $settings -Raw | ConvertFrom-Json
+      foreach ($k in @('CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH')) {
+        if ($data.env -and $data.env.PSObject.Properties[$k] -and $data.env.($k)) { $val = $data.env.($k); break }
+      }
+    } catch {}
+  }
+  return $val
+}
+
+function Move-DocsFile {
+  # ABSENT-ONLY move: never overwrites an existing new file, never touches a missing old one (a
+  # plain rename/move, so content is unchanged).
+  param([string]$OldPath, [string]$NewPath, [string]$Label)
+  if (-not (Test-Path -LiteralPath $OldPath -PathType Leaf)) { return }
+  if (Test-Path -LiteralPath $NewPath) {
+    Log "  docs migration ($Label): $NewPath already exists - $OldPath left in place, nothing overwritten"
+    return
+  }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $NewPath) | Out-Null
+  Clear-WriteBlockers $OldPath
+  Move-Item -LiteralPath $OldPath -Destination $NewPath
+  Log "  docs migration ($Label): $(Split-Path -Leaf $OldPath) -> $NewPath"
+}
+
+function Move-DocsDomains {
+  # INSTALL + UPDATE: three absent-only moves onto the docs-domain layout - a file a capture used to
+  # write at the OLD path now writes at the NEW one, so an existing install's file is relocated once,
+  # byte-identical, and never overwrites a file already at the new path. Touches nothing else:
+  # related-context/ keeps every sibling-repo working paper - the capture's own drop-box for
+  # cross-repo plans, change requests, issue notes - exactly where it is; only the orientation doc
+  # this capture wrote moves out of it. Twin of the .sh migrate_docs_domains - keep both in parity.
+  $root = Get-RepoRoot
+  if (-not $root) { return }
+  $docsRoot = (Resolve-DocsRoot $root).TrimEnd('/', '\')
+  $base = Join-Path $root $docsRoot
+  Move-DocsFile -OldPath (Join-Path $base 'PROJECT-CODE-STYLE.md') -NewPath (Join-Path $base 'code-style/CODE-STYLE.md') -Label 'code style'
+  Move-DocsFile -OldPath (Join-Path $base 'architecture/ASSESSMENT.md') -NewPath (Join-Path $base 'quality/ASSESSMENT.md') -Label 'architecture quality'
+  Move-DocsFile -OldPath (Join-Path $base 'related-context/PROJECT-RELATED-CONTEXT.md') -NewPath (Join-Path $base 'related-projects/RELATED-PROJECTS.md') -Label 'related projects'
+}
+
 function New-ClaudeMd {
   # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one).
   $root = Get-RepoRoot
@@ -2767,8 +2815,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
