@@ -297,6 +297,14 @@ const PRE_FEATURE_COMMIT = 'bb5c684';
 // `git archive <committish> | tar -x` into destDir - a clean tree (no .git, no node_modules, no
 // gitignored files), the same shape a real release archive or shallow-clone snapshot has. Piped
 // through node buffers rather than a shell pipeline so destDir never needs shell-quoting.
+//
+// ALSO writes RELEASE-SOURCE (sha/ref/version/source lines, the exact shape
+// _stack_marketplace_promote() synthesizes) - without it, claude-stack.sh's stack_src() has no git
+// checkout (no .git, deliberately) and no RELEASE-SOURCE to read STACK_SHA from, so write_stamp()
+// takes its 'no source revision resolved' fail-soft branch and writes NO claude-stack.stamp at all
+// (confirmed live: a first attempt at this without the file produced no stamp). A `git archive`
+// snapshot with no RELEASE-SOURCE is not actually release-shaped - a real release archive always
+// carries one (.github/workflows/release.yml) - so this was a gap in what 'release-shaped' claimed.
 function extractGitArchive(committish, destDir) {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
@@ -308,6 +316,13 @@ function extractGitArchive(committish, destDir) {
   if (tar.error || tar.status !== 0) {
     throw new Error(`tar extract of ${committish} into ${destDir} failed: ${tar.error ? tar.error.message : String(tar.stderr || '').slice(-2000)}`);
   }
+  const shaRes = spawnSync('git', ['rev-parse', committish], { cwd: ROOT, encoding: 'utf8' });
+  const sha = (shaRes.stdout || '').trim();
+  if (shaRes.status !== 0 || !sha) throw new Error(`git rev-parse ${committish} failed: ${shaRes.stderr || ''}`);
+  const pluginJsonRes = spawnSync('git', ['show', `${committish}:setup-plugin/.claude-plugin/plugin.json`], { cwd: ROOT, encoding: 'utf8' });
+  const versionMatch = /"version"\s*:\s*"([^"]+)"/.exec(pluginJsonRes.stdout || '');
+  const version = versionMatch ? versionMatch[1] : '0.0.0';
+  fs.writeFileSync(path.join(destDir, 'RELEASE-SOURCE'), `sha: ${sha}\nref: ${committish}\nversion: ${version}\nsource: memory-usage-eval-archive\n`);
   return destDir;
 }
 
@@ -437,6 +452,18 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const preMcp = fs.existsSync(path.join(projectDir, '.mcp.json')) ? JSON.parse(fs.readFileSync(path.join(projectDir, '.mcp.json'), 'utf8') || '{}') : {};
   const preHasMemory = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md')) || !!(preMcp.mcpServers && preMcp.mcpServers.memory);
   if (preHasMemory) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) unexpectedly already has the memory feature - not a valid pre-feature baseline`);
+  // Controller directive: the seed install must genuinely LOOK like an older real install, not just
+  // lack the memory feature by construction - a stamp, but one written before a4c0828's
+  // installed-always-rules:/installed-always-mcps: lines existed (bb5c684 predates that commit, so
+  // its own write_stamp() heredoc never had those lines at all - not merely empty-valued). This is
+  // what proves the update path is exercising the real 'a locked item this project never had before'
+  // case a4c0828 fixed, not an already-always-aware fixture.
+  const preStampPath = path.join(projectDir, '.claude', 'claude-stack.stamp');
+  if (!fs.existsSync(preStampPath)) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) wrote no claude-stack.stamp - not a valid pre-feature baseline`);
+  const preStamp = fs.readFileSync(preStampPath, 'utf8');
+  if (/^installed-always-(rules|mcps):/m.test(preStamp)) {
+    throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) stamp already carries installed-always- keys - not a pre-a4c0828 baseline`);
+  }
 
   // A pre-feature project has no `memory` MCP registration yet, so there is nothing to seed a note
   // INTO via the real server (unlike scenarios 2/4/5's seedMemory) - this note stands in for Claude's
