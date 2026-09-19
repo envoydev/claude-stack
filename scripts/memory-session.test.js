@@ -57,7 +57,7 @@ function fixtureProject({ rows = null, relatedNames = null, registered = true } 
   return { root, dbPath, hook, rm: () => { rmDir(root); rmDir(config); } };
 }
 
-test('a session start with a registered, populated database pushes the memory block, headed and ordered', { skip: skipNoSqlite }, () => {
+test('a session start with a registered, populated database pushes the memory block, headed, tagged and ordered', { skip: skipNoSqlite }, () => {
   // Built after the fixture exists, not passed to fixtureProject: the own-project tag has to match the
   // fixture's own directory name (the git-less projectName fallback - basename of projectRoot, since
   // there is no git repo here), which is only known once the temp dir has been created.
@@ -75,23 +75,71 @@ test('a session start with a registered, populated database pushes the memory bl
     const text = out.hookSpecificOutput.additionalContext;
     assert.strictEqual(out.hookSpecificOutput.hookEventName, 'SessionStart');
     assert.match(text, /^Memory \(memory MCP, project\):/);
-    const ownIdx = text.indexOf('own project note');
+    assert.match(text, new RegExp(`This project's memory tag: project:${projectName}`));
+    // I4: the global preference (group 1) is selected ahead of the newer own-project reference (group 2).
     const prefIdx = text.indexOf('a global preference');
+    const ownIdx = text.indexOf('own project note');
     const sibIdx = text.indexOf('a sibling note');
-    assert.ok(ownIdx > -1 && prefIdx > ownIdx && sibIdx > prefIdx, text);
+    assert.ok(prefIdx > -1 && ownIdx > prefIdx && sibIdx > ownIdx, text);
     assert.match(text, /ToolSearch select:mcp__memory__memory_store,mcp__memory__memory_search,mcp__memory__memory_list/);
     // Proof this is the real end-to-end stdout, not a shape assumption.
     console.log('--- memory-session.js real stdout (fixture project) ---\n' + r.stdout + '\n--- end ---');
   } finally { p.rm(); }
 });
 
-test('an empty database is silent', { skip: skipNoSqlite }, () => {
+test('an empty database still names the project tag and the search hint - never fully silent once registered (I5)', { skip: skipNoSqlite }, () => {
   const p = fixtureProject({ rows: [] });
   try {
+    const projectName = path.basename(p.root);
     const r = p.hook({ hook_event_name: 'SessionStart', session_id: 's2', cwd: p.root });
     assert.strictEqual(r.status, 0);
-    assert.strictEqual(r.stdout, '');
+    assert.notStrictEqual(r.stdout, '');
+    const out = JSON.parse(r.stdout);
+    const text = out.hookSpecificOutput.additionalContext;
+    // Kept short: just the tag line and the search hint, no 'Memory (...)' header and no body.
+    assert.strictEqual(text, [
+      `This project's memory tag: project:${projectName}`,
+      'Store, search or list more: ToolSearch select:mcp__memory__memory_store,mcp__memory__memory_search,mcp__memory__memory_list',
+    ].join('\n'));
   } finally { p.rm(); }
+});
+
+test('inside a real git worktree, the pushed tag and own-project rows both use the MAIN checkout name (I5)', { skip: skipNoSqlite }, () => {
+  // This house works out of .claude/worktrees/* itself (see cross-task-facts.md) - a worktree session
+  // must never tag or read memories under its own folder name, only the main repo's.
+  const outer = tmpDir('memory-session-wt-');
+  const config = tmpDir('memory-session-wt-config-');
+  try {
+    const repo = path.join(outer, 'my-repo');
+    fs.mkdirSync(repo);
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    spawnSync('git', ['-C', repo, 'config', 'user.email', 't@example.com'], {});
+    spawnSync('git', ['-C', repo, 'config', 'user.name', 'test'], {});
+    spawnSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init'], {});
+    // Deliberately unrelated to 'my-repo' so a bug reading the worktree's own name cannot pass by luck.
+    const worktree = path.join(outer, 'unrelated-worktree-name');
+    const add = spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'feat', worktree], { encoding: 'utf8' });
+    assert.strictEqual(add.status, 0, add.stderr);
+
+    const dbPath = path.join(worktree, '.memory-mcp', 'memory.db');
+    buildDb(dbPath, [{ content: 'main-repo-tagged note', tags: 'project:my-repo', memory_type: 'reference' }]);
+    fs.writeFileSync(path.join(worktree, '.mcp.json'), JSON.stringify({
+      mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: dbPath } } },
+    }));
+
+    const r = spawnSync(process.execPath, [HOOK], {
+      cwd: worktree,
+      input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's-wt', cwd: worktree }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: worktree, CLAUDE_CONFIG_DIR: config },
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    const text = out.hookSpecificOutput.additionalContext;
+    assert.match(text, /This project's memory tag: project:my-repo/, text);
+    assert.doesNotMatch(text, /unrelated-worktree-name/, text);
+    assert.match(text, /main-repo-tagged note/, text);
+  } finally { rmDir(outer); rmDir(config); }
 });
 
 test('no memory server registered for the project is silent', () => {

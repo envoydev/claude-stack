@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // memory-session.js - pushes the memory MCP's own stored memories into every session, the SessionStart
 // half of the shared-memory pair (memory.js is the engine, copied beside this hook and not itself
-// wired - same split as docs.js/docs-session.js). Silent wherever nothing can be shown: no memory
-// server registered for this project, an empty selection, a missing/locked/wrong-schema database, a
-// Node below 22.13 (memory.js's own selectForSession already degrades to an empty selection there),
-// garbage stdin, or any other error - exit 0 throughout, since a session start that cannot be enriched
-// must never be a session start that fails.
+// wired - same split as docs.js/docs-session.js). Whenever a memory registration is found, the push
+// always names this project's own tag (even with nothing else to show - I5), so the model knows what
+// to save under, especially inside a git worktree, where that name is the MAIN checkout's, never the
+// worktree's own folder. Fully silent only when there is no registration to report at all: a
+// missing/locked/wrong-schema database, a Node below 22.13 (memory.js's own selectForSession already
+// degrades to an empty selection there), garbage stdin, or any other error - exit 0 throughout, since a
+// session start that cannot be enriched must never be a session start that fails.
 'use strict';
 const os = require('os');
 
@@ -66,8 +68,15 @@ async function main() {
   let related = [];
   try { related = memory.relatedProjects(root, require('./docs.js').DOCS_ROOT); } catch {}
   const { text } = memory.selectForSession(dbPath, { project, related, capBytes: CAP_BYTES });
-  if (!text) return;
-  const lines = [`Memory (memory MCP, ${level}):`, text, '', `Store, search or list more: ${TOOL_SEARCH_LINE}`];
+  // Whenever a memory registration exists, the model needs its own project's tag to save under - even
+  // (especially) inside a git worktree, where projectName() already names the MAIN checkout, never the
+  // worktree's own folder (I5). Nothing selected: keep the push to just this line plus the search hint,
+  // no header, no body - still short enough to never be worth suppressing.
+  const tagLine = `This project's memory tag: project:${project}`;
+  const searchLine = `Store, search or list more: ${TOOL_SEARCH_LINE}`;
+  const lines = text
+    ? [`Memory (memory MCP, ${level}):`, tagLine, text, '', searchLine]
+    : [tagLine, searchLine];
   emit('SessionStart', lines.join('\n'));
 }
 

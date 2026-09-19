@@ -191,7 +191,7 @@ test('relatedProjects reads RELATED-PROJECTS.md headings, else the generated rul
 
 // --- selectForSession ------------------------------------------------------------------------------
 
-test('own-project rows come first, newest first, before global preferences and related-project rows', { skip: skipNoSqlite }, () => {
+test('preferences and corrections (own or global) come first, newest first, then this project\'s other memories, then related-project rows', { skip: skipNoSqlite }, () => {
   const dir = tmpDir('memory-select-');
   try {
     const file = buildDb(dir, [
@@ -203,8 +203,23 @@ test('own-project rows come first, newest first, before global preferences and r
     ]);
     const { text, counts } = m.selectForSession(file, { project: 'myapp', related: ['sibling-a'], capBytes: 100000 });
     const order = text.split('\n').map((l) => l.replace(/^- \[[^\]]+\] /, ''));
-    assert.deepStrictEqual(order, ['own newest', 'own oldest', 'a global preference', 'a global correction', 'sibling note']);
+    // Group 1 (preference/correction, own-or-untagged) beats group 2 (this project's other memories)
+    // even though the group-2 rows are newer - a correction is never crowded out by recency (I4).
+    assert.deepStrictEqual(order, ['a global preference', 'a global correction', 'own newest', 'own oldest', 'sibling note']);
     assert.deepStrictEqual(counts, { own: 2, preference: 2, related: 1 });
+  } finally { rmDir(dir); }
+});
+
+test('a project-tagged preference or correction joins group 1 too, ahead of the project\'s other memories', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-select-');
+  try {
+    const file = buildDb(dir, [
+      { content: 'own reference, newer', tags: 'project:myapp', memory_type: 'reference', created_at: 500 },
+      { content: 'own correction, older', tags: 'project:myapp', memory_type: 'user_correction', created_at: 100 },
+    ]);
+    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
+    const order = text.split('\n').map((l) => l.replace(/^- \[[^\]]+\] /, ''));
+    assert.deepStrictEqual(order, ['own correction, older', 'own reference, newer']);
   } finally { rmDir(dir); }
 });
 
@@ -312,13 +327,60 @@ test('the cap stops between memories, never inside one', { skip: skipNoSqlite },
   } finally { rmDir(dir); }
 });
 
-test('a cap smaller than the first memory yields nothing, never a partial line', { skip: skipNoSqlite }, () => {
+test('a cap smaller than the only memory yields nothing, never a partial line', { skip: skipNoSqlite }, () => {
   const dir = tmpDir('memory-select-');
   try {
     const file = buildDb(dir, [{ content: 'a'.repeat(200), tags: 'project:myapp', memory_type: 'reference' }]);
     const { text, counts } = m.selectForSession(file, { project: 'myapp', capBytes: 10 });
     assert.strictEqual(text, '');
     assert.deepStrictEqual(counts, { own: 0, preference: 0, related: 0 });
+  } finally { rmDir(dir); }
+});
+
+// I4 / M7: the old code `break`d at the first row that did not fit, so one oversized newest row blanked
+// the whole block - every smaller row behind it, however well it would have fit, was silently dropped
+// too. The engine now `continue`s past a row that does not fit, so selection keeps going. (This flips
+// the assertion that used to live at this line, which pinned the harmful `break`.)
+test('one oversized newest row no longer blanks the block - a smaller row behind it still gets in', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-select-');
+  try {
+    const file = buildDb(dir, [
+      { content: 'x'.repeat(1000), tags: 'project:myapp', memory_type: 'reference', created_at: 200 },
+      { content: 'a small note that fits', tags: 'project:myapp', memory_type: 'reference', created_at: 100 },
+    ]);
+    // 100 bytes: even truncated to 400 chars + '...', the oversized row's line alone is far over the
+    // cap and must be skipped, not treated as the end of selection.
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', capBytes: 100 });
+    assert.doesNotMatch(text, /x{50}/, text);
+    assert.match(text, /a small note that fits/, text);
+    assert.strictEqual(counts.own, 1);
+  } finally { rmDir(dir); }
+});
+
+test('a memory line is cut to 400 chars with \'...\', never dropped whole just for being long', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-select-');
+  try {
+    const long = 'y'.repeat(1000);
+    const file = buildDb(dir, [{ content: long, tags: 'project:myapp', memory_type: 'reference' }]);
+    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
+    assert.strictEqual(text, `- [project fact] ${'y'.repeat(400)}...`);
+  } finally { rmDir(dir); }
+});
+
+test('with 20 recent project facts and 3 older corrections, the corrections are in the block', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-select-');
+  try {
+    const rows = [];
+    for (let i = 0; i < 20; i++) rows.push({ content: `recent fact ${i}`, tags: 'project:myapp', memory_type: 'reference', created_at: 1000 - i });
+    for (let i = 0; i < 3; i++) rows.push({ content: `older correction ${i}`, tags: 'project:myapp', memory_type: 'user_correction', created_at: 100 - i });
+    const file = buildDb(dir, rows);
+    // A cap that cannot possibly hold all 23 rows - proves the corrections are not merely present
+    // because everything fit, but because group 1 (preference/correction) is selected ahead of the
+    // 20 newer facts rather than being crowded out by their recency.
+    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 300 });
+    for (let i = 0; i < 3; i++) assert.match(text, new RegExp(`older correction ${i}`), text);
+    const lines = text.split('\n');
+    assert.ok(lines.length < 23, `expected the cap to leave some facts out, got ${lines.length} lines`);
   } finally { rmDir(dir); }
 });
 

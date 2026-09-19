@@ -83,16 +83,21 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
 // one repo and always ends in '.git' for a normal or worktree checkout, so its parent's basename is the
 // main repo's own folder name in both cases. A bare repo (or any layout where the common dir does not
 // end in '.git') falls back to `--show-toplevel`, then to projectRoot's own basename.
+// Commas are the tag delimiter (FACT-SCHEMA / cross-task-facts.md), so a comma left in the name would
+// split into two tags on save and match neither on read - stripped here, once, so every caller (this
+// hook and the CLI alike) gets an already-safe name, matching the importer's own `.replace(/,/g, '')`
+// (cross-task-facts.md: 'both should').
 function projectName(projectRoot) {
+  const strip = (s) => s.replace(/,/g, '');
   try {
     const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (common && path.basename(common) === '.git') return path.basename(path.dirname(common));
+    if (common && path.basename(common) === '.git') return strip(path.basename(path.dirname(common)));
   } catch {}
   try {
     const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (top) return path.basename(top);
+    if (top) return strip(path.basename(top));
   } catch {}
-  return path.basename(projectRoot);
+  return strip(path.basename(projectRoot));
 }
 
 const headingName = (line) => { const m = /^##\s+(.+?)\s*$/.exec(line); return m ? m[1].trim() : null; };
@@ -189,15 +194,27 @@ const CORRECTION_KIND = 'user_correction';
 const KIND_LABELS = { preference_signal: 'preference', user_correction: 'correction', reference: 'project fact', learning: 'lesson' };
 const kindLabel = (memoryType) => KIND_LABELS[memoryType] || memoryType || 'unknown';
 
-// The three selection groups, in order, newest first within each, `agent:`-tagged rows dropped
-// entirely, a row picked by an earlier group never repeated by a later one:
-//   1. own project    - tags hold 'project:<project>' or bare '<project>'
-//   2. global prefs    - memory_type preference_signal/user_correction carrying NO 'project:' tag at
-//                        all (one tagged to ANOTHER project stays there, never leaks into every session)
+const LINE_CONTENT_CAP = 400;
+const truncate = (s, max) => (s.length > max ? `${s.slice(0, max)}...` : s);
+const isPrefOrCorrection = (row) => row.memory_type === PREFERENCE_KIND || row.memory_type === CORRECTION_KIND;
+
+// The three selection groups, in order, newest first within each (the SQL query already orders every
+// row newest-first, and each group below is a single pass over that same order, so 'newest first'
+// holds within a group without a separate sort), `agent:`-tagged rows dropped entirely, a row picked
+// by an earlier group never repeated by a later one:
+//   1. preferences and corrections - memory_type preference_signal/user_correction, tagged to THIS
+//      project ('project:<project>' or bare '<project>') OR carrying no 'project:' tag at all (one
+//      tagged to ANOTHER project stays there, never leaks into every session). This group comes first
+//      so a correction is never crowded out by a pile of recent project facts (I4).
+//   2. this project's other memories - tags hold 'project:<project>' or bare '<project>', whatever is
+//      left after group 1 already took the project's own preferences/corrections
 //   3. related projects - tags hold 'project:<related>' or bare '<related>' for each related name
-// Stops before capBytes; a memory is never cut mid-way, only ever omitted whole. Each printed line
-// carries the FRIENDLY label (preference/correction/project fact/lesson), never the service's raw
-// subtype spelling.
+// A row that does not fit the remaining budget is skipped (`continue`), never treated as the end of
+// selection - one oversized row no longer blanks everything that would have fit after it. Each line's
+// content is cut to LINE_CONTENT_CAP chars with '...' before it is measured, so one huge memory can
+// never eat the whole cap by itself either. The 4096-byte cap (capBytes) still bounds the whole block.
+// Each printed line carries the FRIENDLY label (preference/correction/project fact/lesson), never the
+// service's raw subtype spelling.
 function selectForSession(dbPath, { project = '', related = [], capBytes = 4096 } = {}) {
   const empty = { text: '', counts: { own: 0, preference: 0, related: 0 } };
   const rows = readMemoryRows(dbPath);
@@ -213,17 +230,17 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096 
       picked.push({ row, key });
     }
   };
+  take((tags, row) => isPrefOrCorrection(row) && ((project && matchesProject(tags, project)) || !tags.some((t) => t.startsWith('project:'))), 'preference');
   if (project) take((tags) => matchesProject(tags, project), 'own');
-  take((tags, row) => (row.memory_type === PREFERENCE_KIND || row.memory_type === CORRECTION_KIND) && !tags.some((t) => t.startsWith('project:')), 'preference');
   for (const r of related) take((tags) => matchesProject(tags, r), 'related');
 
   const counts = { own: 0, preference: 0, related: 0 };
   const lines = [];
   let bytes = 0;
   for (const { row, key } of picked) {
-    const line = `- [${kindLabel(row.memory_type)}] ${oneLine(row.content)}`;
+    const line = `- [${kindLabel(row.memory_type)}] ${truncate(oneLine(row.content), LINE_CONTENT_CAP)}`;
     const size = Buffer.byteLength(lines.length ? `\n${line}` : line, 'utf8');
-    if (bytes + size > capBytes) break;
+    if (bytes + size > capBytes) continue;
     lines.push(line);
     bytes += size;
     counts[key]++;
