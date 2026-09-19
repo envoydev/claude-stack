@@ -83,6 +83,11 @@ why (a missing `uvx` or Python is the usual cause) and fix that before running t
 `baseline-memory.md` (always-on) names what belongs in the store and when to search it before
 asking or reading - nothing further to configure.
 
+A note imported by a registration made before this version stored a hash in place of a real
+embedding, so it still LOADS by project tag but may not surface on a `memory_search` by meaning -
+the service has no re-embed path, so this is permanent for those older rows; anything imported or
+saved from here on gets a real 384-dim embedding and searches normally.
+
 ## 4. Index the codebase for serena (when installed)
 
 The installer already wrote `.serena/project.yml` - the project name, the `language_servers` it

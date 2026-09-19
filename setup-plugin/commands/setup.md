@@ -140,7 +140,7 @@ Hooks are leaf picks - nothing requires them, they require nothing, so every row
 
 Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`, `memory` via `baseline-memory` - required in every install now, the same way serena and context7 are); recommended = `playwright` plus the confirmed stacks' seeds (`angular-cli` on the Angular/Ionic stacks). The heavy two - `chrome-devtools` and `appium-mcp`, which fail at launch without Chrome or the mobile SDKs - are seeded by NO stack and appear as free adds; appium arrives pre-selected only when the evidence scan matched its own dependency. Everything else - `sentry` included - is a free add for projects that actually use it, shown in the table as an unselected row like any other; note next to `sentry` that it needs two values in the ACCOUNT settings.json env (below).
 
-After the round, and ALWAYS - `memory` is locked, so this fires on every run, not only when the user picks it - ask the shared memory level. Paste this table first, table-before-question like every other decision in this run:
+After the round, and ALWAYS - `memory` is locked, so this fires on every run, not only when the user picks it - ask the shared memory level. Paste this table first, table-before-question like every other decision in this run. At `--scope global` (screen A's scope answer), drop the `project` row entirely - the installer refuses `project` at global scope, since an account-wide install has no single project root to own the database - and show only the first two rows:
 
 ```
 | level | database | who shares it |
@@ -150,7 +150,8 @@ After the round, and ALWAYS - `memory` is locked, so this fires on every run, no
 | project | <project>/.memory-mcp/memory.db, gitignored | this project only, from any account |
 ```
 
-Then ONE AskUserQuestion carrying exactly those three options, `global` marked Recommended - the
+Then ONE AskUserQuestion carrying exactly the options just shown (two at global scope, three at
+project scope), `global` marked Recommended - the
 default for a fresh install, the whole point of shared memory. Picking `project` while this
 project's related-projects domain already names sibling repos
 (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
@@ -203,11 +204,13 @@ Run the installer **from the snapshot**, and pass it back with `--source` so it 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `CLAUDE_STACK_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
 
 `--memory-level` carries step 8's answer: the installer registers the memory MCP at that level's
-database, imports this project's existing notes into it once, and switches off Claude's own
-auto-memory in the settings that apply (the project's `.claude/settings.json` for a project
-install, the account file for a global one) - ONLY when that import succeeds, so a failed import
-never loses a note. Read the installer's own log for what it actually did and report that
-verbatim in the close-out; never claim the switch-off happened because the level was asked.
+database, imports this project's existing notes into it once, and - ONLY when that import
+succeeds - switches off Claude's own auto-memory in THIS repo's own `.claude/settings.json`,
+even at global scope (never the account file, which would silence every other project's memory
+too). A failed import leaves Claude's own memory ON and is reported as such rather than retried
+into a false success; the old `MEMORY.md` / `memory/*.md` files are never deleted either way. Read
+the installer's own log for what it actually did and report that verbatim in the close-out; never
+claim the switch-off happened because the level was asked.
 
 `--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/claude-stack.stamp` recording the commit it installed (read from the snapshot's `RELEASE-SOURCE`) - that is what a later `/claude-stack:configure` diffs against.
 

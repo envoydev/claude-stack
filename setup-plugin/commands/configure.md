@@ -263,15 +263,18 @@ the rest of the installed servers are direct picks - droppable, and preserved ac
 Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
-registration - a fresh add, default to `global`). Paste the same three-row level table setup uses
-(`global` / `scoped` / `project`, who shares each and where its database lives), pre-select the
-level just read back, and ask ONE AskUserQuestion: keep it, or change to one of the other two.
-Picking or keeping `project` while this project's related-projects domain already names sibling
-repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
+registration - a fresh add, default to `global`). Paste the level table setup uses - `global` /
+`scoped` / `project`, who shares each and where its database lives - but at `--scope global` drop
+the `project` row entirely: the installer refuses `project` at global scope (there is no single
+project root an account-wide install can sensibly own), so only offer `global` and `scoped` there.
+Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
+other one(s) shown. Picking or keeping `project` while this project's related-projects domain
+already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
 `baseline-project-related-context.md`) means those projects' memories are not visible from this
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
-it re-points the registration, and the installer's log names which file the old memories stay in;
-read that line and report it, never assert it. Pass the answer to the installer as
+it re-points the registration, and the installer prints
+`memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
+and report it, never assert it. Pass the answer to the installer as
 `--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
 `memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.
@@ -423,8 +426,8 @@ lands the same revision step 1 previewed:
   key that is present - so it needs no flag.
 - `--memory-level` carries step 7's answer whenever memory is present and the user changed the
   level: the installer re-points the registration to that level's database (nothing copied or
-  deleted) and prints the old and new file in one line. Nothing changed at step 7 - the level
-  already matches, or memory was dropped - needs no flag.
+  deleted) and prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`.
+  Nothing changed at step 7 - the level already matches, or memory was dropped - needs no flag.
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 

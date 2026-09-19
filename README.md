@@ -45,9 +45,9 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/`, the `.claude/settings.json` `env` block plus thirteen hook wirings, the shared memory's `autoMemoryEnabled: false` and one-time note import, `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
-| **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) |
-| **Starts** | six `claude plugin install` calls and up to eight `claude mcp add` registrations; nothing else executes from the package, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/`, the `.claude/settings.json` `env` block plus thirteen hook wirings, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
+| **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
+| **Starts** | six `claude plugin install` calls, up to eight `claude mcp add` registrations, and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/claude-stack:status` reports your own install's number |
 

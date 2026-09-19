@@ -239,8 +239,13 @@ mirrored there in the same sitting.
   several writers). Before switching Claude's own memory off, the installer imports the project's
   existing `MEMORY.md` / `memory/*.md` notes into the chosen database once, through the memory
   service itself (idempotent - a re-run imports nothing twice); the switch-off
-  (`autoMemoryEnabled: false`, the PROJECT settings.json, or the account file for a global install)
-  is conditional on that import succeeding, so a failed import never loses a note.
+  (`autoMemoryEnabled: false`) writes to THIS repo's own project `.claude/settings.json` - always,
+  even at global scope, never the account file, which would silence every other project's memory
+  too - and waits for that import to succeed first: a failed import leaves Claude's own memory ON
+  and is reported as such, never retried into a false success, and the old `MEMORY.md` /
+  `memory/*.md` files are never deleted either way. A note a PRE-fix registration imported was
+  hash-embedded rather than given a real 384-dim embedding, has no re-embed path in the service, and
+  so still loads by project tag but may miss a `memory_search` by meaning.
 - **serena self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
   enabled), so the installers SEED `.serena/project.yml` on install and update: project name, the
@@ -323,7 +328,7 @@ mirrored there in the same sitting.
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
   option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (109,762 on 2026-09-19: pathless rules 35,388, agent descriptions 28,541, skill descriptions 45,833 - the shared-memory rule and its tool grants added ~2,900). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (109,826 on 2026-09-19: pathless rules 35,452, agent descriptions 28,541, skill descriptions 45,833 - the shared-memory rule and its tool grants added ~2,900). A rule moved into the
   baseline set or a grown description is costed against it. `/claude-stack:status` reports an install's
   own floor.
 

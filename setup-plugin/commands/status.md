@@ -128,6 +128,13 @@ the table row above - report that mismatch verbatim, never guess): `memory level
 (it fails with `MODULE_NOT_FOUND`) - print `memory level: not checked - memory.js is not installed
 here` instead. No `memory` row at all: skip the line, nothing to read.
 
+Whenever that line runs, add a second one checking whether the session-start push can even fire on
+THIS machine: `node -e "try{require('node:sqlite');process.exit(0)}catch{process.exit(1)}"`. Exit 0
+adds nothing; a non-zero exit means this Node is below 22.13 (`node:sqlite` needs it unflagged), so
+render `memory start block: off - this Node is below 22.13, node:sqlite is unavailable and the
+session-start push never runs (memory_search still works - it goes through the MCP server, not this
+machine's Node)`.
+
 **Plugins** - `claude plugin list` (fail-soft: without the CLI print the banner +
 `plugin CLI unavailable - skipped`):
 
@@ -145,7 +152,7 @@ is how a commit-time security gate sat off through two runs that both reported n
 |---|---|
 | stack version (stamp) | 0.2.3 @ <short-sha> |
 | scope | project (the stamp's `scope:` line; `user` there = global) |
-| autoMemoryEnabled | false - the one-time import succeeded, Claude's own memory is off |
+| autoMemoryEnabled | false - the one-time import succeeded, Claude's own memory is off (this key always lives in THIS repo's own settings.json, even at global scope - never the account file) |
 | CLAUDE_STACK_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
 | CLAUDE_STACK_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
@@ -161,8 +168,9 @@ is how a commit-time security gate sat off through two runs that both reported n
 Stamp from `claude-stack.stamp` (`no stamp - source never resolved at install time` when
 absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and
 a house default applies. `autoMemoryEnabled` is the one exception - a TOP-LEVEL settings.json key,
-not under `env`, written by the memory import: read it from the scope's own file (project
-`.claude/settings.json`, or the account file for a global install) and print `false` as done,
+not under `env`, written by the memory import: read it from THIS repo's own project
+`.claude/settings.json` ALWAYS, even for a global-scope install (the switch-off never touches the
+account file - that would silence every other project's memory too) and print `false` as done,
 `true` or the key ABSENT as `true/absent - the one-time import has not completed yet, Claude's own
 memory is still on` (never read an absent key as success). The rows above are the keys the stack SEEDS; any other `CLAUDE_STACK_*`
 key the file carries (`CLAUDE_STACK_ALLOW_WRITE_OUTSIDE`, a key a newer release added) gets its

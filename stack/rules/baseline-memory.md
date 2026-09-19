@@ -7,23 +7,24 @@ description: House baseline - what belongs in shared memory. Always-on (no paths
 ## What memory is for
 
 Project truth lives in the docs domains (`baseline-docs-root.md` names the root); memory holds what
-they do not - preferences, corrections, lessons. It is shared across accounts, not a second copy of a
-project's documented facts.
+they do not - preferences, corrections, lessons - shared across accounts, not a copy of a project's
+documented facts.
 
 ## What to save
 
 - The user corrects you, states a preference, or you learn a project fact no docs domain holds: save
   it with `memory_store`, `metadata.type` set to `preference_signal` (preference), `user_correction`
-  (correction), or `reference` (project fact). Tag `project:<name>` (the repo's folder name) - a
-  preference true in every project carries none.
+  (correction), or `reference` (project fact). Tag `project:<name>` with the name from the
+  session-start `This project's memory tag:` line - the main checkout's, never a worktree's - a
+  preference true everywhere carries none.
 - An agent saves only a lesson worth keeping past its own task - a build quirk, a fix that worked, a
-  trap - typed `learning` (lesson), tagged `agent:<agent-name>` and `project:<name>`. Task progress and
-  handoffs go to serena's memory, never here.
+  trap - typed `learning` (lesson), tagged `agent:<agent-name>` and the same project tag. Task/handoff
+  notes go to serena's memory, never here.
 
 ## Before you ask or read
 
-- Search with `memory_search` before asking the user something they may already have told you.
-- Search by a related project's name before reading that project's repo.
+Search with `memory_search` before asking the user something they may already have told you, or
+before reading a related project's repo - search by its name first.
 
 ## Tools
 

@@ -243,9 +243,15 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   <dbPath>` or `none`. Print the answer as ONE informational line under the MCPs table - `memory
   level: <level> - <dbPath>`, or `memory: registered but the level cannot be derived from
   <dbPath>` for an unrecognized path - never a consent row: this walk does not add, drop or change
-  the level, only `/claude-stack:configure` does. In the same line's neighbourhood, read the scope's
-  settings.json `autoMemoryEnabled` key (top-level, not under `env`: the project's own
-  `.claude/settings.json` for a project install, the account file for a global one) and report it -
+  the level, only `/claude-stack:configure` does. Add a second line checking whether the
+  session-start push can even fire on this machine - `node -e
+  "try{require('node:sqlite');process.exit(0)}catch{process.exit(1)}"`; a non-zero exit (Node below
+  22.13) renders `memory start block: off - this Node is below 22.13, node:sqlite is unavailable
+  and the session-start push never runs (memory_search still works - it goes through the MCP
+  server, not this machine's Node)`, exit 0 adds nothing. In the same line's neighbourhood, read
+  THIS repo's own project `.claude/settings.json` `autoMemoryEnabled` key (top-level, not under
+  `env` - ALWAYS the project file, whatever the install's scope: the switch-off never touches the
+  account file) and report it -
   `false` reads as done (Claude's own memory is off, the one-time import succeeded); `true` or the
   key ABSENT both read as 'the one-time import has not completed yet, so Claude's own memory is
   still on' - never claim success from an absent key.
