@@ -161,14 +161,21 @@ choice), and the detected migrations. Three outputs decide the path:
 Run the installer; it derives the selection from disk itself, closes new dependencies through
 `stack-select.js`, and logs any `installed-only: required:` additions:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins [--docs-versioning git|local]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local]`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project]`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project]`
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
 installer writes it over the current value and prints one `settings.json env: CLAUDE_STACK_DOCS_VERSIONING
 <old> -> '<new>'` line; any other value is refused before anything is written. Without it, the key is
 only seeded when missing.
+
+`--memory-level` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
+--memory-level project`, or 'move memory to the project level') - never asked for, never inferred: this
+is the no-questions fast path, and an existing registration is otherwise left exactly where it is. The
+installer re-points the registration to that level's database (nothing is copied or deleted, and an
+install carrying no memory registration yet gets one at that level) and prints one line naming the old
+and new database; any other value is refused before anything is written.
 
 **Give that call a 10-minute timeout, and read its exit code.** A full refresh runs past the Bash
 tool's own default on a cold machine, and a timed-out call is BACKGROUNDED, not failed: the run then
@@ -207,7 +214,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: required:|settings\.json env:|docs (migration|domain)|=set \(|=absent|serena project index|!!' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: required:|settings\.json env:|docs (migration|domain)|memory:|autoMemoryEnabled|=set \(|=absent|serena project index|!!' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -215,7 +222,8 @@ registrations, each plugin's `x -> y` or `already newest`, the dependencies the 
 pulled in, every env key the run renamed / removed / seeded / set (the installer prints one line each -
 so the ENVIRONMENT line is READ, never asserted), each capture doc moved onto its domain folder and each
 moved folder switched on as a domain (`docs migration` / `docs domain:` - report them as they read), the
-credential presence lines, the serena
+memory registration line (present whenever `--memory-level` was passed, or on an install gaining
+the memory MCP for the first time this run), the credential presence lines, the serena
 re-index hint and any fail-soft `!!`. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
 the lines above it.
@@ -342,6 +350,11 @@ stale registration needs to see it named), the ENVIRONMENT line, the FYI additio
   run' - a claim you can make because the log is silent AND step 2's `env-keys:` set is the
   before-state you are comparing against. Never assert it from memory: three audited runs did, and
   one named keys it had never probed.
+- **MEMORY** - when the grep caught a memory line (a passed `--memory-level`, or a first-time
+  registration this run added), report it verbatim: the level and database, and - on a first-time
+  registration - whether the one-time note import succeeded (Claude's own memory switches off only
+  then; a failed import leaves it on, and the line says so). No memory line caught: say nothing -
+  an install that already had one and passed no flag left it untouched.
 - **RESTART** - emit it whenever the installer's summary line shows `mcps=<n>` with n above 0, or
   any hook file was refreshed. It is a report LINE, not a question: an audited run spent its one ask
   slot on a credential and closed with no restart step at all, having re-registered all seven servers.

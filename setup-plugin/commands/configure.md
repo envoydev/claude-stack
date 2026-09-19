@@ -254,11 +254,29 @@ cascade never reaches here. Dropping a wired hook removes its `.claude/settings.
 
 ## 7. MCPs
 
-Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`);
+Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`,
+`memory` via `baseline-memory` once that rule is kept or added - required like the other two once it is present);
 the rest of the installed servers are direct picks - droppable, and preserved across runs
 (`raw.json` carries them). Addable from `catalog.mcps`; note next to `sentry` that it needs `SENTRY_SLUG` and
-(token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env. Whenever sentry is PRESENT after
-this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
+(token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env.
+
+Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
+`baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
+`node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
+registration - a fresh add, default to `global`). Paste the same three-row level table setup uses
+(`global` / `scoped` / `project`, who shares each and where its database lives), pre-select the
+level just read back, and ask ONE AskUserQuestion: keep it, or change to one of the other two.
+Picking or keeping `project` while this project's related-projects domain already names sibling
+repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
+`baseline-project-related-context.md`) means those projects' memories are not visible from this
+one - name that in the post-check, not here. Changing level never copies or deletes a database -
+it re-points the registration, and the installer's log names which file the old memories stay in;
+read that line and report it, never assert it. Pass the answer to the installer as
+`--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
+`memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
+own drop handling applies like any other server.
+
+Whenever sentry is PRESENT after this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
 space's) and run the sentry environment plan for whatever is missing: ask the slug (`<org>` or
 `<org>/<project>`; required) and pass it as `--sentry-slug` at step 12 (the installer seeds the env),
 and tell the user to add `SENTRY_ACCESS_TOKEN` to that same file themselves - a personal/org API token,
@@ -397,12 +415,16 @@ installer pass whose only real effect was resetting the agent model/effort pins)
 Otherwise, run the installer **from the snapshot**, passing it back with `--source` so the run
 lands the same revision step 1 previewed:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local]`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project]`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project]`
 - `--docs-versioning` only when the user's own invocation names a value (`/claude-stack:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
   key that is present - so it needs no flag.
+- `--memory-level` carries step 7's answer whenever memory is present and the user changed the
+  level: the installer re-points the registration to that level's database (nothing copied or
+  deleted) and prints the old and new file in one line. Nothing changed at step 7 - the level
+  already matches, or memory was dropped - needs no flag.
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
@@ -455,8 +477,10 @@ file to reconcile).
 
 Report what changed per category (refreshed / added / dropped, orphans removed vs kept), the
 CLAUDE.md decision and reconcile result, anything deferred, and remind that a restart picks up
-MCP registration changes. The run rewrites `claude-stack.stamp` to the revision it installed, so
-the next configure diffs from here.
+MCP registration changes. When step 7 touched `memory`, add one line naming the level (unchanged
+or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
+projects' memories are not visible from this one. The run rewrites `claude-stack.stamp` to the
+revision it installed, so the next configure diffs from here.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`

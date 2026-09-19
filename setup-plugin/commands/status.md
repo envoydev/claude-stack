@@ -108,6 +108,7 @@ registrations - the installer's `--scope global` registers them with `--scope us
 | server | transport | target |
 |---|---|---|
 | serena | stdio | uvx ... --project-from-cwd |
+| memory | stdio | uvx --with numpy --from mcp-memory-service[sqlite]==<ver> memory server |
 | sentry | http | https://mcp.sentry.dev/mcp/${SENTRY_SLUG} |
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 
@@ -115,6 +116,12 @@ registrations - the installer's `--scope global` registers them with `--scope us
 kept browser (`playwright-<browser>`); which of them is switched on is the user's `/mcp` toggle, not
 something this table reads. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
+
+`memory` is locked like `serena` and `context7` (every install carries it). Add ONE line under
+this table whenever the row is present - the shared-memory level, read with `node
+.claude/hooks/memory.js level` (`<level> <dbPath>`, or `none` if the read disagrees with the table
+row above - report that mismatch verbatim, never guess): render `memory level: <level> -
+<dbPath>`. No `memory` row at all: skip the line, nothing to read.
 
 **Plugins** - `claude plugin list` (fail-soft: without the CLI print the banner +
 `plugin CLI unavailable - skipped`):
@@ -133,6 +140,7 @@ is how a commit-time security gate sat off through two runs that both reported n
 |---|---|
 | stack version (stamp) | 0.2.3 @ <short-sha> |
 | scope | project (the stamp's `scope:` line; `user` there = global) |
+| autoMemoryEnabled | false - the one-time import succeeded, Claude's own memory is off |
 | CLAUDE_STACK_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
 | CLAUDE_STACK_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
@@ -147,7 +155,11 @@ is how a commit-time security gate sat off through two runs that both reported n
 
 Stamp from `claude-stack.stamp` (`no stamp - source never resolved at install time` when
 absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and
-a house default applies. The rows above are the keys the stack SEEDS; any other `CLAUDE_STACK_*`
+a house default applies. `autoMemoryEnabled` is the one exception - a TOP-LEVEL settings.json key,
+not under `env`, written by the memory import: read it from the scope's own file (project
+`.claude/settings.json`, or the account file for a global install) and print `false` as done,
+`true` or the key ABSENT as `true/absent - the one-time import has not completed yet, Claude's own
+memory is still on` (never read an absent key as success). The rows above are the keys the stack SEEDS; any other `CLAUDE_STACK_*`
 key the file carries (`CLAUDE_STACK_ALLOW_WRITE_OUTSIDE`, a key a newer release added) gets its
 own row, value as written - this table is not a filter. The sentry and context7 rows read the ACCOUNT `settings.json` (`~/.claude/settings.json`,
 or the space's - the file `.mcp.json` expansion reads) and show presence only, never the value. That holds for ANY key, not just these three: a key matching the catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed as `set (N chars)` or `absent`, never by value; a

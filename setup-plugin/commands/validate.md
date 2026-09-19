@@ -234,6 +234,21 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
+- **`memory` joins `serena` and `context7`** as an always-required MCP (`baseline-memory.md` locks
+  it in the same way `baseline-navigation.md` locks serena) - MISSING when the project carries no
+  registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
+  of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
+  read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
+  `node "$TMP/repo/stack/hooks/memory.js" level` when that file is absent), which prints `<level>
+  <dbPath>` or `none`. Print the answer as ONE informational line under the MCPs table - `memory
+  level: <level> - <dbPath>`, or `memory: registered but the level cannot be derived from
+  <dbPath>` for an unrecognized path - never a consent row: this walk does not add, drop or change
+  the level, only `/claude-stack:configure` does. In the same line's neighbourhood, read the scope's
+  settings.json `autoMemoryEnabled` key (top-level, not under `env`: the project's own
+  `.claude/settings.json` for a project install, the account file for a global one) and report it -
+  `false` reads as done (Claude's own memory is off, the one-time import succeeded); `true` or the
+  key ABSENT both read as 'the one-time import has not completed yet, so Claude's own memory is
+  still on' - never claim success from an absent key.
 
 ## 9. Environment - the settings.json env block against this release
 
@@ -462,7 +477,8 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 Report per category what was added, removed - signal-backed and JUDGMENT-labeled separately -
 and left as-is (disputed detections, deliberate extras, declined suggestions, declined
 judgment proposals), plus one ENVIRONMENT line naming every key seeded, renamed or corrected (or
-saying the block already matched). Remind that a restart picks up MCP registration changes, and surface
+saying the block already matched), and step 7's MEMORY line (level + database, and the
+`autoMemoryEnabled` reading). Remind that a restart picks up MCP registration changes, and surface
 the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 

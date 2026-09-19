@@ -138,7 +138,30 @@ Hooks are leaf picks - nothing requires them, they require nothing, so every row
 
 ## 8. MCPs
 
-Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`); recommended = `playwright` plus the confirmed stacks' seeds (`angular-cli` on the Angular/Ionic stacks). The heavy two - `chrome-devtools` and `appium-mcp`, which fail at launch without Chrome or the mobile SDKs - are seeded by NO stack and appear as free adds; appium arrives pre-selected only when the evidence scan matched its own dependency. Everything else - `memory` and `sentry` included - is a free add for projects that actually use it, shown in the table as an unselected row like any other (`memory` was seeded into every install until an audit measured zero calls to it in 164 sessions across 9 projects; it is the cross-project recall store, so offer it where cross-project recall IS the work and never argue for it otherwise); note next to `sentry` that it needs two values in the ACCOUNT settings.json env (below). After the round, and only if context7 stayed selected, ask its transport here (`remote` default / `local`); only if playwright stayed selected, ask in the same AskUserQuestion screen TWO questions - which browsers to keep (multi-select: `chrome` pre-selected = the machine's Google Chrome, `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are Playwright's own builds the installer downloads) and which ONE stays enabled (single-select among the kept ones). Each kept browser becomes its own server (`playwright-chrome`, `playwright-firefox`, ...); the installer registers all of them and its next-steps card prints the `/mcp disable playwright-<x>` lines for the others - the user runs them once, and switches any time with `/mcp enable` / `disable`; and only if sentry stayed selected, run the **sentry environment plan** - ONE question asking the slug (`SENTRY_SLUG`: `<org>` or `<org>/<project>`, Sentry's recommended form; an EU-region org - its DSN reads `ingest.de.sentry.io` - must name it; required, re-ask on empty) together with the auth mode (`token`, default and recommended, vs `oauth` - browser consent, no key), and in the same screen TELL the user to add `SENTRY_ACCESS_TOKEN` (a personal or org API token: Sentry -> Settings -> Account -> API -> Personal Tokens) to the ACCOUNT `settings.json` `env` themselves - the file is `~/.claude/settings.json`, or `~/.claude-<space>/settings.json` under a space - never paste the token into the chat, and never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured). Show the exact snippet:
+Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`, `memory` via `baseline-memory` - required in every install now, the same way serena and context7 are); recommended = `playwright` plus the confirmed stacks' seeds (`angular-cli` on the Angular/Ionic stacks). The heavy two - `chrome-devtools` and `appium-mcp`, which fail at launch without Chrome or the mobile SDKs - are seeded by NO stack and appear as free adds; appium arrives pre-selected only when the evidence scan matched its own dependency. Everything else - `sentry` included - is a free add for projects that actually use it, shown in the table as an unselected row like any other; note next to `sentry` that it needs two values in the ACCOUNT settings.json env (below).
+
+After the round, and ALWAYS - `memory` is locked, so this fires on every run, not only when the user picks it - ask the shared memory level. Paste this table first, table-before-question like every other decision in this run:
+
+```
+| level | database | who shares it |
+|---|---|---|
+| global (Recommended) | ~/.memory-mcp/memory.db | every Claude account and Cursor on this machine |
+| scoped | ~/.memory-mcp/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
+| project | <project>/.memory-mcp/memory.db, gitignored | this project only, from any account |
+```
+
+Then ONE AskUserQuestion carrying exactly those three options, `global` marked Recommended - the
+default for a fresh install, the whole point of shared memory. Picking `project` while this
+project's related-projects domain already names sibling repos
+(`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
+`baseline-project-related-context.md`) means those projects' memories will not be visible from
+this one - say so in the closing card, not here. Pass the answer to the installer as
+`--memory-level <value>` at step 11; the installer registers the memory MCP at that level's
+database, imports this project's existing notes into it once, and (only when that import
+succeeds) switches Claude's own memory off - read its log for what actually happened and report
+that, never assert it from the answer alone.
+
+Only if context7 stayed selected, ask its transport here (`remote` default / `local`); only if playwright stayed selected, ask in the same AskUserQuestion screen TWO questions - which browsers to keep (multi-select: `chrome` pre-selected = the machine's Google Chrome, `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are Playwright's own builds the installer downloads) and which ONE stays enabled (single-select among the kept ones). Each kept browser becomes its own server (`playwright-chrome`, `playwright-firefox`, ...); the installer registers all of them and its next-steps card prints the `/mcp disable playwright-<x>` lines for the others - the user runs them once, and switches any time with `/mcp enable` / `disable`; and only if sentry stayed selected, run the **sentry environment plan** - ONE question asking the slug (`SENTRY_SLUG`: `<org>` or `<org>/<project>`, Sentry's recommended form; an EU-region org - its DSN reads `ingest.de.sentry.io` - must name it; required, re-ask on empty) together with the auth mode (`token`, default and recommended, vs `oauth` - browser consent, no key), and in the same screen TELL the user to add `SENTRY_ACCESS_TOKEN` (a personal or org API token: Sentry -> Settings -> Account -> API -> Personal Tokens) to the ACCOUNT `settings.json` `env` themselves - the file is `~/.claude/settings.json`, or `~/.claude-<space>/settings.json` under a space - never paste the token into the chat, and never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured). Show the exact snippet:
 
 ```json
 { "env": { "SENTRY_SLUG": "<org>[/<project>]", "SENTRY_ACCESS_TOKEN": "<token>" } }
@@ -174,10 +197,17 @@ Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.tx
 
 Run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--github-cli]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" install -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-Context7 local|remote] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-GitHubCli]` - the ps1 handles the serena/TypeScript-on-Windows patch itself.
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--github-cli] [--memory-level global|scoped|project]`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" install -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-Context7 local|remote] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-GitHubCli] [-MemoryLevel global|scoped|project]` - the ps1 handles the serena/TypeScript-on-Windows patch itself.
 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `CLAUDE_STACK_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
+
+`--memory-level` carries step 8's answer: the installer registers the memory MCP at that level's
+database, imports this project's existing notes into it once, and switches off Claude's own
+auto-memory in the settings that apply (the project's `.claude/settings.json` for a project
+install, the account file for a global one) - ONLY when that import succeeds, so a failed import
+never loses a note. Read the installer's own log for what it actually did and report that
+verbatim in the close-out; never claim the switch-off happened because the level was asked.
 
 `--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/claude-stack.stamp` recording the commit it installed (read from the snapshot's `RELEASE-SOURCE`) - that is what a later `/claude-stack:configure` diffs against.
 
@@ -239,13 +269,22 @@ Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install 
 
 1. **Git hygiene (project mode).** Suggest ignoring the machine-local artifacts this install creates - only entries that apply to the selection and are not already covered by the project's ignore rules: `.claude/` (the install + stamp + the default docs root), `.serena/` (LSP cache + project memories - when serena is selected), `.mcp.json` (installer-regenerated on every run - fix the template, never this file), plus runtime dirs when present in the tree (`.playwright/`, `.slopwatch/`). Show the exact lines first, then one AskUserQuestion with BOTH homes as options: the committed `.gitignore` (recommended), `.git/info/exclude` for a local-only ignore that touches no committed file, or skip; write only on consent.
 
-2. **The capture sequence** - the deliberate captures that turn a fresh install into an oriented one, in dependency order. Every one of them is the USER's to type: all but the two analyzers (`project-architecture-analyzer`, `project-test-coverage-analyzer`) are manual-only (`disable-model-invocation`), so a Skill call from this run is denied by `guard-fresh-session-start.js` - name them, never attempt one and never narrate that you cannot. List each ONLY when its skill is installed AND its output is missing or stale for this install (the check beside each item) - a capture whose output already exists and still holds is not suggested at all; an uninstalled one gets a single line ('project-code-style-analyzer not installed - add via `/claude-stack:configure`') instead of a dead command:
+2. **Shared memory.** Name the level chosen at step 8 and the database it points at, and whether
+   the one-time import of the old `MEMORY.md` notes succeeded (the installer's own log names both -
+   read it, never assert). A failed import means Claude's own memory is STILL ON - say that plainly
+   rather than implying the switch happened because the question was asked. When `project` was
+   chosen and this project's related-projects domain names sibling repos
+   (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
+   `baseline-project-related-context.md`), add the one-line caveat here: those projects' memories
+   will not be visible from this one - the project-level database holds only this project.
+
+3. **The capture sequence** - the deliberate captures that turn a fresh install into an oriented one, in dependency order. Every one of them is the USER's to type: all but the two analyzers (`project-architecture-analyzer`, `project-test-coverage-analyzer`) are manual-only (`disable-model-invocation`), so a Skill call from this run is denied by `guard-fresh-session-start.js` - name them, never attempt one and never narrate that you cannot. List each ONLY when its skill is installed AND its output is missing or stale for this install (the check beside each item) - a capture whose output already exists and still holds is not suggested at all; an uninstalled one gets a single line ('project-code-style-analyzer not installed - add via `/claude-stack:configure`') instead of a dead command:
    1. `/project-architecture-analyzer` - only when `<docs-path>/architecture/ARCHITECTURE.md` does not exist: writes the durable architecture docs every seat reads to orient.
    2. `/project-code-style-analyzer` - only when `<docs-path>/code-style/CODE-STYLE.md` does not exist: captures the project's real code style and generates the path-scoped project-code-style rule.
    3. `/project-related-context <sibling> ...` - OPTIONAL, and only when this project actually has sibling repos and `.claude/rules/baseline-project-related-context.md` does not exist yet: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`, `backend - ../server`); it never scans on its own. A standalone repo skips it - not a gap. The skill is opt-in, so when it is absent say so in one conditional line ('sibling repos? add `project-related-context` via `/claude-stack:configure`') rather than the flat not-installed line the other captures get.
    4. `/project-agent-capabilities` - LAST, and only when this run installed or removed anything (the rule then lists an inventory that no longer exists, or is absent): the generated usage-policy rule reflects the final inventory including anything the captures above added.
 
-3. **serena - one index step, then the honesty note.** The installer already seeded
+4. **serena - one index step, then the honesty note.** The installer already seeded
 `.serena/project.yml` (detected `language_servers`, plus `ignored_paths` for `.serena` / `.claude` / `.playwright` -
 without which serena's own 327MB language-server directory gets indexed as if it were source:
 measured 126 files attempted, 112 failed, all inside `.serena/home`). Tell the user to build the

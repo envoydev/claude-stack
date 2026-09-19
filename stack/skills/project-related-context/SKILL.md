@@ -1,6 +1,6 @@
 ---
 name: project-related-context
-description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `<docs-path>/related-projects/RELATED-PROJECTS.md`. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (they belong in the MCP that holds cross-project recall, where one is registered)."
+description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `<docs-path>/related-projects/RELATED-PROJECTS.md`. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (project-architecture-analyzer), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name)."
 disable-model-invocation: true
 ---
 
@@ -47,7 +47,7 @@ home) is MOVED into `related-projects/` as `RELATED-PROJECTS.md` and reconciled 
 behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a
 quick reference. Shape:
 
-1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the MCP that holds cross-project recall, never here (none registered: they stay session-local). Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
+1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the shared `memory` MCP instead, tagged with the sibling's own name, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
 2. **One `##` heading per sibling**, `<!-- id: <slug> -->` and deliberately NO `covers:` - nothing
    in this repo's code should trigger a re-read of a sibling's own characterization (`docs.js lint`
    notes a section that declares no `covers:`, but never fails on one). Each heading carries the
