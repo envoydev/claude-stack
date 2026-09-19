@@ -59,8 +59,12 @@ const domains = () => {
     // 'architecture' counts even without a watch.json of its own: it was the one docs folder long
     // before watch.json (or domains) existed, so every doc written before domains existed lives there
     // regardless. Grandfathered in this ONE place so docFiles/findFile/parseRef all agree instead of
-    // three different answers for one file - Task 10's migration seeds a watch.json into every
-    // architecture/ that lacks one, after which this line is the only thing to delete.
+    // three different answers for one file. PERMANENT, not a migration stopgap: an earlier draft of
+    // this comment said the installer's migration seeds a watch.json into every architecture/ that
+    // lacks one, so this line could then be deleted. It does NOT - the migration moves documents
+    // between folders and writes no watch.json anywhere, which the temp-project matrix confirmed.
+    // A pre-domains install therefore still has an architecture/ with no watch.json, and deleting
+    // this line would make its docs unreachable. Do not delete it on the strength of a comment.
     if (!found.includes('architecture') && fs.existsSync(path.join(DOCS_ROOT, 'architecture'))) found.push('architecture');
     return (DOMAINS_CACHE = found.sort());
   } catch { return []; }
