@@ -71,6 +71,7 @@ function sandbox(mcpServers)
         '>>"%CLAUDE_STUB_LOG%" echo %*',
         'if "%~1"=="plugin" if "%~2"=="list" type "%CLAUDE_STUB_PLUGINS%"',
         'if "%~1"=="mcp" if "%~2"=="get" if exist "%CLAUDE_STUB_MCPGET%" type "%CLAUDE_STUB_MCPGET%"',
+        'if "%~1"=="mcp" if "%~2"=="list" if exist "%CLAUDE_STUB_MCPLIST%" type "%CLAUDE_STUB_MCPLIST%"',
         'if "%~1"=="mcp" if "%~2"=="add" if exist "%CLAUDE_STUB_MCPGET_NEW%" copy /y "%CLAUDE_STUB_MCPGET_NEW%" "%CLAUDE_STUB_MCPGET%" >nul',
         'exit /b 0',
         ''].join('\r\n'));
@@ -334,10 +335,15 @@ for (const twin of ['sh', 'ps1'])
     {
         const sb = sandbox();
         fs.writeFileSync(sb.sel, 'skill markdown-style\nmcp playwright\n');
-        // pin the resolved version so the expected args are fixed offline
+        // pin the resolved version so the expected args are fixed offline (npm.cmd: native pwsh on Windows
+        // resolves a command through PATHEXT and never runs the extensionless script)
         fs.writeFileSync(path.join(sb.work, 'bin', 'npm'), ['#!/bin/sh', 'echo 0.0.80', ''].join('\n'), { mode: 0o755 });
-        fs.writeFileSync(sb.mcpGet, ['playwright-chrome:', '  Scope: User config (available in all your projects)', '  Status: ✔ Connected', '  Type: stdio', '  Command: npx',
-            '  Args: -y @playwright/mcp@0.0.80 --browser chrome --user-data-dir ${CLAUDE_PROJECT_DIR}/.playwright/chrome --output-dir ${CLAUDE_PROJECT_DIR}/.playwright/output',
+        fs.writeFileSync(path.join(sb.work, 'bin', 'npm.cmd'), ['@echo off', 'echo 0.0.80', ''].join('\r\n'));
+        // the ps1 twin on Windows registers npx through `cmd /c` (a spawned stdio server cannot resolve
+        // npx.cmd), so the CLI prints that shape back
+        const winPs = twin === 'ps1' && process.platform === 'win32';
+        fs.writeFileSync(sb.mcpGet, ['playwright-chrome:', '  Scope: User config (available in all your projects)', '  Status: ✔ Connected', '  Type: stdio', `  Command: ${winPs ? 'cmd' : 'npx'}`,
+            `  Args: ${winPs ? '/c npx ' : ''}-y @playwright/mcp@0.0.80 --browser chrome --user-data-dir \${CLAUDE_PROJECT_DIR}/.playwright/chrome --output-dir \${CLAUDE_PROJECT_DIR}/.playwright/output`,
             '  Environment:', ''].join('\n'));
         try
         {

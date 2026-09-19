@@ -770,8 +770,9 @@ function assertLegacySectionsHint(sb, run, twin)
     fs.mkdirSync(path.join(base, 'related-projects'), { recursive: true });
     fs.writeFileSync(path.join(base, 'related-projects', 'RELATED-PROJECTS.md'), '# Related\n\n## backend-api\n<!-- id: backend-api -->\nConsumes its REST API.\n');
     const out = run(sb, 'update');
+    // '\r?\n': pwsh on Windows ends every line it writes with CRLF; the anchor only proves nothing follows on the line.
     assert.match(out, /docs domain: code-style\/ switched on - .* - its sections predate section ids, so 'docs\.js lint' flags them until 'node \.claude\/hooks\/docs\.js seed-ids'/, `${twin}: the id-less doc is named on its switch-on line`);
-    assert.match(out, /docs domain: related-projects\/ switched on - watch\.json written \(\{\}; the capture's next run fills in its entries\)\n/, `${twin}: a doc that already carries ids gets no hint`);
+    assert.match(out, /docs domain: related-projects\/ switched on - watch\.json written \(\{\}; the capture's next run fills in its entries\)\r?\n/, `${twin}: a doc that already carries ids gets no hint`);
     const env = { ...process.env, CLAUDE_PROJECT_DIR: sb.repo, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' };
     const lint = () => spawnSync(process.execPath, [DOCS_JS, 'lint'], { cwd: sb.repo, encoding: 'utf8', env });
     const red = lint();

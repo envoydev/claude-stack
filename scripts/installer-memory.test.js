@@ -28,7 +28,10 @@ const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;
 const skipNoPwsh = hasPwsh ? false : 'pwsh not installed - ps1 behavioral test skipped';
 const TWINS = ['sh', 'ps1'];
 
-function mkTmp(prefix) { return fs.mkdtempSync(path.join(os.tmpdir(), prefix)); }
+// The real (long-name) temp dir: a Windows runner's os.tmpdir() is the 8.3 short form (C:\Users\RUNNER~1),
+// while git - and so every project path the installers build - answers with the long one; a path built
+// from the short form never matches the same directory spelled by git.
+function mkTmp(prefix) { return fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), prefix)); }
 
 // The auto-memory folder name for a sandbox's repo: the MAIN checkout root (git-common-dir, '.git'
 // stripped - a worktree shares its main repo's folder), slugged by the importer's OWN slugify, so a
@@ -47,6 +50,44 @@ function assertOneSeparatorStyle(p, msg)
 {
     if (process.platform === 'win32') assert.ok(!(p.includes('/') && p.includes('\\')), `${msg}: mixed separators in ${p}`);
     else assert.ok(!p.includes('\\'), `${msg}: a literal backslash leaked into ${p}`);
+}
+
+// Windows: the importer starts the registered `uvx` with node's spawn, which - like Claude Code launching
+// the server - resolves only a .exe/.com on PATH, never a .cmd (measured on windows-latest: 'spawn uvx
+// ENOENT' with a uvx.cmd stub). A real uv install ships uvx.exe, so the stub is a real exe too, compiled
+// once per run by the .NET Framework C# compiler every Windows install carries. '--version' answers
+// directly; anything else runs the fake-memory-launch.js beside the exe under this node, which inherits
+// the stub's stdin/stdout (no STARTF_USESTDHANDLES, so a console child takes its parent's handles).
+let uvxStubExe = null;
+function windowsUvxStub()
+{
+    if (uvxStubExe) return uvxStubExe;
+    const winDir = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const csc = ['Framework64', 'Framework'].map((f) => path.join(winDir, 'Microsoft.NET', f, 'v4.0.30319', 'csc.exe')).find((p) => fs.existsSync(p));
+    if (!csc) throw new Error(`no .NET Framework csc.exe under ${winDir}\\Microsoft.NET - the uvx.exe stub the memory importer spawns cannot be built`);
+    const dir = mkTmp('instmem-uvx-');
+    sharedFixtureDirs.push(dir);
+    const src = path.join(dir, 'uvx.cs');
+    fs.writeFileSync(src, [
+        'using System;',
+        'using System.Diagnostics;',
+        'using System.IO;',
+        'static class UvxStub',
+        '{',
+        '    static int Main(string[] args)',
+        '    {',
+        '        foreach (string a in args) { if (a == "--version") { Console.WriteLine("uvx 0.0.0 (stub)"); return 0; } }',
+        '        string launcher = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fake-memory-launch.js");',
+        `        ProcessStartInfo psi = new ProcessStartInfo(@"${process.execPath.replace(/"/g, '""')}", "\\"" + launcher + "\\"");`,
+        '        psi.UseShellExecute = false;',
+        '        using (Process p = Process.Start(psi)) { p.WaitForExit(); return p.ExitCode; }',
+        '    }',
+        '}',
+        ''].join('\r\n'));
+    const exe = path.join(dir, 'uvx.exe');
+    execFileSync(csc, ['/nologo', '/target:exe', `/out:${exe}`, src], { stdio: 'pipe' });
+    uvxStubExe = exe;
+    return exe;
 }
 
 // A sandboxed HOME/account/project, with `claude` and `uvx` stubbed on PATH. Mirrors
@@ -108,11 +149,7 @@ function sandbox(opts = {})
         'case "$*" in *--version*) echo "uvx 0.0.0 (stub)"; exit 0 ;; esac',
         `exec node "${launcher}"`,
         ''].join('\n'), { mode: 0o755 });
-    fs.writeFileSync(path.join(bin, 'uvx.cmd'), [
-        '@echo off',
-        'echo %*|findstr /C:"--version" >nul && (echo uvx 0.0.0 ^(stub^)& exit /b 0)',
-        `node "${launcher}"`,
-        ''].join('\r\n'));
+    if (process.platform === 'win32') fs.copyFileSync(windowsUvxStub(), path.join(bin, 'uvx.exe'));
     const npxLog = path.join(work, 'npx-calls.log');
     fs.writeFileSync(path.join(bin, 'npx'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$NPX_STUB_LOG"', 'exit 0', ''].join('\n'), { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'npx.cmd'), ['@echo off', '>>"%NPX_STUB_LOG%" echo %*', 'exit /b 0', ''].join('\r\n'));
@@ -783,6 +820,37 @@ for (const twin of TWINS)
         assert.ok(e.args[3].startsWith('mcp-memory-service[sqlite]'), `${twin}: the --from value itself was corrupted: ${e.args[3]}`);
     });
 }
+
+// The sh twin's Git Bash branch, pinned on every platform: a `cygpath` on PATH that answers with
+// backslashes stands in for Git Bash's. Measured on windows-latest before the fix: the global db was
+// registered as '/tmp/instmem-.../home/.memory-mcp/memory.db' (another file to the native server) and
+// the project one as 'C:/Users/...', which node read back as 'C:\Users\...' - so every update logged a
+// level change from 'custom' and re-pointed the registration. Every db path now takes the one native
+// spelling, and an update reads its own registration back at its level.
+test('sh: under Git Bash (cygpath on PATH) every db path takes the native spelling, and an update reads its own registration back', { skip: process.platform === 'win32' && 'Windows runs the twin tests above through the real Git Bash' }, () =>
+{
+    const sb = sandbox();
+    fs.writeFileSync(path.join(sb.work, 'bin', 'cygpath'), ['#!/bin/sh', '[ "$1" = "-w" ] || exit 2', 'printf \'%s\\n\' "$2" | tr / \'\\\\\'', ''].join('\n'), { mode: 0o755 });
+    const win = (p) => p.replace(/\//g, '\\');
+    const globalDb = win(path.join(sb.home, '.memory-mcp', 'memory.db'));
+    const projectDb = win(path.join(fs.realpathSync(sb.repo), '.memory-mcp', 'memory.db'));
+    const scopedDb = win(path.join(sb.home, '.memory-mcp', 'memory_default.db'));
+    const dbOf = () => memEntry(sb).env.MCP_MEMORY_SQLITE_PATH;
+
+    run('sh', sb, 'install');
+    assert.strictEqual(dbOf(), globalDb, 'global: not the cygpath spelling');
+    const toProject = run('sh', sb, 'update', ['--memory-level', 'project']);
+    assert.strictEqual(dbOf(), projectDb, 'project: not the cygpath spelling of the main checkout');
+    assert.ok(toProject.includes(`memory: level global -> project: ${projectDb} (old memories stay in ${globalDb})`), `the global registration was not read back as global:\n${toProject}`);
+    const kept = run('sh', sb, 'update');
+    assert.ok(kept.includes(`keeping the existing registration's db path unchanged (project): ${projectDb}`), `the project registration was not read back as project:\n${kept}`);
+    assert.doesNotMatch(kept, /memory: level /, 'an update with no flag re-pointed its own registration');
+    assert.strictEqual(dbOf(), projectDb, 'an update with no flag changed the path');
+    const toScoped = run('sh', sb, 'update', ['--memory-level', 'scoped']);
+    assert.strictEqual(dbOf(), scopedDb, 'scoped: not the cygpath spelling');
+    assert.ok(toScoped.includes(`memory: level project -> scoped: ${scopedDb}`), `the level change was not logged:\n${toScoped}`);
+    assert.ok(run('sh', sb, 'update').includes(`unchanged (scoped): ${scopedDb}`), 'the scoped registration was not read back as scoped');
+});
 
 // The pinned `--from` value: the pin sits INSIDE the extras spec ('[sqlite]==<ver>'), and an offline
 // run (no version resolved) drops it to the bare extra. Read from BOTH manifests, not restated here.

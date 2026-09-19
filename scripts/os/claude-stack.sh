@@ -414,9 +414,23 @@ if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then ACCOUNT_CLAUDE_JSON="$CONFIG_DIR/.claud
 
 SERENA_CTX="claude-code"   # serena's --context for Claude Code
 
+# A db path in the spelling the programs that open it read. Git Bash / MSYS2 / Cygwin on Windows answer
+# $HOME in POSIX form (/c/Users/..., or /tmp/... under the temp mount) and git in mixed form (C:/...),
+# while the memory server and node are native Windows programs - to them /tmp/... is C:\tmp\..., another
+# file. `cygpath -w` gives the native C:\Users\...\memory.db, the same spelling the .ps1 twin registers
+# and node's path.normalize reads back (_memory_registered_path), so an update matches its own
+# registration instead of re-pointing it. Everywhere else the path is already native and passes through.
+if command -v cygpath >/dev/null 2>&1; then
+  _native_path() { cygpath -w "$1"; }
+  MEMORY_SEP='\'
+else
+  _native_path() { printf '%s\n' "$1"; }
+  MEMORY_SEP='/'
+fi
+
 # Shared memory root - the global and scoped levels' db folder, a fixed home path, so a Cursor install
 # on the same machine points to the same DB.
-HOME_MEMORY_DIR="$HOME/.memory-mcp"
+HOME_MEMORY_DIR="$(_native_path "$HOME/.memory-mcp")"
 
 if [ "$SCOPE" = "project" ]; then
   cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
@@ -441,6 +455,9 @@ case "$_memory_common" in
   */.git) MEMORY_PROJECT_ROOT="${_memory_common%/.git}" ;;
   *)      MEMORY_PROJECT_ROOT="$MEMORY_TOPLEVEL" ;;
 esac
+# The project level's db, native-spelled like the home levels (see _native_path); empty with no project.
+MEMORY_PROJECT_DB=""
+[ -n "$MEMORY_PROJECT_ROOT" ] && MEMORY_PROJECT_DB="$(_native_path "$MEMORY_PROJECT_ROOT/.memory-mcp/memory.db")"
 
 # ===========================================================================
 # MANIFEST - edit these, then run.
@@ -641,20 +658,21 @@ MEMORY_BACKEND="sqlite_vec"   # the only valid local backend; level (below) pick
 # Mirrors stack/hooks/memory.js's pathForLevel/levelOfPath/registeredDbPath, reimplemented here (not
 # require()'d): this runs before the source snapshot's hooks are copied, and the .ps1 twin has no
 # require() at all - each twin needs its own copy of the formula regardless.
+# Joined with MEMORY_SEP, the separator _native_path answers with, so a path never mixes the two.
 _memory_default_path() {  # $1 = level -> the db path that level resolves to
   case "$1" in
-    global)  printf '%s/memory.db' "$HOME_MEMORY_DIR" ;;
-    scoped)  printf '%s/memory_%s.db' "$HOME_MEMORY_DIR" "${SPACE:-default}" ;;
-    project) printf '%s/.memory-mcp/memory.db' "$MEMORY_PROJECT_ROOT" ;;
+    global)  printf '%s%smemory.db' "$HOME_MEMORY_DIR" "$MEMORY_SEP" ;;
+    scoped)  printf '%s%smemory_%s.db' "$HOME_MEMORY_DIR" "$MEMORY_SEP" "${SPACE:-default}" ;;
+    project) printf '%s' "$MEMORY_PROJECT_DB" ;;
   esac
 }
 # The inverse - 'global'/'scoped'/'project' for a path matching one of the three shapes EXACTLY (never
 # a prefix/substring match, so a foreign path is never mistaken for one of ours); empty otherwise.
 _memory_level_of_path() {
   local p="$1"
-  if [ -n "$MEMORY_PROJECT_ROOT" ] && [ "$p" = "$MEMORY_PROJECT_ROOT/.memory-mcp/memory.db" ]; then printf 'project'; return; fi
-  [ "$p" = "$HOME_MEMORY_DIR/memory.db" ] && { printf 'global'; return; }
-  case "$p" in "$HOME_MEMORY_DIR"/memory_*.db) printf 'scoped'; return ;; esac
+  if [ -n "$MEMORY_PROJECT_DB" ] && [ "$p" = "$MEMORY_PROJECT_DB" ]; then printf 'project'; return; fi
+  [ "$p" = "$HOME_MEMORY_DIR${MEMORY_SEP}memory.db" ] && { printf 'global'; return; }
+  case "$p" in "$HOME_MEMORY_DIR$MEMORY_SEP"memory_*.db) printf 'scoped'; return ;; esac
   return 0
 }
 # The CURRENTLY REGISTERED db path, if any (mirrors memory.js's registeredDbPath). Project scope: the
