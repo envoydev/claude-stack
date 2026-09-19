@@ -928,14 +928,15 @@ test('state files older than seven days are swept, at the boundary and only ours
 });
 
 test('the sweep runs by itself when a new state file appears, and never fails the hook', () => {
-  // TMPDIR is where os.tmpdir() reads from, so the hook's own state and its sweep both land in this scratch
-  // directory - the machine's temp directory is left alone.
+  // os.tmpdir() reads TMPDIR on posix and TEMP (then TMP) on Windows, so all three point at this scratch
+  // directory: the hook's own state and its sweep both land here, and the machine's temp directory is left alone.
+  // TMPDIR alone left a Windows run sweeping the real temp dir while the planted file sat here untouched.
   const dir = scratch();
   const r = watched();
   try {
     const old = plantOld(dir, 'docs-session-stale.json', 30 * DAY);
     const fresh = plantOld(dir, 'docs-session-fresh.json', 1 * DAY);
-    const out = r.hook(subStart(sid(), 'sweeper'), { ...GIT, TMPDIR: dir });
+    const out = r.hook(subStart(sid(), 'sweeper'), { ...GIT, TMPDIR: dir, TEMP: dir, TMP: dir });
     assert.strictEqual(out.status, 0);
     assert.strictEqual(out.stderr, '', 'the sweep is never fatal');
     assert.ok(!fs.existsSync(old), 'a month-old state file is gone once a new one is written');

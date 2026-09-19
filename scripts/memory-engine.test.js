@@ -123,6 +123,79 @@ test('the level CLI, run from inside a real worktree, prints "project <main-chec
   } finally { rmDir(outer); }
 });
 
+// --- Windows path spellings, on any platform ---------------------------------------------------------
+// The engine loaded with path.win32 and a Windows-shaped fs / git, so the spelling rules a Windows run
+// depends on are pinned on every CI platform, not only on the one that can see them. `dirs` maps every
+// spelling of an existing directory (lower-cased, the way Windows matches names) to its canonical form;
+// the native realpath answers canonical, the JS one keeps the spelling it was handed - the two behaviours
+// a Windows runner showed (C:\Users\RUNNER~1\... from os.tmpdir(), C:/Users/runneradmin/... from git).
+function loadAsWin32({ dirs = {}, commonDir = {}, files = {} } = {}, file = ENGINE) {
+  const w = path.win32;
+  const enoent = (p) => Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' });
+  const canonical = (p) => dirs[w.resolve(p).toLowerCase()];
+  const realpathSync = (p) => { if (!canonical(p)) throw enoent(p); return w.resolve(p); };
+  realpathSync.native = (p) => { const c = canonical(p); if (!c) throw enoent(p); return c; };
+  const fakeFs = {
+    realpathSync,
+    existsSync: (p) => Boolean(canonical(p)) || w.resolve(p) in files,
+    readFileSync: (p) => { const k = w.resolve(p); if (k in files) return files[k]; throw enoent(p); },
+  };
+  const fakeGit = {
+    execFileSync: (cmd, args) => {
+      const at = args.indexOf('-C');
+      const answer = at >= 0 && args.includes('--git-common-dir') ? commonDir[w.resolve(args[at + 1]).toLowerCase()] : null;
+      if (!answer) throw new Error('fatal: not a git repository');
+      return `${answer}\n`;
+    },
+  };
+  const swap = { fs: fakeFs, path: w, child_process: fakeGit };
+  const req = (name) => swap[name.replace(/^node:/, '')] || require(name);
+  const mod = { exports: {} };
+  const src = fs.readFileSync(file, 'utf8').replace(/^#!.*\n/, '');
+  new Function('require', 'module', 'exports', '__filename', '__dirname', src)(req, mod, mod.exports, file, path.dirname(file));
+  return mod.exports;
+}
+
+test('win32: a registration spelled with forward slashes, a drive letter in another case or a POSIX-shaped home still maps to its level', () => {
+  const home = 'C:\\Users\\dev';
+  const root = 'C:\\work\\app';
+  const w = loadAsWin32({ dirs: { 'c:\\users\\dev': home, 'c:\\work\\app': root } });
+  assert.strictEqual(w.levelOfPath('C:/Users/dev/.memory-mcp/memory.db', { home, projectRoot: root }), 'global');
+  assert.strictEqual(w.levelOfPath('c:\\users\\DEV\\.memory-mcp\\memory_work.db', { home, projectRoot: root }), 'scoped');
+  assert.strictEqual(w.levelOfPath('C:/work/app/.memory-mcp/memory.db', { home, projectRoot: 'c:\\work\\app' }), 'project');
+  // Neither directory exists: the spellings are still resolved before they are compared (the Windows
+  // run of 'each level maps to its database and back' read '\home\u' against '/home/u' and answered null).
+  const bare = loadAsWin32();
+  assert.strictEqual(bare.levelOfPath('/home/u/.memory-mcp/memory.db', { home: '/home/u', projectRoot: '/work/app' }), 'global');
+  assert.strictEqual(bare.levelOfPath('/home/u/.memory-mcp/memory_default.db', { home: '/home/u', projectRoot: '/work/app' }), 'scoped');
+  assert.strictEqual(bare.levelOfPath('/work/app/.memory-mcp/memory.db', { home: '/home/u', projectRoot: '/work/app' }), 'project');
+  assert.strictEqual(bare.levelOfPath('/elsewhere/.memory-mcp/memory.db', { home: '/home/u', projectRoot: '/work/app' }), null);
+});
+
+test('win32: an 8.3 short-name project path inside a worktree reads the main checkout git names in long form as "project"', () => {
+  const shortTmp = 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\wt';
+  const longTmp = 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\wt';
+  const dirs = {};
+  for (const leaf of ['my-repo', 'feat-tree']) {
+    dirs[`${shortTmp}\\${leaf}`.toLowerCase()] = `${longTmp}\\${leaf}`;
+    dirs[`${longTmp}\\${leaf}`.toLowerCase()] = `${longTmp}\\${leaf}`;
+  }
+  const worktree = `${shortTmp}\\feat-tree`;
+  const commonDir = { [worktree.toLowerCase()]: 'C:/Users/runneradmin/AppData/Local/Temp/wt/my-repo/.git' };
+  const w = loadAsWin32({ dirs, commonDir });
+  const opts = { home: 'C:\\Users\\runneradmin', projectRoot: worktree };
+  assert.strictEqual(w.levelOfPath(`${shortTmp}\\my-repo\\.memory-mcp\\memory.db`, opts), 'project', 'the main checkout, in the short spelling the temp dir hands out');
+  assert.strictEqual(w.levelOfPath(`${worktree}\\.memory-mcp\\memory.db`, opts), 'project', 'an older worktree-rooted registration');
+  assert.strictEqual(w.levelOfPath(`${shortTmp}\\other\\.memory-mcp\\memory.db`, opts), null, 'a sibling that is not this repo');
+});
+
+test('win32: a project-scope registration the CLI keyed with forward slashes is found from a backslashed project root', () => {
+  const home = 'C:\\Users\\dev';
+  const account = JSON.stringify({ projects: { 'C:/work/app': { mcpServers: { memory: { env: { MCP_MEMORY_SQLITE_PATH: 'C:/work/app/.memory-mcp/memory.db' } } } } } });
+  const w = loadAsWin32({ files: { [`${home}\\.claude.json`]: account } });
+  assert.strictEqual(w.registeredDbPath('C:\\work\\app', { home, configDir: home }), 'C:\\work\\app\\.memory-mcp\\memory.db');
+});
+
 // --- registeredDbPath ------------------------------------------------------------------------------
 
 test('registeredDbPath reads the project .mcp.json memory entry first, expanding ~ and $HOME', () => {

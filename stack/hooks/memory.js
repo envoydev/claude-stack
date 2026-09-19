@@ -33,11 +33,20 @@ function splitMemoryMcpLeaf(dbPath) {
 // A directory's real, symlink-resolved form - macOS routes os.tmpdir() (and some other mounts)
 // through a symlink (/var -> /private/var), and git's own rev-parse output (mainCheckoutRoot, below)
 // is already real-path-resolved, so comparing a raw, un-resolved projectRoot or dbPath against it
-// would never match. Falls back to the given path unresolved when it does not exist yet (a directory
-// this run has not created) or realpath otherwise fails - never throws.
+// would never match. The NATIVE realpath first: on Windows it is the only one that answers with the
+// OS's canonical spelling - an 8.3 short name expanded (a runner's temp dir is C:\Users\RUNNER~1\...,
+// git answers C:/Users/runneradmin/...) and the on-disk case restored; the JS one keeps both as typed.
+// A path that does not exist yet (a directory this run has not created) is still resolved, so its
+// separators match the other side's. Never throws.
 function realpathOrSelf(p) {
-  try { return fs.realpathSync(p); } catch { return p; }
+  try { return fs.realpathSync.native(p); } catch {}
+  try { return fs.realpathSync(p); } catch {}
+  return path.resolve(p);
 }
+// The form two directory spellings are compared in. Windows names are case-insensitive (a drive letter
+// can arrive as 'c:' or 'C:', and a path that does not exist yet never reaches the native realpath that
+// would restore its case) - folded there, never on posix, where case is part of the name.
+const dirKey = (p) => { const r = realpathOrSelf(p); return path.sep === '\\' ? r.toLowerCase() : r; };
 
 // The inverse of pathForLevel - null for a path matching none of the three shapes exactly (not a
 // substring or prefix match: a foreign path is never mistaken for one of ours). A 'project' level
@@ -47,15 +56,15 @@ function realpathOrSelf(p) {
 function levelOfPath(dbPath, { home, projectRoot } = {}) {
   const leaf = splitMemoryMcpLeaf(dbPath);
   if (!leaf) return null;
-  const root = realpathOrSelf(leaf.root);
+  const root = dirKey(leaf.root);
   if (leaf.file === 'memory.db') {
     if (projectRoot) {
-      const roots = new Set([mainCheckoutRoot(projectRoot), projectRoot].map(realpathOrSelf));
+      const roots = new Set([mainCheckoutRoot(projectRoot), projectRoot].map(dirKey));
       if (roots.has(root)) return 'project';
     }
-    if (home && root === realpathOrSelf(home)) return 'global';
+    if (home && root === dirKey(home)) return 'global';
   }
-  if (home && root === realpathOrSelf(home) && /^memory_[^/\\]+\.db$/.test(leaf.file)) return 'scoped';
+  if (home && root === dirKey(home) && /^memory_[^/\\]+\.db$/.test(leaf.file)) return 'scoped';
   return null;
 }
 
@@ -94,7 +103,10 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
     if (account) {
       const userScope = memoryEnvPath(account.mcpServers && account.mcpServers.memory, home);
       if (userScope) return userScope;
-      const proj = account.projects && account.projects[projectRoot];
+      // Keyed by the path as the CLI spelled it, which on Windows is '/'-separated - the ps1 twin of this
+      // lookup reads both spellings, and so does this one.
+      const projects = account.projects || {};
+      const proj = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
       const projScope = memoryEnvPath(proj && proj.mcpServers && proj.mcpServers.memory, home);
       if (projScope) return projScope;
     }

@@ -73,6 +73,17 @@ test('the docs root follows CLAUDE_STACK_DOCS_PATH', () => {
   } finally { r.rm(); }
 });
 
+// Every printed path goes through one helper. On Windows path.relative answers with '\', and the Windows run
+// printed 'docs\architecture\references\patterns.md' - a path no covers glob, watch root or ref ever matches.
+test('a printed doc path is project-relative and /-separated on Windows too, and a posix backslash stays a name', () => {
+  const enginePath = require.resolve('../stack/hooks/docs.js');
+  const { shownFrom } = require(enginePath);
+  delete require.cache[enginePath]; // pure helper: no ROOT of this process is kept around for a later require
+  assert.strictEqual(shownFrom('C:\\proj', 'C:\\proj\\docs\\architecture\\references\\patterns.md', path.win32), 'docs/architecture/references/patterns.md');
+  assert.strictEqual(shownFrom('C:\\proj', 'C:/proj/.claude/docs/.branches/feat-x', path.win32), '.claude/docs/.branches/feat-x');
+  assert.strictEqual(shownFrom('/proj', '/proj/docs/odd\\name.md', path.posix), 'docs/odd\\name.md');
+});
+
 test('an unknown file or section answers with what exists, exit 0', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {

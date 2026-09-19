@@ -79,6 +79,11 @@ function readCalls(callsLog)
     return fs.readFileSync(callsLog, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
 }
 
+// The env a sandboxed home needs on every platform: the importer finds the account dirs through
+// os.homedir(), the same call Claude Code makes, and on Windows that reads USERPROFILE and ignores HOME -
+// a HOME alone left a Windows run reading the runner's real profile instead of the sandbox.
+const homeAt = (dir) => ({ HOME: dir, USERPROFILE: dir });
+
 function runScript(args, opts = {})
 {
     return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', timeout: 60000, ...opts });
@@ -384,7 +389,12 @@ test('an empty notes folder (no notes beyond MEMORY.md) -> exit 0, "nothing to i
     fs.rmSync(sb.work, { recursive: true, force: true });
 });
 
-test('unreadable notes folder -> exit 1', { skip: isRoot ? 'running as root - permission checks are bypassed' : false }, () =>
+// chmod cannot make a folder unreadable on Windows: there it only toggles the read-only attribute, which
+// never stops a listing. The portable twin below reaches the same refusal on every platform.
+const chmodSkip = isRoot ? 'running as root - permission checks are bypassed'
+    : process.platform === 'win32' ? 'Windows chmod only toggles the read-only attribute, which never blocks listing a folder' : false;
+
+test('unreadable notes folder -> exit 1', { skip: chmodSkip }, () =>
 {
     const sb = sandbox();
     writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' });
@@ -400,6 +410,20 @@ test('unreadable notes folder -> exit 1', { skip: isRoot ? 'running as root - pe
         fs.chmodSync(sb.memoryDir, 0o700);
         fs.rmSync(sb.work, { recursive: true, force: true });
     }
+});
+
+test('a notes path that exists but cannot be listed as a folder -> exit 1, never "nothing to import"', () =>
+{
+    const sb = sandbox();
+    const notAFolder = path.join(sb.work, 'notes-file');
+    fs.writeFileSync(notAFolder, 'a file where the notes folder should be\n');
+    try
+    {
+        const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', notAFolder]);
+        assert.strictEqual(res.status, 1, res.stdout);
+        assert.match(res.stderr, /memory import: could not read /);
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
 
 test('no `memory` MCP registered (neither .mcp.json nor the account config) -> exit 1', () =>
@@ -457,7 +481,7 @@ test('default notes folder is derived from the git top-level slug (worktree-awar
 
     // Autodetection also scans every account dir on the machine (final review A, I7) - HOME is
     // sandboxed to an empty temp dir so that scan never touches the real machine's ~/.claude.
-    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: { ...process.env, HOME: sb.work } });
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: { ...process.env, ...homeAt(sb.work) } });
     assert.strictEqual(res.status, 0, res.stderr);
     assert.match(res.stdout, new RegExp(`memory import: 1 imported, 0 already present, from ${memoryDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     fs.rmSync(sb.work, { recursive: true, force: true });
@@ -481,7 +505,7 @@ test('default notes folder resolves correctly when the project path holds a dot 
     fs.mkdirSync(memoryDir, { recursive: true });
     writeNote(memoryDir, 'a.md', { name: 'a', description: 'd', type: 'user', body: 'b' });
 
-    const res = runScript(['--project-root', projectRoot, '--config-dir', acctDir], { env: { ...process.env, HOME: work } });
+    const res = runScript(['--project-root', projectRoot, '--config-dir', acctDir], { env: { ...process.env, ...homeAt(work) } });
     assert.strictEqual(res.status, 0, res.stderr);
     assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /,
         `expected the note to be found and imported, got: ${res.stdout}${res.stderr}`);
@@ -576,7 +600,7 @@ test('I1: the default account registration file is $HOME/.claude.json, not $HOME
     fs.mkdirSync(notesDir, { recursive: true });
     writeNote(notesDir, 'a.md', { name: 'a', description: 'd', type: 'reference', body: 'b' });
 
-    const env = { ...process.env, HOME: fakeHome };
+    const env = { ...process.env, ...homeAt(fakeHome) };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
     assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
@@ -607,7 +631,7 @@ test('I7: notes are imported from every account dir on the machine in one pass, 
     fs.mkdirSync(spaceNotes, { recursive: true });
     writeNote(spaceNotes, 'b.md', { name: 'b', description: 'from a second account', type: 'reference', body: 'body b' });
 
-    const env = { ...process.env, HOME: fakeHome };
+    const env = { ...process.env, ...homeAt(fakeHome) };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
     assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
@@ -641,7 +665,7 @@ test('I7 (re-review): a slug-mismatched folder is found through its transcript, 
     fs.writeFileSync(path.join(wrongProjectDir, 'session1.jsonl'),
         `${[JSON.stringify({ type: 'ai-title', title: 'x' }), JSON.stringify({ cwd: projectRoot, type: 'user' })].join('\n')}\n`);
 
-    const env = { ...process.env, HOME: fakeHome };
+    const env = { ...process.env, ...homeAt(fakeHome) };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
     assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
@@ -671,7 +695,7 @@ test('I7 (re-review): a project with sessions but no notes -> exit 0, "nothing t
     fs.mkdirSync(projDir, { recursive: true });
     fs.writeFileSync(path.join(projDir, 'session1.jsonl'), `${JSON.stringify({ cwd: projectRoot, type: 'user' })}\n`);
 
-    const env = { ...process.env, HOME: fakeHome };
+    const env = { ...process.env, ...homeAt(fakeHome) };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
     assert.strictEqual(res.status, 0, `expected success, got stderr: ${res.stderr}`);
@@ -704,7 +728,7 @@ test('I7 (re-review): the transcript scan finds cwd on line 5, not just line 1 (
     ];
     fs.writeFileSync(path.join(wrongProjectDir, 'session1.jsonl'), `${lines.join('\n')}\n`);
 
-    const env = { ...process.env, HOME: fakeHome };
+    const env = { ...process.env, ...homeAt(fakeHome) };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
     assert.strictEqual(res.status, 0, `stdout: ${res.stdout}\nstderr: ${res.stderr}`);
@@ -723,7 +747,7 @@ test('no notes anywhere and no transcript -> exit 0, "nothing to import" (autode
         mcpServers: { memory: { type: 'stdio', command: process.execPath, args: [FAKE_SERVER],
             env: { FAKE_MEMORY_DB: path.join(fakeHome, 'db.json'), FAKE_MEMORY_CALLS_LOG: path.join(fakeHome, 'calls.jsonl') } } },
     }, null, 2));
-    const env = { ...process.env, HOME: fakeHome };
+    const env = { ...process.env, ...homeAt(fakeHome) };
     delete env.CLAUDE_CONFIG_DIR;
     const res = spawnSync(process.execPath, [SCRIPT, '--project-root', projectRoot], { encoding: 'utf8', timeout: 60000, env });
     assert.strictEqual(res.status, 0, res.stderr);
@@ -743,7 +767,7 @@ test('autoMemoryDirectory in project settings.json overrides the computed notes 
     fs.writeFileSync(path.join(sb.projectRoot, '.claude', 'settings.json'),
         JSON.stringify({ autoMemoryDirectory: overrideDir }, null, 2));
 
-    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: { ...process.env, HOME: sb.work } });
+    const res = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: { ...process.env, ...homeAt(sb.work) } });
     assert.strictEqual(res.status, 0, res.stderr);
     assert.match(res.stdout, /memory import: 1 imported, 0 already present, from /);
     fs.rmSync(sb.work, { recursive: true, force: true });
@@ -759,7 +783,7 @@ test('CLAUDE_CODE_PROJECT_DIR_NAME picks the notes folder only when CLAUDE_CONFI
 
     // Without a live CLAUDE_CONFIG_DIR, the variable is ignored - the (nonexistent) slugged folder is
     // used instead, so nothing is found.
-    const envWithout = { ...process.env, HOME: sb.work, CLAUDE_CODE_PROJECT_DIR_NAME: 'my-custom-name' };
+    const envWithout = { ...process.env, ...homeAt(sb.work), CLAUDE_CODE_PROJECT_DIR_NAME: 'my-custom-name' };
     delete envWithout.CLAUDE_CONFIG_DIR;
     const withoutConfigDir = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir], { env: envWithout });
     assert.strictEqual(withoutConfigDir.status, 0, withoutConfigDir.stderr);
@@ -767,7 +791,7 @@ test('CLAUDE_CODE_PROJECT_DIR_NAME picks the notes folder only when CLAUDE_CONFI
 
     // With CLAUDE_CONFIG_DIR live and equal to this account dir, the named folder is honoured.
     const withConfigDir = runScript(['--project-root', sb.projectRoot],
-        { env: { ...process.env, HOME: sb.work, CLAUDE_CONFIG_DIR: sb.acctDir, CLAUDE_CODE_PROJECT_DIR_NAME: 'my-custom-name' } });
+        { env: { ...process.env, ...homeAt(sb.work), CLAUDE_CONFIG_DIR: sb.acctDir, CLAUDE_CODE_PROJECT_DIR_NAME: 'my-custom-name' } });
     assert.strictEqual(withConfigDir.status, 0, withConfigDir.stderr);
     assert.match(withConfigDir.stdout, /memory import: 1 imported, 0 already present, from /);
 
@@ -794,7 +818,9 @@ test('gitTopLevel: a submodule\'s .git/modules/<n> common dir falls back to --sh
     execFileSync('git', ['-C', outer, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', innerSrc, 'sub']);
 
     const subRoot = path.join(outer, 'sub');
-    assert.strictEqual(fs.realpathSync(memoryImport.gitTopLevel(subRoot)), fs.realpathSync(subRoot));
+    // The native realpath on both sides: git answers in the long form (C:/Users/runneradmin/...), the temp dir
+    // on a Windows runner is the 8.3 short form (C:\Users\RUNNER~1\...), and only the native call expands it.
+    assert.strictEqual(fs.realpathSync.native(memoryImport.gitTopLevel(subRoot)), fs.realpathSync.native(subRoot));
 
     fs.rmSync(work, { recursive: true, force: true });
 });
