@@ -23,9 +23,15 @@
 // never as a failure; any OTHER "Error storing memory" text is a hard failure (exit 1).
 //
 // Kind mapping (note frontmatter type -> memory_type, read from metadata.type or a top-level type
-// key - real notes on this machine carry it nested under metadata.type):
-//   user -> preference, feedback -> correction, project -> project-fact, reference -> project-fact,
-//   anything else (including missing) -> project-fact.
+// key - real notes on this machine carry it nested under metadata.type). Fix round 1: the controller
+// ruled to use the mcp-memory-service server's own BUILT-IN ontology subtypes (all three are
+// `observation` subtypes per its models/ontology.py TAXONOMY, and validate_memory_type stores the
+// subtype string itself, canonicalized - not the parent base type) rather than registering
+// MCP_CUSTOM_MEMORY_TYPES in the server's env, so the import works against any registration with no
+// JSON to quote through two installer twins. `learning` is a real base type in that same ontology but
+// is reserved for agent-written lessons - the import never writes it.
+//   user -> preference_signal, feedback -> user_correction, project/reference/anything else
+//   (including missing) -> reference.
 // Tags: `project:<name>` (name = basename of the git top-level dir, commas stripped) plus the note's
 // own `name` (frontmatter `name`, else the filename without its extension). Content: the frontmatter
 // `description` as the first line, then the body. MEMORY.md is the index, never imported.
@@ -39,15 +45,15 @@ const CALL_TIMEOUT_MS = 30000;
 const OVERALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 const KIND_MAP = {
-    user: 'preference',
-    feedback: 'correction',
-    project: 'project-fact',
-    reference: 'project-fact',
+    user: 'preference_signal',
+    feedback: 'user_correction',
+    project: 'reference',
+    reference: 'reference',
 };
 
 function mapKind(rawType)
 {
-    return KIND_MAP[rawType] || 'project-fact';
+    return KIND_MAP[rawType] || 'reference';
 }
 
 function parseArgs(argv)

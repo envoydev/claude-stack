@@ -92,13 +92,13 @@ test.after(() =>
 
 test('mapKind: user/feedback/project/reference/unknown map per the pinned table', () =>
 {
-    assert.strictEqual(memoryImport.mapKind('user'), 'preference');
-    assert.strictEqual(memoryImport.mapKind('feedback'), 'correction');
-    assert.strictEqual(memoryImport.mapKind('project'), 'project-fact');
-    assert.strictEqual(memoryImport.mapKind('reference'), 'project-fact');
-    assert.strictEqual(memoryImport.mapKind('something-else'), 'project-fact');
-    assert.strictEqual(memoryImport.mapKind(''), 'project-fact');
-    assert.strictEqual(memoryImport.mapKind(undefined), 'project-fact');
+    assert.strictEqual(memoryImport.mapKind('user'), 'preference_signal');
+    assert.strictEqual(memoryImport.mapKind('feedback'), 'user_correction');
+    assert.strictEqual(memoryImport.mapKind('project'), 'reference');
+    assert.strictEqual(memoryImport.mapKind('reference'), 'reference');
+    assert.strictEqual(memoryImport.mapKind('something-else'), 'reference');
+    assert.strictEqual(memoryImport.mapKind(''), 'reference');
+    assert.strictEqual(memoryImport.mapKind(undefined), 'reference');
 });
 
 test('parseNote: reads metadata.type (nested, matching real notes), name and description', () =>
@@ -169,12 +169,12 @@ test('3 notes import with the right memory_type, tags and content; MEMORY.md is 
 
     const projectName = path.basename(sb.projectRoot);
     const byName = Object.fromEntries(calls.map((c) => [c.tags[1], c]));
-    assert.strictEqual(byName['user-role'].memory_type, 'preference');
+    assert.strictEqual(byName['user-role'].memory_type, 'preference_signal');
     assert.deepStrictEqual(byName['user-role'].tags, [`project:${projectName}`, 'user-role']);
     assert.strictEqual(byName['user-role'].content, 'The user is a backend engineer\n\nPrefers terse answers.');
 
-    assert.strictEqual(byName['feedback-shorter'].memory_type, 'correction');
-    assert.strictEqual(byName['reference-tracker'].memory_type, 'project-fact');
+    assert.strictEqual(byName['feedback-shorter'].memory_type, 'user_correction');
+    assert.strictEqual(byName['reference-tracker'].memory_type, 'reference');
 
     fs.rmSync(sb.work, { recursive: true, force: true });
 });
