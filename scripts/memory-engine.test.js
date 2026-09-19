@@ -11,6 +11,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const m = require('../stack/hooks/memory.js');
 
+const ENGINE = path.join(__dirname, '..', 'stack', 'hooks', 'memory.js');
+
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
 const skipNoSqlite = DatabaseSync ? false : 'node:sqlite unavailable on this Node (needs >= 22.13, or 22.12 with --experimental-sqlite) - db-backed engine tests skipped';
@@ -65,6 +67,60 @@ test('an unknown level throws, a foreign path has no level', () => {
   assert.strictEqual(m.levelOfPath('/elsewhere/memory.db', { home, projectRoot }), null);
   // A path merely under the scoped directory but not shaped memory_<space>.db is not scoped either.
   assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/notes.db', { home, projectRoot }), null);
+});
+
+test('inside a real git worktree, levelOfPath reads a project-level db under the MAIN checkout root, never "unknown"', () => {
+  const outer = tmpDir('memory-level-wt-');
+  try {
+    const repo = path.join(outer, 'my-repo');
+    fs.mkdirSync(repo);
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    spawnSync('git', ['-C', repo, 'config', 'user.email', 't@example.com'], {});
+    spawnSync('git', ['-C', repo, 'config', 'user.name', 'test'], {});
+    spawnSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init'], {});
+    const worktree = path.join(outer, 'unrelated-worktree-name');
+    const add = spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'feat', worktree], { encoding: 'utf8' });
+    assert.strictEqual(add.status, 0, add.stderr);
+
+    // The installer now writes the project db under the MAIN checkout - this must resolve to
+    // 'project', not 'unknown', when read from inside the worktree.
+    const mainDb = path.join(repo, '.memory-mcp', 'memory.db');
+    assert.strictEqual(m.levelOfPath(mainDb, { home: '/home/u', projectRoot: worktree }), 'project');
+
+    // An older, worktree-rooted registration is still honoured (second candidate).
+    const worktreeDb = path.join(worktree, '.memory-mcp', 'memory.db');
+    assert.strictEqual(m.levelOfPath(worktreeDb, { home: '/home/u', projectRoot: worktree }), 'project');
+
+    // A db under some unrelated project entirely is still foreign.
+    assert.strictEqual(m.levelOfPath(path.join(outer, 'other', '.memory-mcp', 'memory.db'), { home: '/home/u', projectRoot: worktree }), null);
+  } finally { rmDir(outer); }
+});
+
+test('the level CLI, run from inside a real worktree, prints "project <main-checkout>/.memory-mcp/memory.db"', () => {
+  const outer = tmpDir('memory-level-cli-wt-');
+  try {
+    const repo = path.join(outer, 'my-repo');
+    fs.mkdirSync(repo);
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    spawnSync('git', ['-C', repo, 'config', 'user.email', 't@example.com'], {});
+    spawnSync('git', ['-C', repo, 'config', 'user.name', 'test'], {});
+    spawnSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init'], {});
+    const worktree = path.join(outer, 'unrelated-worktree-name');
+    const add = spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'feat', worktree], { encoding: 'utf8' });
+    assert.strictEqual(add.status, 0, add.stderr);
+
+    const mainDb = path.join(repo, '.memory-mcp', 'memory.db');
+    fs.writeFileSync(path.join(worktree, '.mcp.json'), JSON.stringify({
+      mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: mainDb } } },
+    }));
+
+    const config = tmpDir('memory-level-cli-config-');
+    try {
+      const r = spawnSync(process.execPath, [ENGINE, 'level', worktree], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: config } });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.strictEqual(r.stdout.trim(), `project ${mainDb}`);
+    } finally { rmDir(config); }
+  } finally { rmDir(outer); }
 });
 
 // --- registeredDbPath ------------------------------------------------------------------------------

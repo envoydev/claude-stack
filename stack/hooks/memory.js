@@ -20,16 +20,42 @@ function pathForLevel(level, { home, space, projectRoot } = {}) {
   throw new Error(`unknown memory level: ${level}`);
 }
 
-// The inverse of pathForLevel - null for a path matching none of the three shapes exactly (not a
-// substring or prefix match: a foreign path is never mistaken for one of ours).
-function levelOfPath(dbPath, { home, projectRoot } = {}) {
+// dbPath -> { root, file } when it is shaped '<root>/.memory-mcp/<file>', else null. The file itself
+// is never required to exist (a fresh registration's db may not be created yet), only its '.memory-mcp'
+// parent and root are ever resolved.
+function splitMemoryMcpLeaf(dbPath) {
   const norm = path.normalize(String(dbPath));
-  if (projectRoot && norm === path.join(projectRoot, '.memory-mcp', 'memory.db')) return 'project';
-  if (home) {
-    const dir = path.join(home, '.memory-mcp');
-    if (norm === path.join(dir, 'memory.db')) return 'global';
-    if (path.dirname(norm) === dir && /^memory_[^/\\]+\.db$/.test(path.basename(norm))) return 'scoped';
+  const parent = path.dirname(norm);
+  if (path.basename(parent) !== '.memory-mcp') return null;
+  return { root: path.dirname(parent), file: path.basename(norm) };
+}
+
+// A directory's real, symlink-resolved form - macOS routes os.tmpdir() (and some other mounts)
+// through a symlink (/var -> /private/var), and git's own rev-parse output (mainCheckoutRoot, below)
+// is already real-path-resolved, so comparing a raw, un-resolved projectRoot or dbPath against it
+// would never match. Falls back to the given path unresolved when it does not exist yet (a directory
+// this run has not created) or realpath otherwise fails - never throws.
+function realpathOrSelf(p) {
+  try { return fs.realpathSync(p); } catch { return p; }
+}
+
+// The inverse of pathForLevel - null for a path matching none of the three shapes exactly (not a
+// substring or prefix match: a foreign path is never mistaken for one of ours). A 'project' level
+// registration is compared against the MAIN checkout root first (the installer writes the db there,
+// same as projectName below), the given projectRoot second - inside a worktree that second candidate
+// is the worktree's own folder, kept only so an older, worktree-rooted registration still resolves.
+function levelOfPath(dbPath, { home, projectRoot } = {}) {
+  const leaf = splitMemoryMcpLeaf(dbPath);
+  if (!leaf) return null;
+  const root = realpathOrSelf(leaf.root);
+  if (leaf.file === 'memory.db') {
+    if (projectRoot) {
+      const roots = new Set([mainCheckoutRoot(projectRoot), projectRoot].map(realpathOrSelf));
+      if (roots.has(root)) return 'project';
+    }
+    if (home && root === realpathOrSelf(home)) return 'global';
   }
+  if (home && root === realpathOrSelf(home) && /^memory_[^/\\]+\.db$/.test(leaf.file)) return 'scoped';
   return null;
 }
 
@@ -76,28 +102,32 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
   return null;
 }
 
-// The basename of the MAIN repo directory, not the checkout's own - inside a git worktree,
-// `--show-toplevel` answers with the WORKTREE's own folder (measured: 'branch-aware-docs', not
-// 'claude-stack'), which would tag every memory a worktree session saves with the wrong project and
-// hide every memory the main checkout already holds. `--git-common-dir` is shared by every worktree of
-// one repo and always ends in '.git' for a normal or worktree checkout, so its parent's basename is the
-// main repo's own folder name in both cases. A bare repo (or any layout where the common dir does not
-// end in '.git') falls back to `--show-toplevel`, then to projectRoot's own basename.
+// The MAIN repo directory, not the checkout's own - inside a git worktree, `--show-toplevel` answers
+// with the WORKTREE's own folder (measured: 'branch-aware-docs', not 'claude-stack'), which would tag
+// every memory a worktree session saves with the wrong project, hide every memory the main checkout
+// already holds, and (levelOfPath, below) read the installer's own project-level db path as 'unknown'.
+// `--git-common-dir` is shared by every worktree of one repo and always ends in '.git' for a normal or
+// worktree checkout, so its parent is the main repo's own directory in both cases. A bare repo (or any
+// layout where the common dir does not end in '.git') falls back to `--show-toplevel`, then to
+// projectRoot itself.
+function mainCheckoutRoot(projectRoot) {
+  try {
+    const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (common && path.basename(common) === '.git') return path.dirname(common);
+  } catch {}
+  try {
+    const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (top) return top;
+  } catch {}
+  return projectRoot;
+}
+
 // Commas are the tag delimiter (FACT-SCHEMA / cross-task-facts.md), so a comma left in the name would
 // split into two tags on save and match neither on read - stripped here, once, so every caller (this
 // hook and the CLI alike) gets an already-safe name, matching the importer's own `.replace(/,/g, '')`
 // (cross-task-facts.md: 'both should').
 function projectName(projectRoot) {
-  const strip = (s) => s.replace(/,/g, '');
-  try {
-    const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (common && path.basename(common) === '.git') return strip(path.basename(path.dirname(common)));
-  } catch {}
-  try {
-    const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (top) return strip(path.basename(top));
-  } catch {}
-  return strip(path.basename(projectRoot));
+  return path.basename(mainCheckoutRoot(projectRoot)).replace(/,/g, '');
 }
 
 const headingName = (line) => { const m = /^##\s+(.+?)\s*$/.exec(line); return m ? m[1].trim() : null; };
