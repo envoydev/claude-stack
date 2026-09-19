@@ -7,17 +7,50 @@
 // garbage stdin, or any other error - exit 0 throughout, since a session start that cannot be enriched
 // must never be a session start that fails.
 'use strict';
-const fs = require('fs');
 const os = require('os');
 
 const CAP_BYTES = 4096;
+const STDIN_TIMEOUT_MS = 2000;
 const TOOL_SEARCH_LINE = 'ToolSearch select:mcp__memory__memory_store,mcp__memory__memory_search,mcp__memory__memory_list';
 
-const readInput = () => { try { const v = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
+// A plain `fs.readFileSync(0)` blocks forever when stdin never closes (a TTY, or a harness that keeps
+// the pipe open) - this hook only ever needs `cwd` out of the payload, and that already has a
+// process.cwd() fallback below, so giving up after STDIN_TIMEOUT_MS and treating the payload as empty
+// costs nothing but the SessionStart push for that one unreadable call. The timer is deliberately NOT
+// unref'd: a resumed stdin keeps the event loop alive on its own, and an unref'd stdin (tried first,
+// measured) lets the loop see itself as empty and exit within milliseconds - before either the data/end
+// event OR the timeout ever fires. `finish()`'s own `pause()` is what drops the ref once this settles;
+// `process.exit(0)` right after `main()` below is the actual bound, independent of any of this.
+function readStdinBounded(timeoutMs) {
+  return new Promise((resolve) => {
+    let data = '';
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { process.stdin.pause(); process.stdin.removeAllListeners('data'); process.stdin.removeAllListeners('end'); process.stdin.removeAllListeners('error'); } catch {}
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(data), timeoutMs);
+    try {
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('data', (chunk) => { data += chunk; });
+      process.stdin.on('end', () => finish(data));
+      process.stdin.on('error', () => finish(data));
+      process.stdin.resume();
+    } catch { finish(''); }
+  });
+}
+
+const readInput = async () => {
+  const raw = await readStdinBounded(STDIN_TIMEOUT_MS);
+  try { const v = JSON.parse(raw || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+};
 const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
 
-function main() {
-  const input = readInput();
+async function main() {
+  const input = await readInput();
   if (input.hook_event_name !== 'SessionStart') return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
@@ -40,5 +73,7 @@ function main() {
 
 module.exports = { main };
 if (require.main === module) {
-  try { main(); } catch { /* a session start must never fail here - no output, exit 0 */ }
+  // process.exit(0) rather than letting the event loop drain on its own: a stdin handle the bounded
+  // read above could not fully detach from must never keep this process alive past its own work.
+  main().catch(() => {}).then(() => process.exit(0));
 }

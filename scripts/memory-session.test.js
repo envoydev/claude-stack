@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
@@ -120,6 +120,38 @@ test('a hook_event_name other than SessionStart is silent', () => {
     assert.strictEqual(r.stdout, '');
   } finally { p.rm(); }
 });
+
+test('an open stdin that never closes still exits within 3s', () => new Promise((resolve, reject) => {
+  // spawnSync's own `input` option auto-closes stdin the instant nothing is written (measured: an
+  // instant exit, never reproducing the bug) - only a real `spawn` with a pipe nobody ever writes to
+  // or ends reproduces a harness/TTY that keeps stdin open. Before the fix this hung forever on a
+  // plain fs.readFileSync(0); the bound below must make it exit anyway.
+  const root = tmpDir('memory-session-openstdin-');
+  const config = tmpDir('memory-session-openstdin-config-');
+  const cleanup = () => { rmDir(root); rmDir(config); };
+  const child = spawn(process.execPath, [HOOK], {
+    cwd: root,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const started = Date.now();
+  const watchdog = setTimeout(() => {
+    child.kill('SIGKILL');
+    cleanup();
+    reject(new Error('memory-session.js did not exit within 3s on an open stdin'));
+  }, 3000);
+  child.on('error', (e) => { clearTimeout(watchdog); cleanup(); reject(e); });
+  child.on('exit', (code) => {
+    clearTimeout(watchdog);
+    const elapsed = Date.now() - started;
+    cleanup();
+    try {
+      assert.strictEqual(code, 0);
+      assert.ok(elapsed < 3000, `took ${elapsed}ms`);
+      resolve();
+    } catch (e) { reject(e); }
+  });
+}));
 
 test('a 500-row database resolves in well under 1s', { skip: skipNoSqlite }, () => {
   const p = fixtureProject();

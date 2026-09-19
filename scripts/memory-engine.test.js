@@ -136,6 +136,28 @@ test('projectName is the git top-level basename inside a repo, else the projectR
   } finally { rmDir(outer); }
 });
 
+test('projectName inside a real git worktree reads the MAIN repo name, never the worktree folder', () => {
+  const outer = tmpDir('memory-name-wt-');
+  try {
+    const repo = path.join(outer, 'my-repo');
+    fs.mkdirSync(repo);
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    spawnSync('git', ['-C', repo, 'config', 'user.email', 't@example.com'], {});
+    spawnSync('git', ['-C', repo, 'config', 'user.name', 'test'], {});
+    spawnSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init'], {});
+    // The worktree folder's own name is deliberately unrelated to the repo's, so a bug reading
+    // --show-toplevel (the worktree's own top) instead of --git-common-dir's parent (the main repo)
+    // cannot pass by accident.
+    const worktree = path.join(outer, 'unrelated-worktree-name');
+    const add = spawnSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'feat', worktree], { encoding: 'utf8' });
+    assert.strictEqual(add.status, 0, add.stderr);
+    assert.strictEqual(m.projectName(worktree), 'my-repo');
+    const nested = path.join(worktree, 'nested', 'dir');
+    fs.mkdirSync(nested, { recursive: true });
+    assert.strictEqual(m.projectName(nested), 'my-repo');
+  } finally { rmDir(outer); }
+});
+
 // --- relatedProjects -----------------------------------------------------------------------------
 
 test('relatedProjects reads RELATED-PROJECTS.md headings, else the generated rule, else []', () => {

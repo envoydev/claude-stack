@@ -76,9 +76,18 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
   return null;
 }
 
-// The basename of the git top-level directory when this is a git checkout (worktrees included - a
-// worktree's own dir name is not what own-project tags use), else the basename of projectRoot itself.
+// The basename of the MAIN repo directory, not the checkout's own - inside a git worktree,
+// `--show-toplevel` answers with the WORKTREE's own folder (measured: 'branch-aware-docs', not
+// 'claude-stack'), which would tag every memory a worktree session saves with the wrong project and
+// hide every memory the main checkout already holds. `--git-common-dir` is shared by every worktree of
+// one repo and always ends in '.git' for a normal or worktree checkout, so its parent's basename is the
+// main repo's own folder name in both cases. A bare repo (or any layout where the common dir does not
+// end in '.git') falls back to `--show-toplevel`, then to projectRoot's own basename.
 function projectName(projectRoot) {
+  try {
+    const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (common && path.basename(common) === '.git') return path.basename(path.dirname(common));
+  } catch {}
   try {
     const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     if (top) return path.basename(top);
