@@ -25,8 +25,9 @@
 // Two modes, DECLARED at install time by the docs-versioning env key (VERSIONING_KEYS below): 'git' means the docs
 // are committed and git versions them per branch, so writes land in place, nothing is ever written under .branches/
 // and the promote / prune machinery stands down; 'local' means each feature branch's sections live under
-// <docs root>/.branches/<branch>/ until it merges. Absent - every install made before the key existed - falls back
-// to reading git, as this engine always did.
+// <docs root>/.branches/<branch>/ until it merges. Absent, the mode is 'local' only when the docs are kept OUT of
+// git - no domain is tracked and either a domain exists or git ignores the docs root - and 'git' otherwise, a fresh
+// project included (keptOutOfGit below; the installers and stamp-docs-root.js seed by the same rule).
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -62,10 +63,11 @@ const domains = () => {
     // regardless. Grandfathered in this ONE place so docFiles/findFile/parseRef all agree instead of
     // three different answers for one file. PERMANENT, not a migration stopgap: an earlier draft of
     // this comment said the installer's migration seeds a watch.json into every architecture/ that
-    // lacks one, so this line could then be deleted. It does NOT - the migration moves documents
-    // between folders and writes no watch.json anywhere, which the temp-project matrix confirmed.
-    // A pre-domains install therefore still has an architecture/ with no watch.json, and deleting
-    // this line would make its docs unreachable. Do not delete it on the strength of a comment.
+    // lacks one, so this line could then be deleted. It does NOT - the migration writes an empty
+    // watch.json into code-style/ and related-projects/ only (the folders it moves a doc into), never
+    // into architecture/. A pre-domains install therefore still has an architecture/ with no
+    // watch.json, and deleting this line would make its docs unreachable. Do not delete it on the
+    // strength of a comment.
     if (!found.includes('architecture') && fs.existsSync(path.join(DOCS_ROOT, 'architecture'))) found.push('architecture');
     return (DOMAINS_CACHE = found.sort());
   } catch { return []; }
@@ -391,8 +393,8 @@ function tracked() {
 // instead of on the header, the two status lines and the two mismatch sentences.
 const VERSIONING_KEYS = ['CLAUDE_STACK_DOCS_VERSIONING'];
 // How the docs are versioned is an install-time DECISION, not a guess: 'git' = committed docs, git versions them per
-// branch (no overlay, ever); 'local' = the overlay model. An absent or unrecognised value falls back to what git
-// says, so an install made before the key existed keeps the behaviour it had until someone is asked.
+// branch (no overlay, ever); 'local' = the overlay model. An absent or unrecognised value falls back to
+// keptOutOfGit() below.
 const declaredVersioning = () => {
   for (const key of VERSIONING_KEYS) {
     const v = String(process.env[key] || '').trim().toLowerCase();
@@ -400,10 +402,26 @@ const declaredVersioning = () => {
   }
   return null;
 };
+// Does git ignore the docs root? Asked of `<root>/` with the trailing slash: git answers check-ignore for a path that
+// does not exist yet (a fresh project), but a directory-only pattern ('.claude/docs/') matches the bare name only
+// once the folder exists - the slash makes it match before. Relative to the project root, so a symlinked absolute
+// spelling can never read as 'outside the repository'.
+let IGNORED_CACHE;
+function rootIgnored() {
+  if (IGNORED_CACHE === undefined) { const rel = docsRel(); IGNORED_CACHE = Boolean(rel) && git(['check-ignore', '-q', '--', `${rel}/`]) !== null; }
+  return IGNORED_CACHE;
+}
+// The ONE rule for an ABSENT declaration, shared with both installer seeds and stamp-docs-root.js (a table-driven test
+// runs all four over the same repos): the docs are kept out of git - 'local' - only when no domain is tracked AND
+// either (a) a domain exists, or (b) git ignores the docs root. Everything else is 'git', a fresh project whose docs
+// root is not ignored included: its docs will be committed with the code unless someone says otherwise. A tracked
+// domain wins over an ignored root - a doc force-added under an ignore pattern is committed all the same.
+const keptOutOfGit = () => !tracked() && (domains().length > 0 || rootIgnored());
 // ONE resolver, cached with the other git-state probes: a process runs one CLI command or one hook event, and
-// neither the environment nor the index changes underfoot.
+// neither the environment nor the index changes underfoot. Without a repo nothing is versioned at all (status reports
+// 'none') and the fallback stays the 'local' it always was, so no path that reads the mode changes there.
 let MODE_CACHE;
-const docsMode = () => (MODE_CACHE || (MODE_CACHE = (declaredVersioning() || {}).mode || (tracked() ? 'git' : 'local')));
+const docsMode = () => (MODE_CACHE || (MODE_CACHE = (declaredVersioning() || {}).mode || (!hasGit() || keptOutOfGit() ? 'local' : 'git')));
 const gitVersioned = () => docsMode() === 'git';
 // The declaration and the repo can disagree: docs committed under a 'local' install, or ignored under a 'git' one.
 // The SETTING wins - a doc write must never be silently untracked or silently local - so the disagreement is
@@ -1352,11 +1370,12 @@ function status() {
   const declared = declaredVersioning();
   // The mode NAMES its source: 'declared by <the key that answered>' is a decision someone made at install time,
   // the bare form is this engine reading git because nobody has been asked yet. The two leading words are the
-  // contract other readers key on.
+  // contract other readers key on. The bare forms state keptOutOfGit()'s answer, not 'committed': a fresh project
+  // with no docs yet reads 'git' too, and calling its absent docs committed would be false.
   const gitLine = declared ? `git (declared by ${declared.key} - git versions the docs per branch; no branch overlay)`
-    : 'git (docs are committed - git versions them per branch)';
+    : 'git (docs are not kept out of git - git versions them per branch)';
   const overlayLine = declared ? `overlay (declared by ${declared.key} - branch versions live in .branches/)`
-    : 'overlay (docs are ignored by git - branch versions live in .branches/)';
+    : 'overlay (docs are kept out of git - branch versions live in .branches/)';
   return {
     // The third pillar - the end-of-session watch check - compares the tree against a git snapshot, so without a
     // repo it can never fire, and only this line can say so.

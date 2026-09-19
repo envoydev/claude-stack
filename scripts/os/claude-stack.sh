@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
-# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
+# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--docs-versioning git|local] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
 # claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
 # system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; the Cursor
 # stack lives in the cursor-stack repo.
@@ -24,6 +24,10 @@
 #                           account (skills -g, plugins/mcps --scope user). Overrides the SCOPE env var.
 #   --context7 local|remote context7 transport; remote (default) is the hosted HTTP server, local the
 #                           npx stdio server.
+#   --docs-versioning git|local  WRITE CLAUDE_STACK_DOCS_VERSIONING into the project settings.json env,
+#                           overriding a value already there (one line names the old and new value).
+#                           Absent = seeded only when the key is missing: 'local' when the docs are kept
+#                           out of git, else 'git'.
 #   --github-cli            install the GitHub CLI (gh) via Homebrew (macOS) if missing; prompts for
 #                           `gh auth login` when unauthenticated.
 #   --keep-pins             keep this project's LOCAL model/effort frontmatter edits on installed
@@ -39,7 +43,7 @@ usage() {
   cat <<USAGE
 claude-stack.sh - install or update the Claude Code stack into a project.
 
-Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--github-cli] [--keep-pins]
+Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--docs-versioning git|local] [--github-cli] [--keep-pins]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; MCP/plugin versions freeze until the next update; wires .claude/settings.json
@@ -70,6 +74,13 @@ Named flags (any order, each optional with a default):
   --playwright-enabled <engine>  the one engine to keep switched on (one of the kept engines; given
                            alone, it is added to the set). The run prints '/mcp disable playwright-<x>'
                            for every other kept engine - switch any time with /mcp enable / disable
+  --docs-versioning git|local  how the docs are versioned (CLAUDE_STACK_DOCS_VERSIONING in the project
+                           settings.json env): git = committed, git versions them per branch; local =
+                           per-branch overlays under <docs-path>/.branches/. Given, the value is WRITTEN,
+                           overriding one already there, and one line names the old and new value.
+                           Absent = seeded only when the key is missing: local when the docs are kept out
+                           of git (no domain tracked, and a domain exists or git ignores the docs root),
+                           else git - a fresh project included
   --github-cli             install the GitHub CLI (gh) if missing
   --keep-pins              keep local model/effort frontmatter edits on installed agents/skills across
                            the refresh (an update resets them to upstream otherwise)
@@ -149,6 +160,7 @@ SENTRY_SLUG_FLAG=""
 SENTRY_AUTH_FLAG=""
 PLAYWRIGHT_BROWSERS_FLAG=""
 PLAYWRIGHT_ENABLED_FLAG=""
+DOCS_VERSIONING_FLAG=""
 SELECTION=""
 INSTALLED_ONLY=false
 PRINT_PLAN=false
@@ -173,6 +185,8 @@ while [ $# -gt 0 ]; do
     --playwright-browsers=*) _flag_val "--playwright-browsers" "${1#*=}"; PLAYWRIGHT_BROWSERS_FLAG="${1#*=}"; shift ;;
     --playwright-enabled)    _flag_val "$1" "${2:-}"; PLAYWRIGHT_ENABLED_FLAG="$2";  shift 2 ;;
     --playwright-enabled=*)  _flag_val "--playwright-enabled" "${1#*=}"; PLAYWRIGHT_ENABLED_FLAG="${1#*=}"; shift ;;
+    --docs-versioning)   _flag_val "$1" "${2:-}"; DOCS_VERSIONING_FLAG="$2"; shift 2 ;;
+    --docs-versioning=*) _flag_val "--docs-versioning" "${1#*=}"; DOCS_VERSIONING_FLAG="${1#*=}"; shift ;;
     --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
     --keep-pins)  KEEP_PINS=true;                              shift ;;
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
@@ -182,7 +196,7 @@ while [ $# -gt 0 ]; do
     --skills-only) SKILLS_ONLY=true;                              shift ;;
     --source)      _flag_val "$1" "${2:-}"; SOURCE_DIR="$2";      shift 2 ;;
     --source=*)    SOURCE_DIR="${1#*=}";                          shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
   esac
 done
 
@@ -212,6 +226,12 @@ esac
 SENTRY_AUTH="$(printf '%s' "$SENTRY_AUTH_FLAG" | tr '[:upper:]' '[:lower:]')"
 case "$SENTRY_AUTH" in ""|token|oauth) ;;
   *) usage >&2; echo "error: --sentry-auth must be 'token' or 'oauth' (got '$SENTRY_AUTH')" >&2; exit 1 ;;
+esac
+# --docs-versioning: lower-cased like the other enums; empty means 'not given' - the absent-only seed decides.
+# Refused HERE, before anything is written, so a typo never reaches settings.json.
+DOCS_VERSIONING="$(printf '%s' "$DOCS_VERSIONING_FLAG" | tr '[:upper:]' '[:lower:]')"
+case "$DOCS_VERSIONING" in ""|git|local) ;;
+  *) usage >&2; echo "error: --docs-versioning must be 'git' or 'local' (got '$DOCS_VERSIONING')" >&2; exit 1 ;;
 esac
 # --playwright-browsers / --playwright-enabled: lower-cased like the other enums and put in ONE canonical
 # order (chrome, msedge, firefox, webkit) so a server list never depends on how the flag was typed.
@@ -1693,6 +1713,23 @@ _migrate_docs_file() {  # $1 = old absolute path, $2 = new absolute path, $3 = l
   log "  docs migration ($label): ${old##*/} -> $new"
 }
 
+_switch_on_docs_domain() {  # $1 = domain folder, $2 = the doc its capture writes there - ABSENT-ONLY: when that doc exists and the folder holds no watch.json, write the minimal one ({} - declares nothing, adds no source root to the gate), which is what makes the folder a domain the engine sees. Never overwrites a watch.json (any content, any validity), never creates the folder. Keyed on the doc at its NEW path, so an install an EARLIER run migrated is switched on too; the capture's next run replaces {} with its real entries.
+  local dir="$1" doc="$2"
+  [ -f "$dir/$doc" ] || return 0
+  if [ -e "$dir/watch.json" ] || [ -L "$dir/watch.json" ]; then return 0; fi   # -L: a dangling link is still theirs
+  # A doc an older capture wrote carries no section ids; once the folder is a domain `docs.js lint` flags each
+  # section. Said HERE rather than fixed: seed-ids would rewrite the project's docs across every domain.
+  local note=""
+  if grep -qE '^#{2,4}[[:space:]]' "$dir/$doc" 2>/dev/null && ! grep -qiE '<!--[[:space:]]*id:' "$dir/$doc" 2>/dev/null; then
+    note=" - its sections predate section ids, so 'docs.js lint' flags them until 'node .claude/hooks/docs.js seed-ids' or the capture's next run"
+  fi
+  if { printf '{}\n' > "$dir/watch.json"; } 2>/dev/null; then
+    log "  docs domain: ${dir##*/}/ switched on - watch.json written ({}; the capture's next run fills in its entries)$note"
+  else
+    log "  !! docs domain: could not write $dir/watch.json - ${dir##*/}/ stays invisible to the docs engine until its capture re-runs"
+  fi
+}
+
 migrate_docs_domains() {  # INSTALL + UPDATE: three absent-only moves onto the docs-domain layout - a file a capture used to write at the OLD path now writes at the NEW one, so an existing install's file is relocated once, byte-identical, and never overwrites a file already at the new path. Touches nothing else: related-context/ keeps every sibling-repo working paper - the capture's own drop-box for cross-repo plans, change requests, issue notes - exactly where it is; only the orientation doc this capture wrote moves out of it.
   local root docs_root base
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
@@ -1702,6 +1739,12 @@ migrate_docs_domains() {  # INSTALL + UPDATE: three absent-only moves onto the d
   _migrate_docs_file "$base/PROJECT-CODE-STYLE.md" "$base/code-style/CODE-STYLE.md" "code style"
   _migrate_docs_file "$base/architecture/ASSESSMENT.md" "$base/quality/ASSESSMENT.md" "architecture quality"
   _migrate_docs_file "$base/related-context/PROJECT-RELATED-CONTEXT.md" "$base/related-projects/RELATED-PROJECTS.md" "related projects"
+  # The engine sees a folder as a domain only when it holds a watch.json (architecture/ alone is grandfathered),
+  # so a moved doc was invisible until its capture re-ran. Only these two: quality/ is recomputed every run and
+  # related-context/ is a drop box for sibling-repo papers - both are watch-less BY DESIGN, and a watch.json there
+  # would silently make each a domain.
+  _switch_on_docs_domain "$base/code-style" CODE-STYLE.md
+  _switch_on_docs_domain "$base/related-projects" RELATED-PROJECTS.md
 }
 
 seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one)
@@ -1914,8 +1957,9 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   local prog; prog=$(cat <<'PY'
 import json, os, subprocess, sys
 path = sys.argv[1]
-deny_specs, mcp_names, retired_hooks, retired_deny, bucket = [], [], [], [], None
+deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, bucket = [], [], [], [], [], None
 for a in sys.argv[2:]:
+    if a == "--VERSIONING": bucket = versioning_flag; continue
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
@@ -2098,17 +2142,32 @@ if "CLAUDE_STACK_DOCS_PATH" not in env:
 # how those docs are VERSIONED - a DECISION, not a guess: "git" = they are committed and git versions
 # them per branch (writes land in the doc file, nothing is ever written under <docs-path>/.branches/),
 # "local" = the machine-local overlay, where a feature branch's sections live under
-# <docs-path>/.branches/<branch>/ until it merges. Seeded from what this repo does TODAY, so an install
-# made before this key existed keeps exactly the behaviour it had and no update switches it silently.
-# From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
-# or silently local - and `docs.js status` plus the session-start block say so.
+# <docs-path>/.branches/<branch>/ until it merges. --docs-versioning WRITES the value it is given, over one
+# already there; without it the key is seeded only when ABSENT, by the one rule docs.js keptOutOfGit(),
+# stamp-docs-root.js and the ps1 twin share (a table-driven test runs all four over the same repos): "local"
+# only when the docs are kept OUT of git - no domain is tracked AND either (a) a domain exists or (b) git
+# ignores the docs root - else "git", a fresh project whose docs root is not ignored included. A tracked domain
+# wins over an ignored root. From then on the SETTING wins even where the repo disagrees - a doc write is never
+# silently untracked or silently local - and `docs.js status` plus the session-start block say so.
 # `or "/"`: at the filesystem root the project root is the empty string, and an empty cwd raises
 # FileNotFoundError - which would abandon the whole settings write over a probe whose answer is optional.
 # The pathspec is right either way ("" + "/docs/architecture").
 def _dtracked(_root, _dir):
     return subprocess.call(["git", "ls-files", "--error-unmatch", "--", _dir], cwd=_root or "/",
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
-if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
+# `<docs>/` with the trailing slash, relative to the root: git answers check-ignore for a path that does not
+# exist yet, but a directory-only pattern (".claude/docs/") matches the bare name only once the folder exists.
+def _dignored(_root, _rel):
+    return bool(_rel) and subprocess.call(["git", "check-ignore", "-q", "--", _rel + "/"], cwd=_root or "/",
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+_vflag = (versioning_flag or [""])[0]
+if _vflag:
+    _vold = env.get("CLAUDE_STACK_DOCS_VERSIONING")
+    if _vold != _vflag:
+        env["CLAUDE_STACK_DOCS_VERSIONING"] = _vflag; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING %s -> '%s' (--docs-versioning%s)" % (
+        "absent" if _vold is None else "'%s'" % _vold, _vflag, ", unchanged" if _vold == _vflag else ""))
+elif "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     # Forward slashes DELIBERATELY, also on Windows: os.path.join would emit '\' under a Windows python and hand
     # git a mixed-separator pathspec (C:/repo\docs\code-style), which can fail to match - and a false negative
     # here seeds `local` over committed docs, the exact silent switch this seed exists to prevent.
@@ -2117,9 +2176,8 @@ if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     _dbase = "/".join([_droot] + _dparts)
     # Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder a domain
     # (architecture/ is grandfathered in without one), so a project documented only in code-style/,
-    # decisions/ or related-projects/ is an ordinary shape - and probing one folder seeded `local` over its
-    # committed docs, which then writes branch overlays into a docs root git is versioning. Same rule as
-    # docs.js domains(), reserved names and all; a watch-less folder like quality/ is no domain and no vote.
+    # decisions/ or related-projects/ is an ordinary shape. Same rule as docs.js domains(), reserved
+    # names and all; a watch-less folder like quality/ is no domain and no vote.
     try:
         _dnames = sorted(_d for _d in os.listdir(_dbase)
                          if not _d.startswith(".") and _d not in ("references", "history")
@@ -2128,7 +2186,8 @@ if "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     except OSError:
         _dnames = []
     _committed = any(_dtracked(_droot, "%s/%s" % (_dbase, _d)) for _d in _dnames)
-    env["CLAUDE_STACK_DOCS_VERSIONING"] = "git" if _committed else "local"; changed = True
+    _kept_out = not _committed and (bool(_dnames) or _dignored(_droot, "/".join(_dparts)))
+    env["CLAUDE_STACK_DOCS_VERSIONING"] = "local" if _kept_out else "git"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
@@ -2191,7 +2250,7 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" || log "  !! settings.json wiring failed"
+  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" --VERSIONING "$DOCS_VERSIONING" || log "  !! settings.json wiring failed"
 }
 
 # ===========================================================================
@@ -2610,9 +2669,12 @@ The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude/settings.json env (
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
 re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
-Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how every capture's docs are
-versioned - 'git' when they are committed (git versions them per branch), 'local' for the
-machine-local overlay under <docs-path>/.branches/. The install seeded what this repo does today.
+CLAUDE_STACK_DOCS_VERSIONING (same env block) says how every capture's docs are versioned - 'git' when
+they are committed (git versions them per branch), 'local' for the machine-local overlay under
+<docs-path>/.branches/. The install seeds 'local' only when the docs are already kept out of git (no
+domain tracked, and a domain exists or git ignores the docs root), else 'git' - so a project that adds
+the .claude ignore above AFTER this run still reads 'git': re-run update with --docs-versioning local.
+Moving the docs to a committed path takes --docs-versioning git.
 
 The same env block carries the fresh-session gate's three knobs (seeded, absent-only, so a
 hand-edited value survives every update):

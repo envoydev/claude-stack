@@ -108,7 +108,7 @@ bash .claude/claude-stack.sh install                 # first time
 bash .claude/claude-stack.sh update --installed-only # later refreshes - only what is already installed, from disk
 bash .claude/claude-stack.sh install --skills-only   # just the skills, nothing else
 
-# Named flags (any order): --space, --scope, --context7, --sentry-slug, --sentry-auth, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
+# Named flags (any order): --space, --scope, --context7, --sentry-slug, --sentry-auth, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
 bash .claude/claude-stack.sh install --space work --scope global --context7 local
 ```
 

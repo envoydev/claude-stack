@@ -161,8 +161,14 @@ choice), and the detected migrations. Three outputs decide the path:
 Run the installer; it derives the selection from disk itself, closes new dependencies through
 `stack-select.js`, and logs any `installed-only: required:` additions:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins [--docs-versioning git|local]`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local]`
+
+`--docs-versioning` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
+--docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
+installer writes it over the current value and prints one `settings.json env: CLAUDE_STACK_DOCS_VERSIONING
+<old> -> '<new>'` line; any other value is refused before anything is written. Without it, the key is
+only seeded when missing.
 
 **Give that call a 10-minute timeout, and read its exit code.** A full refresh runs past the Bash
 tool's own default on a cold machine, and a timed-out call is BACKGROUNDED, not failed: the run then
@@ -201,13 +207,15 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: required:|settings\.json env:|=set \(|=absent|serena project index|!!' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: required:|settings\.json env:|docs (migration|domain)|=set \(|=absent|serena project index|!!' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
 registrations, each plugin's `x -> y` or `already newest`, the dependencies the new release
-pulled in, every env key the run renamed / removed / seeded (the installer prints one line each -
-so the ENVIRONMENT line is READ, never asserted), the credential presence lines, the serena
+pulled in, every env key the run renamed / removed / seeded / set (the installer prints one line each -
+so the ENVIRONMENT line is READ, never asserted), each capture doc moved onto its domain folder and each
+moved folder switched on as a domain (`docs migration` / `docs domain:` - report them as they read), the
+credential presence lines, the serena
 re-index hint and any fail-soft `!!`. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
 the lines above it.
@@ -328,7 +336,8 @@ stale registration needs to see it named), the ENVIRONMENT line, the FYI additio
 `configure`, and the restart line.
 
 - **ENVIRONMENT** - the installer prints one line per env change (`settings.json env: <old> renamed
-  to <new>`, `<key> removed (retired ...)`, `<key> seeded (<value>)`), and the grep already caught
+  to <new>`, `<key> removed (retired ...)`, `<key> seeded (<value>)`, `<key> <old> -> '<new>'` for a passed
+  `--docs-versioning`), and the grep already caught
   them. Report those lines; when there are none, say 'env: nothing renamed, removed or seeded this
   run' - a claim you can make because the log is silent AND step 2's `env-keys:` set is the
   before-state you are comparing against. Never assert it from memory: three audited runs did, and

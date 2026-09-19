@@ -53,6 +53,13 @@
   The one engine to keep switched on (one of the kept engines; given alone, it is added to the set). The run
   prints '/mcp disable playwright-<x>' for every other kept engine - switch any time with /mcp enable / disable.
 
+.PARAMETER DocsVersioning
+  How the docs are versioned - CLAUDE_STACK_DOCS_VERSIONING in the project settings.json env: 'git' = committed,
+  git versions them per branch; 'local' = per-branch overlays under <docs-path>/.branches/. Given, the value is
+  WRITTEN, overriding one already there, and one line names the old and new value. Absent = seeded only when the
+  key is missing: 'local' when the docs are kept out of git (no domain tracked, and a domain exists or git ignores
+  the docs root), else 'git' - a fresh project included. Any other value is refused before anything is written.
+
 .PARAMETER GitHubCli
   Install the GitHub CLI (gh) via winget if missing. Reminds you to run `gh auth login` when unauthenticated.
 
@@ -148,6 +155,9 @@ param(
   # on. Empty -> the registered set (chrome when none). e.g.: .\claude-stack.ps1 install -PlaywrightBrowsers chrome,firefox -PlaywrightEnabled firefox
   [string]$PlaywrightBrowsers = '',
   [string]$PlaywrightEnabled = '',
+  # Optional: WRITE CLAUDE_STACK_DOCS_VERSIONING ('git' or 'local') into the project settings.json env, over a value
+  # already there. Empty -> seeded only when absent. e.g.: .\claude-stack.ps1 update -DocsVersioning local
+  [string]$DocsVersioning = '',
   # Optional: install the GitHub CLI (gh) via winget if missing; prompts for `gh auth login`
   # when unauthenticated. e.g.: .\claude-stack.ps1 install -GitHubCli
   [switch]$GitHubCli,
@@ -356,6 +366,15 @@ if ($Scope -notin @('project', 'global')) {
 $SentryAuth = $SentryAuth.ToLowerInvariant()
 if ($SentryAuth -notin @('', 'token', 'oauth')) {
   Write-Host "-SentryAuth must be 'token' or 'oauth' (got '$SentryAuth')" -ForegroundColor Red
+  exit 1
+}
+# -DocsVersioning: lower-cased like the other enums; empty means 'not given' - the absent-only seed decides. Refused
+# HERE, before anything is written, so a typo never reaches settings.json. An explicitly EMPTY value is a typo too,
+# never 'no flag' - the sh twin's rule.
+if ($PSBoundParameters.ContainsKey('DocsVersioning') -and -not $DocsVersioning) { [Console]::Error.WriteLine("-DocsVersioning must be 'git' or 'local'"); exit 1 }
+$DocsVersioning = $DocsVersioning.ToLowerInvariant()
+if ($DocsVersioning -notin @('', 'git', 'local')) {
+  Write-Host "-DocsVersioning must be 'git' or 'local' (got '$DocsVersioning')" -ForegroundColor Red
   exit 1
 }
 # -PlaywrightBrowsers / -PlaywrightEnabled: lower-cased like the other enums and put in ONE canonical order
@@ -1863,6 +1882,28 @@ function Move-DocsFile {
   Log "  docs migration ($Label): $(Split-Path -Leaf $OldPath) -> $NewPath"
 }
 
+function Enable-DocsDomain {
+  # ABSENT-ONLY: when the doc its capture writes exists and the folder holds no watch.json, write the minimal one
+  # ({} - declares nothing, adds no source root to the gate), which is what makes the folder a domain the engine
+  # sees. Never overwrites a watch.json (any content, any validity), never creates the folder. Keyed on the doc at
+  # its NEW path, so an install an EARLIER run migrated is switched on too; the capture's next run replaces {} with
+  # its real entries. Twin of the .sh _switch_on_docs_domain - keep both in parity.
+  param([string]$Dir, [string]$Doc)
+  if (-not (Test-Path -LiteralPath (Join-Path $Dir $Doc) -PathType Leaf)) { return }
+  $watch = Join-Path $Dir 'watch.json'
+  # Get-Item -Force sees a dangling link that Test-Path does not - still theirs, never written through.
+  if ((Test-Path -LiteralPath $watch) -or (Get-Item -LiteralPath $watch -Force -ErrorAction SilentlyContinue)) { return }
+  $name = Split-Path -Leaf $Dir
+  # A doc an older capture wrote carries no section ids; once the folder is a domain `docs.js lint` flags each
+  # section. Said HERE rather than fixed: seed-ids would rewrite the project's docs across every domain.
+  $text = Get-Content -LiteralPath (Join-Path $Dir $Doc) -Raw -ErrorAction SilentlyContinue
+  $note = if ("$text" -match '(?m)^#{2,4}\s' -and "$text" -notmatch '(?i)<!--\s*id:') { " - its sections predate section ids, so 'docs.js lint' flags them until 'node .claude/hooks/docs.js seed-ids' or the capture's next run" } else { '' }
+  try {
+    [System.IO.File]::WriteAllText($watch, "{}`n", (New-Object System.Text.UTF8Encoding($false)))
+    Log "  docs domain: $name/ switched on - watch.json written ({}; the capture's next run fills in its entries)$note"
+  } catch { Log "  !! docs domain: could not write $watch - $name/ stays invisible to the docs engine until its capture re-runs" }
+}
+
 function Move-DocsDomains {
   # INSTALL + UPDATE: three absent-only moves onto the docs-domain layout - a file a capture used to
   # write at the OLD path now writes at the NEW one, so an existing install's file is relocated once,
@@ -1877,6 +1918,12 @@ function Move-DocsDomains {
   Move-DocsFile -OldPath (Join-Path $base 'PROJECT-CODE-STYLE.md') -NewPath (Join-Path $base 'code-style/CODE-STYLE.md') -Label 'code style'
   Move-DocsFile -OldPath (Join-Path $base 'architecture/ASSESSMENT.md') -NewPath (Join-Path $base 'quality/ASSESSMENT.md') -Label 'architecture quality'
   Move-DocsFile -OldPath (Join-Path $base 'related-context/PROJECT-RELATED-CONTEXT.md') -NewPath (Join-Path $base 'related-projects/RELATED-PROJECTS.md') -Label 'related projects'
+  # The engine sees a folder as a domain only when it holds a watch.json (architecture/ alone is grandfathered), so
+  # a moved doc was invisible until its capture re-ran. Only these two: quality/ is recomputed every run and
+  # related-context/ is a drop box for sibling-repo papers - both are watch-less BY DESIGN, and a watch.json there
+  # would silently make each a domain.
+  Enable-DocsDomain -Dir (Join-Path $base 'code-style') -Doc 'CODE-STYLE.md'
+  Enable-DocsDomain -Dir (Join-Path $base 'related-projects') -Doc 'RELATED-PROJECTS.md'
 }
 
 function New-ClaudeMd {
@@ -2334,20 +2381,32 @@ function Set-HookSettings {
   # how those docs are VERSIONED - a DECISION, not a guess: 'git' = they are committed and git versions
   # them per branch (writes land in the doc file, nothing is ever written under <docs-path>/.branches/),
   # 'local' = the machine-local overlay, where a feature branch's sections live under
-  # <docs-path>/.branches/<branch>/ until it merges. Seeded from what this repo does TODAY, so an install
-  # made before this key existed keeps exactly the behaviour it had and no update switches it silently.
-  # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked
-  # or silently local - and `docs.js status` plus the session-start block say so.
-  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']) {
+  # <docs-path>/.branches/<branch>/ until it merges. -DocsVersioning WRITES the value it is given, over one already
+  # there; without it the key is seeded only when ABSENT, by the one rule docs.js keptOutOfGit(), stamp-docs-root.js
+  # and the sh twin share (a table-driven test runs all four over the same repos): 'local' only when the docs are
+  # kept OUT of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - else
+  # 'git', a fresh project whose docs root is not ignored included. A tracked domain wins over an ignored root.
+  # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked or
+  # silently local - and `docs.js status` plus the session-start block say so.
+  if ($DocsVersioning) {
+    $vHas = [bool]$data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']
+    $vOld = if ($vHas) { [string]$data.env.CLAUDE_STACK_DOCS_VERSIONING } else { $null }
+    if (-not $vHas) { $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_VERSIONING -NotePropertyValue $DocsVersioning; $changed = $true }
+    elseif ($vOld -cne $DocsVersioning) { $data.env.CLAUDE_STACK_DOCS_VERSIONING = $DocsVersioning; $changed = $true }
+    $vFrom = if ($vHas) { "'$vOld'" } else { 'absent' }
+    $vSame = if ($vHas -and $vOld -ceq $DocsVersioning) { ', unchanged' } else { '' }
+    Log "  settings.json env: CLAUDE_STACK_DOCS_VERSIONING $vFrom -> '$DocsVersioning' (-DocsVersioning$vSame)"
+  }
+  elseif (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']) {
     # Forward slashes DELIBERATELY, also on Windows: Join-Path would emit '\' there and hand git a
     # mixed-separator pathspec (C:/repo\docs/code-style), which can fail to match - and a false negative here
     # seeds 'local' over committed docs, the exact silent switch this seed exists to prevent.
+    $docsRel = ($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/')
     $docsBase = (($root -replace '\\', '/').TrimEnd('/')) + '/' + (($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/'))
     # Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder a domain
     # (architecture/ is grandfathered in without one), so a project documented only in code-style/, decisions/
-    # or related-projects/ is an ordinary shape - and probing one folder seeded 'local' over its committed
-    # docs, which then writes branch overlays into a docs root git is versioning. Same rule as docs.js
-    # domains(), reserved names and all; a watch-less folder like quality/ is no domain and no vote.
+    # or related-projects/ is an ordinary shape. Same rule as docs.js domains(), reserved names and all; a
+    # watch-less folder like quality/ is no domain and no vote.
     $domainDirs = @()
     if (Test-Path -LiteralPath $docsBase) {
       $domainDirs = @(Get-ChildItem -LiteralPath $docsBase -Directory -ErrorAction SilentlyContinue |
@@ -2360,7 +2419,13 @@ function Set-HookSettings {
       # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
       try { & git -C $root ls-files --error-unmatch -- $dir *> $null; if ($LASTEXITCODE -eq 0) { $committed = $true; break } } catch { }
     }
-    $versioning = if ($committed) { 'git' } else { 'local' }
+    # `<docs>/` with the trailing slash, relative to the root: git answers check-ignore for a path that does not exist
+    # yet, but a directory-only pattern ('.claude/docs/') matches the bare name only once the folder exists.
+    $ignored = $false
+    if (-not $committed -and -not $domainDirs.Count -and $docsRel) {
+      try { & git -C $root check-ignore -q -- "$docsRel/" *> $null; if ($LASTEXITCODE -eq 0) { $ignored = $true } } catch { }
+    }
+    $versioning = if (-not $committed -and ($domainDirs.Count -or $ignored)) { 'local' } else { 'git' }
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_VERSIONING -NotePropertyValue $versioning
     $changed = $true
     Log "  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded ($versioning)"
@@ -2955,9 +3020,12 @@ Write-Host "The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude\setting
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
 Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
-Write-Host "Set CLAUDE_STACK_DOCS_VERSIONING to 'git' in the same move: it is how every capture's docs are"
-Write-Host "versioned - 'git' when they are committed (git versions them per branch), 'local' for the"
-Write-Host 'machine-local overlay under <docs-path>/.branches/. The install seeded what this repo does today.'
+Write-Host "CLAUDE_STACK_DOCS_VERSIONING (same env block) says how every capture's docs are versioned - 'git' when"
+Write-Host "they are committed (git versions them per branch), 'local' for the machine-local overlay under"
+Write-Host "<docs-path>/.branches/. The install seeds 'local' only when the docs are already kept out of git (no"
+Write-Host 'domain tracked, and a domain exists or git ignores the docs root), else ''git'' - so a project that adds'
+Write-Host "the .claude ignore above AFTER this run still reads 'git': re-run update with -DocsVersioning local."
+Write-Host 'Moving the docs to a committed path takes -DocsVersioning git.'
 Write-Host ''
 Write-Host 'The same env block carries the fresh-session gate''s three knobs (seeded, absent-only, so a'
 Write-Host 'hand-edited value survives every update):'

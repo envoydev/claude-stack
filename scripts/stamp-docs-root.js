@@ -61,7 +61,35 @@ function stamp(root)
     stampDir(path.join(root, '.claude'));
 }
 
-// CLAUDE_STACK_DOCS_VERSIONING is seeded from what the repo does TODAY, probed at the docs path the settings file
+// The rule an ABSENT CLAUDE_STACK_DOCS_VERSIONING is seeded by - the same rule as both installer seeds and docs.js
+// keptOutOfGit(), and a table-driven test runs all four over the same repos: 'local' only when the docs are kept OUT
+// of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - and 'git' otherwise,
+// a fresh project whose docs root is not ignored included. A tracked domain wins over an ignored root. `docs` is the
+// docs path relative to `root`, forward slashes; the ignore probe asks `<docs>/` so a directory-only pattern matches a
+// root that does not exist yet. Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder
+// a domain (architecture/ is grandfathered in without one), so a project documented only in code-style/, decisions/ or
+// related-projects/ is an ordinary shape. Same rule as docs.js domains(), reserved names and all; a watch-less folder
+// like quality/ is no domain and no vote.
+function probeVersioning(root, docs)
+{
+    const base = `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/${docs}`;
+    let domainDirs = [];
+    try
+    {
+        domainDirs = fs.readdirSync(base, { withFileTypes: true })
+            .filter(e => e.isDirectory() && !e.name.startsWith('.') && !['references', 'history'].includes(e.name))
+            .map(e => e.name)
+            .filter(n => n === 'architecture' || fs.existsSync(path.join(base, n, 'watch.json')))
+            .sort();
+    }
+    catch { domainDirs = []; }
+    const quiet = { cwd: root, stdio: 'ignore' };
+    if (domainDirs.some(n => spawnSync('git', ['ls-files', '--error-unmatch', '--', `${base}/${n}`], quiet).status === 0)) return 'git';
+    if (domainDirs.length) return 'local';
+    return docs && spawnSync('git', ['check-ignore', '-q', '--', `${docs}/`], quiet).status === 0 ? 'local' : 'git';
+}
+
+// CLAUDE_STACK_DOCS_VERSIONING is seeded by that rule, probed at the docs path the settings file
 // held when the INSTALL ran. On the setup route the user's chosen docs root is applied AFTER that, so a key seeded
 // against the old path can describe the wrong folder. The walk that MOVES the path re-probes here, in the same
 // step that re-stamps the rule, and only when its own run seeded the key: a value an earlier install wrote is a
@@ -92,28 +120,12 @@ function reprobeVersioning(root, seeded)
         return;
     }
     const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-    const base = `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/${docs}`;
     if (spawnSync('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' }).status !== 0)
     {
         console.log('stamp-docs-root: not a git repository - docs versioning left as it is');
         return;
     }
-    // Every DOMAIN under the docs root, never architecture/ alone: a watch.json is what makes a folder a
-    // domain (architecture/ is grandfathered in without one), so a project documented only in code-style/,
-    // decisions/ or related-projects/ is an ordinary shape, and probing one folder re-probed 'local' over
-    // its committed docs - the wrong seed this flag exists to CORRECT. Same rule as docs.js domains(),
-    // reserved names and all; a watch-less folder like quality/ is no domain and no vote.
-    let domainDirs = [];
-    try
-    {
-        domainDirs = fs.readdirSync(base, { withFileTypes: true })
-            .filter(e => e.isDirectory() && !e.name.startsWith('.') && !['references', 'history'].includes(e.name))
-            .map(e => e.name)
-            .filter(n => n === 'architecture' || fs.existsSync(path.join(base, n, 'watch.json')))
-            .sort();
-    }
-    catch { domainDirs = []; }
-    const value = domainDirs.some(n => spawnSync('git', ['ls-files', '--error-unmatch', '--', `${base}/${n}`], { cwd: root, stdio: 'ignore' }).status === 0) ? 'git' : 'local';
+    const value = probeVersioning(root, docs);
     if (data.env.CLAUDE_STACK_DOCS_VERSIONING === value)
     {
         console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs}/ - unchanged`);
@@ -142,4 +154,4 @@ if (require.main === module)
     }
 }
 
-module.exports = { stamp, stampDir, resolveDocsRoot, reprobeVersioning };
+module.exports = { stamp, stampDir, resolveDocsRoot, reprobeVersioning, probeVersioning };

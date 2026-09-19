@@ -174,7 +174,7 @@ test('committed docs in a domain other than architecture/ are read as committed,
   });
   try {
     assert.ok(!r.exists('.claude/docs/architecture'), 'the whole case: there is no architecture/ folder at all');
-    assert.match(r.cli(['status']).stdout, /^mode: git \(docs are committed - git versions them per branch\)/m);
+    assert.match(r.cli(['status']).stdout, /^mode: git \(docs are not kept out of git - git versions them per branch\)/m);
     r.git('switch', '-qc', 'feat/style');
     const out = r.cli(['set', 'CODE-STYLE#csharp'], '## csharp\n<!-- id: csharp -->\n<!-- covers: src/**.cs -->\nBraces open on the next line.\n');
     assert.strictEqual(out.status, 0, out.stdout);
@@ -199,8 +199,9 @@ test('a committed docs root holding no domain at all is no fact to disagree with
   } finally { r.rm(); }
 });
 
-// Every install made before the key existed carries no value, and nothing may change under it until someone is asked.
-test('absent, empty or unknown versioning falls back to what git tracks, and nothing is called a mismatch', () => {
+// Every install made before the key existed carries no value: the fallback is the one rule (docs-versioning-rule.test.js
+// runs all four homes of it), and nothing is called a mismatch until someone declares a mode.
+test('absent, empty or unknown versioning falls back to the kept-out-of-git rule, and nothing is called a mismatch', () => {
   const ignored = repo({ docs: { 'references/patterns.md': PATTERNS } });
   const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS } });
   try {
@@ -208,8 +209,8 @@ test('absent, empty or unknown versioning falls back to what git tracks, and not
       const extra = { CLAUDE_STACK_DOCS_VERSIONING: v };
       const a = ignored.cli(['status'], undefined, extra).stdout;
       const b = committed.cli(['status'], undefined, extra).stdout;
-      assert.match(a, /^mode: overlay \(docs are ignored by git - branch versions live in \.branches\/\)/m, `ignored docs at '${v}'`);
-      assert.match(b, /^mode: git \(docs are committed - git versions them per branch\)/m, `committed docs at '${v}'`);
+      assert.match(a, /^mode: overlay \(docs are kept out of git - branch versions live in \.branches\/\)/m, `ignored docs at '${v}'`);
+      assert.match(b, /^mode: git \(docs are not kept out of git - git versions them per branch\)/m, `committed docs at '${v}'`);
       for (const out of [a, b]) assert.doesNotMatch(out, /Versioning mismatch/, `nothing declared, nothing to mismatch at '${v}'`);
     }
     assert.match(ignored.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: ' GIT ' }).stdout, /^mode: git \(declared/m, 'the value is trimmed and read case-insensitively');

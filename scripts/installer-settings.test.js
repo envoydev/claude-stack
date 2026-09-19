@@ -202,7 +202,7 @@ test('ps1: update adopts a hook the release ADDED, and never resurrects one the 
 // audited runs stated it anyway and one of them named keys it had never probed.
 const SEEDS = [
     ['CLAUDE_STACK_DOCS_PATH', '.claude/docs'],
-    ['CLAUDE_STACK_DOCS_VERSIONING', 'local'],
+    ['CLAUDE_STACK_DOCS_VERSIONING', 'git'],   // a fresh project whose docs root git does not ignore
     ['CLAUDE_STACK_INSTRUMENT', '0'],
     ['CLAUDE_STACK_PUSH_GATE', '1'],
     ['CLAUDE_STACK_ROTATE_ASK', '1'],
@@ -238,10 +238,11 @@ test('ps1: every env key the install seeds is REPORTED, and a second run reports
     for (const [key] of SEEDS) assert.ok(!again.includes(`env: ${key} seeded`), `ps1: ${key} is not re-reported when it is already set`);
 });
 
-// The one seed that is not a constant: how the docs are versioned is a DECISION the install writes down, and it is
-// seeded from what the repo does TODAY - so an install made before the key existed keeps the behaviour it had
-// instead of being switched onto the overlay (or off it) by an update nobody was asked about. A value already in
-// the file is never touched, whatever the repo says.
+// The one seed that is not a constant: how the docs are versioned is a DECISION the install writes down, and an absent
+// key is seeded by the one rule (docs-versioning-rule.test.js runs all four homes of it) - 'local' only when the docs
+// are kept out of git, else 'git' - so an install whose docs stay out of git keeps the overlay it had instead of
+// being switched by an update nobody was asked about. A value already in the file is never touched, whatever the repo
+// says.
 const gitIn = (repo, ...args) => execFileSync('git', ['-c', 'user.email=t@e.com', '-c', 'user.name=t', ...args], { cwd: repo, encoding: 'utf8' });
 
 function assertVersioningSeed(sb, run, twin)
@@ -256,18 +257,21 @@ function assertVersioningSeed(sb, run, twin)
         const out = run(sb, 'install');
         assert.ok(out.includes('settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: committed docs are seeded git`);
         assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'git', `${twin}: and the value landed`);
-        // an update over an install that predates the key seeds it by the same detection, never by a constant
+        // an update over an install that predates the key seeds it by the rule, never by the catalog constant ('git'):
+        // the docs taken back out of git leave a domain nobody tracks, which is 'local'
         const file = path.join(sb.repo, '.claude', 'settings.json');
         const data = JSON.parse(fs.readFileSync(file, 'utf8'));
         delete data.env.CLAUDE_STACK_DOCS_VERSIONING;
         fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-        assert.ok(run(sb, 'update').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: the update re-seeds what the repo does, not the catalog default`);
+        gitIn(sb.repo, 'rm', '-rq', '--cached', '.claude/docs');
+        gitIn(sb.repo, 'commit', '-qm', 'docs out of git');
+        assert.ok(run(sb, 'update').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (local)'), `${twin}: the update re-seeds by the rule, not the catalog default`);
         // and a value the user chose is left alone, whatever the repo does
         const mine = JSON.parse(fs.readFileSync(file, 'utf8'));
-        mine.env.CLAUDE_STACK_DOCS_VERSIONING = 'local';
+        mine.env.CLAUDE_STACK_DOCS_VERSIONING = 'git';
         fs.writeFileSync(file, `${JSON.stringify(mine, null, 2)}\n`);
         assert.ok(!run(sb, 'update').includes('CLAUDE_STACK_DOCS_VERSIONING seeded'), `${twin}: an existing value is never re-seeded`);
-        assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'local', `${twin}: and never clobbered`);
+        assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'git', `${twin}: and never clobbered`);
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 }
@@ -315,13 +319,13 @@ test('ps1: the docs-versioning probe composes its pathspec with forward slashes,
     assert.ok(probeLine(PS1, 'ForEach-Object { "$docsBase/').includes('$($_.Name)'), 'ps1: the per-domain pathspec is composed with a forward slash');
 });
 
-test('sh: the docs-versioning seed records what the repo does today, and never clobbers a chosen value', () => assertVersioningSeed(sandbox(), runSh, 'sh'));
-test('ps1: the docs-versioning seed records what the repo does today, and never clobbers a chosen value (pwsh required)', { skip: skipNoPwsh }, () => assertVersioningSeed(sandbox(), runPs, 'ps1'));
+test('sh: the docs-versioning seed follows the one rule, not the catalog default, and never clobbers a chosen value', () => assertVersioningSeed(sandbox(), runSh, 'sh'));
+test('ps1: the docs-versioning seed follows the one rule, not the catalog default, and never clobbers a chosen value (pwsh required)', { skip: skipNoPwsh }, () => assertVersioningSeed(sandbox(), runPs, 'ps1'));
 
 // Task 14 / whole-branch review finding 2: the seed probed architecture/ alone, so a project documented in
-// code-style/ (or decisions/, or related-projects/) had its COMMITTED docs seeded 'local' - and a fresh install
-// always seeds 'local', so nothing downstream corrected it. A watch.json is what makes a folder a domain, which
-// is also the boundary: a committed folder without one casts no vote.
+// code-style/ (or decisions/, or related-projects/) had its COMMITTED docs seeded 'local'. A watch.json is what
+// makes a folder a domain, which is also the boundary: a committed folder without one casts no vote - beside an
+// untracked architecture/, a committed quality/ must not make the docs read as committed.
 function assertDomainVersioningSeed(run, twin)
 {
     const style = sandbox();
@@ -337,9 +341,11 @@ function assertDomainVersioningSeed(run, twin)
             gitIn(sb.repo, 'add', '-f', '.claude/docs');
             gitIn(sb.repo, 'commit', '-qm', 'docs');
         }
+        fs.mkdirSync(path.join(bare.repo, '.claude', 'docs', 'architecture'), { recursive: true });
+        fs.writeFileSync(path.join(bare.repo, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');   // untracked
         assert.ok(run(style, 'install').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: a committed code-style/ domain is committed docs`);
         assert.strictEqual(projectEnv(style).CLAUDE_STACK_DOCS_VERSIONING, 'git', `${twin}: and the value landed`);
-        assert.ok(run(bare, 'install').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (local)'), `${twin}: a committed folder with no watch.json is no domain`);
+        assert.ok(run(bare, 'install').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (local)'), `${twin}: a committed folder with no watch.json is no domain, so the untracked architecture/ decides`);
         assert.strictEqual(projectEnv(bare).CLAUDE_STACK_DOCS_VERSIONING, 'local', `${twin}: and the value landed`);
     }
     finally { for (const sb of [style, bare]) fs.rmSync(sb.work, { recursive: true, force: true }); }
@@ -484,6 +490,10 @@ function assertMigrated(base, twin)
     assert.strictEqual(fs.readFileSync(path.join(base, 'related-context', 'shared-contracts-notes.md'), 'utf8'), '# Notes\n', `${twin}: an unrelated working paper changed`);
     assert.strictEqual(fs.readFileSync(path.join(base, 'related-context', 'frontend-run-recipe', 'RECIPE.md'), 'utf8'), '# Recipe\n', `${twin}: a nested working paper changed`);
     assert.deepStrictEqual(fs.readdirSync(path.join(base, 'related-context')).sort(), ['backend-change-request.md', 'frontend-run-recipe', 'shared-contracts-notes.md'], `${twin}: related-context/ holds exactly the three untouched working papers`);
+    // Task 16: a moved doc's folder is switched on as a domain - the minimal watch.json, the one the engine reads as
+    // declaring nothing - and the two watch-less folders stay watch-less, since a watch.json is what makes a domain.
+    for (const d of ['code-style', 'related-projects']) assert.strictEqual(fs.readFileSync(path.join(base, d, 'watch.json'), 'utf8'), '{}\n', `${twin}: ${d}/ switched on with the minimal watch.json`);
+    for (const d of ['quality', 'related-context']) assert.ok(!fs.existsSync(path.join(base, d, 'watch.json')), `${twin}: ${d}/ must never become a domain`);
 }
 function assertDocsMigration(sb, run, twin)
 {
@@ -491,6 +501,8 @@ function assertDocsMigration(sb, run, twin)
     const base = seedLegacyDocsLayout(sb);   // simulate that older install's captured docs
     const out = run(sb, 'update');
     assert.match(out, /docs migration \(code style\): PROJECT-CODE-STYLE\.md ->/, `${twin}: the rename is reported, not just the move`);
+    for (const d of ['code-style', 'related-projects']) assert.match(out, new RegExp(`docs domain: ${d}/ switched on - watch\\.json written`), `${twin}: the switch-on of ${d}/ is reported`);
+    assert.doesNotMatch(out, /docs domain: (quality|related-context)\//, `${twin}: the watch-less folders are never switched on`);
     assertMigrated(base, twin);
     // idempotent: a second update changes nothing further and errors on nothing
     const before = {
@@ -498,7 +510,7 @@ function assertDocsMigration(sb, run, twin)
         asmt: fs.readFileSync(path.join(base, 'quality', 'ASSESSMENT.md'), 'utf8'),
         rel: fs.readFileSync(path.join(base, 'related-projects', 'RELATED-PROJECTS.md'), 'utf8'),
     };
-    run(sb, 'update');
+    assert.doesNotMatch(run(sb, 'update'), /docs domain:/, `${twin}: a second run switches nothing on again`);
     assertMigrated(base, twin);
     assert.strictEqual(fs.readFileSync(path.join(base, 'code-style', 'CODE-STYLE.md'), 'utf8'), before.cs, `${twin}: a second run left code-style untouched`);
     assert.strictEqual(fs.readFileSync(path.join(base, 'quality', 'ASSESSMENT.md'), 'utf8'), before.asmt, `${twin}: a second run left quality untouched`);
@@ -656,3 +668,125 @@ function assertNonObjectSettingsIsRefusedNotFatal(twin)
 }
 test('sh: a settings.json that parses but is not an object is refused without failing the run', () => assertNonObjectSettingsIsRefusedNotFatal('sh'));
 test('ps1: a settings.json that parses but is not an object is refused without failing the run (pwsh required)', { skip: skipNoPwsh }, () => assertNonObjectSettingsIsRefusedNotFatal('ps1'));
+
+// Task 16, part 2: the switch-on is keyed on the doc sitting at its NEW path, not on this run having moved it, so an
+// install an EARLIER release already migrated - docs in code-style/ and related-projects/, no watch.json in either -
+// is switched on too, and the engine then lists both as domains and lints clean. A watch.json already there is the
+// project's (or the capture's) and is never touched, whatever it holds - even text that is not JSON.
+const DOCS_JS = path.join(ROOT, 'stack', 'hooks', 'docs.js');
+const engineIn = (sb, script) => spawnSync(process.execPath, ['-e', script], { cwd: sb.repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: sb.repo, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' } });
+function assertSwitchOnWithoutAMove(sb, run, twin)
+{
+    run(sb, 'install');
+    const base = path.join(sb.repo, '.claude', 'docs');
+    for (const [rel, text] of [['code-style/CODE-STYLE.md', LEGACY_CODE_STYLE], ['related-projects/RELATED-PROJECTS.md', LEGACY_RELATED],
+        ['quality/ASSESSMENT.md', LEGACY_ASSESSMENT], ['related-context/backend-change-request.md', '# CR\n']])
+    {
+        fs.mkdirSync(path.dirname(path.join(base, rel)), { recursive: true });
+        fs.writeFileSync(path.join(base, rel), text);
+    }
+    const out = run(sb, 'update');
+    assert.doesNotMatch(out, /docs migration/, `${twin}: nothing was moved this run`);
+    for (const d of ['code-style', 'related-projects']) assert.strictEqual(fs.readFileSync(path.join(base, d, 'watch.json'), 'utf8'), '{}\n', `${twin}: ${d}/ switched on although this run moved nothing`);
+    for (const d of ['quality', 'related-context']) assert.ok(!fs.existsSync(path.join(base, d, 'watch.json')), `${twin}: ${d}/ must never become a domain`);
+    const domains = engineIn(sb, `process.stdout.write(require(${JSON.stringify(DOCS_JS)}).domains().join(','))`);
+    assert.strictEqual(domains.stdout, 'code-style,related-projects', `${twin}: the engine lists exactly the two switched-on domains`);
+    const lint = spawnSync(process.execPath, [DOCS_JS, 'lint'], { cwd: sb.repo, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: sb.repo, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' } });
+    assert.strictEqual(lint.status, 0, `${twin}: docs.js lint is clean on the result\n${lint.stdout}`);
+    // a watch.json already there is never touched - the capture's real entries, and a file that is not even JSON
+    const theirs = { 'code-style': '{ "sourceRoots": ["app"], "watch": [] }\n', 'related-projects': '{ not json' };
+    for (const [d, text] of Object.entries(theirs)) fs.writeFileSync(path.join(base, d, 'watch.json'), text);
+    assert.doesNotMatch(run(sb, 'update'), /docs domain:/, `${twin}: nothing is switched on over an existing watch.json`);
+    for (const [d, text] of Object.entries(theirs)) assert.strictEqual(fs.readFileSync(path.join(base, d, 'watch.json'), 'utf8'), text, `${twin}: ${d}/watch.json byte-identical`);
+}
+test('sh: update switches on a code-style/ or related-projects/ an earlier run migrated, and never touches a watch.json already there', () => {
+    const sb = sandbox();
+    try { assertSwitchOnWithoutAMove(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: update switches on a code-style/ or related-projects/ an earlier run migrated, and never touches a watch.json already there (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertSwitchOnWithoutAMove(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// Task 16, part 1: --docs-versioning / -DocsVersioning WRITES the value over an existing one and names the old and the
+// new value in one line; a re-run with the same value changes nothing; a run without it never touches the key; and a
+// value that is neither 'git' nor 'local' - an empty one included - is refused BEFORE the installer writes anything.
+function assertVersioningFlag(twin)
+{
+    const run = twin === 'sh' ? runSh : runPs;
+    const flag = (v) => (twin === 'sh' ? ['--docs-versioning', v] : ['-DocsVersioning', v]);
+    const spelled = twin === 'sh' ? '--docs-versioning' : '-DocsVersioning';
+    const line = (from, to, same = false) => `settings.json env: CLAUDE_STACK_DOCS_VERSIONING ${from} -> '${to}' (${spelled}${same ? ', unchanged' : ''})`;
+    const file = (sb) => path.join(sb.repo, '.claude', 'settings.json');
+    const sb = sandbox();
+    const bad = sandbox();
+    try
+    {
+        assert.ok(run(sb, 'install').includes('CLAUDE_STACK_DOCS_VERSIONING seeded (git)'), `${twin}: a fresh project is seeded git`);
+        const out = run(sb, 'update', flag('local'));
+        assert.ok(out.includes(line("'git'", 'local')), `${twin}: the override names the old and the new value\n${out.split('\n').filter((l) => l.includes('VERSIONING')).join('\n')}`);
+        assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'local', `${twin}: and the value landed`);
+        const before = fs.readFileSync(file(sb));
+        assert.ok(run(sb, 'update', flag('LOCAL')).includes(line("'local'", 'local', true)), `${twin}: the same value again is reported unchanged (read case-insensitively)`);
+        assert.ok(fs.readFileSync(file(sb)).equals(before), `${twin}: and settings.json is byte-identical`);
+        assert.ok(!run(sb, 'update').includes('settings.json env: CLAUDE_STACK_DOCS_VERSIONING'), `${twin}: without the flag the key is left alone`);
+        assert.strictEqual(projectEnv(sb).CLAUDE_STACK_DOCS_VERSIONING, 'local', `${twin}: still the chosen value`);
+        const data = JSON.parse(fs.readFileSync(file(sb), 'utf8'));
+        delete data.env.CLAUDE_STACK_DOCS_VERSIONING;
+        fs.writeFileSync(file(sb), `${JSON.stringify(data, null, 2)}\n`);
+        assert.ok(run(sb, 'update', flag('git')).includes(line('absent', 'git')), `${twin}: an absent key is written and reported as absent`);
+        // refused before anything is written: the settings file byte-identical, no hook copied, no docs moved
+        const snap = fs.readFileSync(file(bad));
+        for (const v of ['maybe', ''])
+        {
+            const args = twin === 'sh'
+                ? ['bash', [SH, 'install', '--scope', 'project', '--selection', bad.sel, '--source', ROOT, ...flag(v)]]
+                : ['pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', bad.sel, '-Source', ROOT, ...flag(v)]];
+            const r = spawnSync(args[0], args[1], { cwd: bad.repo, encoding: 'utf8', env: bad.env });
+            assert.notStrictEqual(r.status, 0, `${twin}: '${v}' is refused`);
+            assert.match(`${r.stdout}${r.stderr}`, v ? /must be 'git' or 'local'/ : /needs a value|must be 'git' or 'local'/, `${twin}: and the refusal says why`);
+            assert.ok(fs.readFileSync(file(bad)).equals(snap), `${twin}: settings.json byte-identical after '${v}'`);
+            assert.deepStrictEqual(fs.readdirSync(path.join(bad.repo, '.claude')), ['settings.json'], `${twin}: nothing else was written after '${v}'`);
+        }
+    }
+    finally { for (const x of [sb, bad]) fs.rmSync(x.work, { recursive: true, force: true }); }
+}
+test('sh: --docs-versioning writes over the existing value, names old and new, and a bad value is refused before any write', () => assertVersioningFlag('sh'));
+test('ps1: -DocsVersioning writes over the existing value, names old and new, and a bad value is refused before any write (pwsh required)', { skip: skipNoPwsh }, () => assertVersioningFlag('ps1'));
+
+// A doc an OLDER capture wrote carries no section ids, so once update switches its folder on, `docs.js lint` flags every
+// section - measured on a realistic pre-domains CODE-STYLE.md. The installer does not rewrite the project's docs to hide
+// that (seed-ids would touch every domain); it SAYS so on the switch-on line, and the engine's own remedy then lints
+// clean. The line is composed on a branch no other test reaches, and a slip there aborts the whole sh install under
+// `set -e` - measured: `note " ..."` without the `=` passed `bash -n` and would have run as a command.
+function assertLegacySectionsHint(sb, run, twin)
+{
+    run(sb, 'install');
+    const base = path.join(sb.repo, '.claude', 'docs');
+    fs.mkdirSync(base, { recursive: true });
+    fs.writeFileSync(path.join(base, 'PROJECT-CODE-STYLE.md'), 'Captured: main@abc1234, 2026-08-01\n\n# Project code style\n\n## TypeScript\nSingle quotes.\n\n## C#\nFile-scoped namespaces.\n');
+    fs.mkdirSync(path.join(base, 'related-projects'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'related-projects', 'RELATED-PROJECTS.md'), '# Related\n\n## backend-api\n<!-- id: backend-api -->\nConsumes its REST API.\n');
+    const out = run(sb, 'update');
+    assert.match(out, /docs domain: code-style\/ switched on - .* - its sections predate section ids, so 'docs\.js lint' flags them until 'node \.claude\/hooks\/docs\.js seed-ids'/, `${twin}: the id-less doc is named on its switch-on line`);
+    assert.match(out, /docs domain: related-projects\/ switched on - watch\.json written \(\{\}; the capture's next run fills in its entries\)\n/, `${twin}: a doc that already carries ids gets no hint`);
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: sb.repo, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' };
+    const lint = () => spawnSync(process.execPath, [DOCS_JS, 'lint'], { cwd: sb.repo, encoding: 'utf8', env });
+    const red = lint();
+    assert.strictEqual(red.status, 1, `${twin}: lint flags the id-less sections`);
+    assert.deepStrictEqual(red.stdout.split('\n').filter((l) => l.startsWith('PROBLEM')).map((l) => l.replace(/'.*/, '')), ['PROBLEM section without an id: CODE-STYLE ', 'PROBLEM section without an id: CODE-STYLE '], `${twin}: and nothing else`);
+    spawnSync(process.execPath, [DOCS_JS, 'seed-ids'], { cwd: sb.repo, encoding: 'utf8', env });
+    assert.strictEqual(lint().status, 0, `${twin}: the named remedy lints clean`);
+}
+test('sh: a switched-on doc that predates section ids is named on the switch-on line, and seed-ids lints it clean', () => {
+    const sb = sandbox();
+    try { assertLegacySectionsHint(sb, runSh, 'sh'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+test('ps1: a switched-on doc that predates section ids is named on the switch-on line, and seed-ids lints it clean (pwsh required)', { skip: skipNoPwsh }, () => {
+    const sb = sandbox();
+    try { assertLegacySectionsHint(sb, runPs, 'ps1'); }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});

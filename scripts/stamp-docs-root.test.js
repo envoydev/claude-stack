@@ -99,7 +99,9 @@ test('--reprobe-versioning reads committed docs in any domain, and a watch-less 
         assert.match(reprobe(style), /docs versioning re-probed at docs\/: 'git'/, 'code-style/ alone is committed docs');
         assert.strictEqual(envOf(style).CLAUDE_STACK_DOCS_VERSIONING, 'git');
         fs.rmSync(path.join(quality, 'docs', 'quality', 'watch.json'));   // the findings folder never carries one
-        assert.match(reprobe(quality), /docs versioning already 'local' at docs\//, 'a folder with no watch.json is no domain');
+        fs.mkdirSync(path.join(quality, 'docs', 'architecture'));
+        fs.writeFileSync(path.join(quality, 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');   // an UNTRACKED domain beside it
+        assert.match(reprobe(quality), /docs versioning already 'local' at docs\//, 'a folder with no watch.json is no domain, so the untracked architecture/ decides');
         assert.strictEqual(envOf(quality).CLAUDE_STACK_DOCS_VERSIONING, 'local');
     }
     finally { for (const d of [style, quality]) fs.rmSync(d, { recursive: true, force: true }); }
