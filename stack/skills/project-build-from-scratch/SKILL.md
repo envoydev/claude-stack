@@ -42,7 +42,7 @@ Scaffold:  <the new-project command actually run> + <the baseline wired: DI, con
 Slices:    <n> built, <n> verified green - <the milestone reached>
 Baseline:  build <green|red>, tests <n passed / n failed>, quoted from the command that produced it
 Leftovers: APPROVAL stamp <deleted|still present>; <anything this run started and left up - a container, seeded data, a background process - or `none started`>
-Next run:  <each capture whose output does not exist yet, in order: /project-architecture-analyzer (no architecture docs under <docs-path>/architecture/), /project-code-style-analyzer (no PROJECT-CODE-STYLE.md) - each in a FRESH session; `none` when both exist>
+Next run:  <each capture whose output does not exist yet, in order: /project-architecture-analyzer (no architecture docs under <docs-path>/architecture/), /project-code-style-analyzer (no <docs-path>/code-style/CODE-STYLE.md) - each in a FRESH session; `none` when both exist>
 ```
 
 Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the two paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - the code-style one is slash-only and a Skill call on it is refused, and both want a fresh session anyway. They give the new repo its map, style doc, and generated awareness rules, and from there the standing flow machinery owns the project.

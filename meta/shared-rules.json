@@ -1805,7 +1805,7 @@
    ]
   },
   "generated-docs-root-placement": {
-   "_note": "Every assistant-created doc lands under <docs-path>, sibling-repo docs (the orientation doc + cross-repo plans/change requests/issue notes/run recipes) in related-context/, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
+   "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
    "owner": {
     "file": "stack/rules/baseline-docs-root.md",
     "marker": "only on the user's asked-first approval"
@@ -2125,7 +2125,7 @@
    ]
   },
   "related-context-trace-clause": {
-   "_note": "Cross-repo trace routing: follow a defect into siblings named by the generated related-context rule/doc when the project carries them; a standalone repo has neither and the trace stays in-repo. One clause, hand-synced across 11 files in the 08-24 batch - pinned so the next path change is lint-forced.",
+   "_note": "Cross-repo trace routing: follow a defect into siblings named by the generated related-projects rule/doc when the project carries them; a standalone repo has neither and the trace stays in-repo. One clause, hand-synced across 11 files in the 08-24 batch - pinned so the next path change is lint-forced.",
    "owner": {
     "file": "stack/skills/project-verify-code/SKILL.md",
     "marker": "the trace then stays in-repo"
@@ -5027,31 +5027,31 @@
    ]
   },
   "project-config-outranks-conventions": {
-   "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/PROJECT-CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. Four language skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Six sites: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them.",
+   "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. Four language skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Six sites: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them.",
    "owner": {
     "file": "stack/skills/csharp/SKILL.md",
-    "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+    "marker": "CODE-STYLE.md` are higher priority"
    },
    "sites": [
     {
      "file": "stack/skills/angular-conventions/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/angular-styling/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/database-conventions/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/javascript/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/typescript/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     }
    ]
   },

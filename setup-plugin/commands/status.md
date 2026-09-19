@@ -165,19 +165,21 @@ as the docs-root rule states) plus serena's local memory:
 | artifact | present | captured | file updated |
 |---|---|---|---|
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
-| architecture/ASSESSMENT.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/watch.json | yes | - | 2026-07-24 |
-| PROJECT-CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
-| related-context/PROJECT-RELATED-CONTEXT.md | no | - | - |
+| quality/ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
+| code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| related-projects/RELATED-PROJECTS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
 | .serena/memories/ | yes | 4 notes | 2026-07-25 |
 
-`captured` is the doc's own `Captured:` stamp line read from the file (the related-context doc
-stamps per entry - show the newest); `file updated` is the file's mtime date. A `Captured:`
-stamp older than the file mtime is normal (loops edit docs without re-capturing) - render
-both, judge nothing. Rows are fixed - a capture never run shows `no`, so the user sees what is
-MISSING as clearly as what exists. One row is conditional, not a gap: related-context/PROJECT-RELATED-CONTEXT.md
+`captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
+stamps per entry - show the newest); `quality/ASSESSMENT.md` carries no `Captured:` stamp at all -
+it recomputes every run with no domain of its own, so this column shows its `As of:` freshness
+line instead; `file updated` is the file's mtime date. A `Captured:` stamp older than the file
+mtime is normal (loops edit docs without re-capturing) - render both, judge nothing. Rows are
+fixed - a capture never run shows `no`, so the user sees what is MISSING as clearly as what
+exists. One row is conditional, not a gap: related-projects/RELATED-PROJECTS.md
 applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
 A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a note, never deleted.
 
