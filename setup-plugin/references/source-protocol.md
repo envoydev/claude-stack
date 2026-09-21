@@ -31,14 +31,25 @@ marketplace repo, at `<config>/plugins/marketplaces/claude-stack`, is a FULL che
 probe just named: the clone moves when the user refreshes the marketplace, not when a release is
 published, so a version match is the one thing that proves it is the release the archive would be.
 
+**Copy-only, and it tests its own marker file - never `$TMP` itself.** This is the whole
+resolve-or-reuse form, first call or the tenth: Windows PRE-SETS a `TMP` environment variable, so a
+composed `[ -z "$TMP" ]` guard reads that OS value and never runs the resolve at all (measured: a
+Windows run's first call silently no-opped, no `RESOLVED`/`REUSING` line, until a retry added
+`unset TMP`). The test below is the marker FILE's own presence and validity instead - true on every
+platform, pre-set env var or not:
+
 ```bash
-TMP=$(mktemp -d)
+MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
+if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
+  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP"          # a valid marker from an earlier call this run
+else
 REPO_URL=https://github.com/envoydev/claude-stack
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CACHE="$CFG/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
 MKT="$CFG/plugins/marketplaces/claude-stack"
 VER=$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$REPO_URL/releases/latest" 2>/dev/null | sed -n 's|.*/releases/tag/v\{0,1\}||p')
 SRC=""
+TMP=$(mktemp -d)
 if [ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && [ -d "$CACHE/$VER/stack/agents" ]; then SRC="$CACHE/$VER"; fi
 if [ -z "$SRC" ] && [ -n "$VER" ] && [ -d "$MKT/stack/skills" ] &&
    grep -q "\"version\": \"$VER\"" "$MKT/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null; then SRC="$MKT"; fi
@@ -54,6 +65,8 @@ fi
 if [ -n "$VER" ] && [ ! -d "$CACHE/$VER/stack/skills" ]; then            # promote for the next run
   mkdir -p "$CACHE" && rm -rf "$CACHE/.dl.$$" \
     && cp -R "$TMP/repo" "$CACHE/.dl.$$" && mv "$CACHE/.dl.$$" "$CACHE/$VER" 2>/dev/null || rm -rf "$CACHE/.dl.$$"
+fi
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP"
 fi
 ```
 
@@ -117,19 +130,19 @@ way round. `STACK_SOURCE_CACHE=0` in the environment turns the whole thing off -
 download, the behaviour before the cache. A cache that cannot be written (a read-only or full
 `$HOME`) is never fatal: the run keeps the copy it just downloaded and carries on.
 
-**Carry `$TMP` in a MARKER FILE KEYED BY THE PROJECT, and address every run artifact through it.**
-Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next and
-every run invents its own way of remembering it. The marker name is DERIVED, never a fixed path:
-two Claude Code sessions on one machine run these commands concurrently in different projects, and
-a shared `/tmp/claude-stack-run.path` hands the second run's `$TMP` to the first - measured: an
-installer log came back holding the other session's lines, and the other session's cleanup step
-deleted the still-live `$TMP` out from under a run in progress. Derive the key from the project
-root, which is stable across every call of one run and different for every project:
+**`$TMP` lives in a MARKER FILE KEYED BY THE PROJECT, and every run artifact is addressed through
+it.** Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next -
+the resolve-or-reuse block above already keys and tests this marker itself, first call or later, a
+stale marker (its `$TMP/repo` gone) falling straight back to a fresh resolve with no separate check.
+The marker name is DERIVED, never a fixed path: two Claude Code sessions on one machine run these
+commands concurrently in different projects, and a shared `/tmp/claude-stack-run.path` hands the
+second run's `$TMP` to the first - measured: an installer log came back holding the other session's
+lines, and the other session's cleanup step deleted the still-live `$TMP` out from under a run in
+progress. Every later call in this run just re-reads it:
 
 ```bash
 MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
-TMP=$(mktemp -d); printf '%s\n' "$TMP" > "$MARK"                      # first call
-TMP=$(cat "$MARK"); [ -d "$TMP/repo" ] || echo "STALE MARKER"          # every later call
+TMP=$(cat "$MARK")
 TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```
 
@@ -139,10 +152,6 @@ the run's real cwd `C:\...` printed underneath). Every SHELL path stays `$TMP`; 
 leaves the shell - the Read tool, a `pwsh -File`, a node argv - it is `$TMP_WIN`, resolved once
 above and never re-derived mid-run (measured: three sessions each paid 2 API messages, 209k-233k
 cache-read apiece, rediscovering `cygpath -w` by failing first).
-
-The staleness check is part of the idiom: a marker left behind by an earlier run points at a `$TMP`
-that no longer exists, and every later step then writes into a path with no directory. On `STALE
-MARKER`, download again from the top rather than continuing.
 
 Every artifact this run writes or reads - `raw.json`, `selection.txt`, `select.out`, `final.json` -
 is named as `"$TMP/<file>"`, never bare. A bare relative name resolves against whatever cwd the
@@ -211,10 +220,11 @@ gap is worth the ask: say so, recommend `claude plugin marketplace update claude
 `claude plugin update claude-stack`, and offer to continue anyway. The plugin cache is keyed by version
 (`~/.claude/plugins/cache/claude-stack/claude-stack/<version>/`), so after an update the old
 version dirs are inert leftovers - safe to delete, keeping only the dir the update installed. When
-that listing shows MORE THAN ONE version dir, the run's CLOSE-OUT carries one line offering the
-sweep - the count, the keeper, and the `rm -rf` it would run - and deletes only on an explicit yes
-(measured: a run's own `find` listed 14 stale dirs, 0.2.34 through 0.2.62, and never mentioned one
-of them).
+that listing shows MORE THAN ONE version dir, the run's CLOSE-OUT states one line as FACT - the
+count, the keeper, and the exact `rm -rf` command that clears the rest - never phrased as an offer
+or a question: a decision in prose is what the stop-contract guard exists to hold, and this run
+deletes nothing itself; the command is the user's to run when they choose (measured: a run's own
+`find` listed 14 stale dirs, 0.2.34 through 0.2.62, and never mentioned one of them).
 And if an update ever does NOT change the running content (a same-version re-release - the trap
 every release now avoids by bumping), the hard reset is `claude plugin uninstall claude-stack`
 then `claude plugin install claude-stack@claude-stack`, which rebuilds the cache from the
@@ -292,6 +302,19 @@ what keeps a guided run at ONE download instead of two, and it guarantees the ru
 revision the command's earlier steps inspected. The installer copies out of `$TMP/repo`, writes the
 `claude-stack.stamp` naming that revision (from `RELEASE-SOURCE`, or the checkout's HEAD when the
 fallback cloned), and never deletes a source it was handed - cleanup is the command's job, below.
+
+**Capture the installer's own output, one fixed form.** Every command that runs the installer
+appends `2>&1 | tee "$TMP/install.log"` to that call, always the same filename - never call it
+without capture and grep a log nobody wrote, and never call it a second time to get the log a first
+call should have kept (measured: a run paid a second full installer pass for exactly this). The pipe
+means `$?` is `tee`'s exit code, not the installer's - read `${PIPESTATUS[0]}` instead. Every later
+step reads `"$TMP/install.log"`, never a tail, never a second grep.
+
+**A harness denial of the installer call is not a question.** The auto-mode classifier can decline
+the call outright; once it has, 'approve and run it here' is not an option AskUserQuestion can
+offer, and asking anyway buys a second identical denial. Report the denial with the exact `! <command>`
+form the user can paste to run it themselves, name the settings rule that would pre-authorize it
+beside it, and stop there.
 
 ## Clean up the temp dir - ALWAYS
 

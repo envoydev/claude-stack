@@ -161,8 +161,12 @@ choice), and the detected migrations. Three outputs decide the path:
 Run the installer; it derives the selection from disk itself, closes new dependencies through
 `stack-select.js`, and logs any `installed-only: required:` additions:
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project]`
+**One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on the call itself, so the
+post-install read below has a file that was actually written (the shared contract is in
+`source-protocol.md`'s 'Capture the installer's own output'):
+
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
@@ -192,10 +196,12 @@ or the adoption alone.
 **Give that call a 10-minute timeout, and read its exit code.** A full refresh runs past the Bash
 tool's own default on a cold machine, and a timed-out call is BACKGROUNDED, not failed: the run then
 pays turns re-finding its own installer (measured: 3 recovery turns, one of them loading a tool
-schema it never called). Pass `timeout: 600000` on the call. A NON-ZERO exit stops the run - report
-the log's last lines verbatim as a blocker with the fix they name, and never continue to the prune,
-the close, or ad-hoc repair work: the measured breach spent 14 messages and 1.69M tokens on
-improvised forensics after exit 1 and then changed 226 files under the user's `.claude` with no ask.
+schema it never called). Pass `timeout: 600000` on the call. The `tee` means `$?` is the pipe's own
+exit code, not the installer's - append `; echo "install exit: ${PIPESTATUS[0]}"` and read THAT
+number. A NON-ZERO exit stops the run - report the log's last lines verbatim as a blocker with the
+fix they name, and never continue to the prune, the close, or ad-hoc repair work: the measured
+breach spent 14 messages and 1.69M tokens on improvised forensics after exit 1 and then changed 226
+files under the user's `.claude` with no ask.
 
 Scope/space mirror how the install was laid down; `--keep-pins` is the default here - a fast
 refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP
@@ -237,10 +243,19 @@ moved folder switched on as a domain (`docs migration` / `docs domain:` - report
 memory registration line and the importer's own `memory import:` line or error text (present whenever
 `--memory-level` was passed, the level changed, or an install gained the memory MCP for the first
 time this run - now the fast path's own default outcome whenever it was absent, not a special case),
-the credential presence lines, the serena
-re-index hint and any fail-soft `!!`. Add a marker to the pattern when the report needs another
+the credential presence lines, and the serena re-index hint. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
 the lines above it.
+
+The RESTART row and any fail-soft `!!` are not judged from that dump - they are PRINTED, in the same
+breath, by the script that already prints `changed:`:
+
+```bash
+node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N>
+```
+
+Paste `restart: yes|no` and every `warn: <line>` it prints verbatim - step 7 below reads them, not
+the raw grep.
 
 Presence, never the value - the line above already carries the installer's own `KEY=` presence
 output on most runs. Run this ONLY when that grep returned no `KEY=` line, and paste its lines
@@ -248,24 +263,25 @@ as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
-The slug is not a secret and can be typed anywhere; the TOKEN never travels through the chat - offer
-this copy-ready command with that line, so the value goes from the user's clipboard into the file
-without passing through a transcript (it is not echoed, and it is not a shell argument either).
-**PASTE it into your reply. Never run it through Bash and never ask whether to run it** - it
-prompts for input this session cannot supply, it trips the credential guard, and the ask it
-generates has one sensible answer, which makes it a decision not worth a user's turn:
+The slug is not a secret and can be typed anywhere; SENTRY_ACCESS_TOKEN and CONTEXT7_API_KEY
+(context7 `local` mode) never travel through the chat, either one - offer this copy-ready command
+for whichever key is missing, so the value goes from the user's clipboard into the file without
+passing through a transcript (it is not echoed, and it is not a shell argument either). **PASTE it
+into your reply. Never run it through Bash and never ask whether to run it** - it prompts for input
+this session cannot supply, it trips the credential guard, and the ask it generates has one
+sensible answer, which makes it a decision not worth a user's turn. Swap `KEY_NAME` for the key:
 
 ```bash
-python3 -c "import getpass,json,pathlib;f=pathlib.Path('~/.claude/settings.json').expanduser();d=json.loads(f.read_text() or '{}') if f.exists() else {};d.setdefault('env',{})['SENTRY_ACCESS_TOKEN']=getpass.getpass('token (not echoed): ');f.parent.mkdir(parents=True,exist_ok=True);f.write_text(json.dumps(d,indent=2))"
+python3 -c "import getpass,json,pathlib;f=pathlib.Path('~/.claude/settings.json').expanduser();d=json.loads(f.read_text() or '{}') if f.exists() else {};d.setdefault('env',{})['KEY_NAME']=getpass.getpass('value (not echoed): ');f.parent.mkdir(parents=True,exist_ok=True);f.write_text(json.dumps(d,indent=2))"
 ```
 
-On Windows: `$t = Read-Host 'token' -AsSecureString`, then write the same key with
-`ConvertFrom-SecureString -AsPlainText`. If the user pastes the token into the chat anyway, use it
-for what they asked and END THE TURN on the rotation ask - it is in the transcript on disk now, and
-that is their decision to make, not one to leave unsaid. Then:
+On Windows: `$t = Read-Host 'value' -AsSecureString`, then write the same key with
+`ConvertFrom-SecureString -AsPlainText`. If the user pastes either value into the chat anyway, use
+it for what they asked and END THE TURN on the rotation ask - it is in the transcript on disk now,
+and that is their decision to make, not one to leave unsaid. Then:
 
-- The compare showed `stack/CLAUDE.template.md` modified -> reconcile the project's CLAUDE.md
-  additively (step 6). Otherwise skip it without reading either file.
+- Reconcile the project's CLAUDE.md (step 6, project mode only - the step states when and why it
+  runs).
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
   `required:` additions it named, and FYI `added` items from the compare (mapped to item names;
   never install them - route adoption to `configure`).
@@ -343,8 +359,9 @@ verbatim, five and a half minutes apart. The compare is a 75-line file against a
 cost is not the argument; when it comes back clean, say so in one clause and write nothing.
 
 ## 7. Post-check
-Every line below is READ from something already in context - step 2's preflight output and the one
-post-install grep. Nothing here is stated from memory, and nothing needs another call.
+Every line below is READ from something already in context - step 2's preflight output, the one
+post-install grep, and the step-3 `update-preflight.js --log` call. Nothing here is stated from
+memory, and nothing needs another call.
 
 Report the version delta, then what actually CHANGED: step 2's `changed: skills=<n> agents=<n>
 rules=<n> hooks=<n> template=<yes|no>` line, naming the paths from the compare's own
@@ -372,14 +389,17 @@ stale registration needs to see it named), the ENVIRONMENT line, the FYI additio
   succeeds; a failed import leaves it ON and the importer's own line says why - report that plainly,
   never assert the switch-off happened because the level was named or adopted. No memory line caught:
   say nothing - an install that already had one and passed no flag left it untouched.
-- **RESTART** - emit it whenever the installer's summary line shows `mcps=<n>` with n above 0, or
-  any hook file was refreshed. It is a report LINE, not a question: an audited run spent its one ask
-  slot on a credential and closed with no restart step at all, having re-registered all seven servers.
-- **VALIDATE** - when the version delta spans more than one release, add a `/claude-stack:validate`
-  row to the suggestion card: 'the install is <n> releases behind - update refreshed what IS
-  installed, validate is the only command that asks whether it still SHOULD be'. Update prunes only
-  what upstream deleted; a server or skill this project stopped needing is validate's
-  whole-stack-absent pass, and the word did not appear in this command at all.
+- **RESTART / WARN** - step 3's `update-preflight.js --log` call already printed `restart: yes|no`
+  (a report LINE on `yes`, not a question - an audited run spent its ask slot on a credential and
+  closed with no restart step, having re-registered all seven servers) and every `warn: <line>` (a
+  fail-soft that fell back and continued - not a re-run trigger, see Do not below; an audited run
+  surfaced its only `!!` in 1 of 4 runs that had one, buried in a raw grep dump). Report both verbatim.
+- **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
+  `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
+  skill's, or carries none) each add a `/claude-stack:validate` suggestion-card row with that reason
+  - 'the install is behind by more than one release' / 'the stamped policy is from an older
+  release'. Both absent adds nothing. Update prunes only what upstream deleted; a server or skill
+  this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `claude-stack.stamp` - the next update or configure diffs from here. Name
 `/project-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
@@ -388,19 +408,12 @@ which drifts with content-only updates (measured: a 'roster unchanged, rule stil
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
 nothing else: keyed on 'the release refreshed any installed skill or agent file' the clause was
 permanently true, because the installer re-copies all of them every run - so the suggestion fired on
-runs where no skill had changed at all, and a user acted on one.
-One SECOND trigger for the same row, exact and two greps wide - the usage policy inside that
+runs where no skill had changed at all, and a user acted on one. The usage policy inside that
 generated rule ships verbatim from the skill and is never re-fetched, so a project can carry a
 two-release-old policy with nothing to notice it (measured: one project's rule still described the
-fresh-session gate as '40% of the context window, 150k floor', a spelling retired at 0.2.70):
-
-```bash
-grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md
-grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/project-agent-capabilities/SKILL.md"
-```
-
-Different values, or a rule carrying no rev at all, names the row with THAT as its reason - 'the
-stamped policy is from an older release'. Equal, or no rule on disk, adds nothing.
+fresh-session gate as '40% of the context window, 150k floor', a spelling retired at 0.2.70) - that
+is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-confirmed grep pair
+(measured: re-confirmed 3 extra times, ~275k tokens, against an already-conclusive first read).
 When serena is installed, also name the one-off re-index as a next step whenever this run
 re-seeded `.serena/project.yml` - an install predating the seeding has no `ignored_paths`, so its
 cache was built over serena's own language-server directory: `SERENA_HOME=.serena/home uvx --from
