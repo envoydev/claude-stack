@@ -41,17 +41,31 @@ Claude Code writes one JSONL per session under `~/.claude/projects/<encoded-proj
 With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation - the tool call is the step, the prose form of it gets skipped. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - **Exclude current session (recommended)**: drop the current id from the scope and note it for the next fresh-session run; **Hand off to a fresh session**: end the turn with the invocation to paste there - never resolve it silently and never audit the live session's own tail; the prose rule alone does not hold, this check is the gate. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. One bound keeps repeated sweeps sane, and the test is the REPORT, not the folder: a session is previously-audited when `<docs-path>/claude-stack-usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that one, list it as previously-audited, and re-audit only on an explicit ask. The folder alone is not the test: it becomes true at the SKELETON write, long before the report is authored, so a run resumed after an interruption would skip its own unfinished bundles as done.
 
 ### 2. GET the analyzer
-It ships in the stack's source repo, not in this project. One snapshot, the house way - the release archive first, clone fallback:
+It ships in the stack's source repo, not in this project. One snapshot per RELEASE, the house way - the per-release source cache and the marketplace clone FIRST, the release archive only when neither holds this version, clone as the last fallback. Downloading before looking is what tripped the harness classifier in 4 audited bundles, and it pays ~1.8s for a 1.4MB archive already on disk:
 
 ```bash
 TMP=$(mktemp -d)
+REPO_URL=https://github.com/envoydev/claude-stack
+CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CACHE="$CFG/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
+MKT="$CFG/plugins/marketplaces/claude-stack"
+VER=$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$REPO_URL/releases/latest" 2>/dev/null | sed -n 's|.*/releases/tag/v\{0,1\}||p')
+SRC=""
+[ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && SRC="$CACHE/$VER"
+[ -z "$SRC" ] && [ -n "$VER" ] && [ -d "$MKT/stack/skills" ] &&
+  grep -q "\"version\": \"$VER\"" "$MKT/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null && SRC="$MKT"
+```
+
+Then, when `$SRC` is set, `cp -R "$SRC" "$TMP/repo"` - nothing is downloaded. Only when it is empty:
+
+```bash
 curl -fsSL -o "$TMP/stack.tar.gz" https://github.com/envoydev/claude-stack/releases/latest/download/claude-stack.tar.gz
 tar -xzf "$TMP/stack.tar.gz" -C "$TMP"
 # archive route failed entirely? then:
 git clone --depth 1 -b main https://github.com/envoydev/claude-stack "$TMP/repo"
 ```
 
-Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
+This is `setup-plugin/references/source-protocol.md`'s own lookup order - the cache is keyed by VERSION, so a new release still wins the moment it is published. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `CLAUDE_STACK_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
@@ -73,7 +87,7 @@ Raw transcripts carry full conversation content - code, file contents, possibly 
 
 `report-usage.md` = the skeleton plus your judgment. The machine sections (Environment, Tokens, Subagent dispatches, Skills, Generated docs, MCP, Inventory vs use, Tools, Efficiency scorecard, Context spikes, Hook-log join - whichever the run emits) stay as printed; `Inventory vs use` is the complement of the consumption tables - what this install HAS against what the session touched, with the unused names collapsed per layer - so a non-use finding cites that section's own row instead of the stack's full catalog, and its source line says whether the denominator came from this project's `.claude` or from the catalog (a directory run resolves the installed set per session and prints `installed K of M, used N`, so 'never used in this collection' is one command over the collection root); you add the Environment rows only you know, insert ONE authored section - `## Per skill run` - between the machine tables and Waste analysis, and fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict). `references/diagnosis-discipline.md` owns what each of those sections must carry and the checks every row passes before it is written - one section there per section here, in this order. The sections, one line each:
 
-**## Environment** - append the rows the analyzer cannot know: Claude Code version, OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, the `Mechanics: read` and `Discipline: read` receipts, and a `Session vintage` row - the audited transcript's own date and CLI version, the reference every 'the session broke rule X' claim is checked against. Models and wall-clock arrive machine-written - leave them.
+**## Environment** - append the rows the analyzer cannot know: OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, and the `Mechanics: read` and `Discipline: read` receipts. Models, wall-clock, the Claude Code version and the whole `## Session vintage` block (the install the session loaded, and per skill run whether the body it loaded differs from the current source) arrive machine-written - leave them, and check every 'the session broke rule X' claim against them.
 
 **## Per skill run** (one subsection per SKILLS entry found) - tokens and tool-call counts cited from the tables, whether the run PRODUCED anything, the top 10 most expensive tool RESULTS, the context-growth spikes and their causes, skill/plugin attribution with the main and subagent split, and the dispatch picture, mode-aware.
 
@@ -89,9 +103,13 @@ Raw transcripts carry full conversation content - code, file contents, possibly 
 
 Then append the full-report analyzer outputs verbatim at the end of the doc (they contain only counts, tool names, and paths - no code).
 
+**CHECK the filled report before the bundle is done.** `node <snapshot>/scripts/analyze-usage.js --check-report <bundle>/report-usage.md` prints one row per number in a judgment section that appears in no machine table of that same report and carries no `L<n>` locator that resolves against the transcript beside it. **The bundle is NOT done while it prints a row**: fix each - quote the machine row the number comes from, add the locator, or drop the claim - and re-run until it prints `clean`. The check is the gate, not a suggestion: judgment numbers that contradicted the machine tables three lines above them were the single largest defect family in the audited set.
+
 ### 5. SUMMARIZE - the project-wide picture
 
-When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/claude-stack-usage-report/`, write `<docs-path>/claude-stack-usage-report/SUMMARY.md` - replaced whole each run, never an append log:
+When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/claude-stack-usage-report/`, write `<docs-path>/claude-stack-usage-report/SUMMARY.md` - replaced whole, never an append log.
+
+**Rewrite it after EACH bundle closes, not once at the end of the run.** The command that writes a bundle's report writes the summary row in the same turn, so a run that is interrupted, compacted or handed off still leaves a SUMMARY.md naming every bundle finished so far - a summary held to the end is the first thing a long run loses. Rewriting it is cheap: the rows come from the bundles' own `--json` dumps.
 
 - The analyzer's directory rollup table verbatim (`node <snapshot>/scripts/analyze-usage.js <projects-dir>`) - the machine-written per-session totals.
 - One line per audited session: id, start date, headline verdict, bundle path.
