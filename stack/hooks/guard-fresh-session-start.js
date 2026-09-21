@@ -397,13 +397,31 @@ function priorOrchestrationRun() {
     // guess whether it is on disk yet (it is: the prompt row is written before UserPromptSubmit
     // fires), because nothing human follows it. It also keeps the SAME command chained twice,
     // which matching the last hit by NAME did not.
+    // ...and a typed marker is not a RUN until the model answered it. Measured (AUDIT/_tools/
+    // dupslash.js): 7 of 115 sessions re-submitted an orchestration command before any assistant
+    // turn - a mis-typed or superseded command, or a double submit 3-4s apart - and the human turn
+    // that followed made this read the abandoned one as a finished prior run. Worst case: a fresh
+    // post-`/clear` build resume was told to start a fresh session, the user rejected the ask and
+    // quit with 0 of 2 tasks built and 100% of the session's 86.7k tokens spent on the detour. So
+    // the marker needs a real ASSISTANT turn between it and the next human turn: a run nobody
+    // answered carried no history for the next run to re-send, which is the whole cost this
+    // trigger is about.
     let seenRun = false;
+    let answered = false;
     for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      // A row that carries BOTH type strings is a user row quoting a transcript, not an answer:
+      // it is skipped, which errs toward making no offer - the direction the measured harm was in.
+      if (seenRun && !answered && /"type"\s*:\s*"assistant"/.test(line) && !/"type"\s*:\s*"user"/.test(line)
+          && !/"model"\s*:\s*"<synthetic>"/.test(line)) {
+        answered = true;
+        continue;
+      }
       if (!line.includes('"type":"user"') || line.includes('"tool_result"') || !isHumanTurn(line)) continue;
-      if (seenRun) return true;
+      if (seenRun && answered) return true;
       const c = (JSON.parse(line).message || {}).content;
       const m = re.exec(typeof c === 'string' ? c : (Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : ''));
-      if (m && isOrchestration(m[1])) seenRun = true;
+      if (m && isOrchestration(m[1])) { seenRun = true; answered = false; }
     }
     return false;
   } catch {

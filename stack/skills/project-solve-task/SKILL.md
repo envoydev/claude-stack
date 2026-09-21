@@ -49,7 +49,10 @@ Leftovers: <what this run started and did not finish | none>
 
 Named fields, not prose about them: the named form survives a compaction where the prose
 equivalent does not, and `Leftovers:` exists because an unreviewed fix delta otherwise sits
-unnoticed - `none` is an answer, an omitted line is not.
+unnoticed - `none` is an answer, an omitted line is not. Markdown-bold (`**Result:**`) is the same
+format and counts; a status table instead of the names does not. The stop-contract hook reads the
+turn's prose and the ask's own text for all three names and says so when one is missing (measured:
+13 sessions loaded this contract, 5 used the fields at all, across 109 asks).
 There is no non-decision stop: 'what happens next' is itself the decision. The options are
 concrete - the next step (named), the route-back where the step surfaced gaps or findings, the
 fresh-session resume on a long cycle (below), any conflict's real resolutions - the
@@ -66,7 +69,10 @@ re-work - state those two absolute numbers to the user, never a ratio). On a lon
 not an offer to remember: once the cycle has crossed the install's fresh-session trigger for its context
 window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window),
 spans hours, or resumes after an idle gap, the fresh-session resume IS one of the next ask's options - every
-ask until it is taken or the cycle closes. And HONOR the answer: when the user picks it, the
+ask until it is taken or the cycle closes. The two absolute numbers are handed to you, not
+estimated: on any of those three conditions the stop-contract hook injects this session's measured
+carry per message and the cold floor a fresh one restarts at, before the ask is built - quote those,
+and if the injection is absent say the numbers are unmeasured rather than inventing a fraction. And HONOR the answer: when the user picks it, the
 turn ends with a short ack plus the paste-ready resume block - no 'one more step', no new work
 in this chat. This is a CONSTRUCTION check, not a memory: before
 emitting any stop's AskUserQuestion, ask 'has this cycle crossed the trigger?' - if yes and the
@@ -133,7 +139,10 @@ run makes.
    ledger grows as they land. A mid-build how-to-build question is a protocol violation. Build-time stops are for what the BUILD cannot decide, and
    there are three: scope beyond the plan, a decision the plan left open that the code now forces,
    and an EXTERNAL blocker the run cannot resolve (a service or test dependency down, a credential
-   missing, a locked file). State the blocker, say what is done and what is not, and stop.
+   missing, a locked file). State the blocker and what is done and what is not, then put the next
+   move through ONE AskUserQuestion like every other stop - wait for the blocker to clear, re-scope
+   the task around it (name the alternate route), or drop the blocked part and close on the rest.
+   A blocker stated in prose with no ask leaves the user to supply the next move unprompted.
    *Stop* - and this stop chooses the reviewer for step 5, through the same decision mechanism:
    'project-verify-code in-session' - no dispatch, stays in this context; 'the stack's
    `<stack>-verifier` seat' - isolated eyes, frontmatter model unless the user names one; or
@@ -155,15 +164,19 @@ run makes.
    (`superpowers:verification-before-completion` - the whole feature's acceptance criteria, each one
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
-   into the close. Delete or archive the cycle note, and in an agents-mode run purge the
+   into the close. The stamp CLOSES this plan file: print one line with it - `Completed - the next
+   scope starts a NEW plan file, not this one` - so the rule is on screen at the moment it starts
+   applying, not only in this skill's body. Delete or archive the cycle note, and in an agents-mode run purge the
    run's minted seat notes too - `mcp__serena__delete_memory` each `<feature>__<contract_version>__*`
    note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
    this run's deletes trail its writes. *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
    item, a cross-repo follow-up) goes into the ask's options - commit now / hold / whatever the
    real fork is; only a cycle with nothing pending ends on the report alone.
-   New scope arriving in-chat after `Completed:` is a NEW cycle - re-enter step 1, or say
-   plainly that the work is running ungated and why; never build it on a casual 'yes, add it'.
+   New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file (a stamped file
+   is a record, never a place to append) - re-enter step 1, or say plainly that the work is running
+   ungated and why; never build it on a casual 'yes, add it'. Measured: 8 scope additions over one
+   55-hour session with zero plan-file writes and no ungated statement either.
    When the change affects a sibling repo's client, the handoff is a
    FILE in THIS repo - a task card under `<docs-path>/cross-project-tasks/` (the cross-project
    write guard blocks a write into the sibling's tree; reading it stays open) or a serena note -
