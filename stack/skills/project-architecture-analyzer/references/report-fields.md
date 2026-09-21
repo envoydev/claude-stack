@@ -19,7 +19,7 @@ are exempt), so the receipts must survive that cap rather than be re-answered aw
 | `Vocabulary:` | the skills step 3 actually loaded, or `none - <role> absent, read the code` | the vocabulary load |
 | `References:` | which of this skill's `references/` files this run actually Read (`hazards.md`, `doc-shapes.md`, `vocabulary-roles.md`, `report-fields.md`) | the contract reads |
 | `Write gate:` | the answer to the pre-write AskUserQuestion, verbatim - or the reason the run skipped the ask (`first capture - no doc to replace`, `zero drift - nothing written`) | the ask before the first byte |
-| `Write passes:` | what step 5's precondition allows: `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened | the verification-first precondition |
+| `Write passes:` | what step 5's precondition allows: `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened - plus the `docs.js status` line quoted right after the first write, the proof no code-claim probe ran later | the verification-first precondition |
 | `Rule:` | the awareness rule's measured byte count from `wc -c` | the 300-byte budget check |
 | `Model:` | see below | the run-start model check |
 

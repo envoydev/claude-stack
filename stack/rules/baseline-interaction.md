@@ -40,6 +40,7 @@ syntax, factual questions, and casual conversation are exempt: just answer.
 ## Formatting and privacy
 
 - No em-dashes - use single dashes. No double quotes - use single quotes. This covers an AskUserQuestion's own question, header, option labels and descriptions - the Stop hook reads the answer text and never sees an ask, so that surface failed 10 measurements out of 10. `guard-stop-contract.js` names the offending character back at ask time.
+- The quote rule is PROSE only, never JSON or code: a string's delimiters stay double, only the text inside them avoids a literal `"`. `{"label": "Today's sessions"}` is right; re-delimiting the value with single quotes is invalid JSON and cost a measured retry.
 - Never use or mention the user's name in responses or any skill output unless the user explicitly says so.
 - No `ponytail:` marker comments in code or output, and no mentions of them - a deliberate simplification's ceiling and upgrade path goes in the report or summary, never into a code comment.
 

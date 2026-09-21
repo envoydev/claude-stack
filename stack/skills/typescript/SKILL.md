@@ -5,7 +5,7 @@ description: Load before writing or editing any .ts or .tsx file, for tsconfig w
 
 # TypeScript conventions - the type layer
 
-This skill is the type system's rules; the base-language rules (modules, async, failure channels, naming, untrusted input) are the `javascript` skill - **invoke `javascript` via the Skill tool NOW unless it is already loaded (frontmatter or this session), before continuing here** - this layer stacks on it, and the sentence read as ambient advice goes unacted (measured: a session reviewed untrusted-input parsing, squarely the base layer's trap territory, with the companion never loaded). A framework adds its own layer on top (`angular-conventions` for Angular). Baseline is TypeScript 5+.
+**Before anything else: call the Skill tool for `javascript` now, or state it is already loaded this session** - its base-language rules (modules, async, failure channels, naming, untrusted input) are what this type layer stacks on, and a companion named only in flowing prose goes unacted (measured: a session reviewed untrusted-input parsing, squarely the base layer's trap territory, with the companion never invoked). A framework adds its own layer on top (`angular-conventions` for Angular). Baseline is TypeScript 5+.
 
 The single organizing idea: the compiler is the cheapest test you have. Configure it to be strict, describe your data so it can check the data, and never quietly disable it.
 

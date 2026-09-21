@@ -77,11 +77,18 @@ Total time: <sum across all groups>.
 - Ticket ID comes first on each task line, then time in brackets, then dash, then summary.
 
 **Time**
+- STOP AND ASK (AskUserQuestion) before drafting any dated log whenever the input gives only a
+  total or an estimate that the output shape must SPLIT per day or per task - decide this FIRST,
+  before normalizing any other time value, and never invent the split. This clause has already
+  failed once loaded in context (measured: an unasked 8h/8h/5h+3h/8h split cost four correction
+  round-trips; separately, a 12h estimate loaded 39s earlier was still collapsed into an unasked
+  9h/2h/1h split) - reading it is not doing it, so treat a total/estimate in the input as a hard
+  stop, not a note to remember. A task with no time given at all simply takes
+  `(time not specified)` - the placeholder covers a missing figure, the ask covers an invented split.
 - Normalize time to `h` for hours and `m` for minutes (e.g. `2h`, `30m`, `1h 30m`).
 - Accept Ukrainian variants in input: `г`, `год`, `гг`, `хв`, `хвил` - treat as hours/minutes accordingly.
 - Accept decimal hours in input and convert: `0.25h` → `15m`, `0.5h` → `30m`, `0.75h` → `45m`, `1.25h` → `1h 15m`, `2.5h` → `2h 30m`.
 - If time is not provided for a task, write `(time not specified)`.
-- DERIVED time is never invented: when the input gives a total or an estimate that the output shape must SPLIT per day or per task, stop and ask (AskUserQuestion) for the real split before drafting any dated log (measured: an unasked 8h/8h/5h+3h/8h split cost four correction round-trips, with the ask finally firing after the third). A task with no time given at all simply takes `(time not specified)` - the placeholder covers a missing figure, the ask covers an invented split.
 - Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask via AskUserQuestion (measured: a two-ticket day drafted per-ticket was rejected for merged wording).
 - Self-check before output: write the drafted task lines of each day to a file inside the session's own scratch directory (never the project tree, never outside it), then run them through `scripts/total-time.js` (`node scripts/total-time.js < <that file>` - Node.js built-ins only, nothing to install) and confirm its total equals the printed `Total time`; it normalizes the h/m, Ukrainian and decimal-hour spellings and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where the script cannot be run, re-add the times by hand and say the check was manual.
 
@@ -102,13 +109,25 @@ Total time: <sum across all groups>.
 Some runs arrive with no notes - 'write the log for what I did this week', or an effort estimate -
 and the work has to be read off the repository. Three rules, each from a measured miss:
 
-- **The opening survey is ONE capped pass.** `git status --short`, `git stash list`, and
-  `git diff <base>...HEAD --stat` come first; a full diff is read per file off that stat, never as
-  one uncapped dump. Measured: two uncapped `git diff HEAD` calls cost 10.3k tokens for an estimate
-  a capped survey answered for ~4.3k in a sibling session, same repo, same task shape.
-- **`git stash list` is part of that survey**, beside `git status` and `git diff`. Measured: a
-  change analysis and effort estimate built from the branch diff and the working tree alone was
-  WRONG on scope until the user asked about the stash, and the recovery diffs cost ~9.8k.
+- **The opening survey is ONE capped pass, run as a single literal command block before any
+  per-file diff** - prose order gets reordered, a command block does not (measured: a run read 5
+  per-file diffs before its first `git status`/`git stash list`, despite the skill's own 'come
+  first' text already loaded):
+  ```
+  git status --short
+  git stash list
+  git branch --show-current
+  git diff <base>...HEAD --stat
+  ```
+  A full diff is read per file off that `--stat`, never as one uncapped dump. Measured: two
+  uncapped `git diff HEAD` calls cost 10.3k tokens for an estimate a capped survey answered for
+  ~4.3k in a sibling session, same repo, same task shape. `git stash list` is part of this survey
+  for the same reason: a change analysis and effort estimate built from the diff and working tree
+  alone was WRONG on scope until the user asked about the stash, and the recovery diffs cost ~9.8k.
+- **The ticket id, when the notes name none, comes from that survey's `git branch --show-current`
+  output or a commit trailer (`git log -1 --format=%s`) - never from comment or code text inside
+  the diff.** Measured: a delivered log and commit message cited an id that occurred only on lines
+  the diff REMOVED, while the real id sat one command away in the branch name.
 - **A SECOND correction on the same axis is an ask, not a third redraft.** When two consecutive
   free-text corrections land on one axis - granularity, the time split, wording - stop regenerating
   and put that axis through ONE AskUserQuestion carrying the options the two corrections imply.
