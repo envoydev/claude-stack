@@ -3237,7 +3237,7 @@
    ]
   },
   "capabilities-policy-rev-check": {
-   "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the same two-grep comparison lives in the two commands that can see both sides: validate reports it as a finding, update makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
+   "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: validate runs the two greps and reports a finding, update reads the `policy-rev:` row update-preflight.js prints (the hand-run pair was re-confirmed 3 extra times in one audited run, ~275k tokens) and makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
    "owner": {
     "file": "setup-plugin/commands/validate.md",
     "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md"
@@ -3245,7 +3245,7 @@
    "sites": [
     {
      "file": "setup-plugin/commands/update.md",
-     "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md"
+     "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
     },
     {
      "file": "stack/skills/project-agent-capabilities/SKILL.md",

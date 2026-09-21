@@ -52,6 +52,8 @@ change made only inside a consuming project is throwaway.
   - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `CLAUDE_STACK_PUSH_GATE=0` turns the push half off.
+    A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
+    what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion`
     branch that never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
     pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
@@ -65,7 +67,8 @@ change made only inside a consuming project is throwaway.
     seeding of `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are retired. A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
-    re-arms at 1.5x growth, and never mid-response.
+    re-arms at 1.5x growth, and never mid-response. A long-idle or long-span session takes the same
+    offer under the window (`CLAUDE_STACK_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter; the user's slash turn is untouched), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
@@ -172,7 +175,9 @@ change made only inside a consuming project is throwaway.
   Commands reach `meta/` through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}`.
 - `scripts/lint-skills.js` - the parity lint. `scripts/analyze-usage.js` - offline token/tool report over
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
-  it reads `PowerShell` as a shell route. `scripts/scan-evidence.js` - deterministic manifest-only
+  it reads `PowerShell` as a shell route, writes with `--out <file>` (never a `>` redirect), and
+  `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
+  machine row of that same report. `scripts/scan-evidence.js` - deterministic manifest-only
   evidence scan. `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
 ## The stack's delivery surfaces
