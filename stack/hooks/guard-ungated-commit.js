@@ -130,6 +130,29 @@ const publishMatch = PUSH_GATE_ON
   ? (scannedQuoted.match(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+push\b/)
     || scannedQuoted.match(/(?:^|[;&|(]\s*|\s)gh\s+pr\s+merge\b/))
   : null;
+
+// --- add -N without a chained reset -------------------------------------------------------
+// baseline-git.md:9 mandates the scope survey as ONE Bash call with the reset chained on the
+// end: `git add -N . && git diff HEAD --stat; git reset -q`. A bare `git add -N .` left its
+// intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
+// 8-call fsck/dangling-blob forensic chase and an unrequested re-stage that flipped a partially
+// staged file to fully staged. Independent of commit/push - it fires on its own. Scoped to the
+// WHOLE-TREE shape (`-N .`, or -N with no pathspec): `git add -N <new file>` before a `git add -p`
+// is a deliberate staging move with one file's entry to clear, not the survey this rule is about.
+const addNMatch = scannedQuoted.match(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\s+(?:-N|--intent-to-add)(?:\s+\.)?\s*(?=$|[;&|)])/)
+  || scannedQuoted.match(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\s+\.\s+(?:-N|--intent-to-add)\s*(?=$|[;&|)])/);
+if (addNMatch && !/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+reset\b/.test(scannedQuoted)) {
+  process.stderr.write(
+    `Blocked: ${addNMatch[0].trim()} with no git reset in the same call - intent-to-add entries stay\n` +
+    `open across every Bash call after this one until something clears them (measured: 6 calls open,\n` +
+    `an 8-call fsck/dangling-blob chase, and an unrequested re-stage that flipped a partially staged\n` +
+    `file to fully staged). Chain the reset onto the SAME call, the shape baseline-git.md:9 gives:\n` +
+    `  git add -N . && git diff HEAD --stat; git reset -q\n` +
+    `Retry with the reset included.`,
+  );
+  process.exit(2);
+}
+
 if (!commitMatch && !publishMatch) process.exit(0);
 
 // Resolve the repo the act actually runs in: a `cd <sibling> && git commit` or a
@@ -185,6 +208,41 @@ function changedFiles() {
   const untracked = git('ls-files --others --exclude-standard').split('\n').filter(keep);
   return { tracked, untracked, count: tracked.length + untracked.length };
 }
+// The project a changed file belongs to, for the push-scope check: the name under a common
+// monorepo container (apps/libs/packages/projects/services/modules - the shape `nx test auth`
+// names), else the top-level directory. A root-level file names no project - it is workspace-wide
+// by construction, which is why a doc or single-file push never needs a scope: line.
+// A plain top-level directory is a project only when it carries its OWN build manifest: in an
+// ordinary repo `scripts/`, `docs/` and `src/` are folders, not projects, and counting them would
+// demand a scope: line on every push that spans two directories.
+const MANIFESTS = ['package.json', 'pom.xml', 'go.mod', 'Cargo.toml', 'pyproject.toml', 'build.gradle', 'build.gradle.kts'];
+const ownsManifest = (dir) => {
+  try {
+    const entries = fs.readdirSync(path.join(root, dir));
+    return entries.some((e) => MANIFESTS.includes(e) || /\.(csproj|sln|fsproj|vbproj)$/i.test(e));
+  } catch { return false; }
+};
+function projectOf(f) {
+  const parts = f.replace(/\\/g, '/').split('/');
+  if (parts.length < 2) return null;
+  if (parts.length >= 3 && /^(apps|libs|packages|projects|services|modules)$/i.test(parts[0])) return parts[1];
+  return ownsManifest(parts[0]) ? parts[0] : null;
+}
+// The projects a PUBLISH is taking out: the commits ahead of upstream, not the working tree (a
+// push's spec already draws that distinction). Docs-root files are excluded the same way
+// changedFiles() excludes them - the receipt lives there and names no project of its own.
+function pushTouchedProjects() {
+  let files = [];
+  try { files = git('diff @{u}..HEAD --name-only').split('\n').filter(Boolean); } catch { files = []; }
+  const pre = docsPrefix();
+  const out = new Set();
+  for (const f of files) {
+    if (pre && f.replace(/\\/g, '/').startsWith(pre)) continue;
+    const p = projectOf(f);
+    if (p) out.add(p);
+  }
+  return [...out];
+}
 
 const docsRoot = docsRootEnv();
 const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right before the act; re-stamping is one Write
@@ -204,6 +262,15 @@ const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right befor
 //   probe  - a VERIFIED line that names a review must carry its live-probe result: one receipt
 //            asserted a passing review with no build/test output and no probe at all. Spelled
 //            case-insensitively with an optional hyphen or space - `live probe = ...` is conformant.
+//   scope  - and a PUSH whose probe ran something must say what it covered: `workspace` (or the
+//            project list it ran). One project's narrow test run passed both gates once, CI broke
+//            right after the push, and 6.4M tokens of triage followed. Required only when the
+//            commit set going out touches more than one identifiable project - a docs-only or
+//            single-project push names nothing extra.
+//   security- a VERIFIED line that claims a security review must carry a `security:` line naming
+//            the categories checked (auth, secrets, injection, data-access, ...) - the honesty rule
+//            baseline-security.md sets. Twice measured: a receipt read 'inline security review (0
+//            findings)' with zero category text anywhere in the turn.
 //   carried- a stamp minted from a carried resume block says so, or the freshness check is
 //            silently satisfied by a re-mint of a 9h30m-old answer.
 // A PENDING draft placeholder matches the bare prefix, so the prefix alone is never the test
@@ -338,6 +405,38 @@ function judgeReceipt(body, opts) {
     r.problem = 'no live-probe line - a VERIFIED review states what it actually ran, either the quoted output or `NOT RUN - <reason>` (spelled live-probe, live probe or live_probe)';
     return r;
   }
+  // The probe's SCOPE (push only - opts.touchedProjects is set only for PUSH-GATE): a receipt
+  // naming one project's narrow run passed both gates once and CI broke right after the push.
+  // Required only when the probe actually ran something AND the commit set going out touches
+  // more than one identifiable project - a NOT RUN probe, a single-project push, or a pure docs
+  // diff names nothing extra.
+  const probeLine = (bodyText.match(/^\s*live[-\s_]?probe\s*:?[ \t]*(.*)$/im) || [])[1] || '';
+  const probeRan = !/\bNOT RUN\b/i.test(probeLine);
+  if (opts && opts.touchedProjects && opts.touchedProjects.length && probeRan) {
+    const scope = field('scope');
+    if (!scope) {
+      r.problem = `this push touches ${opts.touchedProjects.join(', ')} - no scope: line names what the probe covered (workspace, or the project list it ran)`;
+      return r;
+    }
+    if (!/\b(workspace|whole\s+repo|entire\s+repo|monorepo|all\s+projects?)\b/i.test(scope)) {
+      const named = scope.toLowerCase();
+      const missing = opts.touchedProjects.filter((p) => !named.includes(p.toLowerCase()));
+      if (missing.length) {
+        r.problem = `scope: ${scope} - this push also touches ${missing.join(', ')}, which the probe never ran`;
+        return r;
+      }
+    }
+  }
+  // A security-flavored VERIFIED line must name what it checked - baseline-security.md's honesty
+  // rule calls a one-line 'no findings' nod not a review. Skipped when the review is `carried:`
+  // from an earlier session - the categories were named THEN, not now.
+  if (/\bsecurity\b/i.test(first) && !field('carried')) {
+    const sec = field('security');
+    if (!sec || /^(no findings?|none|n\/a|clean|ok|0 findings?)\.?$/i.test(sec.trim())) {
+      r.problem = 'the VERIFIED line claims a security review but no security: line names the categories checked (auth, secrets, injection, data-access, ...) - an empty list is not a review';
+      return r;
+    }
+  }
   // A stamp minted from a CARRIED resume block must say so, or a 9h30m-old answer mints fresh
   // consent in 45 seconds and defeats the freshness check.
   if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b/i.test(first) && !skillCallRan() && !field('carried')) {
@@ -347,6 +446,12 @@ function judgeReceipt(body, opts) {
   return r;
 }
 
+// touchedProjects is computed only for PUSH-GATE - it drives the diff-vs-upstream git call the
+// scope check needs, and a COMMIT-GATE receipt is never judged against it.
+const receiptOpts = (name) => ({
+  countAgainstTree: name === 'COMMIT-GATE',
+  touchedProjects: name === 'PUSH-GATE' ? pushTouchedProjects() : null,
+});
 function readReceipt(name) {
   const gate = path.resolve(root, docsRoot, 'flow', name);
   let stale = false;
@@ -359,7 +464,7 @@ function readReceipt(name) {
     // absent or unreadable - no gate receipt
   }
   if (stale) return { gate, stale, waived: false, verified: false, problem: null };
-  return { gate, stale, ...judgeReceipt(body, { countAgainstTree: name === 'COMMIT-GATE' }) };
+  return { gate, stale, ...judgeReceipt(body, receiptOpts(name)) };
 }
 // An atomic write-receipt-then-act command carries its own receipt: the gate file is
 // written (with a VERIFIED/WAIVED line in the same command text) before git runs. Blocking
@@ -377,7 +482,7 @@ function carriesOwnReceipt(name, upto) {
   if (!writes.test(pre)) return false;
   // ...and it answers to the SAME contract as the file. Judging the atomic shape more leniently
   // made it the cheapest way to skip every clause below: one printf and the gate was satisfied.
-  const j = judgeReceipt(pre, { countAgainstTree: name === 'COMMIT-GATE' });
+  const j = judgeReceipt(pre, receiptOpts(name));
   return (j.waived || j.verified) && !j.problem;
 }
 
@@ -417,6 +522,8 @@ if (publishMatch) {
           `  head: <git rev-parse HEAD>\n` +
           `  spec: <N files - the set this publish covers>\n` +
           `  live-probe: <what you actually ran, or NOT RUN - <reason>>\n` +
+          `  scope: <workspace, or the project list the probe ran - required when this push touches\n` +
+          `    more than one project>\n` +
           `The quoted words must carry a publish verb and must not be an option label this run\n` +
           `wrote. If they EXPLICITLY waived it this conversation, write WAIVED - "<their words,\n` +
           `verbatim>" instead; never fabricate either quote. Then retry, and clear the file once\n` +
