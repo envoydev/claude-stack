@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+// Behavior tests for guard-read-whole-file.js and guard-cross-project-write.js, written from family
+// E of the 154-bundle audit. Every case here was REPLAYED live on the shipped hook before the fix,
+// so each pins a real regression - a false positive that blocked honest work and taught the model a
+// bypass, or a remedy that could not be run. Both directions carry equal weight: the shape that was
+// wrongly blocked passes now, and the dump or the out-of-tree write the gate exists for still blocks.
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+const READ = path.join(HOOKS, 'guard-read-whole-file.js');
+const XWRITE = path.join(HOOKS, 'guard-cross-project-write.js');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-rw-'));
+// Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back to
+// the process cwd - so a suite run from this checkout would forge field ledger into the repo's own
+// docs root (measured once at 12,480 rows). Pin a scratch root and an absolute ledger for the whole
+// run; the cases that need a different root pass one of their own.
+process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
+process.env.CLAUDE_STACK_DOCS_PATH = path.join(TMP, 'ledger');
+const ROOT = process.env.CLAUDE_PROJECT_DIR;
+
+const run = (hook, payload, opts) => spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+const bash = (hook, command, opts) => run(hook, { tool_name: 'Bash', tool_input: { command } }, opts);
+const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+const sid = () => `rw-${Math.random().toString(36).slice(2)}`;
+// The announcement is once per rule per SESSION, so every case names the session it spends.
+const announce = (command, session_id, hook = READ) => ctxOf(run(hook, { tool_name: 'Bash', tool_input: { command }, session_id }));
+const LONG_JS = 'const a = 1;\n'.repeat(400); // over the 200-line threshold
+
+test('guard-read-whole-file: the convention rule is announced for the WRITE TARGET, never for an executed script or a 2>/dev/null', () => {
+  // 5 findings in 5 bundles, three defects in one announcer: `2>/dev/null` tested TRUE as 'a
+  // redirection into a path' on a read-only `find` / `ls`, and the EXECUTED script's own extension
+  // named javascript-conventions.md for `node <snapshot>/stamp-compare.js > out.txt` - a command
+  // whose only write target was a .txt, in a project holding no JS at all. The announcement is
+  // spent once per rule per session, so a false fire costs the real write that follows it.
+  const s = sid();
+  assert.equal(announce("find . -name '*.cs' -type f 2>/dev/null", s), '', 'a stderr redirect writes no file a rule covers');
+  assert.equal(announce('ls -la src/*.cs 2>/dev/null', s), '', 'nor does a listing');
+  assert.equal(announce(`node ${path.join(TMP, 'repo', 'scripts', 'stamp-compare.js')} --json > ${path.join(TMP, 'out.txt')}`, s), '',
+    'the EXECUTED script is not the write target - the .txt is');
+  assert.equal(announce('node scripts/analyze-usage.js --window 200000 > rollup.txt', s), '', 'the analyzer naming its own path announces nothing');
+  assert.equal(announce('grep -rn "IOrderService" src/Api/Orders.cs', s), '', 'a read was never a touch');
+  // ... and the write itself still announces, on the target and on nothing else
+  assert.match(announce("sed -i '' 's/a/b/' src/Api/Orders.cs", s), /csharp-conventions\.md/, 'an in-place edit of a .cs file');
+  assert.match(announce('cp build/out.js dist/app.js', s), /javascript-conventions\.md/, 'a copy DESTINATION is a write');
+  assert.match(announce('tee CHANGELOG.md < in', s), /markdown-docs\.md/, 'a tee target too');
+  const s2 = sid();
+  const ng = announce('printf x > src/app/user-profile.ts', s2);
+  assert.match(ng, /angular-conventions\.md/, 'a redirect target under src/app names the Angular rule');
+  assert.match(ng, /typescript-conventions\.md/, '... and the TypeScript baseline beside it');
+});
+
+test('guard-read-whole-file: only a rule this install actually has is announced', () => {
+  // One measured bundle was told to read `.claude/rules/javascript-conventions.md` in a project
+  // that holds 0 JS files and never installed that rule. The hook's own sibling directory IS the
+  // install's rules dir (`.claude/hooks/` -> `.claude/rules/`), so what is installed is knowable.
+  const install = fs.mkdtempSync(path.join(TMP, 'install-'));
+  fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
+  fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+  const hook = path.join(install, '.claude', 'hooks', 'guard-read-whole-file.js');
+  fs.copyFileSync(READ, hook);
+  fs.writeFileSync(path.join(install, '.claude', 'rules', 'csharp-conventions.md'), '# csharp\n');
+  const s = sid();
+  assert.match(announce("sed -i '' 's/a/b/' src/Api/Orders.cs", s, hook), /csharp-conventions\.md/, 'the rule this install has');
+  assert.equal(announce('cp x.js dist/app.js', s, hook), '', 'the one it does not is never named');
+  // with no rules directory at all nothing can be told, and the announcement is made rather than dropped
+  assert.match(announce('cp x.js dist/app.js', sid()), /javascript-conventions\.md/, "this repo's own stack/rules is the sibling dir here");
+});
+
+test('guard-read-whole-file: a shell loop ENDS at its own done - a later cat is not the loop body', () => {
+  // ~88k tokens per block, twice: the capabilities skill's own grep-only inventory loop followed by
+  // `; cat .mcp.json` was denied as a whole-file markdown sweep, because the sweep pattern's
+  // `[^\n]*?` ran straight past `done` and read the unrelated cat as the loop's body.
+  const loop = `for f in ${ROOT}/.claude/skills/*/SKILL.md; do printf '%s|%s\\n' "$(grep -m1 '^name:' "$f" | cut -d' ' -f2-)" "$(grep -m1 '^description:' "$f" | cut -c1-160)"; done`;
+  assert.equal(bash(READ, `${loop}; cat .mcp.json`).status, 0, "the skill's own inventory loop plus an unrelated cat");
+  assert.equal(bash(READ, `${loop} && cat package.json`).status, 0, 'and with && between them');
+  assert.equal(bash(READ, `${loop}`).status, 0, 'the loop alone always passed');
+  // the sweep itself still blocks - inside the loop body, whatever follows the done
+  assert.equal(bash(READ, 'for f in .claude/skills/*/SKILL.md; do cat "$f"; done').status, 2, 'a cat INSIDE the loop is the sweep');
+  assert.equal(bash(READ, 'for f in src/*.cs; do cat -n "$f"; done; echo ok').status, 2, '... and a statement after the done does not excuse it');
+  assert.equal(bash(READ, 'find . -name "*.cs" -exec cat {} +').status, 2, 'find -exec cat is untouched by the change');
+});
+
+test('guard-read-whole-file: no serena remedy for a path serena is seeded to ignore', () => {
+  // Two bundles: the denial named serena for a path under `.claude/`, which both installer twins
+  // seed into serena's OWN ignored_paths, so the redirect the model made from it errored. A remedy
+  // that cannot run is worse than none - it costs the round trip and teaches the block is noise.
+  const inClaude = path.join(ROOT, '.claude', 'hooks', 'local-hook.js');
+  fs.mkdirSync(path.dirname(inClaude), { recursive: true });
+  fs.writeFileSync(inClaude, LONG_JS);
+  const r = run(READ, { tool_name: 'Read', tool_input: { file_path: inClaude } });
+  assert.equal(r.status, 2, 'the whole-file read is still blocked');
+  assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__serena/, 'but no tools that cannot index this tree');
+  assert.match(r.stderr, /ignored_paths/, 'the denial says why');
+  assert.match(r.stderr, /grep -n/, 'and gives a remedy that works there');
+  const inSerena = path.join(ROOT, '.serena', 'cache', 'big.ts');
+  fs.mkdirSync(path.dirname(inSerena), { recursive: true });
+  fs.writeFileSync(inSerena, LONG_JS);
+  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__serena/,
+    "serena's own tree either");
+  // ... and an ordinary source path still gets the whole ladder, loading call included
+  const src = path.join(ROOT, 'src', 'big.ts');
+  fs.mkdirSync(path.dirname(src), { recursive: true });
+  fs.writeFileSync(src, LONG_JS);
+  const ok = run(READ, { tool_name: 'Read', tool_input: { file_path: src } });
+  assert.equal(ok.status, 2);
+  assert.match(ok.stderr, /ToolSearch select:mcp__serena__get_symbols_overview/, 'the serena ladder is unchanged where it works');
+});
+
+test('guard-read-whole-file: an oversized binary or minified file is answered with PAGING, not a grep', () => {
+  // Verified live: the non-gated big-file branch printed the grep + offset remedy for ANY oversized
+  // file, a 93KB PNG included, where neither applies - 2 wasted calls. This branch judges SIZE, not
+  // language, so it has to say what to do with bytes that have no lines.
+  const dir = fs.mkdtempSync(path.join(TMP, 'big-'));
+  const png = path.join(dir, 'shot.png');
+  fs.writeFileSync(png, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]), Buffer.alloc(70 * 1024, 7)]));
+  const b = run(READ, { tool_name: 'Read', tool_input: { file_path: png } });
+  assert.equal(b.status, 2, 'still blocked - a whole Read of it spends its whole size on context');
+  assert.match(b.stderr, /head -c 2000/, 'paging, capped');
+  assert.doesNotMatch(b.stderr, /grep -n '<pattern>'/, 'never a line-based remedy on bytes with no lines');
+  const min = path.join(dir, 'bundle.min.css');
+  fs.writeFileSync(min, `.a{color:red}${'.b{color:blue}'.repeat(5000)}`);
+  const m = run(READ, { tool_name: 'Read', tool_input: { file_path: min } });
+  assert.equal(m.status, 2);
+  assert.match(m.stderr, /binary or minified/, 'one 70KB line is minified - an offset+limit Read answers nothing on it');
+  // ... and a large TEXT file keeps the grep remedy, which is the right one there
+  const notes = path.join(dir, 'persisted-output.txt');
+  fs.writeFileSync(notes, 'a line of ordinary output\n'.repeat(4000));
+  const t = run(READ, { tool_name: 'Read', tool_input: { file_path: notes } });
+  assert.equal(t.status, 2);
+  assert.match(t.stderr, /grep -n '<pattern>'/, 'a spilled text output is grepped, as before');
+  assert.equal(run(READ, { tool_name: 'Read', tool_input: { file_path: notes, offset: 1, limit: 50 } }).status, 0, 'a ranged read passes');
+});
+
+test('guard-cross-project-write: a quote inside a $( ) substitution does not close the outer span', () => {
+  // Replayed at exit 2: in `"$(grep -o 'Sdk="[^"]*"' <csproj>)"` the `"` INSIDE the substitution
+  // closed the outer double-quote span, so every span after it flipped and the later
+  // `sed 's/<OutputType>//'` read as a redirection to `//`. ~112k tokens re-sent on the retry.
+  const other = fs.mkdtempSync(path.join(TMP, 'projB-'));
+  const xp = (command) => run(XWRITE, { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  assert.equal(xp(`echo "$(grep -o 'Sdk="[^"]*"' app.csproj)" && sed 's/<OutputType>//' app.csproj`), 0, 'the replayed command');
+  assert.equal(xp(`sed 's/<OutputType>//' app.csproj`), 0, 'the sed alone always passed');
+  assert.equal(xp(`V="$(jq -r '.name' pkg.json)"; echo "$V" > out.txt`), 0, 'an in-project write after a substitution is ordinary work');
+  // ... and the gate keeps its teeth: the inside of a substitution is SHELL, not text
+  assert.equal(xp(`echo "$(grep -c '"' a.txt)" && echo x > ${path.join(other, 'f.txt')}`), 2,
+    'a real out-of-tree redirect after a substitution still blocks');
+  assert.equal(xp(`echo "$(cat a.txt > ${path.join(other, 'f.txt')})"`), 2,
+    'and a write INSIDE the substitution is judged, not read as quoted prose');
+  assert.equal(xp(`echo "a > ${path.join(other, 'f.txt')} is how you would do it"`), 0, 'while quoted PROSE is still prose');
+});

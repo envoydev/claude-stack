@@ -18,7 +18,10 @@ shared branch.
 the diff's own file list and name the carve-out in the close ('security review: skipped - test-only
 diff: <paths>'), never a silent unilateral call.
 An inline review is a substantive checklist pass with per-category findings named - a one-line 'no
-issues' nod over a secrets-adjacent diff is not a review. And when the user overrides a security recommendation,
+issues' nod over a secrets-adjacent diff is not a review. The categories land in the COMMIT-GATE
+receipt as their own `security:` row (`security: auth ok, secrets ok, injection ok, data-access
+n/a`), never just in prose - a VERIFIED line claiming the review with an empty or category-less
+`security:` row is not a review either (`project-commit-checkpoint` owns the exact shape). And when the user overrides a security recommendation,
 proceed - their call - but the close and any receipt record the override with the risk named and
 their words quoted, so the decision is auditable.
 - Never log PII, tokens, passwords, or full payment data - and a change that WIDENS logging (a

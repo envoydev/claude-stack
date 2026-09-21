@@ -175,7 +175,12 @@ test('guard-secret-value: a dump is rewritten into a redacted view - the file wi
   const env = cli('--redacted', f.dotenv).stdout;
   assert.match(env, /^DB_HOST=localhost$/m, 'dotenv: a plain line stays');
   assert.match(env, /^API_KEY=<set \(6 chars\)>$/m, 'dotenv: the credential line is masked');
-  assert.equal(rewritten('cd sub && cat settings.json && ls'), `node "${HOOK}" --redacted "${path.join(ROOT, 'sub', 'settings.json')}"`, 'the first credential file wins and the rest of the command is dropped');
+  // The view is SPLICED in: only the segment that named the credential file becomes the redacted
+  // read, and the other read-only segments run as written. Replacing the whole command dropped 3 of
+  // 4 parts of a read-only command, and the 3 recovery calls cost ~124k (replayed).
+  assert.equal(rewritten('cd sub && cat settings.json && ls'),
+    `cd sub && node "${HOOK}" --redacted "${path.join(ROOT, 'sub', 'settings.json')}" && ls`,
+    'the credential segment becomes the view; the cd and the ls are kept');
   assert.equal(bash(`node "${HOOK}" --redacted "${f.secret}"`), 0, 'the redacted view itself is exempt by name');
   // The path is double-quoted for bash, and only what bash reads inside double quotes is escaped: a
   // Windows path's own backslashes stay as they are, or the command names a path that is not the
@@ -183,7 +188,7 @@ test('guard-secret-value: a dump is rewritten into a redacted view - the file wi
   // reaches the escaper - an unexpanded variable is never judged - so a backslash is the one case.
   fs.mkdirSync(path.join(ROOT, 'win\\dir'), { recursive: true });
   fs.writeFileSync(path.join(ROOT, 'win\\dir', 'settings.json'), SECRET_JSON);
-  assert.equal(rewritten("cd 'win\\dir' && cat settings.json"), `node "${HOOK}" --redacted "${path.join(ROOT, 'win\\dir', 'settings.json')}"`, 'a backslash in the path is kept as it is');
+  assert.equal(rewritten("cd 'win\\dir' && cat settings.json"), `cd 'win\\dir' && node "${HOOK}" --redacted "${path.join(ROOT, 'win\\dir', 'settings.json')}"`, 'a backslash in the path is kept as it is');
   const missing = cli('--redacted', path.join(f.dir, 'nope.json'));
   assert.equal(missing.status, 0);
   assert.match(missing.stdout, /nope\.json: not found/);
@@ -708,4 +713,69 @@ test('guard-secret-value: a narrow read of a credential file keeps its own filte
   assert.match(g.stdout, /"SENTRY_ACCESS_TOKEN": "<set \(40 chars\)>"/);
   assert.ok(!(g.stdout + g.stderr).includes(FAKE_TOKEN), 'the value never appears');
   assert.match(g.stderr, /^# credential guard: redacted view of .*line numbers count the view/, 'the note says what happened');
+});
+
+// --- family E of the 154-bundle audit: two replayed false positives and one ungated tool input ---
+
+test('guard-secret-value: a credential-shaped literal in a Grep pattern is the leak the shell route already blocks', () => {
+  // The Bash route blocks the literal; the Grep tool took the same string in `pattern` and nothing
+  // judged it, so the value the shell refused was free through the search tool.
+  const f = fixtures();
+  const g = (tool_input) => run({ tool_name: 'Grep', tool_input, session_id: 'suite' });
+  const blocked = g({ pattern: FAKE_JWT, path: f.dir, output_mode: 'files_with_matches' });
+  assert.equal(blocked.status, 2, 'judged in every output mode - the pattern is in the transcript before any match is');
+  assert.doesNotMatch(blocked.stderr, new RegExp(FAKE_JWT), 'and the denial never repeats the value');
+  assert.equal(g({ pattern: 'SENTRY_ACCESS_TOKEN', path: f.clean, output_mode: 'content' }).status, 0, 'the KEY NAME is a free search');
+  assert.equal(g({ pattern: 'Bearer ', path: f.code, output_mode: 'content' }).status, 0, 'and so is an ordinary pattern');
+  assert.equal(bash(`grep -rn "${FAKE_JWT}" .`), 2, 'the shell route still blocks the same literal');
+});
+
+test('guard-secret-value: a compound read-only command keeps its other reads - only the credential segment becomes the view', () => {
+  // Replayed: a 4-part read-only command (a source read, two greps and a value-safe grep of KEY
+  // NAMES across three appsettings files) came back as ONE `--redacted appsettings.json`, and the
+  // three recovery calls cost ~124k at that session's own context per message.
+  const f = fixtures();
+  const view = `node "${HOOK}" --redacted "${f.secret}"`;
+  assert.equal(rewritten(`grep -n TODO ${f.code}; cat ${f.secret}; ls ${f.dir}`),
+    `grep -n TODO ${f.code}; ${view}; ls ${f.dir}`, 'the other read-only segments run as written');
+  assert.equal(rewritten(`cat ${f.secret} && echo done`), `${view} && echo done`, 'the separator is kept as it was');
+  assert.equal(rewritten(`cat ${f.secret}`), view, 'a one-segment command is the view alone, as before');
+  // A segment this guard cannot judge is never left running: the whole command is replaced, and the
+  // note NAMES what was dropped - the silence is what cost the recovery calls.
+  const two = rewritten(`cat ${f.secret}; cat ${f.dotenv}`);
+  assert.match(two, /^echo "# credential guard: 1 other step\(s\) of this command were dropped/, 'the note leads the rewrite');
+  assert.match(two, /cat [^"]*\.env/, 'and names the dropped step');
+  assert.ok(two.endsWith(view), 'the view still ends it');
+  assert.match(rewritten(`cat ${f.secret}; cat "$SOME_UNSET_DIR/settings.json"`), /^echo "# credential guard: /,
+    'an unresolvable path in another segment is never kept running either');
+  // a heredoc in the same command cannot be spliced (the judged text has its body blanked), so the
+  // whole-command rewrite stands - and says which steps went with it
+  const withDoc = rewritten(`cat <<'EOF' > ${path.join(f.dir, 'notes.md')}\nplan\nEOF\ncat ${f.secret}`);
+  assert.match(withDoc, /^echo "# credential guard: \d+ other step\(s\)/, 'the unspliceable shape names its drops');
+  assert.match(withDoc, /notes\.md/, 'including the heredoc write that did not run');
+  assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a CHANGING step still blocks the whole command, as before');
+});
+
+test('guard-secret-value: a translation bundle holds labels, not credentials', () => {
+  // Measured: an i18n JSON came back as a 52.5KB 'redacted view ... 4 credential value(s)', and at
+  // replay `cat` and `grep` on one were still rewritten. The whitespace tell cannot see a ONE-WORD
+  // translation of 'Password', and the key is named `password` because that is the UI string.
+  const dir = fs.mkdtempSync(path.join(TMP, 'i18n-'));
+  fs.mkdirSync(path.join(dir, 'i18n'), { recursive: true });
+  const bundle = path.join(dir, 'i18n', 'uk.json');
+  fs.writeFileSync(bundle, JSON.stringify({ login: { password: 'Пароль', token: 'Токен', secret: 'Secret question' } }, null, 2));
+  assert.equal(bash(`cat ${bundle}`), 0, 'a translation file is read as written');
+  const plain = path.join(dir, 'labels.json');
+  fs.writeFileSync(plain, JSON.stringify({ password: 'Пароль' }, null, 2));
+  assert.equal(bash(`cat ${plain}`), 0, 'a non-ASCII label is a label wherever it sits - a machine credential is ASCII');
+  // ... and a real credential is still a credential, in the same tree and outside it
+  const real = path.join(dir, 'i18n', 'en.json');
+  fs.writeFileSync(real, JSON.stringify({ login: { password: 'Password' }, dsn: `sntryu_${'0123456789abcdef'.repeat(2)}` }, null, 2));
+  assert.equal(bash(`cat ${real}`), REWRITE, 'a known credential SHAPE wins, i18n path or not');
+  const conn = path.join(dir, 'i18n', 'db.json');
+  fs.writeFileSync(conn, JSON.stringify({ Postgres: 'postgres://app:FakePw123@db.test/app' }, null, 2));
+  assert.equal(bash(`cat ${conn}`), REWRITE, 'and so does a password embedded in a connection string');
+  const live = path.join(dir, 'settings.json');
+  fs.writeFileSync(live, SECRET_JSON);
+  assert.equal(bash(`cat ${live}`), REWRITE, 'an ordinary credential file is untouched by these tells');
 });
