@@ -6,8 +6,11 @@
 // screen, and the user had to answer 'I do not see any table'. The tool result is collapsed in the
 // UI, so only the assistant's own text reaches the user.
 // Lives in the PLUGIN, not stack/hooks: a fresh setup has no stack hooks until its install step.
-// Decision tables: `stack-select.js --table <layer>` (proof: its `total: N <layer>` footer) and the
-// `plugin-settings.js` report without `--apply` (proof: the result's closing line). Fires only when
+// Decision tables: `stack-select.js --table <layer>` (proof: its `total: N <layer>` footer), the
+// four validate-only audit flags `--redundant`/`--missing`/`--evidence-gaps`/`--judgment` (proof: the
+// rendered table's own state words - REDUNDANT/MISSING/DISABLED or JUDGMENT-DROP/JUDGMENT-ADD - since
+// those calls redirect to a file and print no footer of their own), and the `plugin-settings.js`
+// report without `--apply` (proof: the result's closing line). Fires only when
 // the LATEST such call has no proof in the assistant text after it. It keeps denying: the measured skills turn announced 'pasted
 // below' three times running with no table, and once in the ask's preview panel, which the user
 // never saw. A valve lets the ask through after MAX_DENIALS for the same table call, so a paste
@@ -42,6 +45,10 @@ try {
 
 // A trailing-backslash continuation keeps the command on one logical line.
 const TABLE_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--table\s+["']?([a-z]+)/;
+// validate's own audit battery (no --table footer to prove against - the calls redirect to a file);
+// proof is the state word its rendered table is required to print verbatim.
+const AUDIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--(redundant|missing|evidence-gaps|judgment)\b/;
+const AUDIT_PROOF = /\b(REDUNDANT|MISSING|DISABLED|JUDGMENT-DROP|JUDGMENT-ADD)\b/;
 const SETTINGS_RE = /plugin-settings\.js\b/;
 const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
 
@@ -67,7 +74,9 @@ for (let i = rows.length - 1; i >= 0 && !table; i--) {
     if (o.type === 'assistant' && b.type === 'tool_use') {
       const cmd = String((b.input && b.input.command) || '');
       const m = TABLE_RE.exec(cmd);
+      const am = !m && AUDIT_RE.exec(cmd);
       if (m) table = { name: `${m[1]} table`, proof: new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`) };
+      else if (am) table = { name: `${am[1]} audit`, proof: AUDIT_PROOF };
       else if (SETTINGS_RE.test(cmd) && !/--apply\b/.test(cmd)) {
         const last = (results[b.id] || '').split('\n').map((l) => l.trim()).filter(Boolean).pop();
         // no result read back (a truncated tail) - nothing to prove against, so nothing to deny; and a

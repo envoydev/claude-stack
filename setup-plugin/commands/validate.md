@@ -76,8 +76,8 @@ Confirm the install (project mode, above), then **inventory the installed set fr
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
 `baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
-`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = the SAME `claude plugin list --json`
-scan configure runs (its step 1 carries the one-line command - copy it, do not re-derive it), which
+`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = `claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"`
+(the SAME script configure runs - never re-derive its filter), which
 prints `name<TAB>version<TAB>scope<TAB>enabled` filtered to the entries that apply to THIS project
 (project scope at this path, or user scope) - the listing is machine-global, and an unfiltered read
 proposes sibling repos' plugins as REDUNDANT here (measured near-miss uninstall); fail-soft without
@@ -135,8 +135,12 @@ proposed. Then walk. Stack names are the catalog keys of
 `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
 stderr (`unknown-stack`) instead of silently flagging nothing.
 
-Compute the audits once against the current inventory, quietly - the two stack-level passes,
-the evidence scan (with the judgment catalog), the evidence gaps, and the judgment lines:
+Compute the audits ONCE here, right after detection, against the current inventory, quietly - the
+two stack-level passes, the evidence scan (with the judgment catalog), the evidence gaps, and the
+judgment lines. This is the only place any of it runs: whatever layer or question comes up later -
+MCPs and plugins included - is answered from the four files this prints, never by hand-reading
+`recommendations.json` / `stack-graph.json` / `evidence.json` again (measured: a plugin/mcp question
+answered with 8 ad hoc catalog reads before this block's own pass had even run):
 
 ```
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
@@ -166,8 +170,7 @@ The tool already excludes shared items, deliberate non-stack extras, already-ins
 and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
 applicability no manifest can prove, e.g. the `project-related-context` / `related-project-analyzer`
-pair, which apply only where the project has sibling repos) - you present its output, you do not
-re-derive it.
+pair, which apply only where the project has sibling repos) - present its output as printed above.
 
 One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
 whose comment alone is 2,000 characters:

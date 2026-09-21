@@ -92,13 +92,14 @@ comparable banner by banner; the content varies, the skeleton never does.
   mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
   apply to THIS project (project scope at this path, or user scope) - the listing is machine-global,
   so an unfiltered read folds sibling repos' plugins into this project's selection (measured: two
-  near-miss removals/updates of a sibling's plugin). The filter is this one command, not a shape to
-  re-derive - measured, deriving it cost six Bash calls and ~477k of avoidable context, one of them
-  an ENOENT. It prints `name<TAB>version<TAB>scope<TAB>enabled`, the same four fields the installers'
-  own scan reads, and is fail-soft without the CLI:
+  near-miss removals/updates of a sibling's plugin). The filter is the shipped script every command
+  runs, never a shape to re-derive - measured, hand-deriving it cost six Bash calls and ~477k of
+  avoidable context in one run, and in another re-sent ~110k and misread 6 enabled project-scope
+  plugins as disabled. It prints `name<TAB>version<TAB>scope<TAB>enabled`, the same four fields the
+  installers' own scan reads, and is fail-soft without the CLI:
 
   ```bash
-  claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const fs=require("fs");const real=p=>{try{return fs.realpathSync(p)}catch{return p}};const here=real(".");let d;try{d=JSON.parse(s)}catch{return}const rows=Array.isArray(d)?d:(d.installed||[]);const best={};for(const e of rows){const n=String(e.id||"").split("@")[0];if(!n)continue;const pp=e.projectPath?real(String(e.projectPath)):null;if(pp&&pp!==here)continue;const rank=pp?0:1;if(!(n in best)||rank<best[n][0])best[n]=[rank,e.version||"?",e.scope||"",e.enabled===false?"no":"yes"]}for(const n of Object.keys(best).sort())console.log([n,...best[n].slice(1)].join("\t"))})'
+  claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"
   ```
  Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
@@ -416,10 +417,12 @@ selection it had itself proved identical spent 2 API messages and 351,777 re-sen
 installer pass whose only real effect was resetting the agent model/effort pins).
 
 Otherwise, run the installer **from the snapshot**, passing it back with `--source` so the run
-lands the same revision step 1 previewed:
+lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
+"$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
+written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project]`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
 - `--docs-versioning` only when the user's own invocation names a value (`/claude-stack:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
@@ -438,7 +441,7 @@ and a post-check that calls it 'untouched' is wrong (measured: four layers repor
 all 88 selected items had just been refreshed). It does NOT uninstall what was dropped.
 **Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
 stamp action) - never paste its output, and take the counts from the line that states them:
-`grep -E 'installed/refreshed this run' "$TMP/install.out"` (a `tail -20` of a 243-line log misses
+`grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
 it, which is how the wrong post-check above was written); (2) removals - each dropped item (incl. accepted
 orphans) with its command shown before running it: delete the skill directory / agent file /
 rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
