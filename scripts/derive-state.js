@@ -1,0 +1,128 @@
+#!/usr/bin/env node
+'use strict';
+// THE ONE DERIVATION - what a selection means for a project, decided once.
+//
+//   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]
+//
+// Before this script, four readers answered the same question in their own words: the three guided
+// walks described what the install would write, and the seed computed it again in code. That is how
+// a route change reaches three of them and not the fourth. Every one of them now runs this and
+// REPORTS its output, so a disagreement is a diff of one JSON object rather than an argument
+// between two prose paragraphs.
+//
+// It owns no engine of its own. The closure is `stack-select.js`, the placement is
+// `selection-plugins.js`, and this script is the third thing they never covered: what the project
+// carries that it did NOT pick, and what can be switched off about it.
+//
+// Three rules, one per surface, each measured:
+//
+//   - AGENTS have a real lever. Spike S3: `permissions.deny: ["Agent(<plugin>:<name>)"]` drops the
+//     seat from the listing and its description from the bill, -434 tokens for one seat. With 43
+//     seats shipped that is the largest trim left. It is written only for a seat an ENABLED plugin
+//     carries: a seat in a plugin this project never enabled is not loaded at all, so denying it is
+//     noise now and a trap later - the day that plugin is enabled, the stale entry silently drops a
+//     seat the user just asked for.
+//   - SKILLS have none. Spike S2: `skillOverrides` moved 0 tokens on a plugin skill under either
+//     the bare or the scoped key. So a skill the closure carries and the selection did not pick is
+//     REPORTED as undroppable, and there is deliberately no `off` key to mistake for a lever.
+//   - HOOKS are switched off by NAME, against the whole shipped catalog, because the hooks plugin
+//     carries all thirteen whatever the project picked (`CLAUDE_STACK_HOOKS_OFF`, Phase 2).
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { pluginsFor, readSelection, itemsOf } = require('./selection-plugins.js');
+const { placement, CORE } = require('./plugin-placement.js');
+const { loadManifest } = require('./install/manifest.js');
+
+const REPO = path.resolve(__dirname, '..');
+
+// The scoped identifier, never the bare name: the bare spelling was measured doing nothing.
+const denySpec = (agent, plugin) => `Agent(${plugin}:${agent})`;
+
+// Which plugin carries each agent - the deny spelling needs the home, not just the name.
+function agentHomes(place)
+{
+    const homes = new Map();
+    for (const [plugin, items] of Object.entries(place.plugins))
+        for (const agent of items.agents) if (!homes.has(agent)) homes.set(agent, plugin);
+    return homes;
+}
+
+const pickedLines = (file) =>
+{
+    const picked = { rules: new Set(), hooks: new Set() };
+    const text = fs.readFileSync(file, 'utf8');
+    for (const line of text.split('\n'))
+    {
+        const m = line.trim().match(/^(rule|hook)\s+(\S+)$/);
+        if (m) picked[m[1] === 'rule' ? 'rules' : 'hooks'].add(m[2].replace(/\.(md|js)$/, ''));
+    }
+    return picked;
+};
+
+function deriveState({ selection, sourceDir = REPO, marketplace = 'claude-stack' } = {})
+{
+    // readSelection throws with the path in the message when the file is unreadable; an empty
+    // install derived from a missing file is the failure mode this refuses to have.
+    const picked = readSelection(selection);
+    const flat = pickedLines(selection);
+
+    const place = placement();
+    const { plugins, copy } = pluginsFor(picked, { placement: place });
+    const enabled = plugins.map((p) => `${p}@${marketplace}`);
+
+    const carried = itemsOf(plugins, { placement: place });
+    const homes = agentHomes(place);
+
+    const off = carried.agents.filter((a) => !picked.agents.has(a));
+    const shipped = [...new Set(loadManifest(sourceDir).catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
+    const hooksOn = shipped.filter((h) => flat.hooks.has(h));
+    const hooksOff = shipped.filter((h) => !flat.hooks.has(h));
+
+    return {
+        plugins: enabled,
+        skills: {
+            picked: [...picked.skills].sort(),
+            carried: carried.skills,
+            extras: copy.skills,
+            // No `off` key, deliberately: R1 of the phase plan. Nothing can drop these.
+            undroppable: carried.skills.filter((s) => !picked.skills.has(s)),
+        },
+        agents: {
+            on: [...picked.agents].sort(),
+            off,
+            deny: off.map((a) => denySpec(a, homes.get(a) || CORE)),
+            extras: copy.agents,
+        },
+        rules: { copy: [...flat.rules].sort() },
+        hooks: { on: hooksOn, off: hooksOff },
+        mcps: [...picked.mcps].sort(),
+        env: { CLAUDE_STACK_HOOKS_OFF: hooksOff.join(',') },
+    };
+}
+
+function main(argv)
+{
+    const arg = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
+    const selection = arg('--selection');
+    if (!selection)
+    {
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]');
+        return 1;
+    }
+    const state = deriveState({
+        selection: path.resolve(selection),
+        sourceDir: arg('--source') ? path.resolve(arg('--source')) : REPO,
+        marketplace: arg('--marketplace') || 'claude-stack',
+    });
+    console.log(JSON.stringify(state, null, 2));
+    return 0;
+}
+
+if (require.main === module)
+{
+    try { process.exit(main(process.argv.slice(2))); }
+    catch (err) { console.error(String(err.message || err)); process.exit(1); }
+}
+
+module.exports = { deriveState, denySpec, agentHomes, REPO };
