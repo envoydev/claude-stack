@@ -427,8 +427,9 @@ through the generic merge. Emit + prereq-check it -
 profile), output to `$TMP/select.out` - then:
 
 - **Adds**: run the installer from the snapshot for the kept+added set -
-  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>]`
-  (ps1 on Windows). Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
+  `node "$TMP/repo/scripts/install/claude-stack.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>]`
+  (any OS; `CLAUDE_STACK_SEED=shell` runs the frozen twin instead - `scripts/os/claude-stack.sh` with the
+  same flags, `scripts/os/claude-stack.ps1` via `pwsh` with the PowerShell spellings). Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
   (the installer reads its `playwright-<browser>` servers back and keeps them). Sentry environment plan: whenever sentry is installed or among the adds, read the
   ACCOUNT `settings.json` env (`~/.claude/settings.json`, or the space's) - `SENTRY_SLUG` missing -> ask

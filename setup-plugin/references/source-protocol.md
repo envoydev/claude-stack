@@ -45,7 +45,7 @@ platform, pre-set env var or not:
 ```bash
 MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
-  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP"          # a valid marker from an earlier call this run
+  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${CLAUDE_STACK_SEED:-node}"   # a valid marker from an earlier call
 else
 REPO_URL=https://github.com/envoydev/claude-stack
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -60,7 +60,7 @@ else
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?}"
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${CLAUDE_STACK_SEED:-node}"
 fi
 ```
 
@@ -261,8 +261,11 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
 ## Use the tools from the snapshot
 
 Everything comes out of `$TMP/repo`:
-- the installer - `scripts/os/claude-stack.sh` on `darwin`/`linux`, `scripts/os/claude-stack.ps1` on
-  Windows (via `pwsh`)
+- the installer - `scripts/install/claude-stack.js`, run with `node` and the same command on every
+  OS. The OS twins (`scripts/os/claude-stack.sh`, `scripts/os/claude-stack.ps1` via `pwsh`) are the
+  one-release fallback, taken ONLY when the resolve line above reported `seed=shell`. `node` is
+  already a hard prerequisite of the stack - every hook and every selection step runs it - so the
+  default route needs nothing the project does not already have
 - `scripts/stack-select.js` and `meta/stack-graph.json` (selection closure + prerequisite check)
 - the `meta/` catalogs - `recommendations.json`, `evidence.json`, `judgment.json` (seeds, the
   evidence-scan signals, the judgment gates)
@@ -286,6 +289,15 @@ roughly 882k tokens between them. So:
 - genuinely needing the Windows spelling -> `"$(cygpath -w "$TMP")"`, once, into a variable
 
 ## Hand the same snapshot to the installer
+
+**ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/claude-stack.js" <install|update>
+[flags]`, with the Unix flag spellings everywhere (`--scope`, `--selection`) because there is one
+program now and not two. The OS twins ship for one more release and are taken ONLY when the resolve
+line reported `seed=shell`, which is `CLAUDE_STACK_SEED=shell` in the environment this session
+started in: then it is `bash "$TMP/repo/scripts/os/claude-stack.sh"` on `darwin`/`linux` and `pwsh
+-File "$TMP/repo/scripts/os/claude-stack.ps1"` on Windows, with the PowerShell spellings (`-Source`,
+`-Scope`, `-Selection`). Never cross the two: a `-Scope` handed to the Node seed is an unknown flag,
+and it refuses before the run writes anything.
 
 Pass `--source "$TMP/repo"` (`-Source` on Windows) when running the installer's action. That is
 what keeps a guided run at ONE download instead of two, and it guarantees the run lands the same

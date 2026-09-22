@@ -299,6 +299,25 @@ for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
     });
 }
 
+// Phase 7, T5: the installer is ONE node command on every OS, and the frozen twins are the
+// one-release fallback behind CLAUDE_STACK_SEED=shell. A body still typing the twin as its default
+// installs from a script nobody edits any more; one that drops the fallback line strands the user
+// who set the switch. The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
+test('every command that runs the installer runs the SEED, with the shell route named as the fallback', () => {
+    for (const name of ['setup', 'update', 'configure', 'validate'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(body, /node "\$TMP\/repo\/scripts\/install\/claude-stack\.js" (install|update)/,
+            `${name} does not run the Node seed`);
+        assert.match(body, /CLAUDE_STACK_SEED=shell/, `${name} does not name the shell fallback`);
+        assert.ok(!/- Unix: `bash "\$TMP\/repo\/scripts\/os\/claude-stack\.sh"/.test(body),
+            `${name} still offers the twin as a first-class route`);
+    }
+    // status runs no installer at all, so it names neither.
+    const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
+    assert.ok(!/claude-stack\.(sh|ps1)|install\/claude-stack\.js/.test(status), 'status must stay read-only');
+});
+
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
     for (const name of ['setup', 'configure', 'validate'])
     {
@@ -329,7 +348,8 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /--missing/, 'validate drives the add side through stack-select --missing');
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
     assert.match(body, /project mode only/i, 'validate refuses outside a project');
-    assert.match(body, /claude-stack\.sh" install/, 'validate installs the accepted adds via the installer');
+    assert.match(body, /install\/claude-stack\.js" install/, 'validate installs the accepted adds via the seed');
+    assert.match(body, /CLAUDE_STACK_SEED=shell/, '... and still names the one-release shell fallback');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
     // mixed with signal tiers
     assert.match(body, /JUDGMENT-DROP/, 'the judgment step exists with its labeled verdict');
