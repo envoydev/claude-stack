@@ -3,6 +3,7 @@
 // THE ONE DERIVATION - what a selection means for a project, decided once.
 //
 //   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]
+//   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--settings <file>]
 //
 // Before this script, four readers answered the same question in their own words: the three guided
 // walks described what the install would write, and the seed computed it again in code. That is how
@@ -33,9 +34,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./selection-plugins.js');
-const { placement, CORE } = require('./plugin-placement.js');
+const { placement, descriptionChars, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
+const { pluginRoutes } = require('./install/plugins.js');
 
 const REPO = path.resolve(__dirname, '..');
 
@@ -92,8 +94,11 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     // back. A seat this run copied (an extra) never had a scoped spec to clear.
     const kept = carried.agents.filter((a) => picked.agents.has(a));
     const shipped = [...new Set(loadManifest(sourceDir).catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
-    const hooksOn = shipped.filter((h) => flat.hooks.has(h));
-    const hooksOff = shipped.filter((h) => !flat.hooks.has(h));
+    // No hook line at all means every hook, exactly as the installer's copy filter reads it - a
+    // selection that never reached the hooks layer answers nothing about hooks.
+    const hooksAnswered = flat.hooks.size > 0;
+    const hooksOn = hooksAnswered ? shipped.filter((h) => flat.hooks.has(h)) : shipped;
+    const hooksOff = hooksAnswered ? shipped.filter((h) => !flat.hooks.has(h)) : [];
 
     return {
         plugins: enabled,
@@ -112,7 +117,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
             extras: copy.agents,
         },
         rules: { copy: [...flat.rules].sort() },
-        hooks: { on: hooksOn, off: hooksOff },
+        hooks: { on: hooksOn, off: hooksOff, answered: hooksAnswered },
         mcps: [...picked.mcps].sort(),
         env: { CLAUDE_STACK_HOOKS_OFF: hooksOff.join(',') },
     };
@@ -169,23 +174,80 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
 // that load through a plugin: on the copy routes absence from disk is the off-state.
 function writable(state, { routes = {}, answered = { hooks: true, agents: true } } = {})
 {
-    const hooks = Boolean(state && answered.hooks);
+    const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
     const agents = Boolean(state && answered.agents && routes.skills);
     return {
         hooksOff: hooks && routes.hooks ? state.hooks.off : [],
         hooksAnswered: hooks,
         agentDeny: agents ? state.agents.deny : [],
         agentAllow: agents ? state.agents.allow : [],
+        // Carried without a pick only where a plugin carries skills; the copy route copies the picks.
+        undroppable: state && routes.skills ? state.skills.undroppable : [],
     };
+}
+
+// THE FLOOR the stack's own entries add to every message: the description of each model-invocable
+// skill they carry (a `disable-model-invocation` skill's is not in context - 'Control who invokes a
+// skill', code.claude.com/docs/en/skills) and of each seat not denied (spike S3: a denied seat
+// leaves the Agent listing). Status reports it; before this the seats were not counted at all.
+// Read from the FRONTMATTER only: a body line or a code fence showing the key is not the flag.
+const manualOnlyText = (text) => /^disable-model-invocation:\s*true\s*$/m.test((/^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text)) || [])[1] || '');
+const manualOnly = (skill) =>
+{
+    try { return manualOnlyText(fs.readFileSync(path.join(REPO, 'stack', 'skills', skill, 'SKILL.md'), 'utf8')); }
+    catch { return false; }
+};
+
+function floor({ plugins = [], deny = [] } = {})
+{
+    const place = placement();
+    const named = [...new Set(plugins.map((p) => String(p).split('@')[0]).filter(Boolean))];
+    const entries = named.filter((n) => place.plugins[n]).sort();
+    const carried = itemsOf(entries, { placement: place });
+    // The EXACT spelling Claude Code matches - the seat under its home entry. A deny left under an
+    // entry the seat has since moved out of hides nothing until the next install rewrites it.
+    const homes = agentHomes(place);
+    const specs = new Set(Array.isArray(deny) ? deny.map(String) : []);
+    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))));
+    const skills = carried.skills.filter((s) => !manualOnly(s));
+    const seats = carried.agents.filter((a) => !denied.has(a));
+    const sum = (kind, names) => names.reduce((n, name) => n + descriptionChars(kind, name), 0);
+    // `skipped`: the entries this count does not cover - the hooks entry, whose SessionStart
+    // injections are text a script cannot size ahead, and the MCP entries. The caller counts them
+    // as any other plugin; a name dropped here without a word is how a floor under-reports.
+    const out = {
+        entries,
+        skipped: named.filter((n) => !place.plugins[n]).sort(),
+        skills: { count: skills.length, chars: sum('skill', skills) },
+        agents: { count: seats.length, denied: carried.agents.filter((a) => denied.has(a)), chars: sum('agent', seats) },
+    };
+    out.chars = out.skills.chars + out.agents.chars;
+    return out;
 }
 
 function main(argv)
 {
     const arg = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
+    if (argv.includes('--floor'))
+    {
+        // Every --settings file counts: deny rules merge across the account, project and local
+        // scopes, so a seat switched off in any of them is off. An unreadable file denies nothing.
+        const deny = [];
+        argv.forEach((a, i) =>
+        {
+            if (a !== '--settings' || !argv[i + 1]) return;
+            let stored = {};
+            try { stored = JSON.parse(fs.readFileSync(argv[i + 1], 'utf8')); } catch { stored = {}; }
+            if (stored && stored.permissions && Array.isArray(stored.permissions.deny)) deny.push(...stored.permissions.deny);
+        });
+        const plugins = String(arg('--plugins') || '').split(',').map((p) => p.trim()).filter(Boolean);
+        console.log(JSON.stringify(floor({ plugins, deny }), null, 2));
+        return 0;
+    }
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...');
         return 1;
     }
     const state = deriveState({
@@ -193,7 +255,10 @@ function main(argv)
         sourceDir: arg('--source') ? path.resolve(arg('--source')) : REPO,
         marketplace: arg('--marketplace') || 'claude-stack',
     });
-    console.log(JSON.stringify(state, null, 2));
+    // What THIS environment's routes write, by the installer's own rule - so a walk reporting the
+    // derivation before the install reports the copy routes as writing no off-state.
+    const routes = pluginRoutes(process.env);
+    console.log(JSON.stringify({ ...state, routes, written: writable(state, { routes }) }, null, 2));
     return 0;
 }
 
@@ -203,4 +268,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { deriveState, readInstalled, writable, denySpec, stackSeat, agentHomes, REPO };
+module.exports = { deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };

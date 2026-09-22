@@ -17,7 +17,7 @@ Project mode when the working tree has a populated `.claude/` (skills or agents 
 otherwise global mode against the account's config dir (skills, plugins and user-scope MCPs live
 there; agents/rules/hooks are project-level by construction - the installer lays them only into a git
 repo's `.claude/` - so those areas read `none installed` at global scope). Nothing installed in either place ->
-say so and route to `/claude-stack:setup`. Open with one line naming mode and root:
+say so and route to `/claude-stack:init`. Open with one line naming mode and root:
 `status: project install at <root>/.claude` (or `global install at <path>`).
 
 ## 2. One question - what to show
@@ -82,8 +82,17 @@ text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matc
 
 Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
 can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
-machine): for each enabled plugin, total its skill and command DESCRIPTION frontmatter plus the
-static text any `SessionStart` or `SubagentStart` hook injects, and render `plugin floor: <N>
+machine). The stack's OWN entries are counted by one script, never by hand: `node
+"$TMP/repo/scripts/derive-state.js" --floor --plugins <the enabled @claude-stack entries,
+comma-separated> --settings <account settings.json> --settings .claude/settings.json --settings
+.claude/settings.local.json` (deny rules merge across scopes, so pass every one that exists; the
+account file alone in global mode) prints the skill descriptions they carry (a
+`disable-model-invocation` skill costs nothing, which is why this number sits below the repo lint's
+always-on budget, which counts every description) plus the SEATS' descriptions minus every seat
+`permissions.deny` switches off - take its `chars`. The entries it lists under `skipped` (the
+hooks entry, the MCP entries) are OTHER plugins for the next sentence. For each OTHER enabled plugin, total its
+skill, command and agent DESCRIPTION frontmatter (skipping a `disable-model-invocation` one) plus
+the static text any `SessionStart` or `SubagentStart` hook injects, and render `plugin floor: <N>
 chars (~<N/4000>k tokens) across <n> enabled plugins - <m> of it per SUBAGENT as well`. A plugin
 whose injection is computed rather than a literal is counted as unknown and named, never guessed
 at. Report and judge nothing, same as the line above. It matters because a SessionStart injection
@@ -94,7 +103,7 @@ paid 8,337 injected chars a session for two plugins on top of their descriptions
 the capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack`
 otherwise, `user-authored` when clearly neither.
 
-**Skills and agents** - skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a copied extra reads `stack`.
+**Skills and agents** - skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a copied extra reads `stack`. A carried seat named in `permissions.deny` (any scope) as `Agent(<entry>:<name>)` is switched OFF - it stays in the table with `denied` in its `origin` column, since the plugin still ships it and configure can bring it back.
 
 **Hooks** - hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `CLAUDE_STACK_HOOKS_OFF` reads `off (env)`.

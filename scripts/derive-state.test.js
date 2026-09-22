@@ -205,7 +205,9 @@ test('derive-state: the CLI prints the same object it returns', () =>
     const file = realSelection();
     const { execFileSync } = require('node:child_process');
     const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', file], { encoding: 'utf8' });
-    assert.deepStrictEqual(JSON.parse(out), derive(file));
+    const { routes, written, ...state } = JSON.parse(out);
+    assert.deepStrictEqual(state, derive(file));
+    assert.ok(routes && written, 'plus the routes it ran under and what they write');
 });
 
 // THE INVERSE - what `update --installed-only` reads back. On the plugin routes `.claude/` holds
@@ -305,10 +307,137 @@ test('writable: a surface the read-back found no evidence of writes nothing back
     const { writable } = require('./derive-state.js');
     const state = derive(realSelection());
     const none = writable(state, { routes: ALL_ROUTES, answered: { hooks: false, agents: false } });
-    assert.deepStrictEqual(none, { hooksOff: [], hooksAnswered: false, agentDeny: [], agentAllow: [] });
+    assert.deepStrictEqual({ ...none, undroppable: undefined }, { hooksOff: [], hooksAnswered: false, agentDeny: [], agentAllow: [], undroppable: undefined });
     const both = writable(state, { routes: ALL_ROUTES, answered: { hooks: true, agents: true } });
     assert.strictEqual(both.hooksAnswered, true);
     assert.deepStrictEqual(both.agentAllow, state.agents.allow);
     const copy = writable(state, { routes: {}, answered: { hooks: true, agents: true } });
-    assert.deepStrictEqual([copy.hooksOff, copy.agentDeny, copy.agentAllow], [[], [], []], 'the copy routes write no off-state');
+    assert.deepStrictEqual([copy.hooksOff, copy.agentDeny, copy.agentAllow, copy.undroppable], [[], [], [], []], 'the copy routes write no off-state and carry nothing unpicked');
+    assert.deepStrictEqual(both.undroppable, state.skills.undroppable, 'a plugin carries what the selection did not pick');
+});
+
+// THE FLOOR - status's plugin line counted skill and command descriptions and left the SEATS out,
+// though every enabled seat's description rides the Agent tool's listing on every message. A seat
+// `permissions.deny` switches off costs nothing (spike S3), and a `disable-model-invocation` skill's
+// description is not in context at all ('Control who invokes a skill', code.claude.com/docs/en/skills).
+const { floor } = require('./derive-state.js');
+const { descriptionChars } = require('./plugin-placement.js');
+const FLOOR_ENTRIES = ['claude-stack', 'claude-stack-aspnet'];
+
+test('floor: the model-invocable skills plus the seats not denied, from the stack\'s own entries', () =>
+{
+    const carried = itemsOf(FLOOR_ENTRIES, { placement: placement() });
+    const manual = carried.skills.filter((s) => /^disable-model-invocation:\s*true\s*$/m.test(fs.readFileSync(path.join(ROOT, 'stack/skills', s, 'SKILL.md'), 'utf8')));
+    assert.ok(manual.length > 0, 'the fixture carries a manual-only skill');
+    const all = floor({ plugins: FLOOR_ENTRIES });
+    assert.strictEqual(all.skills.count, carried.skills.length - manual.length);
+    assert.strictEqual(all.agents.count, carried.agents.length);
+    const one = floor({ plugins: FLOOR_ENTRIES.map((p) => `${p}@claude-stack`), deny: ['Agent(claude-stack:security-auditor)', 'Read(.env)'] });
+    assert.deepStrictEqual(one.agents.denied, ['security-auditor']);
+    assert.strictEqual(all.agents.chars - one.agents.chars, descriptionChars('agent', 'security-auditor'));
+    assert.strictEqual(one.chars, one.skills.chars + one.agents.chars);
+});
+
+test('floor: only the seat\'s CURRENT home spelling denies it - Claude Code matches that name exactly', () =>
+{
+    const stale = floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack-old-home:security-auditor)'] });
+    assert.deepStrictEqual(stale.agents.denied, [], 'a deny under an entry the seat left hides nothing');
+    assert.strictEqual(stale.agents.chars, floor({ plugins: FLOOR_ENTRIES }).agents.chars);
+});
+
+test('floor: a name that is no stack entry counts nothing', () =>
+{
+    const got = floor({ plugins: ['claude-hud', 'serena', 'nope'] });
+    assert.deepStrictEqual([got.entries, got.chars], [[], 0]);
+});
+
+test('floor: the CLI reads the entries and the project settings file', () =>
+{
+    const settingsFile = path.join(TMP, 'floor-settings.json');
+    fs.writeFileSync(settingsFile, JSON.stringify({ permissions: { deny: ['Agent(claude-stack:security-auditor)'] } }));
+    const { execFileSync } = require('node:child_process');
+    const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', FLOOR_ENTRIES.join(','), '--settings', settingsFile], { encoding: 'utf8' }));
+    assert.deepStrictEqual(out, floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack:security-auditor)'] }));
+    const bad = path.join(TMP, 'floor-bad.json');
+    fs.writeFileSync(bad, '{ nope');
+    const noDeny = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', FLOOR_ENTRIES.join(','), '--settings', bad], { encoding: 'utf8' }));
+    assert.deepStrictEqual(noDeny.agents.denied, [], 'an unreadable settings file denies nothing');
+});
+
+// T2 review: init reports the derivation BEFORE the install, so the derivation must decide what the
+// installer decides - route switches and the no-hook-lines rule included - or the report lies.
+test('derive-state: a selection with NO hook lines switches no hook off - every hook runs, as on disk', () =>
+{
+    const got = derive(selectionFile(['rule baseline-security', 'skill markdown-style']));
+    assert.deepStrictEqual(got.hooks.off, []);
+    assert.strictEqual(got.env.CLAUDE_STACK_HOOKS_OFF, '');
+});
+
+test('derive-state: `hook none` - the walk\'s None at the hooks layer - switches every shipped hook off', () =>
+{
+    const got = derive(selectionFile(['rule baseline-security', 'hook none']));
+    assert.strictEqual(got.hooks.answered, true);
+    assert.deepStrictEqual(got.hooks.on, []);
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    assert.deepStrictEqual(got.hooks.off, shipped);
+});
+
+test('derive-state CLI: `written` is what THIS route writes - the copy routes write no off-state', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const sel = selectionFile(fs.readFileSync(realSelection(), 'utf8').split('\n').filter((l) => l.trim() !== 'agent security-auditor' && l.trim() !== 'hook guard-answer-length'));
+    const run = (env) => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', sel], { encoding: 'utf8', env: { ...process.env, ...env } }));
+    const plugin = run({ CLAUDE_STACK_SKILLS_VIA_PLUGIN: '', CLAUDE_STACK_HOOKS_VIA_PLUGIN: '', CLAUDE_STACK_MCPS_VIA_PLUGIN: '' });
+    assert.deepStrictEqual(plugin.routes, { hooks: true, skills: true, mcps: true });
+    assert.deepStrictEqual(plugin.written.agentDeny, ['Agent(claude-stack:security-auditor)']);
+    assert.deepStrictEqual(plugin.written.hooksOff, ['guard-answer-length']);
+    assert.deepStrictEqual(plugin.written.undroppable, plugin.skills.undroppable);
+    const copy = run({ CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' });
+    assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff, copy.written.undroppable], [[], [], []]);
+});
+
+test('init reports only keys the derivation prints', () =>
+{
+    // A renamed key would leave the walk quoting a field that no longer exists.
+    const init = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', 'init.md'), 'utf8');
+    const step = init.slice(init.indexOf('## 11. Install'));
+    const cited = [...step.slice(0, step.indexOf('Then run the installer')).matchAll(/`((?:routes|written|plugins|skills|agents|hooks)(?:\.[A-Za-z]+)*)`/g)].map((m) => m[1]);
+    assert.ok(cited.length >= 4, `init names the fields it reports, found ${cited.join(',')}`);
+    const { execFileSync } = require('node:child_process');
+    const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', realSelection()], { encoding: 'utf8' }));
+    for (const key of cited)
+        assert.notStrictEqual(key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), out), undefined, `init cites ${key}, which the derivation does not print`);
+});
+
+test('floor: entries it does not count come back as `skipped`, never silently dropped', () =>
+{
+    const got = floor({ plugins: ['claude-stack', 'claude-stack-hooks', 'serena@claude-stack'] });
+    assert.deepStrictEqual(got.entries, ['claude-stack']);
+    assert.deepStrictEqual(got.skipped, ['claude-stack-hooks', 'serena']);
+});
+
+test('floor: skill chars are the model-invocable descriptions, measured independently', () =>
+{
+    const carried = itemsOf(FLOOR_ENTRIES, { placement: placement() });
+    const fm = (s) => fs.readFileSync(path.join(ROOT, 'stack/skills', s, 'SKILL.md'), 'utf8').split(/^---$/m)[1] || '';
+    const live = carried.skills.filter((s) => !/^disable-model-invocation:\s*true\s*$/m.test(fm(s)));
+    const want = live.reduce((n, s) => n + ((/^description:\s*(.*)$/m.exec(fm(s)) || [, ''])[1]).length, 0);
+    assert.strictEqual(floor({ plugins: FLOOR_ENTRIES }).skills.chars, want);
+});
+
+test('floor: manual-only is read from the FRONTMATTER - a body line saying so does not count', () =>
+{
+    const { manualOnlyText } = require('./derive-state.js');
+    assert.strictEqual(manualOnlyText('---\nname: a\ndisable-model-invocation: true\n---\nbody'), true);
+    assert.strictEqual(manualOnlyText('---\nname: a\n---\n```yaml\ndisable-model-invocation: true\n```'), false);
+});
+
+test('floor CLI: every --settings file given counts - deny rules merge across scopes', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const a = path.join(TMP, 'floor-a.json'); const b = path.join(TMP, 'floor-b.json');
+    fs.writeFileSync(a, JSON.stringify({ permissions: { deny: ['Agent(claude-stack:security-auditor)'] } }));
+    fs.writeFileSync(b, JSON.stringify({ permissions: { deny: ['Agent(claude-stack:evidence-gatherer)'] } }));
+    const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'claude-stack', '--settings', a, '--settings', b, '--settings', path.join(TMP, 'absent.json')], { encoding: 'utf8' }));
+    assert.deepStrictEqual(out.agents.denied.sort(), ['evidence-gatherer', 'security-auditor']);
 });

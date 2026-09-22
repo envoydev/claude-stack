@@ -144,7 +144,7 @@ function main(argv, env, io)
             });
             if (!back.installed)
             {
-                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /claude-stack:setup) first\n`);
+                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /claude-stack:init) first\n`);
                 return 1;
             }
             picked = selection.parseSelection(back.lines.join('\n'));

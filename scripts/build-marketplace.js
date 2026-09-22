@@ -20,7 +20,7 @@
 // own .claude-plugin/plugin.json was its manifest; its 21 skills and 8 agents live under stack/,
 // outside that folder, and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1
 // refused to build on it). At `source: './'` nothing under setup-plugin/ is auto-discovered, so the
-// entry carries every path explicitly - the five commands, the router skill, its placed skills and
+// entry carries every path explicitly - the guided-walk commands, the router skill, its placed skills and
 // agents - plus the layer-table hook INLINE and the superpowers dependency that plugin.json used to
 // declare. Dropping either on the way across would be a silent behaviour change.
 const fs = require('node:fs');
@@ -69,7 +69,7 @@ function describe(name, place, stacksOf)
 // the string: an `args` array switches to exec form, whose `command` must be a real executable.
 const launch = (file, args) => `node "\${CLAUDE_PLUGIN_ROOT}/${file}"${args && args.length ? ` ${args.join(' ')}` : ''}`;
 
-// The five guided-walk COMMANDS and the router SKILL, the two things no other entry has. Read from
+// The guided-walk COMMANDS and the router SKILL, the two things no other entry has. Read from
 // setup-plugin's own plugin.json so one list stays the source of the command set, and re-rooted at
 // the repo root the entry now ships from.
 const SETUP_MANIFEST = path.join(REPO, 'setup-plugin/.claude-plugin/plugin.json');

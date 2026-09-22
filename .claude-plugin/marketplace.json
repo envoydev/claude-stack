@@ -565,6 +565,7 @@
         "bootstrap"
       ],
       "commands": [
+        "./setup-plugin/commands/init.md",
         "./setup-plugin/commands/setup.md",
         "./setup-plugin/commands/update.md",
         "./setup-plugin/commands/configure.md",

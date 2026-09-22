@@ -220,10 +220,10 @@ function ctxThreshold() {
 // session started `project-verify-code` at 364.6k and `security-review` at 383.1k, together 13.7M
 // cache-read - 27% of the whole session - for 20.5k of output, and the offer arrived nine minutes
 // after that spend. `project-agent-capabilities` is here because the stack's own next-steps card
-// tells the user to run it after every update. The four guided plugin commands are here because
+// tells the user to run it after every update. The guided plugin commands are here because
 // they are multi-phase walks too, and the UserPromptSubmit route is what finally reaches them.
-const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|claude-stack:(setup|update|configure|validate))$/;
-// a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the four guided commands are
+const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|claude-stack:(init|setup|update|configure|validate))$/;
+// a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
 const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^.*:/, ''));
 let skill = '';

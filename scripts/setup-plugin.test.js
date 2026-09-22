@@ -16,7 +16,8 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     // live under stack/, outside that folder.
     const core = mp.plugins.find(x => x.name === 'claude-stack');
     assert.ok(core, 'the core entry must survive every generator run');
-    assert.ok(Array.isArray(core.commands) && core.commands.length === 5, 'the five guided walks ship from the core');
+    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided walks ship from the core - init and its setup alias among them');
+    assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && core.commands.includes('./setup-plugin/commands/setup.md'));
     for (const p of mp.plugins)
     {
         assert.strictEqual(p.source, './', `${p.name} shares the repo root as its source`);
@@ -29,7 +30,7 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     assert.ok(hooks && hooks.hooks, 'the hooks entry declares its hooks INLINE, so nothing sits at the shared root');
 });
 
-test('plugin.json is valid, the five commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'claude-stack');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -37,13 +38,26 @@ test('plugin.json is valid, the five commands are listed, and the router skill e
     // Plugin COMMANDS display namespaced-only (/claude-stack:setup); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /claude-stack, no /claude-stack:claude-stack stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
-    for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
+    assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
+    for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /claude-stack:${name} command exists`);
     }
     assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md')), 'the /claude-stack router skill exists');
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'claude-stack.md')), 'no router COMMAND - a command named like the plugin displays as the /claude-stack:claude-stack stutter');
+});
+
+test('init is the walk and setup its thin alias - both manual-only, the alias naming init', () => {
+    // Phase 8 R3: a new name, not a new walk. The alias keeps /claude-stack:setup working for one
+    // release; a copy of the walk under two names would drift the first time either is edited.
+    const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+    const init = read('init');
+    const alias = read('setup');
+    for (const [name, body] of [['init', init], ['setup', alias]])
+        assert.match(body, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, `${name} stays manual-only`);
+    assert.match(alias, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/commands\/init\.md/, 'the alias reads the walk from the installed layout');
+    assert.ok(alias.split('\n').length < 20, `the alias is a pointer, not a second walk (${alias.split('\n').length} lines)`);
+    assert.match(init, /^## 11\. Install$/m, 'the walk itself lives in init');
 });
 
 test('no tracked plugin file leaks an email address', () => {
@@ -154,7 +168,7 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // so pasting it needed a read-back step the prescribed command never contained, and all six layer
 // questions were asked with no catalog on screen. The table must come back in the tool result.
 test('the layer table is never redirected to a file - the tool result is what gets pasted', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['init', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
@@ -174,7 +188,7 @@ test('the layer table is never redirected to a file - the tool result is what ge
 // by NAME and tied together by the apply subsection's own number: the ladders renumber whenever a
 // step is inserted, and what this pins is where the two halves sit, not what they are numbered.
 test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['init', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         const pluginsAt = body.search(/^## \d+\. Plugins$/m);
@@ -287,7 +301,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
-for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
+for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
 {
     test(`the ${name} command exists with valid manual-only frontmatter`, () => {
         const cmd = path.join(PLUGIN_DIR, 'commands', `${name}.md`);
@@ -304,7 +318,7 @@ for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
 // installs from a script nobody edits any more; one that drops the fallback line strands the user
 // who set the switch. The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
 test('every command that runs the installer runs the SEED, with the shell route named as the fallback', () => {
-    for (const name of ['setup', 'update', 'configure', 'validate'])
+    for (const name of ['init', 'update', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /node "\$TMP\/repo\/scripts\/install\/claude-stack\.js" (install|update)/,
@@ -319,7 +333,7 @@ test('every command that runs the installer runs the SEED, with the shell route 
 });
 
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
-    for (const name of ['setup', 'configure', 'validate'])
+    for (const name of ['init', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
@@ -333,7 +347,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
 // The install-time twin of validate's judgment gate: a typed add that conflicts with the
 // project's stated conventions gets a quote-gated, non-blocking warning at the prereq step.
 test('setup and configure carry the brownfield convention-conflict warning gate', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['init', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /Convention-conflict warnings/, `${name} has the conflict-warning gate`);
@@ -394,15 +408,25 @@ test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in th
 });
 
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
-    for (const name of ['setup', 'update', 'configure'])
+    for (const name of ['init', 'update', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
     }
     const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md'), 'utf8');
     assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*claude-stack/, 'router skill named like the plugin -> displays bare /claude-stack');
-    for (const name of ['setup', 'update', 'configure'])
+    for (const name of ['init', 'update', 'configure'])
     {
         assert.match(router, new RegExp('/claude-stack:' + name), `/claude-stack routes to /claude-stack:${name}`);
     }
+});
+
+test('the walk and status REPORT the derivation - they never restate what the installer writes', () => {
+    // Phase 8 R1: four prose descriptions of one pipeline is how a route change reached three of them
+    // and not the fourth. init shows the derived off-state before installing; status takes the
+    // stack's share of the floor, seats included, from the same script.
+    const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+    assert.match(read('init'), /scripts\/derive-state\.js" --selection "\$TMP\/selection\.txt" --source "\$TMP\/repo"/);
+    assert.match(read('status'), /scripts\/derive-state\.js" --floor --plugins /);
+    assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'derive-state.js')), 'the script both cite ships in the snapshot');
 });

@@ -1,14 +1,14 @@
 ---
-description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
 # Configure the Claude stack - adjust an existing install
 
-You are adjusting a claude-stack install that already exists. Same discipline as `setup`: drive
+You are adjusting a claude-stack install that already exists. Same discipline as `init`: drive
 it interactively, walk the selection one layer at a time, always show the prerequisite report
 before running, never run past an unmet blocker. `stack-select.js` does the deterministic work;
-you orchestrate. Two differences from `setup`: the baseline selection is what is INSTALLED, not
+you orchestrate. Two differences from `init`: the baseline selection is what is INSTALLED, not
 the recommendations - every layer is a straight modify, no recommended phase - and the action is
 `update`, not `install`. (For a no-questions refresh that also prunes what upstream removed, the
 sibling `update` command is the shorter path - this command is for CHOOSING what changes.)
@@ -80,7 +80,7 @@ comparable banner by banner; the content varies, the skeleton never does.
 - **Find the install.** Project mode: cwd is a project root with a populated `.claude/`
   (skills/agents/rules dirs, or `.mcp.json`). Global mode: no project here, but the account
   (`~/.claude`, or `~/.claude-<space>`) carries installed skills. Nothing installed in either
-  place -> stop and route to the sibling `/claude-stack:setup` command; there is nothing to
+  place -> stop and route to the sibling `/claude-stack:init` command; there is nothing to
   configure yet. OS: on `darwin`/`linux` use the sh installer; on Windows the ps1 (via `pwsh`).
 - **Inventory the installed set** from disk - never from memory or assumption: skills = the
   directory names under `.claude/skills/` (or the account's `skills/`); agents =
@@ -152,7 +152,7 @@ installer run at step 12, which works from the whole selection - and gets one na
 
 ## The walk - steps 3-8, one layer at a time
 
-Same dependency-ordered walk as `setup` (rules pull agents + skills, agents pull skills,
+Same dependency-ordered walk as `init` (rules pull agents + skills, agents pull skills,
 everything pulls MCPs and plugins, hooks stand alone - dependencies only point FORWARD), applied to
 the installed set with no recommended phase. Hold TWO running files in the temp dir: `raw.json` -
 the remaining selection (installed + adds - drops, every category incl. `hooks` and `mcps`) - and
@@ -168,7 +168,7 @@ run spent `--help`, an `ls examples` and a source grep at 258k context to confir
 Seed BOTH before the first recompute - `raw.json` from the step-1 inventory, `dropped.json` as
 `{}` - so no layer ever runs against a file that does not exist yet.
 
-Per layer, the SAME three-beat shape as setup:
+Per layer, the SAME three-beat shape as init:
 
 1. **Recompute quietly** - one call:
    `node stack-select.js --selection raw.json --dropped dropped.json`,
@@ -265,7 +265,7 @@ the rest of the installed servers are direct picks - droppable, and preserved ac
 Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
-registration - a fresh add, default to `global`). Paste the level table setup uses - `global` /
+registration - a fresh add, default to `global`). Paste the level table init uses - `global` /
 `scoped` / `project`, who shares each and where its database lives - but at `--scope global` drop
 the `project` row entirely: the installer refuses `project` at global scope (there is no single
 project root an account-wide install can sensibly own), so only offer `global` and `scoped` there.
@@ -466,7 +466,7 @@ this project' answer, merge `permissions.defaultMode: <value>` into the PROJECT'
 
 ### 12a. Plugin settings - apply the step-8 answer
 
-Same as the setup walk, run after the installer block and before the follow-through line: re-run
+Same as the init walk, run after the installer block and before the follow-through line: re-run
 `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
 overwrite answer) and paste the closing `applied:` line. A run that dropped the plugin asked
 nothing at step 8 and applies nothing here.
@@ -519,7 +519,7 @@ THIS command: after a successful update, after an abort, after a blocker, and af
 ## Do not
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
-  sibling `setup` command. Never present a layer question without its
+  sibling `init` command. Never present a layer question without its
   `[step n/13 - <name>] ... · next: <name>` banner or without the full-catalog table.
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's

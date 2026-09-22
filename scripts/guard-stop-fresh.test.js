@@ -271,6 +271,17 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
     assistantRow('r2', 'ok', COLD),
     cmd('project-solve-task'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
+
+  // `init` is the guided install's name from Phase 8 (`setup` stays as its alias for a release):
+  // both are the same multi-phase walk, so both take the offer.
+  for (const walk of ['claude-stack:init', 'claude-stack:setup'])
+    assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
+      cmd('project-architecture-analyzer'),
+      assistantRow('i1', 'Captured the architecture doc.', FLOOR),
+      userRow('now install the stack'),
+      assistantRow('i2', 'ok', COLD),
+      cmd(walk),
+    ]), walk), /ALREADY run one/i, `${walk} is a guided walk`);
 });
 
 // ---------------------------------------------------------------------------------------------

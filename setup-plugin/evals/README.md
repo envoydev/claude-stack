@@ -19,7 +19,7 @@ install to change.
 
 | case | prompt | what it proves |
 |---|---|---|
-| `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:setup` instead of rendering its fixed table shapes from the command body |
+| `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:init` instead of rendering its fixed table shapes from the command body |
 | `router-hands-back-one-command` | `/claude-stack` | the router reads the state, names ONE command, and does not start the walk itself |
 
 ## Last recorded run

@@ -88,6 +88,34 @@ test('hooks are leaf picks: kept as-is, emitted, and checked against the catalog
     assert.deepStrictEqual(unknown, [{ category: 'hook', name: 'no-such-hook' }], 'an unknown hook is flagged');
 });
 
+test('a hooks layer ANSWERED with no pick emits the explicit none line; an unanswered one emits nothing', () => {
+    const { emitSelectionFile } = require('./stack-select.js');
+    const c = computeClosure(graph, { hooks: [] });
+    // Without a hook line the installer reads 'every hook' - the pre-hooks-layer default - so a
+    // walk whose user picked None must say so, or every hook runs.
+    assert.ok(/^hook none$/m.test(emitSelectionFile(c, { hooksAnswered: true })), 'None at the hooks layer is written down');
+    // validate and configure emit from a disk inventory, which on the plugin route carries no hook
+    // files at all - that must stay 'not answered', never 'switch all thirteen off'.
+    assert.ok(!/^hook /m.test(emitSelectionFile(c)), 'no flag, no hook line');
+    const picked = computeClosure(graph, { hooks: ['guard-catastrophic-rm'] });
+    assert.ok(!/^hook none$/m.test(emitSelectionFile(picked, { hooksAnswered: true })), 'a real pick never carries the none line');
+});
+
+test('--hooks-answered reaches the emitted file through the CLI', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-answered-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'raw.json'), JSON.stringify({ hooks: [] }));
+        const emit = (extra) => { const out = path.join(dir, 'sel.txt'); execFileSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', path.join(dir, 'raw.json'), '--emit', out, ...extra], { encoding: 'utf8' }); return fs.readFileSync(out, 'utf8'); };
+        assert.ok(/^hook none$/m.test(emit(['--hooks-answered'])));
+        assert.ok(!/^hook /m.test(emit([])));
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('raw.mcps are direct picks the closure keeps and emits', () => {
     const c = computeClosure(graph, { mcps: ['sentry'] });
     assert.ok(c.mcps.includes('sentry'), 'a directly chosen mcp survives the closure');

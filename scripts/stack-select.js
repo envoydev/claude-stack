@@ -447,7 +447,12 @@ function findJudgment(judgment, installed)
     return lines;
 }
 
-function emitSelectionFile(closure)
+// A selection with no `hook` line means 'every hook' to the installers - the default a file written
+// before the hooks layer existed must keep. So a walk that ASKED the hooks layer and got None says so
+// with the one line `hook none`: it counts as an answer and names no shipped hook, so every hook is
+// switched off. Only the caller that asked passes `hooksAnswered`; validate and configure emit from a
+// disk inventory, which on the plugin route holds no hook file at all.
+function emitSelectionFile(closure, { hooksAnswered = false } = {})
 {
     const lines = [];
     for (const s of closure.skills || []) lines.push(`skill ${s}`);
@@ -456,6 +461,7 @@ function emitSelectionFile(closure)
     for (const p of closure.plugins || []) lines.push(`plugin ${p}`);
     for (const r of closure.rules || []) lines.push(`rule ${r}`);
     for (const h of closure.hooks || []) lines.push(`hook ${h}`);
+    if (hooksAnswered && !(closure.hooks || []).length) lines.push('hook none');
     return lines.join('\n') + '\n';
 }
 
@@ -686,7 +692,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -700,7 +706,7 @@ function main(argv)
     const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
 
     const emit = arg('--emit');
-    if (emit) fs.writeFileSync(emit, emitSelectionFile(closure));
+    if (emit) fs.writeFileSync(emit, emitSelectionFile(closure, { hooksAnswered: argv.includes('--hooks-answered') }));
 
     // --table is a pure presentation mode: stdout carries ONLY the table, so the
     // guided walks can paste it verbatim; the required:/orphan: diagnostics are

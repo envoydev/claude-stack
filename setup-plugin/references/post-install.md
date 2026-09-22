@@ -76,7 +76,7 @@ touches no committed file). The lines, minus anything the project already covers
 
 ## 3. Check the shared memory landed
 
-The memory MCP is required in every install, at the level chosen during setup (`global`,
+The memory MCP is required in every install, at the level chosen during init (`global`,
 `scoped`, or `project` - `/claude-stack:status` names it and the database file). The install also
 imported this project's old `MEMORY.md` notes into that database once, and switched off Claude's
 own memory ONLY if that import succeeded - a failed import leaves it on rather than risk losing a

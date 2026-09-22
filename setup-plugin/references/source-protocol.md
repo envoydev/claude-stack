@@ -1,6 +1,6 @@
-# The one-download protocol - shared by the setup, update, configure, and validate commands
+# The one-download protocol - shared by the init, update, configure, and validate commands
 
-The four downloading commands (`/claude-stack:setup` - fresh install, `/claude-stack:update` -
+The four downloading commands (`/claude-stack:init` - fresh install, `/claude-stack:update` -
 refresh + prune, `/claude-stack:configure` - adjust the selection, `/claude-stack:validate` -
 reconcile to the project; `status` never downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
