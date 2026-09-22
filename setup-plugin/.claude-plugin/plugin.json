@@ -7,7 +7,13 @@
     "url": "https://github.com/envoydev"
   },
   "dependencies": [
-    { "name": "superpowers", "marketplace": "claude-plugins-official" }
+    {
+      "name": "superpowers",
+      "marketplace": "claude-plugins-official"
+    },
+    "serena",
+    "context7",
+    "memory"
   ],
   "commands": [
     "./commands/setup.md",

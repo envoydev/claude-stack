@@ -1,7 +1,7 @@
 ---
 name: related-project-analyzer
 description: Use to characterize ONE sibling repository from the host project's perspective - a read-only seat that returns a structured YAML entry and writes NO files. The project-related-context skill is its primary caller - one dispatch per sibling (path or git URL), the entries feeding the generated awareness rule and the related-projects doc; also callable alone for one sibling. Given the host and a sibling location, it reads the sibling (a URL is shallow-cloned into scratch) and returns name, location, the relation (consumes | provides-to | peer | depends-on | embeds, judged from cross-references), first_read (its real orientation docs, verified to exist), and the seam (the shared surface a host change can break - API, package, schema), every claim tied to located files. Do NOT use on the host repo itself (the project-architecture-analyzer skill / architecture-analyzer), to characterize code style (code-style-analyzer), or to edit anything - it returns data, the skill writes.
-tools: mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, Read, Grep, Glob, Bash
+tools: mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
 color: cyan

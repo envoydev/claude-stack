@@ -22,17 +22,29 @@ const REPO = path.resolve(__dirname, '..');
 
 function readSelection(file)
 {
-    const picked = { skills: new Set(), agents: new Set() };
+    const picked = { skills: new Set(), agents: new Set(), mcps: new Set() };
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { throw new Error(`selection-plugins: cannot read ${file} - ${err.message}`); }
     for (const line of raw.split('\n'))
     {
-        const m = line.trim().match(/^(skill|agent)\s+(\S+)$/);
+        const m = line.trim().match(/^(skill|agent|mcp)\s+(\S+)$/);
         if (!m) continue;
+        if (m[1] === 'mcp') { picked.mcps.add(mcpPlugin(m[2])); continue; }
         picked[m[1] === 'skill' ? 'skills' : 'agents'].add(m[2].replace(/\.md$/, ''));
     }
     return picked;
+}
+
+// From Phase 6 every catalog server is carried by a plugin holding exactly ONE server, named
+// exactly like the plugin - which is what makes each tool `mcp__plugin_<n>_<n>__<tool>` for a
+// single `<n>`, and what keeps a project from loading a server it did not pick (all of a plugin's
+// servers load together). So the mapping is the IDENTITY, and the two expanded families are
+// expanded BEFORE they reach here: the caller passes `playwright-chrome`, not `playwright`, and
+// `context7-local` beside `context7` when the install chose the local transport.
+function mcpPlugin(server)
+{
+    return String(server);
 }
 
 function pluginsFor(picked, options = {})
@@ -62,6 +74,11 @@ function pluginsFor(picked, options = {})
             if (home) add(home); else copy[kind].push(item);
         }
     }
+    // The MCP plugins are not part of the skill/agent placement - each is its own entry generated
+    // from the installer's catalog - so they join the set directly. The three locked servers arrive
+    // anyway as `dependencies` of the core, but naming them keeps the log and the stamp honest
+    // about what the project carries, exactly as the per-stack entries are named.
+    for (const plugin of [...(picked.mcps || [])].sort()) wanted.add(plugin);
     return { plugins: [...wanted].sort(), copy };
 }
 
@@ -114,4 +131,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { readSelection, pluginsFor, itemsOf, REPO };
+module.exports = { mcpPlugin, readSelection, pluginsFor, itemsOf, REPO };

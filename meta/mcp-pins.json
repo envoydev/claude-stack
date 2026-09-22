@@ -1,0 +1,31 @@
+{
+  "generatedBy": "refresh-mcp-pins",
+  "note": "The MCP runtime versions the generated plugin entries pin to. Refreshed deliberately with `node scripts/refresh-mcp-pins.js --write`, never during an install. A null version ships unpinned.",
+  "refreshed": "2026-09-22",
+  "pins": {
+    "context7": {
+      "package": "@upstash/context7-mcp",
+      "registry": "npm",
+      "spelling": "@<v>",
+      "version": "4.1.1"
+    },
+    "playwright": {
+      "package": "@playwright/mcp",
+      "registry": "npm",
+      "spelling": "@<v>",
+      "version": "0.0.82"
+    },
+    "serena": {
+      "package": "serena-agent",
+      "registry": "pypi",
+      "spelling": "@<v>",
+      "version": "1.7.0"
+    },
+    "memory": {
+      "package": "mcp-memory-service",
+      "registry": "pypi",
+      "spelling": "==<v>",
+      "version": "11.13.0"
+    }
+  }
+}

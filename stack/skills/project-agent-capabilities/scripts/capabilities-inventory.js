@@ -337,7 +337,9 @@ function routingRow(name, map)
 {
     const key = routingKey(name);
     const hit = map.get(key);
-    if (!hit) return `- \`${name}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__${name}__*\` names the session's own listing shows.`;
+    // A plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, and the stack ships one
+    // plugin per server under the same name - so both halves are this one name.
+    if (!hit) return `- \`${name}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__plugin_${name}_${name}__*\` names the session's own listing shows.`;
     let row = collapse(hit.text).replace(/<server>/g, name);
     if (key !== name) row = row.replace(`\`${key}\``, `\`${name}\``);
     return row;

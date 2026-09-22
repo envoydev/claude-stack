@@ -159,7 +159,7 @@ test('inventory: a playwright browser server gets the catalog row with its own r
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'pw-cli')) });
     assert.match(out, /playwright-chrome\s+registered .*routing: playwright/);
     assert.match(out, /- `playwright-chrome` - drive a browser/);
-    assert.match(out, /mcp__playwright-chrome__browser_snapshot/);
+    assert.match(out, /mcp__plugin_playwright-chrome_playwright-chrome__browser_snapshot/);
 });
 
 test('inventory: a CLI that is not on PATH is `CLI absent`, never an empty plugin list', { skip: posixOnly }, () =>
@@ -306,8 +306,8 @@ const validRule = (docsRoot = '.claude/docs') => [
     'aspnet-implementer, aspnet-verifier',
     '',
     '## MCP routing',
-    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__serena__find_symbol`.',
-    '- `context7` - docs. first call: `ToolSearch select:mcp__context7__query-docs`.',
+    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_serena_serena__find_symbol`.',
+    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_context7_context7__query-docs`.',
     '',
     '## Plugins',
     'superpowers (enabled)',
@@ -350,7 +350,7 @@ test('--verify: an MCP row with no `first call:` exits non-zero and names the se
 {
     const root = project('verify-mcp');
     const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'),
-        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__context7__query-docs`.', '- `appium-mcp` - native-mobile debug, only for that target.'));
+        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_context7_context7__query-docs`.', '- `appium-mcp` - native-mobile debug, only for that target.'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - appium-mcp/);
     assert.match(out, /VERIFY:\s+FAIL \(1 check/);

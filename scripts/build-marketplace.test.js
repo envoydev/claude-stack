@@ -140,9 +140,13 @@ const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-p
 const shippedBy = Object.fromEntries(SHIPPED.plugins.map(e => [e.name, e]));
 
 test('every shipped entry reaches the core through its dependencies, with no cycle', () => {
+    // The core's OWN dependencies are the exception, and by design: the three locked MCP servers are
+    // reached FROM the core, so enabling the core enables them - and depending back on it would be a
+    // cycle. Everything else must reach the core, or enabling it would not enable the baseline.
+    const coreDeps = new Set((shippedBy['claude-stack'].dependencies || []).filter(d => typeof d === 'string'));
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'claude-stack') continue;
+        if (e.name === 'claude-stack' || coreDeps.has(e.name)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -167,7 +171,8 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
     for (const e of SHIPPED.plugins)
         for (const d of e.dependencies || [])
         {
-            if (typeof d === 'string') continue;
+            if (typeof d === 'string') continue;                                  // same marketplace
+            if (d.marketplace === SHIPPED.name) continue;                         // ... written the long way
             assert.strictEqual(e.name, 'claude-stack', `${e.name} reaches outside the marketplace; only the core may`);
             assert.ok(d.marketplace, `${e.name}'s dependency on ${d.name} names no marketplace`);
             reached.add(d.marketplace);
@@ -179,4 +184,19 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
 test('the core depends on superpowers, which is what took it out of the installer pick list', () => {
     const deps = (shippedBy['claude-stack'].dependencies || []).filter(d => typeof d !== 'string');
     assert.deepStrictEqual(deps.map(d => `${d.name}@${d.marketplace}`), ['superpowers@claude-plugins-official']);
+});
+
+// The three servers a project can never drop are dependencies OF the core, in the plain string form
+// a same-marketplace dependency takes - so Claude Code installs them with it and refuses to disable
+// them while it is enabled. That is what 'locked' means now the registrations are gone: not a line
+// in a catalog, but an edge the CLI enforces.
+test('the core pulls in the three locked MCP plugins, which is what keeps them undroppable', () => {
+    const deps = (shippedBy['claude-stack'].dependencies || []).filter(d => typeof d === 'string');
+    assert.deepStrictEqual(deps, ['serena', 'context7', 'memory']);
+    for (const name of deps)
+    {
+        assert.ok(shippedBy[name], `the core depends on ${name}, which this marketplace does not ship`);
+        assert.deepStrictEqual(Object.keys(shippedBy[name].mcpServers || {}), [name],
+            `${name} must carry exactly one server of its own name, or its tools stop being mcp__plugin_${name}_${name}__<tool>`);
+    }
 });

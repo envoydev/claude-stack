@@ -214,7 +214,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Surface | Delivery |
 |---|---|
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
-| MCP | `claude mcp add` -> `<repo>/.mcp.json`, then VERIFIED against the manifest shape and rewritten on drift |
+| MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back |
 | Hooks | `claude-stack-hooks@claude-stack` plugin (all thirteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); `.claude/agents/` keeps only the extras |
@@ -229,18 +229,38 @@ mirrored there in the same sitting.
 
 ## The model these templates encode
 
+- **Every MCP server ships as its OWN plugin, and the tool names say so.** ONE PLUGIN, ONE SERVER,
+  SAME NAME (lint check 53), because a plugin server's tools are addressed
+  `mcp__plugin_<plugin>_<server>__<tool>` - so every shipped tool name is `mcp__plugin_<n>_<n>__<tool>`
+  for a single `<n>`, and lint check 54 fails on a bare `mcp__<server>__` anywhere under `stack/`,
+  `setup-plugin/`, `meta/` or `scripts/` (it resolves to nothing: a `tools:` allowlist written that
+  way silently drops the tool, a `ToolSearch select:` line silently finds none). A plugin's servers
+  all LOAD TOGETHER, which is why a second server in one entry is never an option - it would put a
+  second set of tool schemas in every session of every project that enabled it. The entries are
+  GENERATED (`scripts/build-marketplace.js --mcp-entries`, from `meta/mcp-pins.json`), and
+  `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for the DROPPABLE five -
+  on which the installer re-spells the copied skills, agents, rules and hooks back to the bare names,
+  because those are what a registration writes. That re-spelling needs the FILES, so the switch
+  belongs with `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported, never half-fixed.
+  The LOCKED THREE are plugin-only whenever any plugin route is on: they are hard `dependencies` of
+  the core entry, so the CLI installs them with it, and registering them as well would run each
+  server twice and pay both sets of tool schemas every session. They come back to `.mcp.json` only
+  on the FULL copy route, where the core is never enabled. Every registration and verify pass skips
+  a locked name while the core carries it, and the re-spelling covers only the servers a run
+  actually registered bare.
 - **MCP servers are per-project, never global.** `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
-  signal, or the user's pick. Catalog (8):
+  signal, or the user's pick. Catalog of 8 names, 12 plugins:
   - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
-    entry, expanded after the selection into ONE server per kept browser (`playwright-chrome|msedge|firefox|
+    entry, expanded after the selection into ONE PLUGIN per kept browser (`playwright-chrome|msedge|firefox|
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded via the
-    server's bundled playwright). `--playwright-browsers <csv>` / `--playwright-enabled` (setup/configure ask
-    both); absent = read back, a legacy `playwright` server migrates. The installer writes NO toggle: it prints
-    `/mcp disable` lines, switching is `/mcp` (a server cannot change browser at runtime). Every installed-name
-    reader maps `playwright-*` back to `playwright`; the four playwright agents grant all four servers.
+    server's bundled playwright). One plugin per engine, not one plugin declaring four servers: a project
+    that kept a single browser would otherwise load four copies of playwright's tool schemas in every
+    session, which the registration route never did. `--playwright-browsers <csv>` / `--playwright-enabled`
+    (setup/configure ask both); absent = read back, a legacy `playwright` server migrates. The four
+    playwright agents grant all four.
   - `angular-cli` - framework-specific.
   - `chrome-devtools`, `appium-mcp` - addable only, seeded by no stack (both fail at launch without
     native deps; appium arrives pre-selected on an `appium` / `@wdio/` / `webdriverio` dependency).
@@ -254,8 +274,20 @@ mirrored there in the same sitting.
     scheme - plain `Bearer` rejects it as `invalid_token`. `--sentry-auth oauth` registers no header (the
     browser consent flow); never mix the modes. Never use `${SENTRY_SLUG:-}` (the trailing slash 404s).
     `update` keeps the auth mode and migrates old plain-`Bearer` registrations. `SENTRY_AUTH_TOKEN` is a
-    different credential (sentry-cli uploads).
-  - plus `serena`, `context7` and `memory`.
+    different credential (sentry-cli uploads). On the PLUGIN route the header is built by
+    `stack/mcp/sentry-headers.js` (`headersHelper`, a STRING command), and Claude Code runs a helper a
+    plugin supplies WITHOUT the credential variables from the environment - every name carrying TOKEN,
+    SECRET, PASSWORD, KEY or AUTH is removed
+    (https://code.claude.com/docs/en/mcp, 'Which variables a helper can read'). Both keys it reads are
+    such names, so a shell export reaches it on no plugin install: the ACCOUNT settings.json `env`
+    block is the source that answers, which is where the installers write the token. `CLAUDE_CONFIG_DIR`
+    survives the scrub, so a `--space` install still finds its own account file.
+  - plus `serena`, `context7` and `memory`. context7 ships TWO plugins - `context7` (the hosted
+    remote, a hard dependency of the core, so it can never be dropped) and `context7-local` (the npx
+    transport, added by `--context7 local`). Two entries rather than two servers in one, for the same
+    load-together reason; in local mode both are installed and the run prints the `/mcp disable
+    context7` line. The 24 agents that grant context7 grant BOTH spellings, because a `tools:` list
+    that omits the one this install uses fails silently.
 - **`memory` is required like serena and context7**, chosen per install by LEVEL rather than by
   a droppable pick: `global` (`~/.memory-mcp/memory.db`, every Claude account and Cursor on the
   machine - the default for a fresh install), `scoped` (`~/.memory-mcp/memory_<space>.db`,
@@ -376,7 +408,10 @@ mirrored there in the same sitting.
 
 ## Maintenance gotchas
 
-- **`.mcp.json` is registered by the CLI and VERIFIED by the installer - fix the manifest, not the
+- **`.mcp.json` is the COPY ROUTE only** (`CLAUDE_STACK_MCPS_VIA_PLUGIN=false`); on the default
+  plugin route the installer registers nothing and prunes every stack name it ever wrote, including
+  the four `playwright-*` spellings, out of `.mcp.json` and out of `enabledMcpjsonServers`. On that
+  copy route it is **registered by the CLI and VERIFIED by the installer - fix the manifest, not the
   output.** `claude mcp add` over an existing name prints 'already exists' and exits 0, so a failed
   `remove` looks like success. `verify_mcps` / `Test-McpRegistrations` read the result back: at project
   scope `.mcp.json` is parsed and drifted entries rewritten (`mcp repaired: <name>`); at user scope the

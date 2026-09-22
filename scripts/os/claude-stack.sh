@@ -911,10 +911,45 @@ HOOKS=(
 # copy route, which is what the temp-project matrix uses to prove both.
 HOOKS_VIA_PLUGIN="${CLAUDE_STACK_HOOKS_VIA_PLUGIN:-true}"
 
+# The same switch for the MCP servers (Phase 6). true (the default from 1.0.0) means the eight
+# catalog servers arrive through the plugins NAMED for them - serena, context7, memory, playwright,
+# angular-cli, chrome-devtools, appium-mcp, sentry - so this script registers nothing and an existing
+# install's stack registrations are REMOVED in the same run that enables the plugins. The plugin
+# route is what makes the servers per-project without a per-project file: <repo>/.mcp.json stops
+# being a stack-owned artifact and holds only what the project itself added. Set to false to keep
+# the 0.2.x `claude mcp add` route, which is what the temp-project matrix uses to prove both.
+MCPS_VIA_PLUGIN="${CLAUDE_STACK_MCPS_VIA_PLUGIN:-true}"
+# The three servers that can never be dropped are hard `dependencies` of the CORE plugin entry, so
+# Claude Code installs them with it whatever this switch says. That makes them plugin-only whenever
+# the core is enabled at all - registering them as well would run each one twice and pay both sets
+# of tool schemas every session. They come back to .mcp.json only on the FULL copy route, where no
+# plugin route is on and the core is never enabled.
+MCPS_LOCKED="serena context7 memory"
+_core_plugin_on() {
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ]
+}
+_is_locked_mcp() { case " $MCPS_LOCKED " in *" $1 "*) return 0 ;; esac; return 1; }
+# The servers this run registers under their BARE names - the ones a tool name must be spelled for.
+_bare_named_mcps() {
+  [ "$MCPS_VIA_PLUGIN" = "true" ] && return 0
+  local entry name
+  for entry in ${MCPS[@]+"${MCPS[@]}"}; do
+    name="${entry%%|*}"
+    _is_locked_mcp "$name" && _core_plugin_on && continue
+    printf '%s\n' "$name"
+  done
+}
+
 # The manifest as SHIPPED, taken before any selection filter narrows HOOKS. The stamp records these
 # names so a later --installed-only run can tell a hook the user DROPPED (shipped then, absent now)
 # from one this release ADDED (not shipped then) - on disk the two look the same.
 HOOKS_CATALOG=(${HOOKS[@]+"${HOOKS[@]}"})
+
+# The MCP manifest as SHIPPED, for the same reason: the selection filter below narrows MCPS to what
+# THIS project picked, and the plugin-route retirement has to name every server the stack ever
+# registered here - including the ones this run did not select, which an earlier install may well
+# have written into .mcp.json.
+MCPS_CATALOG=(${MCPS[@]+"${MCPS[@]}"})
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
 # .claude/settings.json alongside the hooks on INSTALL (idempotent, union-merged - a consuming project's
@@ -1464,35 +1499,50 @@ stack_src() {
 # on any error, SKILLS_VIA_PLUGIN drops to false and everything is copied as before. An install that
 # cannot compute its plugin set still ends with a working stack.
 _STACK_PLUGINS_RESOLVED=false
-STACK_SKILL_PLUGINS=()
+STACK_SEL_PLUGINS=()
 STACK_RUN_PLUGINS=()
 PLUGIN_EXTRA_SKILLS=()
 PLUGIN_EXTRA_AGENTS=()
 resolve_stack_plugins() {
   [ "$_STACK_PLUGINS_RESOLVED" = true ] && return 0
   _STACK_PLUGINS_RESOLVED=true
-  [ "$SKILLS_VIA_PLUGIN" = "true" ] || return 0
+  # Either route needs the closure: the skills/agents live in the per-stack entries and, from
+  # Phase 6, so do the MCP servers - one plugin named for each catalog server.
+  [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ] || return 0
   local why=""
   command -v node >/dev/null 2>&1 || why="node not found"
   [ -n "$why" ] || stack_src || why="no source snapshot"
   [ -n "$why" ] || [ -f "$STACK_SRC/scripts/selection-plugins.js" ] || why="selection-plugins.js is not in this source"
   if [ -n "$why" ]; then
     SKILLS_VIA_PLUGIN=false
-    log "  !! $why - skills and agents stay on the copy route"
+    MCPS_VIA_PLUGIN=false; _refresh_retired_mcps
+    log "  !! $why - skills, agents and MCP servers stay on the copy route"
     return 0
   fi
   local tmp entry name out
   tmp="$(mktemp -d)" || { SKILLS_VIA_PLUGIN=false; return 0; }
   {
-    for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do printf 'skill %s\n' "${entry#*|}"; done
-    for entry in ${AGENTS[@]+"${AGENTS[@]}"}; do name="${entry%%::*}"; printf 'agent %s\n' "${name%.md}"; done
+    if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then
+      for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do printf 'skill %s\n' "${entry#*|}"; done
+      for entry in ${AGENTS[@]+"${AGENTS[@]}"}; do name="${entry%%::*}"; printf 'agent %s\n' "${name%.md}"; done
+    fi
+    # The selection's MCP picks are names, one per catalog row; selection-plugins.js folds the two
+    # expanded families (playwright-<engine>, context7-<remote|local>) back onto their one plugin.
+    if [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+      for entry in ${MCPS[@]+"${MCPS[@]}"}; do printf 'mcp %s\n' "${entry%%|*}"; done
+      # The local context7 transport is its OWN entry beside the hosted one - two servers in one
+      # plugin both load, so the local mode adds a plugin rather than swapping a server. The hosted
+      # one stays installed because the core depends on it; the summary prints the /mcp disable line.
+      [ "$CONTEXT7_MODE" = "local" ] && printf 'mcp context7-local\n'
+    fi
   } > "$tmp/selection.txt"
   if ! out="$(node "$STACK_SRC/scripts/selection-plugins.js" --selection "$tmp/selection.txt" 2>"$tmp/err")"; then
     SKILLS_VIA_PLUGIN=false
-    log "  !! plugin set not computed ($(head -1 "$tmp/err" 2>/dev/null)) - skills and agents stay on the copy route"
+    MCPS_VIA_PLUGIN=false; _refresh_retired_mcps
+    log "  !! plugin set not computed ($(head -1 "$tmp/err" 2>/dev/null)) - skills, agents and MCP servers stay on the copy route"
     rm -rf "$tmp"; return 0
   fi
-  while IFS= read -r name; do [ -n "$name" ] && STACK_SKILL_PLUGINS+=("$name"); done <<EOF
+  while IFS= read -r name; do [ -n "$name" ] && STACK_SEL_PLUGINS+=("$name"); done <<EOF
 $out
 EOF
   out="$(node "$STACK_SRC/scripts/selection-plugins.js" --selection "$tmp/selection.txt" --copy 2>/dev/null || true)"
@@ -1505,7 +1555,7 @@ EOF
 $out
 EOF
   rm -rf "$tmp"
-  log "plugins carry ${#STACK_SKILL_PLUGINS[@]} entr(ies); extras copied: ${#PLUGIN_EXTRA_SKILLS[@]} skill(s), ${#PLUGIN_EXTRA_AGENTS[@]} agent(s)"
+  log "plugins carry ${#STACK_SEL_PLUGINS[@]} entr(ies); extras copied: ${#PLUGIN_EXTRA_SKILLS[@]} skill(s), ${#PLUGIN_EXTRA_AGENTS[@]} agent(s)"
 }
 
 _is_extra() {  # $1 = name, rest = the extras list -> 0 when the name is one of them
@@ -1562,12 +1612,17 @@ ensure_official_marketplace() {
 # Fills the GLOBAL STACK_RUN_PLUGINS - a nameref would be cleaner and macOS still ships bash 3.2.
 _stack_plugin_set() {
   STACK_RUN_PLUGINS=()
-  resolve_stack_plugins      # may drop SKILLS_VIA_PLUGIN to false, so it runs before the test below
-  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || return 0
+  resolve_stack_plugins      # may drop SKILLS_VIA_PLUGIN / MCPS_VIA_PLUGIN to false, so it runs before the test below
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ] || return 0
   claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
   claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
   if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then STACK_RUN_PLUGINS+=(${STACK_PLUGINS[@]+"${STACK_PLUGINS[@]}"}); fi
-  if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then STACK_RUN_PLUGINS+=(${STACK_SKILL_PLUGINS[@]+"${STACK_SKILL_PLUGINS[@]}"}); fi
+  # ONE closure list for both routes: resolve_stack_plugins fed it skill/agent lines only when
+  # SKILLS_VIA_PLUGIN is on and mcp lines only when MCPS_VIA_PLUGIN is, so whatever it holds is
+  # exactly what this combination of routes needs enabled.
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+    STACK_RUN_PLUGINS+=(${STACK_SEL_PLUGINS[@]+"${STACK_SEL_PLUGINS[@]}"})
+  fi
 }
 
 # The core's dependency plugins, but only when this run enables no stack plugin - see
@@ -1676,6 +1731,10 @@ _mcp_register() {  # $1 = name $2 = manifest args - the `claude mcp add` call fo
 # ones). The CLI route runs first; at project scope the stack-owned .mcp.json entry is then removed
 # directly, because a `remove` that did not take exits 0 like one that did (see the verify pass).
 prune_playwright_servers() {
+  # PLUGIN ROUTE: the four engines are declared in the one `playwright` plugin and the user keeps
+  # one enabled with /mcp disable, so there is no per-engine registration to drop. The retirement
+  # above already removes any the copy route left behind.
+  [ "$MCPS_VIA_PLUGIN" = "true" ] && return 0
   [ -n "$PLAYWRIGHT_BROWSERS" ] || return 0
   local name drop=""
   for name in playwright playwright-chrome playwright-msedge playwright-firefox playwright-webkit; do
@@ -1705,9 +1764,23 @@ for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one
 
 install_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
+  # PLUGIN ROUTE: the servers come from the plugins named for them, so this script registers none.
+  # It still PRUNES, because an install over a 0.2.x project is exactly where the stack's old
+  # registrations have to come out - leaving them would run every server twice, once from
+  # .mcp.json and once from the plugin, and pay both sets of tool schemas on every session.
+  if [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+    prune_retired_mcps
+    log "mcp: carried by the plugins (serena, context7, memory, and the picks) - nothing registered here"
+    return 0
+  fi
+  prune_retired_mcps   # the locked three, when the core plugin carries them (see MCPS_LOCKED)
   local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    if _is_locked_mcp "$name" && _core_plugin_on; then
+      log "  mcp $name: carried by the core plugin's dependencies - not registered here"
+      continue
+    fi
     # 'already configured' skips the ADD, never the verify pass below: a name registered by an older
     # release answers `mcp get` in its OLD shape, so an install over such a project must still repair it.
     if claude mcp get "$name" >/dev/null 2>&1; then echo "  mcp $name already configured - skipping"; continue; fi
@@ -1810,6 +1883,9 @@ _verify_mcps_project() {
   : > "$tmpout"
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    # A locked server the core plugin carries has no registration to verify, and writing the shape
+    # back would put the entry the prune just removed straight back into the file.
+    _is_locked_mcp "$name" && _core_plugin_on && continue
     _mcp_expect_line "$name" "$args" >> "$tmpin"
   done
   # `claude mcp add --scope project` writes <cwd>/.mcp.json - the same file this reads back.
@@ -1843,6 +1919,9 @@ _verify_mcps_user() {
   local entry name args line kind want have
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    # A locked server the core plugin carries is not registered at all, so there is nothing to read
+    # back and a 'drifted' verdict here would re-add the entry the prune just removed.
+    _is_locked_mcp "$name" && _core_plugin_on && continue
     line="$(_mcp_expect_line "$name" "$args")"
     kind="$(printf '%s' "$line" | cut -f2)"
     if [ "$kind" = "http" ]; then
@@ -1873,6 +1952,10 @@ _verify_mcps_user() {
 verify_mcps() {
   [ "$CLAUDE_MISSING" = true ] && return 0
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }
+  # PLUGIN ROUTE: there is no stack registration left to read back. Running this pass anyway would
+  # be worse than useless - it rewrites .mcp.json entries to the manifest shape, which is precisely
+  # what the run just removed.
+  [ "$MCPS_VIA_PLUGIN" = "true" ] && return 0
   if [ "$CLAUDE_SCOPE" = "project" ]; then
     command -v python3 >/dev/null 2>&1 || { log "  !! python3 not found - MCP registrations were not verified"; return 0; }
     _verify_mcps_project
@@ -2246,12 +2329,18 @@ write_stamp() {
   _stamp_rules_dir="$(git rev-parse --show-toplevel 2>/dev/null || true)"
   [ -z "$_stamp_rules_dir" ] || _stamp_rules_dir="$_stamp_rules_dir/.claude/rules"
   case "$CLAUDE_SCOPE" in user) _stamp_mcp_file="$ACCOUNT_CLAUDE_JSON" ;; *) _stamp_mcp_file="$PWD/.mcp.json" ;; esac
+  # A server is CARRIED either way: registered in that file, or riding the plugin named for it. On
+  # the plugin route there is no .mcp.json at all, and a stamp that only read the file would record
+  # an install with none of the locked three - which is the opposite of what it is for.
   if command -v node >/dev/null 2>&1 && [ -f "$STACK_SRC/meta/recommendations.json" ]; then
-    _stamp_always="$(node -e 'const fs=require("fs"),path=require("path");const [recs,mcpFile,rulesDir]=process.argv.slice(1);
-let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,"utf8")).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,"utf8")).mcpServers||{};}catch{}
+    _stamp_always="$(node -e 'const fs=require("fs"),path=require("path");const [recs,mcpFile,settings,rulesDir]=process.argv.slice(1);
+let a={},s={},p={};try{a=JSON.parse(fs.readFileSync(recs,"utf8")).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,"utf8")).mcpServers||{};}catch{}
+try{p=JSON.parse(fs.readFileSync(settings,"utf8")).enabledPlugins||{};}catch{}
+const fam=(n)=>String(n).replace(/^playwright-.*/,"playwright").replace(/^context7-local$/,"context7");
+const plugins=new Set(Object.keys(p).map((k)=>fam(k.split("@")[0])));
 const list=(x)=>(Array.isArray(x)?x:[]);
 console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+".md"))).join(","));
-console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(","));' "$STACK_SRC/meta/recommendations.json" "$_stamp_mcp_file" "$_stamp_rules_dir" 2>/dev/null || true)"
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)||plugins.has(m)).join(","));' "$STACK_SRC/meta/recommendations.json" "$_stamp_mcp_file" "${_stamp_rules_dir:+${_stamp_rules_dir%/rules}/settings.json}" "$_stamp_rules_dir" 2>/dev/null || true)"
     _stamp_always_rules="$(printf '%s\n' "$_stamp_always" | sed -n 1p)"
     _stamp_always_mcps="$(printf '%s\n' "$_stamp_always" | sed -n 2p)"
   fi
@@ -2310,11 +2399,15 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
 import json, os, subprocess, sys
 path = sys.argv[1]
 deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, hooks_off, bucket = [], [], [], [], [], [], None
+memory_db, sentry_auth, mcp_off = [], [], []
 hooks_answered = False
 for a in sys.argv[2:]:
     if a == "--VERSIONING": bucket = versioning_flag; continue
+    if a == "--MEMORY-DB": bucket = memory_db; continue
+    if a == "--SENTRY-AUTH": bucket = sentry_auth; continue
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
+    if a == "--MCP-OFF": bucket = mcp_off; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
     if a == "--RETIRED-DENY": bucket = retired_deny; continue
     if a == "--HOOKS-OFF": bucket = hooks_off; hooks_answered = True; continue
@@ -2447,6 +2540,14 @@ enabled = data.setdefault("enabledMcpjsonServers", [])
 for name in mcp_names:
     if name not in enabled:
         enabled.append(name); changed = True
+# ... and DROP the names this run unregistered. A server carried by a plugin is trusted through the
+# plugin, never through this list, so a leftover entry names a `.mcp.json` server that no longer
+# exists - dead config that reads like a working knob. A name the run still registers is never in
+# this list (the two buckets are disjoint by construction).
+for name in mcp_off:
+    if name in enabled:
+        enabled.remove(name); changed = True
+        print("  settings.json: dropped enabledMcpjsonServers entry %s (no longer registered here)" % name)
 # Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
 # key, BEFORE the absent-only seeds below - seeding first would write the default over a value the
 # user had set under the old name. One pair per rename; keep the list identical in both installer
@@ -2543,6 +2644,16 @@ elif "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     _kept_out = not _committed and (bool(_dnames) or _dignored(_droot, "/".join(_dparts)))
     env["CLAUDE_STACK_DOCS_VERSIONING"] = "local" if _kept_out else "git"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])
+# The memory db path and the sentry auth mode are what the PLUGIN route's launcher and headers
+# helper read - a plugin MCP entry cannot expand a PROJECT env key (measured), but a launcher whose
+# cwd is the project can read this file itself. Written, not seeded: both track a choice this run
+# just made, so a level change or an auth switch has to land or the server keeps the old one.
+if memory_db and memory_db[0] and env.get("CLAUDE_STACK_MEMORY_DB") != memory_db[0]:
+    env["CLAUDE_STACK_MEMORY_DB"] = memory_db[0]; changed = True
+    print("  settings.json env: CLAUDE_STACK_MEMORY_DB -> %s" % memory_db[0])
+if sentry_auth and sentry_auth[0] and env.get("CLAUDE_STACK_SENTRY_AUTH") != sentry_auth[0]:
+    env["CLAUDE_STACK_SENTRY_AUTH"] = sentry_auth[0]; changed = True
+    print("  settings.json env: CLAUDE_STACK_SENTRY_AUTH -> %s" % sentry_auth[0])
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
@@ -2615,9 +2726,21 @@ else:
     print("  settings.json: hooks + secret deny-list + mcp allow-list + env defaults already present - unchanged")
 PY
 )
-  local -a mcp_names; mcp_names=()
-  for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${wire_hooks[@]+"${wire_hooks[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" ${off_args[@]+"${off_args[@]}"} --VERSIONING "$DOCS_VERSIONING" || log "  !! settings.json wiring failed"
+  # Pre-approve exactly what this run registered in .mcp.json - which on the plugin route is
+  # nothing, and on the copy route is the droppable picks only (a server carried by a plugin is
+  # trusted through its plugin). Everything else comes OUT: a leftover entry names a `.mcp.json`
+  # server that no longer exists, which reads like a working knob.
+  local -a mcp_names mcp_off; mcp_names=(); mcp_off=()
+  local _m _n
+  while IFS= read -r _m; do [ -n "$_m" ] && mcp_names+=("$_m"); done <<EOF
+$(_bare_named_mcps)
+EOF
+  for _m in ${MCPS[@]+"${MCPS[@]}"}; do
+    _n="${_m%%|*}"                                       # server name = the token before the first '|'
+    case " ${mcp_names[*]-} " in *" $_n "*) ;; *) mcp_off+=("$_n") ;; esac
+  done
+  mcp_off+=(${RETIRED_MCPS[@]+"${RETIRED_MCPS[@]}"})
+  printf '%s\n' ${wire_hooks[@]+"${wire_hooks[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --MCP-OFF ${mcp_off[@]+"${mcp_off[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" ${off_args[@]+"${off_args[@]}"} --VERSIONING "$DOCS_VERSIONING" --MEMORY-DB "$MEMORY_DB_PATH" --SENTRY-AUTH "${SENTRY_AUTH:-token}" || log "  !! settings.json wiring failed"
 }
 
 # ---------------------------------------------------------------------------
@@ -2746,6 +2869,30 @@ RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-veri
 # the stack still SHIPS but this project no longer needs is a different question - that is
 # /claude-stack:validate's whole-stack-absent pass, not a retirement.
 RETIRED_MCPS=()
+# The plugin route retires the whole REGISTRATION catalog, the same way HOOKS_VIA_PLUGIN retires the
+# copied hooks: the servers now arrive through the plugins named for them, so every stack name this
+# script ever wrote into .mcp.json must come back OUT in the run that enables those plugins, or the
+# project runs each server twice - once from the file and once from the plugin - and pays both sets
+# of tool schemas on every session. Appended HERE, at load, because update_mcps prunes before it
+# would otherwise register. The playwright family is expanded by hand: the catalog carries one
+# `playwright` row but an install may have written any of the four per-engine names.
+# Rebuildable, not a one-shot append: resolve_stack_plugins can still drop the run back to the
+# registration route (no node, no snapshot), and a RETIRED_MCPS frozen at load would then unregister
+# the very servers that route is about to write. It is called once here and once from that fallback.
+_MCPS_RETIRED_AUTHORED=(${RETIRED_MCPS[@]+"${RETIRED_MCPS[@]}"})
+_refresh_retired_mcps() {
+  RETIRED_MCPS=(${_MCPS_RETIRED_AUTHORED[@]+"${_MCPS_RETIRED_AUTHORED[@]}"})
+  local e
+  if [ "$MCPS_VIA_PLUGIN" != "true" ]; then
+    # Copy route, but the core plugin is still on (hooks or skills): its dependencies already carry
+    # the locked three, so any registration of them this script ever wrote has to come out.
+    _core_plugin_on && for e in $MCPS_LOCKED; do RETIRED_MCPS+=("$e"); done
+    return 0
+  fi
+  for e in ${MCPS_CATALOG[@]+"${MCPS_CATALOG[@]}"}; do RETIRED_MCPS+=("${e%%|*}"); done
+  RETIRED_MCPS+=(playwright-chrome playwright-msedge playwright-firefox playwright-webkit)
+}
+_refresh_retired_mcps
 # Plugins this stack no longer ships AT ALL. Empty today, and as with RETIRED_MCPS it is the
 # MECHANISM that matters: skills, agents, rules, hooks and MCPs each have a retired list and plugins
 # had none, so a plugin the stack dropped stayed installed AND ENABLED on every existing machine
@@ -2919,6 +3066,13 @@ prune_retired_mcps() {  # UPDATE: unregister the known retired server names (RET
 update_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   prune_retired_mcps
+  # PLUGIN ROUTE: the prune above IS the update - `claude plugin update` refreshed the entries, and
+  # the pins they carry are release-time values from meta/mcp-pins.json, so there is nothing to
+  # re-resolve and nothing to re-register.
+  if [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+    log "mcp: carried by the plugins - registrations pruned, nothing re-registered"
+    return 0
+  fi
   # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
   # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
   # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
@@ -2926,6 +3080,10 @@ update_mcps() {
   local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    if _is_locked_mcp "$name" && _core_plugin_on; then
+      log "  mcp $name: carried by the core plugin's dependencies - not re-registered here"
+      continue
+    fi
     log "mcp refresh [$CLAUDE_SCOPE]: $name"
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
     _mcp_register "$name" "$args" || note_failure "mcp $name failed"
@@ -3061,12 +3219,67 @@ fi
 prerequisites_check
 install_github_cli
 
+# COPY ROUTE ONLY. Everything the stack ships names an MCP tool by its PLUGIN spelling,
+# `mcp__plugin_<plugin>_<server>__<tool>` - because from 1.0.0 every stack server arrives through a
+# plugin named for it. With CLAUDE_STACK_MCPS_VIA_PLUGIN=false the servers are registered in
+# .mcp.json under their BARE names instead, and those tool names would resolve to nothing: an agent
+# `tools:` allowlist written the plugin way silently drops the tool, and a `ToolSearch select:` line
+# written that way silently finds none. So the copied files are re-spelled back, in place, right
+# after the copies land. One sed per file, only on files that carry the string.
+# The skills and agents a PLUGIN carries cannot be re-spelled - they are read from the plugin cache,
+# not from .claude/ - so the mixed combination is reported rather than half-fixed.
+downconvert_mcp_tool_names() {
+  local bare
+  bare="$(_bare_named_mcps | tr '\n' ' ')"
+  [ -n "${bare// /}" ] || return 0            # every server this run set up rides a plugin
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then
+    log "  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: ${bare% } - set CLAUDE_STACK_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route"
+    return 0
+  fi
+  local root skills
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || root="$PWD"
+  case "$CLAUDE_SCOPE" in user) skills="$CONFIG_DIR/skills" ;; *) skills="$PWD/.claude/skills" ;; esac
+  BARE_MCPS="$bare" python3 - "$skills" "$root/.claude/agents" "$root/.claude/rules" "$root/.claude/hooks" <<'DOWNCONV' || log "  !! copy route: the MCP tool-name re-spelling failed - the copied files keep the plugin spelling"
+import os, re, sys
+# Only the servers THIS run registered under a bare name. The three locked ones ride the core
+# plugin's dependencies whenever any plugin route is on, so on a hooks-only copy route their tool
+# names must stay plugin-spelled while the droppable picks are re-spelled - re-spelling everything
+# was the bug this list exists to prevent.
+bare = set(os.environ.get("BARE_MCPS", "").split())
+if not bare:
+    raise SystemExit(0)
+# One plugin carries one server under the SAME name, so the two halves are the same word; matching
+# them separately, rather than with a backreference that BSD sed does not honour, keeps this
+# portable - and the SERVER half is the name a registration actually writes.
+pat = re.compile(r"mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__")
+sub = lambda m: ("mcp__%s__" % m.group(1)) if m.group(1) in bare else m.group(0)
+n = 0
+for target in sys.argv[1:]:
+    for dirpath, _dirs, files in os.walk(target):
+        for name in files:
+            if not name.endswith((".md", ".mdc", ".js", ".json", ".txt")):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                body = open(path, encoding="utf-8").read()
+            except Exception:
+                continue
+            fixed = pat.sub(sub, body)
+            if fixed != body:
+                open(path, "w", encoding="utf-8").write(fixed)
+                n += 1
+if n:
+    print("  copy route: MCP tool names re-spelled to the registered server names in %d file(s)" % n)
+DOWNCONV
+  return 0
+}
+
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  _bootstrap_stack_source; install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser
+  _bootstrap_stack_source; install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser; downconvert_mcp_tool_names
 else
-  _bootstrap_stack_source; update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser
+  _bootstrap_stack_source; update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser; downconvert_mcp_tool_names
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed
@@ -3121,6 +3334,12 @@ fi
 if [ -n "$PLAYWRIGHT_ENABLED" ] && [ -n "$PLAYWRIGHT_BROWSERS" ]; then
   _pw_off=""; for _pw_e in $PLAYWRIGHT_BROWSERS; do [ "$_pw_e" = "$PLAYWRIGHT_ENABLED" ] || _pw_off="$_pw_off, /mcp disable playwright-$_pw_e"; done
   [ -n "$_pw_off" ] && log "  - playwright: keep playwright-$PLAYWRIGHT_ENABLED on - run once in Claude Code: ${_pw_off#, } (switch any time with /mcp enable / disable)"
+fi
+# Both context7 entries are installed in local mode (the hosted one is a dependency of the core and
+# cannot be dropped), and both servers load until one is switched off. Its own `if`, not the
+# playwright one above: that block only runs when this run was told which engine stays on.
+if [ "$CONTEXT7_MODE" = "local" ] && [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+  log "  - context7: the local transport is on - run once in Claude Code: /mcp disable context7 (or leave both and pay two sets of doc tools)"
 fi
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 # The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says

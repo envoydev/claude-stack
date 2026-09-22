@@ -87,7 +87,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   `.claude/agents/*.md` - but skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set; rules = `.claude/rules/*.md` (exclude the GENERATED
   `baseline-project-*.md` awareness rules and `project-code-style.md` - they are written by capture skills, never installed);
   hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js` - the graph catalog stores bare names, and `stack-select.js` also strips a stray suffix;
-  mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
+  mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
   apply to THIS project (project scope at this path, or user scope) - the listing is machine-global,
   so an unfiltered read folds sibling repos' plugins into this project's selection (measured: two
   near-miss removals/updates of a sibling's plugin). The filter is the shipped script every command
@@ -291,9 +291,11 @@ or to pick `--sentry-auth oauth` instead. Both values already present: say so in
 line and ask nothing. An existing registration needs no auth flag: `update` reads it back and keeps
 its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
-Whenever playwright is PRESENT after this round, name the browsers installed today - one server per
-browser, `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single `playwright`
-server counts as its `--browser` value, `chrome` when it has none, and is migrated by the run - and ask in
+Whenever playwright is PRESENT after this round, name the browsers installed today - one per browser,
+read the same ROUTE-decided way as the rest: a `playwright-<browser>@claude-stack` entry in the plugins
+listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
+`playwright` server counts as its `--browser` value, `chrome` when it has none, and is migrated by the
+run - and ask in
 the same turn TWO questions: which browsers to keep (multi-select: `chrome` = the machine's Google Chrome,
 `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are
 Playwright's own builds, downloaded by the installer) and which ONE stays enabled. Pass both at step 12 as

@@ -91,6 +91,20 @@ function sandbox(mcpServers)
         CLAUDE_STUB_MCPGET: path.join(work, 'mcp-get.txt'), CLAUDE_STUB_MCPGET_NEW: path.join(work, 'mcp-get-after.txt'),
         CLAUDE_STUB_MCPLIST: path.join(work, 'mcp-list.txt'),
         NPX_STUB_LOG: npxLog,
+        // This file is about the `claude mcp add` ROUTE - registering servers into .mcp.json, reading
+        // them back, repairing drift, and the per-engine playwright expansion. From Phase 6 that route
+        // is off by default: the eight servers arrive through the plugins named for them and the
+        // installer registers nothing. The route still ships, still has to work for the migration
+        // window, and this is what proves it - so every case here pins it ON, and the plugin-route
+        // cases below turn it back off explicitly.
+        CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false',
+        // The skills switch goes with it, for the reason Phase 6's R7 records: serena, context7 and
+        // memory are hard `dependencies` of the core plugin entry, so while ANY plugin route is on
+        // the core carries them and the installer registers none of the three - registering as well
+        // would run each server twice. The full copy route is the only place their registrations
+        // exist to be verified, which is what this file is for.
+        CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false',
+        CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false',
     };
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     return { work, repo, acct, sel, env, log, npxLog, plugins, mcpList: path.join(work, 'mcp-list.txt'), mcpGet: path.join(work, 'mcp-get.txt'), mcpGetAfter: path.join(work, 'mcp-get-after.txt') };
@@ -104,6 +118,18 @@ const runPs = (sb, action, args = [], scope = 'project') => execFileSync('pwsh',
     { cwd: sb.repo, encoding: 'utf8', env: sb.env });
 
 const servers = (sb) => JSON.parse(fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8')).mcpServers;
+
+// The sandbox above pins the FULL COPY ROUTE, because that is what this file verifies. A handful of
+// cases here are about the DEFAULT plugin routes instead (the hooks entry, the computed closure, the
+// superpowers dependency, the shadow-copy prune) - they drop the pins and let the installer's own
+// defaults decide.
+const DEFAULT_ROUTES = (sb) =>
+{
+    delete sb.env.CLAUDE_STACK_MCPS_VIA_PLUGIN;
+    delete sb.env.CLAUDE_STACK_SKILLS_VIA_PLUGIN;
+    delete sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN;
+    return sb;
+};
 const calls = (sb) => (fs.existsSync(sb.log) ? fs.readFileSync(sb.log, 'utf8') : '');
 
 function assertSentryRepaired(sb, out, twin)
@@ -230,7 +256,7 @@ for (const twin of ['sh', 'ps1'])
 {
     test(`${twin}: the plugin route registers the stack marketplace, installs the hooks plugin, and copies no guard`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
-        const sb = sandbox({ sentry: STALE_SENTRY });
+        const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         try
         {
             twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
@@ -276,7 +302,7 @@ for (const twin of ['sh', 'ps1'])
     // plugin's own, with no error and no sign in the transcript.
     test(`${twin}: the plugin route enables the computed closure and copies no skill a plugin carries`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
-        const sb = sandbox({ sentry: STALE_SENTRY });
+        const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         try
         {
             twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
@@ -769,7 +795,7 @@ for (const twin of ['sh', 'ps1'])
 {
     test(`${twin}: the plugin route lets the core entry carry superpowers - no install call of our own`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
-        const sb = sandbox({ sentry: STALE_SENTRY });
+        const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         try
         {
             twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
@@ -816,7 +842,7 @@ for (const twin of ['sh', 'ps1'])
 {
     test(`${twin}: a stack plugin that fails while superpowers is disabled prints the enable line, not just the failure`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
-        const sb = sandbox({ sentry: STALE_SENTRY });
+        const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         fs.writeFileSync(sb.plugins, JSON.stringify([
             { id: 'superpowers@claude-plugins-official', version: '6.2.0', scope: 'user', enabled: false },
         ]));
@@ -887,7 +913,7 @@ for (const twin of ['sh', 'ps1'])
 {
     test(`${twin}: the plugin route removes BOTH a plugin-carried copy and a retired-upstream one`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
-        const sb = sandbox({ sentry: STALE_SENTRY });
+        const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         const skills = path.join(sb.repo, '.claude', 'skills');
         const agents = path.join(sb.repo, '.claude', 'agents');
         // what a 0.2.x install left behind: one skill a plugin now carries, one retired upstream,
@@ -910,5 +936,136 @@ for (const twin of ['sh', 'ps1'])
             assert.ok(fs.existsSync(path.join(agents, 'my-own-agent.md')), `${twin}: an agent the project wrote itself was removed`);
         }
         finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
+// ---------------------------------------------------------------------------------------------
+// PHASE 6 - the plugin route. The eight catalog servers arrive through the plugins NAMED for them
+// (serena, context7, memory, playwright, angular-cli, chrome-devtools, appium-mcp, sentry), so this
+// script registers nothing at all. What it still has to do is take the OLD registrations out: a
+// project that carries both would run every server twice, once from .mcp.json and once from the
+// plugin, and pay both sets of tool schemas on every session - the exact cost class RETIRED_MCPS
+// was created for (24 playwright schemas re-injected into a headless backend project, measured).
+const PLUGIN_ROUTE_MCPS = (sb) =>
+{
+    sb.env.CLAUDE_STACK_MCPS_VIA_PLUGIN = 'true';
+    // ... and the other two back to their own defaults, since the sandbox pins the full copy route.
+    delete sb.env.CLAUDE_STACK_SKILLS_VIA_PLUGIN;
+    delete sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN;
+    return sb;
+};
+
+// The locked three ride the CORE plugin's dependencies whenever any plugin route is on, so the
+// installer registers none of them there (R7). This is the middle case: the MCP route is off, but
+// the hooks route keeps the core enabled - the droppable picks come back to .mcp.json and the three
+// do not.
+const HOOKS_PLUGIN_ONLY = (sb) =>
+{
+    sb.env.CLAUDE_STACK_MCPS_VIA_PLUGIN = 'false';
+    sb.env.CLAUDE_STACK_SKILLS_VIA_PLUGIN = 'false';
+    delete sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN;
+    return sb;
+};
+
+// The eight names plus the four per-engine playwright spellings an older install may have written.
+const STACK_SERVER_NAMES = ['serena', 'context7', 'memory', 'angular-cli', 'chrome-devtools',
+    'appium-mcp', 'sentry', 'playwright', 'playwright-chrome', 'playwright-msedge',
+    'playwright-firefox', 'playwright-webkit'];
+
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: the plugin route registers nothing`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = PLUGIN_ROUTE_MCPS(sandbox());
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            assert.match(out, /mcp: carried by the plugins/, `${twin}: the run did not say the servers moved`);
+            assert.doesNotMatch(calls(sb), /^mcp add/m, `${twin}: a server was registered on the plugin route`);
+            // .mcp.json is no longer a stack-owned artifact: absent is the right shape when the
+            // project added nothing of its own.
+            const file = path.join(sb.repo, '.mcp.json');
+            if (fs.existsSync(file))
+                assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers || {}), [],
+                    `${twin}: .mcp.json still carries stack servers`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: an update strips every stack registration and keeps the project's own`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        // A 0.2.x install: all eight stack names plus an engine spelling, and one server the project
+        // added by hand. The hand-added one is the whole point - the retirement names, never sweeps.
+        const existing = {};
+        for (const name of ['serena', 'context7', 'memory', 'sentry', 'playwright-chrome'])
+            existing[name] = { type: 'stdio', command: 'uvx', args: ['--from', name], env: {} };
+        existing['my-own-server'] = { type: 'stdio', command: 'node', args: ['./my-server.js'], env: {} };
+        const sb = PLUGIN_ROUTE_MCPS(sandbox(existing));
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'update') : runPs(sb, 'update');
+            const removed = [...calls(sb).matchAll(/^mcp remove (\S+)/gm)].map(m => m[1]);
+            for (const name of ['serena', 'context7', 'memory', 'sentry', 'playwright-chrome'])
+                assert.ok(removed.includes(name), `${twin}: ${name} was left registered alongside its plugin:\n${out}`);
+            assert.ok(!removed.includes('my-own-server'), `${twin}: the project's own server was unregistered`);
+            assert.ok(fs.existsSync(path.join(sb.repo, '.mcp.json')), `${twin}: the file the project's own server lives in was deleted`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: the prune loop survives a NON-EMPTY retired list`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        // Regression. RETIRED_MCPS had been empty since the list was introduced, so the loop body
+        // had never once run - and the ps1 twin's body called `Write-Log`, a function that does not
+        // exist in that script. The plugin route fills the list, and the latent bug took the whole
+        // run down on the first try. The test is simply that a run with servers to prune finishes.
+        const existing = {};
+        for (const name of STACK_SERVER_NAMES) existing[name] = { type: 'stdio', command: 'uvx', args: ['--from', name], env: {} };
+        const sb = PLUGIN_ROUTE_MCPS(sandbox(existing));
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'update') : runPs(sb, 'update');
+            assert.doesNotMatch(out, /not recognized as a name of a cmdlet|command not found/,
+                `${twin}: the prune loop called something that does not exist`);
+            const removed = new Set([...calls(sb).matchAll(/^mcp remove (\S+)/gm)].map(m => m[1]));
+            for (const name of STACK_SERVER_NAMES)
+                assert.ok(removed.has(name), `${twin}: ${name} was never pruned - the loop stopped early`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
+// R7's middle case, and the one the matrix caught: the MCP route is off but the core plugin is
+// still enabled by the hooks route, so its `dependencies` already carry serena, context7 and
+// memory. Registering them as well would run each server twice and pay both sets of tool schemas
+// in every session - the whole cost the retirement list exists to prevent, reintroduced by the
+// escape hatch. The droppable picks still come back to the file.
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: with the core plugin on, the locked three are not registered beside their plugins`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = HOOKS_PLUGIN_ONLY(sandbox());
+        (twin === 'sh' ? runSh : runPs)(sb, 'install');
+        const names = Object.keys(servers(sb));
+        for (const locked of ['serena', 'context7', 'memory'])
+            assert.ok(!names.includes(locked), `${twin}: ${locked} was registered although the core plugin carries it (${names.join(',')})`);
+        assert.ok(names.includes('sentry'), `${twin}: the droppable pick was not registered (${names.join(',')})`);
+    });
+
+    test(`${twin}: an update with the core plugin on takes an older install's locked registrations OUT`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = HOOKS_PLUGIN_ONLY(sandbox());
+        sb.env.CLAUDE_STUB_REMOVE_WORKS = '1';   // the real CLI's `mcp remove` at project scope, which is the route the prune takes
+        fs.writeFileSync(path.join(sb.repo, '.mcp.json'), JSON.stringify({ mcpServers: {
+            serena: { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent@0.1.0'] },
+            context7: { type: 'http', url: 'https://mcp.context7.com/mcp' },
+            memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service[sqlite]'] },
+            'my-own-server': { type: 'stdio', command: 'node', args: ['x.js'] },
+        } }, null, 2) + '\n');
+        (twin === 'sh' ? runSh : runPs)(sb, 'update');
+        const names = Object.keys(servers(sb));
+        for (const locked of ['serena', 'context7', 'memory'])
+            assert.ok(!names.includes(locked), `${twin}: the old ${locked} registration survived (${names.join(',')})`);
+        assert.ok(names.includes('my-own-server'), `${twin}: the project's own server was removed (${names.join(',')})`);
     });
 }

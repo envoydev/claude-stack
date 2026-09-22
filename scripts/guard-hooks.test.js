@@ -797,14 +797,14 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: 'true' }), 0);
-  assert.equal(inst({ tool_name: 'mcp__serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__plugin_serena_serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
   assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__serena__find_symbol', 'serena'],
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_serena_serena__find_symbol', 'serena'],
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
@@ -1521,7 +1521,7 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   // serena calls. The remedy belongs in the denial the model is already reading.
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG } }, {});
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol/);
+  assert.match(r.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol/);
 });
 
 test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail its own receipt', () => {

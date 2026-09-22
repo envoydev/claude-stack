@@ -139,8 +139,8 @@ if (SEARCH_SEATS.has(seat)) {
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
         `Explore does not load this project's rules at all, so it cannot know to use serena.\n` +
-        `Answer it INLINE instead: mcp__serena__find_symbol for a declaration or signature,\n` +
-        `mcp__serena__find_referencing_symbols for callers, mcp__serena__get_symbols_overview\n` +
+        `Answer it INLINE instead: mcp__plugin_serena_serena__find_symbol for a declaration or signature,\n` +
+        `mcp__plugin_serena_serena__find_referencing_symbols for callers, mcp__plugin_serena_serena__get_symbols_overview\n` +
         `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when serena's\n` +
         `language server cannot resolve it. Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,

@@ -80,7 +80,10 @@
         {
           "name": "superpowers",
           "marketplace": "claude-plugins-official"
-        }
+        },
+        "serena",
+        "context7",
+        "memory"
       ]
     },
     {

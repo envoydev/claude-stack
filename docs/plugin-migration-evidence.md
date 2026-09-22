@@ -370,11 +370,11 @@ is not gated shut.
 - `${CLAUDE_PROJECT_DIR}` EXPANDS in a plugin `.mcp.json`, in `args` and in `env`. In a project
   `.mcp.json` it is not reliably in scope at parse time, which is why `--project ${CLAUDE_PROJECT_DIR}`
   is on this repo's do-not-retry list. Inside a plugin that objection is gone.
-- The PROJECT `settings.json` `env` reaches the expansion (`PROBE_FROM_PROJ_ENV` came back `docs-x`).
-  A project `.mcp.json` reads only the shell environment plus the ACCOUNT `settings.json` `env`. So the
-  sentry registration's `${SENTRY_SLUG}` / `${SENTRY_ACCESS_TOKEN}` gain a second, per-project home
-  once that server is a plugin. Phase 6 decides whether to use it; nothing about the account route
-  breaks.
+- ~~The PROJECT `settings.json` `env` reaches the expansion.~~ **WRONG - retracted 2026-09-22**, see
+  'Phase 6 spikes' below. A dedicated probe with the key ONLY in the project file got the literal
+  `${KEY}` back; this run's `PROBE_FROM_PROJ_ENV` was reading the shell, where the installer exports
+  the same name. A plugin MCP entry sees exactly what a project `.mcp.json` sees: the shell plus the
+  ACCOUNT `settings.json` `env`. Phase 6 gets no new per-project channel and uses a launcher instead.
 - `${CLAUDE_PLUGIN_ROOT}` expands inside `args`, so a server shipped as a script in the plugin is
   addressable without an absolute path.
 
@@ -683,3 +683,166 @@ has no shebang handling, and whether Claude Code shims a `bin/` entry there is u
 Windows machine in this session either, so the gap is enforced rather than re-reported: lint check 52
 fails when a `bin/` appears at the repo root or under `stack/` or `setup-plugin/`, or when any
 marketplace entry lists a path that reaches one. Running the Windows check is what lifts it.
+
+---
+
+## Phase 6 spikes - S11, S12, S14, and a CORRECTION to S10
+
+Run 2026-09-22 on Claude Code **2.1.278**, in a throwaway project with its own `CLAUDE_CONFIG_DIR`,
+against a local marketplace holding two plugins whose servers are stubs that record their
+environment. Nothing here is inferred from docs: every row is what the CLI did.
+
+### CORRECTION - S10's third claim is FALSE
+
+S10 recorded that 'the PROJECT `settings.json` `env` reaches the expansion'. It does not. One probe,
+five placeholders, one spawn:
+
+| where the key lives | `${KEY}` in a plugin server's `env` |
+|---|---|
+| project `.claude/settings.json` `env` | **NOT expanded** - arrives literally as `${SPIKE_PROJECT_KEY}` |
+| ACCOUNT `settings.json` `env` | expanded (`from-account`) |
+| shell environment | expanded (`from-shell`) |
+| `${KEY:-fallback}`, key absent everywhere | expanded to `fallback` |
+| `${KEY}`, key absent everywhere | **stays literal** - this is S14's answer |
+
+S10 most likely read `${CLAUDE_STACK_DOCS_PATH}` out of the shell, not the project file. So a plugin
+MCP entry sees exactly the two sources a project `.mcp.json` sees, and Phase 6 gets NO new
+per-project env channel. Per-project values need a launcher that reads the project itself - which
+works, because a stdio server's `cwd` IS the project dir (S10's first claim, re-confirmed here).
+
+`${CLAUDE_PROJECT_DIR}` and `${CLAUDE_PLUGIN_ROOT}` both expand, in `args` and in `env`.
+
+### S11 - sentry auth in a plugin: PASS, with one shape trap
+
+- **`headersHelper` is a STRING command, not an object.** The object form
+  (`{"command": ..., "args": [...], "env": {...}}`) is rejected and takes the WHOLE server with it:
+  `claude plugin details` then reports `MCP servers (0)` with no error anywhere. Bisected - stdio
+  loads, http with static `headers` loads, http with an object `headersHelper` does not, http with a
+  string `headersHelper` does.
+- It really runs, and its stdout really becomes the request headers: pointed at a local sink, the
+  sink logged `{"url":"/mcp","auth":"Sentry-Bearer probe-token"}` - the exact header the helper
+  printed.
+- **Its cwd is the PLUGIN ROOT, not the project**, and `CLAUDE_PROJECT_DIR` is absent from its
+  environment. `${CLAUDE_PROJECT_DIR}` DOES expand inside the helper string, so the project is
+  passed as an argument.
+- **Settings-env keys do NOT expand in the helper string** (`acct=${SPIKE_ACCOUNT_KEY}` arrived as
+  `acct=`), although the same key DOES expand in `url` (the sink saw `/mcp/from-account`). So the
+  helper reads the token itself rather than taking it on a command line - which is the better shape
+  anyway: a credential never reaches `ps`.
+
+### S12 - a disabled plugin's servers: PASS
+
+Two plugins, one server each, both enabled: `claude mcp list` shows both, named
+`plugin:<plugin>:<server>` - the same spelling the `mcp_tool` hook `server` field takes. Disable one
+and its server is gone from the listing while the other stays; disable both and the CLI reports 'No
+MCP servers configured'. Droppability by enable/disable works, at project scope.
+
+### Two operational facts the runs turned up
+
+- A marketplace added from a LOCAL DIRECTORY loads its plugins IN PLACE (`CLAUDE_PLUGIN_ROOT` is the
+  marketplace dir, not a cache entry), so an edit needs `claude plugin marketplace update` plus
+  `claude plugin update <name> --scope <scope>` before it is live. `plugin update` without `--scope`
+  defaults to user scope and fails with 'not installed at scope user'.
+- Writing `.claude/settings.json` wholesale CLOBBERS `enabledPlugins`: a spike that rewrote the file
+  to set one env key silently disabled both plugins. The installers merge rather than overwrite;
+  anything else that touches that file must too.
+
+## Phase 6 implementation - what building it measured
+
+Four things the spikes had not asked, all found by running the installer rather than reading the plan.
+
+### A plugin's servers load TOGETHER, so packaging IS a per-session cost
+
+The first shape put the four playwright engines in one `playwright` entry and context7's hosted plus
+local server in one `context7` entry - eight entries for eight catalog names, which reads tidy. It is
+not: a plugin's servers all load, so a project that kept ONE browser would have paid four copies of
+playwright's tool schemas in every session, and every project two copies of context7's. The
+registration route never did that (one server per KEPT engine, one context7 for the chosen
+transport), so this would have been a silent cost REGRESSION introduced by packaging alone.
+
+Rebuilt as 12 entries, one server each, named alike. Lint check 53 fails any entry whose server set
+is not exactly `[<entry name>]`.
+
+| shape | entries | servers a 1-browser project loads |
+|---|---|---|
+| one entry per catalog name | 8 | 4 playwright + 2 context7 + 6 = 12 |
+| one entry per server (shipped) | 12 | 1 playwright + 1 context7 + 6 = 8 |
+
+### The sweep: 841 tool names across 61 files
+
+`mcp__<server>__` -> `mcp__plugin_<n>_<n>__`, script-driven from one map, `docs/sessions-investigation/`
+excluded as historical evidence. Measured per server: serena 618, memory 167, context7 31,
+playwright-chrome 5, -msedge/-firefox/-webkit 4 each, appium-mcp 3, chrome-devtools 2, angular-cli 1,
+sentry 1, and one bare `playwright` in a lint test fixture. 24 agents that grant context7 now grant
+both transports, because an agent cannot know which one an install chose and a `tools:` list that
+omits the live one fails silently.
+
+Lint check 54 builds its ban list from the GENERATED entry names, so the checker cannot itself
+contain the spelling it bans and a new server is covered the day its entry lands. Proven both ways:
+reverting one `ToolSearch select:` name in `baseline-navigation.md` produced exactly one finding.
+
+### Three readers had `.mcp.json` as their source of truth
+
+- `memory.js` resolved the db path from the `.mcp.json` `memory` entry - which the plugin route never
+  writes, so `status` and `validate` would have said `none` and the session-start block would have
+  injected nothing. It now reads `CLAUDE_STACK_MEMORY_DB` from the project settings first: the same
+  key the plugin launcher reads, so resolver and running server agree by construction.
+- `instrument-tool-usage.js` and `analyze-usage.js` read `tool.split('__')[1]` as the server name,
+  which is now `plugin_<plugin>_<server>`. Both fold it back, so 0.2.x and 1.0.0 transcripts still
+  tally into the same rows.
+- `enabledMcpjsonServers` pre-approved what the run registered. On the plugin route there is nothing
+  to pre-approve, so those names are now DROPPED instead - a leftover entry names a server that no
+  longer exists.
+
+Plus four command bodies (`validate`, `configure`, `status`, `update`) that inventoried MCPs from
+`.mcp.json` alone and would have reported ZERO servers on every plugin-route install.
+
+### The opt-out route needed the tool names back
+
+`CLAUDE_STACK_MCPS_VIA_PLUGIN=false` registers the bare names, where the shipped plugin spelling
+resolves to nothing - silently. Granting both spellings everywhere would have cost ~830 extra
+entries, most in agent `tools:` lists re-sent on every dispatch, undoing R1's whole saving. So the
+copy route RE-SPELLS instead: one pass over the copied `skills`, `agents`, `rules` and `hooks`
+turns `mcp__plugin_<n>_<n>__` back into `mcp__<n>__`. It needs the files, so that switch belongs
+with `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported in the log, never half-fixed.
+
+### The escape hatch reintroduced the double-load it exists to prevent
+
+Measured by the `mcpcopy` matrix case, not by reading: with `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` the
+run wrote serena, context7 and memory into `.mcp.json` AND enabled `serena|context7|memory@claude-stack`,
+because those three are hard `dependencies` of the core entry and the hooks route had the core on.
+Each of the three would have run twice, with both sets of tool schemas in every session.
+
+```
+FAIL  mcpcopy: no MCP plugin is enabled: expected 'none', got 'context7,memory,serena'
+```
+
+The switch now covers the DROPPABLE five only. The locked three ride the core's dependencies
+whenever any plugin route is on and are registered only on the FULL copy route, where the core is
+never enabled - so the re-spelling is computed from what a run actually registered bare rather than
+applied to everything, and the mixed-route warning names those servers.
+
+### A plugin's headersHelper is handed an environment with the credentials taken out
+
+Not measured on a session - read in the current docs and taken as binding, because it decides where
+a token has to live. https://code.claude.com/docs/en/mcp, 'Which variables a helper can read': a
+`headersHelper` supplied by a plugin, a project `.mcp.json`, or a project agent file runs WITHOUT the
+credential variables from the environment. Every name carrying TOKEN, SECRET, PASSWORD, KEY or AUTH
+in either case is removed, plus a fixed list of others; a server at user or local scope, from managed
+MCP, from a claude.ai connector, or passed with `--mcp-config` keeps them.
+
+Both keys `stack/mcp/sentry-headers.js` reads match that pattern - `SENTRY_ACCESS_TOKEN` and
+`CLAUDE_STACK_SENTRY_AUTH` - so on the plugin route its environment branch answers for neither. The
+0.2.x `.mcp.json` route expanded `${SENTRY_ACCESS_TOKEN}` straight from the shell, so an install that
+relied on an export loses its auth header at the moment the server moves to a plugin.
+
+The resolution order did not change: the helper already read the project and ACCOUNT settings.json
+after the environment, and the account file is where both installers write the token. What changed is
+that the rule is now stated where someone hits it (the helper's comment, its no-token stderr line,
+CLAUDE.md) and proven in `scripts/mcp-launchers.test.js` on an environment scrubbed the way the docs
+describe - including that `CLAUDE_CONFIG_DIR` does NOT match the pattern, which is what keeps a
+`--space` install able to reach its own account file.
+
+context7's `${CONTEXT7_API_KEY:-}` is untouched by this: that is config expansion, not a helper's
+environment. The docs' own note that a helper's `CLAUDE_CODE_MCP_SERVER_URL` arrives with an expanded
+credential REDACTED is what says the expansion itself still happens.

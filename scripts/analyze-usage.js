@@ -87,6 +87,16 @@ const maskSecrets = (s) => String(s == null ? '' : s)
 // shown its rate for a week.
 // Prose as guard-answer-length.js defines it (fences, tables, quotes, inline code stripped), so
 // the analyzer counts what the hook would see.
+// A PLUGIN server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so the segment between the
+// double underscores is `plugin_<plugin>_<server>`. Server names carry no underscore, so dropping
+// `plugin_<plugin>_` is one split; a bare `mcp__<server>__` row from a pre-1.0.0 transcript reads
+// the same way, which is what keeps an old session comparable with a new one.
+function mcpServerOf(toolName)
+{
+    const seg = String(toolName).split('__')[1] || '?';
+    return seg.startsWith('plugin_') ? (seg.slice(7).split('_').slice(1).join('_') || seg) : seg;
+}
+
 function proseOf(text) {
   return String(text || '')
     .replace(/```[\s\S]*?```/g, '')
@@ -1442,7 +1452,7 @@ async function analyzeTranscript(file, window) {
             askSinceInvoke = false;
           }
         } else if (c.name.startsWith('mcp__')) {
-          const server = c.name.split('__')[1] || '?';
+          const server = mcpServerOf(c.name);
           const mc = s.mcp[server] || (s.mcp[server] = { calls: 0, resultChars: 0, errors: 0, tools: {}, firstTs: o.timestamp || null });
           mc.calls += 1;
           const tool = c.name.split('__').slice(2).join('__') || '?';
@@ -1738,7 +1748,7 @@ async function analyzeTranscript(file, window) {
         }
         if (info.skill) s.skillInvocations[info.skill].injectedChars += chars;
         if (info.name.startsWith('mcp__')) {
-          const mc = s.mcp[info.name.split('__')[1] || '?'];
+          const mc = s.mcp[mcpServerOf(info.name)];
           // The same carve-out the tool tally makes above: a user declining an MCP-driven ask is an
           // answer, not a server failure, and counting it inflated the error rate of a working server.
           if (mc) { mc.resultChars += chars; if (c.is_error && !isDecline) mc.errors += 1; }

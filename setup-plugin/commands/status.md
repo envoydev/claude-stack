@@ -105,9 +105,10 @@ On the copy route the set is joined against `settings.json` as before:
 | guard-catastrophic-rm.js | yes | Bash |
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
-**MCPs** - server entries from the repo's `.mcp.json` (project mode; global: the account's user-scope
+**MCPs** - mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (project mode; global: the account's user-scope
 registrations - the installer's `--scope global` registers them with `--scope user`, so read
-`claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`):
+`claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`). On the
+plugin route the `target` column is the plugin, not a registration:
 
 | server | transport | target |
 |---|---|---|

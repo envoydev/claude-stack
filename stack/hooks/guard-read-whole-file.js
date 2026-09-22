@@ -149,7 +149,7 @@ const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
   : `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
-  `  ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol,mcp__serena__find_referencing_symbols\n` +
+  `  ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols\n` +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
   `for a large body fetch it without the body first, then Read the range you need).`);

@@ -309,7 +309,7 @@ Inventory the CURRENT selection from disk exactly as the sibling `configure` com
 (`${CLAUDE_PLUGIN_ROOT}/commands/configure.md` - read it only on THIS path; command bodies do
 not co-load): skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED
 `baseline-project-*.md` and `project-code-style.md`), hooks (bare basenames, excluding the
-GENERATED legacy `inject-code-style.js`), mcps from `<repo>/.mcp.json`, plugins fail-soft and
+GENERATED legacy `inject-code-style.js`), mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json`, plugins fail-soft and
 filtered to entries enabled for THIS project (the listing is machine-global; an unfiltered read
 re-submits a sibling repo's plugin to this project's refresh - measured) - never from memory.
 

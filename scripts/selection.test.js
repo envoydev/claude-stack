@@ -299,7 +299,9 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // 'window' is a context-window SIZE in tokens: no off value, since a window of 0 is not a window.
     // 'csv' is a comma-separated name list whose EMPTY default means 'nothing switched off' -
     // CLAUDE_STACK_HOOKS_OFF, which replaced the walk's hooks layer once the set stopped being copied.
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens', 'window', 'csv']);
+    // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
+    // CLAUDE_STACK_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
@@ -307,6 +309,10 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         assert.strictEqual(typeof row.default, 'string', `${row.key} has a string default`);
         assert.ok(row.what && row.what.length > 20, `${row.key} explains itself in plain words`);
         assert.ok(TYPES.has(row.validate.type), `${row.key} has a validate shape the walks can check`);
+        // A WRITTEN row mirrors a choice the run just made into the file a plugin launcher reads, so
+        // it is never asked on the environment screen - the question that owns it is elsewhere
+        // (--memory-level, --sentry-auth), and asking twice would let the two answers disagree.
+        if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
         if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')
         {

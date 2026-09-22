@@ -167,7 +167,7 @@ run makes.
    into the close. The stamp CLOSES this plan file: print one line with it - `Completed - the next
    scope starts a NEW plan file, not this one` - so the rule is on screen at the moment it starts
    applying, not only in this skill's body. Delete or archive the cycle note, and in an agents-mode run purge the
-   run's minted seat notes too - `mcp__serena__delete_memory` each `<feature>__<contract_version>__*`
+   run's minted seat notes too - `mcp__plugin_serena_serena__delete_memory` each `<feature>__<contract_version>__*`
    note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
    this run's deletes trail its writes. *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred

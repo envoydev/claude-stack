@@ -38,7 +38,7 @@ pinned number, so the artifact keeps the judgment and the drifting fact is fetch
 REGISTERED server, not a shell stand-in: a `npx`/`curl` at a registry answers a different, narrower
 question (a version number, not the API shape) and leaves the server that was installed for this
 unused. Its tools arrive DEFERRED - the names exist, the schemas do not - so the first use is two
-calls, not one: `ToolSearch select:mcp__context7__resolve-library-id,mcp__context7__query-docs`,
+calls, not one: `ToolSearch select:mcp__plugin_context7_context7__resolve-library-id,mcp__plugin_context7_context7__query-docs`,
 then the query. context7 unreachable: say the claim is unverified rather than asserting it.
 
 ### Partial work

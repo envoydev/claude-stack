@@ -558,7 +558,11 @@ function findEvidenceGaps(catalog, found, installed)
 // matched none of those objects - every installed plugin read as missing (measured).
 // The installer expands the ONE manifest entry `playwright` into a server per browser engine
 // (playwright-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
-const manifestMcpName = n => String(n).replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
+// From 1.0.0 those names are also PLUGIN names, one per engine, so the same fold serves the plugin
+// route - and `context7-local`, the second context7 transport, folds onto its catalog entry too.
+const manifestMcpName = n => String(n)
+    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
+    .replace(/^context7-local$/, 'context7');
 const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
 
 function normalizeInventory(inv)
