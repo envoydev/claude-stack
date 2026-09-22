@@ -389,6 +389,44 @@ documented behaviour and the measured behaviour agree that it works.
 
 ---
 
+## Phase 1 - inline hooks and mcpServers in a marketplace entry - PASS
+
+**Question.** S9's assert (c) failed: a shared source root is auto-discovered by every entry over it.
+The docs offer a second form - an entry may declare `hooks` and `mcpServers` INLINE instead of by
+path. Does that give each entry its own, over one shared root, with no duplicate load?
+
+**Run.** One tree, two entries, both `source: './'` and `strict: false`, each with a DIFFERENT inline
+`hooks` block calling the same logger with its own label; entry one also declares an inline
+`mcpServers`. Nothing at the shared root: no `hooks/`, no `.mcp.json`, no `agents/`, no `commands/`.
+
+```json
+{ "name": "inline-one", "source": "./", "strict": false,
+  "skills": ["./stack/skills/alpha"],
+  "hooks": { "SessionStart": [ { "hooks": [ { "type": "command",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/log-hook.js", "args": ["inline-ONE"], "timeout": 10 } ] } ] },
+  "mcpServers": { "probe-one": { "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp-stub.js", "--one"] } } }
+```
+
+```
+claude plugin validate . --strict          -> Validation passed
+inline-one-inline-mkt/fired.jsonl          -> 1 row: inline-ONE   root=mkt-inline
+inline-two-inline-mkt/fired.jsonl          -> 1 row: inline-TWO   root=mkt-inline
+inline-one-inline-mkt/mcp-start.json       -> argv ["--one"], cwd=proj, CLAUDE_PROJECT_DIR=proj
+claude mcp list                            -> plugin:inline-one:probe-one   (entry TWO registers none)
+```
+
+**Verdict: PASS.** Each entry gets its OWN hooks, fired once, attributed to its own plugin and its own
+data directory, with `CLAUDE_PLUGIN_ROOT` pointing at the shared root so a bundled script resolves.
+The inline `mcpServers` belongs to the declaring entry alone.
+
+**What it settles for the build.** This is the real remedy for S9(c), better than policing the root:
+the stack declares hooks and MCP servers INLINE in each marketplace entry and puts nothing at the
+shared root at all. The root-cleanliness lint check stays as the guard that keeps it that way, since
+`agents/`, `commands/` and `skills/` have no inline form and are still auto-discovered from the root.
+
+---
+
 ## Cleanup
 
 The three scratch marketplaces (`shared-mkt`, `spike-mkt`, `dep-mkt`) are removed from the user

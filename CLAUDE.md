@@ -159,6 +159,13 @@ change made only inside a consuming project is throwaway.
     goes red when a copy's marker breaks.
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
     `npm run graph` (lint fails when stale).
+  - `plugin-entries.json` - the GENERATED marketplace `plugins[]`, computed by
+    `scripts/build-marketplace.js` from the placement rule in `scripts/plugin-placement.js`: an item
+    goes to the plugin named for the SET of stacks whose closure reaches it, so a project enables
+    exactly its own closure (`docs/plugin-placement-cost.md` is the committed gate evidence, +0% on
+    every combination). Regenerate with `npm run marketplace`; lint checks 44 and 45 fail when either
+    file is stale or a combination goes past +10%. A new shared set needs a NAME in `GROUP_NAMES`,
+    never a generated slug.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
     one row plus the two installer seeds (lint-checked).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
@@ -297,6 +304,16 @@ mirrored there in the same sitting.
   equality) on `develop` with any release-worthy change. Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR.
 - **Public repo.** No private project names or absolute local paths in tracked files.
+- **The repo root is a plugin source, so seven names are RESERVED there.** Every marketplace entry
+  shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
+  whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root
+  `agents/` or `commands/` loads once PER ENTRY, a root `.mcp.json` or `hooks/hooks.json` loads once
+  and is attributed to a different entry each time. So `skills/`, `commands/`, `agents/`,
+  `hooks/hooks.json`, `monitors/`, `settings.json` and `.lsp.json` never appear at the root (lint
+  check 46), and hooks and MCP servers are declared INLINE in each entry instead. `.mcp.json` is the
+  one exception, because this repo is also a consuming project: it stays machine-local and
+  gitignored, and the temp-project matrix installs from `scripts/clean-export.js` so it cannot leak
+  into a case.
 - **Parity / source-of-truth.** Changes land in the SOURCE here: `SKILLS` + `MCPS` + `PLUGINS` identical
   across both installer twins (`npm run lint` enforces it, plus the HTML and skill count). A shared
   baseline change is mirrored into cursor-stack in the same sitting. Never patch only a generated

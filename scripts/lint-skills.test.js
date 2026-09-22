@@ -573,3 +573,58 @@ test('check 43: an agent tools: allowlist must grant the shared memory tools', (
     // No tools: line at all = every tool inherited, memory included - nothing to report.
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
 });
+
+test('checks 44 + 45: the real repo passes placement, entries and the cost gate', () => {
+    const { lintPluginPlacement } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintPluginPlacement(), [],
+        'the committed meta/plugin-entries.json and docs/plugin-placement-cost.md must be current');
+});
+
+test('check 44: an unnamed owner set, a double home and a backwards dependency are all findings', () => {
+    const { lintPluginPlacement } = require('./lint-skills.js');
+    const { placement } = require('./plugin-placement.js');
+
+    const unnamed = placement({ groupNames: {} });
+    const out = lintPluginPlacement(unnamed);
+    assert.ok(out.some(f => /share items with no plugin NAME/.test(f)), 'an unnamed set is named in the finding');
+
+    const broken = placement();
+    broken.plugins['claude-stack-aspnet'].skills.push('dotnet');   // already in claude-stack-dotnet
+    broken.plugins['claude-stack-dotnet'].dependencies.push('claude-stack-aspnet');
+    const two = lintPluginPlacement(broken);
+    assert.ok(two.some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
+    assert.ok(two.some(f => /a leaf or a peer/.test(f)), 'a shared plugin depending on a leaf is caught');
+});
+
+test('check 46: the repo root reserves every name a shared-source entry auto-discovers', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { execFileSync } = require('node:child_process');
+    const { lintRepoRootReserved, RESERVED_ROOT_NAMES } = require('./lint-skills.js');
+
+    assert.deepStrictEqual(lintRepoRootReserved(), [], 'this repo root is clean');
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rootlint-'));
+    execFileSync('git', ['-C', tmp, 'init', '-q']);
+    assert.deepStrictEqual(lintRepoRootReserved(tmp), [], 'an empty root is clean');
+
+    fs.mkdirSync(path.join(tmp, 'agents'));
+    assert.ok(lintRepoRootReserved(tmp).some(f => /`agents`/.test(f)), 'a root agents/ is a finding');
+
+    fs.mkdirSync(path.join(tmp, 'hooks'));
+    assert.strictEqual(lintRepoRootReserved(tmp).filter(f => /`hooks`/.test(f)).length, 0,
+        'a hooks/ folder with no hooks.json is not auto-discovered');
+    fs.writeFileSync(path.join(tmp, 'hooks', 'hooks.json'), '{}');
+    assert.ok(lintRepoRootReserved(tmp).some(f => /`hooks`/.test(f)), 'hooks/hooks.json is');
+
+    fs.writeFileSync(path.join(tmp, '.mcp.json'), '{}');
+    assert.strictEqual(lintRepoRootReserved(tmp).filter(f => /TRACKED/.test(f)).length, 0,
+        'an untracked .mcp.json is this repo\'s own, and fine');
+    execFileSync('git', ['-C', tmp, 'add', '.mcp.json']);
+    execFileSync('git', ['-C', tmp, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x']);
+    assert.ok(lintRepoRootReserved(tmp).some(f => /TRACKED `\.mcp\.json`/.test(f)), 'a tracked one is a finding');
+
+    assert.ok(RESERVED_ROOT_NAMES.includes('commands') && RESERVED_ROOT_NAMES.includes('skills'));
+    fs.rmSync(tmp, { recursive: true, force: true });
+});

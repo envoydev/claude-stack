@@ -66,6 +66,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
 const yaml = require('js-yaml');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -2313,6 +2314,13 @@ function main()
         flag(`the always-on surface measurement could not run: ${err.message}`);
     }
 
+    // 44 + 45. Plugin placement is computed; the generated entries and the cost table are current.
+    // 46. The repo root carries no name a shared-source marketplace entry auto-discovers (spike S9c).
+    // 47. The marketplace manifest passes `claude plugin validate --strict`.
+    for (const finding of lintPluginPlacement()) flag(finding);
+    for (const finding of lintRepoRootReserved()) flag(finding);
+    for (const finding of lintMarketplaceSchema()) flag(finding);
+
     if (findings.length > 0)
     {
         for (const finding of findings)
@@ -2329,6 +2337,141 @@ function main()
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
         + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync; `
         + `always-on surface ~${Math.round(alwaysOnChars / 4000)}k tokens).`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 44 + 45. Placement is COMPUTED from meta/recommendations.json + meta/stack-graph.json, so the
+// generated entries and the committed cost table are both derivable - and a drift between what the
+// rule computes and what is committed is exactly the failure this pair exists to catch. The cost
+// gate is the migration's own yardstick: a split that makes a project's always-on surface bigger
+// than per-item selection already does is not worth shipping, whatever else it buys.
+function lintPluginPlacement(placeIn)
+{
+    const out = [];
+    let placeMod;
+    let buildMod;
+    try
+    {
+        placeMod = require('./plugin-placement.js');
+        buildMod = require('./build-marketplace.js');
+    }
+    catch (err)
+    {
+        return [`the plugin placement modules could not be loaded: ${err.message}`];
+    }
+
+    let place = placeIn;
+    if (!place)
+    {
+        try { place = placeMod.placement(); }
+        catch (err) { return [`plugin placement could not run: ${err.message}`]; }
+    }
+
+    for (const key of place.unnamed)
+        out.push(`the stacks ${key} share items with no plugin NAME - add one to GROUP_NAMES in scripts/plugin-placement.js rather than shipping a generated slug.`);
+
+    const seen = new Map();
+    const note = (key, where) =>
+    {
+        if (seen.has(key)) out.push(`${key} has two homes: ${seen.get(key)} and ${where} - placement puts every item in exactly one.`);
+        else seen.set(key, where);
+    };
+    for (const [name, plug] of Object.entries(place.plugins))
+    {
+        for (const s of plug.skills) note('skill:' + s, name);
+        for (const a of plug.agents) note('agent:' + a, name);
+    }
+    for (const s of place.extras.skills) note('skill:' + s, 'extras');
+    for (const a of place.extras.agents) note('agent:' + a, 'extras');
+    const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta/stack-graph.json'), 'utf8'));
+    for (const s of Object.keys(graph.skills)) if (!seen.has('skill:' + s)) out.push(`skill ${s} is in no plugin and no extras - placement must be total.`);
+    for (const a of Object.keys(graph.agents)) if (!seen.has('agent:' + a)) out.push(`agent ${a} is in no plugin and no extras - placement must be total.`);
+
+    for (const [name, plug] of Object.entries(place.plugins))
+        for (const dep of plug.dependencies)
+        {
+            if (!place.plugins[dep]) { out.push(`${name} depends on ${dep}, which is not a plugin.`); continue; }
+            if (!(place.rank[dep] < place.rank[name])) out.push(`${name} depends on ${dep}, a leaf or a peer - a dependency points at something MORE shared, never less.`);
+        }
+
+    try
+    {
+        const wanted = buildMod.serialize(buildMod.buildEntries({ placement: place }));
+        const have = fs.existsSync(buildMod.ENTRIES_FILE) ? fs.readFileSync(buildMod.ENTRIES_FILE, 'utf8') : null;
+        if (have !== wanted) out.push('meta/plugin-entries.json is STALE - run `npm run marketplace`; it is generated, never hand-edited.');
+    }
+    catch (err) { out.push(`the plugin entries could not be generated: ${err.message}`); }
+
+    try
+    {
+        const table = buildMod.costTable({ placement: place });
+        for (const row of table.rows)
+            if (row.delta > buildMod.GATE_PCT)
+                out.push(`${row.combo} costs +${row.delta}% over per-item selection, past the +${buildMod.GATE_PCT}% gate - adjust the placement rule, not the gate.`);
+        const costFile = path.join(ROOT, 'docs/plugin-placement-cost.md');
+        const wantedDoc = buildMod.costDocument(table, place);
+        const haveDoc = fs.existsSync(costFile) ? fs.readFileSync(costFile, 'utf8') : null;
+        if (haveDoc !== wantedDoc) out.push('docs/plugin-placement-cost.md is STALE - run `node scripts/build-marketplace.js --cost --out docs/plugin-placement-cost.md`.');
+    }
+    catch (err) { out.push(`the cost table could not be computed: ${err.message}`); }
+
+    return out;
+}
+
+// 46. Every marketplace entry that shares this repo as its `source` also gets whatever sits at the
+// ROOT under a component name, whatever that entry lists - measured in spike S9, assert (c): a root
+// `agents/` loaded once PER ENTRY, a root `.mcp.json` and `hooks/hooks.json` loaded once and were
+// attributed to a different entry each. An explicit path list does NOT suppress it. So these names
+// are reserved at the repo root. `.mcp.json` is the one exception: this repo is itself a consuming
+// project, so a machine-local one is expected - but it must stay UNTRACKED, or every install from a
+// local-path marketplace registers this repo's own servers into the consuming project.
+const RESERVED_ROOT_NAMES = ['skills', 'commands', 'agents', 'hooks', 'monitors', 'settings.json', '.lsp.json'];
+function lintRepoRootReserved(root)
+{
+    const base = root || ROOT;
+    const out = [];
+    for (const name of RESERVED_ROOT_NAMES)
+    {
+        const full = path.join(base, name);
+        if (!fs.existsSync(full)) continue;
+        if (name === 'hooks' && !fs.existsSync(path.join(full, 'hooks.json'))) continue;
+        out.push(`the repo root carries \`${name}\`, which every marketplace entry sharing \`source: "./"\` auto-discovers whatever the entry lists (spike S9c) - move it under stack/ or setup-plugin/.`);
+    }
+    const mcp = path.join(base, '.mcp.json');
+    if (fs.existsSync(mcp) && isTracked(base, '.mcp.json'))
+        out.push('the repo root carries a TRACKED `.mcp.json` - every marketplace entry sharing the root would register its servers into the consuming project (spike S9c). This repo\'s own .mcp.json stays machine-local and gitignored.');
+    return out;
+}
+
+function isTracked(base, rel)
+{
+    try
+    {
+        execFileSync('git', ['-C', base, 'ls-files', '--error-unmatch', rel], { stdio: 'ignore' });
+        return true;
+    }
+    catch { return false; }
+}
+
+// 47. The manifest the marketplace serves has to pass the CLI's own schema check. The CLI is not
+// present everywhere (a CI image, a fresh clone), and a missing tool is reported as NOT RUN rather
+// than laundered into a pass - the rule the stack applies to every other probe.
+function lintMarketplaceSchema()
+{
+    const out = [];
+    try { execFileSync('claude', ['--version'], { stdio: 'ignore' }); }
+    catch
+    {
+        console.log('lint-skills: the claude CLI is absent - `claude plugin validate --strict` NOT RUN.');
+        return out;
+    }
+    try { execFileSync('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (err)
+    {
+        const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');
+        out.push(`\`claude plugin validate --strict\` failed on .claude-plugin/marketplace.json: ${said}`);
+    }
+    return out;
 }
 
 // The environment catalog (meta/environment.json) is the ONE list the three guided commands read
@@ -2396,6 +2539,10 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 }
 
 module.exports = {
+    lintPluginPlacement,
+    lintRepoRootReserved,
+    lintMarketplaceSchema,
+    RESERVED_ROOT_NAMES,
     paths: { ROOT, SKILLS_DIR, CLAUDE_SH, CLAUDE_PS1, AGENTS_DIR, CLAUDE_RULES_DIR },
     parseManifest,
     parseStringArray,

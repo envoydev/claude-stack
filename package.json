@@ -9,7 +9,8 @@
     "graph": "node scripts/stack-graph.js --write",
     "test": "node --test",
     "test:memory": "node scripts/memory-usage.eval.js",
-    "corpus": "node scripts/corpus-replay.js"
+    "corpus": "node scripts/corpus-replay.js",
+    "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --cost --out docs/plugin-placement-cost.md"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"
