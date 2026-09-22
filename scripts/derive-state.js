@@ -366,8 +366,23 @@ function main(argv)
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
         return 1;
+    }
+    if (argv.includes('--delta'))
+    {
+        // One line per change, `add <line>` / `drop <line>`, each passed on as --add / --drop.
+        const installed = JSON.parse(fs.readFileSync(path.resolve(arg('--installed')), 'utf8'));
+        const pickedFile = arg('--picked');
+        const { add, drop, keptOff, keepParked } = delta({
+            installed, selectionText: fs.readFileSync(path.resolve(selection), 'utf8'),
+            picked: pickedFile ? JSON.parse(fs.readFileSync(path.resolve(pickedFile), 'utf8')) : null,
+        });
+        // `none` is the walk's no-op verdict: nothing to add or drop. The other two kinds are what
+        // the run leaves off, printed either way.
+        const lines = [...add.map((l) => `add ${l}`), ...drop.map((l) => `drop ${l}`)];
+        console.log([...(lines.length ? lines : ['none']), ...keptOff.map((l) => `kept-off ${l}`), ...keepParked.map((l) => `keep-parked ${l}`)].join('\n'));
+        return 0;
     }
     const state = deriveState({
         selection: path.resolve(selection),
@@ -387,5 +402,43 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
+// configure and validate walk from the read-back inventory to a closed selection; what differs is
+// what they APPLY, as the --add / --drop lines `update --installed-only` takes - never a whole
+// --selection, which on the plugin route rebuilds the install from what is on disk. Hooks read as
+// the installer reads them: no hook line at all means that layer was never answered, `hook none`
+// means every hook off.
+//
+// What the user switched off stays off unless the walk PICKED it (`picked`, the walk's own running
+// file in the inventory's shape): a seat denied, an item of a parked entry (`left_out`) or a parked
+// catalog plugin (`parked_plugins`) that the closure merely re-requires is `keptOff`, never an add.
+// And the read-back enables a parked catalog plugin like any other it finds, so every one the walk
+// did not pick is `keepParked` - passed as a --drop whenever the installer runs, but no reason on
+// its own to run it.
+function delta({ installed = {}, selectionText, picked = null })
+{
+    const want = new Set(String(selectionText).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')));
+    const hooksAnswered = [...want].some((l) => l.startsWith('hook '));
+    const layers = { skills: 'skill', agents: 'agent', rules: 'rule', hooks: 'hook', mcps: 'mcp', plugins: 'plugin' };
+    const nameOf = (e) => (e && typeof e === 'object' ? e.name : String(e));
+    const chose = new Set();
+    for (const [layer, cat] of Object.entries(layers))
+        for (const e of (picked && picked[layer]) || []) chose.add(`${cat} ${nameOf(e)}`);
+    const off = new Set([...(installed.left_out || []), ...(installed.parked_plugins || []).map((n) => `plugin ${n}`)]);
+    const add = [], drop = [], keptOff = [];
+    for (const [layer, cat] of Object.entries(layers))
+    {
+        const have = new Set((installed[layer] || []).map(nameOf));
+        for (const line of want)
+        {
+            if (!line.startsWith(`${cat} `) || line === 'hook none' || have.has(line.slice(cat.length + 1))) continue;
+            (off.has(line) && !chose.has(line) ? keptOff : add).push(line);
+        }
+        if (layer === 'hooks' && !hooksAnswered) continue;
+        for (const name of have) if (!want.has(`${cat} ${name}`)) drop.push(`${cat} ${name}`);
+    }
+    const keepParked = (installed.parked_plugins || []).map((n) => `plugin ${n}`).filter((l) => !chose.has(l));
+    return { add, drop, keptOff, keepParked };
+}
+
 module.exports = {
-    stampCarried, classifyNew, homeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };
+    delta, stampCarried, classifyNew, homeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };

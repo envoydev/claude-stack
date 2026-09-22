@@ -1,5 +1,5 @@
 ---
-description: "RECONCILE an existing claude-stack install to THIS project - detect the project's real stacks by artifact (the init step-3 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Adds run the installer for the accepted set; removes delete explicitly - the same paths init/configure use. Project mode only. This is the project-relative two-way audit that init (fresh), update (refresh), and configure (manual add/drop) do not do."
+description: "RECONCILE an existing claude-stack install to THIS project - detect the project's real stacks by artifact (the init step-3 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. Project mode only. This is the project-relative two-way audit that init (fresh), update (refresh), and configure (manual add/drop) do not do."
 disable-model-invocation: true
 ---
 
@@ -72,25 +72,35 @@ Twelve user-facing steps; the machinery between them runs silently. One banner l
 
 ## 1. Find the install and inventory it
 
-Confirm the install (project mode, above), then **inventory the installed set from disk** - never
-from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
-agents = `.claude/agents/*.md` - but skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set; rules = `.claude/rules/*.md` EXCLUDING the generated
-`baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js` (no `.js` suffix - the catalog stores them bare); mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (`stack-select.js` does the folding on either route); plugins = `claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"`
-(the SAME script configure runs - never re-derive its filter), which
-prints `name<TAB>version<TAB>scope<TAB>enabled` filtered to the entries that apply to THIS project
-(project scope at this path, or user scope) - the listing is machine-global, and an unfiltered read
-proposes sibling repos' plugins as REDUNDANT here (measured near-miss uninstall); fail-soft without
-the CLI. **Carry each plugin's SCOPE into the inventory JSON** (`plugins` entries as
-`{name,scope}`), because an uninstall is scope-addressed: a removal ask naming only the plugin lets
-the user consent to a project-local drop and get an account-wide one, and the wrong `--scope` fails
-with `not installed in project scope` (measured: 8 messages and 1.2M cache-read spent rediscovering
-the scope the listing had already printed). **A plugin the listing
-marks `disabled` is a THIRD state, not an absence:** record those names in a separate
-`plugins_disabled` array and keep them OUT of the `plugins` array, so the walk neither proposes
-installing what is already on disk nor removing what the user parked. Measured: two stack plugins
-sat disabled through an update and a validate run four minutes apart, and both runs reported
-nothing to do - one of them the commit-time security gate three artifacts assert is running. Write it as one inventory JSON in `$TMP`
-(`{rules,agents,skills,hooks,mcps,plugins}` arrays) - the `--installed` input for the walk.
+Confirm the install (project mode, above), then **inventory the installed set through the
+installer's own read-back**, exactly as configure does - never by hand, from disk or from memory.
+It is the SAME read an `update` writes back, so a seat or hook the user switched off stays out of
+it (a hand inventory unioned what the plugin entries carry, and the apply switched every such seat
+back on). One call from the snapshot, on every OS and seed - a `--print-plan` run writes nothing:
+
+```bash
+node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope project --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
+```
+
+`$TMP/installed.json` is the `--installed` input for the walk: `{rules, agents, skills, hooks, mcps,
+plugins, plugins_disabled, answered}` in catalog names (the playwright engines folded onto
+`playwright`). **Each plugin carries its SCOPE** (`{name,scope}`), because an uninstall is
+scope-addressed: a removal ask naming only the plugin lets the user consent to a project-local drop
+and get an account-wide one, and the wrong `--scope` fails with `not installed in project scope`
+(measured: 8 messages and 1.2M cache-read spent rediscovering the scope the listing had already
+printed). **A plugin the listing marks `disabled` is a THIRD state, not an absence:** it sits in
+`plugins_disabled` and OUT of `plugins`, so the walk neither proposes installing what is already on
+disk nor removing what the user parked (measured: two stack plugins sat disabled through an update
+and a validate run four minutes apart, and both runs reported nothing to do); `parked_plugins` is
+its catalog part. `left_out` lists what the user switched off - a denied seat, an item of a parked
+entry - as selection lines, which `--missing` counts as present: never proposed back. Three
+signals in `$TMP/plan.out`, never printed to the user: `error: --installed-only found nothing
+installed` means there is no install - route to `/claude-stack:init`; `plan routes:
+skills=<plugin|copy> hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered:
+hooks=<yes|no> agents=<yes|no>` says which off-states the read found evidence of - `agents=no` with
+`skills=plugin` means the plugin listing could not be read or the core entry is parked: stop and
+report which, since every carried seat would read as missing; `hooks=no` means the hooks layer is
+not reconciled this run.
 
 ## 2. Detect the project's stacks - and show the evidence
 
@@ -426,10 +436,21 @@ through the generic merge. Emit + prereq-check it -
 (`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 
-- **Adds**: run the installer from the snapshot for the kept+added set -
-  `node "$TMP/repo/scripts/install/claude-stack.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>]`
-  (any OS; `CLAUDE_STACK_SEED=shell` runs the frozen twin instead - `scripts/os/claude-stack.sh` with the
-  same flags, `scripts/os/claude-stack.ps1` via `pwsh` with the PowerShell spellings). Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
+- **Apply**: run the delta, then the installer from the snapshot. `node "$TMP/repo/scripts/derive-state.js" --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/final.json"`
+  prints one `add <line>` / `drop <line>` per accepted change against step 1's read-back, or
+  `none` - which with no environment row accepted means there is nothing to apply: say so, run
+  nothing. After it come the lines the run leaves OFF: `kept-off <line>` (a switched-off item the
+  closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
+  <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
+  reason on its own to run it). Otherwise:
+  `node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope project --installed-only [--add '<line>']... [--drop '<line>']... [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] 2>&1 | tee "$TMP/install.log"`
+  - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
+  applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
+  `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
+  and it stamps every carried item as a pick. `CLAUDE_STACK_SEED=shell` runs the frozen twin
+  instead, which has no `--add` / `--drop` and takes the whole selection: Unix
+  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope project --selection "$TMP/selection.txt" [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] 2>&1 | tee "$TMP/install.log"`;
+  Windows `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" install -Source "$TMP/repo" -Scope project -Selection "$TMP/selection.txt" [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] 2>&1 | tee "$TMP/install.log"`. Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
   (the installer reads its `playwright-<browser>` servers back and keeps them). Sentry environment plan: whenever sentry is installed or among the adds, read the
   ACCOUNT `settings.json` env (`~/.claude/settings.json`, or the space's) - `SENTRY_SLUG` missing -> ask
@@ -440,14 +461,24 @@ profile), output to `$TMP/select.out` - then:
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
   (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
-- **Removes**: `install --selection` does NOT uninstall - delete each accepted removal explicitly,
-  showing the command first: the skill directory / agent file / rule file; a hook loses BOTH its
-  `.claude/hooks/` file and its `.claude/settings.json` wiring; `claude mcp remove <name>` (playwright = every `playwright-<browser>` server);
+- **Removes**: on the Node seed the `--drop` lines ARE the removal, applied by that run: a seat a
+  plugin carries is denied, a hook on the plugin route is named in `CLAUDE_STACK_HOOKS_OFF`, a copied
+  skill, agent, rule or hook loses its file (a copied hook its wiring too), and a stack entry
+  nothing kept needs any more is disabled. Report them from `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out: `skill <name> stays loaded` is a skill an
+  entry the project still needs goes on carrying - report it as carried, never as removed; `--drop
+  <line> not applied` is an item something kept requires, or an always-on rule or server (`locked`) -
+  report it as kept, with the reason; a stack entry enabled at another scope is never disabled, the
+  log names the command for the user. Two removals the installer never makes, each with its command shown first:
+  `claude mcp remove <name>` for an MCP on the copy route (playwright = every
+  `playwright-<browser>` server), and
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin the
   core entry hard-depends on - never propose removing one: Claude Code refuses both the uninstall
   and the disable while the core is enabled, naming the dependent. The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
-  project'), since account-wide and project-local are different consents.
+  project'), since account-wide and project-local are different consents. Under the shell seed
+  the twin deletes nothing, so every accepted removal is also deleted here: the skill directory /
+  agent file / rule file; a hook loses BOTH its `.claude/hooks/` file and its
+  `.claude/settings.json` wiring.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
   block inside `.claude/rules/baseline-project-agent-capabilities.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.

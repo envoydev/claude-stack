@@ -98,7 +98,7 @@ Everything this step needs comes back from one script in the snapshot:
 node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root .
 ```
 
-(Global mode: `--root <account dir>`. A fork install passes `--repo <owner/name>`; a
+(Global mode: `--root <account dir> --settings .claude/settings.json` - a global install keeps its stamp in the account dir but writes `settings.json` into the project, as every seed does. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE
 pre-install read - never hand-write a second probe for anything it already prints, and never
 open `meta/migrations.json` yourself: the catalog is a maintainer file with a 2,000-character

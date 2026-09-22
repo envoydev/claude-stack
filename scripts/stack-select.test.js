@@ -930,3 +930,21 @@ test('the recommended hook set is the whole catalog - a walk that takes it switc
     assert.deepEqual(missing, [],
         'a catalog hook the recommendation leaves out lands in CLAUDE_STACK_HOOKS_OFF on every default setup');
 });
+
+// Phase 8 T4: the installer's read-back lists what the user switched off as `left_out` - a seat
+// denied, an item of a parked entry. That is on disk, never MISSING: validate proposing it every run
+// would re-enable what the user turned off.
+test('findStackMissing: a left_out item is switched off here, never missing', () => {
+    const installed = { rules: ['csharp-conventions'], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: ['serena'], plugins: [], hooks: [],
+        left_out: ['agent aspnet-verifier', 'skill dotnet-web-backend'] };
+    const names = new Set(findStackMissing(graph, recommendations, installed, ['aspnet']).map(m => `${m.category} ${m.name}`));
+    assert.ok(!names.has('agent aspnet-verifier'), 'a denied seat is not proposed back');
+    assert.ok(!names.has('skill dotnet-web-backend'), 'a parked entry item is not proposed back');
+    assert.ok(names.has('plugin csharp-lsp'), 'everything else still is');
+});
+
+test('findStackMissing: a parked MCP entry is that server switched off here, never missing', () => {
+    const installed = { rules: [], agents: [], skills: [], mcps: ['serena'], plugins: [], hooks: [], plugins_disabled: ['playwright-chrome'] };
+    const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
+    assert.ok(!names.has('mcp playwright'), 'the parked engine entry folds onto its catalog row');
+});

@@ -386,3 +386,76 @@ test('dropLines: --drop removes a line and keeps the hooks answer - dropping the
     assert.deepStrictEqual(sel.dropLines(['hook h1', 'rule r'], ['hook h1']), ['rule r', 'hook none']);
     assert.deepStrictEqual(sel.dropLines(['rule r'], ['hook h1']), ['rule r'], 'no hook lines to begin with - nothing to answer');
 });
+
+// Phase 8 T4: configure and validate read the install through the installer's OWN read-back
+// (`--print-plan --plan-out`), never by hand - a hand inventory unioned what the entries carry
+// without subtracting the denied seats, so every configure run switched them back on.
+test('planInventory: the inventory JSON - names per category, playwright folded, plugins with scope, parked ones apart', () =>
+{
+    const inv = sel.planInventory({
+        lists: {
+            skills: ['a|csharp'], agents: ['evidence-gatherer.md'], rules: ['baseline-security.md'],
+            hooks: ['guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'docs-session.js'],
+            mcps: ['playwright-chrome|x', 'playwright-firefox|y', 'serena|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
+        },
+        listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('claude-stack-devops@claude-stack', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
+        answered: { hooks: true, agents: false },
+        pluginCatalog: ['superpowers', 'claude-hud', 'csharp-lsp'],
+        leftOut: ['agent security-auditor'],
+    });
+    assert.deepStrictEqual(inv.skills, ['csharp']);
+    assert.deepStrictEqual(inv.hooks, ['guard-read-whole-file', 'docs-session']);
+    assert.deepStrictEqual(inv.mcps, ['playwright', 'serena']);
+    assert.deepStrictEqual(inv.plugins, [{ name: 'claude-hud', scope: 'user' }, { name: 'superpowers', scope: 'user' }],
+        'an enabled catalog plugin the selection never lists (the core\'s dependency) is installed all the same');
+    assert.deepStrictEqual(inv.parked_plugins, ['csharp-lsp'], 'only CATALOG plugins parked here - the read-back would enable them');
+    assert.deepStrictEqual(inv.left_out, ['agent security-auditor']);
+    assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp', 'claude-stack-devops'], 'a parked stack entry is the same third state');
+    assert.deepStrictEqual(inv.answered, { hooks: true, agents: false });
+});
+
+// T4: a --drop that takes a stack entry out of the plugin set must DISABLE that entry, or the
+// dropped skill keeps loading through it. Only what the drop itself removed, dependents first.
+test('droppedEntries: what the drop took out of the set, folded onto the listing, dependents first', () =>
+{
+    const listing = [
+        row('claude-stack-aspnet@claude-stack'), row('claude-stack-csharp@claude-stack'),
+        row('claude-stack-devops@claude-stack'), row('playwright-chrome@claude-stack'),
+        row('sentry@claude-stack', { enabled: false }),
+    ];
+    const deps = { 'claude-stack-aspnet': ['claude-stack-csharp'], 'claude-stack-csharp': ['claude-stack'] };
+    const got = sel.droppedEntries({
+        before: ['claude-stack', 'claude-stack-aspnet', 'claude-stack-csharp', 'playwright', 'sentry', 'claude-stack-devops'],
+        after: ['claude-stack', 'claude-stack-devops'],
+        listing, deps, marketplace: 'claude-stack',
+    });
+    assert.deepStrictEqual(got.map((r) => r.name), ['claude-stack-aspnet', 'claude-stack-csharp', 'playwright-chrome'],
+        'aspnet before the csharp it depends on; the parked sentry is not touched; devops stays');
+});
+
+test('leftOut: every item a parked entry carries, and every stack seat the deny list names', () =>
+{
+    const got = sel.leftOut({ parked: ['claude-stack-devops'], deny: ['Agent(claude-stack:evidence-gatherer)', 'Agent(my-own-seat)', 'Bash(curl:*)'] });
+    assert.deepStrictEqual(got.sort(), ['agent devops-implementer', 'agent devops-solution-designer', 'agent devops-verifier', 'agent evidence-gatherer', 'skill devops'].sort());
+});
+
+test('droppedEntries: the core, the hooks entry and the locked servers are never queued', () =>
+{
+    const listing = ['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory', 'context7-local'].map((n) => row(`${n}@claude-stack`));
+    const got = sel.droppedEntries({ before: ['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory'], after: [], listing, deps: {}, marketplace: 'claude-stack' });
+    assert.deepStrictEqual(got.map((r) => r.name), ['context7-local'], 'only the droppable transport of context7');
+});
+
+test('deriveFromDisk: a global install reads its skills from the account dir, the rest from the project', () =>
+{
+    const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'dfd-'));
+    try
+    {
+        const proj = path.join(root, 'proj', '.claude'); const acct = path.join(root, 'acct', 'skills');
+        fs.mkdirSync(path.join(proj, 'rules'), { recursive: true }); fs.writeFileSync(path.join(proj, 'rules', 'baseline-git.md'), 'x');
+        fs.mkdirSync(path.join(acct, 'csharp'), { recursive: true }); fs.writeFileSync(path.join(acct, 'csharp', 'SKILL.md'), 'x');
+        const lines = sel.deriveFromDisk({ claudeDir: proj, skillsDir: acct });
+        assert.ok(lines.includes('skill csharp') && lines.includes('rule baseline-git'), lines.join(','));
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

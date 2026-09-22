@@ -97,11 +97,12 @@ const listDir = (dir, test) =>
 
 // What the TARGET carries, read off disk. Generated project-owned files and the engine modules are
 // excluded; a playwright engine server collapses back to the one manifest entry it expands from.
-function deriveFromDisk({ claudeDir, mcpServers = [], plugins = [], knownPlugins = [] })
+// `skillsDir`: a global install keeps its skills in the account dir, everything else in the project.
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [] })
 {
     const lines = [];
-    for (const name of listDir(path.join(claudeDir, 'skills'), (d) => d.isDirectory()))
-        if (fs.existsSync(path.join(claudeDir, 'skills', name, 'SKILL.md'))) lines.push(`skill ${name}`);
+    for (const name of listDir(skillsDir, (d) => d.isDirectory()))
+        if (fs.existsSync(path.join(skillsDir, name, 'SKILL.md'))) lines.push(`skill ${name}`);
     for (const f of listDir(path.join(claudeDir, 'agents'), (d) => d.isFile() && d.name.endsWith('.md')))
         lines.push(`agent ${f.replace(/\.md$/, '')}`);
     for (const f of listDir(path.join(claudeDir, 'rules'), (d) => d.isFile() && d.name.endsWith('.md')))
@@ -183,9 +184,9 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = 'claude-stack', log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = 'claude-stack', log = () => {} })
 {
-    let lines = deriveFromDisk({ claudeDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
+    let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
     if (!hasInstall(lines)) return none;
 
@@ -311,7 +312,77 @@ function dropLines(lines, drop = [], log = () => {})
     return out;
 }
 
+// configure and validate read the install through this, never by hand: the read-back the update
+// itself would write back, as the inventory JSON their walk takes (`stack-select --installed`). A
+// hand inventory unioned what the entries CARRY without the denied seats, so every configure run
+// switched them back on. A plugin the listing shows disabled is the third state validate keeps
+// apart - parked, neither installed nor absent.
+const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name === 'context7-local' ? 'context7' : name);
+//
+// `pluginCatalog` is every plugin the catalog names, the core's hard dependencies included: an
+// enabled one is installed whatever the selection says (superpowers rides the core entry), or an
+// unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
+// seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
+function planInventory({ lists, listing = [], answered, pluginCatalog = [], leftOut = [] })
+{
+    const uniq = (xs) => [...new Set(xs)];
+    const rowOf = new Map(listing.map((r) => [r.name, r]));
+    const picked = uniq([...(lists.plugins || []).map(nameOfPlugin), ...pluginCatalog.filter((n) => rowOf.has(n) && rowOf.get(n).enabled)]);
+    return {
+        skills: uniq((lists.skills || []).map(nameOfSkill)),
+        agents: uniq((lists.agents || []).map(nameOfFile)),
+        rules: uniq((lists.rules || []).map(nameOfFile)),
+        hooks: uniq((lists.hooks || []).map(nameOfFile)),
+        mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
+        plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
+        plugins_disabled: listing.filter((r) => !r.enabled).map((r) => r.name),
+        parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
+        left_out: leftOut,
+        answered,
+    };
+}
+
+// What the user switched off, as selection lines: every item a parked stack entry carries, and
+// every seat `permissions.deny` names under a stack entry. The closure never crosses either.
+function leftOut({ parked = [], deny = [] })
+{
+    const { placement } = require('../plugin-placement.js');
+    const place = placement();
+    const out = [];
+    for (const name of parked)
+    {
+        const entry = place.plugins[name];
+        if (!entry) continue;
+        for (const s of entry.skills) out.push(`skill ${s}`);
+        for (const a of entry.agents) out.push(`agent ${a}`);
+    }
+    for (const seat of (Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean)) out.push(`agent ${seat}`);
+    return [...new Set(out)];
+}
+
+// The stack entries a --drop took out of the plugin set (`before` / `after` are selection-plugins
+// sets, MCP rows by catalog name), matched to the ENABLED listing rows, in the order the CLI accepts
+// a disable: an entry goes only once nothing still queued depends on it.
+//
+// The core, the hooks entry and the three locked servers are never queued: the core depends on the
+// servers, so the CLI would refuse, and a drop of them is refused before it gets here anyway.
+const NEVER_DISABLED = new Set(['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory']);
+function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
+{
+    const gone = new Set(before.filter((n) => !after.includes(n)));
+    const queue = listing
+        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(r.name) && gone.has(foldMcp(r.name)))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    const out = [];
+    while (queue.length)
+    {
+        const i = queue.findIndex((r) => !queue.some((o) => o !== r && (deps[o.name] || []).includes(r.name)));
+        out.push(...queue.splice(i < 0 ? 0 : i, 1));
+    }
+    return out;
+}
+
 module.exports = {
     addLines, closeLines, dropLines, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, readBack, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
+    adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
 };

@@ -22,6 +22,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { installFromSource, stampDocsRoot } = require('./install/copy.js');
+const copy = require('./install/copy.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-copy-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -221,4 +222,38 @@ test('install-copy: an absent rule file is a no-op, not an error', () =>
     const notes = [];
     assert.doesNotThrow(() => stampDocsRoot(base, { log: () => {}, note: (m) => notes.push(m) }));
     assert.deepStrictEqual(notes, []);
+});
+
+// Phase 8 T4: a --drop removes the COPY of what it names, or the next --installed-only read-back
+// finds the file on disk and puts the item straight back. Only a name the stack ships, and never an
+// engine - the two engines are no hook line and must survive every drop.
+test('removeDropped: deletes the copied skill, agent, rule and hook a --drop names, nothing else', () =>
+{
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'drop-'));
+    try
+    {
+        const dirs = { skill: path.join(root, 'skills'), agent: path.join(root, 'agents'), rule: path.join(root, 'rules'), hook: path.join(root, 'hooks') };
+        for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
+        fs.mkdirSync(path.join(dirs.skill, 'csharp')); fs.writeFileSync(path.join(dirs.skill, 'csharp', 'SKILL.md'), 'x');
+        fs.mkdirSync(path.join(dirs.skill, 'mine')); fs.writeFileSync(path.join(dirs.skill, 'mine', 'SKILL.md'), 'x');
+        fs.writeFileSync(path.join(dirs.agent, 'evidence-gatherer.md'), 'x');
+        fs.writeFileSync(path.join(dirs.rule, 'sql-conventions.md'), 'x');
+        fs.writeFileSync(path.join(dirs.hook, 'guard-stop-contract.js'), 'x');
+        fs.writeFileSync(path.join(dirs.hook, 'docs.js'), 'x');
+        const logged = [];
+        copy.removeDropped({
+            drop: ['skill csharp', 'skill mine', 'agent evidence-gatherer', 'rule sql-conventions', 'hook guard-stop-contract', 'hook docs', 'mcp serena'],
+            dirs,
+            shipped: { skill: ['csharp'], agent: ['evidence-gatherer'], rule: ['sql-conventions'], hook: ['guard-stop-contract'] },
+            log: (l) => logged.push(l),
+        });
+        assert.ok(!fs.existsSync(path.join(dirs.skill, 'csharp')));
+        assert.ok(fs.existsSync(path.join(dirs.skill, 'mine')), 'a name the stack does not ship is the user\'s own');
+        assert.ok(!fs.existsSync(path.join(dirs.agent, 'evidence-gatherer.md')));
+        assert.ok(!fs.existsSync(path.join(dirs.rule, 'sql-conventions.md')));
+        assert.ok(!fs.existsSync(path.join(dirs.hook, 'guard-stop-contract.js')));
+        assert.ok(fs.existsSync(path.join(dirs.hook, 'docs.js')), 'an engine is never a dropped hook');
+        assert.strictEqual(logged.length, 4);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

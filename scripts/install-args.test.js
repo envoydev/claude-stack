@@ -262,3 +262,23 @@ test('args: --drop mirrors --add - repeatable, <category> <name>, only with --in
     assert.throws(() => parseArgs(['update', '--drop', 'hook x'], {}), /--drop needs --installed-only/);
     assert.throws(() => parseArgs(['update', '--installed-only', '--drop', 'x'], {}), /--drop takes/);
 });
+
+test('args: --plan-out takes a file and belongs to --print-plan', () =>
+{
+    assert.strictEqual(parseArgs(['update', '--installed-only', '--print-plan', '--plan-out', 'inv.json'], {}).planOut, 'inv.json');
+    assert.throws(() => parseArgs(['update', '--plan-out', 'inv.json'], {}), /--plan-out needs --print-plan/);
+});
+
+// T4: configure and validate take their inventory from this dry run, so it names what the plan
+// answered and writes the walk's --installed JSON - and nothing else.
+test('install-entry: --print-plan --plan-out writes the inventory JSON and names what was answered', () =>
+{
+    const inv = path.join(ENTRY_CWD, 'installed.json');
+    const r = run(['install', '--source', ROOT, '--print-plan', '--plan-out', inv], { PATH: '/nonexistent-bin' });
+    assert.strictEqual(r.code, 0, `--plan-out failed: ${r.err}`);
+    assert.match(r.out, /^plan answered: hooks=yes agents=yes$/m);
+    const got = JSON.parse(fs.readFileSync(inv, 'utf8'));
+    for (const k of ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins', 'plugins_disabled']) assert.ok(Array.isArray(got[k]), k);
+    assert.ok(got.mcps.includes('playwright') && !got.mcps.some((m) => m.startsWith('playwright-')), 'the engines fold back onto the catalog row');
+    assert.ok(!fs.existsSync(path.join(ENTRY_CWD, '.claude')), 'the dry run wrote into the project');
+});

@@ -31,7 +31,7 @@ const VALUED = new Map([
     ['--sentry-slug', 'sentrySlug'], ['--sentry-auth', 'sentryAuth'],
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabled'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
-    ['--selection', 'selection'], ['--source', 'source'],
+    ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
 const BOOLEAN = new Map([
@@ -39,7 +39,7 @@ const BOOLEAN = new Map([
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
 ]);
 
-const FLAG_LIST = '--space, --scope, --context7, --memory-level, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --skills-only, --source';
+const FLAG_LIST = '--space, --scope, --context7, --memory-level, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -58,7 +58,7 @@ function parseArgs(argv, env = {})
     const out = {
         action: '', space: '', scope: '', context7: '', sentrySlug: '', sentryAuth: '',
         playwrightBrowsersRaw: '', playwrightEnabled: '', docsVersioning: '', memoryLevel: '',
-        selection: '', source: '',
+        selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [],
     };
@@ -100,6 +100,7 @@ function parseArgs(argv, env = {})
     if (!['install', 'update'].includes(out.action)) fail(`the action must be 'install' or 'update' (got '${out.action}')`);
     for (const flag of ['add', 'drop'])
         if (out[flag].length && !out.installedOnly) fail(`--${flag} needs --installed-only - a walk writes its picks into the --selection file`);
+    if (out.planOut && !out.printPlan) fail('--plan-out needs --print-plan - it writes the inventory the plan prints');
 
     // --space is baked into a path (~/.claude-<space>, memory_<space>.db), so its characters are
     // checked here rather than discovered as a broken directory name later. Its CASING is

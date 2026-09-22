@@ -87,8 +87,14 @@ function main(argv, env, io)
     const configDir = env.CLAUDE_CONFIG_DIR
         || path.join(home, args.space ? `.claude-${args.space}` : '.claude');
     const projectRoot = rt.gitRoot(cwd) || cwd;
-    const claudeDir = args.scope === 'user' ? configDir : path.join(projectRoot, '.claude');
-    const skillsDir = args.scope === 'user' ? path.join(configDir, 'skills') : path.join(projectRoot, '.claude', 'skills');
+    // The flag says project|global; the claude CLI says project|user. A global install puts the
+    // skills and the stamp in the account dir and makes every plugin / MCP call user-scoped; the
+    // rules, agents, hooks and settings.json stay in the project, exactly as on the twin - the
+    // bodies run `node .claude/hooks/docs.js` from the project, and the docs-root rule is stamped there.
+    const cliScope = args.scope === 'global' ? 'user' : 'project';
+    const claudeDir = path.join(projectRoot, '.claude');
+    const skillsDir = args.scope === 'global' ? path.join(configDir, 'skills') : path.join(projectRoot, '.claude', 'skills');
+    const stampFile = path.join(args.scope === 'global' ? configDir : claudeDir, 'claude-stack.stamp');
     const mcpFile = path.join(projectRoot, '.mcp.json');
     const hasClaude = rt.which('claude');
 
@@ -129,6 +135,13 @@ function main(argv, env, io)
         // closure would run over items no one picked.
         let stampPicks = null;
         let listedEngines = [];
+        // The whole listing, read once: the read-back, --plan-out and a --drop's disable all use it.
+        let listing = null;
+        // The stack entries a --drop took out of the plugin set - disabled by the plugins layer, or
+        // the dropped skill keeps loading through them.
+        let dropEntries = [];
+        let leftOut = [];
+        const always = readJson(path.join(resolved.dir, 'meta', 'recommendations.json')).always || {};
         // The off-state surfaces this run may write back: a walk's selection answers the agents
         // layer, and the hooks layer when it carries hook lines (none = every hook, as on disk); a
         // read-back answers only what it found evidence of.
@@ -136,27 +149,44 @@ function main(argv, env, io)
         if (args.installedOnly)
         {
             const raw = hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }) : '';
+            listing = plugins.parsePluginList(raw, projectRoot);
+            const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: STACK_MARKET_NAME });
             const back = selection.readBack({
-                claudeDir,
+                claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
-                listing: plugins.parsePluginList(raw, projectRoot),
-                stackListing: plugins.parsePluginList(raw, projectRoot, { marketplace: STACK_MARKET_NAME }),
+                listing, stackListing,
                 settings: readJson(path.join(claudeDir, 'settings.json')),
                 routes, manifest, sourceDir: resolved.dir,
-                stampHooks: readStampHooks(path.join(claudeDir, 'claude-stack.stamp')),
-                stampPicked: stampLayer.readPicked(path.join(claudeDir, 'claude-stack.stamp')),
-                always: readJson(path.join(resolved.dir, 'meta', 'recommendations.json')).always || {},
-                marketplace: STACK_MARKET_NAME, log,
+                stampHooks: readStampHooks(stampFile),
+                stampPicked: stampLayer.readPicked(stampFile),
+                always, marketplace: STACK_MARKET_NAME, log,
             });
             if (!back.installed)
             {
                 err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /claude-stack:init) first\n`);
                 return 1;
             }
+            leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
             const withAdds = selection.addLines(back.lines, args.add, log);
             const graph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
-            const closed = selection.dropLines(selection.closeLines(withAdds, { from: [...back.closeFrom, ...args.add], graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log }), args.drop, log);
-            stampPicks = new Set(closed.filter((l) => back.closeFrom.includes(l) || args.add.includes(l) || !withAdds.includes(l)));
+            // The always-on rules and servers are locked: the read-back adopts them whatever the disk
+            // says, so a drop of one would come straight back on the next update.
+            const locked = new Set([...(always.rules || []).map((n) => `rule ${n}`), ...(always.mcps || []).map((n) => `mcp ${n}`)]);
+            for (const l of args.drop.filter((d) => locked.has(d)))
+                log(`installed-only: --drop ${l} not applied - locked, every install carries it`);
+            const drops = args.drop.filter((d) => !locked.has(d));
+            // A drop runs BEFORE the closure, so an item something kept still requires comes straight
+            // back and is reported - the walk's own closure would have kept it, and a drop the next
+            // update's closure undoes is no drop at all.
+            const withDrops = selection.dropLines(withAdds, drops, log);
+            const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log: say });
+            const closed = close(withDrops, [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l)), log);
+            args.dropApplied = drops.filter((l) => !closed.includes(l));
+            for (const l of drops.filter((d) => closed.includes(d)))
+                log(`installed-only: --drop ${l} not applied - something kept requires it (named in the required line above)`);
+            if (args.dropApplied.length)
+                dropEntries = droppedByDrop({ kept: close(withAdds, [...back.closeFrom, ...args.add], () => {}), closed, stackListing, sourceDir: resolved.dir, drop: args.dropApplied, routes, log });
+            stampPicks = new Set(closed.filter((l) => back.closeFrom.includes(l) || args.add.includes(l) || !withDrops.includes(l)));
             picked = selection.parseSelection(closed.join('\n'));
             answered = back.answered;
             listedEngines = back.engines;
@@ -207,6 +237,16 @@ function main(argv, env, io)
         if (args.printPlan)
         {
             for (const line of selection.renderPlan(lists)) plain(line);
+            plain(`plan answered: hooks=${answered.hooks ? 'yes' : 'no'} agents=${answered.agents ? 'yes' : 'no'}`);
+            plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'} mcps=${routes.mcps ? 'plugin' : 'copy'}`);
+            if (args.planOut)
+            {
+                if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot) : [];
+                const inv = selection.planInventory({
+                    lists, listing, answered, leftOut, pluginCatalog: manifest.catalogs.plugins.map((id) => id.split('@')[0]),
+                });
+                fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
+            }
             return 0;
         }
 
@@ -223,13 +263,23 @@ function main(argv, env, io)
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home,
-            pins, tokens, remotes, level, hasClaude, picked, answered,
+            pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope,
         };
 
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
             : null;
 
+        copy.removeDropped({
+            drop: args.dropApplied || [], log,
+            dirs: { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks') },
+            shipped: {
+                skill: manifest.catalogs.skills.map((e) => e.split('|').pop()),
+                agent: manifest.agents.map((e) => e.replace(/\.md$/, '')),
+                rule: manifest.rules.map((e) => e.replace(/\.md$/, '')),
+                hook: manifest.catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')),
+            },
+        });
         runLayers(ctx);
 
         if (pinSnapshot) pinsLayer.restorePins({ snapshot: pinSnapshot, files: pinFiles(ctx), log });
@@ -333,15 +383,24 @@ function installPlugins(ctx)
     });
     if (ctx.args.action === 'update')
     {
-        plugins.prunedRetired({ listing, retired: [], scope: ctx.args.scope, cli: ctx.cli, log: ctx.log });
+        plugins.prunedRetired({ listing, retired: [], scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         plugins.updatePlugins({
-            plugins: set, scope: ctx.args.scope, before: listing, cli: ctx.cli, log: ctx.log,
+            plugins: set, scope: ctx.cliScope, before: listing, cli: ctx.cli, log: ctx.log,
             after: () => plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot),
         });
+        for (const row of ctx.dropEntries || [])
+        {
+            const spec = `${row.name}@${row.marketplace}`;
+            // An entry enabled at ANOTHER scope belongs to that scope's install too - an account-wide
+            // entry a project run disabled would vanish from every other project. Said, not done.
+            if (row.scope !== ctx.cliScope) { ctx.log(`  ${spec} is enabled at ${row.scope} scope, not this run's - if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`); continue; }
+            if (ctx.cli(['plugin', 'disable', spec, '--scope', row.scope], { quiet: true })) ctx.log(`plugin disabled [${row.scope}]: ${spec} (nothing kept needs it after --drop)`);
+            else ctx.note(`plugin disable failed: ${spec} - disable it by hand: claude plugin disable ${spec} --scope ${row.scope}`);
+        }
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.args.scope, listing, coreDeps: CORE_DEP_PLUGINS,
+        plugins: set, scope: ctx.cliScope, listing, coreDeps: CORE_DEP_PLUGINS,
         cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
@@ -351,7 +410,7 @@ function installMcps(ctx)
     if (!ctx.hasClaude) return;
     const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: [] });
     for (const name of retired)
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.args.scope], { quiet: true })) ctx.log(`  mcp pruned: ${name}`);
+        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true })) ctx.log(`  mcp pruned: ${name}`);
 
     if (ctx.routes.mcps)
     {
@@ -359,17 +418,17 @@ function installMcps(ctx)
         return;
     }
     for (const name of mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }))
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.args.scope], { quiet: true })) ctx.log(`  mcp removed: ${name}`);
+        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true })) ctx.log(`  mcp removed: ${name}`);
 
     const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)));
     for (const entry of live)
     {
         const name = entry.split('|')[0];
         const args = entry.slice(entry.indexOf('|') + 1);
-        if (ctx.args.action === 'update') ctx.cli(['mcp', 'remove', name, '-s', ctx.args.scope], { quiet: true });
+        if (ctx.args.action === 'update') ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true });
         else if (ctx.cli(['mcp', 'get', name], { quiet: true })) { ctx.plain(`  mcp ${name} already configured - skipping`); continue; }
         ctx.log(`mcp [${ctx.args.scope}]: ${name}`);
-        if (!ctx.cli(mcp.registerSpec({ name, args, scope: ctx.args.scope, remotes: ctx.remotes, tokens: ctx.tokens })))
+        if (!ctx.cli(mcp.registerSpec({ name, args, scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens })))
             ctx.note(`mcp ${name} failed`);
     }
 
@@ -379,13 +438,13 @@ function installMcps(ctx)
     }));
     if (ctx.args.scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
     else mcp.verifyUser({
-        expects, scope: ctx.args.scope,
+        expects, scope: ctx.cliScope,
         getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.env }),
         reregister: (name) =>
         {
             const entry = live.find((e) => e.split('|')[0] === name);
-            ctx.cli(['mcp', 'remove', name, '-s', ctx.args.scope], { quiet: true });
-            ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope: ctx.args.scope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
+            ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true });
+            ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
         },
         log: ctx.log, note: ctx.note,
     });
@@ -421,7 +480,11 @@ function installHooksAndRules(ctx)
         file: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
-        retiredHooks: ctx.routes.hooks ? [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))] : [],
+        // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
+        // unselected hook's entries on purpose, so the drop has to name it.
+        retiredHooks: ctx.routes.hooks
+            ? [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))]
+            : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`),
         docsVersioning: {
             value: ctx.args.docsVersioning,
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot) }),
@@ -511,6 +574,27 @@ function releaseVersion(sourceDir)
 {
     try { return JSON.parse(fs.readFileSync(path.join(sourceDir, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; }
     catch { return ''; }
+}
+
+// What a --drop did to the plugin set: the entries it took out (disabled later, dependents first),
+// and every dropped skill an entry the project still needs goes on carrying - reported, since no
+// setting can unload a plugin skill (spike S2).
+function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, log })
+{
+    const place = placement();
+    // Only the entries a PLUGIN route put there: on the skills copy route no stack entry carries this
+    // project's items, and on the MCP copy route no server entry does - another install's are not ours.
+    const ours = (name) => (place.plugins[name] ? routes.skills : routes.mcps);
+    const setOf = (lines) => deriveState({ selectionText: lines.join('\n'), sourceDir }).plugins.map((p) => p.split('@')[0]).filter(ours);
+    const deps = Object.fromEntries(Object.entries(place.plugins).map(([name, p]) => [name, p.dependencies || []]));
+    const after = deriveState({ selectionText: closed.join('\n'), sourceDir });
+    for (const line of drop)
+    {
+        const [category, name] = line.split(' ');
+        if (routes.skills && category === 'skill' && after.skills.carried.includes(name))
+            log(`installed-only: skill ${name} stays loaded - ${homeOf(place, 'skills', name)} carries it and a kept item needs that entry`);
+    }
+    return selection.droppedEntries({ before: setOf(kept), after: setOf(closed), listing: stackListing, deps, marketplace: STACK_MARKET_NAME });
 }
 
 const registeredMemoryPath = (mcpFile) =>

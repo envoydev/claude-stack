@@ -510,6 +510,16 @@ function findStackRedundant(graph, recs, installed, detected)
 // validate keeps a DISABLED plugin out of `plugins` and in `plugins_disabled` (validate.md step 1).
 const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv.plugins_disabled : [])
     .map(e => (e && typeof e === 'object' ? e.name : e)).filter(Boolean).map(String);
+// The same third state for skills and agents: the installer's read-back lists what the user switched
+// off (a denied seat, an item of a parked entry) as `left_out` lines - on disk, never MISSING.
+const leftOutOf = (inv, layer) => ((inv && Array.isArray(inv.left_out)) ? inv.left_out : [])
+    .map(String).filter(l => l.startsWith(`${layer.replace(/s$/, '')} `)).map(l => l.slice(l.indexOf(' ') + 1));
+// A parked MCP entry (`playwright-chrome`, `context7-local`) is that server switched off here.
+const offHere = (inv, layer) => [
+    ...(layer === 'plugins' ? parkedPlugins(inv) : []),
+    ...(layer === 'mcps' ? manifestMcps(parkedPlugins(inv)) : []),
+    ...leftOutOf(inv, layer),
+];
 function findStackMissing(graph, recs, installed, detected)
 {
     const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
@@ -521,7 +531,7 @@ function findStackMissing(graph, recs, installed, detected)
     for (const l of LAYERS)
     {
         // A plugin validate recorded as DISABLED is on disk: its row is an enable, never an install.
-        const have = new Set([...((installed && installed[l]) || []), ...(l === 'plugins' ? parkedPlugins(installed) : [])]);
+        const have = new Set([...((installed && installed[l]) || []), ...offHere(installed, l)]);
         const ideal = new Set();
         for (const c of Object.values(sources)) for (const n of c[l] || []) ideal.add(n);
         for (const name of [...ideal].sort())
@@ -548,7 +558,7 @@ function findEvidenceGaps(catalog, found, installed)
     {
         const foundL = (found && found[l]) || {};
         const have = new Set((installed && installed[l]) || []);
-        const parked = new Set(l === 'plugins' ? parkedPlugins(installed) : []);
+        const parked = new Set(offHere(installed, l));
         for (const name of Object.keys((catalog && catalog[l]) || {}))
         {
             const signal = foundL[name];

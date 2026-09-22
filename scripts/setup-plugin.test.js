@@ -362,7 +362,7 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /--missing/, 'validate drives the add side through stack-select --missing');
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
     assert.match(body, /project mode only/i, 'validate refuses outside a project');
-    assert.match(body, /install\/claude-stack\.js" install/, 'validate installs the accepted adds via the seed');
+    assert.match(body, /install\/claude-stack\.js" update --source "\$TMP\/repo" --scope project --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back');
     assert.match(body, /CLAUDE_STACK_SEED=shell/, '... and still names the one-release shell fallback');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
     // mixed with signal tiers
@@ -443,4 +443,34 @@ test('update: new items come from the preflight\'s new: lines and a yes becomes 
     const step4 = body.slice(body.indexOf('## 4. Pruning path'), body.indexOf('## 5. Prune'));
     assert.match(step4, /run the installer exactly as in step 3 - its `--add` already carries every `renamed`/);
     assert.match(step4, /Never rebuild the\nselection from a disk inventory on the Node seed/);
+});
+
+// Phase 8 T4: configure and validate read the install through the installer's own read-back and
+// apply as --add / --drop over it - a hand inventory re-enabled every seat the user switched off,
+// and a --selection apply rebuilds the install from a disk that holds only the extras.
+test('configure and validate inventory through --print-plan --plan-out and apply through the delta', () =>
+{
+    for (const name of ['configure', 'validate'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(body, /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, `${name} inventories through the read-back`);
+        assert.match(body, /plan answered:\s+hooks=<yes\|no>\s+agents=<yes\|no>/, `${name} reads the answered line`);
+        assert.match(body, /derive-state\.js" --delta --installed "\$TMP\/installed\.json"|derive-state\.js"\n--delta --installed "\$TMP\/installed\.json"/, `${name} builds the --add / --drop delta`);
+        assert.match(body, /Never\s+`--selection`\s+on this seed/, `${name} never applies a whole selection on the Node seed`);
+        assert.match(body, /stays loaded/, `${name} reports a skill a kept entry still carries`);
+        assert.match(body, /not applied/, `${name} reports a drop something kept requires`);
+        assert.match(body, /--picked "\$TMP\/(raw|final)\.json"/, `${name} tells the delta what the walk picked`);
+        assert.match(body, /kept-off/, `${name} reports what stays switched off`);
+        assert.match(body, /keep-parked/, `${name} keeps a parked plugin parked`);
+        assert.match(body, /\| tee "\$TMP\/install\.log"/, `${name} captures the run it greps`);
+        assert.ok(!/plugin-scan\.js/.test(body), `${name} no longer hand-filters the listing`);
+    }
+});
+
+test('configure emits hook none when its Hooks area was walked, and update reads a global install\'s settings from the project', () =>
+{
+    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    assert.match(configure, /--emit "\$TMP\/selection\.txt" --check \[--hooks-answered\]/);
+    const update = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    assert.match(update, /Global mode: `--root <account dir> --settings \.claude\/settings\.json`/);
 });

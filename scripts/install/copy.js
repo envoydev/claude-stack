@@ -107,4 +107,21 @@ function stampDocsRoot(projectRoot, { log = () => {}, note = () => {} } = {})
     }
 }
 
-module.exports = { installFromSource, stampDocsRoot, resolveDocsRoot, sameContent, DOCS_ROOT_DEFAULT };
+// A --drop removes the COPY of what it names - on the copy routes the whole item, on the plugin
+// routes an extra - or the next --installed-only read-back finds the file and puts it straight back.
+// Only a name the stack ships; the engines are no hook line, so a drop never reaches them.
+const DROP_PATH = { skill: (n) => n, agent: (n) => `${n}.md`, rule: (n) => `${n}.md`, hook: (n) => `${n}.js` };
+function removeDropped({ drop = [], dirs, shipped, log = () => {} })
+{
+    for (const line of drop)
+    {
+        const [category, name] = line.split(' ');
+        if (!DROP_PATH[category] || !(shipped[category] || []).includes(name)) continue;
+        const target = path.join(dirs[category], DROP_PATH[category](name));
+        if (!fs.existsSync(target)) continue;
+        fs.rmSync(target, { recursive: true, force: true });
+        log(`  ${category} removed (dropped): ${name}`);
+    }
+}
+
+module.exports = { installFromSource, stampDocsRoot, resolveDocsRoot, sameContent, removeDropped, DOCS_ROOT_DEFAULT };

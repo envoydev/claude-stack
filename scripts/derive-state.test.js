@@ -544,3 +544,77 @@ test('classifyNew: a rename is carried when its old copy is on disk, and an old 
     assert.deepStrictEqual([by['evidence-gatherer'].verdict, by['evidence-gatherer'].wasOff], ['arrives', true], 'the new name comes on; the report must say the old one was off');
     assert.deepStrictEqual([by['docs-session'].verdict, by['docs-session'].wasOff], ['arrives', true]);
 });
+
+// T4: the walk's closed selection against the read-back inventory, as the --add / --drop the
+// installer takes - so configure and validate apply through --installed-only, never --selection.
+const { delta } = require('./derive-state.js');
+
+test('delta: what the walk added and dropped against the inventory, one line each', () =>
+{
+    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['baseline-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['serena'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
+    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule baseline-security', 'rule sql-conventions', 'hook docs-session', 'mcp serena', 'plugin claude-hud'].join('\n');
+    assert.deepStrictEqual(delta({ installed, selectionText }), {
+        add: ['skill markdown-style', 'rule sql-conventions'],
+        drop: ['skill dotnet', 'hook guard-read-whole-file'],
+        keptOff: [], keepParked: [],
+    });
+});
+
+test('delta: a selection naming no hook at all drops every installed hook - the walk answered None', () =>
+{
+    const got = delta({ installed: { hooks: ['docs-session'], rules: ['baseline-security'] }, selectionText: 'rule baseline-security\nhook none\n' });
+    assert.deepStrictEqual(got.drop, ['hook docs-session']);
+    assert.deepStrictEqual(got.add, [], '`hook none` is no item to add');
+});
+
+test('delta: a selection with no hook line at all keeps every hook - that layer was never answered', () =>
+{
+    const got = delta({ installed: { hooks: ['docs-session'], rules: ['a'] }, selectionText: 'rule a\n' });
+    assert.deepStrictEqual(got, { add: [], drop: [], keptOff: [], keepParked: [] });
+});
+
+test('delta CLI: prints add/drop lines, or none', () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'delta-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'inv.json'), JSON.stringify({ skills: ['csharp'], rules: ['a'] }));
+        fs.writeFileSync(path.join(dir, 'sel.txt'), 'skill markdown-style\nrule a\n');
+        const run = () => spawnSync(process.execPath, [path.join(__dirname, 'derive-state.js'), '--delta', '--installed', path.join(dir, 'inv.json'), '--selection', path.join(dir, 'sel.txt')], { encoding: 'utf8' });
+        assert.strictEqual(run().stdout, 'add skill markdown-style\ndrop skill csharp\n');
+        fs.writeFileSync(path.join(dir, 'sel.txt'), 'skill csharp\nrule a\n');
+        assert.strictEqual(run().stdout, 'none\n');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// T4 review: the walk's closure knows nothing about the off-state, so a seat the user denied, an
+// item of a parked entry or a parked catalog plugin that the closure merely re-requires must not
+// turn into an --add - only the walk's own pick turns it back on.
+test('delta: a switched-off item the closure re-requires is kept off unless the walk picked it', () =>
+{
+    const installed = { agents: ['evidence-gatherer'], plugins: [], left_out: ['agent dotnet-build-error-resolver'], parked_plugins: ['claude-hud'] };
+    const selectionText = 'agent evidence-gatherer\nagent dotnet-build-error-resolver\nplugin claude-hud\n';
+    assert.deepStrictEqual(delta({ installed, selectionText }), {
+        add: [], drop: [], keptOff: ['agent dotnet-build-error-resolver', 'plugin claude-hud'], keepParked: ['plugin claude-hud'],
+    });
+    const picked = { agents: ['evidence-gatherer', 'dotnet-build-error-resolver'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
+    assert.deepStrictEqual(delta({ installed, selectionText, picked }), {
+        add: ['agent dotnet-build-error-resolver', 'plugin claude-hud'], drop: [], keptOff: [], keepParked: [],
+    });
+});
+
+test('delta CLI: kept-off and keep-parked lines follow the verdict, which stays none', () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'delta-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'inv.json'), JSON.stringify({ agents: ['a'], left_out: ['agent b'], parked_plugins: ['claude-hud'] }));
+        fs.writeFileSync(path.join(dir, 'sel.txt'), 'agent a\nagent b\n');
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'derive-state.js'), '--delta', '--installed', path.join(dir, 'inv.json'), '--selection', path.join(dir, 'sel.txt')], { encoding: 'utf8' });
+        assert.strictEqual(r.stdout, 'none\nkept-off agent b\nkeep-parked plugin claude-hud\n');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
