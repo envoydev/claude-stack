@@ -441,3 +441,106 @@ test('floor CLI: every --settings file given counts - deny rules merge across sc
     const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'claude-stack', '--settings', a, '--settings', b, '--settings', path.join(TMP, 'absent.json')], { encoding: 'utf8' }));
     assert.deepStrictEqual(out.agents.denied.sort(), ['evidence-gatherer', 'security-auditor']);
 });
+
+// T3 - update as a two-way reconcile. What LEFT upstream is the RETIRED lists; what is NEW is read
+// here, against THIS install: an item riding an entry the project already enables ARRIVES with the
+// refresh, anything else is an OFFER the user takes or leaves, and the user's own off-state wins.
+const { stampCarried, classifyNew } = require('./derive-state.js');
+
+test('stampCarried: an item MOVED out of an entry still enabled here comes back through its new home', () =>
+{
+    const stamp = { skills: ['dotnet-web-backend@claude-stack-old'], agents: ['aspnet-implementer@claude-stack-old'] };
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['skill dotnet-web-backend', 'agent aspnet-implementer']);
+});
+
+test('stampCarried: no move, an uninstalled or parked old home, a parked new home, a denied seat, an extra - nothing', () =>
+{
+    const moved = { skills: ['dotnet-web-backend@claude-stack-old'], agents: ['aspnet-implementer@claude-stack-old'] };
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-aspnet'] }, enabled: ['claude-stack-aspnet'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], routes: ALL_ROUTES }), [], 'the user uninstalled the old home');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['claude-stack-aspnet'], routes: ALL_ROUTES }), [], 'the new home is parked');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:aspnet-implementer)'], routes: ALL_ROUTES }), ['skill dotnet-web-backend'], 'a seat denied under any spelling');
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'dotnet-web-backend'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'an extra, and a plain name with no stamped home');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []);
+});
+
+test('readInstalled: every hook switched off reads back as `hook none`, not as unanswered', () =>
+{
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const lines = readInstalled({ plugins: ['claude-stack-hooks'], hooksOff: shipped.join(','), routes: { hooks: true }, sourceDir: ROOT });
+    assert.deepStrictEqual(lines, ['hook none']);
+});
+
+test('classifyNew: an item on an enabled entry arrives, one elsewhere is offered, the user\'s off-state wins', () =>
+{
+    const added = [
+        { category: 'skill', name: 'markdown-style' }, { category: 'skill', name: 'dotnet-web-backend' },
+        { category: 'agent', name: 'evidence-gatherer' }, { category: 'agent', name: 'code-style-analyzer' },
+        { category: 'rule', name: 'baseline-memory' }, { category: 'rule', name: 'sql-conventions' },
+        { category: 'hook', name: 'docs-session' }, { category: 'hook', name: 'guard-answer-length' },
+        { category: 'skill', name: 'angular-material' }, { category: 'rule', name: 'markdown-docs' },
+    ];
+    const rows = classifyNew({
+        added, plugins: ['claude-stack', 'claude-stack-hooks'], deny: ['Agent(claude-stack:code-style-analyzer)'],
+        hooksOff: 'guard-answer-length', routes: ALL_ROUTES, always: { rules: ['baseline-memory'] }, sourceDir: ROOT,
+    });
+    const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
+    assert.strictEqual(by['skill markdown-style'].verdict, 'arrives');
+    assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry, by['skill dotnet-web-backend'].recommend], ['offer', 'claude-stack-aspnet', 'leave']);
+    assert.strictEqual(by['agent evidence-gatherer'].verdict, 'arrives');
+    assert.strictEqual(by['agent code-style-analyzer'].verdict, 'off');
+    assert.strictEqual(by['rule baseline-memory'].verdict, 'arrives', 'the locked baseline is adopted');
+    assert.deepStrictEqual([by['rule sql-conventions'].verdict, by['rule sql-conventions'].recommend], ['offer', 'leave'], 'its closure enables entries - no free take');
+    assert.ok(by['rule sql-conventions'].enables.length > 0, 'and it names them');
+    assert.strictEqual(by['hook docs-session'].verdict, 'arrives');
+    assert.strictEqual(by['hook guard-answer-length'].verdict, 'off');
+    assert.deepStrictEqual([by['skill angular-material'].verdict, by['skill angular-material'].entry], ['offer', null], 'an extra is copied only on a yes');
+    assert.deepStrictEqual([by['rule markdown-docs'].verdict, by['rule markdown-docs'].recommend, by['rule markdown-docs'].enables], ['offer', 'take', []], 'a rule whose closure the enabled entries already carry is the free take');
+});
+
+test('classifyNew: on the copy routes a skill or seat is copied only on a yes, and a hook arrives only into an install that has hooks', () =>
+{
+    const added = [{ category: 'skill', name: 'markdown-style' }, { category: 'agent', name: 'evidence-gatherer' }, { category: 'hook', name: 'docs-session' }];
+    const withHooks = classifyNew({ added, plugins: ['claude-stack'], routes: {}, hasHooks: true, sourceDir: ROOT });
+    assert.deepStrictEqual(withHooks.map((r) => r.verdict), ['offer', 'offer', 'arrives']);
+    const noHooks = classifyNew({ added, plugins: [], routes: {}, hasHooks: false, sourceDir: ROOT });
+    assert.strictEqual(noHooks[2].verdict, 'offer');
+});
+
+test('classifyNew: a name this release does not carry is no new item', () =>
+{
+    assert.deepStrictEqual(classifyNew({ added: [{ category: 'skill', name: 'no-such-skill' }, { category: 'hook', name: 'hook-prelude' }], routes: ALL_ROUTES, sourceDir: ROOT }), []);
+});
+
+test('classifyNew: a hook on the plugin route arrives even with the hooks entry absent - the installer enables it regardless', () =>
+{
+    const rows = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: ['claude-stack'], routes: ALL_ROUTES, sourceDir: ROOT });
+    assert.strictEqual(rows[0].verdict, 'arrives');
+    const unread = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: null, routes: ALL_ROUTES, sourceDir: ROOT });
+    assert.strictEqual(unread[0].verdict, 'arrives', 'HOOKS_OFF is in settings - no listing needed');
+});
+
+test('classifyNew: the walk\'s None held - a hook a release adds after every hook was switched off stays off', () =>
+{
+    const rows = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: ['claude-stack-hooks'], noneBefore: true, routes: ALL_ROUTES, sourceDir: ROOT });
+    assert.strictEqual(rows[0].verdict, 'off');
+});
+
+test('classifyNew: a rename is carried when its old copy is on disk, and an old name switched off is flagged', () =>
+{
+    const rows = classifyNew({
+        added: [
+            { category: 'rule', name: 'sql-conventions', from: 'old-sql', oldOnDisk: true },
+            { category: 'rule', name: 'typescript-conventions', from: 'old-ts', oldOnDisk: false },
+            { category: 'agent', name: 'evidence-gatherer', from: 'old-gatherer' },
+            { category: 'hook', name: 'docs-session', from: 'old-docs' },
+        ],
+        plugins: ['claude-stack', 'claude-stack-hooks'], deny: ['Agent(claude-stack:old-gatherer)'], hooksOff: 'old-docs', routes: ALL_ROUTES, sourceDir: ROOT,
+    });
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
+    assert.deepStrictEqual([by['sql-conventions'].verdict, by['sql-conventions'].from], ['renamed', 'old-sql']);
+    assert.strictEqual(by['typescript-conventions'].verdict, 'offer', 'never installed here - a plain offer');
+    assert.deepStrictEqual([by['evidence-gatherer'].verdict, by['evidence-gatherer'].wasOff], ['arrives', true], 'the new name comes on; the report must say the old one was off');
+    assert.deepStrictEqual([by['docs-session'].verdict, by['docs-session'].wasOff], ['arrives', true]);
+});

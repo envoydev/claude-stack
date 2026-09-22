@@ -158,7 +158,11 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         // The prelude's own matcher, so the read-back honours exactly the spellings the hooks do.
         const env = { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') };
         const shipped = [...new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
-        for (const h of shipped) if (!hookDisabled(h, env)) lines.push(`hook ${h}`);
+        const on = shipped.filter((h) => !hookDisabled(h, env));
+        for (const h of on) lines.push(`hook ${h}`);
+        // Every hook off is the walk's None, and reads back as it was written - no hook line at all
+        // would mean 'every hook' to the next derivation.
+        if (!on.length) lines.push('hook none');
     }
     if (routes.mcps)
     {
@@ -166,6 +170,121 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         for (const server of new Set(names.map(catalogServer))) if (catalog.has(server)) lines.push(`mcp ${server}`);
     }
     return lines;
+}
+
+// The item's home entry under THIS release's placement, or null for an extra (copied, never carried).
+const homeOf = (place, kind, name) => Object.keys(place.plugins).find((p) => place.plugins[p][kind].includes(name)) || null;
+
+// A stamp's picked entry is `name@home` - the entry that carried it when it was stamped (plain
+// `name` for an extra, which the disk holds and no entry carries).
+const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
+
+// What the LAST install carried that the current placement alone would lose: an item a release
+// MOVED out of an entry this project still has enabled, into one it has not enabled. Only a real
+// move counts - the stamped home differs from the current one, and the stamped home is still
+// enabled here (an entry the user uninstalled or parked took its items with it) - and never past
+// the user's own off-state: the new home parked, or the seat denied under any spelling.
+function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes = {} } = {})
+{
+    if (!routes.skills) return [];
+    const place = placement();
+    const on = new Set(enabled);
+    const off = new Set(parked);
+    const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+    const lines = [];
+    for (const [kind, line] of [['skills', 'skill'], ['agents', 'agent']])
+        for (const entry of stamp[kind] || [])
+        {
+            const { name, home: was } = splitPick(entry);
+            const home = homeOf(place, kind, name);
+            if (!was || !home || home === was || !on.has(was) || off.has(home)) continue;
+            if (kind === 'agents' && denied.has(name)) continue;
+            lines.push(`${line} ${name}`);
+        }
+    return lines;
+}
+
+// The entries taking ONE item would enable that are not enabled now - the item's closure (a rule
+// pulls the skills and seats it attaches) mapped onto its homes. An offer is cheap only when this
+// is empty.
+function entriesEnabledBy({ category, name, place, graph, enabled })
+{
+    if (!graph) return [];
+    const { computeClosure } = require('./stack-select.js');
+    const closure = computeClosure(graph, { [`${category}s`]: [name] });
+    const items = [...closure.skills.map((s) => ['skills', s]), ...closure.agents.map((a) => ['agents', a])];
+    const homes = new Set(items.map(([kind, n]) => homeOf(place, kind, n)).filter(Boolean));
+    return [...homes].filter((h) => !enabled || !enabled.has(h)).sort();
+}
+
+// THE NEW-ITEM VERDICT, one row per item a release added:
+//   arrives  - this refresh brings it, on (a hook on the plugin route always does: the installer
+//              enables the hooks entry whatever the listing says, so only HOOKS_OFF can say no);
+//   renamed  - a copied item under a new name whose OLD copy is on disk: the update carries it;
+//   offer    - only the user's yes brings it; `recommend` is `take` only for a rule whose closure
+//              enables no entry, and `enables` names what a yes would switch on;
+//   off      - the user's own off-state names it: a denied seat, a hook in HOOKS_OFF, every hook
+//              switched off before (`noneBefore` - the walk's None), a parked entry;
+//   unknown  - the plugin listing could not be read (`plugins` null); never offered on a guess.
+// A renamed item carries `from`, and `wasOff` when the OLD name was switched off - the installer
+// matches the off-state by name, so the new name comes on and the report must say so.
+function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, sourceDir = REPO } = {})
+{
+    const place = placement();
+    const manifest = loadManifest(sourceDir);
+    let graph = null;
+    try { graph = JSON.parse(fs.readFileSync(path.join(sourceDir, 'meta', 'stack-graph.json'), 'utf8')); } catch { graph = null; }
+    const ships = {
+        skill: new Set(manifest.skills.map((e) => String(e).split('|').pop())),
+        agent: new Set(manifest.agents.map((e) => String(e).replace(/\.md$/, ''))),
+        rule: new Set(manifest.rules.map((e) => String(e).replace(/\.md$/, ''))),
+        hook: new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, ''))),
+    };
+    const enabled = plugins === null ? null : new Set(plugins.map((p) => String(p).split('@')[0]));
+    const off = new Set(parked);
+    const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+    const hookOff = (h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') });
+    const rows = [];
+    for (const { category, name, from, oldOnDisk } of added)
+    {
+        if (!ships[category] || !ships[category].has(name)) continue;
+        const row = { category, name, verdict: 'offer', entry: null };
+        if (category === 'rule') { if ((always.rules || []).includes(name)) row.verdict = 'arrives'; }
+        else if (category === 'hook')
+        {
+            if (routes.hooks)
+            {
+                row.entry = HOOKS_ENTRY;
+                row.verdict = hookOff(name) || noneBefore ? 'off' : 'arrives';
+            }
+            else if (hasHooks && !noneBefore) row.verdict = 'arrives';
+        }
+        else
+        {
+            row.entry = routes.skills ? homeOf(place, `${category}s`, name) : null;
+            if (row.entry)
+            {
+                if (enabled === null) row.verdict = 'unknown';
+                else if (off.has(row.entry) || (category === 'agent' && denied.has(name))) row.verdict = 'off';
+                else if (enabled.has(row.entry)) row.verdict = 'arrives';
+            }
+        }
+        if (from)
+        {
+            row.from = from;
+            // The old copy is pruned whatever the new name's verdict - an arriving rename leaves it too.
+            if (oldOnDisk) row.oldOnDisk = true;
+            if (row.verdict === 'offer' && oldOnDisk) row.verdict = 'renamed';
+            if ((category === 'agent' && denied.has(from)) || (category === 'hook' && hookOff(from))) row.wasOff = true;
+        }
+        if (row.verdict === 'offer')
+        {
+            row.enables = entriesEnabledBy({ category, name, place, graph, enabled });
+            row.recommend = category === 'rule' && !row.enables.length ? 'take' : 'leave';
+        }
+        rows.push(row);
+    }
+    return rows;
 }
 
 // What of a derived state this run may WRITE. A walk's selection answers both surfaces; a read-back
@@ -268,4 +387,5 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };
+module.exports = {
+    stampCarried, classifyNew, homeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };

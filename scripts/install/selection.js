@@ -23,7 +23,8 @@
 //     the shipped list once read as a drop of everything, and the memory rule never arrived.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readInstalled } = require('../derive-state.js');
+const { readInstalled, stampCarried, splitPick, homeOf, stackSeat } = require('../derive-state.js');
+const { hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -182,18 +183,42 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], always = {}, marketplace = 'claude-stack', log = () => {} })
+function readBack({ claudeDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = 'claude-stack', log = () => {} })
 {
     let lines = deriveFromDisk({ claudeDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
-    const none = { lines, installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
+    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
     if (!hasInstall(lines)) return none;
 
-    const names = (stackListing || listing).filter((r) => r.marketplace === marketplace && r.enabled).map((r) => r.name);
+    // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
+    // enabled entry merely carries is not a pick.
+    const closeFrom = [...lines];
+    const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
+    const names = ours.filter((r) => r.enabled).map((r) => r.name);
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    for (const line of readInstalled({ plugins: names, deny, hooksOff: env.CLAUDE_STACK_HOOKS_OFF, routes, sourceDir }))
+    const parked = ours.filter((r) => !r.enabled).map((r) => r.name);
+    const installed = readInstalled({ plugins: names, deny, hooksOff: env.CLAUDE_STACK_HOOKS_OFF, routes, sourceDir });
+    // The walk's None held across a release: every hook the LAST release shipped is switched off, so
+    // a hook this one added stays off too rather than arriving on alone.
+    const noneBefore = routes.hooks && names.includes('claude-stack-hooks') && stampHooks.length > 0
+        && stampHooks.every((h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(env.CLAUDE_STACK_HOOKS_OFF || '') }));
+    for (const line of noneBefore ? installed.filter((l) => !l.startsWith('hook ')).concat('hook none') : installed)
         if (!lines.includes(line)) lines.push(line);
+    if (noneBefore && installed.some((l) => l.startsWith('hook ') && l !== 'hook none'))
+        log('installed-only: every hook was switched off - the hooks this release added stay off too');
+    // Only with a listing to say which entries are enabled and parked - without one the stamp would
+    // re-enable them.
+    if (ours.length && stampPicked)
+        for (const line of stampCarried({ stamp: stampPicked, enabled: names, parked, deny, routes }))
+            if (!lines.includes(line)) { lines.push(line); log(`installed-only: keeping ${line} - the last install carried it and this release moved it`); }
+    if (stampPicked)
+        for (const [kind, line] of [['skills', 'skill'], ['agents', 'agent']])
+            for (const entry of stampPicked[kind] || [])
+            {
+                const pick = `${line} ${splitPick(entry).name}`;
+                if (lines.includes(pick) && !closeFrom.includes(pick)) closeFrom.push(pick);
+            }
 
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes('claude-stack') };
     const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
@@ -204,10 +229,89 @@ function readBack({ claudeDir, mcpServers = [], listing = [], stackListing, sett
     if (!(routes.hooks && names.includes('claude-stack-hooks')))
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
     lines = adoptAlways({ lines, always, log });
-    return { lines, installed: true, answered, engines, context7Local };
+    for (const line of lines) if (/^(rule|mcp|plugin|hook) /.test(line) && !closeFrom.includes(line)) closeFrom.push(line);
+    return { lines, closeFrom, parked, deny, installed: true, answered, engines, context7Local };
+}
+
+// `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
+// read-back. Duplicates are dropped; each real addition is logged.
+function addLines(lines, add = [], log = () => {})
+{
+    const out = [...lines];
+    for (const line of add) if (!out.includes(line)) { out.push(line); log(`installed-only: adding ${line} - named by --add`); }
+    return out;
+}
+
+// The read-back CLOSED through the graph, as the frozen twin does: a dependency a new release
+// introduced, or one an --add pulls in, arrives with what needs it. `from` is what the user picked;
+// hook lines are leaf picks and pass through untouched (`hook none` included), and a name the graph
+// does not know - the user's own item - is left where it is.
+function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () => {} } = {})
+{
+    if (!graph || !graph.catalog) { log('installed-only: closure skipped - no dependency graph in this source'); return [...lines]; }
+    const { computeClosure, findUnknownNames, dropUnknownNames, categoryOf } = require('../stack-select.js');
+    const key = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps', plugin: 'plugins' };
+    const raw = { skills: [], agents: [], rules: [], mcps: [], plugins: [] };
+    for (const l of from) { const [cat, ...rest] = String(l).split(' '); if (key[cat]) raw[key[cat]].push(rest.join(' ')); }
+    const unknown = findUnknownNames(graph, raw);
+    const known = unknown.length ? dropUnknownNames(raw, unknown) : raw;
+    // The user's own off-state wins over a requirement: a parked entry stays parked and a denied seat
+    // stays denied - left out and said so, never switched back on behind them. A left-out item's own
+    // requirements go with it: its node is blanked and the closure recomputed until nothing new is
+    // left out.
+    const { placement } = require('../plugin-placement.js');
+    const place = placement();
+    const off = new Set(parked);
+    const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+    const offReason = (category, name) =>
+    {
+        const home = category === 'skill' || category === 'agent' ? homeOf(place, `${category}s`, name) : null;
+        if (home && off.has(home)) return `its entry ${home} is parked here`;
+        if (category === 'agent' && denied.has(name)) return 'switched off in permissions.deny';
+        return null;
+    };
+    const left = new Map();
+    let g = graph;
+    let closure = computeClosure(g, known);
+    for (;;)
+    {
+        let grew = false;
+        for (const [name, why] of Object.entries(closure.reasons))
+        {
+            const category = categoryOf(closure, name);
+            const reason = offReason(category, name);
+            if (reason && !left.has(name)) { left.set(name, { category, why, reason }); grew = true; }
+        }
+        if (!grew) break;
+        const blank = (kind, empty) => Object.fromEntries(Object.entries(g[kind]).map(([n, node]) => [n, left.has(n) ? empty : node]));
+        g = { ...g, skills: blank('skills', { mcps: [], plugins: [] }), agents: blank('agents', { skills: [], agents: [], mcps: [], plugins: [] }) };
+        closure = computeClosure(g, known);
+    }
+    const out = [...lines];
+    for (const [name, { category, why, reason }] of left)
+        if (!out.includes(`${category} ${name}`)) log(`installed-only: required: ${category} ${name} - ${why}; left out, ${reason}`);
+    for (const [name, why] of Object.entries(closure.reasons))
+    {
+        const line = `${categoryOf(closure, name)} ${name}`;
+        if (left.has(name) || out.includes(line)) continue;
+        out.push(line);
+        log(`installed-only: required: ${line} - ${why}`);
+    }
+    return out;
+}
+
+// `--drop`: the items the user switched off (configure's drop, update carrying a renamed item's
+// off-state onto its new name), removed after the closure. Dropping the last hook line keeps the
+// hooks answered as `hook none` - no hook line at all would read as 'every hook'.
+function dropLines(lines, drop = [], log = () => {})
+{
+    const had = lines.some((l) => l.startsWith('hook '));
+    const out = lines.filter((l) => { const gone = drop.includes(l); if (gone) log(`installed-only: dropping ${l} - named by --drop`); return !gone; });
+    if (had && !out.some((l) => l.startsWith('hook '))) out.push('hook none');
+    return out;
 }
 
 module.exports = {
-    parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
 };

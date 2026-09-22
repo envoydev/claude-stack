@@ -430,3 +430,17 @@ test('the walk and status REPORT the derivation - they never restate what the in
     assert.match(read('status'), /scripts\/derive-state\.js" --floor --plugins /);
     assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'derive-state.js')), 'the script both cite ships in the snapshot');
 });
+
+// Phase 8 T3: update asks from the derivation's new-item verdicts and takes a yes as --add; its
+// pruning path never rebuilds the selection from a disk inventory on the Node seed, which on the
+// plugin routes holds only the extras and would switch every carried seat off.
+test('update: new items come from the preflight\'s new: lines and a yes becomes --add', () =>
+{
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    assert.match(body, /`new: <category> <name><TAB><verdict>/);
+    assert.match(body, /--installed-only \[--add "<category> <name>"\]\.\.\./);
+    assert.ok(!/FYI `added` items/.test(body), 'the FYI-only adoption is gone');
+    const step4 = body.slice(body.indexOf('## 4. Pruning path'), body.indexOf('## 5. Prune'));
+    assert.match(step4, /run the installer exactly as in step 3 - its `--add` already carries every `renamed`/);
+    assert.match(step4, /Never rebuild the\nselection from a disk inventory on the Node seed/);
+});

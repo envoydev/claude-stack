@@ -220,12 +220,12 @@ const MANIFEST = loadManifest(ROOT_DIR);
 const ALL = { skills: true, hooks: true, mcps: true };
 const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
 
-function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [] } = {})
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [] } = {})
 {
     const claudeDir = target({ rules: ['baseline-security'], hooks });
     return sel.readBack({
         claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
-        stampHooks: [], always: {},
+        stampHooks, always: {}, stampPicked,
     });
 }
 
@@ -281,4 +281,108 @@ test('read-back: a malformed deny or env block reads as absent, never aborts the
 {
     const r = readBackCase({ listing: [row('claude-stack@claude-stack')], settings: { permissions: { deny: { oops: 1 } }, env: 'x' } });
     assert.ok(r.lines.includes('agent security-auditor'));
+});
+
+test('read-back: a skill the last install carried survives a release that moved it to an entry not enabled here', () =>
+{
+    const stampPicked = { skills: ['dotnet-web-backend@claude-stack-old'], agents: [] };
+    const moved = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-old@claude-stack')], stampPicked });
+    assert.ok(moved.lines.includes('skill dotnet-web-backend'));
+    const gone = readBackCase({ listing: [row('claude-stack@claude-stack')], stampPicked });
+    assert.ok(!gone.lines.includes('skill dotnet-web-backend'), 'its old home is uninstalled here - the user removed it, nothing moved');
+    const parked = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-old@claude-stack'), row('claude-stack-aspnet@claude-stack', { enabled: false })], stampPicked });
+    assert.ok(!parked.lines.includes('skill dotnet-web-backend'), 'the user parked its entry');
+    const blind = readBackCase({ listing: [], stampPicked });
+    assert.ok(!blind.lines.includes('skill dotnet-web-backend'), 'no listing, no evidence of what is parked - the stamp is not read');
+});
+
+test('addLines: --add unions well-formed lines once, and logs each', () =>
+{
+    const logs = [];
+    const out = sel.addLines(['rule baseline-security'], ['rule sql-conventions', 'rule baseline-security'], (m) => logs.push(m));
+    assert.deepStrictEqual(out, ['rule baseline-security', 'rule sql-conventions']);
+    assert.strictEqual(logs.length, 1);
+    assert.match(logs[0], /adding rule sql-conventions/);
+});
+
+// The read-back CLOSED through the graph, as the frozen twin does - found missing from the Node seed
+// in Phase 8 T3: a dependency a new release introduced, or one an --add pulls in, never arrived. The
+// closure runs over what the user PICKED (disk, the stamp's picked lines, --add), never over what an
+// entry merely carries: closing those would re-add an MCP the walk let the user drop.
+const GRAPH = require('../meta/stack-graph.json');
+const { computeClosure } = require('./stack-select.js');
+
+test('closeLines: a picked rule pulls in what it requires, logged as required', () =>
+{
+    const logs = [];
+    const out = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, log: (m) => logs.push(m) });
+    const want = computeClosure(GRAPH, { rules: ['dotnet-repair-agents'] }).agents;
+    assert.ok(want.length > 0, 'the fixture rule requires seats');
+    for (const a of want) assert.ok(out.includes(`agent ${a}`), `missing agent ${a}`);
+    assert.ok(logs.some((l) => /^installed-only: required: agent /.test(l)), logs.join('\n'));
+});
+
+test('closeLines: a skill an entry merely CARRIES pulls in nothing, and hook lines pass through untouched', () =>
+{
+    const needy = Object.keys(GRAPH.skills).find((s) => computeClosure(GRAPH, { skills: [s] }).mcps.length > 0);
+    assert.ok(needy, 'the graph has a skill that needs an MCP');
+    const lines = [`skill ${needy}`, 'hook none', 'skill my-own-skill'];
+    const out = sel.closeLines(lines, { from: ['hook none', 'skill my-own-skill'], graph: GRAPH });
+    assert.deepStrictEqual(out, lines, 'no closure over a carried-only skill; the user\'s own item and hook none survive');
+});
+
+test('closeLines: no graph is a logged no-op, never a crash', () =>
+{
+    const logs = [];
+    assert.deepStrictEqual(sel.closeLines(['rule x'], { from: ['rule x'], graph: null, log: (m) => logs.push(m) }), ['rule x']);
+    assert.match(logs[0], /closure skipped/);
+});
+
+test('read-back: closeFrom is the picked set - disk and the stamp - never the carried-only items', () =>
+{
+    const r = readBackCase({ listing: [row('claude-stack@claude-stack')], stampPicked: { skills: ['markdown-style'], agents: [] } });
+    assert.ok(r.closeFrom.includes('rule baseline-security'), 'disk');
+    assert.ok(r.closeFrom.includes('skill markdown-style'), 'the stamp');
+    assert.ok(r.lines.includes('agent evidence-gatherer') && !r.closeFrom.includes('agent evidence-gatherer'), 'carried only');
+});
+
+test('closeLines: a requirement never switches back on a parked entry or a denied seat - it is left out and said so', () =>
+{
+    const logs = [];
+    const out = sel.closeLines(['rule csharp-conventions'], { from: ['rule csharp-conventions'], graph: GRAPH, parked: ['claude-stack-csharp'], log: (m) => logs.push(m) });
+    assert.ok(!out.includes('skill csharp'), 'the parked entry\'s skill stayed out');
+    assert.ok(logs.some((l) => /required: skill csharp .*left out, its entry claude-stack-csharp is parked here/.test(l)), logs.join('\n'));
+    const seats = computeClosure(GRAPH, { rules: ['dotnet-repair-agents'] }).agents;
+    const denyLogs = [];
+    const out2 = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, deny: [`Agent(claude-stack-dotnet:${seats[0]})`], log: (m) => denyLogs.push(m) });
+    assert.ok(!out2.includes(`agent ${seats[0]}`), 'the denied seat stayed out');
+    assert.ok(denyLogs.some((l) => /left out, switched off in permissions.deny/.test(l)));
+});
+
+test('read-back: after the walk\'s None, a hook a new release adds stays off too', () =>
+{
+    const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const before = shipped.slice(1);   // the last release shipped all but the first
+    const r = readBackCase({ listing: [row('claude-stack-hooks@claude-stack')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.join(',') } }, stampHooks: before });
+    assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none']);
+    const some = readBackCase({ listing: [row('claude-stack-hooks@claude-stack')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
+    assert.ok(some.lines.includes(`hook ${shipped[0]}`), 'only a full None holds - a partial switch-off lets a new hook arrive');
+});
+
+test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
+{
+    const rule = GRAPH.rules['csharp-conventions'];
+    assert.ok(!rule.mcps.includes('context7'), 'the fixture rule does not need context7 itself');
+    const out = sel.closeLines(['rule csharp-conventions'], { from: ['rule csharp-conventions'], graph: GRAPH, parked: ['claude-stack-csharp'] });
+    assert.ok(!out.includes('skill csharp'));
+    assert.ok(!out.includes('mcp context7'), 'context7 came in only through the parked skill');
+});
+
+test('dropLines: --drop removes a line and keeps the hooks answer - dropping the last hook is `hook none`', () =>
+{
+    const logs = [];
+    assert.deepStrictEqual(sel.dropLines(['agent a', 'hook h1', 'rule r'], ['agent a'], (m) => logs.push(m)), ['hook h1', 'rule r']);
+    assert.match(logs[0], /dropping agent a - named by --drop/);
+    assert.deepStrictEqual(sel.dropLines(['hook h1', 'rule r'], ['hook h1']), ['rule r', 'hook none']);
+    assert.deepStrictEqual(sel.dropLines(['rule r'], ['hook h1']), ['rule r'], 'no hook lines to begin with - nothing to answer');
 });

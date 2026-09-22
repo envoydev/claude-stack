@@ -15,6 +15,11 @@
 // hook that did not exist when this install was made look identical; only the second may be
 // adopted, and this line is the only thing that can tell them apart.
 //
+// `picked-skills` / `picked-agents` are the skills and seats this run installed. The next
+// `--installed-only` reads the plugin state back through THAT release's placement, so an item a
+// release moved into an entry this project has not enabled would drop out; these two lines carry it
+// across (derive-state's `stampCarried`, which honours a parked entry and a denied seat).
+//
 // `installed-always-rules` / `installed-always-mcps` record what the locked baseline actually
 // CARRIES as the run ends, never what shipped. A server counts either way - registered in the file,
 // or riding the plugin named for it - because on the plugin route there is no `.mcp.json` at all,
@@ -57,7 +62,7 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps, picked = {} } = fields;
     return [
         '# claude-stack install stamp - machine-local, written by the claude-stack installer.',
         '# The revision every artifact of this install was copied from. To see what changed since:',
@@ -74,6 +79,8 @@ function renderStamp(fields)
         `shipped-hooks: ${hooks.join(',')}`,
         `installed-always-rules: ${alwaysRules.join(',')}`,
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
+        `picked-skills: ${(picked.skills || []).join(',')}`,
+        `picked-agents: ${(picked.agents || []).join(',')}`,
         '',
     ].join('\n');
 }
@@ -81,7 +88,7 @@ function renderStamp(fields)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, picked,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
 
@@ -111,7 +118,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope,
             hooks: shippedHooks(hooksCatalog),
-            alwaysRules: always.rules, alwaysMcps: always.mcps,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -120,4 +127,13 @@ function writeStamp(opts)
     return dest;
 }
 
-module.exports = { writeStamp, renderStamp, shippedHooks, installedAlways, family };
+// The two picked lines of a stamp; absent (an older stamp, the shell twin's, no stamp) reads as none.
+function readPicked(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { text = ''; }
+    const list = (key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return { skills: list('picked-skills'), agents: list('picked-agents') };
+}
+
+module.exports = { writeStamp, renderStamp, shippedHooks, installedAlways, family, readPicked };

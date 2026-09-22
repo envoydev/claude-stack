@@ -39,7 +39,10 @@ const BOOLEAN = new Map([
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
 ]);
 
-const FLAG_LIST = '--space, --scope, --context7, --memory-level, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source';
+const FLAG_LIST = '--space, --scope, --context7, --memory-level, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --skills-only, --source';
+
+// One selection line, the shape the walks write: `<category> <name>`.
+const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
 
 function fail(message)
 {
@@ -57,6 +60,7 @@ function parseArgs(argv, env = {})
         playwrightBrowsersRaw: '', playwrightEnabled: '', docsVersioning: '', memoryLevel: '',
         selection: '', source: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
+        add: [], drop: [],
     };
 
     for (let i = 0; i < argv.length; i++)
@@ -66,6 +70,16 @@ function parseArgs(argv, env = {})
         const name = arg.startsWith('--') && eq > -1 ? arg.slice(0, eq) : arg;
 
         if (BOOLEAN.has(name) && name === arg) { out[BOOLEAN.get(name)] = true; continue; }
+
+        // Repeatable: each --add is an item the user said yes to, each --drop one they switched off,
+        // on top of what the install reads back.
+        if (name === '--add' || name === '--drop')
+        {
+            const value = eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i];
+            if (!value || !ADD_LINE.test(value.trim())) fail(`${name} takes '<skill|agent|rule|hook|mcp|plugin> <name>' (got '${value || ''}')`);
+            out[name.slice(2)].push(value.trim());
+            continue;
+        }
 
         if (VALUED.has(name))
         {
@@ -84,6 +98,8 @@ function parseArgs(argv, env = {})
 
     if (!out.action) fail(`an action is required, positional: install or update (named flags: ${FLAG_LIST})`);
     if (!['install', 'update'].includes(out.action)) fail(`the action must be 'install' or 'update' (got '${out.action}')`);
+    for (const flag of ['add', 'drop'])
+        if (out[flag].length && !out.installedOnly) fail(`--${flag} needs --installed-only - a walk writes its picks into the --selection file`);
 
     // --space is baked into a path (~/.claude-<space>, memory_<space>.db), so its characters are
     // checked here rather than discovered as a broken directory name later. Its CASING is

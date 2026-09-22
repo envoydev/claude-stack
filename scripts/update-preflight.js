@@ -22,6 +22,11 @@
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
 //   migration: <id>\t<detect kind>          (one line per DETECTED entry; none -> no lines)
 //   migrations: none detected               (only when none fired)
+//   new: <category> <name>\t<verdict>\t<entry|->[\t<take|leave>][\tenables=<csv>][\tfrom=<old>][\twas-off]
+//                                           (one line per item the release ADDED or RENAMED,
+//                                           classified by derive-state's classifyNew against THIS
+//                                           install: arrives | renamed | offer | off | unknown;
+//                                           'new: none' if none)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
@@ -136,6 +141,100 @@ function spansMultipleReleases(versionLine)
     return (b[2] - a[2]) > 1;
 }
 
+// The items a release ADDED, from the compare's own lines: a skill is new when its SKILL.md is, a
+// seat, rule or hook when its one file is. A file added inside an existing skill is no new item.
+const ITEM_PATHS = [
+    ['skill', /^stack\/skills\/([^/]+)\/SKILL\.md$/],
+    ['agent', /^stack\/agents\/([^/]+)\.md$/],
+    ['rule', /^stack\/rules\/([^/]+)\.md$/],
+    ['hook', /^stack\/hooks\/([^/]+)\.js$/],
+];
+// A rename (`renamed\t<new>\t<- <old>`) keeps its old name as `from`, and whether the old COPY is
+// on disk - that is what decides that the update carries it rather than offering it.
+const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`), rule: (d, n) => path.join(d, 'rules', `${n}.md`), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
+function addedItems(compareLines, claudeDir)
+{
+    const out = [];
+    for (const line of compareLines)
+    {
+        const m = /^(added|renamed)\t([^\t]+)(?:\t<- (.+))?$/.exec(line);
+        if (!m) continue;
+        for (const [category, re] of ITEM_PATHS)
+        {
+            const hit = re.exec(m[2]);
+            if (!hit || out.some((o) => o.category === category && o.name === hit[1])) continue;
+            const item = { category, name: hit[1] };
+            const old = m[3] ? re.exec(m[3]) : null;
+            if (old && old[1] !== hit[1]) { item.from = old[1]; item.oldOnDisk = fs.existsSync(OLD_COPY[category](claudeDir, old[1])); }
+            out.push(item);
+        }
+    }
+    return out;
+}
+
+// The stack's rows of `claude plugin list --json`, or null when it cannot be read - a verdict on a
+// listing nobody read would offer items the project already carries. `--listing <file>` stands in
+// for the CLI (tests, or a listing the caller already captured).
+function readListing(root, marketplace)
+{
+    const { parsePluginList } = require('./install/plugins.js');
+    const file = arg('--listing');
+    let text = null;
+    if (file) { try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; } }
+    else
+    {
+        const r = spawnSync('claude', ['plugin', 'list', '--json'], { cwd: root, encoding: 'utf8', timeout: 60000 });
+        text = r.status === 0 ? String(r.stdout || '') : null;
+    }
+    try { JSON.parse(text); } catch { return null; }
+    return parsePluginList(text, root, { marketplace });
+}
+
+function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines })
+{
+    const { classifyNew } = require('./derive-state.js');
+    const { pluginRoutes } = require('./install/plugins.js');
+    // Only what this release actually ships, BEFORE the listing is read: a path that names no item
+    // (an engine, a README) must not cost a `claude plugin list` call.
+    const found = addedItems(compareLines, claudeDir);
+    const shipped = new Set(classifyNew({ added: found, routes: {} }).map((r) => `${r.category} ${r.name}`));
+    const added = found.filter((a) => shipped.has(`${a.category} ${a.name}`));
+    if (!added.length) return ['new: none'];
+    const listing = readListing(root, arg('--marketplace', 'claude-stack'));
+    const s = settings && typeof settings === 'object' ? settings : {};
+    const env = s.env && typeof s.env === 'object' ? s.env : {};
+    const hooksDir = path.join(claudeDir, 'hooks');
+    let hasHooks = false;
+    try { hasHooks = fs.readdirSync(hooksDir).some((f) => /^(guard-|docs-session|memory-session|instrument-).*\.js$/.test(f)); } catch { hasHooks = false; }
+    // The walk's None held across a release: every hook the LAST release shipped is switched off.
+    const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
+    let shippedBefore = [];
+    try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
+    // The installer holds None only while the hooks entry is enabled (it enables that entry
+    // regardless, and writes no hook none without it) - so the verdict holds it only then too.
+    const hooksEntryOn = Boolean(listing && listing.some((r) => r.name === 'claude-stack-hooks' && r.enabled));
+    const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(env.CLAUDE_STACK_HOOKS_OFF || '') }));
+    const rows = classifyNew({
+        added, noneBefore,
+        plugins: listing && listing.filter((r) => r.enabled).map((r) => r.name),
+        parked: listing ? listing.filter((r) => !r.enabled).map((r) => r.name) : [],
+        deny: s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : [],
+        hooksOff: env.CLAUDE_STACK_HOOKS_OFF,
+        routes: pluginRoutes(process.env),
+        always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
+        hasHooks,
+    });
+    if (!rows.length) return ['new: none'];
+    return rows.map((r) => [
+        `new: ${r.category} ${r.name}`, r.verdict, r.entry || '-',
+        ...(r.recommend ? [r.recommend] : []),
+        ...(r.enables && r.enables.length ? [`enables=${r.enables.join(',')}`] : []),
+        ...(r.from ? [`from=${r.from}`] : []),
+        ...(r.oldOnDisk ? ['old-on-disk'] : []),
+        ...(r.wasOff ? ['was-off'] : []),
+    ].join('\t'));
+}
+
 // The policy-rev second VALIDATE trigger - was two greps the caller ran by hand and then
 // re-confirmed 3 extra times in one audited run (~275k tokens): one printed row instead.
 function policyRevLine(root, snapshot)
@@ -172,12 +271,18 @@ function main()
     const snapshot = arg('--snapshot');
     if (!snapshot)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--repo <owner/name>] [--fixture <compare.json>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
         process.exit(1);
     }
     const root = arg('--root', '.');
-    const stampFile = arg('--stamp', path.join(root, '.claude', 'claude-stack.stamp'));
-    const settingsFile = arg('--settings', path.join(root, '.claude', 'settings.json'));
+    // Global mode passes the ACCOUNT dir as the root, which holds the stamp and settings.json itself.
+    // An account dir set through CLAUDE_CONFIG_DIR can have any name - it is recognised by holding the
+    // stamp itself and no `.claude/` of its own.
+    const accountDir = /^\.claude(-.+)?$/.test(path.basename(path.resolve(root)))
+        || (!fs.existsSync(path.join(root, '.claude')) && fs.existsSync(path.join(root, 'claude-stack.stamp')));
+    const claudeDir = accountDir ? path.resolve(root) : path.join(root, '.claude');
+    const stampFile = arg('--stamp', path.join(claudeDir, 'claude-stack.stamp'));
+    const settingsFile = arg('--settings', path.join(claudeDir, 'settings.json'));
 
     const compareArgs = [path.join(snapshot, 'scripts', 'stamp-compare.js'), '--snapshot', snapshot, '--stamp', stampFile];
     for (const flag of ['--repo', '--fixture']) { const v = arg(flag); if (v) compareArgs.push(flag, v); }
@@ -209,6 +314,8 @@ function main()
         for (const [label, value] of migrationFields(e)) console.log(`  ${label}: ${value}`);
     }
     if (!fired) console.log('migrations: none detected');
+
+    for (const l of newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines: lines })) console.log(l);
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);

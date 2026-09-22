@@ -28,7 +28,8 @@ const settings = require('./settings.js');
 const serena = require('./serena.js');
 const memory = require('./memory.js');
 const docs = require('./docs.js');
-const { deriveState, writable } = require('../derive-state.js');
+const { deriveState, writable, homeOf } = require('../derive-state.js');
+const { placement } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
@@ -123,6 +124,10 @@ function main(argv, env, io)
         const routes = plugins.pluginRoutes(env);
 
         let picked = null;
+        // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
+        // require) - the stamp records that, never everything the enabled entries carry, or the next
+        // closure would run over items no one picked.
+        let stampPicks = null;
         let listedEngines = [];
         // The off-state surfaces this run may write back: a walk's selection answers the agents
         // layer, and the hooks layer when it carries hook lines (none = every hook, as on disk); a
@@ -139,6 +144,7 @@ function main(argv, env, io)
                 settings: readJson(path.join(claudeDir, 'settings.json')),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(path.join(claudeDir, 'claude-stack.stamp')),
+                stampPicked: stampLayer.readPicked(path.join(claudeDir, 'claude-stack.stamp')),
                 always: readJson(path.join(resolved.dir, 'meta', 'recommendations.json')).always || {},
                 marketplace: STACK_MARKET_NAME, log,
             });
@@ -147,7 +153,11 @@ function main(argv, env, io)
                 err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /claude-stack:init) first\n`);
                 return 1;
             }
-            picked = selection.parseSelection(back.lines.join('\n'));
+            const withAdds = selection.addLines(back.lines, args.add, log);
+            const graph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
+            const closed = selection.dropLines(selection.closeLines(withAdds, { from: [...back.closeFrom, ...args.add], graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log }), args.drop, log);
+            stampPicks = new Set(closed.filter((l) => back.closeFrom.includes(l) || args.add.includes(l) || !withAdds.includes(l)));
+            picked = selection.parseSelection(closed.join('\n'));
             answered = back.answered;
             listedEngines = back.engines;
             if (back.context7Local && !args.context7Given)
@@ -162,6 +172,13 @@ function main(argv, env, io)
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
         if (picked) lists = selection.applySelection(lists, picked);
+        for (const line of args.add)
+        {
+            const [category, name] = line.split(' ');
+            const key = Object.keys(selection.CATEGORY).find((k) => selection.CATEGORY[k].line === category);
+            if (!(lists[key] || []).some((e) => selection.CATEGORY[key].name(e) === name))
+                note(`--add ${line} names nothing this release ships - ignored`);
+        }
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
@@ -220,6 +237,7 @@ function main(argv, env, io)
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
             hooksCatalog: manifest.catalogs.hooks, version: releaseVersion(resolved.dir), log, note,
+            picked: stampPickLists(lists, stampPicks),
         });
 
         summarise(ctx, failures);
@@ -469,6 +487,19 @@ function summarise(ctx, failures)
 // --- small readers ---------------------------------------------------------
 
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } }
+
+// The stamp's picked lines, `name@home` - the home is what tells a later read-back that an item
+// MOVED rather than left with an entry the user removed. An extra has no home and stays plain.
+function stampPickLists(lists, picks)
+{
+    const place = placement();
+    const out = {};
+    for (const [key, kind, line] of [['skills', 'skills', 'skill'], ['agents', 'agents', 'agent']])
+        out[key] = lists[key].map(selection.CATEGORY[key].name)
+            .filter((name) => !picks || picks.has(`${line} ${name}`))
+            .map((name) => { const home = homeOf(place, kind, name); return home ? `${name}@${home}` : name; });
+    return out;
+}
 
 function readStampHooks(file)
 {

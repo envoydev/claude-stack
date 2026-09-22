@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -48,6 +48,7 @@ function write(p, opts = {})
         projectRoot: p.base,
         mcpFile: p.mcpFile,
         hooksCatalog: opts.hooksCatalog || [],
+        picked: opts.picked,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -169,4 +170,26 @@ test('install-stamp: installedAlways reads the two lists independently', () =>
     });
     assert.deepStrictEqual(got.rules, ['baseline-security']);
     assert.deepStrictEqual(got.mcps, ['memory']);
+});
+
+// T3: the skills and seats this run installed, so the next --installed-only can read back an item a
+// release MOVED into an entry this project has not enabled - the new placement alone loses it.
+test('install-stamp: picked-skills / picked-agents record what this run installed, and read back', () =>
+{
+    const p = project();
+    const { dest, text } = write(p, { picked: { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'] } });
+    assert.match(text, /^picked-skills: csharp,dotnet$/m);
+    assert.match(text, /^picked-agents: evidence-gatherer$/m);
+    assert.deepStrictEqual(readPicked(dest), { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'] });
+});
+
+test('install-stamp: a stamp without the picked lines (an older install, the shell twin) reads as none', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'old.stamp');
+    fs.writeFileSync(file, 'sha: abc\nshipped-hooks: a,b\n');
+    assert.deepStrictEqual(readPicked(file), { skills: [], agents: [] });
+    assert.deepStrictEqual(readPicked(path.join(p.base, 'absent.stamp')), { skills: [], agents: [] });
+    const { text } = write(project());
+    assert.match(text, /^picked-skills: $/m, 'no picks given is an empty line, never a crash');
 });

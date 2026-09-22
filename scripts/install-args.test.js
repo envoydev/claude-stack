@@ -244,3 +244,21 @@ test('install-args: context7Given says whether the TRANSPORT was chosen, so an u
     assert.strictEqual(ok(['update', '--context7', 'remote']).context7Given, true);
     assert.strictEqual(parseArgs(['update'], { CONTEXT7_MODE: 'remote' }).context7Given, true);
 });
+
+test('args: --add is repeatable, takes <category> <name>, and belongs to --installed-only', () =>
+{
+    const got = parseArgs(['update', '--installed-only', '--add', 'rule sql-conventions', '--add=skill csharp'], {});
+    assert.deepStrictEqual(got.add, ['rule sql-conventions', 'skill csharp']);
+    assert.deepStrictEqual(parseArgs(['update'], {}).add, []);
+    assert.throws(() => parseArgs(['update', '--add', 'rule sql-conventions'], {}), /--add needs --installed-only/);
+    assert.throws(() => parseArgs(['update', '--installed-only', '--add', 'sql-conventions'], {}), /--add takes/);
+    assert.throws(() => parseArgs(['update', '--installed-only', '--add', 'widget x'], {}), /--add takes/);
+});
+
+test('args: --drop mirrors --add - repeatable, <category> <name>, only with --installed-only', () =>
+{
+    const got = parseArgs(['update', '--installed-only', '--drop', 'hook guard-answer-length', '--drop=agent security-auditor'], {});
+    assert.deepStrictEqual(got.drop, ['hook guard-answer-length', 'agent security-auditor']);
+    assert.throws(() => parseArgs(['update', '--drop', 'hook x'], {}), /--drop needs --installed-only/);
+    assert.throws(() => parseArgs(['update', '--installed-only', '--drop', 'x'], {}), /--drop takes/);
+});
