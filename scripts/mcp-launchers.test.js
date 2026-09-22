@@ -178,6 +178,34 @@ test('sentry-headers: the oauth PIN survives the scrub too - it is read from a f
         'oauth mode pinned in the project settings lost to an env value the runtime removes');
 });
 
+// The helper STRING runs through a shell ('Use dynamic headers for custom authentication',
+// code.claude.com/docs/en/mcp), so an unquoted placeholder splits on a space: a plugin root under a
+// home like 'C:\Users\First Last' lost the script, a project path with a space lost the settings
+// that pin oauth. So the GENERATED string runs here through sh with a space in both, once with the
+// placeholders substituted as text (how ${CLAUDE_PROJECT_DIR} arrives) and once exported. The
+// oauth pin is the witness: a split project path reads no pin and sends the token instead.
+test('sentry-headers: the generated helper string survives a space in the plugin root and the project', { skip: process.platform === 'win32' && 'sh is not the Windows shell' }, () =>
+{
+    const { mcpServerShapes } = require('./build-marketplace.js');
+    const helper = mcpServerShapes().sentry.servers.sentry.headersHelper;
+    const root = path.join(TMP, 'plugin root');
+    fs.mkdirSync(path.join(root, 'stack', 'mcp'), { recursive: true });
+    fs.copyFileSync(HEADERS, path.join(root, 'stack', 'mcp', 'sentry-headers.js'));
+    const { dir, acct } = project('sentry project dir', {
+        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
+        account: { SENTRY_ACCESS_TOKEN: 'from-file' },
+    });
+    const env = { ...BARE, HOME: dir, CLAUDE_CONFIG_DIR: acct };
+    for (const [how, line, extra] of [
+        ['substituted', helper.replaceAll('${CLAUDE_PLUGIN_ROOT}', root).replaceAll('${CLAUDE_PROJECT_DIR}', dir), {}],
+        ['exported', helper, { CLAUDE_PLUGIN_ROOT: root, CLAUDE_PROJECT_DIR: dir }],
+    ])
+    {
+        const out = execFileSync('sh', ['-c', line], { env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        assert.deepStrictEqual(JSON.parse(out), {}, `${how}: ${helper} lost a path to the space`);
+    }
+});
+
 test('sentry-headers: CLAUDE_CONFIG_DIR is NOT a credential name, so a space install still finds its account file', () =>
 {
     const { dir, acct } = project('sentry-space', { account: { SENTRY_ACCESS_TOKEN: 'space-token' } });

@@ -2630,7 +2630,7 @@ function lintMcpEntries()
             const words = [...(spec.args || []), spec.command || '', spec.headersHelper || ''];
             for (const word of words)
             {
-                const m = String(word).match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(\S+)/);
+                const m = String(word).match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\s]+)/);
                 if (!m) continue;
                 if (!fs.existsSync(path.join(ROOT, m[1])))
                     out.push(`MCP server '${server}' points at ${m[1]}, which is not in the tree.`);

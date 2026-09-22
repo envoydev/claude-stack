@@ -392,7 +392,9 @@ function mcpServerShapes(options = {})
                     // takes the whole server down to 'MCP servers (0)' (measured, S11). Settings-env
                     // keys do NOT expand here, so the helper reads the token itself; ${CLAUDE_PROJECT_DIR}
                     // does expand, and the helper needs it because its own cwd is the PLUGIN root.
-                    headersHelper: `node ${root}/stack/mcp/sentry-headers.js ${proj}`,
+                    // Both paths QUOTED: the string runs through a shell, so a space in either one
+                    // split it - the script unfound, or the project's oauth pin unread.
+                    headersHelper: `node "${root}/stack/mcp/sentry-headers.js" "${proj}"`,
                 },
             },
         },

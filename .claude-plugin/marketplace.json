@@ -399,7 +399,7 @@
         "sentry": {
           "type": "http",
           "url": "https://mcp.sentry.dev/mcp/${SENTRY_SLUG}",
-          "headersHelper": "node ${CLAUDE_PLUGIN_ROOT}/stack/mcp/sentry-headers.js ${CLAUDE_PROJECT_DIR}"
+          "headersHelper": "node \"${CLAUDE_PLUGIN_ROOT}/stack/mcp/sentry-headers.js\" \"${CLAUDE_PROJECT_DIR}\""
         }
       },
       "dependencies": [

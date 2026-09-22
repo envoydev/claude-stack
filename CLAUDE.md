@@ -285,7 +285,8 @@ mirrored there in the same sitting.
     browser consent flow); never mix the modes. Never use `${SENTRY_SLUG:-}` (the trailing slash 404s).
     `update` keeps the auth mode and migrates old plain-`Bearer` registrations. `SENTRY_AUTH_TOKEN` is a
     different credential (sentry-cli uploads). On the PLUGIN route the header is built by
-    `stack/mcp/sentry-headers.js` (`headersHelper`, a STRING command), and Claude Code runs a helper a
+    `stack/mcp/sentry-headers.js` (`headersHelper`, a STRING command run through a shell, so both of
+    its paths are quoted - a space would split them), and Claude Code runs a helper a
     plugin supplies WITHOUT the credential variables from the environment - every name carrying TOKEN,
     SECRET, PASSWORD, KEY or AUTH is removed
     (https://code.claude.com/docs/en/mcp, 'Which variables a helper can read'). Both keys it reads are
