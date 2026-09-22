@@ -349,8 +349,24 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
     return changed;
 }
 
+// context7 ships as ONE catalog row whose args are `@CONTEXT7_SPEC@`: the run resolves it to the
+// hosted remote (`@HTTP@`, registered from `remotes.context7`) or, under `--context7 local`, the npx
+// transport - the twin's CONTEXT7_SPEC. Left unresolved, the copy route registered the placeholder
+// itself as the server's command.
+// The hosted context7, as the twin and the context7 plugin entry register it: `:-` sends an EMPTY
+// header when the key is unset - the keyless free tier - where a literal `${CONTEXT7_API_KEY}` is
+// rejected as an invalid key.
+const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}' };
+
+function resolveContext7(mcps, { mode, pin = '' })
+{
+    return mcps.map((entry) => (entry.startsWith('context7|')
+        ? (mode === 'local' ? `context7|-- npx -y @upstash/context7-mcp${pin}` : 'context7|@HTTP@')
+        : entry));
+}
+
 module.exports = {
-    LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
+    CONTEXT7_REMOTE, resolveContext7, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
     retiredMcps, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright,

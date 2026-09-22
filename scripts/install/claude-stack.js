@@ -54,7 +54,6 @@ const STACK_MARKETPLACE = 'envoydev/claude-stack';
 const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
 const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
-const CONTEXT7_URL = 'https://mcp.context7.com/mcp';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
 // shell `cat` of a denied file is not blocked by anything here - guard-secret-value.js is that
 // route). RETIRED_DENY are the four ACCOUNT-settings entries releases up to 0.2.62 wrote; they are
@@ -223,8 +222,7 @@ function main(argv, env, io)
 
         // context7 travels as ONE catalog row with two transports: the hosted remote, or the npx
         // one that `--context7 local` adds beside it.
-        lists.mcps = lists.mcps.map((entry) => (entry.startsWith('context7|') && args.context7 === 'local'
-            ? `context7|-- npx -y @upstash/context7-mcp${pins.CTX7_PIN}` : entry));
+        lists.mcps = mcp.resolveContext7(lists.mcps, { mode: args.context7, pin: pins.CTX7_PIN });
 
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
@@ -258,7 +256,7 @@ function main(argv, env, io)
         };
         const remotes = {
             sentry: { url: SENTRY_URL, header: args.sentryAuth === 'oauth' ? '' : SENTRY_HEADER },
-            context7: { url: CONTEXT7_URL, header: '' },
+            context7: mcp.CONTEXT7_REMOTE,
         };
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,

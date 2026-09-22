@@ -299,3 +299,27 @@ test('pins: the memory pin is spelled ==<ver>, the others @<ver>', () =>
     assert.strictEqual(pins.CTX7_PIN, '@1.2.3');
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
 });
+
+// The manifest ships context7 as ONE row whose args are the `@CONTEXT7_SPEC@` placeholder, and the
+// run resolves it to a transport. The seed only ever resolved the LOCAL one, so on the MCP copy
+// route a remote install registered `"command": "@CONTEXT7_SPEC@"` - a server that cannot start.
+test('context7 row: the placeholder resolves to the hosted remote or the npx transport, never itself', () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = loadManifest(path.join(__dirname, '..')).mcps;
+    assert.ok(shipped.some((e) => e === 'context7|@CONTEXT7_SPEC@'), 'the fixture this pins moved - re-read the manifest row');
+    const remote = mcp.resolveContext7(shipped, { mode: 'remote', pin: '@1.2.3' });
+    assert.ok(remote.includes('context7|@HTTP@') && !remote.some((e) => e.includes('@CONTEXT7_SPEC@')));
+    const local = mcp.resolveContext7(shipped, { mode: 'local', pin: '@1.2.3' });
+    assert.ok(local.includes('context7|-- npx -y @upstash/context7-mcp@1.2.3') && !local.some((e) => e.includes('@CONTEXT7_SPEC@')));
+    assert.deepStrictEqual(mcp.resolveContext7(['serena|x'], { mode: 'remote', pin: '' }), ['serena|x'], 'no other row is touched');
+});
+
+test('context7 remote: the copy route registers the url and header the context7 plugin entry carries', () =>
+{
+    const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'context7');
+    const server = entry.mcpServers.context7;
+    assert.strictEqual(mcp.CONTEXT7_REMOTE.url, server.url);
+    const [key, ...value] = mcp.CONTEXT7_REMOTE.header.split(': ');
+    assert.deepStrictEqual({ [key]: value.join(': ') }, server.headers, 'an empty header dropped the account key on the copy route');
+});
