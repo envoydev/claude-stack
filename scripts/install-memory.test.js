@@ -180,3 +180,26 @@ test('order: an importer missing from the snapshot is reported, and nothing is s
     assert.strictEqual(out.switchedOff, false);
     assert.ok(logs.some((m) => /not found in the source snapshot/.test(m)), logs.join(' | '));
 });
+
+// --- the level resolution -------------------------------------------------
+
+test('level: the flag wins, an existing registration is kept BYTE-FOR-BYTE, else global', () =>
+{
+    const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
+    assert.deepStrictEqual(memory.resolveLevel({ flag: 'scoped', ...at }),
+        { level: 'scoped', dbPath: path.join('/home/u', '.memory-mcp', 'memory_work.db'), from: 'flag' });
+    // A level change never copies or deletes a database, so an absent flag must not re-point one.
+    const kept = memory.resolveLevel({ registeredPath: '/somewhere/else/memory.db', ...at });
+    assert.strictEqual(kept.dbPath, '/somewhere/else/memory.db');
+    assert.strictEqual(kept.level, 'custom', 'a foreign path was labelled as one of our three levels');
+    assert.deepStrictEqual(memory.resolveLevel(at),
+        { level: 'global', dbPath: path.join('/home/u', '.memory-mcp', 'memory.db'), from: 'default' });
+});
+
+test('level: a registration already at one of the three shapes keeps that NAME, not custom', () =>
+{
+    const at = { home: '/home/u', projectRoot: '/repo' };
+    const got = memory.resolveLevel({ registeredPath: path.join('/repo', '.memory-mcp', 'memory.db'), ...at });
+    assert.strictEqual(got.level, 'project');
+    assert.strictEqual(got.from, 'registration');
+});

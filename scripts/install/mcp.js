@@ -231,6 +231,36 @@ function verifyUser({ expects = [], scope, getShape, reregister, log = () => {},
     return { repaired };
 }
 
+// The runtime versions this run pins to. Every lookup is BOUNDED and every failure falls through
+// to UNPINNED rather than aborting: offline, or without npm / curl / python3, an install must still
+// happen - it just installs the latest at launch instead of a frozen version.
+//
+// The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
+// which have no extras suffix to sit next to.
+function resolvePins({ npmLatest, pypiLatest, log = () => {} })
+{
+    const ask = (fn, pkg) => { try { return String(fn(pkg) || '').trim(); } catch { return ''; } };
+    const found = {
+        context7: ask(npmLatest, '@upstash/context7-mcp'),
+        playwright: ask(npmLatest, '@playwright/mcp'),
+        serena: ask(pypiLatest, 'serena-agent'),
+        memory: ask(pypiLatest, 'mcp-memory-service'),
+    };
+    for (const [name, version] of Object.entries(found))
+    {
+        if (version) log(`  pinned ${name}@${version}`);
+        else log(`  !! could not resolve ${name} latest - installing unpinned (re-run when online to pin it)`);
+    }
+    return {
+        CTX7_PIN: found.context7 ? `@${found.context7}` : '',
+        PW_PIN: found.playwright ? `@${found.playwright}` : '',
+        SERENA_PIN: found.serena ? `@${found.serena}` : '',
+        MEMORY_PIN: found.memory ? `==${found.memory}` : '',
+        MEMORY_BACKEND: 'sqlite_vec',
+        versions: found,
+    };
+}
+
 // ONE server drives ONE browser, fixed at launch (`--browser`; the server has no tool to switch it
 // - measured), so the manifest's single `playwright` row expands into one entry per kept engine,
 // each with its own profile folder, because a persistent profile belongs to one engine.
@@ -323,5 +353,5 @@ module.exports = {
     LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
     retiredMcps, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, pwArgsFor, playwrightKept, expandPlaywright,
+    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright,
 };

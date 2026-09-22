@@ -203,3 +203,64 @@ test('install-source: cleanup removes what the run OWNS and never what it borrow
     s2.cleanup();
     assert.ok(!fs.existsSync(downloaded), 'cleanup left the downloaded tree behind');
 });
+
+// ---- the two outward routes, run for real against a LOCAL origin (T5) -------------------------
+// The stubs above prove the ORDER. These prove the implementations the entry hands in: they are the
+// only code between a machine with no plugin cache and a failed install, and a matrix case cannot
+// reach them without the network. curl reads a `file://` URL and git clones a path, so both run
+// offline against a local origin - the same code, one less variable.
+const { fetchArchive, cloneMain } = require('./install/runtime.js');
+
+test('install-source: the release archive is downloaded and extracted, and leaves ONE dir behind', () =>
+{
+    const origin = dir('origin');
+    const payload = stackDir('payload', { releaseSource: 'sha: abc123\nref: main\nversion: 9.9.9\n' });
+    const assetDir = path.join(origin, 'releases', 'latest', 'download');
+    fs.mkdirSync(assetDir, { recursive: true });
+    const tar = require('node:child_process').spawnSync('tar',
+        ['-czf', path.join(assetDir, 'claude-stack.tar.gz'), '-C', payload, '.'], { encoding: 'utf8' });
+    assert.strictEqual(tar.status, 0, `could not build the fixture archive: ${tar.stderr}`);
+
+    const tmpdir = dir('archive-tmp');
+    const got = fetchArchive({ repoUrl: `file://${origin}`, tmpdir });
+    assert.ok(got, 'the archive route returned nothing');
+    assert.strictEqual(isValidSource(got), true, 'the extracted tree is not a stack checkout');
+    assert.match(fs.readFileSync(path.join(got, 'RELEASE-SOURCE'), 'utf8'), /^sha: abc123$/m);
+    // source.js cleans up the ONE directory it is handed, so the download scratch cannot outlive it.
+    assert.deepStrictEqual(fs.readdirSync(tmpdir), [path.basename(got)], 'the tarball scratch dir leaked');
+});
+
+test('install-source: an unreachable archive returns null and leaves NOTHING behind', () =>
+{
+    const tmpdir = dir('archive-fail');
+    assert.strictEqual(fetchArchive({ repoUrl: `file://${path.join(tmpdir, 'no-such-origin')}`, tmpdir }), null);
+    assert.deepStrictEqual(fs.readdirSync(tmpdir), [], 'a failed download left a temp dir behind');
+});
+
+test('install-source: the clone fallback takes MAIN and reports the revision it landed', () =>
+{
+    const git = (cwd, ...args) => require('node:child_process').spawnSync('git', args, { cwd, encoding: 'utf8' });
+    const origin = stackDir('clone-origin');
+    git(origin, 'init', '-q', '-b', 'develop');
+    git(origin, 'config', 'user.email', 't@example.invalid');
+    git(origin, 'config', 'user.name', 'test');
+    fs.writeFileSync(path.join(origin, 'stack', 'skills', '.keep'), '');
+    fs.writeFileSync(path.join(origin, 'stack', 'agents', '.keep'), '');
+    git(origin, 'add', '-A');
+    git(origin, 'commit', '-qm', 'develop only');
+    // main carries the release; develop is checked out, which is exactly the case the -b pin exists
+    // for - a clone of the DEFAULT branch would ship unreleased work.
+    git(origin, 'branch', 'main');
+    fs.writeFileSync(path.join(origin, 'DEVELOP-ONLY'), 'x');
+    git(origin, 'add', '-A');
+    git(origin, 'commit', '-qm', 'after main');
+
+    const tmpdir = dir('clone-tmp');
+    const got = cloneMain({ repoUrl: origin, tmpdir });
+    assert.ok(got && got.dir, 'the clone route returned nothing');
+    assert.strictEqual(got.ref, 'main', `cloned ${got.ref}, not main`);
+    assert.match(got.sha, /^[0-9a-f]{40}$/, 'no revision was read back');
+    assert.strictEqual(fs.existsSync(path.join(got.dir, 'DEVELOP-ONLY')), false, 'the clone took the default branch');
+    assert.strictEqual(cloneMain({ repoUrl: path.join(tmpdir, 'no-such-repo'), tmpdir: dir('clone-fail') }), null,
+        'an unclonable origin is a null, never a half-written tree');
+});

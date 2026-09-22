@@ -269,3 +269,33 @@ test('playwright: a selection without playwright is left exactly as it is', () =
     assert.deepStrictEqual(out.mcps, mcps);
     assert.deepStrictEqual(out.browsers, []);
 });
+
+// --- the runtime pins -----------------------------------------------------
+
+test('pins: every lookup that fails falls through to UNPINNED, never to an abort', () =>
+{
+    // Offline, or without npm / curl / python3, an install must still happen - it just installs the
+    // latest at launch instead of a frozen version.
+    const logs = [];
+    const pins = mcp.resolvePins({
+        npmLatest: (pkg) => (pkg === '@playwright/mcp' ? '0.0.80\n' : ''),
+        pypiLatest: () => { throw new Error('offline'); },
+        log: (m) => logs.push(m),
+    });
+    assert.strictEqual(pins.PW_PIN, '@0.0.80');
+    assert.strictEqual(pins.CTX7_PIN, '');
+    assert.strictEqual(pins.SERENA_PIN, '');
+    assert.strictEqual(pins.MEMORY_PIN, '');
+    assert.ok(logs.some((m) => /could not resolve serena latest - installing unpinned/.test(m)), logs.join(' | '));
+});
+
+test('pins: the memory pin is spelled ==<ver>, the others @<ver>', () =>
+{
+    // It sits INSIDE the extras brackets - `mcp-memory-service[sqlite]==<ver>` - where an @ would
+    // not parse.
+    const pins = mcp.resolvePins({ npmLatest: () => '1.2.3', pypiLatest: () => '4.5.6' });
+    assert.strictEqual(pins.MEMORY_PIN, '==4.5.6');
+    assert.strictEqual(pins.SERENA_PIN, '@4.5.6');
+    assert.strictEqual(pins.CTX7_PIN, '@1.2.3');
+    assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
+});

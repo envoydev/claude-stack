@@ -45,6 +45,22 @@ function levelOfPath(p, { home, projectRoot })
     return '';
 }
 
+// --memory-level, resolved. GIVEN: that level's default path. ABSENT: an EXISTING registration
+// keeps its MCP_MEMORY_SQLITE_PATH byte-for-byte - only the runtime extra and the pragmas are
+// upgraded, never the path - and with no registration at all it is `global`. A level change never
+// copies or deletes a database: whichever file the old memories are in stays there, which is why
+// the caller's log line names both.
+function resolveLevel({ flag, registeredPath, home, space, projectRoot })
+{
+    if (flag) return { level: flag, dbPath: pathForLevel(flag, { home, space, projectRoot }), from: 'flag' };
+    if (registeredPath)
+    {
+        const level = levelOfPath(registeredPath, { home, projectRoot });
+        return { level: level || 'custom', dbPath: registeredPath, from: 'registration' };
+    }
+    return { level: 'global', dbPath: pathForLevel('global', { home, space, projectRoot }), from: 'default' };
+}
+
 // 'true' / 'false' / 'absent' / 'malformed'. A missing file is 'absent' - nothing has switched
 // Claude's own memory off yet.
 function autoMemoryState(settingsFile)
@@ -136,4 +152,4 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
     return { switchedOff: writeSwitchOff(settingsFile, { log }), imported: true };
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, autoMemoryState, writeSwitchOff, importGate, importNotes };
+module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes };

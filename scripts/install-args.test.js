@@ -169,15 +169,22 @@ test('install-args: --playwright-enabled must be one of the KEPT engines', () =>
 
 // ------------------------------------------------------------------ the entry point
 
-const { main, PENDING_LAYERS } = require('./install/claude-stack.js');
+const { main } = require('./install/claude-stack.js');
 
-// The entry is driven in-process with captured streams: it has no side effects to sandbox yet, and
-// an execFileSync per case would add seconds to a file that runs in milliseconds.
+// The entry is driven in-process with captured streams - an execFileSync per case would add seconds
+// to a file that runs in milliseconds - so it is SANDBOXED BY ITS CWD. `main` takes the project
+// root from `io.cwd`'s git root, and this suite runs inside the stack's own checkout: a case that
+// reaches the layers with the default cwd installs the whole stack into THIS repo, over the
+// developer's own `.claude/` (measured 2026-09-22 - it wrote a settings.json env pointing at
+// /nonexistent-home and turned two hook cases red). A temp cwd outside any repo makes that
+// impossible for every case in this file, including the ones added next.
+const ENTRY_CWD = fs.mkdtempSync(path.join(TMP_ENTRY, 'cwd-'));
 function run(argv, env = {})
 {
     let out = '';
     let err = '';
-    const code = main(argv, { HOME: '/nonexistent-home', ...env }, { out: (s) => { out += s; }, err: (s) => { err += s; } });
+    const code = main(argv, { HOME: '/nonexistent-home', CLAUDE_CONFIG_DIR: path.join(ENTRY_CWD, '.acct'), ...env },
+        { out: (s) => { out += s; }, err: (s) => { err += s; }, cwd: ENTRY_CWD });
     return { code, out, err };
 }
 
@@ -190,27 +197,41 @@ test('install-entry: a bad flag prints the usage and exits 1 - nothing is resolv
     assert.strictEqual(r.out, '', 'a refused run still resolved a source');
 });
 
-test('install-entry: --print-plan reports and exits 0, because reporting writes nothing', () =>
+test('install-entry: --print-plan prints the six resolved lists and exits 0, writing nothing', () =>
 {
     const r = run(['install', '--source', ROOT, '--print-plan', '--memory-level', 'scoped']);
     assert.strictEqual(r.code, 0, `--print-plan failed: ${r.err}`);
     assert.match(r.out, /source: .*\(provided\)/);
-    assert.match(r.out, /plan: install from provided/);
-    assert.match(r.out, /memoryLevel: scoped/);
+    for (const list of ['skills', 'plugins', 'mcps', 'agents', 'rules', 'hooks'])
+        assert.match(r.out, new RegExp(`^plan ${list}: \\S`, 'm'), `the plan named no ${list}`);
+    // The playwright row is expanded into its engines BEFORE the plan is printed, so the dry run
+    // reports the servers a real run would register, not the catalog row they come from.
+    assert.match(r.out, /^plan mcps: .*playwright-chrome/m);
+    assert.ok(!/^plan mcps: .*(^| )playwright\|/m.test(r.out), 'the unexpanded catalog row reached the plan');
 });
 
-test('install-entry: a REAL run refuses while the layers are missing, and names them', () =>
+test('install-entry: --print-plan resolves NO runtime versions - a dry run makes no network call', () =>
 {
-    const r = run(['install', '--source', ROOT]);
-    assert.strictEqual(r.code, 2, 'the incomplete seed installed something');
-    for (const layer of PENDING_LAYERS)
-        assert.ok(r.err.includes(layer), `the refusal did not name the '${layer}' layer`);
-    assert.match(r.err, /claude-stack\.sh/, 'the refusal did not point at the route that works');
+    const r = run(['install', '--source', ROOT, '--print-plan']);
+    assert.ok(!/resolving latest|pinned /.test(r.out), `a dry run went to the network: ${r.out.slice(0, 200)}`);
+});
+
+test('install-entry: the project root comes from io.cwd, never from the process', () =>
+{
+    // The sandbox above is only real if `main` actually anchors there. --installed-only names the
+    // directory it looked in, so one refusal proves the whole file cannot reach this repo: with the
+    // process cwd it would find the stack's own .claude and run a real update over it.
+    const r = run(['update', '--source', ROOT, '--installed-only']);
+    assert.strictEqual(r.code, 1);
+    assert.match(r.err, /found nothing installed under/);
+    assert.ok(r.err.includes(ENTRY_CWD), `looked somewhere else: ${r.err}`);
 });
 
 test('install-entry: a --source that is not the stack fails before any layer is reached', () =>
 {
     const r = run(['install', '--source', path.join(TMP_ENTRY, 'nope')]);
     assert.strictEqual(r.code, 1);
-    assert.match(r.err, /not a claude-stack checkout/);
+    // On the log stream, not stderr - the same place the sh twin reports it, so a run's transcript
+    // reads the same whichever route produced it.
+    assert.match(r.out, /not a claude-stack checkout/);
 });

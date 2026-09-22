@@ -42,6 +42,7 @@ function loadManifest(sourceDir)
             hooks: (raw.hooks || []).map(renderHook),
             mcps: (raw.mcps || []).map(renderMcp),
             plugins: (raw.plugins || []).map((r) => r.id),
+            skills: (raw.skills || []).map(renderSkill),
         },
         rows: raw,
     };

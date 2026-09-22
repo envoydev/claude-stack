@@ -34,6 +34,13 @@ process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
 // The fallback's own test sets it explicitly.
 delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
+// Same route, second key: an install of this stack writes CLAUDE_STACK_DOCS_PATH into the
+// project's settings.json env, which Claude Code exports into every tool call - so a suite run
+// inside a stack-INSTALLED checkout resolves the receipt cases below from the SESSION's docs root
+// instead of from the case, and the old-spelling fallback case can never take its fallback
+// (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
+delete process.env.CLAUDE_STACK_DOCS_PATH;
+delete process.env.CLAUDE_DOCS_PATH;
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.claude/docs/hook-blocks/` (measured 2026-09-07: 12,480
