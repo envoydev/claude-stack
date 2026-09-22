@@ -61,6 +61,14 @@ function describe(name, place, stacksOf)
     return `claude-stack ${counts.join(' and ')} used by ${who}.`;
 }
 
+// Every plugin hook runs as `node "<plugin root>/<file>"`. Shell form, launched through node and
+// QUOTED, is the docs' own spelling for a plugin script ('Exec form and shell form',
+// code.claude.com/docs/en/hooks) and the one 0.2.x shipped. A bare script path needs the exec bit,
+// which git carries into the plugin cache verbatim - five hooks were committed 100644 and died
+// 'permission denied' before a line ran - and a shebang, which Windows never honours. Args stay in
+// the string: an `args` array switches to exec form, whose `command` must be a real executable.
+const launch = (file, args) => `node "\${CLAUDE_PLUGIN_ROOT}/${file}"${args && args.length ? ` ${args.join(' ')}` : ''}`;
+
 // The five guided-walk COMMANDS and the router SKILL, the two things no other entry has. Read from
 // setup-plugin's own plugin.json so one list stays the source of the command set, and re-rooted at
 // the repo root the entry now ships from.
@@ -91,7 +99,7 @@ function coreEntry(options = {})
         hooks: {
             PreToolUse: [{
                 matcher: 'AskUserQuestion',
-                hooks: [{ type: 'command', command: '${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js', timeout: 10 }],
+                hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
         },
     };
@@ -214,9 +222,7 @@ function hooksBlock(wirings)
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
         }
-        const entry = { type: 'command', command: `\${CLAUDE_PLUGIN_ROOT}/stack/hooks/${w.file}`, timeout: 10 };
-        if (w.args) entry.args = w.args;
-        group.hooks.push(entry);
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: 10 });
     }
     return block;
 }

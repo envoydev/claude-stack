@@ -44,7 +44,9 @@ change (see the invariants below).
   22 bodies shared with cursor-stack run `node .claude/hooks/docs.js`. The entry is GENERATED from the
   installer's own `HOOKS_CATALOG` (`build-marketplace.js --hooks-entry`, lint check 48), so one table
   owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
-  600s default). `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
+  600s default) and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
+  bit, which git carries into the cache as committed, and never runs on Windows).
+  `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
   the walk's hooks layer now writes the rows it did NOT pick into `CLAUDE_STACK_HOOKS_OFF` instead of
   leaving files out. Both gates live in `hook-prelude.js`, never inlined thirteen times: the csv
   opt-out, and the migration window where the plugin copy stands down while a project still wires its

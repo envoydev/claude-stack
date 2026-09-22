@@ -2710,7 +2710,15 @@ function lintHooksEntry()
         for (const block of blocks)
             for (const entry of block.hooks)
             {
-                const file = entry.command.replace('${CLAUDE_PLUGIN_ROOT}/stack/hooks/', '');
+                // The launcher shape is part of the contract: a bare script path needs the exec
+                // bit, which git carries into the plugin cache as committed, and never runs on Windows.
+                const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
+                if (!m)
+                {
+                    out.push(`the hooks entry runs \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
+                    continue;
+                }
+                const file = m[1];
                 wired.add(file);
                 if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
                     out.push(`the hooks entry wires ${file}, which is not in stack/hooks/.`);

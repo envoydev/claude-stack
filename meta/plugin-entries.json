@@ -69,7 +69,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
                 "timeout": 10
               }
             ]

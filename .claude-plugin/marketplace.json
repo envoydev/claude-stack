@@ -29,27 +29,27 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-protected-force-push.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-protected-force-push.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-catastrophic-rm.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-catastrophic-rm.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
                 "timeout": 10
               }
             ]
@@ -59,12 +59,12 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
                 "timeout": 10
               }
             ]
@@ -74,7 +74,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
                 "timeout": 10
               }
             ]
@@ -84,7 +84,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
                 "timeout": 10
               }
             ]
@@ -94,7 +94,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
                 "timeout": 10
               }
             ]
@@ -104,7 +104,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
                 "timeout": 10
               }
             ]
@@ -114,7 +114,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
                 "timeout": 10
               }
             ]
@@ -124,7 +124,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]
@@ -134,7 +134,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js\"",
                 "timeout": 10
               }
             ]
@@ -145,17 +145,17 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]
@@ -166,12 +166,12 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]
@@ -182,12 +182,12 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
               }
             ]
@@ -199,7 +199,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
                 "timeout": 10
               }
             ]
@@ -208,17 +208,17 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               },
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
                 "timeout": 10
               }
             ]
@@ -229,7 +229,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]
@@ -612,7 +612,7 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
                 "timeout": 10
               }
             ]
