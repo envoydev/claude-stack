@@ -134,15 +134,16 @@ test('derive: the four playwright engines collapse back to the ONE manifest entr
     assert.deepStrictEqual(lines.filter((l) => l.startsWith('mcp ')), ['mcp serena', 'mcp playwright', 'mcp my-own']);
 });
 
-test('derive: only KNOWN plugins are taken from the listing, and an unreadable listing falls back', () =>
+test('derive: only KNOWN plugins are taken from the listing, and none listed is none picked', () =>
 {
     const dir = target({ skills: ['x'] });
     const known = ['claude-hud@claude-plugins-official', 'security-guidance@claude-plugins-official'];
     const got = sel.deriveFromDisk({ claudeDir: dir, plugins: ['claude-hud@x', 'someone-elses@y'], knownPlugins: known });
     assert.deepStrictEqual(got.filter((l) => l.startsWith('plugin ')), ['plugin claude-hud']);
-    // Nothing readable: the manifest set, which is safe because this path is update-only.
-    const fallback = sel.deriveFromDisk({ claudeDir: dir, plugins: [], knownPlugins: known });
-    assert.deepStrictEqual(fallback.filter((l) => l.startsWith('plugin ')), ['plugin claude-hud', 'plugin security-guidance']);
+    // update INSTALLS an absent plugin, so a manifest-set fallback put all five on a project whose
+    // user picked none - a listing that names none of them, or one that could not be read.
+    for (const plugins of [[], ['claude-stack@claude-stack']])
+        assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: dir, plugins, knownPlugins: known }).filter((l) => l.startsWith('plugin ')), [], JSON.stringify(plugins));
 });
 
 test('derive: the nothing-installed guard reads the FILE layers only', () =>
@@ -294,6 +295,18 @@ test('read-back: a skill the last install carried survives a release that moved 
     assert.ok(!parked.lines.includes('skill dotnet-web-backend'), 'the user parked its entry');
     const blind = readBackCase({ listing: [], stampPicked });
     assert.ok(!blind.lines.includes('skill dotnet-web-backend'), 'no listing, no evidence of what is parked - the stamp is not read');
+});
+
+test('read-back: a stamp with no picked lines (an older install) takes what the enabled entries carry as picked', () =>
+{
+    const listing = [row('claude-stack@claude-stack'), row('claude-stack-aspnet@claude-stack')];
+    const legacy = readBackCase({ listing, stampPicked: null, settings: { permissions: { deny: ['Agent(claude-stack:security-auditor)'] } } });
+    assert.ok(legacy.closeFrom.includes('skill dotnet-web-backend') && legacy.closeFrom.includes('agent aspnet-implementer'), 'carried by an enabled entry');
+    assert.ok(!legacy.closeFrom.includes('agent security-auditor'), 'a denied seat is no pick');
+    const current = readBackCase({ listing, stampPicked: { skills: [], agents: [] } });
+    assert.ok(!current.closeFrom.includes('skill dotnet-web-backend'), 'a stamp that recorded its picks is the answer, even an empty one');
+    const blind = readBackCase({ listing: [], stampPicked: null });
+    assert.ok(!blind.closeFrom.some((l) => /^(skill|agent) /.test(l)), 'no listing - nothing to adopt');
 });
 
 test('addLines: --add unions well-formed lines once, and logs each', () =>

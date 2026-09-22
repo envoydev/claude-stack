@@ -127,11 +127,13 @@ function writeStamp(opts)
     return dest;
 }
 
-// The two picked lines of a stamp; absent (an older stamp, the shell twin's, no stamp) reads as none.
+// The two picked lines of a stamp. A stamp that carries neither (an older stamp, the shell twin's, no
+// stamp) reads as null - it never recorded picks, which is not the same answer as recording none.
 function readPicked(file)
 {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { text = ''; }
+    if (!/^picked-(skills|agents):/m.test(text)) return null;
     const list = (key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '').split(',').map((s) => s.trim()).filter(Boolean);
     return { skills: list('picked-skills'), agents: list('picked-agents') };
 }

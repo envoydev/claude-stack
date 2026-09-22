@@ -183,13 +183,15 @@ test('install-stamp: picked-skills / picked-agents record what this run installe
     assert.deepStrictEqual(readPicked(dest), { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'] });
 });
 
-test('install-stamp: a stamp without the picked lines (an older install, the shell twin) reads as none', () =>
+test('install-stamp: a stamp without the picked lines (an older install, the shell twin) reads as null - never as an empty pick', () =>
 {
     const p = project();
     const file = path.join(p.base, 'old.stamp');
     fs.writeFileSync(file, 'sha: abc\nshipped-hooks: a,b\n');
-    assert.deepStrictEqual(readPicked(file), { skills: [], agents: [] });
-    assert.deepStrictEqual(readPicked(path.join(p.base, 'absent.stamp')), { skills: [], agents: [] });
+    assert.strictEqual(readPicked(file), null);
+    assert.strictEqual(readPicked(path.join(p.base, 'absent.stamp')), null);
+    fs.writeFileSync(file, 'sha: abc\npicked-skills: \npicked-agents: \n');
+    assert.deepStrictEqual(readPicked(file), { skills: [], agents: [] }, 'recorded empty is an answer');
     const { text } = write(project());
     assert.match(text, /^picked-skills: $/m, 'no picks given is an empty line, never a crash');
 });

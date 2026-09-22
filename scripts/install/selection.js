@@ -130,9 +130,9 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
         const name = nameOfPlugin(p);
         if (known.has(name) && !seenPlugin.has(name)) { seenPlugin.add(name); lines.push(`plugin ${name}`); }
     }
-    // The CLI could not be read: fall back to the manifest's set. Safe, because this path is
-    // update-only and `claude plugin update` never installs a missing plugin.
-    if (!seenPlugin.size) for (const p of knownPlugins) lines.push(`plugin ${nameOfPlugin(p)}`);
+    // None listed is none picked. No fallback to the manifest's set, even when the CLI could not be
+    // read: update INSTALLS an absent plugin, so that fallback put all five on a project whose user
+    // had picked none of them.
     return lines;
 }
 
@@ -220,6 +220,16 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
                 const pick = `${line} ${splitPick(entry).name}`;
                 if (lines.includes(pick) && !closeFrom.includes(pick)) closeFrom.push(pick);
             }
+    // A stamp that never recorded its picks (an older release, the shell twin): the skills and seats
+    // the enabled entries carry are the best evidence of what was picked - that release enabled them
+    // for its selection. Taken as picks once, so the stamp this run writes records them, instead of an
+    // empty line that would leave a moved item nothing to carry it across.
+    if (stampPicked === null && ours.length)
+    {
+        const adopted = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
+        closeFrom.push(...adopted);
+        if (adopted.length) log(`installed-only: the stamp predates recorded picks - ${adopted.length} skills and seats the enabled entries carry are recorded as picked`);
+    }
 
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes('claude-stack') };
     const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
