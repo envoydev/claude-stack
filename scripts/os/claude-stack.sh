@@ -993,6 +993,21 @@ AGENTS=(
   "winforms-verifier.md"             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
 )
 
+# Skills and agents arrive through the per-stack PLUGINS instead of being copied into .claude/. Which
+# plugins a project enables is COMPUTED from what it picked (scripts/selection-plugins.js, over the
+# same placement meta/plugin-entries.json is generated from), so a project carries its own closure
+# and nothing else. What no plugin carries - the EXTRAS, the items no stack's closure reaches - is
+# still copied, because there is no plugin that would hold it. Set to false to keep the 0.2.x copy
+# route, which is what the temp-project matrix uses to prove both.
+SKILLS_VIA_PLUGIN="${CLAUDE_STACK_SKILLS_VIA_PLUGIN:-true}"
+
+# The manifests as SHIPPED, taken before the selection filter narrows them (the HOOKS_CATALOG
+# pattern). On the plugin route these are the names a run PRUNES from .claude/skills and
+# .claude/agents: a copy the stack itself shipped, now carried by a plugin. A file neither manifest
+# names is the project's own and is never touched.
+SKILLS_CATALOG=(${SKILLS[@]+"${SKILLS[@]}"})
+AGENTS_CATALOG=(${AGENTS[@]+"${AGENTS[@]}"})
+
 # (6) Path-scoped rules (claude-code): copied into .claude/rules/ from the run's source clone (rules/)
 # on BOTH actions - lazy-load on matching file reads; conventions stay with the convention-gate hook,
 # rules carry only glob-scoped routing.
@@ -1087,6 +1102,30 @@ if [ "$INSTALLED_ONLY" = true ]; then
   # no-op update. Plugins are machine-level and mcps come from .mcp.json; neither is evidence that
   # THIS target has an install.
   grep -qE '^(skill|agent|rule|hook) ' "$SELECTION" || { echo "error: --installed-only found nothing installed under $_io_claude - run '$0 install' (or the /claude-stack:setup command) first" >&2; rm -rf "$_IO_TMP"; exit 1; }
+  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  # Skills and agents live in the stack's own PLUGINS on that route, so the disk scan above saw only
+  # the EXTRAS. The rest is recovered from the stack plugins this machine carries for THIS project,
+  # expanded to their items by the same placement the installer enables them from - the route-aware
+  # inventory shape hooks were given first (hooks-inventory-route). Without it an update read a
+  # plugin-native install as 'no skills, no agents' and dropped every per-stack plugin it had.
+  # It runs AFTER the nothing-installed guard on purpose: a machine-level plugin listing is no
+  # evidence that THIS project has an install, and the guard is the only thing that says so.
+  _io_sp=""
+  for _io_c in "$_io_script_dir/../selection-plugins.js" "${SOURCE_DIR:+$SOURCE_DIR/scripts/selection-plugins.js}"; do
+    if [ -n "$_io_c" ] && [ -f "$_io_c" ]; then _io_sp="$_io_c"; break; fi
+  done
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ] && [ -n "$_io_sp" ] && command -v node >/dev/null 2>&1 && command -v claude >/dev/null 2>&1; then
+    _io_stack_pl="$(claude plugin list 2>/dev/null \
+      | awk '{for(i=1;i<=NF;i++) if($i ~ /^claude-stack[A-Za-z0-9_.-]*@[A-Za-z0-9_.-]+$/){split($i,a,"@"); print a[1]}}' \
+      | grep -v '^claude-stack-hooks$' | sort -u | paste -sd, - || true)"
+    if [ -n "$_io_stack_pl" ]; then
+      node "$_io_sp" --items "$_io_stack_pl" 2>/dev/null | while IFS= read -r _io_l; do
+        [ -n "$_io_l" ] && ! grep -qxF "$_io_l" "$SELECTION" && printf '%s\n' "$_io_l" >> "$SELECTION"
+        true
+      done
+      log "installed-only: skills and agents read from the plugins ($_io_stack_pl)"
+    fi
+  fi
   # A hook the release ADDED reaches an existing install ONLY here. The derivation above lists what
   # is on DISK, so a newly shipped guard was invisible to every update - measured: the v0.2.20
   # commit gate reached zero of three consuming projects, every run surfacing it as an FYI the user
@@ -1110,7 +1149,6 @@ if [ "$INSTALLED_ONLY" = true ]; then
       log "installed-only: adopting hook $_io_n - shipped by this release and absent here"
     done
   fi
-  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
   # The always-on baseline (meta/recommendations.json `always.rules` / `always.mcps`) is adopted the
   # same way: a rule or server every install carries reached an existing one ONLY here - measured, a
   # pre-memory install updated to this release gained the start hook but never baseline-memory.md or
@@ -1550,16 +1588,88 @@ stack_src() {
 # ===========================================================================
 # INSTALL - skills re-add UNCONDITIONALLY (clean copy each run); MCPs and plugins SKIP if already present
 # ===========================================================================
+# The plugins that carry THIS project's picked skills and agents, plus the EXTRAS no plugin carries.
+# Computed once per run from the post-selection manifests by scripts/selection-plugins.js, which
+# reads the same placement the marketplace entries are generated from - so the installer can never
+# enable a set that disagrees with what the marketplace actually ships.
+# Fail-soft, and the fallback is the whole 0.2.x route: without node, without a source snapshot, or
+# on any error, SKILLS_VIA_PLUGIN drops to false and everything is copied as before. An install that
+# cannot compute its plugin set still ends with a working stack.
+_STACK_PLUGINS_RESOLVED=false
+STACK_SKILL_PLUGINS=()
+STACK_RUN_PLUGINS=()
+PLUGIN_EXTRA_SKILLS=()
+PLUGIN_EXTRA_AGENTS=()
+resolve_stack_plugins() {
+  [ "$_STACK_PLUGINS_RESOLVED" = true ] && return 0
+  _STACK_PLUGINS_RESOLVED=true
+  [ "$SKILLS_VIA_PLUGIN" = "true" ] || return 0
+  local why=""
+  command -v node >/dev/null 2>&1 || why="node not found"
+  [ -n "$why" ] || stack_src || why="no source snapshot"
+  [ -n "$why" ] || [ -f "$STACK_SRC/scripts/selection-plugins.js" ] || why="selection-plugins.js is not in this source"
+  if [ -n "$why" ]; then
+    SKILLS_VIA_PLUGIN=false
+    log "  !! $why - skills and agents stay on the copy route"
+    return 0
+  fi
+  local tmp entry name out
+  tmp="$(mktemp -d)" || { SKILLS_VIA_PLUGIN=false; return 0; }
+  {
+    for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do printf 'skill %s\n' "${entry#*|}"; done
+    for entry in ${AGENTS[@]+"${AGENTS[@]}"}; do name="${entry%%::*}"; printf 'agent %s\n' "${name%.md}"; done
+  } > "$tmp/selection.txt"
+  if ! out="$(node "$STACK_SRC/scripts/selection-plugins.js" --selection "$tmp/selection.txt" 2>"$tmp/err")"; then
+    SKILLS_VIA_PLUGIN=false
+    log "  !! plugin set not computed ($(head -1 "$tmp/err" 2>/dev/null)) - skills and agents stay on the copy route"
+    rm -rf "$tmp"; return 0
+  fi
+  while IFS= read -r name; do [ -n "$name" ] && STACK_SKILL_PLUGINS+=("$name"); done <<EOF
+$out
+EOF
+  out="$(node "$STACK_SRC/scripts/selection-plugins.js" --selection "$tmp/selection.txt" --copy 2>/dev/null || true)"
+  while IFS= read -r name; do
+    case "$name" in
+      "skill "*) PLUGIN_EXTRA_SKILLS+=("${name#skill }") ;;
+      "agent "*) PLUGIN_EXTRA_AGENTS+=("${name#agent }") ;;
+    esac
+  done <<EOF
+$out
+EOF
+  rm -rf "$tmp"
+  log "plugins carry ${#STACK_SKILL_PLUGINS[@]} entr(ies); extras copied: ${#PLUGIN_EXTRA_SKILLS[@]} skill(s), ${#PLUGIN_EXTRA_AGENTS[@]} agent(s)"
+}
+
+_is_extra() {  # $1 = name, rest = the extras list -> 0 when the name is one of them
+  local want="$1"; shift
+  local n; for n in "$@"; do [ "$n" = "$want" ] && return 0; done
+  return 1
+}
+
 install_skills() {
   # Copy each selected skills/<name>/ out of the run's clone into the scope dest - all house
   # skills live in ONE repo, so a plain copy fully reproduces what the skills CLI used to stage;
-  # no npx/network-registry dependency.
+  # no npx/network-registry dependency. On the plugin route only the EXTRAS travel this way.
+  resolve_stack_plugins
   stack_src || { note_failure "skills not installed"; return 0; }   # fail-soft: skip, never abort
   local name dest entry
+  local -a copy_skills=()
   case "$CLAUDE_SCOPE" in user) dest="$CONFIG_DIR/skills" ;; *) dest="$PWD/.claude/skills" ;; esac
   mkdir -p "$dest"
-  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do
-    name="${entry#*|}"
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then
+    # Prune BEFORE the plugins are enabled in the same run: a leftover copy SHADOWS the plugin's own
+    # (spike S6) with no error and no sign in the transcript. Only names the shipped manifest carries
+    # are pruned, so a skill folder this stack never installed - the project's own - is left alone.
+    for entry in ${SKILLS_CATALOG[@]+"${SKILLS_CATALOG[@]}"}; do
+      name="${entry#*|}"
+      _is_extra "$name" ${PLUGIN_EXTRA_SKILLS[@]+"${PLUGIN_EXTRA_SKILLS[@]}"} && continue
+      [ -d "$dest/$name" ] && { rm -rf "$dest/$name"; log "  skill pruned (now carried by a plugin): $name"; }
+    done
+    copy_skills=(${PLUGIN_EXTRA_SKILLS[@]+"${PLUGIN_EXTRA_SKILLS[@]}"})
+  else
+    for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do copy_skills+=("${entry#*|}"); done
+  fi
+  for name in ${copy_skills[@]+"${copy_skills[@]}"}; do
     if [ -d "$STACK_SRC/stack/skills/$name" ]; then
       rm -rf "$dest/$name"; cp -R "$STACK_SRC/stack/skills/$name" "$dest/$name"
       log "skill [$CLAUDE_SCOPE]: $name -> $dest/$name"
@@ -1578,6 +1688,20 @@ ensure_official_marketplace() {
   claude plugin marketplace update claude-plugins-official >/dev/null 2>&1 || true
 }
 
+# The stack's OWN plugin names for this run, with its marketplace registered - shared by install,
+# update and the --skills-only fast path, which on this route can no longer be a pure file copy:
+# it PRUNES the copies, so a run that skipped the enable would leave the project with neither.
+# Fills the GLOBAL STACK_RUN_PLUGINS - a nameref would be cleaner and macOS still ships bash 3.2.
+_stack_plugin_set() {
+  STACK_RUN_PLUGINS=()
+  resolve_stack_plugins      # may drop SKILLS_VIA_PLUGIN to false, so it runs before the test below
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || return 0
+  claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
+  claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then STACK_RUN_PLUGINS+=(${STACK_PLUGINS[@]+"${STACK_PLUGINS[@]}"}); fi
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then STACK_RUN_PLUGINS+=(${STACK_SKILL_PLUGINS[@]+"${STACK_SKILL_PLUGINS[@]}"}); fi
+}
+
 install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   ensure_official_marketplace
@@ -1585,11 +1709,8 @@ install_plugins() {
   # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the
   # hooks plugin resolves in the same run that prunes the copied hooks it replaces.
   local -a _plugins=(${PLUGINS[@]+"${PLUGINS[@]}"})
-  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
-    claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
-    claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
-    _plugins+=(${STACK_PLUGINS[@]+"${STACK_PLUGINS[@]}"})
-  fi
+  _stack_plugin_set
+  _plugins+=(${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"})
   for p in ${_plugins[@]+"${_plugins[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
@@ -1904,9 +2025,25 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
 }
 
 download_agents() {  # copy each subagent .md into .claude/agents/; per-agent fail-soft (keeps repo copy)
-  local root
+  local root entry name
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping agents"; return 0; }
-  _install_from_src stack/agents agent "$root/.claude/agents" no ${AGENTS[@]+"${AGENTS[@]}"}
+  resolve_stack_plugins
+  if [ "$SKILLS_VIA_PLUGIN" != "true" ]; then
+    _install_from_src stack/agents agent "$root/.claude/agents" no ${AGENTS[@]+"${AGENTS[@]}"}
+    return 0
+  fi
+  # Same two moves as the skills: prune what a plugin now carries (a stale copy shadows it), copy
+  # only the extras. A seat file the shipped manifest never named is the project's own.
+  for entry in ${AGENTS_CATALOG[@]+"${AGENTS_CATALOG[@]}"}; do
+    name="${entry%%::*}"
+    _is_extra "${name%.md}" ${PLUGIN_EXTRA_AGENTS[@]+"${PLUGIN_EXTRA_AGENTS[@]}"} && continue
+    [ -f "$root/.claude/agents/$name" ] && { rm -f "$root/.claude/agents/$name"; log "  agent pruned (now carried by a plugin): $name"; }
+  done
+  local -a extra=()
+  for name in ${PLUGIN_EXTRA_AGENTS[@]+"${PLUGIN_EXTRA_AGENTS[@]}"}; do extra+=("$name.md"); done
+  if [ ${#extra[@]} -gt 0 ]; then
+    _install_from_src stack/agents agent "$root/.claude/agents" no "${extra[@]}"
+  fi
 }
 
 download_rules() {  # copy each rule .md into .claude/rules/; per-rule fail-soft (keeps repo copy)
@@ -2804,9 +2941,16 @@ update_plugins() {
   ensure_official_marketplace
   claude plugin marketplace update 2>/dev/null || true            # refresh marketplaces first
   local before after p name pscope v1 v2
+  local -a _all=(${PLUGINS[@]+"${PLUGINS[@]}"})
+  # The stack's OWN plugins travel this same loop on update - installed when absent, enabled when
+  # parked, then updated. Without it an update pruned the copied hooks, skills and agents and
+  # enabled nothing in their place: `claude plugin update` is a no-op on a plugin that is not
+  # installed, so the run ended with neither route live.
+  _stack_plugin_set
+  _all+=(${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"})
   before="$(_plugin_scan)"
   prune_retired_plugins "$before"
-  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+  for p in ${_all[@]+"${_all[@]}"}; do
     name="${p%%@*}"
     # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a
     # silent no-op, so passing the INSTALL's scope left every user-scoped plugin on its old version
@@ -2835,7 +2979,7 @@ update_plugins() {
   # Read the versions back: `claude plugin update` reports success whether or not anything moved.
   after="$(_plugin_scan)"
   [ -n "$before$after" ] || return 0
-  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+  for p in ${_all[@]+"${_all[@]}"}; do
     name="${p%%@*}"
     v1="$(_plugin_field "$before" "$name" 2)"; v2="$(_plugin_field "$after" "$name" 2)"
     if [ -z "$v2" ]; then log "  plugin $name: NOT installed - the install above did not take (is the marketplace reachable?)"
@@ -2977,6 +3121,20 @@ prune_agents_cache() {
 # dependent step (testability - drives just the git-copy with no claude/gh/network dependency).
 if [ "$SKILLS_ONLY" = true ]; then
   if [ "$ACTION" = "install" ]; then install_skills; else update_skills; fi
+  # On the plugin route the skills layer IS the plugins: the step above pruned the copies, so
+  # enabling them here is what keeps the flag from leaving a project with neither. It stays
+  # fail-soft and CLI-free on the copy route, which is what the flag was built for.
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ] && command -v claude >/dev/null 2>&1; then
+    # The core entry DEPENDS on superpowers, so its marketplace has to be registered first or every
+    # stack plugin fails with 'Dependency ... not found' - measured on this path, which is the one
+    # place that installs plugins without going through install_plugins.
+    ensure_official_marketplace
+    _stack_plugin_set
+    for _so_p in ${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"}; do
+      log "plugin [$CLAUDE_SCOPE]: $_so_p"
+      claude plugin install "$_so_p" --scope "$CLAUDE_SCOPE" -y || note_failure "plugin $_so_p failed"
+    done
+  fi
   write_stamp   # a skills-only run still installs FROM a revision - record it
   exit 0
 fi

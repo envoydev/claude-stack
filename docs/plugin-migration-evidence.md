@@ -515,6 +515,95 @@ moved with the other twelve instead, because the matcher is evaluated by Claude 
 dispatches to a hook and S5 already proved plugin SessionStart hooks fire. That is reasoning, not a
 measurement - recorded here as NOT RUN, not as a pass.
 
+## Phase 3 delivery - what the temp-project matrix caught
+
+Eight findings, all from reading RESULT files rather than exit codes. Each is fixed and covered.
+
+**1. A new script the matrix could not see.** `scripts/selection-plugins.js` was written but never
+`git add`ed, and `clean-export.js` exports `git ls-files`. So the export had no resolver, every run
+fell back to the copy route, and the first `skillsplugin` run read `79 43` where it expected the
+extras. The installer's fail-soft worked exactly as designed - which is why the case failed on the
+COUNT and not on a crash. Tracked, re-run green.
+
+**2. `update` never installed the stack's own plugins.** `update_plugins` / `Update-Plugins`
+iterated `$PLUGINS` only, so `claude plugin update` ran over the third-party six and never over
+`claude-stack-hooks` or any per-stack entry - and `claude plugin update` is a no-op on a plugin that
+is not installed. An update from a 0.2.x install would therefore have pruned every copied hook,
+skill and agent and enabled nothing in their place. This is a Phase 2 defect the Phase 3 cases
+surfaced: the stack entries now travel the same install-when-absent, enable-when-parked, then-update
+loop as everything else, in both twins.
+
+**3. The `disable-model-invocation` gate died silently on the new route.**
+`guard-fresh-session-start.js` read the flag from `<root>/.claude/skills/<name>/SKILL.md` and
+swallowed a missing file in its catch. Thirteen skills carry the flag and the core plugin carries
+several of them, so the gate would have stopped firing the moment the skills moved, with no error
+anywhere. It now reads both homes - the project copy first, then
+`<config>/plugins/cache/<marketplace>/<plugin>/<version>/stack/skills/<name>/SKILL.md` - and a
+scoped call (`claude-stack:project-quality-loop`) narrows the scan to its own plugin. Covered by a
+new test in `scripts/guard-hooks.test.js` against a fixture cache.
+
+**4. `analyze-usage.js` would have scored a plugin-native install as empty.** Its inventory is
+`.claude/skills|agents|rules`, so the efficiency scorecard would have reported 1 skill and 1 agent
+installed and judged every unused-but-paid-for row against a set the session never had. It now
+unions the directory with the layers the ENABLED plugins serve, read from `settings.json` plus the
+same cache layout, and names them in its `why` line. Fail-soft: a bundle analysed on another machine
+has no cache and the directory stands alone.
+
+**5. The capabilities capture read the extras and called it the project.**
+`capabilities-inventory.js` consulted the plugins only when the local dir was EMPTY, and on this
+route `.claude/skills` still holds the 25 extras - so a plugin-native install reported `SKILLS: 25,
+SEATS: 1` and would have generated the project's routing rule over that. The layers are now UNIONED,
+with a local copy winning a name clash (it is what the harness loads first).
+
+**6. A shared plugin root credits every entry with every sibling's items.** Fixing (5) by scanning
+`<installPath>/stack/skills|agents` gave `95 skills and 860 seats`: each of the 20 stack entries has
+the WHOLE repo in its cache. The entry's own lists in the marketplace manifest shipped in that root
+are read instead, and the scan is kept only for a plugin with a root of its own. A first cut of that
+read still fell back to scanning when an entry listed nothing, which handed `claude-stack-hooks` all
+43 seats (85 where the truth is 42 plus one local extra); an entry that exists and lists nothing now
+ships nothing. Final, against a real install: `SKILLS: 81, SEATS: 43`. The same manifest-first read
+went into `analyze-usage.js`.
+
+**7. A skill body that ran its own script by project path.**
+`project-agent-capabilities/SKILL.md` told the model to run
+`node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js`, which does not
+exist on this route - the skill itself is served by a plugin. It is the only skill body in the
+manifest that invokes its own script that way (`grep -rl 'node \.claude/skills/'`, one file, three
+sites). The body now resolves the script ONCE into `$CAPS` and reuses it. The resolver uses `find`
+over the plugin cache rather than a glob: zsh, the default shell on macOS, treats an unmatched glob
+as an ERROR and kills the command, which is also why `/claude-stack:status` moved off the `ls -dt`
+form Phase 2 gave it. Both were exercised under zsh against a real plugin-native install.
+
+**8. `--skills-only` would have left a project with neither route.** The flag runs the skill step and
+exits, and on this route that step PRUNES the copies - so it removed every stack skill and enabled
+nothing. It now also installs the run's stack plugins, fail-soft and only when the CLI is there, so
+the copy route keeps the CLI-free contract the flag was built for. The stack-plugin set moved into
+one helper (`_stack_plugin_set` / `Get-StackRunPlugins`) shared by install, update and this path,
+rather than a third copy. A first cut used a bash nameref (`local -n`); macOS ships bash 3.2, which
+has none, so it fills a global instead - and `/bin/bash -n` is now part of the syntax check. The
+first fixed run then failed the new `skillsonly` case on `0|NO-CORE`: this path never called
+`ensure_official_marketplace`, and the core entry DEPENDS on superpowers, so all twenty entries
+failed with `Dependency "superpowers@claude-plugins-official" ... not found` and the project ended
+with 25 extras and no plugins at all. Registering it first is the fix, in both twins. The case that
+caught it asserts both directions - the plugin route enables the closure, the copy route installs no
+plugin at all - and re-ran green at 35 pass, 0 fail.
+
+### Two contracts the carried-over cases had to be re-cut against
+
+`update` restored `markdown-style` after deleting it; on the default route that skill is carried by
+a plugin and deliberately absent from `.claude/skills`, so the case now deletes and restores an
+EXTRA (`angular-material`) instead. And `phase1` expected NO stack plugin enabled against the
+published marketplace; the core entry has existed there since 0.2.x, so a migration-window install
+enables exactly `claude-stack@claude-stack` and reports all twenty siblings failed. Both re-cut, and
+the second is the honest picture of the window this release closes.
+
+### The scope ruling, as implemented
+
+The ruling was 'the core at user or project scope, per-stack entries at project scope only'. The
+installer gives every stack entry the RUN's scope, which satisfies it for a project install (the
+only case where the two differ) and keeps a `--scope user` install with the account-wide reach the
+copy route gave it, since a user-scope run has no project to scope anything to.
+
 ---
 
 ## Cleanup

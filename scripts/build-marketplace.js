@@ -10,9 +10,19 @@
 //   node scripts/build-marketplace.js --cost         print the cost table
 //   node scripts/build-marketplace.js --cost --out <file>   write it as markdown
 //
-// The live .claude-plugin/marketplace.json is NOT touched by --write: Phase 1 changes no delivery.
-// `applyToMarketplace` is the transcription Phase 3 runs once the skills and agents actually move,
-// and it never re-sources or re-describes the hand-written core entry.
+// The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
+// meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
+// entries to the live file, leaving the generated hooks entry and the marketplace metadata alone.
+//
+//   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
+//
+// The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
+// own .claude-plugin/plugin.json was its manifest; its 21 skills and 8 agents live under stack/,
+// outside that folder, and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1
+// refused to build on it). At `source: './'` nothing under setup-plugin/ is auto-discovered, so the
+// entry carries every path explicitly - the five commands, the router skill, its placed skills and
+// agents - plus the layer-table hook INLINE and the superpowers dependency that plugin.json used to
+// declare. Dropping either on the way across would be a silent behaviour change.
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, costOf, costToday, CORE } = require('./plugin-placement.js');
@@ -51,15 +61,53 @@ function describe(name, place, stacksOf)
     return `claude-stack ${counts.join(' and ')} used by ${who}.`;
 }
 
+// The five guided-walk COMMANDS and the router SKILL, the two things no other entry has. Read from
+// setup-plugin's own plugin.json so one list stays the source of the command set, and re-rooted at
+// the repo root the entry now ships from.
+const SETUP_MANIFEST = path.join(REPO, 'setup-plugin/.claude-plugin/plugin.json');
+
+function coreEntry(options = {})
+{
+    const place = options.placement || placement(options);
+    const plug = place.plugins[CORE];
+    const setup = readJson(options.setupManifest || SETUP_MANIFEST, 'setup-plugin/plugin.json');
+    const commands = (setup.commands || []).map(c => `./setup-plugin/${String(c).replace(/^\.\//, '')}`);
+    if (!commands.length) throw new Error('build-marketplace: setup-plugin/plugin.json lists no commands - the core entry would ship no guided walk');
+    const entry = {
+        name: CORE,
+        source: './',
+        description: setup.description,
+        version: options.version || marketplaceVersion(options),
+        author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
+        strict: false,
+        category: 'development',
+        tags: ['setup', 'installer', 'skills', 'agents', 'mcp', 'bootstrap'],
+        commands,
+        skills: ['./setup-plugin/skills/claude-stack'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
+        agents: plug.agents.map(a => `./stack/agents/${a}.md`),
+        // The layer-table guard used to be auto-discovered from setup-plugin/hooks/hooks.json. At
+        // the shared root it is not, so it is declared inline - the shape Phase 2 proved for the
+        // thirteen stack hooks.
+        hooks: {
+            PreToolUse: [{
+                matcher: 'AskUserQuestion',
+                hooks: [{ type: 'command', command: '${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js', timeout: 10 }],
+            }],
+        },
+    };
+    if (Array.isArray(setup.dependencies) && setup.dependencies.length) entry.dependencies = setup.dependencies;
+    return entry;
+}
+
 function buildEntries(options = {})
 {
     const place = options.placement || placement(options);
     const version = options.version || marketplaceVersion(options);
     const author = options.author || { name: 'envoydev', url: 'https://github.com/envoydev' };
-    const entries = [];
+    const entries = [coreEntry({ ...options, placement: place, version, author })];
     for (const name of Object.keys(place.plugins).sort())
     {
-        if (name === CORE) continue;   // the core ships from setup-plugin until Phase 3 moves it
+        if (name === CORE) continue;   // built above, with the commands and hook the others have no equivalent of
         const plug = place.plugins[name];
         const entry = {
             name,
@@ -99,10 +147,12 @@ function applyHooksPlugin(mkt, entry)
     return mkt;
 }
 
+// Applies the generated entries to the live marketplace, the CORE entry included from Phase 3 on.
+// Anything the generator does not own - the hooks entry, a hand-written extra - keeps its place.
 function applyToMarketplace(mkt, entries)
 {
     const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name));
-    mkt.plugins = kept.concat(entries.filter(e => e.name !== CORE));
+    mkt.plugins = kept.concat(entries);
     return mkt;
 }
 
@@ -305,13 +355,24 @@ function main(argv)
         console.error(`plugin entries are STALE: ${path.relative(REPO, entriesFile)} - run \`npm run marketplace\``);
         return 1;
     }
+    if (argv.includes('--write-marketplace'))
+    {
+        const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
+        const mkt = readJson(file, 'marketplace.json');
+        const before = JSON.stringify(mkt, null, 2) + '\n';
+        const after = JSON.stringify(applyToMarketplace(mkt, entries), null, 2) + '\n';
+        if (before === after) { console.log(`marketplace current: ${entries.length} entries`); return 0; }
+        fs.writeFileSync(file, after);
+        console.log(`marketplace written: ${entries.length} entries -> ${path.relative(REPO, file)}`);
+        return 0;
+    }
     if (argv.includes('--write'))
     {
         fs.writeFileSync(entriesFile, wanted);
         console.log(`plugin entries written: ${entries.length} entries -> ${path.relative(REPO, entriesFile)}`);
         return 0;
     }
-    console.error('usage: build-marketplace.js --write | --check | --cost [--out <file>]');
+    console.error('usage: build-marketplace.js --write | --write-marketplace | --check | --cost [--out <file>] | --hooks-entry');
     return 1;
 }
 
@@ -321,4 +382,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, serialize, applyToMarketplace, applyHooksPlugin, costTable, costDocument, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, GATE_PCT };
+module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyHooksPlugin, costTable, costDocument, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, GATE_PCT };

@@ -23,7 +23,10 @@ change (see the invariants below).
 ## Layout - one home per concern
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
-  file types. Distributed by the installers' snapshot copy (or the plugin).
+  file types. Carried by the per-stack PLUGINS: an install enables the plugins its own picks live
+  in (`scripts/selection-plugins.js` over the same placement the entries are generated from), and
+  only the EXTRAS - the items no stack's closure reaches - are still copied into `.claude/skills`.
+  `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged.
 - `scripts/os/claude-stack.{sh,ps1}` - the installer twins (Unix / Windows); `docs/claude-stack.html`
   is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
@@ -210,11 +213,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 | Surface | Delivery |
 |---|---|
-| Skills | installer snapshot copy -> `.claude/skills` (or plugin `/claude-stack`) |
+| Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | `claude mcp add` -> `<repo>/.mcp.json`, then VERIFIED against the manifest shape and rewritten on drift |
-| Plugins | 6 third-party via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus the stack's own `claude-stack-hooks@claude-stack`; update runs at the scope `claude plugin list --json` reports and reads versions back |
+| Plugins | 6 third-party via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back |
 | Hooks | `claude-stack-hooks@claude-stack` plugin (all thirteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
-| Agents | `.claude/agents/` - the 43 pinned subagents, per-tool `tools:` allowlist |
+| Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); `.claude/agents/` keeps only the extras |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit; configure diffs it against `main` |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + `security-guidance` hooks + the `security-auditor` agent |

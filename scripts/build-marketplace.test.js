@@ -19,9 +19,30 @@ test('every entry shares ONE source and lists its own paths', () => {
         assert.strictEqual(e.source, './', `${e.name} must share the repo root as its source`);
         assert.strictEqual(e.strict, false, `${e.name} carries no plugin.json of its own`);
         assert.ok(e.version && e.author && e.description, `${e.name} needs version, author, description`);
-        for (const s of e.skills || []) assert.ok(s.startsWith('./stack/skills/'), `skill path: ${s}`);
+        // The core also ships the router skill from setup-plugin/, which is not a stack skill.
+        for (const s of e.skills || [])
+            assert.ok(s.startsWith('./stack/skills/') || s === './setup-plugin/skills/claude-stack', `skill path: ${s}`);
         for (const a of e.agents || []) assert.ok(/^\.\/stack\/agents\/.+\.md$/.test(a), `agent path: ${a}`);
     }
+});
+
+// Phase 3 moved the core off ./setup-plugin, where its own plugin.json was the manifest. At the
+// shared root nothing under setup-plugin/ is auto-discovered, so every path it used to get for free
+// is listed - and the two that are easy to lose on the way across are the layer-table hook and the
+// superpowers dependency.
+test('the core entry carries the commands, the router skill, the inline hook and the dependency', () => {
+    const core = byName['claude-stack'];
+    assert.ok(core, 'the core entry is generated from Phase 3 on');
+    assert.strictEqual(core.source, './');
+    const setup = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin/.claude-plugin/plugin.json'), 'utf8'));
+    assert.strictEqual(core.commands.length, setup.commands.length, 'every guided-walk command ships');
+    for (const c of core.commands) assert.ok(fs.existsSync(path.join(__dirname, '..', c)), `command path: ${c}`);
+    assert.ok(core.skills.includes('./setup-plugin/skills/claude-stack'), 'the router skill ships');
+    assert.ok(core.agents.length > 0, 'the core carries its placed agents');
+    const wired = JSON.stringify(core.hooks);
+    assert.ok(wired.includes('setup-plugin/hooks/guard-layer-table.js'), 'the layer-table guard is declared inline');
+    assert.ok(wired.includes('${CLAUDE_PLUGIN_ROOT}'), 'and resolved through the plugin root');
+    assert.deepStrictEqual(core.dependencies, setup.dependencies, 'the dependency plugin.json declared is carried, not dropped');
 });
 
 test('an entry lists skill FOLDERS and agent FILES, the two forms spike S9 proved', () => {
@@ -32,9 +53,8 @@ test('an entry lists skill FOLDERS and agent FILES, the two forms spike S9 prove
         assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} must exist in the tree`);
 });
 
-test('dependencies are written, and the core is not generated at all', () => {
-    assert.strictEqual(byName['claude-stack'], undefined,
-        'the core ships from ./setup-plugin until Phase 3 moves it; the generator never rewrites that entry');
+test('dependencies are written, and the core is one of the generated entries', () => {
+    assert.ok(byName['claude-stack'], 'Phase 3 generates the core entry like any other');
     assert.ok(byName['claude-stack-aspnet'].dependencies.includes('claude-stack-dotnet'));
     assert.deepStrictEqual(byName['claude-stack-dotnet'].dependencies, ['claude-stack'],
         'a shared plugin depends on the core only');
@@ -68,18 +88,22 @@ test('--write is idempotent - a second run changes nothing', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('applying to a marketplace keeps the hand-written setup-plugin entry and its order', () => {
+test('applying to a marketplace rewrites the core and leaves what the generator does not own', () => {
     const before = {
         name: 'claude-stack',
         metadata: { version: '9.9.9' },
-        plugins: [{ name: 'claude-stack', source: './setup-plugin', description: 'hand written', category: 'development' }],
+        plugins: [
+            { name: 'claude-stack', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
+            { name: 'claude-stack-hooks', source: './', description: 'generated elsewhere', hooks: { Stop: [] } },
+        ],
     };
     const after = applyToMarketplace(JSON.parse(JSON.stringify(before)), entries);
     const core = after.plugins.find(p => p.name === 'claude-stack');
-    assert.strictEqual(core.source, './setup-plugin', 'the shipped core entry is not re-sourced by the generator');
-    assert.strictEqual(core.description, 'hand written', 'nor re-described');
-    assert.strictEqual(after.plugins[0].name, 'claude-stack', 'the core stays first');
-    assert.ok(after.plugins.length > 1, 'the computed entries are appended');
+    assert.strictEqual(core.source, './', 'the core is re-sourced to the shared root');
+    assert.ok(Array.isArray(core.commands) && core.commands.length, 'and carries its commands now');
+    const hooksEntry = after.plugins.find(p => p.name === 'claude-stack-hooks');
+    assert.strictEqual(hooksEntry.description, 'generated elsewhere', 'an entry this generator does not own is untouched');
+    assert.strictEqual(after.plugins.length, 1 + entries.length, 'the hooks entry plus every generated entry');
 });
 
 test('malformed input fails loudly rather than emitting a short list', () => {

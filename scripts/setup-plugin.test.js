@@ -7,22 +7,23 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
 
-test('marketplace.json is valid and points at the setup-plugin subdir', () => {
+test('marketplace.json is valid and every entry shares the repo root', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     assert.strictEqual(mp.name, 'claude-stack');
     assert.ok(Array.isArray(mp.plugins) && mp.plugins.length >= 1);
-    // The core entry is hand-written and stays on ./setup-plugin until Phase 3 moves it; every other
-    // entry is GENERATED over the shared root, which is why they carry `strict: false` and path lists.
+    // From Phase 3 every entry is GENERATED over the shared root, the core included - it used to
+    // ship from ./setup-plugin, whose own plugin.json was its manifest, but its skills and agents
+    // live under stack/, outside that folder.
     const core = mp.plugins.find(x => x.name === 'claude-stack');
     assert.ok(core, 'the core entry must survive every generator run');
-    assert.strictEqual(core.source, './setup-plugin');
-    assert.ok(typeof core.description === 'string' && core.description.trim() !== '');
+    assert.ok(Array.isArray(core.commands) && core.commands.length === 5, 'the five guided walks ship from the core');
     for (const p of mp.plugins)
     {
-        if (p === core) continue;
         assert.strictEqual(p.source, './', `${p.name} shares the repo root as its source`);
         assert.strictEqual(p.strict, false, `${p.name} carries no plugin.json of its own`);
         assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
+        for (const rel of [...(p.commands || []), ...(p.skills || []), ...(p.agents || [])])
+            assert.ok(fs.existsSync(path.join(ROOT, rel)), `${p.name} lists a path that does not exist: ${rel}`);
     }
     const hooks = mp.plugins.find(x => x.name === 'claude-stack-hooks');
     assert.ok(hooks && hooks.hooks, 'the hooks entry declares its hooks INLINE, so nothing sits at the shared root');

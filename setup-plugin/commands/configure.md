@@ -84,7 +84,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   configure yet. OS: on `darwin`/`linux` use the sh installer; on Windows the ps1 (via `pwsh`).
 - **Inventory the installed set** from disk - never from memory or assumption: skills = the
   directory names under `.claude/skills/` (or the account's `skills/`); agents =
-  `.claude/agents/*.md`; rules = `.claude/rules/*.md` (exclude the GENERATED
+  `.claude/agents/*.md` - but skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set; rules = `.claude/rules/*.md` (exclude the GENERATED
   `baseline-project-*.md` awareness rules and `project-code-style.md` - they are written by capture skills, never installed);
   hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js` - the graph catalog stores bare names, and `stack-select.js` also strips a stray suffix;
   mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that

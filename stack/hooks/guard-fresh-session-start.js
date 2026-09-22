@@ -247,16 +247,51 @@ if (IS_SKILL_CALL) {
 // and one that varies by build is no gate at all, so the assertion became this gate. Only the MODEL's own Skill call is denied: a slash turn
 // arrives as UserPromptSubmit and never reaches here, so the user's own route is untouched. No env
 // switch - the verdict is the skill's own frontmatter, not a judgment that can be wrong.
+// A skill has TWO homes: copied into `.claude/skills/` (the 0.2.x route, and still where an EXTRA
+// lands), or served from an enabled plugin's cache. Reading only the project copy made this gate
+// silently stop firing for every skill a plugin carries - the catch below swallowed the missing
+// file, and 13 skills carry the flag. So both homes are tried, project copy first.
+function skillHeads(root, skill) {
+  const bare = skill.replace(/^.*:/, '');
+  const out = [nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md')];
+  const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  const cache = nodePath.join(cfg, 'plugins', 'cache');
+  // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known
+  // when the call carries a scoped name, and is a short scan otherwise.
+  const want = skill.includes(':') ? skill.slice(0, skill.indexOf(':')) : null;
+  let markets = [];
+  try { markets = fs.readdirSync(cache); } catch { return out; }
+  for (const market of markets) {
+    let plugins = [];
+    try { plugins = fs.readdirSync(nodePath.join(cache, market)); } catch { continue; }
+    for (const plugin of plugins) {
+      if (want && plugin !== want) continue;
+      let versions = [];
+      try { versions = fs.readdirSync(nodePath.join(cache, market, plugin)); } catch { continue; }
+      for (const version of versions) {
+        out.push(nodePath.join(cache, market, plugin, version, 'stack', 'skills', bare, 'SKILL.md'));
+        out.push(nodePath.join(cache, market, plugin, version, 'skills', bare, 'SKILL.md'));
+      }
+    }
+  }
+  return out;
+}
+
 if (IS_SKILL_CALL && skill) {
   const bare = skill.replace(/^.*:/, '');
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     // the flag lives in the frontmatter - read the head, never the body
-    const fd = fs.openSync(nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'), 'r');
-    const buf = Buffer.alloc(4096);
-    const n = fs.readSync(fd, buf, 0, 4096, 0);
-    fs.closeSync(fd);
-    const head = (buf.toString('utf8', 0, n).split(/^---\s*$/m)[1] || '');
+    let head = '';
+    for (const file of skillHeads(root, skill)) {
+      let fd;
+      try { fd = fs.openSync(file, 'r'); } catch { continue; }
+      const buf = Buffer.alloc(4096);
+      const n = fs.readSync(fd, buf, 0, 4096, 0);
+      fs.closeSync(fd);
+      head = (buf.toString('utf8', 0, n).split(/^---\s*$/m)[1] || '');
+      break;
+    }
     if (/^disable-model-invocation:\s*true\s*$/m.test(head)) {
       process.stderr.write(
         `Blocked: ${skill} is marked disable-model-invocation - it is the USER's to type, never yours\n` +

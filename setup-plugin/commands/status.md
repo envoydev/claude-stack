@@ -94,6 +94,8 @@ paid 8,337 injected chars a session for two plugins on top of their descriptions
 the capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack`
 otherwise, `user-authored` when clearly neither.
 
+**Skills and agents** - skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a copied extra reads `stack`.
+
 **Hooks** - hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `CLAUDE_STACK_HOOKS_OFF` reads `off (env)`.
 On the copy route the set is joined against `settings.json` as before:
@@ -183,7 +185,7 @@ working free tier - no arrow, the registration sends an empty header). This tabl
 environment area.
 
 Presence, never the value - run this and paste its lines as-is:
-`G=$(ls -dt "$PWD/.claude/hooks/guard-secret-value.js" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/claude-stack/claude-stack-hooks/*/hooks/guard-secret-value.js 2>/dev/null | head -1); node "$G" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
+`G="$PWD/.claude/hooks/guard-secret-value.js"; [ -f "$G" ] || G=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" -path '*/hooks/guard-secret-value.js' 2>/dev/null | head -1); node "$G" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). The guard lives in TWO homes and the line takes whichever exists, newest first: a project `.claude/hooks/` copy (the pre-1.0 route) or the installed `claude-stack-hooks` plugin. Output is `KEY=set (N chars)` or `KEY=absent`. When neither home has it - a global install, the guard deselected, the plugin not installed - `$G` is empty, so do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly

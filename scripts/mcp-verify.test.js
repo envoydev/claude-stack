@@ -268,10 +268,35 @@ for (const twin of ['sh', 'ps1'])
         finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
     });
 
+    // Phase 3: the DEFAULT route. A picked skill is carried by the plugin its placement puts it in,
+    // so it must not be copied as well - spike S6 measured that a leftover copy silently shadows the
+    // plugin's own, with no error and no sign in the transcript.
+    test(`${twin}: the plugin route enables the computed closure and copies no skill a plugin carries`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const log = calls(sb);
+            assert.ok(/plugin marketplace add envoydev\/claude-stack/.test(log), `${twin}: the stack marketplace was never registered`);
+            assert.ok(/plugin install claude-stack@claude-stack --scope project/.test(log), `${twin}: the core plugin was not installed at the run's scope`);
+            assert.ok(!fs.existsSync(path.join(sb.repo, '.claude', 'skills', 'markdown-style')),
+                `${twin}: a skill the core plugin carries was copied too, and would shadow it`);
+            // and the selection is what decides: this one names no item outside the core, so no
+            // per-stack entry may be enabled off the back of it.
+            assert.ok(!/plugin install claude-stack-wpf@/.test(log), `${twin}: a stack no selection picked was installed`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
     test(`${twin}: the copy route touches no stack marketplace and still copies and wires the guard`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
         const sb = sandbox({ sentry: STALE_SENTRY });
+        // BOTH route switches: from Phase 3 the skills and agents are served by the stack's own
+        // marketplace too, so a run with only the hooks switch off still registers it. The claim
+        // here is the whole 0.2.x route - nothing of the stack's own marketplace is touched.
         sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN = 'false';
+        sb.env.CLAUDE_STACK_SKILLS_VIA_PLUGIN = 'false';
         try
         {
             twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');

@@ -123,10 +123,18 @@ const scanAgents = (dir) => readDir(dir)
     .map((e) => e.name.replace(/\.md$/, ''))
     .sort((a, b) => a.localeCompare(b));
 
+// A seat from a plugin is addressable ONLY as `<plugin>:<agent>` - the bare name returns 'Agent
+// type not found'. The family is the bare part, so the prefix comes off first.
+const bareSeat = (s) => String(s).replace(/^[A-Za-z0-9_-]+:/, '');
+
 function seatFamilies(seats)
 {
     const fams = new Set();
-    for (const s of seats) for (const role of SEAT_ROLES) if (s.endsWith(role)) fams.add(s.slice(0, -role.length));
+    for (const raw of seats)
+    {
+        const s = bareSeat(raw);
+        for (const role of SEAT_ROLES) if (s.endsWith(role)) fams.add(s.slice(0, -role.length));
+    }
     return [...fams].sort((a, b) => a.localeCompare(b));
 }
 
@@ -150,6 +158,44 @@ function scanRules(dir)
 // that is a NAMED branch, not an empty inventory. The roots are the ENABLED plugins this project
 // actually carries - each listing row names its own `installPath` - never a walk of the config
 // dir, which would sweep in every marketplace clone and every stale cached version on the machine.
+// The entry's OWN item lists, read from the marketplace manifest that ships in the plugin root.
+// Returns null when there is no such entry - a plugin with its own root, or a manifest shape this
+// does not know - and the caller falls back to scanning the directory.
+function entryItems(installPath, pluginName)
+{
+    let entry;
+    try
+    {
+        const mk = JSON.parse(fs.readFileSync(path.join(installPath, '.claude-plugin', 'marketplace.json'), 'utf8'));
+        entry = (mk.plugins || []).find((x) => x && x.name === pluginName);
+    }
+    catch { return null; }
+    // An entry that exists and lists nothing ships nothing - `claude-stack-hooks` is hooks only.
+    // Returning null there sent it to the directory scan, which handed back all 43 of the shared
+    // root's seats under its name (measured: 85 seats where the truth is 42 plus one local extra).
+    if (!entry) return null;
+    const abs = (rel) => path.join(installPath, String(rel).replace(/^\.\//, ''));
+    const skills = [];
+    for (const rel of entry.skills || [])
+    {
+        const dir = abs(rel);
+        const text = readText(path.join(dir, 'SKILL.md'));
+        if (text === null) continue;
+        const fm = parseFrontmatter(text);
+        const keys = fm.ok ? fm.keys : {};
+        const name = collapse(keys.name || path.basename(dir));
+        skills.push({
+            name,
+            slashOnly: /^true$/i.test(collapse(keys['disable-model-invocation'] || '')),
+            byDesign: MODEL_INVOCABLE_BY_DESIGN.has(name),
+            clause: firstClause(keys.description),
+            unreadable: fm.ok ? null : fm.error,
+        });
+    }
+    const agents = (entry.agents || []).map((rel) => path.basename(String(rel)).replace(/\.md$/, ''));
+    return { skills: skills.sort((a, b) => a.name.localeCompare(b.name)), agents: agents.sort((a, b) => a.localeCompare(b)) };
+}
+
 function pluginCoveredLayers(pluginRows)
 {
     const skills = [];
@@ -158,11 +204,20 @@ function pluginCoveredLayers(pluginRows)
     for (const p of pluginRows)
     {
         if (p.state !== 'enabled' || !p.installPath) continue;
-        const s = scanSkills(path.join(p.installPath, 'skills'));
-        const a = scanAgents(path.join(p.installPath, 'agents'));
+        // Two shapes. A plugin with its own root ships `skills/` and `agents/` there and a
+        // directory scan is exact. A plugin that SHARES a repo root with its siblings (this stack,
+        // from the release that moved them) has the WHOLE repo in its cache, so a scan counts every
+        // sibling's items as its own - measured at 860 seats across 20 entries where the truth is
+        // 43. The marketplace manifest inside that root is what says which items the entry ships,
+        // so it is read first and the scan is only the fallback.
+        const listed = entryItems(p.installPath, p.name);
+        const s = listed ? listed.skills : [...scanSkills(path.join(p.installPath, 'skills')), ...scanSkills(path.join(p.installPath, 'stack', 'skills'))];
+        const a = listed ? listed.agents : [...scanAgents(path.join(p.installPath, 'agents')), ...scanAgents(path.join(p.installPath, 'stack', 'agents'))];
         if (s.length || a.length) from.push(p.name);
         skills.push(...s);
-        seats.push(...a);
+        // The DISPATCH name, which is the only one that resolves - the rule this generates is read
+        // at dispatch time, so a bare seat name in it is an instruction that fails.
+        seats.push(...a.map((name) => `${p.name}:${name}`));
     }
     const seen = new Set();
     return {
@@ -442,17 +497,21 @@ function report(projectRoot)
 
     let skills = scanSkills(path.join(projectRoot, '.claude', 'skills'));
     let seats = scanAgents(path.join(projectRoot, '.claude', 'agents'));
-    if (skills.length === 0 || seats.length === 0)
+    const localCount = { skills: skills.length, seats: seats.length };
+    const plug = pluginCoveredLayers(pluginRows);
+    if (plug.from.length)
     {
-        const p = pluginCoveredLayers(pluginRows);
-        if (p.from.length)
-        {
-            if (skills.length === 0) skills = p.skills;
-            if (seats.length === 0) seats = p.seats;
-            say('SOURCE', `PLUGIN-COVERED - ${p.from.length} enabled plugin(s) carry the layers this project has no local dir for: ${p.from.join(', ')}. A named branch, not an empty install.`);
-        }
-        else say('SOURCE', `no local .claude/skills or .claude/agents${pluginProbe.ok ? ' and no enabled plugin carries them' : ' and the CLI is absent, so a plugin source cannot be read'} - say so and STOP rather than generate an empty rule over a good one`);
+        // UNION, never a fallback. The plugin route still copies the EXTRAS, so a branch that read
+        // the plugins only when the local dir was EMPTY saw 25 skills and 1 seat on a plugin-native
+        // install and generated the project's rule over that - measured; the real set is 79 and 43.
+        // A local copy WINS a name clash: it is what the harness would load first.
+        const seen = new Set(skills.map((s) => s.name));
+        skills = [...skills, ...plug.skills.filter((s) => !seen.has(s.name))].sort((a, b) => a.name.localeCompare(b.name));
+        seats = [...new Set([...seats, ...plug.seats])].sort((a, b) => a.localeCompare(b));
+        say('SOURCE', `PLUGIN-COVERED - ${plug.from.length} enabled plugin(s) carry ${plug.skills.length} skill(s) and ${plug.seats.length} seat(s), beside ${localCount.skills} skill(s) and ${localCount.seats} seat(s) copied under .claude/: ${plug.from.join(', ')}`);
     }
+    else if (localCount.skills === 0 || localCount.seats === 0)
+        say('SOURCE', `no local .claude/skills or .claude/agents${pluginProbe.ok ? ' and no enabled plugin carries them' : ' and the CLI is absent, so a plugin source cannot be read'} - say so and STOP rather than generate an empty rule over a good one`);
 
     const orchestration = skills.filter((s) => s.slashOnly || s.byDesign);
     say('SKILLS', `${skills.length} total, ${orchestration.length} orchestration (${orchestration.filter((s) => s.byDesign).length} model-invocable-by-design)`);

@@ -10,7 +10,8 @@
     "test": "node --test",
     "test:memory": "node scripts/memory-usage.eval.js",
     "corpus": "node scripts/corpus-replay.js",
-    "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --cost --out docs/plugin-placement-cost.md"
+    "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace && node scripts/build-marketplace.js --hooks-entry && node scripts/build-marketplace.js --cost --out docs/plugin-placement-cost.md",
+    "scope-preloads": "node scripts/scope-agent-preloads.js --write"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"

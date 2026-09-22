@@ -179,7 +179,13 @@ function buildStackGraph()
             try { meta = yaml.load(fmText); } catch { meta = null; }
             if (meta && Array.isArray(meta.skills))
             {
-                declared = meta.skills.filter(s => cat.skills.has(s));
+                // From Phase 3 a house preload carries its plugin prefix (`claude-stack-csharp:csharp`),
+                // computed from the placement, which is itself computed from THIS graph. So the prefix
+                // is stripped back off here: the graph's nodes are bare skill names and stay that way,
+                // or the two would define each other. A foreign cite (`superpowers:...`) is a plugin
+                // token, never a skill node, and pluginFromToken below is what reads it.
+                const bare = meta.skills.map(s => (/^claude-stack(-[a-z0-9-]+)?:/.test(String(s)) ? String(s).split(':').slice(1).join(':') : s));
+                declared = bare.filter(s => cat.skills.has(s));
                 source = 'frontmatter';
                 for (const s of meta.skills)
                 {

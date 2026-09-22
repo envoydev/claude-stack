@@ -1053,6 +1053,21 @@ $Agents = @(
   'winforms-verifier.md'             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
 )
 
+# Skills and agents arrive through the per-stack PLUGINS instead of being copied into .claude/. Which
+# plugins a project enables is COMPUTED from what it picked (scripts/selection-plugins.js, over the
+# same placement meta/plugin-entries.json is generated from), so a project carries its own closure
+# and nothing else. What no plugin carries - the EXTRAS, the items no stack's closure reaches - is
+# still copied, because there is no plugin that would hold it. Set to false to keep the 0.2.x copy
+# route, which is what the temp-project matrix uses to prove both.
+$SkillsViaPlugin = ($env:CLAUDE_STACK_SKILLS_VIA_PLUGIN -ne 'false')
+
+# The manifests as SHIPPED, taken before the selection filter narrows them (the $HooksCatalog
+# pattern). On the plugin route these are the names a run PRUNES from .claude/skills and
+# .claude/agents: a copy the stack itself shipped, now carried by a plugin. A file neither manifest
+# names is the project's own and is never touched.
+$SkillsCatalog = @($Skills)
+$AgentsCatalog = @($Agents)
+
 # (6) Path-scoped rules (claude-code): fetched into .claude/rules/ on BOTH actions - lazy-load on
 # matching file reads; conventions stay with the convention-gate hook, rules carry only glob-scoped routing.
 # NOTE: baseline-project-related-context.md, baseline-project-architecture.md and
@@ -1168,6 +1183,36 @@ if ($InstalledOnly) {
     Write-Host "error: -InstalledOnly found nothing installed under $ioClaude - run install (or the /claude-stack:setup command) first" -ForegroundColor Red
     Remove-Item -LiteralPath $script:InstalledOnlyTmp -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
+  }
+  # Skills and agents live in the stack's own PLUGINS on that route, so the disk scan above saw only
+  # the EXTRAS. The rest is recovered from the stack plugins this machine carries for THIS project,
+  # expanded to their items by the same placement the installer enables them from - the route-aware
+  # inventory shape hooks were given first (hooks-inventory-route). Without it an update read a
+  # plugin-native install as 'no skills, no agents' and dropped every per-stack plugin it had.
+  # It runs AFTER the nothing-installed guard on purpose: a machine-level plugin listing is no
+  # evidence that THIS project has an install, and the guard is the only thing that says so.
+  $ioSp = ''
+  foreach ($c in @((Join-Path $PSScriptRoot '..\selection-plugins.js'), $(if ($Source) { Join-Path $Source 'scripts/selection-plugins.js' } else { '' }))) {
+    if ($c -and (Test-Path -LiteralPath $c)) { $ioSp = $c; break }
+  }
+  if ($SkillsViaPlugin -and $ioSp -and (Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+    $ioStackPl = @()
+    try {
+      foreach ($line in @(& claude plugin list 2>$null)) {
+        foreach ($w in ($line -split '\s+')) {
+          if ($w -match '^(claude-stack[A-Za-z0-9_.-]*)@[A-Za-z0-9_.-]+$' -and $Matches[1] -ne 'claude-stack-hooks') { $ioStackPl += $Matches[1] }
+        }
+      }
+    } catch {}
+    $global:LASTEXITCODE = 0
+    $ioStackPl = @($ioStackPl | Sort-Object -Unique)
+    if ($ioStackPl.Count -gt 0) {
+      $ioItems = @()
+      try { $ioItems = @(& node $ioSp --items ($ioStackPl -join ',') 2>$null | Where-Object { $_ -ne '' }) } catch {}
+      $global:LASTEXITCODE = 0
+      foreach ($l in $ioItems) { if ($ioLines -notcontains $l) { $ioLines += $l } }
+      Log ("installed-only: skills and agents read from the plugins (" + ($ioStackPl -join ',') + ")")
+    }
   }
   # A hook the release ADDED reaches an existing install ONLY here. The derivation above lists what
   # is on DISK, so a newly shipped guard was invisible to every update - measured: the v0.2.20
@@ -1732,15 +1777,84 @@ function Copy-FromStackSrc {
   }
 }
 
+# The plugins that carry THIS project's picked skills and agents, plus the EXTRAS no plugin carries.
+# Computed once per run from the post-selection manifests by scripts/selection-plugins.js, which
+# reads the same placement the marketplace entries are generated from - so the installer can never
+# enable a set that disagrees with what the marketplace actually ships.
+# Fail-soft, and the fallback is the whole 0.2.x route: without node, without a source snapshot, or
+# on any error, $SkillsViaPlugin drops to false and everything is copied as before. An install that
+# cannot compute its plugin set still ends with a working stack.
+$script:StackPluginsResolved = $false
+$script:StackSkillPlugins = @()
+$script:PluginExtraSkills = @()
+$script:PluginExtraAgents = @()
+function Resolve-StackPlugins {
+  if ($script:StackPluginsResolved) { return }
+  $script:StackPluginsResolved = $true
+  if (-not $script:SkillsViaPlugin) { return }
+  $why = ''
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { $why = 'node not found' }
+  elseif (-not (Get-StackSrc)) { $why = 'no source snapshot' }
+  $js = if ($why) { $null } else { Join-Path $script:StackSrc 'scripts/selection-plugins.js' }
+  if (-not $why -and -not (Test-Path -LiteralPath $js)) { $why = 'selection-plugins.js is not in this source' }
+  if ($why) {
+    $script:SkillsViaPlugin = $false
+    Log "  !! $why - skills and agents stay on the copy route"
+    return
+  }
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("claude-stack-sel-" + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+  $selFile = Join-Path $tmp 'selection.txt'
+  $lines = @(foreach ($entry in $Skills) { 'skill ' + $entry.Split('|', 2)[1] })
+  $lines += @(foreach ($entry in $Agents) { 'agent ' + ($entry.Split('::')[0] -replace '\.md$', '') })
+  Set-Content -LiteralPath $selFile -Value $lines -Encoding utf8
+  $plugins = @()
+  try { $plugins = @(& node $js --selection $selFile 2>$null | Where-Object { $_ -ne '' }) } catch {}
+  if ($LASTEXITCODE -ne 0 -or $plugins.Count -eq 0) {
+    $global:LASTEXITCODE = 0
+    $script:SkillsViaPlugin = $false
+    Log '  !! plugin set not computed - skills and agents stay on the copy route'
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    return
+  }
+  $script:StackSkillPlugins = $plugins
+  $copy = @()
+  try { $copy = @(& node $js --selection $selFile --copy 2>$null | Where-Object { $_ -ne '' }) } catch {}
+  $global:LASTEXITCODE = 0
+  $script:PluginExtraSkills = @($copy | Where-Object { $_ -like 'skill *' } | ForEach-Object { $_.Substring(6) })
+  $script:PluginExtraAgents = @($copy | Where-Object { $_ -like 'agent *' } | ForEach-Object { $_.Substring(6) })
+  Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+  Log ("plugins carry {0} entr(ies); extras copied: {1} skill(s), {2} agent(s)" -f $script:StackSkillPlugins.Count, $script:PluginExtraSkills.Count, $script:PluginExtraAgents.Count)
+}
+
 function Install-Skills {
   # Copy each selected skills/<name>/ out of the run's clone into the scope dest - all house skills
   # live in ONE repo, so a plain copy fully reproduces what the skills CLI used to stage; no
-  # npx/network-registry dependency.
+  # npx/network-registry dependency. On the plugin route only the EXTRAS travel this way.
+  Resolve-StackPlugins
   if (-not (Get-StackSrc)) { Add-Failure 'skills not installed'; return }   # fail-soft: skip, never abort
   $dest = Get-SkillsDest
   New-Item -ItemType Directory -Path $dest -Force | Out-Null
-  foreach ($entry in $Skills) {
-    $name = $entry.Split('|', 2)[1]
+  $copySkills = @()
+  if ($script:SkillsViaPlugin) {
+    # Prune BEFORE the plugins are enabled in the same run: a leftover copy SHADOWS the plugin's own
+    # (spike S6) with no error and no sign in the transcript. Only names the shipped manifest carries
+    # are pruned, so a skill folder this stack never installed - the project's own - is left alone.
+    foreach ($entry in $SkillsCatalog) {
+      $name = $entry.Split('|', 2)[1]
+      if ($script:PluginExtraSkills -contains $name) { continue }
+      $target = Join-Path $dest $name
+      if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Recurse -Force
+        Log "  skill pruned (now carried by a plugin): $name"
+      }
+    }
+    $copySkills = @($script:PluginExtraSkills)
+  }
+  else {
+    $copySkills = @(foreach ($entry in $Skills) { $entry.Split('|', 2)[1] })
+  }
+  foreach ($name in $copySkills) {
     $src = Join-Path $script:StackSrc (Join-Path 'stack/skills' $name)
     if (Test-Path -LiteralPath $src -PathType Container) {
       $target = Join-Path $dest $name
@@ -1764,18 +1878,28 @@ function Initialize-OfficialMarketplace {
   $global:LASTEXITCODE = 0
 }
 
+# The stack's OWN plugin names for this run, with its marketplace registered - shared by install,
+# update and the -SkillsOnly fast path, which on this route can no longer be a pure file copy: it
+# PRUNES the copies, so a run that skipped the enable would leave the project with neither.
+function Get-StackRunPlugins {
+  Resolve-StackPlugins   # may drop $SkillsViaPlugin to false, so it runs before the test below
+  if (-not ($HooksViaPlugin -or $script:SkillsViaPlugin)) { return @() }
+  try { & claude plugin marketplace add $StackMarketplace 2>$null } catch {}
+  try { & claude plugin marketplace update claude-stack 2>$null } catch {}
+  $global:LASTEXITCODE = 0
+  $out = @()
+  if ($HooksViaPlugin) { $out += $StackPlugins }
+  if ($script:SkillsViaPlugin) { $out += $script:StackSkillPlugins }
+  return $out
+}
+
 function Install-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Initialize-OfficialMarketplace
   foreach ($mp in $ExtraMarketplaces) { try { & claude plugin marketplace add $mp 2>$null } catch {} }
   # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the hooks
   # plugin resolves in the same run that prunes the copied hooks it replaces.
-  $allPlugins = @($Plugins)
-  if ($HooksViaPlugin) {
-    try { & claude plugin marketplace add $StackMarketplace 2>$null } catch {}
-    try { & claude plugin marketplace update claude-stack 2>$null } catch {}
-    $allPlugins += $StackPlugins
-  }
+  $allPlugins = @($Plugins) + (Get-StackRunPlugins)
   foreach ($p in $allPlugins) {
     # claude-hud is a statusline HUD - force USER scope regardless of $ClaudeScope. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
@@ -2060,7 +2184,27 @@ function Get-Agents {
   # Copy each subagent .md into the repo from the run's clone; per-agent fail-soft (keeps repo copy).
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping agents'; return }
-  Copy-FromStackSrc -SubDir 'stack/agents' -Label 'agent' -DestDir (Join-Path $root '.claude/agents') -Files $Agents
+  Resolve-StackPlugins
+  if (-not $script:SkillsViaPlugin) {
+    Copy-FromStackSrc -SubDir 'stack/agents' -Label 'agent' -DestDir (Join-Path $root '.claude/agents') -Files $Agents
+    return
+  }
+  # Same two moves as the skills: prune what a plugin now carries (a stale copy shadows it), copy
+  # only the extras. A seat file the shipped manifest never named is the project's own.
+  $agentsDir = Join-Path $root '.claude/agents'
+  foreach ($entry in $AgentsCatalog) {
+    $file = $entry.Split('::')[0]
+    if ($script:PluginExtraAgents -contains ($file -replace '\.md$', '')) { continue }
+    $target = Join-Path $agentsDir $file
+    if (Test-Path -LiteralPath $target) {
+      Remove-Item -LiteralPath $target -Force
+      Log "  agent pruned (now carried by a plugin): $file"
+    }
+  }
+  $extra = @(foreach ($name in $script:PluginExtraAgents) { "$name.md" })
+  if ($extra.Count -gt 0) {
+    Copy-FromStackSrc -SubDir 'stack/agents' -Label 'agent' -DestDir $agentsDir -Files $extra
+  }
 }
 
 function Get-Rules {
@@ -3082,9 +3226,14 @@ function Update-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Initialize-OfficialMarketplace
   try { & claude plugin marketplace update 2>$null } catch {}   # refresh marketplaces first
+  # The stack's OWN plugins travel this same loop on update - installed when absent, enabled when
+  # parked, then updated. Without it an update pruned the copied hooks, skills and agents and
+  # enabled nothing in their place: `claude plugin update` is a no-op on a plugin that is not
+  # installed, so the run ended with neither route live.
+  $allPlugins = @($Plugins) + (Get-StackRunPlugins)
   $before = Get-InstalledPluginMap
   Remove-RetiredPlugins -Listing $before
-  foreach ($p in $Plugins) {
+  foreach ($p in $allPlugins) {
     $name = ($p -split '@')[0]
     # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a
     # silent no-op, so passing the INSTALL's scope left every user-scoped plugin on its old version
@@ -3111,7 +3260,7 @@ function Update-Plugins {
   # Read the versions back: `claude plugin update` reports success whether or not anything moved.
   $after = Get-InstalledPluginMap
   if ($before.Count -eq 0 -and $after.Count -eq 0) { return }
-  foreach ($p in $Plugins) {
+  foreach ($p in $allPlugins) {
     $name = ($p -split '@')[0]
     $v1 = if ($before.ContainsKey($name)) { $before[$name].version } else { '' }
     $v2 = if ($after.ContainsKey($name)) { $after[$name].version } else { '' }
@@ -3324,6 +3473,20 @@ else { Clear-WriteBlockersTree (Join-Path (Get-Location).Path '.claude') }
 # dependent step (testability - drives just the git-copy with no claude/gh/network dependency).
 if ($SkillsOnly) {
   if ($Action -eq 'install') { Install-Skills } else { Update-Skills }
+  # On the plugin route the skills layer IS the plugins: the step above pruned the copies, so
+  # enabling them here is what keeps the flag from leaving a project with neither. It stays
+  # fail-soft and CLI-free on the copy route, which is what the flag was built for.
+  if ($script:SkillsViaPlugin -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+    # The core entry DEPENDS on superpowers, so its marketplace has to be registered first or every
+    # stack plugin fails with 'Dependency ... not found' - measured on this path, which is the one
+    # place that installs plugins without going through Install-Plugins.
+    Initialize-OfficialMarketplace
+    foreach ($p in (Get-StackRunPlugins)) {
+      Log "plugin [$ClaudeScope]: $p"
+      try { & claude plugin install $p --scope $ClaudeScope -y } catch {}
+      if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
+    }
+  }
   Write-Stamp      # a skills-only run still installs FROM a revision - record it
   Remove-StackSrc
   exit 0

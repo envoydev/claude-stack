@@ -5131,6 +5131,23 @@
      "marker": "with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`"
     }
    ]
+  },
+  "skills-inventory-route": {
+   "_note": "How an installed skill and agent SET is read back once they ship as plugins: the route decides, and the same three commands inventory it (validate's two-way reconcile, configure's walk, status's tables). A disk-only rule reports every stack skill and agent MISSING on a plugin-route install, and would propose reinstalling what a plugin already carries. The hook twin of this rule is hooks-inventory-route.",
+   "owner": {
+    "file": "setup-plugin/commands/validate.md",
+    "marker": "skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node \"$TMP/repo/scripts/selection-plugins.js\" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set"
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node \"$TMP/repo/scripts/selection-plugins.js\" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set"
+    },
+    {
+     "file": "setup-plugin/commands/status.md",
+     "marker": "skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node \"$TMP/repo/scripts/selection-plugins.js\" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set"
+    }
+   ]
   }
  }
 }

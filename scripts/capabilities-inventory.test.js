@@ -190,11 +190,53 @@ test('inventory: a plugin-covered install prints the plugin\'s layers, not an em
         ]),
     });
     const { out } = run([], { cwd: root, bin });
-    assert.match(out, /SOURCE:\s+PLUGIN-COVERED - 1 enabled plugin\(s\) carry the layers this project has no local dir for: house-stack/);
+    assert.match(out, /SOURCE:\s+PLUGIN-COVERED - 1 enabled plugin\(s\) carry 2 skill\(s\) and 1 seat\(s\), beside 0 skill\(s\) and 0 seat\(s\) copied under \.claude\/: house-stack/);
     assert.match(out, /SKILLS:\s+2 total, 1 orchestration/);
     assert.match(out, /\/project-solve-cross-task - The single entry-point orchestrator/);
     assert.match(out, /SEATS:\s+1 total/);
     assert.doesNotMatch(out, /retired-skill/, 'a disabled plugin and a stale cached version carry nothing');
+});
+
+// The delivery this release ships: the plugins carry the stack, `.claude/` keeps only the EXTRAS.
+// Two things went wrong before this case existed. The plugin branch fired only when the local dir
+// was EMPTY, so a project holding 25 extras read 25 skills and never looked at the plugins. And the
+// scan credited a plugin with everything in its cache, which for a SHARED repo root is every
+// sibling's items too - measured at 860 seats where the truth is 43, and a hooks-only entry
+// claiming all of them.
+test('inventory: extras and plugin-carried items are UNIONED, and a shared root counts only its own entry', { skip: posixOnly }, () =>
+{
+    const root = project('extras-plus-plugins', { rule: false });
+    fs.rmSync(path.join(root, '.claude', 'skills'), { recursive: true, force: true });
+    fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
+    write(path.join(root, '.claude', 'skills', 'angular-material', 'SKILL.md'), skillFile('angular-material'));
+    write(path.join(root, '.claude', 'agents', 'related-project-analyzer.md'), '---\nname: related-project-analyzer\n---\n');
+    // ONE shared root, two entries: a stack entry that ships one skill and one seat, and a
+    // hooks-only entry that ships neither. Both caches hold the whole tree.
+    const shared = path.join(TMP, 'shared-cache');
+    write(path.join(shared, 'stack', 'skills', 'dotnet-wpf', 'SKILL.md'), skillFile('dotnet-wpf'));
+    write(path.join(shared, 'stack', 'skills', 'markdown-style', 'SKILL.md'), skillFile('markdown-style'));
+    write(path.join(shared, 'stack', 'agents', 'wpf-implementer.md'), '---\nname: wpf-implementer\n---\n');
+    write(path.join(shared, 'stack', 'agents', 'aspnet-verifier.md'), '---\nname: aspnet-verifier\n---\n');
+    write(path.join(shared, '.claude-plugin', 'marketplace.json'), JSON.stringify({
+        name: 'house', plugins: [
+            { name: 'house-wpf', source: './', skills: ['./stack/skills/dotnet-wpf'], agents: ['./stack/agents/wpf-implementer.md'] },
+            { name: 'house-hooks', source: './' },
+        ],
+    }));
+    const bin = stubCli(path.join(TMP, 'shared-cli'), {
+        plugins: JSON.stringify([
+            { id: 'house-wpf@house', enabled: true, installPath: shared },
+            { id: 'house-hooks@house', enabled: true, installPath: shared },
+        ]),
+    });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /SOURCE:\s+PLUGIN-COVERED - 1 enabled plugin\(s\) carry 1 skill\(s\) and 1 seat\(s\), beside 1 skill\(s\) and 1 seat\(s\) copied under \.claude\/: house-wpf/);
+    assert.match(out, /SKILLS:\s+2 total/, 'the extra plus the one the entry ships');
+    assert.match(out, /SEATS:\s+2 total/);
+    assert.match(out, /house-wpf:wpf-implementer/, 'a plugin seat carries its dispatch prefix');
+    assert.match(out, /related-project-analyzer/, 'a copied extra keeps its bare name');
+    assert.doesNotMatch(out, /markdown-style/, 'a sibling entry\'s skill sitting in the same cache is not this one\'s');
+    assert.doesNotMatch(out, /aspnet-verifier/, 'and neither is its seat');
 });
 
 test('inventory: no local dirs and no plugin carrying them is a STOP, not an empty rule', { skip: posixOnly }, () =>

@@ -2323,6 +2323,11 @@ function main()
     for (const finding of lintRepoRootReserved()) flag(finding);
     // 48. The hooks plugin entry matches the installer's own wiring table.
     for (const finding of lintHooksEntry()) flag(finding);
+    // 49. The LIVE marketplace matches the generated entries - from Phase 3 the core is generated
+    // too, so a hand edit to any entry is drift, not a change.
+    for (const finding of lintMarketplaceEntries()) flag(finding);
+    // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
+    for (const finding of lintAgentPreloads()) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2511,6 +2516,57 @@ function lintHooksEntry()
     return out;
 }
 
+// 50. A preload names a plugin skill, and a BARE name silently preloads a stale `.claude/skills/`
+// copy when one is present (spike S6) - the exact shape every migrating project has for a session.
+// The prefix is computed from the placement, so this only checks that the files agree with it.
+function lintAgentPreloads()
+{
+    let rows;
+    try { rows = require('./scope-agent-preloads.js').scopedFor(); }
+    catch (err) { return [`the agent preloads could not be checked: ${err.message}`]; }
+    const findings = [];
+    for (const r of rows)
+    {
+        if (r.problem) { findings.push(`agent preload: ${r.file} - ${r.problem}`); continue; }
+        if (r.block !== r.wanted)
+            findings.push(`agent preload: ${r.file} is not scoped to the placement - run \`npm run scope-preloads\``);
+    }
+    return findings;
+}
+
+// 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what each
+// one ships, so a hand-edited path list, description or dependency silently stops matching the cost
+// table that gates them. The hooks entry has its own check (48) and is left to it.
+function lintMarketplaceEntries()
+{
+    const findings = [];
+    let live;
+    let wanted;
+    try
+    {
+        const { buildEntries } = require('./build-marketplace.js');
+        live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
+        wanted = buildEntries();
+    }
+    catch (err)
+    {
+        return [`the marketplace entries could not be checked: ${err.message}`];
+    }
+    const byName = new Map((live.plugins || []).map(p => [p.name, p]));
+    for (const entry of wanted)
+    {
+        const have = byName.get(entry.name);
+        if (!have) { findings.push(`marketplace.json is missing the generated entry ${entry.name} - run \`npm run marketplace\``); continue; }
+        if (JSON.stringify(have) !== JSON.stringify(entry))
+            findings.push(`marketplace.json entry ${entry.name} does not match the generated one - run \`npm run marketplace\`; it is generated, never hand-edited`);
+    }
+    const generated = new Set(wanted.map(e => e.name));
+    for (const p of live.plugins || [])
+        if (p && p.name !== 'claude-stack-hooks' && !generated.has(p.name))
+            findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
+    return findings;
+}
+
 // 47. The manifest the marketplace serves has to pass the CLI's own schema check. The CLI is not
 // present everywhere (a CI image, a fresh clone), and a missing tool is reported as NOT RUN rather
 // than laundered into a pass - the rule the stack applies to every other probe.
@@ -2599,6 +2655,8 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 module.exports = {
     lintPluginPlacement,
     lintHooksEntry,
+    lintMarketplaceEntries,
+    lintAgentPreloads,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,

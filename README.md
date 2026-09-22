@@ -28,12 +28,12 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 79 | house conventions + workflow skills, `.claude/skills/` |
-| **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
+| **Skills** | 79 | house conventions + workflow skills, carried by the project's own plugin closure; only the extras land in `.claude/skills/` |
+| **Agents** | 43 | model/effort-pinned subagents, carried by the same plugin closure; only the extras land in `.claude/agents/` |
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 13 | deterministic guards, the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), shipped as the `claude-stack-hooks` plugin; only the two engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
-| **Plugins** | 6 | installed via the `claude` CLI |
+| **Plugins** | 6 + the stack's own | six third-party via the `claude` CLI, plus `claude-stack-hooks` and the entries this project's skills and agents live in |
 
 The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
 inventory at [`docs/claude-stack.html`](docs/claude-stack.html), not in this README.
@@ -45,9 +45,9 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the two engines and the model-window table only - the thirteen wired hooks come from the `claude-stack-hooks` plugin), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the two engines and the model-window table only - the thirteen wired hooks come from the `claude-stack-hooks` plugin; skills and agents: the extras only - the rest come from the per-stack plugins), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
-| **Starts** | seven `claude plugin install` calls (the six third-party ones plus the stack's own `claude-stack-hooks`), up to eight `claude mcp add` registrations, and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies of its own |
+| **Starts** | one `claude plugin install` call per plugin (the six third-party ones, the stack's own `claude-stack-hooks`, and the entries carrying this project's skills and agents), up to eight `claude mcp add` registrations, and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/claude-stack:status` reports your own install's number |
 

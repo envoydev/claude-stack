@@ -9,7 +9,9 @@ paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.spe
 A broken Angular build or red spec suite (Ionic/Capacitor included - ionic build wraps ng
 build) - delegating beats looping in-session; the run's session-or-agents pick, or the user's word, decides - absent both, offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended): fix-the-build goes to
 **`ng-build-error-resolver`**, make-the-tests-pass goes to **`angular-test-resolver`** once
-the build is green. The subagent absorbs the repeated build/test output and returns only a
+the build is green. A seat may register under a NAMESPACE (`<namespace>:<seat>`) rather than as a
+bare name; where it does, only that spelling resolves - dispatch it exactly as the roster spells it.
+The subagent absorbs the repeated build/test output and returns only a
 diagnosis. A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a
 shared-contract change - outside its bounded scope by design; a running `project-solve-cross-task`
 flow handles it per its contract protocol - otherwise name `/project-solve-cross-task` as the

@@ -671,6 +671,26 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   assert.equal(disp('wpf-implementer', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_STACK_DOCS_PATH');
 });
 
+// Spike S1 run 4: a plugin agent is addressable ONLY as `<plugin>:<agent>` - the bare name returns
+// 'Agent type not found'. So from the release that ships the seats as plugins, every house dispatch
+// arrives prefixed, and a gate keyed on the bare name would stop gating anything at all.
+test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign one is not', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
+  assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
+  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
+  assert.equal(disp('claude-stack:project-implementer'), 2, 'scoped to the core plugin');
+  // Gating this one would block a tool the user chose with a message about a flow it has no part
+  // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
+  assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
+  assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
+  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
+});
+
 test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
   const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
@@ -1561,6 +1581,32 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/project-quality-loop</command-name>', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
+});
+
+// The same gate, on the route where the skill is NOT copied into the project. Reading only
+// `.claude/skills/` made it stop firing the moment the skills moved into the plugins: the missing
+// file landed in the catch and every one of the 13 flagged skills became model-callable again.
+test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not only the project copy', () =>
+{
+    const root = fs.mkdtempSync(path.join(TMP, 'dmiplug-'));
+    const cfg = path.join(root, 'cfg');
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    const place = (plugin, name, front, sub) =>
+    {
+        const dir = path.join(cfg, 'plugins', 'cache', 'claude-stack', plugin, '1.0.0', ...sub, name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
+    };
+    place('claude-stack', 'project-quality-loop', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
+    const skillCall = (skill) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
+
+    assert.equal(skillCall('project-quality-loop').status, 2, 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('claude-stack:project-quality-loop').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
+    assert.equal(skillCall('claude-stack:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 });
 
 test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, at any context size', () => {
