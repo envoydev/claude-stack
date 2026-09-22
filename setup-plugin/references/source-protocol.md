@@ -4,9 +4,9 @@ The four downloading commands (`/claude-stack:setup` - fresh install, `/claude-s
 refresh + prune, `/claude-stack:configure` - adjust the selection, `/claude-stack:validate` -
 reconcile to the project; `status` never downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
-apply it, this file says WHAT holds. It lives at the plugin root's `references/` and the commands
-cite it as `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md` - commands and references ship
-together in the plugin.
+apply it, this file says WHAT holds. It lives at `setup-plugin/references/` under the plugin root -
+every entry ships from the repo root, so that is where the cache holds it - and the commands cite it
+as `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`.
 
 ## The plugin cache IS the snapshot - the common run downloads nothing
 

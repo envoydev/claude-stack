@@ -310,3 +310,44 @@ test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNo
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+// Two more bodies find a file of their own in the plugin cache: the capabilities inventory script
+// and the cross-task protocol the integration reviewer gates against. `find | head -1` took whichever
+// cached version the filesystem listed first, and the reviewer looked only where the COPY route puts
+// skills, so on the plugin route it always ran its reduced fallback. Both now take the newest entry
+// the way the protocol does - sort -V, not listing order and not lexical order - so each body's own
+// snippet runs here against two planted caches: one where listing order is wrong (0.2.84 before
+// 1.0.0), one where lexical order is wrong (0.9.0 after 0.10.0).
+function bodySnippet(file, re) {
+    const m = fs.readFileSync(path.join(ROOT, file), 'utf8').match(re);
+    assert.ok(m, `${file}: its plugin-cache lookup snippet is missing`);
+    return m[1];
+}
+
+test('the capabilities script and the reviewer protocol resolve to the NEWEST cached entry', () => {
+    for (const versions of [['0.2.84', '1.0.0'], ['0.9.0', '0.10.0']])
+    {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cache lookup '));
+        try
+        {
+            for (const v of versions)
+            {
+                const skills = path.join(home, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', v, 'stack', 'skills');
+                fs.mkdirSync(path.join(skills, 'project-agent-capabilities', 'scripts'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'project-agent-capabilities', 'scripts', 'capabilities-inventory.js'), '');
+                fs.mkdirSync(path.join(skills, 'project-solve-cross-task', 'references'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'project-solve-cross-task', 'references', 'contract-protocol.md'), '');
+            }
+            const newest = versions[versions.length - 1].replace(/\./g, '\\.');
+            const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
+            // The capabilities block with its last line - the run - swapped for a print.
+            const caps = bodySnippet('stack/skills/project-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/);
+            assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
+                new RegExp(`/${newest}/stack/skills/project-agent-capabilities/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
+            const rev = bodySnippet('stack/agents/integration-reviewer.md', /`(for d in [^`]*?cut -f2)`/);
+            assert.match(execFileSync('bash', ['-c', rev], { cwd: home, env, encoding: 'utf8' }).trim(),
+                new RegExp(`/${newest}$`), `reviewer: not the newest of ${versions}`);
+        }
+        finally { fs.rmSync(home, { recursive: true, force: true }); }
+    }
+});

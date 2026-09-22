@@ -363,11 +363,41 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /`dormant:`/, 'dormant advisories come from the tool output');
 });
 
+// `${CLAUDE_PLUGIN_ROOT}` is expanded into a body at injection time, to the root of the entry's
+// SOURCE - and since Phase 3 every entry is sourced from the repo root, which is what the plugin cache
+// holds (measured on an isolated install: no references/ or commands/ at its root). A body citing
+// `${CLAUDE_PLUGIN_ROOT}/references/...` pointed at the old ./setup-plugin root, and a test pinning
+// that spelling kept it dead through the move. So every concrete path a shipped body cites through
+// the placeholder is resolved here against the layout the cache actually has.
+test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in the installed layout', () => {
+    const mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    for (const entry of mkt.plugins) assert.strictEqual(entry.source, './', `${entry.name} is not sourced from the repo root - resolve its paths against its own source`);
+    const bodies = [];
+    const walk = (dir) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) { if (e.name !== 'evals') walk(p); }
+            else if (e.name.endsWith('.md')) bodies.push(p);
+        }
+    };
+    walk(PLUGIN_DIR);
+    walk(path.join(ROOT, 'stack'));
+    let cited = 0;
+    for (const file of bodies)
+        for (const m of fs.readFileSync(file, 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+\.[a-z]+)/g))
+        {
+            cited++;
+            assert.ok(fs.existsSync(path.join(ROOT, m[1])), `${path.relative(ROOT, file)} cites \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which the installed plugin does not have`);
+        }
+    assert.ok(cited >= 10, `expected the walks' protocol citations, found ${cited}`);
+});
+
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
     for (const name of ['setup', 'update', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
+        assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
     }
     const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md'), 'utf8');
     assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*claude-stack/, 'router skill named like the plugin -> displays bare /claude-stack');

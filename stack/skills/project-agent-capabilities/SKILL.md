@@ -18,13 +18,15 @@ the live `claude mcp list`, the paste-ready MCP routing rows, the compare verdic
 post-write verify. From the project root:
 
 The script has TWO homes - copied under `.claude/skills/`, or carried by the plugin that ships this
-skill - so resolve it ONCE and reuse `$CAPS` for every call below. Run all of it from the project
-root:
+skill, where the cache can hold several versions and the NEWEST is the one this skill came from - so
+resolve it ONCE and reuse `$CAPS` for every call below. Run all of it from the project root:
 
 ```bash
 CAPS=.claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js
-[ -f "$CAPS" ] || CAPS=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" \
-  -path '*/skills/project-agent-capabilities/scripts/capabilities-inventory.js' 2>/dev/null | head -1)
+[ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-stack/*; do
+  f="$d/stack/skills/project-agent-capabilities/scripts/capabilities-inventory.js"
+  [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
+done 2>/dev/null | sort -V | tail -1 | cut -f2)
 node "$CAPS"
 ```
 

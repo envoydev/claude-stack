@@ -36,7 +36,7 @@ per message with no ask at all, and one of them authored its own prose decision 
 to the user.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
 it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool
 from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
@@ -512,7 +512,7 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 
 ## Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`, on EVERY exit path of
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of
 THIS command: after a successful update, after an abort, after a blocker, and after the step-1
 'nothing changed, stop here' case. Then confirm the project tree holds only installed artifacts.
 

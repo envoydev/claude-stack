@@ -27,7 +27,7 @@ the flow yourself:
   template alone; a generic answer here has shipped a wrong 'no update needed'.
 - The install just finished and the ask is 'what now?' (session reload, gitignore lines, serena
   setup, which captures in which order) -> not a command: walk them through
-  `${CLAUDE_PLUGIN_ROOT}/references/post-install.md`.
+  `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md`.
 
 Answer with the command plus one line naming the state you found (for example: 'no `.claude/skills`
 here - run `/claude-stack:setup`'). When more than one reading is plausible, put the candidates

@@ -77,7 +77,7 @@ If the user redirects mid-answer and this ask is displaced, re-offer it ONCE whe
 is handled, then proceed on their answer.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
 it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use every tool from that snapshot, hand it back
 with `--source` in the install step, and remove `$TMP` on EVERY exit path (fast, slow, blocker,
 or a user 'no'). The protocol's 'Narrate, don't trace' section governs every tool call: quiet
@@ -306,7 +306,7 @@ and that is their decision to make, not one to leave unsaid. Then:
 
 ## 4. Pruning path - confirm once, then refresh + prune
 Inventory the CURRENT selection from disk exactly as the sibling `configure` command's step 1
-(`${CLAUDE_PLUGIN_ROOT}/commands/configure.md` - read it only on THIS path; command bodies do
+(`${CLAUDE_PLUGIN_ROOT}/setup-plugin/commands/configure.md` - read it only on THIS path; command bodies do
 not co-load): skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED
 `baseline-project-*.md` and `project-code-style.md`), hooks (bare basenames, excluding the
 GENERATED legacy `inject-code-style.js`), mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json`, plugins fail-soft and
@@ -453,7 +453,7 @@ as a stall and the guard demands the very ask this paragraph removes.
 The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message).
 
 ## 8. Clean up the temp dir - ALWAYS
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`, on EVERY exit path:
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path:
 after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
 user 'no'. Then confirm the project tree holds only installed artifacts by LOOKING, never with
 `git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status
