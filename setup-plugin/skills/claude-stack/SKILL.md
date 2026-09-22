@@ -22,6 +22,9 @@ the flow yourself:
   only).
 - The ask is to SEE what is installed - inventory, versions, capture dates, 'what do I have?' -
   with nothing to change -> `/claude-stack:status` (read-only tables, per area or all).
+- The ask is whether THIS project's `CLAUDE.md` still matches the stack template, or needs an
+  update -> `/claude-stack:update` (its step 6 compare, project mode) - never answer this from the
+  template alone; a generic answer here has shipped a wrong 'no update needed'.
 - The install just finished and the ask is 'what now?' (session reload, gitignore lines, serena
   setup, which captures in which order) -> not a command: walk them through
   `${CLAUDE_PLUGIN_ROOT}/references/post-install.md`.

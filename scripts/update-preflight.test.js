@@ -15,6 +15,9 @@ const FAKE_TOKEN = 'sntrys_' + 'A'.repeat(48);
 const FIXTURE = { files: [
     { status: 'modified', filename: 'stack/skills/csharp/SKILL.md' },
     { status: 'modified', filename: 'stack/skills/dotnet/SKILL.md' },
+    // a second file of the SAME skill is still one skill changed (measured: skills=108 against 78 shipped)
+    { status: 'modified', filename: 'stack/skills/dotnet/references/testing.md' },
+    { status: 'modified', filename: 'stack/hooks/model-windows.json' },
     { status: 'modified', filename: 'stack/hooks/guard-secret-value.js' },
     { status: 'added', filename: 'stack/hooks/guard-new-thing.js' },
     { status: 'removed', filename: 'stack/rules/web-conventions.md' },
@@ -63,7 +66,7 @@ test('ONE call carries the compare contract, the changed classes, the fired migr
     assert.match(out, /^modified\tstack\/skills\/csharp\/SKILL\.md$/m);
     // the counts the close-out names refreshed paths from - the installer's log tail counts
     // every file it copied, which is all of them on every run
-    assert.match(out, /^changed: skills=2 agents=0 rules=1 hooks=2 template=no$/m);
+    assert.match(out, /^changed: skills=2 agents=0 rules=1 hooks=3 template=no$/m, 'distinct ITEMS: a skill folder counts once, model-windows.json is a hooks-class file');
     assert.match(out, /^migration: inject-code-style-hook-to-rule\tfile_exists$/m);
     assert.match(out, /^migration: docs-path-env-rename\tsettings_env_key$/m);
     assert.match(out, /^env-keys: CLAUDE_DOCS_PATH,SENTRY_ACCESS_TOKEN$/m);
@@ -134,6 +137,81 @@ test('the shipped catalog parses under the shipped detect vocabulary - every ent
         assert.strictEqual(kinds.length, 1, `${e.id} declares exactly one detect kind`);
         assert.ok(known.has(kinds[0]), `${e.id} uses a detect kind the preflight implements (${kinds[0]})`);
     }
+});
+
+test('validate: yes on a multi-release version span (major/minor move, or a patch move over 1)', () => {
+    const { snap, install, fixtureFile } = scaffold({ stamp: 'sha: aaa111\nversion: 0.2.60\n' });
+    fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.75\n');
+    const out = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out;
+    assert.match(out, /^validate: yes$/m, 'a 15-patch move spans more than one release');
+
+    const minor = scaffold({ stamp: 'sha: aaa111\nversion: 0.2.60\n' });
+    fs.writeFileSync(path.join(minor.snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.3.0\n');
+    const outMinor = run(['--snapshot', minor.snap, '--root', minor.install, '--fixture', minor.fixtureFile]).out;
+    assert.match(outMinor, /^validate: yes$/m, 'a minor bump is always multi-release, whatever the patch');
+});
+
+test('validate: no on a single-release version span, or no span at all', () => {
+    const { snap, install, fixtureFile } = scaffold({ stamp: 'sha: aaa111\nversion: 0.2.60\n' });
+    fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.61\n');
+    assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^validate: no$/m, 'exactly one patch step');
+
+    const same = scaffold({ stamp: 'sha: bbb222\nversion: 0.2.70\n' });
+    fs.writeFileSync(path.join(same.snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.70\n');
+    assert.match(run(['--snapshot', same.snap, '--root', same.install, '--fixture', same.fixtureFile]).out, /^validate: no$/m, 'same revision, nothing to validate');
+});
+
+test('policy-rev: none when the generated rule is not installed', () => {
+    const { snap, install, fixtureFile } = scaffold();
+    const out = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out;
+    assert.match(out, /^policy-rev: none$/m);
+});
+
+test('policy-rev: current when the stamped rev matches the shipped skill; stale otherwise', () => {
+    const { snap, install, fixtureFile } = scaffold();
+    fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'project-agent-capabilities'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'project-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
+
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'project-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
+    assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
+
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'no rev stamped here');
+    assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=none snapshot=def456$/m, 'a rule with no rev at all IS the mismatch, nothing further to check');
+});
+
+test('--log mode: restart yes on mcps=<n> above 0 in the installer log, and names each !! line', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, [
+        '  installed/refreshed this run - skills=12, plugins=6, mcps=5, hooks=11, agents=11, rules=9',
+        '!! sentry: SENTRY_ACCESS_TOKEN missing, registration still written',
+        '!! playwright-webkit: browser download failed, server not registered',
+        'mcp repaired: serena',
+    ].join('\n'));
+    const { out } = run(['--log', log]);
+    assert.match(out, /^restart: yes$/m);
+    assert.match(out, /^warn: !! sentry: SENTRY_ACCESS_TOKEN missing, registration still written$/m);
+    assert.match(out, /^warn: !! playwright-webkit: browser download failed, server not registered$/m);
+});
+
+test('--log mode: restart yes on --hooks above 0 even when the log shows mcps=0', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, '  installed/refreshed this run - skills=12, plugins=6, mcps=0, hooks=11, agents=11, rules=9');
+    assert.match(run(['--log', log, '--hooks', '3']).out, /^restart: yes$/m);
+    assert.match(run(['--log', log, '--hooks', '0']).out, /^restart: no$/m);
+});
+
+test('--log mode: restart no and no warn lines on a clean, MCP-less, hook-less run', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, '  installed/refreshed this run - skills=12, plugins=6, mcps=0, hooks=0, agents=11, rules=9');
+    const { out } = run(['--log', log]);
+    assert.match(out, /^restart: no$/m);
+    assert.doesNotMatch(out, /^warn: /m);
 });
 
 test('a FIRED migration carries everything the caller acts on, so the catalog is never opened', () => {

@@ -223,7 +223,51 @@ function correctionStreak(currentPrompt) {
   } catch { return 0; }
 }
 
+// --- the verbatim re-ask: the same question, typed again ------------------------------------
+// Measured in three sessions of one day: the user re-sent an identical question 2-3 times (one of
+// them escalating /model and /effort between the tries) before the run recognized the
+// miscommunication and asked what was meant. 'Ambiguous goal: ask' was loaded, verbatim, in the
+// session that took three. A repeat is evidence the last answer missed the goal, not evidence the
+// answer needs to be longer - so the FIRST repeat is the signal.
+// Only the last typed turn is compared, and only a prompt long enough to be a question: a repeated
+// 'continue' / 'go on' is pacing. The prompt row is already on disk when this hook fires, so a
+// trailing copy of the prompt itself is dropped before the comparison - otherwise every turn would
+// read as its own repeat.
+const REPEAT_MIN_CHARS = 15;
+function repeatsLastPrompt(currentPrompt) {
+  try {
+    const now = String(currentPrompt || '').trim();
+    if (now.length < REPEAT_MIN_CHARS || /^\s*[</]/.test(now)) return false;
+    const typed = [];
+    let answered = true;   // has an assistant row followed the last typed turn?
+    for (const line of tailLines()) {
+      if (!line.includes('"user"') && !line.includes('"assistant"')) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      if (!o || !o.message) continue;
+      if (o.type === 'assistant') { answered = true; continue; }
+      if (o.type !== 'user' || o.isMeta) continue;
+      const c = o.message.content;
+      const t = typeof c === 'string' ? c
+        : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+      if (!t.trim() || /^\s*[</]/.test(t.trim())) continue;
+      typed.push(t.trim());
+      answered = false;
+    }
+    // The prompt row is written BEFORE this hook fires on some builds and after it on others. It is
+    // this turn's own row exactly when no assistant row follows it - that trailing copy is dropped,
+    // or every turn would read as its own repeat.
+    if (!answered && typed.length && typed[typed.length - 1] === now) typed.pop();
+    return typed.length > 0 && typed[typed.length - 1] === now;
+  } catch { return false; }
+}
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
+  const repeat = repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
+    'the previous one. The last answer missed - do not re-answer it longer or from a different angle. ' +
+    'Ask ONE AskUserQuestion about the goal, with the readings you are choosing between as options ' +
+    '(measured: three identical turns, /model and /effort escalated between them, before the run asked).'
+    : '';
   const streak = correctionStreak(payload.prompt);
   const extra = streak >= STREAK_TURNS
     ? ' FORMAT ASK: ' + streak + ' consecutive short turns, each after a long answer. If these are ' +
@@ -232,7 +276,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
     : '';
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat },
   }));
   process.exit(0);
 }
@@ -248,6 +292,27 @@ if (payload.hook_event_name === 'SessionStart') {
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: BUDGET_TEXT },
   }));
   process.exit(0);
+}
+
+// Did the stop contract block THIS turn? Both hooks write one row per block to the same ledger
+// (<docs-path>/hook-blocks/<session>.jsonl), so the row is the only cross-hook evidence there is -
+// the two run as separate processes in an order nothing guarantees. Read the tail of this session's
+// own file and accept a guard-stop-contract row from the last two minutes; anything older belongs
+// to an earlier turn. Best-effort in every direction: an unreadable ledger simply means no yield.
+function stopContractBlockedThisTurn() {
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const file = path.resolve(root, docsRootEnv(), 'hook-blocks', `${payload.session_id || 'nosession'}.jsonl`);
+    const rows = fs.readFileSync(file, 'utf8').trim().split('\n').slice(-20);
+    for (const line of rows) {
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      if (!o || o.hook !== 'guard-stop-contract.js') continue;
+      if (Date.now() - Date.parse(o.ts) <= 2 * 60 * 1000) return true;
+    }
+    return false;
+  } catch { return false; }
 }
 
 if (payload.hook_event_name === 'Stop') {
@@ -302,13 +367,24 @@ if (payload.hook_event_name === 'Stop') {
   global.BLOCK_DETAIL = { branch: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
     matched: overLength ? `${body.length} chars of prose` : `${dashes} em-dash(es)` };
   if (!overLength) {
+    // Two Stop hooks can answer ONE stop, and until this existed they answered it with opposite
+    // orders: this one said 'Re-send the SAME answer' while guard-stop-contract.js said 'Add
+    // nothing else to this turn'. The model obeyed the second and the flagged text shipped
+    // uncorrected. The other gate owns the turn - it is holding a decision or a fresh-session
+    // offer - so this one yields and asks for the fix INSIDE that turn.
     process.stderr.write(
       `This answer uses ${dashes} em-dash(es). The house voice is single dashes - the rule is in\n` +
       `baseline-interaction.md and this hook injects it into every turn, including the one you just\n` +
       `answered (measured: 32 em-dashes in 21,434 characters of prose in one audited session, with\n` +
-      `the rule loaded three times in the same transcript). Re-send the SAME answer with every\n` +
-      `em-dash replaced by a single dash - change nothing else, add no apology and no note about\n` +
-      `the edit.`,
+      `the rule loaded three times in the same transcript).\n` +
+      (stopContractBlockedThisTurn()
+        ? `guard-stop-contract.js has already blocked this same turn, so do what IT asks and fold the\n` +
+          `dash fix into that turn - replace every em-dash with a single dash in the text you re-send.\n` +
+          `Its instruction wins on everything else.`
+        : `Re-send the SAME answer with every\n` +
+          `em-dash replaced by a single dash - change nothing else, add no apology and no note about\n` +
+          `the edit. If another hook blocked this same turn and asks for something else, do that and\n` +
+          `fix the dashes inside the turn it asks for - never drop the fix because two hooks spoke.`),
     );
     process.exit(2);
   }
@@ -324,7 +400,11 @@ if (payload.hook_event_name === 'Stop') {
     `the recap of what they asked, the options you rejected, the caveats they did not ask for, and\n` +
     `every sentence about your own process. Do NOT apologize, do NOT explain the trim, and do NOT\n` +
     `append the short version to the long one - write the short answer alone. If the detail is\n` +
-    `genuinely needed, say one line offering it instead of delivering it.`,
+    `genuinely needed, say one line offering it instead of delivering it.\n` +
+    (stopContractBlockedThisTurn()
+      ? `guard-stop-contract.js blocked this same turn too: do what IT asks, and write that turn at\n` +
+        `budget. Its instruction wins on everything else.`
+      : ''),
   );
   process.exit(2);
 }

@@ -8,6 +8,7 @@
     "lint": "node scripts/lint-skills.js",
     "graph": "node scripts/stack-graph.js --write",
     "test": "node --test",
+    "test:memory": "node scripts/memory-usage.eval.js",
     "corpus": "node scripts/corpus-replay.js"
   },
   "devDependencies": {

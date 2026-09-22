@@ -193,16 +193,14 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
 test('the always MCP baseline is stack-neutral - a browser or native driver is seeded or proven', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
-    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'serena'], 'only the two rules lock in');
-    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry', 'memory'])
+    // memory joined serena and context7 as a locked server (baseline-memory.md names it, the same
+    // way baseline-navigation locks serena in) - the shared-memory-mcp feature made it required.
+    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'memory', 'serena'], 'only the three rules lock in');
+    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry'])
     {
         assert.ok(!(recs.always.mcps || []).includes(server), `${server} must not install into every project`);
     }
-
-    // memory was seeded into every install and measured at zero calls across a 164-session audit:
-    // addable from the table, never seeded, and never flagged missing OR redundant by validate -
-    // which is exactly what the `general` list means.
-    assert.ok(((recs.general || {}).mcps || []).includes('memory'), 'memory is offered, not seeded');
+    assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
 
     // the heavy two fail at launch without Chrome / the mobile SDKs, so no stack seeds them; the
     // native driver reaches a project through its own dependency instead.

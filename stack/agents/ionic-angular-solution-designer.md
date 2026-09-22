@@ -1,7 +1,7 @@
 ---
 name: ionic-angular-solution-designer
 description: Use when an Ionic/Capacitor mobile feature or change needs designing before code - a read-only pass fixing the native-bridge and Capacitor-plugin surface, the offline-storage shape, the change-detection shell/leaf boundary, iOS/Android platform parity, and the OTA-vs-store-binary release boundary, then decomposing it into independent parallel-safe tasks with explicit contracts. Best as a mobile build's first step, feeding the ionic-angular-implementer fan-out and ionic-angular-verifier. Do NOT use to write code; the other TypeScript stacks - plain web Angular with no native shell (web-angular-solution-designer's) and browser extensions (browser-extension-solution-designer's) - are not this seat's, and a brand-new project from a spec is the project-build-from-scratch skill.
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

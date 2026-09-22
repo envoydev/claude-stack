@@ -76,8 +76,8 @@ Confirm the install (project mode, above), then **inventory the installed set fr
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
 `baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
-`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = the SAME `claude plugin list --json`
-scan configure runs (its step 1 carries the one-line command - copy it, do not re-derive it), which
+`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = `claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"`
+(the SAME script configure runs - never re-derive its filter), which
 prints `name<TAB>version<TAB>scope<TAB>enabled` filtered to the entries that apply to THIS project
 (project scope at this path, or user scope) - the listing is machine-global, and an unfiltered read
 proposes sibling repos' plugins as REDUNDANT here (measured near-miss uninstall); fail-soft without
@@ -135,8 +135,12 @@ proposed. Then walk. Stack names are the catalog keys of
 `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - the tool names an unknown one on
 stderr (`unknown-stack`) instead of silently flagging nothing.
 
-Compute the audits once against the current inventory, quietly - the two stack-level passes,
-the evidence scan (with the judgment catalog), the evidence gaps, and the judgment lines:
+Compute the audits ONCE here, right after detection, against the current inventory, quietly - the
+two stack-level passes, the evidence scan (with the judgment catalog), the evidence gaps, and the
+judgment lines. This is the only place any of it runs: whatever layer or question comes up later -
+MCPs and plugins included - is answered from the four files this prints, never by hand-reading
+`recommendations.json` / `stack-graph.json` / `evidence.json` again (measured: a plugin/mcp question
+answered with 8 ad hoc catalog reads before this block's own pass had even run):
 
 ```
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
@@ -166,8 +170,7 @@ The tool already excludes shared items, deliberate non-stack extras, already-ins
 and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
 applicability no manifest can prove, e.g. the `project-related-context` / `related-project-analyzer`
-pair, which apply only where the project has sibling repos) - you present its output, you do not
-re-derive it.
+pair, which apply only where the project has sibling repos) - present its output as printed above.
 
 One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
 whose comment alone is 2,000 characters:
@@ -234,6 +237,27 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
+- **`memory` joins `serena` and `context7`** as an always-required MCP (`baseline-memory.md` locks
+  it in the same way `baseline-navigation.md` locks serena) - MISSING when the project carries no
+  registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
+  of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
+  read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
+  `node "$TMP/repo/stack/hooks/memory.js" level` when that file is absent), which prints `<level>
+  <dbPath>` or `none`. Print the answer as ONE informational line under the MCPs table - `memory
+  level: <level> - <dbPath>`, or `memory: registered but the level cannot be derived from
+  <dbPath>` for an unrecognized path - never a consent row: this walk does not add, drop or change
+  the level, only `/claude-stack:configure` does. Add a second line checking whether the
+  session-start push can even fire on this machine - `node -e
+  "try{require('node:sqlite');process.exit(0)}catch{process.exit(1)}"`; a non-zero exit (Node below
+  22.13) renders `memory start block: off - this Node is below 22.13, node:sqlite is unavailable
+  and the session-start push never runs (memory_search still works - it goes through the MCP
+  server, not this machine's Node)`, exit 0 adds nothing. In the same line's neighbourhood, read
+  THIS repo's own project `.claude/settings.json` `autoMemoryEnabled` key (top-level, not under
+  `env` - ALWAYS the project file, whatever the install's scope: the switch-off never touches the
+  account file) and report it -
+  `false` reads as done (Claude's own memory is off, the one-time import succeeded); `true` or the
+  key ABSENT both read as 'the one-time import has not completed yet, so Claude's own memory is
+  still on' - never claim success from an absent key.
 
 ## 9. Environment - the settings.json env block against this release
 
@@ -248,6 +272,14 @@ table of the actionable rows only - an install whose env already matches gets th
 - **MISSING** - a catalog row with no key in the file. This is the release-introduced case: a
   variable added upstream after this install was made, which no artifact diff can surface because
   it was never a file. Reason column: `not set - introduced after this install`. The catalog carries no version per row, so never print one.
+  `CLAUDE_STACK_DOCS_VERSIONING` is the ONE exception to 'offer the catalog default': its value is DETECTED, not
+  constant, so writing the constant over a project whose docs are kept out of git is the exact silent switch
+  the rule exists to prevent. PREVIEW it read-only before the table - `node .claude/hooks/docs.js status`
+  (project mode; with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
+  kept out of git - ...)` or `overlay (docs are kept out of git - ...)` names the probed value (`git`/`local`) and
+  the reason in one line; show THAT value in the table, never the catalog's `git`. Reason column: `not set -
+  probed '<value>': <the mode line's own parenthetical>`. Every other MISSING row still offers the catalog
+  default unchanged.
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.
@@ -292,7 +324,7 @@ turn polling for it. Five inputs, five gates:
    matching exclusion.
 2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
    scope against the project's OWN docs - the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
-   `ASSESSMENT.md`, `PROJECT-CODE-STYLE.md`, where they exist - and propose a drop on a cited
+   `quality/ASSESSMENT.md`, `code-style/CODE-STYLE.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
    conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
    found.json arrive with the package, the found version, the threshold, the conflict text, and
@@ -383,8 +415,13 @@ dormancy alone is never a removal argument.
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
 are applied here too, as a merge on the scope's settings.json touching ONLY those keys - seeds and
-renames included - and named in the post-check the same way an added artifact is. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--config-dir ~/.claude-<space>]`
+renames included - and named in the post-check the same way an added artifact is. An accepted
+MISSING `CLAUDE_STACK_DOCS_VERSIONING` row is the one exception: never fold it into that generic
+merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
+(project mode only, per its own message), which re-probes at the write instead of trusting the
+table's preview a step stale, and report its printed line. Every other accepted row still goes
+through the generic merge. Emit + prereq-check it -
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
 (`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 
@@ -449,7 +486,8 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 Report per category what was added, removed - signal-backed and JUDGMENT-labeled separately -
 and left as-is (disputed detections, deliberate extras, declined suggestions, declined
 judgment proposals), plus one ENVIRONMENT line naming every key seeded, renamed or corrected (or
-saying the block already matched). Remind that a restart picks up MCP registration changes, and surface
+saying the block already matched), and step 7's MEMORY line (level + database, and the
+`autoMemoryEnabled` reading). Remind that a restart picks up MCP registration changes, and surface
 the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 

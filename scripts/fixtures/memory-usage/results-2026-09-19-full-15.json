@@ -1,0 +1,224 @@
+{
+  "ranAt": "2026-09-19T14:23:00.146Z",
+  "model": "sonnet",
+  "runs": 3,
+  "parallel": 5,
+  "records": [
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 1,
+      "runId": "632fbcbae0d0",
+      "exitCode": 0,
+      "costUsd": 0.1147264,
+      "finalText": "Saved — I'll use `.spec` suffixes for all test files in this project going forward.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #1 [preference_signal] tags=project:s1-run1-632fbcbae0d0",
+      "pass": true
+    },
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 2,
+      "runId": "dc20471250f4",
+      "exitCode": 0,
+      "costUsd": 0.124293,
+      "finalText": "Saved: test files in this project should always use the `.spec` suffix. I'll apply that going forward.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #1 [preference_signal] tags=project:s1-run2-dc20471250f4",
+      "pass": true
+    },
+    {
+      "scenario": 1,
+      "scenarioName": "session writes",
+      "run": 3,
+      "runId": "170f7065ae06",
+      "exitCode": 0,
+      "costUsd": 0.1282406,
+      "finalText": "Saved as a shared preference (tagged `project:s1-run3-170f7065ae06`) — test files in this project should use a `.spec` suffix going forward.",
+      "toolEvidence": "memory_store x1",
+      "dbEvidence": "row #1 [preference_signal] tags=project:s1-run3-170f7065ae06,testing,naming-convention",
+      "pass": true
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 1,
+      "runId": "c9b4604b4fa8",
+      "error": "'initialize' timed out after 120000ms",
+      "toolEvidence": "ERROR",
+      "dbEvidence": "'initialize' timed out after 120000ms",
+      "pass": false
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 2,
+      "runId": "61e412fb2c0b",
+      "exitCode": 0,
+      "costUsd": 0.0655238,
+      "finalText": "7 + 5 = 12\n\nDONE",
+      "toolEvidence": "SessionStart block carried the preference",
+      "dbEvidence": "answer ended with DONE: \"7 + 5 = 12\n\nDONE\"",
+      "pass": true
+    },
+    {
+      "scenario": 2,
+      "scenarioName": "session reads",
+      "run": 3,
+      "runId": "737a6c4ee431",
+      "exitCode": 0,
+      "costUsd": 0.0669318,
+      "finalText": "12\n\nDONE",
+      "toolEvidence": "SessionStart block carried the preference",
+      "dbEvidence": "answer ended with DONE: \"12\n\nDONE\"",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 1,
+      "runId": "b4d60d416bf3",
+      "exitCode": 0,
+      "costUsd": 0.24038900000000002,
+      "finalText": "I've dispatched the evidence-gatherer agent to reproduce `npm test`, trace the exact failure, and check the code for the root cause. It'll also check shared memory for any existing record first, and save a `learning`-tagged memory (tagged `project:s3-run1-b4d60d416bf3`) if it finds a genuine recurr...",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "row #1 tags=agent:evidence-gatherer,project:s3-run1-b4d60d416bf3",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 2,
+      "runId": "8b9b3a3862a1",
+      "exitCode": 0,
+      "costUsd": 0.19419909999999999,
+      "finalText": "Found it. `npm test` fails because it requires an environment variable that's never set:\n\n- **Root cause**: `retry.js:5-6` reads `process.env.RETRY_DELAY_MS` and throws immediately if it's unset. `test.js:4` calls that function at module load time (as part of an `assert.strictEqual` check expecting...",
+      "toolEvidence": "subagent memory_store x1",
+      "dbEvidence": "row #1 tags=agent:evidence-gatherer,project:s3-run2-8b9b3a3862a1",
+      "pass": true
+    },
+    {
+      "scenario": 3,
+      "scenarioName": "agent writes",
+      "run": 3,
+      "runId": "965db359b978",
+      "exitCode": 0,
+      "costUsd": 0.2005242,
+      "finalText": "I've dispatched the evidence-gatherer agent to investigate the `npm test` failure. It's reproducing the failure, reading `test.js`/`retry.js` to find the root cause, and will save any non-obvious quirk to shared memory (tagged `agent:evidence-gatherer`, `project:s3-run3-965db359b978`) before report...",
+      "toolEvidence": "no subagent memory_store call",
+      "dbEvidence": "no agent-tagged learning row",
+      "pass": false
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 1,
+      "runId": "e07930fd55ff",
+      "exitCode": 0,
+      "costUsd": 0.2133044,
+      "finalText": "The evidence-gatherer agent is running in the background, searching shared project memory for the staging database port. I'll let you know as soon as it reports back.",
+      "toolEvidence": "subagent memory_search/list x2",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 2,
+      "runId": "4e05505ad794",
+      "exitCode": 0,
+      "costUsd": 0.2020505,
+      "finalText": "The evidence-gatherer found it in shared project memory (not derivable from code, as expected):\n\n**Staging database port: 6543**\n\nDetails from the memory record it retrieved:\n- Content: \"The staging database port in this project is 6543.\"\n- Type: `learning`, tagged `agent:evidence-gatherer`, `proje...",
+      "toolEvidence": "subagent memory_search/list x2",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 4,
+      "scenarioName": "agent reads",
+      "run": 3,
+      "runId": "263a5d201913",
+      "exitCode": 0,
+      "costUsd": 0.1653487,
+      "finalText": "I've dispatched the evidence-gatherer agent to look up the staging database port in the shared project memory (it'll load the memory MCP tools first, then search/list for relevant records). I'll report back once it completes.",
+      "toolEvidence": "subagent memory_search/list x3",
+      "dbEvidence": "6543 present in subagent report",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 1,
+      "runId": "3aed7378044e",
+      "exitCode": 0,
+      "costUsd": 0.058830999999999994,
+      "finalText": "billing-service serves invoices on port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 2,
+      "runId": "4deeacc30e8b",
+      "exitCode": 0,
+      "costUsd": 0.058865,
+      "finalText": "billing-service serves invoices on port **7081**.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    },
+    {
+      "scenario": 5,
+      "scenarioName": "related project reads",
+      "run": 3,
+      "runId": "a723519d7b9e",
+      "exitCode": 0,
+      "costUsd": 0.058843,
+      "finalText": "billing-service serves invoices on port 7081.",
+      "toolEvidence": "no Read/Glob/Grep/Bash referenced billing-service",
+      "dbEvidence": "answer contains 7081",
+      "pass": true
+    }
+  ],
+  "verdicts": [
+    {
+      "scenario": 1,
+      "name": "session writes",
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 2,
+      "name": "session reads",
+      "passes": 2,
+      "of": 3,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 3,
+      "name": "agent writes",
+      "passes": 2,
+      "of": 3,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 4,
+      "name": "agent reads",
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS (2+/3 mark)"
+    },
+    {
+      "scenario": 5,
+      "name": "related project reads",
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS (2+/3 mark)"
+    }
+  ],
+  "totalCostUsd": 1.8920704999999998
+}

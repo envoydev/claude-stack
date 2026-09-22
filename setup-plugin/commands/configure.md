@@ -92,13 +92,14 @@ comparable banner by banner; the content varies, the skeleton never does.
   mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
   apply to THIS project (project scope at this path, or user scope) - the listing is machine-global,
   so an unfiltered read folds sibling repos' plugins into this project's selection (measured: two
-  near-miss removals/updates of a sibling's plugin). The filter is this one command, not a shape to
-  re-derive - measured, deriving it cost six Bash calls and ~477k of avoidable context, one of them
-  an ENOENT. It prints `name<TAB>version<TAB>scope<TAB>enabled`, the same four fields the installers'
-  own scan reads, and is fail-soft without the CLI:
+  near-miss removals/updates of a sibling's plugin). The filter is the shipped script every command
+  runs, never a shape to re-derive - measured, hand-deriving it cost six Bash calls and ~477k of
+  avoidable context in one run, and in another re-sent ~110k and misread 6 enabled project-scope
+  plugins as disabled. It prints `name<TAB>version<TAB>scope<TAB>enabled`, the same four fields the
+  installers' own scan reads, and is fail-soft without the CLI:
 
   ```bash
-  claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const fs=require("fs");const real=p=>{try{return fs.realpathSync(p)}catch{return p}};const here=real(".");let d;try{d=JSON.parse(s)}catch{return}const rows=Array.isArray(d)?d:(d.installed||[]);const best={};for(const e of rows){const n=String(e.id||"").split("@")[0];if(!n)continue;const pp=e.projectPath?real(String(e.projectPath)):null;if(pp&&pp!==here)continue;const rank=pp?0:1;if(!(n in best)||rank<best[n][0])best[n]=[rank,e.version||"?",e.scope||"",e.enabled===false?"no":"yes"]}for(const n of Object.keys(best).sort())console.log([n,...best[n].slice(1)].join("\t"))})'
+  claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"
   ```
  Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
@@ -254,11 +255,32 @@ cascade never reaches here. Dropping a wired hook removes its `.claude/settings.
 
 ## 7. MCPs
 
-Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`);
+Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`,
+`memory` via `baseline-memory` once that rule is kept or added - required like the other two once it is present);
 the rest of the installed servers are direct picks - droppable, and preserved across runs
 (`raw.json` carries them). Addable from `catalog.mcps`; note next to `sentry` that it needs `SENTRY_SLUG` and
-(token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env. Whenever sentry is PRESENT after
-this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
+(token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env.
+
+Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
+`baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
+`node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
+registration - a fresh add, default to `global`). Paste the level table setup uses - `global` /
+`scoped` / `project`, who shares each and where its database lives - but at `--scope global` drop
+the `project` row entirely: the installer refuses `project` at global scope (there is no single
+project root an account-wide install can sensibly own), so only offer `global` and `scoped` there.
+Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
+other one(s) shown. Picking or keeping `project` while this project's related-projects domain
+already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
+`baseline-project-related-context.md`) means those projects' memories are not visible from this
+one - name that in the post-check, not here. Changing level never copies or deletes a database -
+it re-points the registration, and the installer prints
+`memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
+and report it, never assert it. Pass the answer to the installer as
+`--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
+`memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
+own drop handling applies like any other server.
+
+Whenever sentry is PRESENT after this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
 space's) and run the sentry environment plan for whatever is missing: ask the slug (`<org>` or
 `<org>/<project>`; required) and pass it as `--sentry-slug` at step 12 (the installer seeds the env),
 and tell the user to add `SENTRY_ACCESS_TOKEN` to that same file themselves - a personal/org API token,
@@ -310,7 +332,13 @@ front of the user in its own words; do not carry a copy of the rows here, or the
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row whose key is missing from the file is one the
 release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
-disk is the old spelling, and accepting it moves the value, never resets it.
+disk is the old spelling, and accepting it moves the value, never resets it. `CLAUDE_STACK_DOCS_VERSIONING`
+is the ONE row this does not apply to when it is missing: its value is DETECTED, not constant, so offering
+the catalog's `git` there would write it over a project whose docs are kept out of git - the switch the
+rule exists to prevent. Preview it read-only instead - `node .claude/hooks/docs.js status` (project mode;
+with the key absent its `mode:` line falls back to the same rule) - and offer THAT probed value
+(`git`/`local`, the bare `git (docs are not kept out of git - ...)` or `overlay (docs are kept out of
+git - ...)` line names it and why) as the recommended answer, never the catalog default.
 
 One behaviour lives here rather than in the catalog, because it is about what this step DOES: a
 docs-root change re-stamps the deployed rule (below) and moves no existing docs. Claude Code's own
@@ -330,9 +358,18 @@ docs-root change, say plainly: existing generated docs do NOT move - they stay u
 moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (global install: `--claude-dir <account dir>`): it rewrites the 'This install's root:'
 line in `.claude/rules/baseline-docs-root.md` from the settings.json value just written, so the
-always-on awareness matches the env (every install/update run re-stamps it too). Nothing else
+always-on awareness matches the env (every install/update run re-stamps it too). Add
+`--reprobe-versioning <value>` to that same command when this run's own install SEEDED the docs-versioning key,
+passing the value its seed line named (`git` or `local`) - the seed was probed at the old docs path. The script
+REFUSES when the file no longer holds that value, so a key an earlier install wrote, or one the user just
+changed, is never re-probed: pass the seeded value and let the check answer. Nothing else
 needs editing. Apply on consent with a
-merge touching ONLY the chosen keys - everything else in settings.json is preserved. Area
+merge touching ONLY the chosen keys - everything else in settings.json is preserved, EXCEPT a
+MISSING `CLAUDE_STACK_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that
+one by running `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead
+of folding it into the merge, so the write re-probes at write time rather than trusting a preview a
+few turns stale, and report its printed line. A typed override (Other) for that same row is a
+deliberate decision like any other row's and goes through the generic merge as-is. Area
 skipped, or nothing changed: one narration line, nothing written.
 
 ## 10. Permission mode
@@ -380,10 +417,20 @@ selection it had itself proved identical spent 2 API messages and 351,777 re-sen
 installer pass whose only real effect was resetting the agent model/effort pins).
 
 Otherwise, run the installer **from the snapshot**, passing it back with `--source` so the run
-lands the same revision step 1 previewed:
+lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
+"$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
+written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>]`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>]`
+- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- `--docs-versioning` only when the user's own invocation names a value (`/claude-stack:configure
+  --docs-versioning local`): the installer writes it over the current value and prints the old and new
+  value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
+  key that is present - so it needs no flag.
+- `--memory-level` carries step 7's answer whenever memory is present and the user changed the
+  level: the installer re-points the registration to that level's database (nothing copied or
+  deleted) and prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`.
+  Nothing changed at step 7 - the level already matches, or memory was dropped - needs no flag.
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
@@ -394,7 +441,7 @@ and a post-check that calls it 'untouched' is wrong (measured: four layers repor
 all 88 selected items had just been refreshed). It does NOT uninstall what was dropped.
 **Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
 stamp action) - never paste its output, and take the counts from the line that states them:
-`grep -E 'installed/refreshed this run' "$TMP/install.out"` (a `tail -20` of a 243-line log misses
+`grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
 it, which is how the wrong post-check above was written); (2) removals - each dropped item (incl. accepted
 orphans) with its command shown before running it: delete the skill directory / agent file /
 rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
@@ -436,8 +483,10 @@ file to reconcile).
 
 Report what changed per category (refreshed / added / dropped, orphans removed vs kept), the
 CLAUDE.md decision and reconcile result, anything deferred, and remind that a restart picks up
-MCP registration changes. The run rewrites `claude-stack.stamp` to the revision it installed, so
-the next configure diffs from here.
+MCP registration changes. When step 7 touched `memory`, add one line naming the level (unchanged
+or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
+projects' memories are not visible from this one. The run rewrites `claude-stack.stamp` to the
+revision it installed, so the next configure diffs from here.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`

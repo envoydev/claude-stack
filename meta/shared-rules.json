@@ -56,6 +56,14 @@
     {
      "file": "stack/hooks/instrument-tool-usage.js",
      "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+    },
+    {
+     "file": "stack/hooks/docs.js",
+     "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+    },
+    {
+     "file": "stack/hooks/docs-session.js",
+     "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
     }
    ]
   },
@@ -1569,24 +1577,24 @@
    ]
   },
   "assessment-coverage-carve-out": {
-   "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to project-test-coverage-analyzer's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shapes.md; restated at the AGGREGATE reasoning step and in the skill description because a live run flagged coverage as a weakness with the reference-only statement.",
+   "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to project-test-coverage-analyzer's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill description because a live run flagged coverage as a weakness with the reference-only statement. Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "Test-suite weaknesses are OUT OF SCOPE"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "Coverage never enters the weakness list"
     },
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "the assessment keeps only structural testability blockers, never coverage gaps"
     }
    ]
   },
   "capabilities-refresh-user-run": {
-   "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except project-architecture-analyzer carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by project-agent-capabilities' usage policy.",
+   "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except project-architecture-analyzer and project-architecture-quality-analyzer carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by project-agent-capabilities' usage policy.",
    "owner": {
     "file": "setup-plugin/commands/update.md",
     "marker": "Never invoke it from this run - the skill is manual-only"
@@ -1797,7 +1805,7 @@
    ]
   },
   "generated-docs-root-placement": {
-   "_note": "Every assistant-created doc lands under <docs-path>, sibling-repo docs (the orientation doc + cross-repo plans/change requests/issue notes/run recipes) in related-context/, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
+   "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
    "owner": {
     "file": "stack/rules/baseline-docs-root.md",
     "marker": "only on the user's asked-first approval"
@@ -2117,7 +2125,7 @@
    ]
   },
   "related-context-trace-clause": {
-   "_note": "Cross-repo trace routing: follow a defect into siblings named by the generated related-context rule/doc when the project carries them; a standalone repo has neither and the trace stays in-repo. One clause, hand-synced across 11 files in the 08-24 batch - pinned so the next path change is lint-forced.",
+   "_note": "Cross-repo trace routing: follow a defect into siblings named by the generated related-projects rule/doc when the project carries them; a standalone repo has neither and the trace stays in-repo. One clause, hand-synced across 11 files in the 08-24 batch - pinned so the next path change is lint-forced.",
    "owner": {
     "file": "stack/skills/project-verify-code/SKILL.md",
     "marker": "the trace then stays in-repo"
@@ -2262,40 +2270,40 @@
    ]
   },
   "assessment-strength-check": {
-   "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shapes; restated at the capture's WRITE step.",
+   "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "erode a listed strength"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "erode a listed strength"
     }
    ]
   },
   "finding-count-is-output": {
-   "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shapes' count rule; restated in the capture's REPORT step.",
+   "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "an output, never a target"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "an output, never a target"
     }
    ]
   },
   "findings-gate-four-questions": {
-   "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the architecture doc-shapes; the coverage capture carries an adapted binding for weak-point candidates.",
+   "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved from project-architecture-analyzer to project-architecture-quality-analyzer when the findings judgment split out of the map capture.",
    "owner": {
-    "file": "stack/skills/project-architecture-analyzer/references/doc-shapes.md",
+    "file": "stack/skills/project-architecture-quality-analyzer/references/doc-shape.md",
     "marker": "pass all four questions or it is not a finding"
    },
    "sites": [
     {
-     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
+     "file": "stack/skills/project-architecture-quality-analyzer/SKILL.md",
      "marker": "all four questions answered explicitly"
     },
     {
@@ -3229,7 +3237,7 @@
    ]
   },
   "capabilities-policy-rev-check": {
-   "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the same two-grep comparison lives in the two commands that can see both sides: validate reports it as a finding, update makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
+   "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: validate runs the two greps and reports a finding, update reads the `policy-rev:` row update-preflight.js prints (the hand-run pair was re-confirmed 3 extra times in one audited run, ~275k tokens) and makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
    "owner": {
     "file": "setup-plugin/commands/validate.md",
     "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md"
@@ -3237,7 +3245,7 @@
    "sites": [
     {
      "file": "setup-plugin/commands/update.md",
-     "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md"
+     "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
     },
     {
      "file": "stack/skills/project-agent-capabilities/SKILL.md",
@@ -4610,7 +4618,7 @@
    "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): project-code-style-analyzer previously mandated delete-first.",
    "owner": {
     "file": "stack/skills/project-architecture-analyzer/SKILL.md",
-    "marker": "REPLACE it, never delete it"
+    "marker": "READ the existing rule first so the Write is legal"
    },
    "sites": [
     {
@@ -5019,31 +5027,31 @@
    ]
   },
   "project-config-outranks-conventions": {
-   "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/PROJECT-CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. Four language skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Six sites: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them.",
+   "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. Four language skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Six sites: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them.",
    "owner": {
     "file": "stack/skills/csharp/SKILL.md",
-    "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+    "marker": "CODE-STYLE.md` are higher priority"
    },
    "sites": [
     {
      "file": "stack/skills/angular-conventions/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/angular-styling/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/database-conventions/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/javascript/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     },
     {
      "file": "stack/skills/typescript/SKILL.md",
-     "marker": "PROJECT-CODE-STYLE.md` are higher priority"
+     "marker": "CODE-STYLE.md` are higher priority"
     }
    ]
   },

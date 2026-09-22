@@ -60,6 +60,9 @@ function sandbox(mcpServers)
         'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi',
         'if [ "$1" = "mcp" ] && [ "$2" = "get" ] && [ -s "$CLAUDE_STUB_MCPGET" ]; then cat "$CLAUDE_STUB_MCPGET"; fi',
+        'if [ "$1" = "mcp" ] && [ "$2" = "list" ] && [ -s "$CLAUDE_STUB_MCPLIST" ]; then cat "$CLAUDE_STUB_MCPLIST"; fi',
+        // a CLI whose `mcp remove` works at project scope - the real CLI's behaviour
+        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$CLAUDE_STUB_REMOVE_WORKS" = "1" ] && [ -f .mcp.json ]; then node -e \'const fs=require("fs");const d=JSON.parse(fs.readFileSync(".mcp.json","utf8"));delete d.mcpServers[process.argv[1]];fs.writeFileSync(".mcp.json",JSON.stringify(d,null,2)+"\\n")\' "$3"; fi',
         'if [ "$1" = "mcp" ] && [ "$2" = "add" ] && [ -s "$CLAUDE_STUB_MCPGET_NEW" ]; then cat "$CLAUDE_STUB_MCPGET_NEW" > "$CLAUDE_STUB_MCPGET"; fi',
         'exit 0',
         ''].join('\n'), { mode: 0o755 });
@@ -68,6 +71,7 @@ function sandbox(mcpServers)
         '>>"%CLAUDE_STUB_LOG%" echo %*',
         'if "%~1"=="plugin" if "%~2"=="list" type "%CLAUDE_STUB_PLUGINS%"',
         'if "%~1"=="mcp" if "%~2"=="get" if exist "%CLAUDE_STUB_MCPGET%" type "%CLAUDE_STUB_MCPGET%"',
+        'if "%~1"=="mcp" if "%~2"=="list" if exist "%CLAUDE_STUB_MCPLIST%" type "%CLAUDE_STUB_MCPLIST%"',
         'if "%~1"=="mcp" if "%~2"=="add" if exist "%CLAUDE_STUB_MCPGET_NEW%" copy /y "%CLAUDE_STUB_MCPGET_NEW%" "%CLAUDE_STUB_MCPGET%" >nul',
         'exit /b 0',
         ''].join('\r\n'));
@@ -76,7 +80,7 @@ function sandbox(mcpServers)
     fs.writeFileSync(path.join(bin, 'npx'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$NPX_STUB_LOG"', 'exit 0', ''].join('\n'), { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'npx.cmd'), ['@echo off', '>>"%NPX_STUB_LOG%" echo %*', 'exit /b 0', ''].join('\r\n'));
     const sel = path.join(work, 'sel.txt');
-    fs.writeFileSync(sel, 'skill markdown-docs\nrule markdown-docs\nhook guard-secret-value\nmcp sentry\nmcp serena\n');
+    fs.writeFileSync(sel, 'skill markdown-style\nrule markdown-docs\nhook guard-secret-value\nmcp sentry\nmcp serena\n');
     if (mcpServers) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers }, null, 2) + '\n');
     // The installer writes every key it finds in its launch environment, and this runner may itself
     // sit in a session whose account env carries the real ones - scrub them so no real value lands.
@@ -85,10 +89,11 @@ function sandbox(mcpServers)
         PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: log, CLAUDE_STUB_PLUGINS: plugins,
         CLAUDE_STUB_MCPGET: path.join(work, 'mcp-get.txt'), CLAUDE_STUB_MCPGET_NEW: path.join(work, 'mcp-get-after.txt'),
+        CLAUDE_STUB_MCPLIST: path.join(work, 'mcp-list.txt'),
         NPX_STUB_LOG: npxLog,
     };
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
-    return { work, repo, acct, sel, env, log, npxLog, plugins, mcpGet: path.join(work, 'mcp-get.txt'), mcpGetAfter: path.join(work, 'mcp-get-after.txt') };
+    return { work, repo, acct, sel, env, log, npxLog, plugins, mcpList: path.join(work, 'mcp-list.txt'), mcpGet: path.join(work, 'mcp-get.txt'), mcpGetAfter: path.join(work, 'mcp-get-after.txt') };
 }
 
 // The scope defaults to project and a caller passing its own (the global-install tests) replaces it -
@@ -191,6 +196,52 @@ test('sh: update runs `plugin update` at the scope the plugin is actually instal
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
 
+// Claude Code registers claude-plugins-official only on its first INTERACTIVE launch
+// (code.claude.com/docs/en/plugins), so an install on a machine that never ran it interactively
+// failed 5 of 6 plugins with 'not found in marketplace' (measured on a fresh config 2026-09-15).
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: install registers and refreshes the official marketplace before the first plugin install`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8') + 'plugin superpowers\n');
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const log = calls(sb).split(/\r?\n/);
+            const add = log.findIndex((l) => /^plugin marketplace add anthropics\/claude-plugins-official\b/.test(l));
+            const upd = log.findIndex((l) => /^plugin marketplace update claude-plugins-official\b/.test(l));
+            const inst = log.findIndex((l) => /^plugin install superpowers@claude-plugins-official\b/.test(l));
+            assert.ok(inst >= 0, `${twin}: the plugin was never installed:\n${log.join('\n')}`);
+            assert.ok(add >= 0 && add < inst, `${twin}: the official marketplace is not added before the install`);
+            assert.ok(upd >= 0 && upd < inst, `${twin}: the official marketplace is not refreshed before the install`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
+// ponytail left both PLUGINS lists in 0.2.7x but never joined RETIRED_PLUGINS, so every existing
+// install kept it installed and enabled with no command able to remove it (measured 2026-09-15).
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: update uninstalls a retired plugin at its own scope and leaves a user plugin alone`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        fs.writeFileSync(sb.plugins, JSON.stringify([
+            { id: 'ponytail@ponytail', version: '1.0.0', scope: 'user', enabled: true },
+            { id: 'my-own@somewhere', version: '1.0.0', scope: 'project', enabled: true },
+        ]));
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'update') : runPs(sb, 'update');
+            assert.match(calls(sb), /plugin uninstall ponytail --scope user/, `${twin}: the retired plugin was not uninstalled at its scope`);
+            assert.doesNotMatch(calls(sb), /plugin uninstall my-own/, `${twin}: a user plugin was uninstalled`);
+            assert.match(out, /plugin pruned \(retired upstream\) \[user\]: ponytail/, `${twin}: the prune is not logged`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
 test('ps1: update repairs a stale MCP registration the CLI silently refused to rewrite (pwsh required)', { skip: skipNoPwsh }, () =>
 {
     const sb = sandbox({ sentry: STALE_SENTRY, 'hand-added': HAND_ADDED });
@@ -233,7 +284,7 @@ test('the repaired entries match byte-for-byte what `claude mcp add` itself writ
     // Captured from the real CLI (claude mcp add --transport http ... --header / -e K=V -- cmd args).
     // The verify pass writes these shapes without the CLI, so a drift in the CLI's format shows up here.
     const sb = sandbox({ context7: { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp'], env: {} } });
-    fs.writeFileSync(sb.sel, 'skill markdown-docs\nrule markdown-docs\nhook guard-secret-value\nmcp context7\n');
+    fs.writeFileSync(sb.sel, 'skill markdown-style\nrule markdown-docs\nhook guard-secret-value\nmcp context7\n');
     try
     {
         runSh(sb, 'update');
@@ -273,7 +324,37 @@ const GET_FIXED = [
     'sentry:', '  Scope: User config', '  Type: http',
     `  URL: ${SENTRY_URL}`, '',
 ].join('\n');
-const userSel = 'skill markdown-docs\nmcp sentry\n';
+const userSel = 'skill markdown-style\nmcp sentry\n';
+
+// `claude mcp get` (CLI 2.1.272) PRINTS a stored `${VAR:-default}` as `${VAR}` - the stored entry keeps the
+// default. Compared as printed, every global install flagged the playwright servers as drifted,
+// re-registered them and failed the run (measured on a fresh account 2026-09-15).
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: user scope - a \${VAR:-default} argument printed as \${VAR} by \`mcp get\` is not drift`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox();
+        fs.writeFileSync(sb.sel, 'skill markdown-style\nmcp playwright\n');
+        // pin the resolved version so the expected args are fixed offline (npm.cmd: native pwsh on Windows
+        // resolves a command through PATHEXT and never runs the extensionless script)
+        fs.writeFileSync(path.join(sb.work, 'bin', 'npm'), ['#!/bin/sh', 'echo 0.0.80', ''].join('\n'), { mode: 0o755 });
+        fs.writeFileSync(path.join(sb.work, 'bin', 'npm.cmd'), ['@echo off', 'echo 0.0.80', ''].join('\r\n'));
+        // the ps1 twin on Windows registers npx through `cmd /c` (a spawned stdio server cannot resolve
+        // npx.cmd), so the CLI prints that shape back
+        const winPs = twin === 'ps1' && process.platform === 'win32';
+        fs.writeFileSync(sb.mcpGet, ['playwright-chrome:', '  Scope: User config (available in all your projects)', '  Status: ✔ Connected', '  Type: stdio', `  Command: ${winPs ? 'cmd' : 'npx'}`,
+            `  Args: ${winPs ? '/c npx ' : ''}-y @playwright/mcp@0.0.80 --browser chrome --user-data-dir \${CLAUDE_PROJECT_DIR}/.playwright/chrome --output-dir \${CLAUDE_PROJECT_DIR}/.playwright/output`,
+            '  Environment:', ''].join('\n'));
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'install', ['--playwright-browsers', 'chrome'], 'global')
+                : runPs(sb, 'install', ['-PlaywrightBrowsers', 'chrome'], 'global');
+            assert.doesNotMatch(out, /shape drifted at user scope: playwright-chrome/, `${twin}: the printed \${VAR} form read as drift:\n${out.split('\n').filter((l) => /playwright/.test(l)).join('\n')}`);
+            assert.doesNotMatch(out, /mcp playwright-chrome could not be brought/, `${twin}: the run failed on it`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
 
 // install is the route that reaches this branch: it SKIPS the add for a name the CLI already
 // reports as configured, so an old-shaped registration survives it untouched until the verify pass.
@@ -328,7 +409,7 @@ test('ps1: a user-scope registration in the old shape is re-registered through t
 // -webkit, each with an explicit --browser and its own profile folder. Disabling is the user's
 // `/mcp disable`, which the close prints when an enabled engine is named - the installer writes no
 // toggle state. A legacy `playwright` registration is migrated to its engine and removed.
-const pwSel = 'skill markdown-docs\nmcp playwright\n';
+const pwSel = 'skill markdown-style\nmcp playwright\n';
 const PW_DIR = '${CLAUDE_PROJECT_DIR:-.}/.playwright';
 const npxCalls = (sb) => (fs.existsSync(sb.npxLog) ? fs.readFileSync(sb.npxLog, 'utf8') : '');
 const pwNames = (sb) => Object.keys(servers(sb)).filter((n) => n.startsWith('playwright')).sort();
@@ -399,6 +480,80 @@ test('sh: update migrates a legacy `playwright` registration to its engine and r
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
+
+// Measured 2026-09-15 on temp projects with the real CLI.
+for (const twin of ['sh', 'ps1'])
+{
+    const skip = twin === 'ps1' && skipNoPwsh;
+    const go = (sb, action, args = [], scope) => (twin === 'sh' ? runSh(sb, action, args, scope) : runPs(sb, action, args.map((a) => a
+        .replace('--playwright-browsers', '-PlaywrightBrowsers').replace('--playwright-enabled', '-PlaywrightEnabled')), scope));
+
+    // sh read `playwright: ... --browser webkit` off `claude mcp list` as BOTH webkit and chrome: the
+    // chrome fallback in the sed tested the line the webkit substitution had just rewritten.
+    test(`${twin}: global scope - a legacy \`playwright --browser webkit\` read off \`claude mcp list\` is webkit only`, { skip }, () =>
+    {
+        const sb = sandbox();
+        fs.writeFileSync(sb.sel, pwSel);
+        fs.writeFileSync(sb.mcpList, 'Checking MCP server health...\n\nplaywright: npx -y @playwright/mcp@0.0.70 --browser webkit --user-data-dir x - ✓ Connected\n');
+        try
+        {
+            go(sb, 'update', [], 'global');
+            const adds = calls(sb).split(/\r?\n/).filter((l) => /^mcp add .*playwright-/.test(l));
+            assert.ok(adds.some((l) => /playwright-webkit/.test(l)), `${twin}: webkit not registered:\n${adds.join('\n')}`);
+            assert.ok(!adds.some((l) => /playwright-chrome/.test(l)), `${twin}: a stray chrome server was registered:\n${adds.join('\n')}`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    // With a CLI whose remove WORKS, sh's report step found nothing left and printed nothing.
+    test(`${twin}: a dropped engine is reported removed when the CLI remove itself succeeded`, { skip }, () =>
+    {
+        const sb = sandbox({ 'playwright-chrome': pwServer('chrome'), 'playwright-firefox': pwServer('firefox'), 'hand-added': HAND_ADDED });
+        fs.writeFileSync(sb.sel, pwSel);
+        sb.env.CLAUDE_STUB_REMOVE_WORKS = '1';
+        try
+        {
+            const out = go(sb, 'update', ['--playwright-browsers', 'chrome']);
+            assert.deepStrictEqual(pwNames(sb), ['playwright-chrome'], `${twin}: firefox was not removed`);
+            assert.match(out, /mcp removed: playwright-firefox/, `${twin}: the removal is not reported`);
+            assert.deepStrictEqual(servers(sb)['hand-added'], HAND_ADDED, `${twin}: a hand-added server was touched`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: a legacy \`--browser=<engine>\` keeps its engine`, { skip }, () =>
+    {
+        const sb = sandbox({ playwright: LEGACY_PW(['--browser=webkit']) });
+        fs.writeFileSync(sb.sel, pwSel);
+        try
+        {
+            go(sb, 'update');
+            assert.deepStrictEqual(pwNames(sb), ['playwright-webkit'], `${twin}: --browser=webkit migrated to the wrong engine`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: an explicitly EMPTY engine flag is an error, never 'no flag'`, { skip }, () =>
+    {
+        const sb = sandbox();
+        fs.writeFileSync(sb.sel, pwSel);
+        try
+        {
+            const flagSets = twin === 'sh'
+                ? [['--playwright-browsers', ''], ['--playwright-browsers='], ['--playwright-browsers', ','], ['--playwright-enabled=']]
+                : [['-PlaywrightBrowsers', ''], ['-PlaywrightBrowsers', ','], ['-PlaywrightEnabled', '']];
+            for (const flags of flagSets)
+            {
+                const r = twin === 'sh'
+                    ? spawnSync('bash', [SH, 'install', '--scope', 'project', '--selection', sb.sel, '--source', ROOT, ...flags], { cwd: sb.repo, encoding: 'utf8', env: sb.env })
+                    : spawnSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sb.sel, '-Source', ROOT, ...flags], { cwd: sb.repo, encoding: 'utf8', env: sb.env });
+                assert.strictEqual(r.status, 1, `${twin} ${JSON.stringify(flags)}: exit ${r.status}, expected 1`);
+                assert.ok(!fs.existsSync(path.join(sb.repo, '.mcp.json')), `${twin} ${JSON.stringify(flags)}: nothing may run before the error`);
+            }
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
 
 test('sh: a legacy `playwright` with no --browser migrates to chrome', () =>
 {

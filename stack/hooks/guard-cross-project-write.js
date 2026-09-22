@@ -387,12 +387,23 @@ if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 16
 // Quoted spans: a `>` or a verb inside '...' / "..." is text an outer command carries (a commit
 // message, an echo, a grep pattern), never a write of its own. The write TARGET may still be
 // quoted - the patterns below capture it - only the verb's own position is checked.
+// A `$( ... )` inside a double-quoted span is SHELL again, with its own quoting: bash does not end
+// the outer span on the `"` of `"$(grep -o 'Sdk="[^"]*"' f)"`. Reading it as the closing quote
+// flipped every span after it, and a later `sed 's/<OutputType>//'` then read as a redirection to
+// `//` - replayed at exit 2, ~112k tokens re-sent. So the substitution is tracked as its own
+// context: the outer span pauses at `$(`, the inside is judged on its own (a real redirect in
+// there still counts), and the outer span resumes after the matching `)`.
 const quoted = [];
 {
-  let q = null; let start = 0;
+  const stack = []; let q = null; let start = 0;
   for (let i = 0; i < command.length; i++) {
     const c = command[i];
     if (c === '\\' && q !== "'") { i++; continue; }
+    if (q !== "'" && c === '$' && command[i + 1] === '(') {
+      if (q) quoted.push([start, i]);          // the outer span pauses here
+      stack.push(q); q = null; i++; continue;
+    }
+    if (!q && c === ')' && stack.length) { q = stack.pop(); start = i + 1; continue; }
     if (!q && (c === '"' || c === "'")) { q = c; start = i; }
     else if (q && c === q) { quoted.push([start, i + 1]); q = null; }
   }

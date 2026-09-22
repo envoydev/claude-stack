@@ -542,3 +542,34 @@ test('check 35: a trailing load verb with a back-reference is a directive too', 
     // And the leading form is untouched.
     assert.strictEqual(fires('Load `angular-security` before the edit.'), 1);
 });
+
+// 43. Every agent's tools: allowlist must grant the shared memory MCP's store, search and list
+// tools - the spec gives every seat search AND save, not just the implementers who already write.
+test('check 43: an agent tools: allowlist must grant the shared memory tools', () => {
+    const { lintAgentMemoryTools, MEMORY_TOOLS } = require('./lint-skills.js');
+    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__memory__memory_store', 'mcp__memory__memory_search', 'mcp__memory__memory_list']);
+
+    // A fixture agent with serena tools but no memory tools - the new check reports it by file.
+    const noMemory = 'tools: mcp__serena__find_symbol, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const found = lintAgentMemoryTools('agents/fixture.md', noMemory);
+    assert.strictEqual(found.length, 1, found.join('\n'));
+    assert.match(found[0], /agents\/fixture\.md/);
+    assert.match(found[0], /mcp__memory__memory_store/);
+    assert.match(found[0], /mcp__memory__memory_search/);
+    assert.match(found[0], /mcp__memory__memory_list/);
+
+    // The granted allowlist is clean.
+    const granted = 'tools: mcp__serena__find_symbol, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', granted), []);
+
+    // Partial grant still fails, naming only what is missing.
+    const partial = 'tools: Read, Grep, Glob, Bash, mcp__memory__memory_store\n';
+    const partialFound = lintAgentMemoryTools('agents/partial.md', partial);
+    assert.strictEqual(partialFound.length, 1, partialFound.join('\n'));
+    assert.ok(!partialFound[0].includes('mcp__memory__memory_store,'), 'the already-granted tool is not listed as missing');
+    assert.match(partialFound[0], /mcp__memory__memory_search/);
+    assert.match(partialFound[0], /mcp__memory__memory_list/);
+
+    // No tools: line at all = every tool inherited, memory included - nothing to report.
+    assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
+});

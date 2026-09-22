@@ -108,6 +108,7 @@ registrations - the installer's `--scope global` registers them with `--scope us
 | server | transport | target |
 |---|---|---|
 | serena | stdio | uvx ... --project-from-cwd |
+| memory | stdio | uvx --with numpy --from mcp-memory-service[sqlite]==<ver> memory server |
 | sentry | http | https://mcp.sentry.dev/mcp/${SENTRY_SLUG} |
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 
@@ -115,6 +116,24 @@ registrations - the installer's `--scope global` registers them with `--scope us
 kept browser (`playwright-<browser>`); which of them is switched on is the user's `/mcp` toggle, not
 something this table reads. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
+
+`memory` is locked like `serena` and `context7` (every install carries it). Add ONE line under
+this table whenever the row is present - the shared-memory level. Hooks install into a project's
+`.claude/hooks/` only, same as the secret-presence read above (`--scope global` installs skills
+`-g` and plugins/MCPs `--scope user`, but never copies hooks to the account dir - there is no
+account-level `memory.js` to fall back to). `.claude/hooks/memory.js` present: run `node
+.claude/hooks/memory.js level` and render `<level> <dbPath>` (or `none` if the read disagrees with
+the table row above - report that mismatch verbatim, never guess): `memory level: <level> -
+<dbPath>`. Absent (global mode, or the hook deselected in this project): do NOT attempt the read
+(it fails with `MODULE_NOT_FOUND`) - print `memory level: not checked - memory.js is not installed
+here` instead. No `memory` row at all: skip the line, nothing to read.
+
+Whenever that line runs, add a second one checking whether the session-start push can even fire on
+THIS machine: `node -e "try{require('node:sqlite');process.exit(0)}catch{process.exit(1)}"`. Exit 0
+adds nothing; a non-zero exit means this Node is below 22.13 (`node:sqlite` needs it unflagged), so
+render `memory start block: off - this Node is below 22.13, node:sqlite is unavailable and the
+session-start push never runs (memory_search still works - it goes through the MCP server, not this
+machine's Node)`.
 
 **Plugins** - `claude plugin list` (fail-soft: without the CLI print the banner +
 `plugin CLI unavailable - skipped`):
@@ -133,6 +152,7 @@ is how a commit-time security gate sat off through two runs that both reported n
 |---|---|
 | stack version (stamp) | 0.2.3 @ <short-sha> |
 | scope | project (the stamp's `scope:` line; `user` there = global) |
+| autoMemoryEnabled | false - the one-time import succeeded, Claude's own memory is off (this key always lives in THIS repo's own settings.json, even at global scope - never the account file) |
 | CLAUDE_STACK_DOCS_PATH | .claude/docs (default) |
 | CLAUDE_STACK_INSTRUMENT | 0 (default - off) |
 | CLAUDE_STACK_PUSH_GATE | 1 (default - on) - the publish half of the commit gate; 0 where the remote is already gated |
@@ -147,7 +167,12 @@ is how a commit-time security gate sat off through two runs that both reported n
 
 Stamp from `claude-stack.stamp` (`no stamp - source never resolved at install time` when
 absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and
-a house default applies. The rows above are the keys the stack SEEDS; any other `CLAUDE_STACK_*`
+a house default applies. `autoMemoryEnabled` is the one exception - a TOP-LEVEL settings.json key,
+not under `env`, written by the memory import: read it from THIS repo's own project
+`.claude/settings.json` ALWAYS, even for a global-scope install (the switch-off never touches the
+account file - that would silence every other project's memory too) and print `false` as done,
+`true` or the key ABSENT as `true/absent - the one-time import has not completed yet, Claude's own
+memory is still on` (never read an absent key as success). The rows above are the keys the stack SEEDS; any other `CLAUDE_STACK_*`
 key the file carries (`CLAUDE_STACK_ALLOW_WRITE_OUTSIDE`, a key a newer release added) gets its
 own row, value as written - this table is not a filter. The sentry and context7 rows read the ACCOUNT `settings.json` (`~/.claude/settings.json`,
 or the space's - the file `.mcp.json` expansion reads) and show presence only, never the value. That holds for ANY key, not just these three: a key matching the catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed as `set (N chars)` or `absent`, never by value; a
@@ -157,7 +182,7 @@ environment area.
 
 Presence, never the value - run this and paste its lines as-is:
 `node .claude/hooks/guard-secret-value.js --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
-(global scope: the same file under the account dir's `hooks/`; the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)` or `KEY=absent`.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)` or `KEY=absent`. Hooks install into a project's `.claude/hooks/` only, so when that file is absent - a global install, or the guard deselected - do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly
 as the docs-root rule states) plus serena's local memory:
@@ -165,20 +190,23 @@ as the docs-root rule states) plus serena's local memory:
 | artifact | present | captured | file updated |
 |---|---|---|---|
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
-| architecture/ASSESSMENT.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
-| architecture/BRANCH-DELTA.md | no | - | - |
-| PROJECT-CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
-| related-context/PROJECT-RELATED-CONTEXT.md | no | - | - |
+| architecture/watch.json | yes | - | 2026-07-24 |
+| quality/ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
+| code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
+| related-projects/RELATED-PROJECTS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
 | .serena/memories/ | yes | 4 notes | 2026-07-25 |
 
-`captured` is the doc's own `Captured:` stamp line read from the file (the related-context doc
-stamps per entry - show the newest); `file updated` is the file's mtime date. A `Captured:`
-stamp older than the file mtime is normal (loops edit docs without re-capturing) - render
-both, judge nothing. Rows are fixed - a capture never run shows `no`, so the user sees what is
-MISSING as clearly as what exists. One row is conditional, not a gap: related-context/PROJECT-RELATED-CONTEXT.md
+`captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
+stamps per entry - show the newest); `quality/ASSESSMENT.md` carries no `Captured:` stamp at all -
+it recomputes every run with no domain of its own, so this column shows its `As of:` freshness
+line instead; `file updated` is the file's mtime date. A `Captured:` stamp older than the file
+mtime is normal (loops edit docs without re-capturing) - render both, judge nothing. Rows are
+fixed - a capture never run shows `no`, so the user sees what is MISSING as clearly as what
+exists. One row is conditional, not a gap: related-projects/RELATED-PROJECTS.md
 applies only to a project with sibling repos - a standalone repo reads `no` there permanently.
+A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a note, never deleted.
 
 ## 4. Close
 

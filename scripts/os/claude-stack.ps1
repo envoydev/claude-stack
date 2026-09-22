@@ -20,7 +20,17 @@
 
 .PARAMETER Space
   Any word -> install into the ~/.claude-<Space> account (CLAUDE_CONFIG_DIR is exported for the claude
-  CLI) and use a separate memory_<Space>.db. Omit for the default ~/.claude account + shared memory.db.
+  CLI). Omit for the default ~/.claude account. Does NOT by itself change where the memory MCP's db
+  lives - pair it with -MemoryLevel scoped for a memory_<Space>.db.
+
+.PARAMETER MemoryLevel
+  Where the memory MCP's own SQLite db lives: 'global' = ~/.memory-mcp/memory.db (default when nothing
+  is registered yet), 'scoped' = ~/.memory-mcp/memory_<Space or default>.db, 'project' =
+  <project>\.memory-mcp\memory.db under the MAIN checkout (self-ignored via a generated
+  .memory-mcp/.gitignore; refused with -Scope global). Given, that level's path is used. Absent: an
+  existing registration keeps its db path BYTE-FOR-BYTE (only the runtime extra + pragmas are
+  upgraded); no existing registration = global. A level change never copies or deletes a db - one log
+  line names the new file and the one the old memories stay in.
 
 .PARAMETER Scope
   'project' (default) installs INTO this repo; 'global' installs into the active account. Overrides the
@@ -52,6 +62,13 @@
 .PARAMETER PlaywrightEnabled
   The one engine to keep switched on (one of the kept engines; given alone, it is added to the set). The run
   prints '/mcp disable playwright-<x>' for every other kept engine - switch any time with /mcp enable / disable.
+
+.PARAMETER DocsVersioning
+  How the docs are versioned - CLAUDE_STACK_DOCS_VERSIONING in the project settings.json env: 'git' = committed,
+  git versions them per branch; 'local' = per-branch overlays under <docs-path>/.branches/. Given, the value is
+  WRITTEN, overriding one already there, and one line names the old and new value. Absent = seeded only when the
+  key is missing: 'local' when the docs are kept out of git (no domain tracked, and a domain exists or git ignores
+  the docs root), else 'git' - a fresh project included. Any other value is refused before anything is written.
 
 .PARAMETER GitHubCli
   Install the GitHub CLI (gh) via winget if missing. Reminds you to run `gh auth login` when unauthenticated.
@@ -148,6 +165,13 @@ param(
   # on. Empty -> the registered set (chrome when none). e.g.: .\claude-stack.ps1 install -PlaywrightBrowsers chrome,firefox -PlaywrightEnabled firefox
   [string]$PlaywrightBrowsers = '',
   [string]$PlaywrightEnabled = '',
+  # Optional: WRITE CLAUDE_STACK_DOCS_VERSIONING ('git' or 'local') into the project settings.json env, over a value
+  # already there. Empty -> seeded only when absent. e.g.: .\claude-stack.ps1 update -DocsVersioning local
+  [string]$DocsVersioning = '',
+  # Optional: where the memory MCP's db lives - 'global' (default, ~/.memory-mcp/memory.db), 'scoped'
+  # (memory_<Space or default>.db) or 'project' (<project>\.memory-mcp\memory.db). Empty -> an existing
+  # registration's db path is kept unchanged; global with none. e.g.: .\claude-stack.ps1 install -MemoryLevel project
+  [string]$MemoryLevel = '',
   # Optional: install the GitHub CLI (gh) via winget if missing; prompts for `gh auth login`
   # when unauthenticated. e.g.: .\claude-stack.ps1 install -GitHubCli
   [switch]$GitHubCli,
@@ -358,6 +382,28 @@ if ($SentryAuth -notin @('', 'token', 'oauth')) {
   Write-Host "-SentryAuth must be 'token' or 'oauth' (got '$SentryAuth')" -ForegroundColor Red
   exit 1
 }
+# -DocsVersioning: lower-cased like the other enums; empty means 'not given' - the absent-only seed decides. Refused
+# HERE, before anything is written, so a typo never reaches settings.json. An explicitly EMPTY value is a typo too,
+# never 'no flag' - the sh twin's rule.
+if ($PSBoundParameters.ContainsKey('DocsVersioning') -and -not $DocsVersioning) { [Console]::Error.WriteLine("-DocsVersioning must be 'git' or 'local'"); exit 1 }
+$DocsVersioning = $DocsVersioning.ToLowerInvariant()
+if ($DocsVersioning -notin @('', 'git', 'local')) {
+  Write-Host "-DocsVersioning must be 'git' or 'local' (got '$DocsVersioning')" -ForegroundColor Red
+  exit 1
+}
+# -MemoryLevel: lower-cased like the other enums; empty means 'not given' - the existing-registration
+# (else global) rule decides. Refused HERE, before anything is written.
+$MemoryLevel = $MemoryLevel.ToLowerInvariant()
+if ($MemoryLevel -notin @('', 'global', 'scoped', 'project')) {
+  Write-Host "-MemoryLevel must be 'global', 'scoped' or 'project' (got '$MemoryLevel')" -ForegroundColor Red
+  exit 1
+}
+# A global install registers ONE memory server for every project of the account, so its db cannot live
+# inside one repo: every other project would share that file, and it would go when the repo goes.
+if ($MemoryLevel -eq 'project' -and $Scope -eq 'global') {
+  Write-Host '-MemoryLevel project cannot be used with -Scope global - a global install shares one db across every project of the account; pick global or scoped' -ForegroundColor Red
+  exit 1
+}
 # -PlaywrightBrowsers / -PlaywrightEnabled: lower-cased like the other enums and put in ONE canonical order
 # (chrome, msedge, firefox, webkit) so a server list never depends on how the flag was typed. Empty
 # browsers = 'resolve later' from what is registered (the playwright block after the selection).
@@ -370,6 +416,9 @@ if ($PlaywrightBrowsers) {
   }
   $PwKept = @($PwEnginesAll | Where-Object { $_ -in $pwWant })
 }
+# An explicitly EMPTY value (or one naming no engine, like ',') is a typo, never 'no flag' - the sh twin's rule.
+if ($PSBoundParameters.ContainsKey('PlaywrightBrowsers') -and -not $PwKept.Count) { [Console]::Error.WriteLine('-PlaywrightBrowsers needs at least one of chrome, msedge, firefox, webkit'); exit 1 }
+if ($PSBoundParameters.ContainsKey('PlaywrightEnabled') -and -not $PlaywrightEnabled) { [Console]::Error.WriteLine('-PlaywrightEnabled needs one of chrome, msedge, firefox, webkit'); exit 1 }
 $PlaywrightEnabled = $PlaywrightEnabled.ToLowerInvariant()
 if ($PlaywrightEnabled) {
   if ($PlaywrightEnabled -notin $PwEnginesAll) { [Console]::Error.WriteLine("-PlaywrightEnabled takes chrome, msedge, firefox, webkit (got '$PlaywrightEnabled')"); exit 1 }
@@ -393,9 +442,9 @@ if ($Space) {
   $spaceAccount = Join-Path $HOME (".claude-" + $Space)
   # Distinguish an existing account from a brand-new one so a typo'd space ('wrok') is visible, not silent.
   if (Test-Path -LiteralPath $spaceAccount -PathType Container) {
-    Log "space '$Space' -> existing account $spaceAccount (CLAUDE_CONFIG_DIR exported for the claude CLI); memory DB memory_$Space.db."
+    Log "space '$Space' -> existing account $spaceAccount (CLAUDE_CONFIG_DIR exported for the claude CLI); pass -MemoryLevel scoped for a matching memory_$Space.db (default without that flag: global)."
   } else {
-    Log "space '$Space' -> creating NEW account $spaceAccount (typo? did you mean an existing one?); memory DB memory_$Space.db."
+    Log "space '$Space' -> creating NEW account $spaceAccount (typo? did you mean an existing one?); pass -MemoryLevel scoped for a matching memory_$Space.db (default without that flag: global)."
   }
   if ($env:CLAUDE_CONFIG_DIR -and $env:CLAUDE_CONFIG_DIR -ne $spaceAccount) {
     Log "space '$Space' overrides CLAUDE_CONFIG_DIR ($env:CLAUDE_CONFIG_DIR)."
@@ -408,6 +457,10 @@ if ($Space) {
     Log "CLAUDE_CONFIG_DIR not set - using the claude CLI default account; resolving config paths to $ConfigDir."
   }
 }
+# The account's registration file (user-scope MCP servers): Claude Code keeps the DEFAULT account's at
+# ~/.claude.json, beside ~/.claude rather than inside it; only a CLAUDE_CONFIG_DIR account (a space is
+# one - exported above) keeps it inside its own dir.
+$AccountClaudeJson = if ($env:CLAUDE_CONFIG_DIR) { Join-Path $ConfigDir '.claude.json' } else { Join-Path $HOME '.claude.json' }
 
 $SerenaContext = 'claude-code'   # serena's --context for Claude Code
 
@@ -420,25 +473,49 @@ else {
   $ClaudeScope = 'user'
 }
 
+# Two roots, because a worktree has its own top-level but shares its repo:
+# - $MemoryTopLevel: the repo this run WRITES into - rules, hooks, settings.json and .mcp.json land at
+#   the git top-level (a worktree's own folder inside a worktree), else (project scope only, a non-git
+#   project) the current directory. The registration lookup, the notes import and the switch-off read it.
+# - $MemoryProjectRoot: where a -MemoryLevel project db lives - the MAIN checkout (the git common dir's
+#   parent), never a worktree, which is deleted with its branch; a submodule or an older git falls
+#   back to the top-level.
+# A global-scope run outside any project (not inside a git repo) has neither - the level resolution and
+# Import-MemoryNotes read that as 'no project' and fail-soft. Both go through GetFullPath: git prints
+# forward slashes, and joined with Join-Path on Windows that made a MIXED path the next run could not
+# match against its own registration (it read back as 'custom' and lost its .gitignore).
+$MemoryTopLevel = ''
+try { $MemoryTopLevel = [string](& git rev-parse --show-toplevel 2>$null); if ($LASTEXITCODE -ne 0) { $MemoryTopLevel = '' } } catch { $MemoryTopLevel = '' }
+if (-not $MemoryTopLevel -and $ClaudeScope -eq 'project') { $MemoryTopLevel = (Get-Location).Path }
+$MemoryProjectRoot = ''
+try {
+  $memCommon = [string](& git rev-parse --path-format=absolute --git-common-dir 2>$null)
+  if ($LASTEXITCODE -eq 0 -and $memCommon -match '^(.+)[\\/]\.git$') { $MemoryProjectRoot = $Matches[1] }
+} catch { $MemoryProjectRoot = '' }
+if (-not $MemoryProjectRoot) { $MemoryProjectRoot = $MemoryTopLevel }
+if ($MemoryTopLevel) { $MemoryTopLevel = [System.IO.Path]::GetFullPath($MemoryTopLevel) }
+if ($MemoryProjectRoot) { $MemoryProjectRoot = [System.IO.Path]::GetFullPath($MemoryProjectRoot) }
+
 # ===========================================================================
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (78).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (79).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
   'envoydev/claude-stack|dev-log-convert'           # UA/EN work notes -> structured English work log; trigger 'dev-log'
   'envoydev/claude-stack|explain-code-tutor'        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   'envoydev/claude-stack|project-quality-loop'             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
-  'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the project-architecture-analyzer capture writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
-  'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
-  'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + ASSESSMENT.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only
+  'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only
+  'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  'envoydev/claude-stack|project-architecture-quality-analyzer' # deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only
   'envoydev/claude-stack|project-test-coverage-analyzer' # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
   'envoydev/claude-stack|project-test-coverage-loop'     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
   'envoydev/claude-stack|project-version-upgrade'        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
   'envoydev/claude-stack|project-agent-capabilities'           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only
-  'envoydev/claude-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-context/PROJECT-RELATED-CONTEXT.md; manual /-only
+  'envoydev/claude-stack|project-related-context'        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only
   'envoydev/claude-stack|project-build-from-scratch' # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   'envoydev/claude-stack|project-solve-cross-task'    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
   'envoydev/claude-stack|project-verify-plan'      # audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review
@@ -562,9 +639,8 @@ $Plugins = @(
 
 # (3) MCP servers "name|args"; scope follows $Scope. SINGLE-QUOTED so ${...} stays LITERAL ->
 #     Claude Code interpolates ${CLAUDE_PROJECT_DIR:-.} at server launch.
-#     memory: uses ${HOME_MEMORY_DIR} - a script-local token resolved to $HOME\.memory-mcp at install
-#     time (a fixed home path, so a Cursor install on the same machine shares the same DB). A space
-#     (e.g. 'work') switches to a separate per-space DB (memory_<space>.db).
+#     memory: uses ${MEMORY_DB_PATH} - a script-local token resolved at install time to the db the
+#     -MemoryLevel resolution picked.
 # PERFORMANCE (see claude-stack.sh for the full rationale): resolve each runtime's LATEST version
 # HERE (install/update network step) and bake it into the registration. `install` skips already-
 # registered MCPs, so the resolved version stays FROZEN until `update` re-resolves and bumps it -
@@ -587,7 +663,9 @@ $McpMemoryVer     = Get-PypiLatest 'mcp-memory-service'
 $Ctx7Pin   = if ($McpContext7Ver)   { '@' + $McpContext7Ver }   else { '' }
 $PwPin     = if ($McpPlaywrightVer) { '@' + $McpPlaywrightVer } else { '' }
 $SerenaPin = if ($McpSerenaVer)     { '@' + $McpSerenaVer }     else { '' }
-$MemoryPin = if ($McpMemoryVer)     { '@' + $McpMemoryVer }     else { '' }
+# The memory pin is spelled '==<ver>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<ver>',
+# FACT-EMBED) - not '@<ver>' like the others, which have no extras suffix to sit next to.
+$MemoryPin = if ($McpMemoryVer)     { '==' + $McpMemoryVer }     else { '' }
 # Report what pinned vs. fell back to unpinned - the whole point of this step is 'frozen until update'.
 $resolvedVers = [ordered]@{ 'context7' = $McpContext7Ver; 'playwright' = $McpPlaywrightVer; 'serena' = $McpSerenaVer; 'memory' = $McpMemoryVer }
 foreach ($k in $resolvedVers.Keys) {
@@ -595,13 +673,118 @@ foreach ($k in $resolvedVers.Keys) {
   else { Log "  !! could not resolve $k latest - installing unpinned (re-run when online to pin it)" }
 }
 
-$MemoryBackend = 'sqlite_vec'  # separation is by DB path (below); backend stays sqlite_vec (the only valid local backend)
-$MemoryDbFile  = if ($Space) { "memory_$Space.db" } else { 'memory.db' }
+$MemoryBackend = 'sqlite_vec'   # the only valid local backend; level (below) picks the db PATH
 # Native separator: '\' on Windows (Join-Path yields a backslashed root), '/' under pwsh on mac/Linux -
 # so the DB is the same file a sh install writes. JSON serialization escapes a backslash automatically.
-$MemoryEntry   = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
-                 ' -e MCP_MEMORY_SQLITE_PATH=${HOME_MEMORY_DIR}' + [IO.Path]::DirectorySeparatorChar + $MemoryDbFile +
-                 ' -- uvx --with numpy --from mcp-memory-service' + $MemoryPin + ' memory server'
+$HomeMemoryDir = Join-Path $HOME '.memory-mcp'
+
+# -MemoryLevel: where the memory MCP's own SQLite db lives (FACT-SCHEMA / cross-task-facts.md) - global
+# ~/.memory-mcp/memory.db, scoped ~/.memory-mcp/memory_<space|default>.db, project
+# <project>\.memory-mcp\memory.db. Given, that level's default path is used (refusing 'project' with no
+# identifiable project root; 'project' with -Scope global was refused with the other parameters).
+# Absent: an EXISTING registration keeps its MCP_MEMORY_SQLITE_PATH byte-for-byte - only the runtime
+# extra + pragmas are upgraded below, never the path; no existing registration = global. A level change
+# never copies or deletes a db - whichever file the old memories are in stays there, and the one log
+# line below names both files (the guided commands quote it).
+# Mirrors stack/hooks/memory.js's pathForLevel/levelOfPath/registeredDbPath, reimplemented here (not
+# require()'d): the sh twin needs its own copy of the formula regardless, and this runs before the
+# source snapshot's hooks are copied.
+function Get-MemoryDefaultPath([string]$Level) {
+  switch ($Level) {
+    'global'  { return (Join-Path $HomeMemoryDir 'memory.db') }
+    'scoped'  { $s = if ($Space) { $Space } else { 'default' }; return (Join-Path $HomeMemoryDir "memory_$s.db") }
+    'project' { return (Join-Path (Join-Path $MemoryProjectRoot '.memory-mcp') 'memory.db') }
+  }
+}
+# The inverse - 'global'/'scoped'/'project' for a path matching one of the three shapes EXACTLY (never
+# a prefix/substring match, so a foreign path is never mistaken for one of ours); '' otherwise.
+function Get-MemoryLevelOfPath([string]$P) {
+  if (-not $P) { return '' }
+  try {
+    if ($MemoryProjectRoot -and $P -eq (Join-Path (Join-Path $MemoryProjectRoot '.memory-mcp') 'memory.db')) { return 'project' }
+    if ($P -eq (Join-Path $HomeMemoryDir 'memory.db')) { return 'global' }
+    if ((Split-Path $P -Parent) -eq $HomeMemoryDir -and (Split-Path $P -Leaf) -match '^memory_[^/\\]+\.db$') { return 'scoped' }
+  } catch { return '' }
+  return ''
+}
+# The CURRENTLY REGISTERED db path, if any (mirrors memory.js's registeredDbPath). Project scope: the
+# repo's .mcp.json first, else the account file (its user-scope entry, then this repo's local-scope
+# one). User scope reads ONLY the account file's user-scope entry: a repo's .mcp.json - a project-level
+# path an earlier project install wrote - must never become the account-wide path. The account file
+# is $AccountClaudeJson (~/.claude.json for the default account). '' when there is no registration,
+# node is missing, or a file cannot be read/parsed; never throws (every read is its own try/catch,
+# inside the node script itself). The project root goes LAST: it is '' outside a repo, and PS 5.1 drops
+# an empty native argument, which would shift every argument after it.
+function Get-MemoryRegisteredPath {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return '' }
+  $memScript = @'
+const fs=require("fs");const path=require("path");
+const [scope,homeDir,accountFile,projectRoot]=process.argv.slice(1);
+function expandHome(p){ if(typeof p!=="string"||!p) return p; let out=p;
+  if(out==="~"||out.startsWith("~"+path.sep)||out.startsWith("~/")) out=path.join(homeDir,out.slice(1));
+  return out.replace(/\$\{HOME\}/g,homeDir).replace(/\$HOME\b/g,homeDir); }
+function readJson(f){ try{return JSON.parse(fs.readFileSync(f,"utf8"));}catch{return null;} }
+function envPath(entry){ const p=entry&&entry.env&&entry.env.MCP_MEMORY_SQLITE_PATH;
+  return typeof p==="string"&&p?path.normalize(expandHome(p)):null; }
+const projectScope=scope==="project";
+try{
+  if(projectScope&&projectRoot){
+    const mcp=readJson(path.join(projectRoot,".mcp.json"));
+    const found=envPath(mcp&&mcp.mcpServers&&mcp.mcpServers.memory);
+    if(found){ console.log(found); process.exit(0); }
+  }
+}catch{}
+try{
+  const account=readJson(accountFile);
+  if(account){
+    const userScope=envPath(account.mcpServers&&account.mcpServers.memory);
+    if(userScope){ console.log(userScope); process.exit(0); }
+    if(projectScope&&projectRoot){
+      const projects=account.projects||{};
+      const proj=projects[projectRoot]||projects[projectRoot.replace(/\\/g,"/")];
+      const projScope=envPath(proj&&proj.mcpServers&&proj.mcpServers.memory);
+      if(projScope){ console.log(projScope); process.exit(0); }
+    }
+  }
+}catch{}
+'@
+  try { return (((& node -e $memScript $ClaudeScope $HOME $AccountClaudeJson $MemoryTopLevel 2>$null) -join "`n").Trim()) } catch { return '' }
+}
+
+$existingMemPath = Get-MemoryRegisteredPath
+if ($MemoryLevel) {
+  $MemLevel = $MemoryLevel
+  if ($MemLevel -eq 'project' -and -not $MemoryProjectRoot) {
+    Write-Host '-MemoryLevel project needs a project (not inside a git repo)' -ForegroundColor Red
+    exit 1
+  }
+  $MemoryDbPath = Get-MemoryDefaultPath $MemLevel
+  # A flag that MOVES an existing registration: the db file is never copied, so name both files.
+  if ($existingMemPath -and $existingMemPath -ne $MemoryDbPath) {
+    $memOldLevel = Get-MemoryLevelOfPath $existingMemPath
+    if (-not $memOldLevel) { $memOldLevel = 'custom' }
+    Log "memory: level $memOldLevel -> ${MemLevel}: $MemoryDbPath (old memories stay in $existingMemPath)"
+  }
+} else {
+  if ($existingMemPath) {
+    $MemoryDbPath = $existingMemPath
+    $MemLevel = Get-MemoryLevelOfPath $MemoryDbPath
+    if (-not $MemLevel) { $MemLevel = 'custom' }
+    Log "memory: no -MemoryLevel given - keeping the existing registration's db path unchanged ($MemLevel): $MemoryDbPath"
+  } else {
+    $MemLevel = 'global'
+    $MemoryDbPath = Get-MemoryDefaultPath 'global'
+  }
+}
+
+# FACT-EMBED: the '[sqlite]' extra is what gives real (ONNX, 384-dim) embeddings - without it the
+# server hash-embeds the first launch and then REFUSES to start on every later one once the db holds
+# rows. FACT-PRAGMA: the service's own busy_timeout default is 5000ms; MCP_MEMORY_SQLITE_PRAGMAS raises
+# it (and the python-level connect timeout with it) - always added since 5000 < 15000.
+$MemoryEntry = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
+               ' -e MCP_MEMORY_SQLITE_PATH=${MEMORY_DB_PATH}' +
+               ' -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000' +
+               ' -- uvx --with numpy --from mcp-memory-service[sqlite]' + $MemoryPin + ' memory server'
 
 # npx-launched MCPs (context7, angular-cli, playwright): on Windows the spawned stdio server can't
 # resolve the bare `npx` shim (it's npx.cmd), so it dies with JSON-RPC -32000 - wrap in `cmd /c`.
@@ -719,7 +902,7 @@ $Mcps = @(
   $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
   $SentryEntry  # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; -SentrySlug seeds the slug); -SentryAuth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
-  $MemoryEntry  # memory: cross-project recall - the subagent handoff runs on serena; comment out in a standalone project
+  $MemoryEntry  # memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; -MemoryLevel picks where its db lives
   $Context7Entry                              # up-to-date library/framework/SDK docs (beats recalled API knowledge)
 )
 
@@ -743,7 +926,8 @@ $Hooks = @(
   'guard-secret-value.js::Grep::'                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   'guard-unapproved-dispatch.js::Task|Agent::'    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   'guard-ungated-commit.js::Bash|PowerShell::'               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
-  'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
+  'guard-stop-contract.js::@Stop::'               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth
+  'guard-stop-contract.js::@SubagentStop::'       # SubagentStop: hold ONCE a subagent that stops on a wait nobody will end (a first-person 'I'll wait for...' close or its own ScheduleWakeup call) while it started no background work of its own - the parent's history is not its situation (field report: a fork dropped its whole brief this way)
   'guard-stop-contract.js::AskUserQuestion::'  # PreToolUse AskUserQuestion: INJECT context into the ask being built - stale scope (an option naming repo/remote/job state with no fresh read this turn), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for a flow whose every stop is a tool call, a live credential, and the house voice in the ask's own text. Presence only, never denies
   'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   'guard-fresh-session-start.js::@UserPromptSubmit::'   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
@@ -752,6 +936,12 @@ $Hooks = @(
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@SessionStart::'     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
   'guard-answer-length.js::@Stop::'               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
+  'docs-session.js::@SessionStart::'              # the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then ORIENTATION.md, this branch's overrides and how to read by section
+  'docs-session.js::@SubagentStart::'             # the same orientation for a dispatched subagent - SessionStart context never reaches one, plus the snapshot the finish ask compares against
+  'docs-session.js::@SubagentStop::'              # the finish ask, per agent: what THAT agent changed, once - the seat that made the change is the only context that knows why
+  'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::'  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
+  'docs-session.js::@Stop::'                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
+  'memory-session.js::@SessionStart::'            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -806,8 +996,8 @@ $Agents = @(
   'angular-test-resolver.md'         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
   'architecture-analyzer.md'                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the architecture + test-coverage captures fan it out, also independently callable
   'test-coverage-analyzer.md'             # analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the project-test-coverage-analyzer skill fans it out over the raw results; never runs the suite
-  'code-style-analyzer.md'                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
-  'related-project-analyzer.md'           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-context/PROJECT-RELATED-CONTEXT.md
+  'code-style-analyzer.md'                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/code-style/CODE-STYLE.md + the generated project-code-style rule from its structured reports
+  'related-project-analyzer.md'           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md
   'ci-failure-diagnoser.md'          # analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route
   'runtime-failure-diagnoser.md'               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
   'evidence-gatherer.md'             # diagnosis support (sonnet/low): read-only - a diagnoser dispatches it to reproduce/confirm and return a compact digest, keeping log volume off the opus seat
@@ -861,6 +1051,7 @@ $ClaudeRules = @(
   'baseline-git.md'
   'baseline-navigation.md'
   'baseline-docs-root.md'      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
+  'baseline-memory.md'        # what goes to the memory MCP - locks it in, like baseline-navigation locks serena
   # Path-scoped routing
   'markdown-docs.md'          # markdown-style routing, path-scoped **/*.md
   'javascript-conventions.md'  # JS-family conventions, path-scoped js/jsx/mjs/cjs
@@ -908,7 +1099,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -eq 'inject-code-style') { continue }                                               # legacy generated
+    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory')) { continue }                    # legacy generated; docs.js/memory.js are engines, not hooks
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -984,6 +1175,34 @@ if ($InstalledOnly) {
       Log "installed-only: adopting hook $n - shipped by this release and absent here"
     }
   }
+  # The always-on baseline (meta/recommendations.json `always.rules` / `always.mcps`) is adopted the
+  # same way: a rule or server every install carries reached an existing one ONLY here - measured, a
+  # pre-memory install updated to this release gained the start hook but never baseline-memory.md or
+  # the memory server, the rule and the server the switch-off of Claude's own memory depends on. A
+  # layer this install does not carry at all (no rule, or no server, found above) stays absent. There
+  # is NO drop exception here, unlike hooks: the always set is locked, like serena, so an always item
+  # absent from disk is adopted whatever the previous stamp says - a stamp that named the shipped list
+  # once read as a drop of everything a standalone run had failed to adopt, and memory never arrived.
+  # The file sits next to this script (a checkout or an extracted snapshot) or in -Source; a run with
+  # neither adopts nothing - the import gate below then keeps memory on, and the next run that finds
+  # the file adopts.
+  $ioRecs = ''
+  foreach ($c in @((Join-Path $PSScriptRoot '..\..\meta\recommendations.json'), $(if ($Source) { Join-Path $Source 'meta/recommendations.json' } else { '' }))) {
+    if ($c -and (Test-Path -LiteralPath $c)) { $ioRecs = $c; break }
+  }
+  if ($ioRecs) {
+    $ioAlways = $null
+    try { $ioAlways = (Get-Content -LiteralPath $ioRecs -Raw | ConvertFrom-Json).always } catch { $ioAlways = $null }
+    foreach ($cat in @('rule', 'mcp')) {
+      if (-not ($ioLines | Where-Object { $_.StartsWith("$cat ") })) { continue }
+      $ioNames = if ($ioAlways -and $ioAlways.PSObject.Properties["$($cat)s"]) { @($ioAlways."$($cat)s") } else { @() }
+      foreach ($n in $ioNames) {
+        if ($ioLines -contains "$cat $n") { continue }
+        $ioLines += "$cat $n"
+        Log "installed-only: adopting $cat $n - always shipped by this release and absent here"
+      }
+    }
+  }
   # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
   # would otherwise install all of them.
   if (-not ($ioLines | Where-Object { $_.StartsWith('hook ') })) { $Hooks = @() }
@@ -1047,6 +1266,20 @@ if ($PrintPlan) {
   exit 0
 }
 
+# project level: the db lives INSIDE the project, self-ignored so it is never committed - a
+# '.memory-mcp\.gitignore' holding '*' only when absent (FACT-GITIGNORE: neither twin otherwise ever
+# writes to a project's .gitignore; this file lives fully inside the folder it ignores, so that
+# precedent is untouched - the project's own .gitignore is never opened). Also covers a KEPT existing
+# path that happens to already be project-shaped. After the -PrintPlan exit: a dry run writes nothing.
+if ($MemLevel -eq 'project' -and $MemoryProjectRoot) {
+  $memProjDir = Join-Path $MemoryProjectRoot '.memory-mcp'
+  if (-not (Test-Path -LiteralPath $memProjDir)) { New-Item -ItemType Directory -Path $memProjDir -Force | Out-Null }
+  $memGitignore = Join-Path $memProjDir '.gitignore'
+  if (-not (Test-Path -LiteralPath $memGitignore)) {
+    [System.IO.File]::WriteAllText($memGitignore, "*`n", (New-Object System.Text.UTF8Encoding($false)))
+  }
+}
+
 # --- playwright: one server per browser engine --------------------------------------------------
 # A Playwright MCP server drives ONE browser, fixed at launch (`--browser`; @playwright/mcp 0.0.80 has
 # no tool to switch it - measured), so the manifest's single `playwright` entry expands HERE, after the
@@ -1069,7 +1302,8 @@ function Get-PlaywrightRegistered {
       elseif ($p.Name -eq 'playwright') {
         $a = @(); if ($p.Value.PSObject.Properties['args']) { $a = @($p.Value.args) }
         $i = [array]::IndexOf($a, '--browser')
-        $found += if ($i -ge 0 -and $i -lt $a.Count - 1) { [string]$a[$i + 1] } else { 'chrome' }
+        $eq = @($a | Where-Object { "$_" -match '^--browser=' }) | Select-Object -First 1
+        $found += if ($i -ge 0 -and $i -lt $a.Count - 1) { [string]$a[$i + 1] } elseif ($eq) { ([string]$eq).Substring(10) } else { 'chrome' }
       }
     }
   }
@@ -1077,7 +1311,7 @@ function Get-PlaywrightRegistered {
     try {
       foreach ($l in @(& claude mcp list 2>$null)) {
         if ($l -match '^playwright-(chrome|msedge|firefox|webkit):') { $found += $Matches[1] }
-        elseif ($l -match '^playwright:') { $found += if ($l -match '--browser\s+([a-z]+)') { $Matches[1] } else { 'chrome' } }
+        elseif ($l -match '^playwright:') { $found += if ($l -match '--browser[=\s]+([a-z]+)') { $Matches[1] } else { 'chrome' } }
       }
     } catch {}
   }
@@ -1326,7 +1560,8 @@ function Get-StackSrc {
     if ($script:StackSha) {
       # Stamp the URL the caller actually cloned from, not our default - they may have used a fork.
       $originUrl = (& git -C $Source remote get-url origin 2>$null)
-      if ($originUrl) { $script:StackRepoUrl = $originUrl }
+      # an SSH remote is no browsable URL for the stamp's compare line - spell it as https
+      if ($originUrl) { $script:StackRepoUrl = ($originUrl -replace '^(ssh://)?git@([^:/]+)[:/](.+)$', 'https://$2/$3') -replace '\.git$', '' }
     } else { Read-ReleaseSource -Dir $Source }
     if (-not $script:StackSha) { Log "source: $Source (provided; no git checkout or RELEASE-SOURCE - no revision, so no stamp)" }
     else {
@@ -1502,8 +1737,19 @@ function Install-Skills {
   }
 }
 
+# Claude Code registers claude-plugins-official itself only on its first INTERACTIVE launch
+# (code.claude.com/docs/en/plugins), so an install before that failed every official plugin with 'not
+# found in marketplace' (measured on a fresh config). Register it (a no-op when present) and refresh it
+# so a stale clone knows the plugins this release names. Fail-soft both ways.
+function Initialize-OfficialMarketplace {
+  try { & claude plugin marketplace add anthropics/claude-plugins-official *> $null } catch {}
+  try { & claude plugin marketplace update claude-plugins-official *> $null } catch {}
+  $global:LASTEXITCODE = 0
+}
+
 function Install-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
+  Initialize-OfficialMarketplace
   foreach ($mp in $ExtraMarketplaces) { try { & claude plugin marketplace add $mp 2>$null } catch {} }
   foreach ($p in $Plugins) {
     # claude-hud is a statusline HUD - force USER scope regardless of $ClaudeScope. A project-scoped
@@ -1519,10 +1765,9 @@ function Resolve-McpArgv([string]$Spec) {
   # Split the manifest args into argv words FIRST, then resolve the path tokens inside each word - so a
   # resolved path that contains a space (C:\Users\Jane Doe) stays ONE argument instead of splitting
   # into two. .Split(' ') yields an array (no glob expansion, unlike bash word-splitting).
-  # HOME_MEMORY_DIR: the shared memory root ($HOME\.memory-mcp) - always resolved at install time to a
-  # fixed home path, so a Cursor install on the same machine points to the same DB.
-  $memDir = Join-Path $HOME '.memory-mcp'
-  return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('${HOME_MEMORY_DIR}', $memDir) })
+  # MEMORY_DB_PATH: the memory MCP's resolved db path (level-dependent, may itself sit under a project
+  # root with a space) - resolved after the split, never pre-substituted into the manifest string.
+  return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('${MEMORY_DB_PATH}', $MemoryDbPath) })
 }
 
 function Register-Mcp([string]$Name, [string]$Spec) {
@@ -1723,6 +1968,7 @@ function Get-McpShape([string]$Name) {
   return ''
 }
 
+$McpDefaultRe = '\$\{([A-Za-z_][A-Za-z0-9_]*):-[^}]*\}'
 function Repair-McpsUser {
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
@@ -1730,13 +1976,17 @@ function Repair-McpsUser {
     $spec = $parts[1]
     $want = Get-McpExpected $name $spec
     $expected = if ($want.type -eq 'http') { "http|$($want.url)" } else { ("stdio|$($want.command) " + (@($want.args) -join ' ')).TrimEnd() }
-    $have = Get-McpShape $name
+    # `claude mcp get` PRINTS a stored `${VAR:-default}` as `${VAR}` (CLI 2.1.272 - the stored entry keeps
+    # the default), so both sides compare with the default dropped; as printed, every playwright server
+    # read as drifted on every global run and failed it (measured).
+    $expected = $expected -replace $McpDefaultRe, '$${$1}'
+    $have = (Get-McpShape $name) -replace $McpDefaultRe, '$${$1}'
     if (-not $have) { continue }        # an older CLI, or a server the account config does not expose
     if ($have -eq $expected) { continue }
     Log "  mcp shape drifted at user scope: $name - re-registering"
     try { & claude mcp remove $name -s $ClaudeScope 2>$null | Out-Null } catch {}
     [void](Register-Mcp $name $spec)
-    $have = Get-McpShape $name
+    $have = (Get-McpShape $name) -replace $McpDefaultRe, '$${$1}'
     if ($have -and $have -ne $expected) {
       Add-Failure "mcp $name could not be brought to the current shape at user scope - remove it by hand (claude mcp remove $name -s user) and re-run"
     }
@@ -1758,6 +2008,11 @@ function Get-Hooks {
   # the fresh-session hooks' model -> context window table: data, not a wired hook - copied only
   # beside a hook that reads it
   if ($files -contains 'guard-stop-contract.js' -or $files -contains 'guard-fresh-session-start.js') { $files += 'model-windows.json' }
+  # the docs hook's engine: required by docs-session.js from its own directory, and run by the model as
+  # `node .claude/hooks/docs.js` - copied only beside the hook
+  if ($files -contains 'docs-session.js') { $files += 'docs.js' }
+  # the memory hook's engine: required by memory-session.js from its own directory - same split.
+  if ($files -contains 'memory-session.js') { $files += 'memory.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -1799,6 +2054,82 @@ function Set-DocsRootStamp {
     Clear-WriteBlockers $rule
     [System.IO.File]::WriteAllText($rule, $ruleBody, (New-Object System.Text.UTF8Encoding($false)))
   } catch { Log "  !! docs-root stamp failed on $rule - the rule keeps the env-wins fallback (that RULE file is the write target, not the install stamp)" }
+}
+
+function Resolve-DocsRoot {
+  # Resolve the docs-path value the same way Set-DocsRootStamp does: settings.json
+  # CLAUDE_STACK_DOCS_PATH, else the pre-0.2.43 CLAUDE_DOCS_PATH key, else the default.
+  param([string]$root)
+  $val = '.claude/docs'
+  $settings = Join-Path $root '.claude/settings.json'
+  if (Test-Path $settings) {
+    try {
+      $data = Get-Content $settings -Raw | ConvertFrom-Json
+      foreach ($k in @('CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH')) {
+        if ($data.env -and $data.env.PSObject.Properties[$k] -and $data.env.($k)) { $val = $data.env.($k); break }
+      }
+    } catch {}
+  }
+  return $val
+}
+
+function Move-DocsFile {
+  # ABSENT-ONLY move: never overwrites an existing new file, never touches a missing old one (a
+  # plain rename/move, so content is unchanged).
+  param([string]$OldPath, [string]$NewPath, [string]$Label)
+  if (-not (Test-Path -LiteralPath $OldPath -PathType Leaf)) { return }
+  if (Test-Path -LiteralPath $NewPath) {
+    Log "  docs migration ($Label): $NewPath already exists - $OldPath left in place, nothing overwritten"
+    return
+  }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $NewPath) | Out-Null
+  Clear-WriteBlockers $OldPath
+  Move-Item -LiteralPath $OldPath -Destination $NewPath
+  Log "  docs migration ($Label): $(Split-Path -Leaf $OldPath) -> $NewPath"
+}
+
+function Enable-DocsDomain {
+  # ABSENT-ONLY: when the doc its capture writes exists and the folder holds no watch.json, write the minimal one
+  # ({} - declares nothing, adds no source root to the gate), which is what makes the folder a domain the engine
+  # sees. Never overwrites a watch.json (any content, any validity), never creates the folder. Keyed on the doc at
+  # its NEW path, so an install an EARLIER run migrated is switched on too; the capture's next run replaces {} with
+  # its real entries. Twin of the .sh _switch_on_docs_domain - keep both in parity.
+  param([string]$Dir, [string]$Doc)
+  if (-not (Test-Path -LiteralPath (Join-Path $Dir $Doc) -PathType Leaf)) { return }
+  $watch = Join-Path $Dir 'watch.json'
+  # Get-Item -Force sees a dangling link that Test-Path does not - still theirs, never written through.
+  if ((Test-Path -LiteralPath $watch) -or (Get-Item -LiteralPath $watch -Force -ErrorAction SilentlyContinue)) { return }
+  $name = Split-Path -Leaf $Dir
+  # A doc an older capture wrote carries no section ids; once the folder is a domain `docs.js lint` flags each
+  # section. Said HERE rather than fixed: seed-ids would rewrite the project's docs across every domain.
+  $text = Get-Content -LiteralPath (Join-Path $Dir $Doc) -Raw -ErrorAction SilentlyContinue
+  $note = if ("$text" -match '(?m)^#{2,4}\s' -and "$text" -notmatch '(?i)<!--\s*id:') { " - its sections predate section ids, so 'docs.js lint' flags them until 'node .claude/hooks/docs.js seed-ids' or the capture's next run" } else { '' }
+  try {
+    [System.IO.File]::WriteAllText($watch, "{}`n", (New-Object System.Text.UTF8Encoding($false)))
+    Log "  docs domain: $name/ switched on - watch.json written ({}; the capture's next run fills in its entries)$note"
+  } catch { Log "  !! docs domain: could not write $watch - $name/ stays invisible to the docs engine until its capture re-runs" }
+}
+
+function Move-DocsDomains {
+  # INSTALL + UPDATE: three absent-only moves onto the docs-domain layout - a file a capture used to
+  # write at the OLD path now writes at the NEW one, so an existing install's file is relocated once,
+  # byte-identical, and never overwrites a file already at the new path. Touches nothing else:
+  # related-context/ keeps every sibling-repo working paper - the capture's own drop-box for
+  # cross-repo plans, change requests, issue notes - exactly where it is; only the orientation doc
+  # this capture wrote moves out of it. Twin of the .sh migrate_docs_domains - keep both in parity.
+  $root = Get-RepoRoot
+  if (-not $root) { return }
+  $docsRoot = (Resolve-DocsRoot $root).TrimEnd('/', '\')
+  $base = Join-Path $root $docsRoot
+  Move-DocsFile -OldPath (Join-Path $base 'PROJECT-CODE-STYLE.md') -NewPath (Join-Path $base 'code-style/CODE-STYLE.md') -Label 'code style'
+  Move-DocsFile -OldPath (Join-Path $base 'architecture/ASSESSMENT.md') -NewPath (Join-Path $base 'quality/ASSESSMENT.md') -Label 'architecture quality'
+  Move-DocsFile -OldPath (Join-Path $base 'related-context/PROJECT-RELATED-CONTEXT.md') -NewPath (Join-Path $base 'related-projects/RELATED-PROJECTS.md') -Label 'related projects'
+  # The engine sees a folder as a domain only when it holds a watch.json (architecture/ alone is grandfathered), so
+  # a moved doc was invisible until its capture re-ran. Only these two: quality/ is recomputed every run and
+  # related-context/ is a drop box for sibling-repo papers - both are watch-less BY DESIGN, and a watch.json there
+  # would silently make each a domain.
+  Enable-DocsDomain -Dir (Join-Path $base 'code-style') -Doc 'CODE-STYLE.md'
+  Enable-DocsDomain -Dir (Join-Path $base 'related-projects') -Doc 'RELATED-PROJECTS.md'
 }
 
 function New-ClaudeMd {
@@ -2012,6 +2343,36 @@ function Write-Stamp {
     if ($stampHookNames -notcontains $n) { $stampHookNames += $n }
   }
   $stampHooks = $stampHookNames -join ','
+  # The locked baseline (the snapshot's meta/recommendations.json `always.rules` / `always.mcps`) this
+  # install actually CARRIES as the run ends: rule files under the repo's .claude/rules (where every
+  # scope's rules land), servers in this project's .mcp.json or, at global scope, the account's
+  # registration file. What is on disk, never what shipped - and no run reads it back as a drop: the
+  # always set is locked, so -InstalledOnly adopts an absent item every time. (The shipped list
+  # recorded here once made the next update read everything a standalone run failed to adopt as
+  # dropped.) Empty when the snapshot or node cannot say. node, not ConvertFrom-Json: the account
+  # file can hold keys differing only in case, which ConvertFrom-Json refuses.
+  $stampAlwaysRules = ''; $stampAlwaysMcps = ''
+  $stampRecs = if ($script:StackSrc) { Join-Path $script:StackSrc 'meta/recommendations.json' } else { '' }
+  if ($stampRecs -and (Test-Path -LiteralPath $stampRecs) -and (Get-Command node -ErrorAction SilentlyContinue)) {
+    $stampRepo = Get-RepoRoot
+    $stampRulesDir = if ($stampRepo) { Join-Path (Join-Path $stampRepo '.claude') 'rules' } else { '' }
+    $stampMcpFile = if ($ClaudeScope -eq 'user') { $AccountClaudeJson } else { Join-Path (Get-Location).Path '.mcp.json' }
+    # no double quotes in the program: Windows PowerShell 5.1 strips them from a native argument
+    $stampScript = @'
+const fs=require('fs'),path=require('path');const [recs,mcpFile,rulesDir]=process.argv.slice(1);
+let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,'utf8')).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,'utf8')).mcpServers||{};}catch{}
+const list=(x)=>(Array.isArray(x)?x:[]);
+console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+'.md'))).join(','));
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(','));
+'@
+    # the rules dir goes LAST: Windows PowerShell 5.1 drops an empty native argument, so an empty one
+    # anywhere else would shift the rest
+    try {
+      $stampAlways = @(& node -e $stampScript $stampRecs $stampMcpFile $stampRulesDir 2>$null)
+      if ($stampAlways.Count -ge 1) { $stampAlwaysRules = "$($stampAlways[0])".Trim() }
+      if ($stampAlways.Count -ge 2) { $stampAlwaysMcps = "$($stampAlways[1])".Trim() }
+    } catch { $stampAlwaysRules = ''; $stampAlwaysMcps = '' }
+  }
   $lines = @(
     '# claude-stack install stamp - machine-local, written by claude-stack.sh / claude-stack.ps1.'
     '# The revision every artifact of this install was copied from. To see what changed since:'
@@ -2026,6 +2387,8 @@ function Write-Stamp {
     "action: $Action"
     "scope: $ClaudeScope"
     "shipped-hooks: $stampHooks"
+    "installed-always-rules: $stampAlwaysRules"
+    "installed-always-mcps: $stampAlwaysMcps"
   )
   # LF + no BOM, byte-for-byte what the sh twin writes. Set-Content emits [Environment]::NewLine,
   # so on Windows the same stamp came out CRLF - and a reader that splits on `\n` then anchors a
@@ -2049,8 +2412,26 @@ function Set-HookSettings {
   if (Test-Path -LiteralPath $settings) {
     # Refuse to touch a settings.json that does not parse - a rewrite from scratch would replace the
     # project's whole file (permissions, statusLine, env) with just the stack's entries.
-    try { $data = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json } catch { $data = $null }
-    if ($null -eq $data) { Write-Warning '  settings.json is not valid JSON - left untouched; fix it and re-run'; return }
+    # The catch and the null are two DIFFERENT answers: ConvertFrom-Json throws on text that is not
+    # JSON at all, and returns $null for the valid documents '[]' and 'null'. Told apart by a flag, so
+    # each gets the same diagnosis its sh counterpart gives (python: a parse error vs. a non-dict).
+    $parsed = $true
+    try { $data = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json } catch { $data = $null; $parsed = $false }
+    if (-not $parsed) { Write-Warning '  settings.json is not valid JSON - left untouched; fix it and re-run'; return }
+    if ($null -eq $data) { Write-Warning '  settings.json top level is not an object - left untouched'; return }
+    # A JSON array, string, number or boolean PARSES but is no settings object, and every Add-Member
+    # below would then run against each ELEMENT instead of the file: measured on a temp project,
+    # '[1,2,3]' threw 'member already exists' on the second element, and with $ErrorActionPreference
+    # 'Stop' that aborted the whole run - before Move-DocsDomains, so the docs migration never ran and
+    # the install was left half done. The sh twin already refuses this shape ('settings.json top level
+    # is not an object'); this is the missing half of that pair.
+    # Tested by the .NET type, never by '-is [pscustomobject]': PowerShell wraps a plain value in a
+    # PSObject, so that operator answers True for a String, an Int64 and a Boolean alike (measured on
+    # pwsh 7.6). Only an ARRAY answers False, which would have let three of the five shapes through.
+    if ($data.GetType().FullName -ne 'System.Management.Automation.PSCustomObject') {
+      Write-Warning '  settings.json top level is not an object - left untouched'
+      return
+    }
   }
 
   if (-not $data.PSObject.Properties['hooks']) { $data | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) }
@@ -2204,7 +2585,7 @@ function Set-HookSettings {
         ($null -eq $dead.only -or [string]$data.env.($dead.key) -eq $dead.only)) {
       $data.env.PSObject.Properties.Remove($dead.key)
       $changed = $true
-      Log "  settings.json env: $($dead.key) removed (retired - nothing reads it)"
+      Log "  settings.json env: $($dead.key) removed ($(if ($null -eq $dead.only) { 'retired - nothing reads it' } else { "the old stack seed $($dead.only) - the default applies" }))"
     }
   }
   # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
@@ -2235,6 +2616,58 @@ function Set-HookSettings {
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_DOCS_PATH seeded (.claude/docs)'
   }
+  # how those docs are VERSIONED - a DECISION, not a guess: 'git' = they are committed and git versions
+  # them per branch (writes land in the doc file, nothing is ever written under <docs-path>/.branches/),
+  # 'local' = the machine-local overlay, where a feature branch's sections live under
+  # <docs-path>/.branches/<branch>/ until it merges. -DocsVersioning WRITES the value it is given, over one already
+  # there; without it the key is seeded only when ABSENT, by the one rule docs.js keptOutOfGit(), stamp-docs-root.js
+  # and the sh twin share (a table-driven test runs all four over the same repos): 'local' only when the docs are
+  # kept OUT of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - else
+  # 'git', a fresh project whose docs root is not ignored included. A tracked domain wins over an ignored root.
+  # From then on the SETTING wins even where the repo disagrees - a doc write is never silently untracked or
+  # silently local - and `docs.js status` plus the session-start block say so.
+  if ($DocsVersioning) {
+    $vHas = [bool]$data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']
+    $vOld = if ($vHas) { [string]$data.env.CLAUDE_STACK_DOCS_VERSIONING } else { $null }
+    if (-not $vHas) { $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_VERSIONING -NotePropertyValue $DocsVersioning; $changed = $true }
+    elseif ($vOld -cne $DocsVersioning) { $data.env.CLAUDE_STACK_DOCS_VERSIONING = $DocsVersioning; $changed = $true }
+    $vFrom = if ($vHas) { "'$vOld'" } else { 'absent' }
+    $vSame = if ($vHas -and $vOld -ceq $DocsVersioning) { ', unchanged' } else { '' }
+    Log "  settings.json env: CLAUDE_STACK_DOCS_VERSIONING $vFrom -> '$DocsVersioning' (-DocsVersioning$vSame)"
+  }
+  elseif (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_VERSIONING']) {
+    # Forward slashes DELIBERATELY, also on Windows: Join-Path would emit '\' there and hand git a
+    # mixed-separator pathspec (C:/repo\docs/code-style), which can fail to match - and a false negative here
+    # seeds 'local' over committed docs, the exact silent switch this seed exists to prevent.
+    $docsRel = ($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/')
+    $docsBase = (($root -replace '\\', '/').TrimEnd('/')) + '/' + (($data.env.CLAUDE_STACK_DOCS_PATH -replace '\\', '/').Trim('/'))
+    # Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder a domain
+    # (architecture/ is grandfathered in without one), so a project documented only in code-style/, decisions/
+    # or related-projects/ is an ordinary shape. Same rule as docs.js domains(), reserved names and all; a
+    # watch-less folder like quality/ is no domain and no vote.
+    $domainDirs = @()
+    if (Test-Path -LiteralPath $docsBase) {
+      $domainDirs = @(Get-ChildItem -LiteralPath $docsBase -Directory -ErrorAction SilentlyContinue |
+        Where-Object { (-not $_.Name.StartsWith('.')) -and ($_.Name -notin @('references', 'history')) -and
+          (($_.Name -eq 'architecture') -or (Test-Path -LiteralPath (Join-Path $_.FullName 'watch.json'))) } |
+        ForEach-Object { "$docsBase/$($_.Name)" })
+    }
+    $committed = $false
+    foreach ($dir in $domainDirs) {
+      # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
+      try { & git -C $root ls-files --error-unmatch -- $dir *> $null; if ($LASTEXITCODE -eq 0) { $committed = $true; break } } catch { }
+    }
+    # `<docs>/` with the trailing slash, relative to the root: git answers check-ignore for a path that does not exist
+    # yet, but a directory-only pattern ('.claude/docs/') matches the bare name only once the folder exists.
+    $ignored = $false
+    if (-not $committed -and -not $domainDirs.Count -and $docsRel) {
+      try { & git -C $root check-ignore -q -- "$docsRel/" *> $null; if ($LASTEXITCODE -eq 0) { $ignored = $true } } catch { }
+    }
+    $versioning = if (-not $committed -and ($domainDirs.Count -or $ignored)) { 'local' } else { 'git' }
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_VERSIONING -NotePropertyValue $versioning
+    $changed = $true
+    Log "  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded ($versioning)"
+  }
   # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_INSTRUMENT']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
@@ -2249,17 +2682,32 @@ function Set-HookSettings {
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_PUSH_GATE seeded (1)'
   }
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_BLOCK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_BLOCK -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_BLOCK seeded (1)'
+  }
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_GATE']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_GATE -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_GATE seeded (1)'
+  }
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_DOCS_ASK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_DOCS_ASK -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)'
+  }
   # rotate ask: the stop contract asks once per credential exposure; '0' turns the ask off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_ROTATE_ASK']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)'
   }
-  # fresh-session gate, BOTH of its knobs - seeded so they are visible and tunable in one place.
+  # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both
   # real tiers (200k x 40% fell under the floor, 1M x 40% sat over the ceiling), so the clamps
   # decided and the knob lied about what it controlled. That key is retired outright - nothing reads
-  # it any more; '0' on BOTH keys below is the off switch. 400,000 on the 1M tier is
+  # it any more; '0' on ALL THREE keys below is the off switch. 400,000 on the 1M tier is
   # deliberately ABOVE the harness's own auto-compaction (387,619-397,171 measured), so there the
   # SessionStart compact route carries the offer - lower it to be asked first.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_FRESH_SESSION_1M']) {
@@ -2311,6 +2759,102 @@ function Set-HookSettings {
   }
 }
 
+# ---------------------------------------------------------------------------
+# MEMORY IMPORT + SWITCH-OFF (once): after the memory MCP is registered AND baseline-memory.md has
+# landed, migrate Claude's own per-project auto-memory notes into it (scripts/memory-import.js, run from
+# the run's SOURCE snapshot - it lives in scripts/, never copied into the project), then flip
+# autoMemoryEnabled off in THIS repo's project .claude/settings.json - at global scope too. The rule
+# and the start hook land per repo, so the account settings.json would silence the memory of every
+# other project of the account, none of which has the rule telling Claude to save to the server.
+# Runs ONCE - skipped once that file already holds autoMemoryEnabled:false. A global scope run with no
+# identifiable project (not inside a git repo) has nothing to import from and is skipped, logged.
+# Twin of import_memory_notes in claude-stack.sh (which reaches the same shapes through node -e too).
+# ---------------------------------------------------------------------------
+$script:MemorySwitchedOff = $false   # this repo's settings hold autoMemoryEnabled:false after the import step
+function Get-MemoryTargetSettings {
+  if ($MemoryTopLevel) { return (Join-Path (Join-Path $MemoryTopLevel '.claude') 'settings.json') }
+  return ''
+}
+
+# $Path -> 'true'/'false'/'absent'/'malformed' ('absent' also covers a missing file).
+function Get-MemoryAutoState([string]$Path) {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return 'malformed' }
+  $memStateScript = @'
+const fs=require("fs");
+try{
+  const raw=fs.readFileSync(process.argv[1],"utf8");
+  let d; try{d=JSON.parse(raw);}catch(e){console.log("malformed");process.exit(0);}
+  if(!d||typeof d!=="object"||Array.isArray(d)){console.log("malformed");process.exit(0);}
+  console.log(Object.prototype.hasOwnProperty.call(d,"autoMemoryEnabled")?String(d.autoMemoryEnabled):"absent");
+}catch(e){ console.log(e.code==="ENOENT"?"absent":"malformed"); }
+'@
+  try { return (((& node -e $memStateScript $Path 2>$null) -join "`n").Trim()) } catch { return 'malformed' }
+}
+
+# Merge autoMemoryEnabled:false into $Path, leaving every other key untouched. Refuses (logs, writes
+# nothing) on a file that fails to parse as a JSON object - the install continues either way.
+function Set-MemoryAutoOff([string]$Path) {
+  $memWriteScript = @'
+const fs=require("fs");const path=require("path");
+const p=process.argv[1];
+let d={};
+try{
+  const raw=fs.readFileSync(p,"utf8");
+  if(raw.trim()){ d=JSON.parse(raw); }
+}catch(e){
+  if(e.code!=="ENOENT"){ console.log("  !! "+p+" is not valid JSON - autoMemoryEnabled left untouched; fix it and re-run"); process.exit(1); }
+}
+if(typeof d!=="object"||d===null||Array.isArray(d)){ console.log("  !! "+p+" top level is not an object - autoMemoryEnabled left untouched"); process.exit(1); }
+d.autoMemoryEnabled=false;
+fs.mkdirSync(path.dirname(p),{recursive:true});
+fs.writeFileSync(p, JSON.stringify(d,null,2)+"\n");
+console.log("  settings.json: autoMemoryEnabled set to false ("+p+")");
+'@
+  try { & node -e $memWriteScript $Path } catch {}
+}
+
+function Import-MemoryNotes {
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { return }   # ClaudeMissing already reported elsewhere
+  if (-not $MemoryTopLevel) {
+    Log 'memory: global install scope with no identifiable project (not inside a git repo) - skipping the notes import; Claude''s own memory stays on'
+    return
+  }
+  $target = Get-MemoryTargetSettings
+  if (-not $target) { return }
+  if ((Get-MemoryAutoState $target) -eq 'false') { $script:MemorySwitchedOff = $true; return }   # already switched off - never re-run
+  # The gate: Claude's own memory goes off only where its replacement is complete - the memory server
+  # in this run's MCP set AND baseline-memory.md (the rule telling Claude to save to it) in its rule
+  # set and actually on disk. Without either, the notes stay where Claude reads them.
+  if (-not ($Mcps | Where-Object { ($_ -split '\|', 2)[0] -eq 'memory' })) {
+    Log 'memory: the notes import was skipped - the memory MCP is not part of this install; Claude''s own memory stays on'; return
+  }
+  if (-not ($ClaudeRules | Where-Object { (($_ -split '::', 2)[0]) -eq 'baseline-memory.md' })) {
+    Log 'memory: the notes import was skipped - baseline-memory.md is not part of this install; Claude''s own memory stays on'; return
+  }
+  $memRulesDir = Join-Path (Join-Path $MemoryTopLevel '.claude') 'rules'
+  if (-not (Test-Path -LiteralPath (Join-Path $memRulesDir 'baseline-memory.md'))) {
+    Log "  !! memory: baseline-memory.md did not land in $memRulesDir - the notes import was skipped; Claude's own memory stays on until a run delivers it"; return
+  }
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Log '  !! node not found - the memory notes import was skipped; Claude''s own memory stays on until it succeeds'; return }
+  if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { Log '  !! uvx not found - the memory notes import was skipped; Claude''s own memory stays on until it succeeds'; return }
+  if (-not (Get-StackSrc)) { Log '  !! stack source unavailable - the memory notes import was skipped; Claude''s own memory stays on until it succeeds'; return }
+  $importer = Join-Path $script:StackSrc (Join-Path 'scripts' 'memory-import.js')
+  if (-not (Test-Path -LiteralPath $importer)) { Log "  !! $importer not found in the source snapshot - memory notes import skipped"; return }
+  # -config-dir only for an EXPLICIT account (CLAUDE_CONFIG_DIR, which a space exports): the default
+  # account's registrations live at ~/.claude.json, not inside ~/.claude, and the importer resolves that
+  # default itself.
+  $acctArgs = if ($env:CLAUDE_CONFIG_DIR) { @('--config-dir', $ConfigDir) } else { @() }
+  Log 'memory: importing Claude''s existing notes into the memory MCP (first run downloads the embedding model, ~1 min)'
+  $global:LASTEXITCODE = 1
+  try { & node $importer --project-root $MemoryTopLevel @acctArgs } catch {}
+  if ($LASTEXITCODE -eq 0) {
+    Set-MemoryAutoOff $target
+    if ($LASTEXITCODE -eq 0) { $script:MemorySwitchedOff = $true }
+  } else {
+    Log '  !! memory notes import failed - Claude''s own memory stays ON until a later run imports successfully'
+  }
+}
+
 # ===========================================================================
 # UPDATE - bring everything to latest
 # ===========================================================================
@@ -2340,7 +2884,9 @@ $RetiredMcps = @()
 # budget, or to /claude-stack:status). Entries are the bare plugin NAME, without the @marketplace
 # suffix the $Plugins block carries. A plugin the stack still SHIPS but this project does not need is
 # a different question - that is /claude-stack:validate's whole-stack-absent pass, not a retirement.
-$RetiredPlugins = @()
+$RetiredPlugins = @(
+  'ponytail'   # dropped from `$Plugins in 0.2.7x (the audit remediation); never joined this list until 0.2.85
+)
 
 function Remove-Skills {
   # rm the manifest skills under the scope dest, so update starts from a clean slate.
@@ -2444,6 +2990,7 @@ function Remove-RetiredPlugins {
 
 function Update-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
+  Initialize-OfficialMarketplace
   try { & claude plugin marketplace update 2>$null } catch {}   # refresh marketplaces first
   $before = Get-InstalledPluginMap
   Remove-RetiredPlugins -Listing $before
@@ -2700,8 +3247,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Import-MemoryNotes; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Import-MemoryNotes; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }
@@ -2712,7 +3259,8 @@ Write-Host ''
 Log "done: $Action [scope=$Scope, account=$ConfigDir, agent=$Agent]"
 $hookFiles = @($Hooks | ForEach-Object { ($_ -split '::', 2)[0] } | Select-Object -Unique).Count   # hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 $summary = "  installed/refreshed this run - skills=$($Skills.Count), plugins=$($Plugins.Count), mcps=$($Mcps.Count), hooks=$hookFiles, agents=$($Agents.Count), rules=$($ClaudeRules.Count)"
-if ($Space) { $summary += "; space=$Space, memory DB=$MemoryDbFile" }
+$summary += "; memory=$MemLevel ($MemoryDbPath)"
+if ($Space) { $summary += "; space=$Space" }
 # Always stated, both ways: a run that RESET the pins to catalog defaults printed no line at all, so
 # the close had nothing to cite and asserted the reset from memory instead.
 if ($KeepPins) { $summary += '; keep-pins=on' } else { $summary += '; keep-pins=off (agent model/effort pins reset to catalog defaults)' }
@@ -2739,10 +3287,10 @@ if ((Test-Path -LiteralPath $seedFile) -and ((Get-Content -LiteralPath $seedFile
   Log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-related-context.md'))) {
-  Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
+  Log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-projects/RELATED-PROJECTS.md under the docs root"
 }
 if (-not ((Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-architecture.md')) -and (Test-Path -LiteralPath (Join-Path $genRules 'project-code-style.md')))) {
-  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+  Log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture/ARCHITECTURE.md + awareness rule) and /project-code-style-analyzer (code-style/CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-agent-capabilities.md'))) {
   Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
@@ -2751,6 +3299,11 @@ if ($Mcps | Where-Object { $_ -like 'serena|*' }) {
   Log '  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): $env:SERENA_HOME=".serena/home"; uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things'
 }
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
+# A global install switches Claude's own memory off only where the memory rule and start hook landed -
+# this repo - so the card says so rather than letting 'global' read as 'every project'.
+if ($ClaudeScope -eq 'user' -and $script:MemorySwitchedOff) {
+  Log "  - memory: Claude's own memory is off in this repo only ($(Get-MemoryTargetSettings)) - a global install lands the memory rule and start hook per repo, so every other project of this account keeps its own memory until an install or update runs there"
+}
 # One line, only when this run was TOLD which engine stays on (setup / configure): an update never
 # re-asks the user to toggle what they may already have toggled.
 if ($PlaywrightEnabled -and $PwKept.Count) {
@@ -2807,10 +3360,16 @@ Write-Host "The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude\setting
 Write-Host 'generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,'
 Write-Host 're-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed'
 Write-Host "path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too."
+Write-Host "CLAUDE_STACK_DOCS_VERSIONING (same env block) says how every capture's docs are versioned - 'git' when"
+Write-Host "they are committed (git versions them per branch), 'local' for the machine-local overlay under"
+Write-Host "<docs-path>/.branches/. The install seeds 'local' only when the docs are already kept out of git (no"
+Write-Host 'domain tracked, and a domain exists or git ignores the docs root), else ''git'' - so a project that adds'
+Write-Host "the .claude ignore above AFTER this run still reads 'git': re-run update with -DocsVersioning local."
+Write-Host 'Moving the docs to a committed path takes -DocsVersioning git.'
 Write-Host ''
-Write-Host 'The same env block carries the fresh-session gate''s two knobs (seeded, absent-only, so a'
+Write-Host 'The same env block carries the fresh-session gate''s three knobs (seeded, absent-only, so a'
 Write-Host 'hand-edited value survives every update):'
-Write-Host '  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a window over 200k may carry'
+Write-Host '  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a 1M window may carry'
 Write-Host '                                   before an orchestration run is offered a fresh one (default 400000;'
 Write-Host '                                   0 = off). Above the harness own auto-compaction, so lower it to be'
 Write-Host '                                   asked before the harness decides for you'

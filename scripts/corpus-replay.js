@@ -44,6 +44,10 @@ const ROUTES = [
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
+  // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
+  // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
+  // harness sends when that agent finished.
+  { hook: 'guard-stop-contract.js', event: 'SubagentStop', deny: true },
   { hook: 'guard-answer-length.js', event: 'Stop', deny: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false, needsTranscript: true },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
@@ -75,6 +79,12 @@ const UNEXERCISED = {
     'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
   'guard-cross-project-write.js::PreToolUse:PowerShell':
     'the corpus predates this matcher; the gate fires on a PowerShell payload in guard-hooks.test.js',
+  // Wired 2026-09-19 from a field report on another machine (a fork closed on 'I'll just wait for the
+  // pilot fork's completion notification' and dropped its brief). The first replay held 0 of 126 real
+  // subagent stops (17 sessions, 6 forks) - no false hold - and 1 of 1 when that close was appended to
+  // a real fork transcript; the gate fires in guard-hooks.test.js.
+  'guard-stop-contract.js::SubagentStop':
+    'the field-report stop happened on another machine; 0 of 126 local subagent stops held; the gate fires in guard-hooks.test.js',
 };
 
 const routeId = (r, tool) => `${r.hook}::${r.event}${tool ? ':' + tool : ''}`;
@@ -108,6 +118,19 @@ function walk(dir, out = []) {
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 
+// A subagent's final text: its last assistant row's text blocks (the answer rows above keep only long
+// ones, and a subagent's close - the one the SubagentStop gate judges - is often a single short line).
+function lastAssistantLine(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) if (lines[i].includes('"type":"assistant"') && lines[i].includes('"text"')) return lines[i];
+  return '';
+}
+function lastAssistantText(line) {
+  try {
+    const c = JSON.parse(line).message.content;
+    return Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+  } catch { return ''; }
+}
+
 // Even spacing that always keeps the LAST point: the final assistant text of a transcript is the
 // turn that really ended, and it is the one a Stop gate exists to judge.
 function sample(arr, n) {
@@ -124,7 +147,7 @@ function sample(arr, n) {
 // ---------------------------------------------------------------------------
 function extract(files, opts) {
   const jobs = new Map();          // dedupe key -> job
-  const counts = { rows: 0, toolUse: 0, stops: 0, prompts: 0, files: 0 };
+  const counts = { rows: 0, toolUse: 0, stops: 0, prompts: 0, files: 0, subagentStops: 0 };
 
   for (const file of files) {
     let txt;
@@ -185,6 +208,20 @@ function extract(files, opts) {
     const last = answerRows[answerRows.length - 1];
     if (last !== undefined && !stopPoints.includes(last)) stopPoints.push(last);
 
+    const sub = /[\\/]subagents[\\/](agent-[^\\/]+)\.jsonl$/.exec(file);
+    const lastText = lastAssistantText(lastAssistantLine(lines));
+    if (sub && lastText) {
+      let agentType = '';
+      try { agentType = JSON.parse(fs.readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8')).agentType || ''; } catch {}
+      counts.subagentStops++;
+      for (const r of ROUTES) {
+        if (r.event !== 'SubagentStop') continue;
+        const payload = { hook_event_name: 'SubagentStop', agent_id: sub[1].replace(/^agent-/, ''), agent_type: agentType, agent_transcript_path: file, last_assistant_message: lastText, cwd };
+        const key = routeId(r) + '|' + sha(file);
+        if (!jobs.has(key)) jobs.set(key, { key, route: routeId(r), hook: r.hook, deny: r.deny, payload, cwd });
+      }
+    }
+
     for (const idx of sample(stopPoints, opts.stops)) {
       counts.stops++;
       for (const r of ROUTES) {
@@ -210,6 +247,9 @@ function makeEnv(scratch, cwd) {
     CLAUDE_STACK_DOCS_PATH: path.join(scratch, 'docs'),
     CLAUDE_CONFIG_DIR: path.join(scratch, 'config'),
     CLAUDE_STACK_INSTRUMENT: '0',
+    // Once-markers and latches (the SubagentStop hold, the fresh-session latch) land in scratch: in the
+    // default os.tmpdir() a second replay would read the first run's markers and pass every repeat.
+    CLAUDE_STACK_HOOK_LOG_DIR: scratch,
   };
 }
 
@@ -307,7 +347,7 @@ async function main() {
     });
   }
 
-  process.stderr.write(`rows ${counts.rows} | tool_use ${counts.toolUse} | stop points ${counts.stops} | prompts ${counts.prompts}\n`);
+  process.stderr.write(`rows ${counts.rows} | tool_use ${counts.toolUse} | stop points ${counts.stops} | prompts ${counts.prompts} | subagent stops ${counts.subagentStops}\n`);
   process.stderr.write(`unique replay jobs: ${jobs.length}\n`);
   if (a.extractOnly) {
     const byRoute = {};

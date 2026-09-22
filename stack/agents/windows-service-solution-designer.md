@@ -1,7 +1,7 @@
 ---
 name: windows-service-solution-designer
 description: Use when a Windows Service feature or change needs designing before code - a read-only pass for a .NET worker that runs under the Service Control Manager. Settles the recovery topology (stop-vs-continue per loop, non-zero exits so SCM recovery fires), the SCM start/stop budgets, the path and identity surface (BaseDirectory anchoring, least-privilege account, the install script as a designed artifact) and the host/DI composition, then decomposes the work into independent parallel tasks with explicit contracts. Feeds the windows-service-implementer fan-out and windows-service-verifier. Do NOT use to write code; a headless worker/bot/CLI with no SCM target is console-solution-designer's, the other C# stacks - ASP.NET Core (aspnet-solution-designer's), WPF (wpf-solution-designer's), WinForms (winforms-solution-designer's) - are not this seat's, the deploy pipeline around the service is devops-solution-designer's, and a brand-new project from a spec is project-build-from-scratch.
-tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
+tools: mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__get_symbols_overview, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__context7__*
 model: opus
 effort: xhigh
 color: cyan

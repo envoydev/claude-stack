@@ -70,10 +70,17 @@ const NAME_VALUE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
 // A private key in PEM form is ONE value spanning lines, so the whitespace tell below would read it as a
 // label. Measured: a Firebase `PrivateKey` printed raw in the redacted view of an appsettings file.
 const PEM_PRIVATE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
+// A machine credential is ASCII. A value carrying a letter outside it is a human-language LABEL -
+// the i18n tell the whitespace rule above misses, because a one-word translation of 'Password' has
+// no space in it (measured: a translation bundle came back as a 52.5KB 'redacted view ... 4
+// credential value(s)', and at replay `grep` and `cat` on an i18n file were still rewritten). A
+// SHAPE match still wins, so nothing with a known credential shape is excused here.
+const NON_ASCII = /[^\x00-\x7F]/;
 const isSampleValue = (key, v) => {
   const s = String(v).trim();
   if (PEM_PRIVATE.test(s)) return false;
   return s.toLowerCase() === String(key).toLowerCase() || /\s/.test(s) || TEMPLATE_VALUE.test(s) || s.startsWith('MII')
+    || (NON_ASCII.test(s) && !SECRET_SHAPE.test(s))
     || (s.length <= 64 && NAME_VALUE.test(s) && !SECRET_SHAPE.test(s));
 };
 const holdsCredential = (key, v) => isLive(v) && !isSampleValue(key, v);
@@ -95,12 +102,18 @@ const TEMPLATE_FILE = /\.(?:example|sample|template|dist)$/i;
 
 // The dotted path of the first credential-shaped key holding a live string, or null. Depth-capped:
 // a settings file is shallow, and the cap keeps a pathological JSON from costing the call.
-function secretKeyIn(node, prefix, depth) {
+// `labels`: the file is a translation bundle, where `password` / `token` / `secret` are UI STRINGS
+// under their own English names. The key test cannot hold there - every label it matches is a
+// label - so only a value that IS a credential counts: a known shape, a PEM key, a connection
+// string's embedded password.
+function secretKeyIn(node, prefix, depth, labels) {
   if (!node || typeof node !== 'object' || depth > 6) return null;
   for (const [k, v] of Object.entries(node)) {
     const here = prefix ? `${prefix}.${k}` : k;
-    if (typeof v === 'string') { if ((SECRET_KEY_RE.test(k) && holdsCredential(k, v)) || PEM_PRIVATE.test(v) || embeddedCredential(v)) return here; }
-    else { const hit = secretKeyIn(v, here, depth + 1); if (hit) return hit; }
+    if (typeof v === 'string') {
+      if ((!labels && SECRET_KEY_RE.test(k) && holdsCredential(k, v)) || (labels && SECRET_SHAPE.test(v))
+        || PEM_PRIVATE.test(v) || embeddedCredential(v)) return here;
+    } else { const hit = secretKeyIn(v, here, depth + 1, labels); if (hit) return hit; }
   }
   return null;
 }
@@ -120,6 +133,10 @@ function secretLineIn(text) {
 // Judge one file by CONTENT: the key that makes it a credential file, or null. JSON first (a
 // settings.json, .mcp.json, appsettings.json), dotenv second; anything else - source code, docs -
 // is never a credential file here (source dumps are guard-read-whole-file's concern).
+// A translation bundle's own tree: `src/assets/i18n/en.json`, `locales/uk/common.json`. The path
+// is the only tell a one-word label has, and a stack that keeps credentials in a locales directory
+// is a shape nobody ships - the accepted gap is stated rather than guessed at.
+const TRANSLATION_PATH = /(?:^|[\\/])(?:i18n|locales?|translations?|lang|langs)[\\/]/i;
 function secretIn(file) {
   let text;
   if (TEMPLATE_FILE.test(pathMod.basename(String(file)))) return null;
@@ -127,7 +144,7 @@ function secretIn(file) {
     if (fs.statSync(file).size > MAX_BYTES) return null;
     text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
   } catch { return null; }
-  try { return secretKeyIn(JSON.parse(text), '', 0); } catch { /* not JSON */ }
+  try { return secretKeyIn(JSON.parse(text), '', 0, TRANSLATION_PATH.test(String(file))); } catch { /* not JSON */ }
   const first = text.split(LINES).find((l) => l.trim() && !l.trim().startsWith('#')) || '';
   return DOTENV_LINE.test(first) ? secretLineIn(text) : null;
 }
@@ -483,9 +500,11 @@ const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2);
 // The shell route's verdict: the call is REPLACED (hookSpecificOutput.updatedInput) by one that
 // prints the placeholder form, and the tool runs that instead - no denial, no retried turn, and the
 // note on its first line carries the route to the value. Not a block, so no ledger row: the ledger
-// counts the turns a gate costs, and a rewrite costs none.
+// counts the turns a gate costs, and a rewrite costs none. `updatedInput` REPLACES the tool's
+// arguments (code.claude.com/docs/en/hooks), so every other field - timeout, description,
+// run_in_background - is carried over.
 const rewrite = (command) => {
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { command } } }));
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...input, command } } }));
   process.exit(0);
 };
 const presenceHint = (file) =>
@@ -502,8 +521,11 @@ const presenceHint = (file) =>
 // The second half of the list is the review's: `tac`, `base64`, `xxd` and friends print the same
 // bytes in a different order or encoding, and a dump verb only matters when its file token holds a
 // live credential, so the false-positive cost of a long list is nil. `cp` and `dd` are NOT here -
-// `cp .env .env.bak` is a legitimate backup, and it prints nothing.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee)\b/;
+// `cp .env .env.bak` is a legitimate backup, and it prints nothing. The PowerShell spellings
+// (`Get-Content` and its `gc` / `type` aliases, `Select-String`, `Format-Hex`, `Import-Csv`) are the
+// same reads - measured 2026-09-15, `Get-Content .env` printed the value in real pwsh - and cmdlet
+// names are case-insensitive, so the whole list is.
+const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell)\b/;
 // A heredoc body is DATA, not shell: a plan that merely DESCRIBES `cat ~/.claude/settings.json` is
 // inert text (reproduced against the sibling guards). Blank the payload spans, keeping the character
@@ -577,7 +599,10 @@ const teesToTerminal = (stage) => /^tee\b[^|]*?(\/dev\/(?:std(?:out|err)|tty|fd\
 // truncated input, a `\` before a closing quote) would otherwise swallow the rest into one piece,
 // where any exemption substring could excuse a real dump (review finding) - so an unbalanced scan
 // falls back to the quote-blind `blind` split, which judges every operator-separated piece.
-function splitOutsideQuotes(text, sepAt, blind) {
+// `seps` (optional) collects the separator TEXT between the parts, so a caller can put the pieces
+// back together with what joined them - what the segment splice below needs. An unbalanced scan
+// empties it, because the blind fallback's pieces are not the ones these separators sat between.
+function splitOutsideQuotes(text, sepAt, blind, seps) {
   const parts = [];
   let cur = '';
   let quote = null; // the quote character we are inside, or null
@@ -592,18 +617,19 @@ function splitOutsideQuotes(text, sepAt, blind) {
     if (ch === '\\' && i + 1 < text.length) { cur += ch + text[++i]; continue; } // an escaped char outside quotes
     if (ch === '"' || ch === '\'') { quote = ch; cur += ch; continue; }
     const n = sepAt(text, i);
-    if (n) { parts.push(cur); cur = ''; i += n - 1; continue; }
+    if (n) { parts.push(cur); if (seps) seps.push(text.substr(i, n)); cur = ''; i += n - 1; continue; }
     cur += ch;
   }
   parts.push(cur);
+  if (quote && seps) seps.length = 0;
   return quote ? blind(text) : parts;
 }
 // Segments split on `&&`, `||`, `;` and newline OUTSIDE quotes: a runtime's inline code carries
 // `;` inside its quoted argument (`python3 -c "import json;print(...)"`), and a naive split
 // separated the runtime word from the segment holding the file path, so neither half matched.
-const splitSegments = (cmd) => splitOutsideQuotes(cmd,
+const splitSegments = (cmd, seps) => splitOutsideQuotes(cmd,
   (t, i) => ((t[i] === '\n' || t[i] === ';') ? 1 : ((t[i] === '&' || t[i] === '|') && t[i + 1] === t[i]) ? 2 : 0),
-  (t) => t.split(/&&|\|\||;|\n/));
+  (t) => t.split(/&&|\|\||;|\n/), seps);
 // A segment is a PIPELINE: its stages split on a single `|` (`||` never reaches here - splitSegments
 // consumed it), and a print verb's arguments end at its own stage.
 const splitPipes = (seg) => splitOutsideQuotes(seg, (t, i) => (t[i] === '|' ? 1 : 0), (t) => t.split('|'));
@@ -676,7 +702,7 @@ function printsKeysOnly(stage) {
 // and the user found the old value in the config 37 minutes later. So a command carrying a CHANGING step is
 // blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
 // this list does not know (a build, a network call, a runtime) counts as changing.
-const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)/;
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
 const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
 const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
 const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/;
@@ -735,6 +761,65 @@ function narrowFilter(stages, tok) {
   return [rest, ...stages.slice(1).map((x) => x.trim())].join(' | ');
 }
 
+// A rewrite replaces the WHOLE command, so a compound READ-ONLY command came back as one
+// `--redacted <file>` view and its other reads vanished with no note at all (replayed: a 4-part
+// read-only command came back as 1 part, and 3 recovery calls followed at ~124k). Only the SEGMENT
+// that named the credential file needs the view; every other segment is read-only by the time a
+// rewrite is reached, because refuseDroppedSteps blocks a changing one. So the view is SPLICED in
+// place and the rest of the command is kept as written. Three shapes keep the whole-command
+// rewrite, with the dropped segments NAMED in a note the model reads: a heredoc body (the judged
+// text is not the command), a split that fell back to the quote-blind form, and a command whose
+// other segments name a credential file of their own or a path this guard cannot resolve - keeping
+// those would let an unjudged read run, which is the one thing a rewrite must never do.
+function namesCredentialFileIn(part) {
+  const asg = part.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
+  if (asg) VARS.set(asg[1], [asg[2].replace(/^(["'])([\s\S]*)\1$/, '$2')]);
+  for (const stage of splitPipes(part)) {
+    if (SELF_READ.test(stage)) continue; // this guard's own presence / redacted read
+    const toks = shellTokens(stage).filter((t) => !t.startsWith('-') && /[\/.~$]/.test(t));
+    for (const m of stage.matchAll(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g)) toks.push(m[1]);
+    for (const m of stage.matchAll(/(["'`])([^"'`\n]{2,300})\1/g)) toks.push(m[2]);
+    for (const tok of toks) {
+      if (/\$\{?[A-Za-z_]/.test(tok) && !expandPath(tok)) return true; // unknowable - never kept
+      for (const p of candidatePaths(tok)) { const f = statFile(p); if (f && secretInUnlessAllowed(f)) return true; }
+    }
+  }
+  return false;
+}
+function spliceOrWhole(view, file) {
+  let parts = null;
+  if (judging && judging.main) {
+    const seps = [];
+    parts = splitSegments(stripComments(judging.text), seps);
+    if (seps.length === parts.length - 1 && judging.seg < parts.length) {
+      const others = parts.filter((p, i) => i !== judging.seg);
+      if (!others.some(namesCredentialFileIn)) {
+        // the replaced segment keeps its own surrounding whitespace, so the command reads exactly as
+        // the model wrote it with one step swapped
+        const pad = parts[judging.seg].match(/^(\s*)[\s\S]*?(\s*)$/);
+        let out = '';
+        for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[1] + view + pad[2] : parts[i]) + (seps[i] || '');
+        return out.trim();
+      }
+    }
+  }
+  // Not spliceable: the whole command is replaced, as before - but every step that goes with it is
+  // NAMED. The silence was the cost (a 4-part command came back as 1 part and nothing said so), not
+  // the replacement. The judged text is the base where it is the command; otherwise (a heredoc in
+  // the command, a heredoc body) the command's own segments are, minus the one naming the file.
+  const base = parts || splitSegments(stripComments(String(input.command || '')));
+  const dropped = [];
+  for (let i = 0; i < base.length; i++) {
+    const p = base[i].trim().replace(/\s+/g, ' ');
+    if (!p || (parts ? i === judging.seg : p.includes(String(file || '\u0000')))) continue;
+    dropped.push(p.slice(0, 160));
+  }
+  if (!dropped.length) return view;
+  const note = `# credential guard: ${dropped.length} other step(s) of this command were dropped - `
+    + `run them on their own: ${dropped.join(' ; ')}`;
+  return IS_PWSH ? `Write-Output ${psSingle(note)}; ${view}` : `echo "${shDouble(note)}"; ${view}`;
+}
+
 // ---- Shell matcher ----
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
 // `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
@@ -742,6 +827,9 @@ function narrowFilter(stages, tok) {
 // `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
 // (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
 const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+const IS_PWSH = payload.tool_name === 'PowerShell';
+// A PowerShell single-quoted literal: nothing expands inside it, and `'` doubles.
+const psSingle = (s) => `'${String(s).replace(/'/g, "''")}'`;
 if (isShellTool(payload.tool_name)) {
   const raw = String(input.command || '');
   // A credential-shaped literal typed into a command is already in the transcript as the call's own
@@ -755,7 +843,9 @@ if (isShellTool(payload.tool_name)) {
   }
   const code = [];
   const command = stripHeredocsOf(raw, code);
-  judgeShell(command, false);
+  // `main` says this text IS the command the tool will run - the one text a segment splice may
+  // rebuild. A heredoc-blanked command is not (the bodies are spaces by then), and neither is a body.
+  judgeShell(command, false, command === raw);
   // The heredoc bodies that ARE commands: a runtime body is judged as inline code, a shell body as
   // the shell it is.
   for (const h of code) judgeShell(h.body, h.runtime);
@@ -764,10 +854,17 @@ if (isShellTool(payload.tool_name)) {
 
 // A print of a credential-shaped variable becomes that variable's presence line - the idiom the
 // denial used to prescribe, run for the model instead of fed back to it - led by the note.
+// On the PowerShell route the same line is spelled in PowerShell - the Bash form is a ParserError in
+// pwsh - and reads the environment variable first, then a session variable of that name.
 function blockVariable(name) {
   if (allowAll || allowedNames.has(name)) return; // the user's own allowance for this session
   refuseDroppedSteps(`the credential-shaped variable \`${name}\``);
   const note = noteLine(`\`${name}\` is a credential-shaped variable - shown as presence, not printed.`, receipt);
+  if (IS_PWSH) {
+    rewrite(`Write-Output ${psSingle(note)}; $cgv = [Environment]::GetEnvironmentVariable('${name}'); ` +
+      `if (-not $cgv) { $cgv = Get-Variable -Name '${name}' -ValueOnly -ErrorAction SilentlyContinue }; ` +
+      `if ($cgv) { Write-Output "${name}=set ($(([string]$cgv).Length) chars)" } else { Write-Output '${name}=absent' }`);
+  }
   rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
 }
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
@@ -776,10 +873,38 @@ function blockVariable(name) {
 function blockEnvDump() {
   if (allowAll) return; // only `*` covers every variable at once
   refuseDroppedSteps('the whole environment');
-  rewrite(`node "${shDouble(__filename)}" --redacted-env`);
+  rewrite(IS_PWSH ? `node ${psSingle(__filename)} --redacted-env` : `node "${shDouble(__filename)}" --redacted-env`);
 }
 
-function judgeShell(text, forceRuntime) {
+// PowerShell prints a value four ways Bash does not: a bare expression statement (`$env:NAME`,
+// `"$env:NAME"`, `[Environment]::GetEnvironmentVariable('NAME')`), a Write-* cmdlet, the env: drive
+// (`Get-Item env:NAME`, `Get-ChildItem env:` - the whole environment), and the .NET listing
+// `[Environment]::GetEnvironmentVariables()`. A USE - `if ($env:NAME)`, `$env:NAME.Length`, a header
+// argument to curl.exe - prints nothing, the same line the Bash branch draws for `curl -d "$TOKEN"`.
+// Declarations only inside: the shell branch runs ABOVE this point, so a top-level const here would
+// still be in its temporal dead zone.
+function judgePwshStage(stage) {
+  const PS_ENV_REF = /\$\{?env:([A-Za-z_][A-Za-z0-9_]*)\}?/gi;
+  const PS_GETENV = /\[(?:System\.)?Environment\]::GetEnvironmentVariable\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/gi;
+  const s = stage.trim();
+  const secretOf = (re, text) => [...text.matchAll(re)].map((m) => m[1]).find((n) => SECRET_KEY_RE.test(n));
+  // env: drive - a named item prints that variable, anything else lists the environment.
+  const drive = s.match(/^\(?\s*(?:get-item|gi|get-childitem|gci|dir|ls)\s+(?:-path\s+|-literalpath\s+)?['"]?env:\\?([^\s'")|]*)/i);
+  if (drive) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(drive[1])) { if (SECRET_KEY_RE.test(drive[1])) blockVariable(drive[1]); } else blockEnvDump();
+  }
+  if (/^\[(?:System\.)?Environment\]::GetEnvironmentVariables\(\s*\)/i.test(s)) blockEnvDump();
+  // A bare expression statement is printed by the host.
+  const bare = s.match(/^"?\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}?"?$/i) || s.match(/^\[(?:System\.)?Environment\]::GetEnvironmentVariable\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\)$/i);
+  if (bare && SECRET_KEY_RE.test(bare[1])) blockVariable(bare[1]);
+  // The print verbs, PowerShell's own included.
+  if (/^(?:echo|write-output|write-host|write-information|write|out-host)\b/i.test(s)) {
+    const hit = secretOf(PS_ENV_REF, s) || secretOf(PS_GETENV, s);
+    if (hit) blockVariable(hit);
+  }
+}
+
+function judgeShell(text, forceRuntime, main) {
   cwdAnchor = null;
   const segments = splitSegments(stripComments(text));
   for (let si = 0; si < segments.length; si++) {
@@ -806,7 +931,7 @@ function judgeShell(text, forceRuntime) {
 
     for (let sj = 0; sj < stages.length; sj++) {
       const stage = stages[sj];
-      judging = { text, seg: si, stage: sj, runtime: forceRuntime };
+      judging = { text, seg: si, stage: sj, runtime: forceRuntime, main };
       // The sanctioned read is exempt by name - it is this file - and only in its OWN stage: the
       // exemption used to cover the whole segment, so `--presence <file> | cat <file>` passed.
       if (/guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/.test(stage)) continue;
@@ -827,6 +952,7 @@ function judgeShell(text, forceRuntime) {
         const hit = names.find((n) => SECRET_KEY_RE.test(n));
         if (hit) blockVariable(hit);
       }
+      if (IS_PWSH) judgePwshStage(stage);
       // `declare -p NAME` / `typeset -p NAME` print one variable's value, like printenv NAME.
       const dp = stage.replace(PREFIX_WORDS, '').match(/^(?:declare|typeset)\s+-p\s+([^\n|]+)/);
       if (dp) { const hit = shellTokens(dp[1]).find((n) => SECRET_KEY_RE.test(n)); if (hit) blockVariable(hit); }
@@ -879,9 +1005,9 @@ function judgeShell(text, forceRuntime) {
           // a compound command is dropped rather than spliced, so the rewritten call is always one the
           // model can read back whole; a dropped step that CHANGES something blocks instead.
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``);
-          const view = `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
+          const view = IS_PWSH ? `node ${psSingle(__filename)} --redacted ${psSingle(file)}` : `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
           const narrow = payload.tool_name === 'Bash' && !isRuntime && sj === 0 && narrowFilter(stages, tok);
-          rewrite(narrow ? `${view} --note-to-stderr | ${narrow}` : view);
+          rewrite(spliceOrWhole(narrow ? `${view} --note-to-stderr | ${narrow}` : view, file));
         }
       }
     }
@@ -905,6 +1031,17 @@ if (payload.tool_name === 'Read') {
 // `files_with_matches` (the default) and `count` return a path or a number and are never blocked,
 // which keeps 'does this file mention SENTRY_SLUG' a free question.
 if (payload.tool_name === 'Grep') {
+  // The Bash route blocks a credential-shaped LITERAL typed into the command; the Grep tool takes
+  // the same literal in `pattern` and nothing judged it, so the value the shell route refuses was
+  // free through the search tool. The pattern is the call's own input and lands in the transcript
+  // whatever the search returns - judged here by the same shape test, in every output mode.
+  if (!receiptLive && SECRET_SHAPE.test(String(input.pattern || ''))) {
+    block('Blocked: the Grep pattern carries a credential-shaped literal (a token / key / JWT).\n'
+      + 'Per baseline-security.md a secret never passes through a tool call or the chat, and a search\n'
+      + 'pattern is a tool input like any other - it is in the transcript before the first match is.\n'
+      + 'Search for the KEY NAME instead, or ask presence:\n'
+      + `  node "${__filename}" --presence <file> [KEY ...]\n`);
+  }
   if (String(input.output_mode || 'files_with_matches') === 'content') {
     const target = String(input.path || '');
     // A directory target is judged by the credential-bearing files it would print from; with no

@@ -1,40 +1,55 @@
-# The two artifact shapes - the doc's entries and the generated rule
+# The two artifact shapes - the doc's sections and the generated rule
 
 Read at steps 3 and 4, before either file is written. The doc's section order lives in
-`SKILL.md`; this file carries the two literal shapes and the provenance rule behind them.
+`SKILL.md`; this file carries the two literal shapes, the write mechanics, and the provenance
+rule behind them.
 
-## The doc's entry schema
+## The doc's section shape
 
-The doc's **entries** section is one `related_projects:` YAML block, the house schema per sibling:
-```yaml
-related_projects:
-  - name:     <sibling name>
-    location: <path or git URL>
-    relation: consumes | provides-to | peer | depends-on | embeds
-    first_read: [<docs-path-from-sibling-root-to-read-before-working-a-seam>]
-    seam:     <the shared surface a change here can break there - API, package, schema>
-    captured: <branch>@<short-sha>, <date>
-```
-The doc's **per sibling** section is a short evidence note under its own heading: what grounds the relation and seam (the located files, both sides), plus any uncertainty or UNVERIFIED marker carried over verbatim. Keep each note lean - orientation, not an audit.
+Every sibling gets its own `##` heading in `RELATED-PROJECTS.md`, with its metadata as comment
+lines directly under it, same convention as every other domain:
 
-A filled entry looks like:
+    ## acme-billing-api
+    <!-- id: acme-billing-api -->
 
-```yaml
-related_projects:
-  - name:     acme-billing-api
-    location: ../acme-billing-api
-    relation: provides-to
+    ```yaml
+    location:   ../acme-billing-api
+    relation:   provides-to
     first_read: [docs/architecture/ARCHITECTURE.md]
-    seam:     the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
-    captured: develop@a1b2c3d, 2026-07-24
-```
+    seam:       the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
+    captured:   develop@a1b2c3d, 2026-07-24
+    ```
+
+    What grounds it: `src/Contracts/OrderCreated.cs` (this repo, publishes) and
+    `acme-billing-api/src/Consumers/OrderCreatedConsumer.cs` (sibling, consumes) - both read on the
+    date above.
+
+- `id` - a lowercase slug of the sibling's name, unique in the file, kept across heading
+  rewordings. `docs.js seed-ids` adds a missing one.
+- No `covers:` - deliberate, not an oversight. `RELATED-PROJECTS.md` characterizes another repo;
+  no glob over THIS repo's files should ever mark an entry stale, which is also why
+  `related-projects/watch.json` holds `{}` (see Write mechanics). `docs.js lint` notes a section
+  declaring no `covers:`, but never fails on one - the note is the engine observing the shape, not
+  objecting to it.
 
 Each entry carries its own `captured: <branch>@<short-sha>, <date>` - entries are upserted at
-different times, so provenance is PER ENTRY here; the doc-wide stamp from point 1 only records
-the LAST run, never stands in for an entry's own. It matters most for a relationship
+different times, so provenance is PER ENTRY here; the doc-wide stamp from point 1 in `SKILL.md`
+only records the LAST run, never stands in for an entry's own. It matters most for a relationship
 born on a feature branch (the seam code exists only there): on any other branch that entry is a
 claim from elsewhere - verify the seam exists before relying on it. Re-running the capture for
 that sibling after the branch merges refreshes the entry with the base branch's stamp.
+
+## watch.json
+
+    {}
+
+An empty object, not an empty `watch` array inside a populated shape - the whole domain has
+nothing to watch. `domains()` in `.claude/hooks/docs.js` counts any folder holding a `watch.json`
+as a domain regardless of its contents, so this still makes `related-projects/` section, lint and
+`docs.js status` like any other domain; there is simply no `watch` entry that could ever fire,
+because no file in THIS repo bears on whether a sibling's characterization still holds. It declares
+no `sourceRoots` either, and declaring none contributes none: adding this domain never widens
+another domain's first-change gate.
 
 ## The generated rule - copy target
 
@@ -53,12 +68,29 @@ trailing marker `(captured on <branch>)` - dropped when a base-branch re-capture
 a session on another branch knows that edge may not exist in its code>
 
 - Everything past awareness - first_read, the evidence behind each seam - lives in
-  `<docs-path>/related-context/PROJECT-RELATED-CONTEXT.md`; read it when a task touches a seam.
-  The same `<docs-path>/related-context/` folder holds every other sibling-repo doc (cross-repo
-  plans, change requests, run recipes) - check it before re-deriving sibling state, and file
-  new sibling-repo docs there, never elsewhere.
+  `<docs-path>/related-projects/RELATED-PROJECTS.md`; read it when a task touches a seam.
+  Every OTHER sibling-repo doc (cross-repo plans, change requests, run recipes) belongs instead in
+  the plain folder `<docs-path>/related-context/` - check it before re-deriving sibling state, and
+  file new sibling-repo docs there, never in `related-projects/`.
 - serena binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
-- Dynamic cross-repo findings go to the MCP that holds cross-project recall, never a committed
-  file; with no such server registered they stay session-local.
+- Dynamic cross-repo findings go to the shared `memory` MCP instead of a committed file - tag them
+  with the sibling's own name (`project:<sibling>` or bare `<sibling>`), so they surface when that
+  sibling is searched later.
 ```
+
+## Write mechanics
+
+Same mechanics as every other non-protected domain. **On mainline, or without git, MERGE writes
+`related-projects/RELATED-PROJECTS.md` directly** (Write, REPLACE-in-place: read what exists first,
+reconcile section by section, so the write is legal). **On a feature branch under local/overlay
+versioning, MERGE lands each changed sibling's section through
+`node .claude/hooks/docs.js set RELATED-PROJECTS#<id>`** instead of writing the file - the engine
+puts it in that branch's overlay under `.branches/`, stamps the section itself, and the section
+folds into mainline by itself at the first mainline session after the branch merges. **The capture
+does not check which mode is active** - `docs.js status` names it, but MERGE calls `set`
+unconditionally and the engine decides where the text lands, the same rule `code-style/CODE-STYLE.md`
+follows.
+
+**Verify the shape before it ships.** `docs.js lint` is the arbiter of whether `watch.json` and the
+section metadata are valid - run it against a temp fixture holding this shape before trusting it.

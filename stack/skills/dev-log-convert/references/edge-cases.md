@@ -15,6 +15,7 @@ These fire on the SHAPE of the input, not on every run: the status signal a day'
 ## Edge cases
 - Relative dates (`today`, `yesterday`, `сьогодні`, `вчора`): resolve to absolute `dd.mm.yyyy` using today's date (Mon-Sun, no weekend skip).
 - Same ticket spanning multiple days: write a separate line under each day with that day's time only. Do not sum across days.
+- A ticket's FIRST day-entry in a split (no earlier day-entry for that ticket anywhere in this log): open with a start verb (`Started`, `Investigated`, `Worked on`), never `Continued` - `Continued` names a prior entry that does not exist here. `Continued` is only for a later day of the same split.
 - Day with no work (vacation, sick leave, public holiday): output the day header followed by a single line `Off (<reason>).` and skip `Total time`.
 - Input mentions a task but provides no action verb: prefix with `Worked on` (English) or `Працював над` (Ukrainian).
 - Time mismatch (bullets sum to a different total than the input's stated total): trust the bullets, recompute `Total time` from them, do not echo the input's total.

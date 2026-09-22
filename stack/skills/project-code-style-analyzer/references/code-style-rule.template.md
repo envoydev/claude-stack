@@ -11,4 +11,4 @@ Do not hand-edit - the user refreshes it by re-running `/project-code-style-anal
 __STYLE_CORE__
 
 Full capture (project type, enforcement map, uncertain/inconsistent markers, house-skill
-divergences): `__DOC_PATH__/PROJECT-CODE-STYLE.md`.
+divergences): `__DOC_PATH__/code-style/CODE-STYLE.md`.

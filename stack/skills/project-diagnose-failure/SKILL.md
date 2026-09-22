@@ -84,8 +84,11 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    (null-reference, DI resolution, async deadlock, race, disposed lifecycle, config drift) for a
    failure on your own machine, the one covering red-pipeline signatures (compile/restore,
    green-locally-red-on-the-runner, quality gate, signing, workflow drift, infra flake) for a
-   red CI run. Nothing matching means this project installed no such catalogue - say so and
-   proceed on the method alone. **A red pipeline is the one route that leaves this skill:** CI
+   red CI run. **Before writing 'none installed': re-read the skill list text once more end to end
+   for a description match** - a catalogue present in that list and skipped is the measured failure
+   this line exists to catch (measured: a listing held the local-runtime catalogue and the findings
+   file still said 'none installed'). Only when that recheck comes back empty does this project have
+   no such catalogue - say so and proceed on the method alone. **A red pipeline is the one route that leaves this skill:** CI
    needs the `gh` log pull and the CI-versus-local environment delta, which is
    ci-failure-diagnoser's specialty - offer that dispatch as the recommended option at this
    stop rather than re-deriving it here. Write the findings file with the observable and
@@ -99,8 +102,10 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    with serena per `.claude/rules/baseline-navigation.md`, read the paths that could produce the
    symptom, and attempt a repro. Never slurp a large log into this context - grep to the signal
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
-   from the evidence and the code. Append the digests' key lines to the findings file and stamp
-   `Gathered:`. *Stop.*
+   from the evidence and the code. Append the digests' key lines to the findings file, stamp
+   `Gathered:`, then stop - put 'continue to root cause?' through the AskUserQuestion tool per
+   'The stop contract' above (the stop hook already enforces the call; measured: one run skipped
+   this checkpoint and ran GATHER straight into ROOT CAUSE as a single 36-call stretch).
 3. **ROOT CAUSE** - run the investigation through the hypothesis-and-test method
    (`superpowers:systematic-debugging` - hypotheses first, each one confirmed or killed against the
    code, where the install has it; the same loop as written here where it does not): form the

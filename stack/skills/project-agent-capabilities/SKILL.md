@@ -6,50 +6,63 @@ disable-model-invocation: true
 
 # Project Capabilities - inventory what is installed, generate the awareness rule
 
-Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`memory` in a standalone project, `angular-cli` outside Angular), seats it never installed. A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
+Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`sentry` where nothing monitors production, `angular-cli` outside Angular), seats it never installed. A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
-## The run - precheck, inventory, then generate
+## The run - one script, one compose, one write
 
-### 0. PRECHECK - is there anything to capture at all?
-ONE command, before any inventory read:
+`scripts/capabilities-inventory.js` does every mechanical step in ONE node pass (built-ins only,
+nothing to install, no per-skill fork): the precheck, the inventory with a printed COUNT per layer,
+the live `claude mcp list`, the paste-ready MCP routing rows, the compare verdict and the
+post-write verify. From the project root:
 
 ```bash
-RULE=.claude/rules/baseline-project-agent-capabilities.md
-[ -f "$RULE" ] && { find .claude/skills .claude/agents .claude/rules .mcp.json .claude/claude-stack.stamp \
-  -newer "$RULE" ! -name 'baseline-project-*' ! -name 'project-code-style.md' -print 2>/dev/null | head -3; } || echo FIRST
+node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js
 ```
 
-- `FIRST` - no rule yet. Go to step 1; this is the capture the skill exists for.
-- **Empty output** - nothing under the inventory sources has changed since the rule was written.
-  Say so in ONE line naming the rule's `Captured:` date, and STOP. Do not inventory, do not
-  regenerate, do not write. This is the whole point of the step: a run that re-inventories and then
-  reports 'unchanged from the previous capture' has paid the full price for an answer it already had.
-- **Any path printed** - that is the drift. Continue to step 1 and name those paths in the report.
+On a plugin-covered install the same file sits under that plugin's `skills/project-agent-capabilities/`.
 
-Two things the precheck cannot see, and the only two reasons to continue past an empty result:
-the PLUGIN list is machine-global (an enable or disable changes no file in this tree), and the USER
-may ask for a refresh outright. Either one overrides it - say which one you are acting on.
+**Its printed block is the whole inventory.** Re-grepping, re-Reading or hand-tallying anything it
+printed is a defect, not diligence - every count and every row of the report comes off one of its
+lines, and a claim with no printed line behind it does not go in the report. It probes the `claude`
+CLI without laundering a failure into an empty result (`<cmd> || echo none`, banned in
+`baseline-navigation.md:41`) and without `| head -N`, so `CLI absent` and `0 plugins` stay
+different report fields.
 
-### 1. INVENTORY - read what is actually on disk
-- **Skills**: Glob `.claude/skills/*/SKILL.md` and EXTRACT the three fields - never dump the frontmatter. One pass, one line per file:
-  `for f in <abs>/.claude/skills/*/SKILL.md; do printf '%s|%s|%s\n' "$(grep -m1 '^name:' "$f" | cut -d' ' -f2-)" "$(grep -c '^disable-model-invocation: true' "$f")" "$(grep -m1 '^description:' "$f" | cut -c1-160)"; done`
-  A `Grep` for `description:` returns `[Omitted long matching line]` on every house skill and a whole-frontmatter dump costs 10-30x the fields. Collect `name`, the FIRST CLAUSE of `description` (see the shape's cap), and whether `disable-model-invocation: true` (those are the slash-only orchestration skills; the rest self-trigger and need no listing - one deliberate exception: `project-architecture-analyzer` carries no flag so the architecture loop can invoke it, yet it is still an orchestration skill - list it with that set, marked model-invocable-by-design).
-- **Seats**: Glob `.claude/agents/*.md` - collect the names (the dispatch surface; their own descriptions say when each applies).
-- **MCP servers**: read `.mcp.json` for the registered server names, AND list the session's live `mcp__<server>__` tool namespaces. The file is not the whole inventory: a connector reaching the session from the account or the harness has no `.mcp.json` row. Never write a NEGATIVE claim about a server class the file cannot see.
-- **Plugins**: probe first, then run it unguarded - `command -v claude >/dev/null || echo CLI_ABSENT`, then `claude plugin list`. Never `claude plugin list || echo none` (the fallback launders a failure into the same output an empty result gives, which `baseline-quality-gates.md` bans) and never `| head -N` (it masks the exit status behind the pipe's and can truncate a listing mid-entry). The listing repeats a project-scoped plugin once per marketplace record, so DEDUPE by name before counting. If the probe says absent, omit the plugins section rather than guess.
+### 1. PRECHECK - the script's first lines
+- `PRECHECK: FIRST` - no rule yet. Compose and write; this is the capture the skill exists for.
+- `PRECHECK: empty` - nothing under the inventory sources changed since the rule was written. Say
+  so in ONE line naming the `Captured:` date that line quotes, and STOP. Do not compose, do not
+  write. Two things the precheck cannot see, and the only two reasons to go on: the PLUGIN list is
+  machine-global (an enable or disable changes no file in this tree), and the USER may ask for a
+  refresh outright. Either overrides it - say which one you are acting on.
+- `PRECHECK: drift - <n> file(s)` - that is the drift. Continue, and name those paths in the report.
 
-Inventory only - nothing is judged, nothing is read beyond frontmatter and config. No dispatch; the whole run is in-session and cheap. Any Bash in this step uses absolute paths or a subshell (`(cd .claude && ...)`) - a bare `cd` persists into the session's later commands.
+### 2. COMPOSE the body - the verdict authorizes the write
+Read `references/generated-rule-template.md` for the four sections' fill rules, then compose the
+WHOLE body in-session: the block below verbatim, with only its `<...>` slots filled from the
+script's lines. One slot is not a slot - every `<docs-path>` becomes the LITERAL `DOCS ROOT` value
+the script printed, because the generated rule is a deterministic pointer and cannot itself carry
+the placeholder it exists to resolve.
 
-### 2. GENERATE - write .claude/rules/baseline-project-agent-capabilities.md
-A valid PATHLESS rule (frontmatter with a `description:` marking it generated, NO `paths:`), regenerated WHOLESALE each run - it is fully derived, so no upsert, no hand edits to preserve. Wholesale is mechanical, not a mood: COMPOSE the whole body in-session first, then READ the existing file and compare. An edit-in-place keeps stale policy wording the skill has since changed, so the write is always the whole file.
+Write the composed body to a scratch file, then run the verdict:
 
-**Identical? Do not write.** Report `rule unchanged - <N> bytes, not rewritten` and go to step 3. This is not a nicety: an identical rewrite pays a delete plus a full write, and the next session pays the changed mtime. Different? Write the composed body over the file in one call - the read you just did is what makes that Write legal, and it is one round trip. Do NOT `rm` it first: the auto-mode classifier denies that delete, which costs exactly the blocked round trip the delete was meant to save.
+```bash
+node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js --body <that file>
+```
 
-This skill was renamed from project-capabilities: when a legacy `.claude/rules/baseline-project-capabilities.md` exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules. Keep it lean (always-on tokens are paid every session and subagent).
+- `COMPARE: identical` - do NOT write. Report `rule unchanged - <N> bytes, not rewritten`, and go
+  to step 3's report. An identical rewrite pays a delete plus a full write, and the next session
+  pays the changed mtime.
+- `COMPARE: differs` - write the composed body over the rule in ONE call, the whole file. No
+  in-place Edit, no `sed -i`, no partial upsert: an edit keeps stale policy wording the skill has
+  since changed. Do NOT `rm` it first - the auto-mode classifier denies that delete, which costs
+  exactly the blocked round trip the delete was meant to save.
 
-The block below is a COPY TARGET, not prose to retype: take it verbatim and fill only the `<...>` slots. One slot is not a slot - every `<docs-path>` in it is replaced with the LITERAL resolved docs root this project uses (the `CLAUDE_STACK_DOCS_PATH` value, or `.claude/docs`), because the generated rule is a deterministic pointer and cannot itself carry the placeholder it exists to resolve. Read `references/generated-rule-template.md` now - the fill rules for the four inventory sections and the house routing map the MCP rows are stamped from, `first call:` lines copied VERBATIM; the REPORT's `Template:` line is its receipt. The shape:
+Without a printed `COMPARE: differs` line there is nothing to write.
+
+The block below is a COPY TARGET, not prose to retype:
 
 ```markdown
 ---
@@ -58,10 +71,10 @@ description: Project capabilities awareness - generated by /project-agent-capabi
 
 # This project's capabilities
 
-Captured: <YYYY-MM-DD> from <stack version>@<short-sha> (the install stamp's, or `no stamp` when absent)
+Captured: <the script's CAPTURED line>
 
 ## Usage policy (fixed - stamped verbatim, every run)
-<!-- policy-rev: 6279be0d -->
+<!-- policy-rev: a50faffe -->
 - Load a skill for the work at hand - a file you're about to edit, a command you're about
   to run, a diff you're about to show - never to answer a question. Over-loading a simple
   turn is the failure to avoid.
@@ -73,10 +86,13 @@ Captured: <YYYY-MM-DD> from <stack version>@<short-sha> (the install stamp's, or
   Never self-delegate off a description match. When a task calls for multi-agent work,
   suggest the matching orchestration skill from the inventory below - never one this
   project does not carry.
-- Memory recall is historical, not current: the assistant's per-project auto-memory
-  persists across installs and roster changes. Validate any seat, skill, or command a
-  recalled memory names against this rule's inventory before acting on it - a recall
-  can name a capability this project no longer carries.
+- Memory recall is historical, not current: this stack switches the assistant's own
+  per-project auto-memory OFF once its existing notes are imported into the shared
+  `memory` MCP - so anything it recalls is frozen at that import, and anything since
+  lives in the `memory` MCP instead (`baseline-memory.md` says when to search it).
+  Validate any seat, skill, or command an OLD recalled memory names against this rule's
+  inventory before acting on it - a recall can name a capability this project no longer
+  carries.
 - A slash-only skill or plugin command (`disable-model-invocation` - the ones listed
   below) is the USER's to type - never call it yourself. Do not rely on the harness to
   stop you: `guard-fresh-session-start.js` denies that call now, and the rule holds with or
@@ -92,56 +108,61 @@ Captured: <YYYY-MM-DD> from <stack version>@<short-sha> (the install stamp's, or
   block - or continue here with the cost stated). Do not restate the rule as a reminder to
   'name the route' - the prose form of it does not hold.
 - Every doc the assistant creates lands under the docs root (`<docs-path>`), in its owned
-  folder: `architecture/`, `test-coverage/`, `loops/` - and `related-context/` for anything
-  tied to a sibling repo (the orientation doc `related-context/PROJECT-RELATED-CONTEXT.md`
-  plus cross-repo plans, change requests, issue notes, run recipes; look there before
-  re-deriving sibling state). A doc outside the root takes the user's approval, asked
-  first - never silently.
+  folder: `architecture/`, `test-coverage/`, `loops/` - and `related-projects/` for the
+  sibling-repo orientation doc (`related-projects/RELATED-PROJECTS.md`), with the plain folder
+  `related-context/` alongside it for every OTHER sibling-repo doc (cross-repo plans, change
+  requests, issue notes, run recipes; look there before re-deriving sibling state). A doc outside
+  the root takes the user's approval, asked first - never silently.
 
 ## Orchestration skills (slash-only - invisible until invoked)
-<one ROUTER row per slash-only skill: `/name - <first clause, max 120 chars>`>
+<the script's `/name - clause` rows, one per row>
 
 ## Subagent seats
-<one line: the installed seat names, comma-separated>
+<the script's SEATS name line>
 
 ## MCP routing
-<one row per REGISTERED server from the routing map, each ending in its `first call:` line>
+<the script's `MCP ROUTING rows` block, pasted verbatim>
 
 ## Plugins
-<ONE line: `<name> (<state>)` per plugin, comma-separated; omit the section when the CLI probe failed>
+<the script's PLUGINS name line; omit the section when it printed `CLI absent`>
 ```
 
-Verify after writing: the frontmatter parses, there is no `paths:` key, every inventory row came from the step-1 read of disk, and each MCP row ends in its `first call:` line. Report the result on the `Rule:` field - a rule that does not parse is a rule no session loads.
+The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/claude-stack:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
 
-The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one - the generated rule is never re-fetched, only re-generated by a user re-run. `/claude-stack:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
+This skill was renamed from project-capabilities: when a legacy `.claude/rules/baseline-project-capabilities.md` exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
 
-### 3. REPORT
-A literal line template, not prose to remember - the close is filled in, field by field:
+### 3. VERIFY - after the write, before the report
+
+```bash
+node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js --verify .claude/rules/baseline-project-agent-capabilities.md
+```
+
+It parses the frontmatter with node - never PyYAML, which is missing on machines where a run died
+on ModuleNotFoundError and still reported 'frontmatter parses' off a weaker check - and checks
+there is no `paths:` key, that the `<!-- policy-rev: ... -->` stamp and the policy block came over verbatim, that
+the inventory headings are present, and that every MCP row carries its `first call:` line. A
+non-zero exit means the rule is not done: fix and re-run it. Its `VERIFY:` line is a report field.
+
+### 4. REPORT
+A literal line template, not prose to remember - every field is one of the script's printed lines:
 
 ```
-Rule:       <created | refreshed | unchanged, not rewritten> - <N> bytes
-Template:   read - references/generated-rule-template.md
-Inventory:  skills <n> / seats <n> / MCP servers <n> / plugins <n | CLI absent>
-Drift:      <the paths the precheck printed, or `user asked for a refresh` / `plugin state only`>
+Rule:       <created | refreshed | unchanged, not rewritten> - <N> bytes   (the COMPARE line)
+Verify:     <the VERIFY: line, or `not run - nothing written`>
+Inventory:  skills <n> / seats <n> / rules <n> / MCP <n> / plugins <n | CLI absent>
+Drift:      <the paths PRECHECK printed, or `user asked for a refresh` / `plugin state only`>
 Live from:  next session - an always-on rule is read at session start, so it does not govern this one
-Flags:      <one row each, or `none>`
+Flags:      <one row each, or `none`>
 ```
-
-Every count comes from the command that produced the list, never from a hand tally. Pipe the inventory through `wc -l`, or quote the number the listing printed.
-`Live from:` is UNCONDITIONAL and identical on both branches - a rule is read at session start
-either way. There is no next-run line: this report suggests no other skill, and never itself -
-a capture is suggested only where its output is stale, and chaining a second deliberate run into
-this session is `guard-fresh-session-start.js`'s to catch. The FIRST-ACT test
-itself stays mechanical - this run was NOT the session's first act when a user message, a tool call
-or another skill run precedes it in the transcript - and it is now only a detail in the sentence,
-not a branch that changes what is owed.
 
 Then the prose, short - four things, each its own line so none of them is skimmed past:
 
-- **Say `Live from:` the one way it is true on BOTH branches** - an always-on rule loads at session start, not retroactively, so this one governs from the next session and its guidance starts applying at the next `/clear`.
-- **Two flags are MECHANICAL - compute them, do not eyeball them**: (a) intersect the parsed `.mcp.json` names against the heavy-native-deps list {`chrome-devtools`, `appium-mcp`} and report every hit as its own row; (b) `ls .claude/rules/` in step 1 and report any seat family with no matching convention rule. Also flag a slash-only skill whose seats are not installed.
-- **Never infer causation from a machine-global listing** - state observed facts plainly ('typescript-lsp: listed disabled'), and never assert WHY something is installed or disabled without checking the per-project plugin records first: `claude plugin list` is machine-global, so install-scope causation read off it is a guess.
+- **Say `Live from:` the one way it is true on BOTH branches** - an always-on rule loads at session start, not retroactively, so this one governs from the next session and its guidance starts applying at the next `/clear`. It is UNCONDITIONAL and identical whether or not anything was written, and there is no next-run line: a capture is suggested only where its output is stale.
+- **The flags are MECHANICAL - read them off the block, do not eyeball them**: the script's `heavy native deps registered:` line is one row per hit; its `seat families` line against its path-scoped rule rows is the convention-rule cross-check (a family whose stack no rule names); and a slash-only skill whose seats are not installed is a third.
+- **Never infer causation from a machine-global listing** - state observed facts plainly ('typescript-lsp: listed disabled'), and never assert WHY something is installed or disabled: `claude plugin list` is machine-global, so install-scope causation read off it is a guess.
 - **Say that the rule is MACHINE-LOCAL, not committed** - the installers tell every project to gitignore `.claude/*` and re-include only `.claude/CLAUDE.md`, so this file is untracked, a fresh clone does not carry it, and the command has to be re-run there.
 
 ## Don't game it
-The rule lists what the inventory proved, nothing else - no capability is assumed from the house defaults, no row survives for a server or skill the project dropped, and an unreadable source (a malformed frontmatter, a missing .mcp.json) is reported as unreadable, not filled from memory. If the inventory looks wrong (an empty skills dir in a stack-installed project), say so and stop rather than generate an empty rule over a good one.
+The rule lists what the inventory proved, nothing else - no capability assumed from the house defaults, no row for a server or skill the project dropped, and an unreadable source reported as unreadable (the script prints it that way) rather than filled from memory.
+
+An empty `.claude/skills` is not by itself a broken install: when the layers come from a plugin the script prints `SOURCE: PLUGIN-COVERED` and the plugin's inventory is the real one - a named branch, not a reason to improvise an ask. Stop and say so only when it printed neither a local nor a plugin source.

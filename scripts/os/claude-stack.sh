@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # claude-stack.sh install|update [--space <name>] [--scope project|global] [--context7 local|remote]
-# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
+# [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--docs-versioning git|local] [--github-cli] [--keep-pins] - install/update the CLAUDE CODE stack FOR A PROJECT: every skill / plugin / MCP from
 # claude-stack.html (the complete toolset, not a curated subset), installed INTO a project. Built-in/
 # system CLI skills are excluded (they ship with the CLI). Bash twin of claude-stack.ps1; the Cursor
 # stack lives in the cursor-stack repo.
@@ -15,15 +15,27 @@
 #
 # The action (install|update) is the one positional argument; everything else is a named flag (any order):
 #   --space <name>          any word; selects the Claude account ~/.claude-<name> (skills/plugins/MCPs
-#                           install there - CLAUDE_CONFIG_DIR is exported for the claude CLI) AND a
-#                           separate memory DB (memory_<name>.db). Omit for the default ~/.claude
-#                           account + shared DB. The DB lives at ~/.memory-mcp, so a Cursor install
-#                           on the same machine sees the same per-space DB.
+#                           install there - CLAUDE_CONFIG_DIR is exported for the claude CLI). Omit for
+#                           the default ~/.claude account. Does NOT by itself change where the memory
+#                           MCP's db lives - pair it with --memory-level scoped for a memory_<name>.db.
 #   --scope project|global  project (default) installs the full set INTO this repo (skills project-
 #                           scoped, plugins/mcps --scope project); global installs it into the active
 #                           account (skills -g, plugins/mcps --scope user). Overrides the SCOPE env var.
 #   --context7 local|remote context7 transport; remote (default) is the hosted HTTP server, local the
 #                           npx stdio server.
+#   --memory-level global|scoped|project  where the memory MCP's own SQLite db lives: global =
+#                           ~/.memory-mcp/memory.db (default); scoped = ~/.memory-mcp/memory_<space>.db
+#                           (memory_default.db without --space); project = <project>/.memory-mcp/
+#                           memory.db under the MAIN checkout (self-ignored via a generated
+#                           .memory-mcp/.gitignore; refused with --scope global). Given, that level's
+#                           path is used. Absent: an existing registration keeps its db path
+#                           BYTE-FOR-BYTE (only the runtime extra + pragmas are upgraded); no existing
+#                           registration = global. A level change never copies or deletes a db - one
+#                           log line names the new file and the one the old memories stay in.
+#   --docs-versioning git|local  WRITE CLAUDE_STACK_DOCS_VERSIONING into the project settings.json env,
+#                           overriding a value already there (one line names the old and new value).
+#                           Absent = seeded only when the key is missing: 'local' when the docs are kept
+#                           out of git, else 'git'.
 #   --github-cli            install the GitHub CLI (gh) via Homebrew (macOS) if missing; prompts for
 #                           `gh auth login` when unauthenticated.
 #   --keep-pins             keep this project's LOCAL model/effort frontmatter edits on installed
@@ -39,16 +51,20 @@ usage() {
   cat <<USAGE
 claude-stack.sh - install or update the Claude Code stack into a project.
 
-Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--github-cli] [--keep-pins]
+Usage: bash $0 <install|update> [--space <name>] [--scope project|global] [--context7 local|remote] [--memory-level global|scoped|project] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv>] [--playwright-enabled <engine>] [--docs-versioning git|local] [--github-cli] [--keep-pins]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; MCP/plugin versions freeze until the next update; wires .claude/settings.json
   update    re-resolve every runtime to latest + refresh hooks/agents/rules; re-ensures the settings.json hook wiring (idempotent)
 
 Named flags (any order, each optional with a default):
-  --space <name>           install into the ~/.claude-<name> account + a separate memory_<name>.db
+  --space <name>           install into the ~/.claude-<name> account (does not by itself scope the memory db - pair with --memory-level scoped)
   --scope project|global   project (default) installs INTO this repo; global installs into the account
   --context7 local|remote  context7 transport; remote (default) is the hosted server, local the npx server
+  --memory-level global|scoped|project  where the memory MCP's db lives: global ~/.memory-mcp/memory.db
+                           (default when nothing is registered yet), scoped ~/.memory-mcp/memory_<space
+                           or default>.db, project <project>/.memory-mcp/memory.db (project scope only).
+                           Absent + an existing registration = its db path is kept unchanged
   --sentry-slug <slug>     seed SENTRY_SLUG - the Sentry org ('<org>') or project ('<org>/<project>',
                            Sentry's recommended form) - into the ACCOUNT settings.json "env"
                            (<account>/settings.json); the registration reads it at launch as
@@ -70,6 +86,13 @@ Named flags (any order, each optional with a default):
   --playwright-enabled <engine>  the one engine to keep switched on (one of the kept engines; given
                            alone, it is added to the set). The run prints '/mcp disable playwright-<x>'
                            for every other kept engine - switch any time with /mcp enable / disable
+  --docs-versioning git|local  how the docs are versioned (CLAUDE_STACK_DOCS_VERSIONING in the project
+                           settings.json env): git = committed, git versions them per branch; local =
+                           per-branch overlays under <docs-path>/.branches/. Given, the value is WRITTEN,
+                           overriding one already there, and one line names the old and new value.
+                           Absent = seeded only when the key is missing: local when the docs are kept out
+                           of git (no domain tracked, and a domain exists or git ignores the docs root),
+                           else git - a fresh project included
   --github-cli             install the GitHub CLI (gh) if missing
   --keep-pins              keep local model/effort frontmatter edits on installed agents/skills across
                            the refresh (an update resets them to upstream otherwise)
@@ -149,6 +172,8 @@ SENTRY_SLUG_FLAG=""
 SENTRY_AUTH_FLAG=""
 PLAYWRIGHT_BROWSERS_FLAG=""
 PLAYWRIGHT_ENABLED_FLAG=""
+DOCS_VERSIONING_FLAG=""
+MEMORY_LEVEL_FLAG=""
 SELECTION=""
 INSTALLED_ONLY=false
 PRINT_PLAN=false
@@ -170,9 +195,13 @@ while [ $# -gt 0 ]; do
     --sentry-auth) _flag_val "$1" "${2:-}"; SENTRY_AUTH_FLAG="$2"; shift 2 ;;
     --sentry-auth=*) SENTRY_AUTH_FLAG="${1#*=}";                  shift ;;
     --playwright-browsers)   _flag_val "$1" "${2:-}"; PLAYWRIGHT_BROWSERS_FLAG="$2"; shift 2 ;;
-    --playwright-browsers=*) PLAYWRIGHT_BROWSERS_FLAG="${1#*=}";                   shift ;;
+    --playwright-browsers=*) _flag_val "--playwright-browsers" "${1#*=}"; PLAYWRIGHT_BROWSERS_FLAG="${1#*=}"; shift ;;
     --playwright-enabled)    _flag_val "$1" "${2:-}"; PLAYWRIGHT_ENABLED_FLAG="$2";  shift 2 ;;
-    --playwright-enabled=*)  PLAYWRIGHT_ENABLED_FLAG="${1#*=}";                    shift ;;
+    --playwright-enabled=*)  _flag_val "--playwright-enabled" "${1#*=}"; PLAYWRIGHT_ENABLED_FLAG="${1#*=}"; shift ;;
+    --docs-versioning)   _flag_val "$1" "${2:-}"; DOCS_VERSIONING_FLAG="$2"; shift 2 ;;
+    --docs-versioning=*) _flag_val "--docs-versioning" "${1#*=}"; DOCS_VERSIONING_FLAG="${1#*=}"; shift ;;
+    --memory-level)   _flag_val "$1" "${2:-}"; MEMORY_LEVEL_FLAG="$2"; shift 2 ;;
+    --memory-level=*) _flag_val "--memory-level" "${1#*=}"; MEMORY_LEVEL_FLAG="${1#*=}"; shift ;;
     --github-cli) INSTALL_GITHUB_CLI=true;                     shift ;;
     --keep-pins)  KEEP_PINS=true;                              shift ;;
     --selection)   _flag_val "$1" "${2:-}"; SELECTION="$2";     shift 2 ;;
@@ -182,7 +211,7 @@ while [ $# -gt 0 ]; do
     --skills-only) SKILLS_ONLY=true;                              shift ;;
     --source)      _flag_val "$1" "${2:-}"; SOURCE_DIR="$2";      shift 2 ;;
     --source=*)    SOURCE_DIR="${1#*=}";                          shift ;;
-    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
+    *) usage >&2; echo "error: unknown argument '$1' (named flags only: --space, --scope, --context7, --memory-level, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source)" >&2; exit 1 ;;
   esac
 done
 
@@ -213,6 +242,23 @@ SENTRY_AUTH="$(printf '%s' "$SENTRY_AUTH_FLAG" | tr '[:upper:]' '[:lower:]')"
 case "$SENTRY_AUTH" in ""|token|oauth) ;;
   *) usage >&2; echo "error: --sentry-auth must be 'token' or 'oauth' (got '$SENTRY_AUTH')" >&2; exit 1 ;;
 esac
+# --docs-versioning: lower-cased like the other enums; empty means 'not given' - the absent-only seed decides.
+# Refused HERE, before anything is written, so a typo never reaches settings.json.
+DOCS_VERSIONING="$(printf '%s' "$DOCS_VERSIONING_FLAG" | tr '[:upper:]' '[:lower:]')"
+case "$DOCS_VERSIONING" in ""|git|local) ;;
+  *) usage >&2; echo "error: --docs-versioning must be 'git' or 'local' (got '$DOCS_VERSIONING')" >&2; exit 1 ;;
+esac
+# --memory-level: lower-cased like the other enums; empty means 'not given' - the existing-registration
+# (else global) rule decides. Refused HERE, before anything is written.
+MEMORY_LEVEL_FLAG="$(printf '%s' "$MEMORY_LEVEL_FLAG" | tr '[:upper:]' '[:lower:]')"
+case "$MEMORY_LEVEL_FLAG" in ""|global|scoped|project) ;;
+  *) usage >&2; echo "error: --memory-level must be 'global', 'scoped' or 'project' (got '$MEMORY_LEVEL_FLAG')" >&2; exit 1 ;;
+esac
+# A global install registers ONE memory server for every project of the account, so its db cannot live
+# inside one repo: every other project would share that file, and it would go when the repo goes.
+if [ "$MEMORY_LEVEL_FLAG" = "project" ] && [ "$SCOPE" = "global" ]; then
+  usage >&2; echo "error: --memory-level project cannot be used with --scope global - a global install shares one db across every project of the account; pick global or scoped" >&2; exit 1
+fi
 # --playwright-browsers / --playwright-enabled: lower-cased like the other enums and put in ONE canonical
 # order (chrome, msedge, firefox, webkit) so a server list never depends on how the flag was typed.
 # Empty browsers = 'resolve later' from what is registered (the playwright block after the selection).
@@ -227,6 +273,8 @@ if [ -n "$PLAYWRIGHT_BROWSERS_FLAG" ]; then
   done
   for _pw_e in $PW_ENGINES_ALL; do case "$_pw_want" in *" $_pw_e "*) PLAYWRIGHT_BROWSERS="$PLAYWRIGHT_BROWSERS $_pw_e" ;; esac; done
   PLAYWRIGHT_BROWSERS="${PLAYWRIGHT_BROWSERS# }"
+  # a value that names no engine at all (`,`) is a typo, never 'no flag'
+  [ -n "$PLAYWRIGHT_BROWSERS" ] || { usage >&2; echo "error: --playwright-browsers needs at least one of chrome, msedge, firefox, webkit" >&2; exit 1; }
 fi
 PLAYWRIGHT_ENABLED="$(printf '%s' "$PLAYWRIGHT_ENABLED_FLAG" | tr '[:upper:]' '[:lower:]')"
 if [ -n "$PLAYWRIGHT_ENABLED" ]; then
@@ -346,9 +394,9 @@ if [ -n "$SPACE" ]; then
   CONFIG_DIR="$HOME/.claude-$SPACE"
   # Distinguish an existing account from a brand-new one so a typo'd space ('wrok') is visible, not silent.
   if [ -d "$CONFIG_DIR" ]; then
-    log "space '$SPACE' -> existing account $CONFIG_DIR (CLAUDE_CONFIG_DIR exported for the claude CLI); memory DB memory_$SPACE.db."
+    log "space '$SPACE' -> existing account $CONFIG_DIR (CLAUDE_CONFIG_DIR exported for the claude CLI); pass --memory-level scoped for a matching memory_$SPACE.db (default without that flag: global)."
   else
-    log "space '$SPACE' -> creating NEW account $CONFIG_DIR (typo? did you mean an existing one?); memory DB memory_$SPACE.db."
+    log "space '$SPACE' -> creating NEW account $CONFIG_DIR (typo? did you mean an existing one?); pass --memory-level scoped for a matching memory_$SPACE.db (default without that flag: global)."
   fi
   [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "${CLAUDE_CONFIG_DIR}" != "$CONFIG_DIR" ] && \
     log "space '$SPACE' overrides CLAUDE_CONFIG_DIR ($CLAUDE_CONFIG_DIR)."
@@ -359,12 +407,30 @@ else
     log "CLAUDE_CONFIG_DIR not set - using the claude CLI default account; resolving config paths to $CONFIG_DIR."
   fi
 fi
+# The account's registration file (user-scope MCP servers): Claude Code keeps the DEFAULT account's at
+# ~/.claude.json, beside ~/.claude rather than inside it; only a CLAUDE_CONFIG_DIR account (a space is
+# one - exported above) keeps it inside its own dir.
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then ACCOUNT_CLAUDE_JSON="$CONFIG_DIR/.claude.json"; else ACCOUNT_CLAUDE_JSON="$HOME/.claude.json"; fi
 
 SERENA_CTX="claude-code"   # serena's --context for Claude Code
 
-# Shared memory root - always resolved at install time to a fixed home path, so a Cursor install on
-# the same machine points to the same DB.
-HOME_MEMORY_DIR="$HOME/.memory-mcp"
+# A db path in the spelling the programs that open it read. Git Bash / MSYS2 / Cygwin on Windows answer
+# $HOME in POSIX form (/c/Users/..., or /tmp/... under the temp mount) and git in mixed form (C:/...),
+# while the memory server and node are native Windows programs - to them /tmp/... is C:\tmp\..., another
+# file. `cygpath -w` gives the native C:\Users\...\memory.db, the same spelling the .ps1 twin registers
+# and node's path.normalize reads back (_memory_registered_path), so an update matches its own
+# registration instead of re-pointing it. Everywhere else the path is already native and passes through.
+if command -v cygpath >/dev/null 2>&1; then
+  _native_path() { cygpath -w "$1"; }
+  MEMORY_SEP='\'
+else
+  _native_path() { printf '%s\n' "$1"; }
+  MEMORY_SEP='/'
+fi
+
+# Shared memory root - the global and scoped levels' db folder, a fixed home path, so a Cursor install
+# on the same machine points to the same DB.
+HOME_MEMORY_DIR="$(_native_path "$HOME/.memory-mcp")"
 
 if [ "$SCOPE" = "project" ]; then
   cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
@@ -372,6 +438,26 @@ if [ "$SCOPE" = "project" ]; then
 else
   CLAUDE_SCOPE="user"
 fi
+
+# Two roots, because a worktree has its own top-level but shares its repo:
+# - MEMORY_TOPLEVEL: the repo this run WRITES into - rules, hooks, settings.json and .mcp.json land at
+#   the git top-level (a worktree's own folder inside a worktree), else (project scope only, a non-git
+#   project) PWD itself. The registration lookup, the notes import and the switch-off all read it.
+# - MEMORY_PROJECT_ROOT: where a `--memory-level project` db lives - the MAIN checkout (the git common
+#   dir's parent), never a worktree, which is deleted with its branch; a submodule or an older git
+#   falls back to the top-level.
+# A global-scope run outside any project (not inside a git repo) has neither - the level resolution and
+# import_memory_notes read that as 'no project' and fail-soft.
+MEMORY_TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -z "$MEMORY_TOPLEVEL" ] && [ "$CLAUDE_SCOPE" = "project" ] && MEMORY_TOPLEVEL="$PWD"
+_memory_common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+case "$_memory_common" in
+  */.git) MEMORY_PROJECT_ROOT="${_memory_common%/.git}" ;;
+  *)      MEMORY_PROJECT_ROOT="$MEMORY_TOPLEVEL" ;;
+esac
+# The project level's db, native-spelled like the home levels (see _native_path); empty with no project.
+MEMORY_PROJECT_DB=""
+[ -n "$MEMORY_PROJECT_ROOT" ] && MEMORY_PROJECT_DB="$(_native_path "$MEMORY_PROJECT_ROOT/.memory-mcp/memory.db")"
 
 # ===========================================================================
 # MANIFEST - edit these, then run.
@@ -384,14 +470,15 @@ SKILLS=(
   "envoydev/claude-stack|dev-log-convert"           # UA/EN work notes -> structured English work log; trigger 'dev-log'
   "envoydev/claude-stack|explain-code-tutor"        # senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert
   "envoydev/claude-stack|project-quality-loop"             # autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts
-  "envoydev/claude-stack|project-architecture-quality-loop"        # deliberate analyze-assess-improve loop - the project-architecture-analyzer capture writes ARCHITECTURE.md + ASSESSMENT.md, fix cons by tier, reconcile docs; manual /-only
-  "envoydev/claude-stack|project-code-style-analyzer"    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/PROJECT-CODE-STYLE.md, generates + wires the inject-code-style hook; manual /-only
-  "envoydev/claude-stack|project-architecture-analyzer"  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + ASSESSMENT.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  "envoydev/claude-stack|project-architecture-quality-loop"        # deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only
+  "envoydev/claude-stack|project-code-style-analyzer"    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only
+  "envoydev/claude-stack|project-architecture-analyzer"  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  "envoydev/claude-stack|project-architecture-quality-analyzer" # deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only
   "envoydev/claude-stack|project-test-coverage-analyzer" # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
   "envoydev/claude-stack|project-test-coverage-loop"     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
   "envoydev/claude-stack|project-version-upgrade"        # deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only
   "envoydev/claude-stack|project-agent-capabilities"           # deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only
-  "envoydev/claude-stack|project-related-context"        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-context/PROJECT-RELATED-CONTEXT.md; manual /-only
+  "envoydev/claude-stack|project-related-context"        # deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only
   "envoydev/claude-stack|project-build-from-scratch" # greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline
   "envoydev/claude-stack|project-solve-cross-task"    # entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies
   "envoydev/claude-stack|project-verify-plan"      # audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review
@@ -515,9 +602,8 @@ PLUGINS=(
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.
 #     @SERENA_CONTEXT@   -> resolved at install time to claude-code.
-#     @HOME_MEMORY_DIR@  -> resolved at install time to ~/.memory-mcp (shared with any Cursor install on the box).
+#     @MEMORY_DB_PATH@   -> resolved at install time to the memory db the --memory-level resolution picked.
 #     \${CLAUDE_PROJECT_DIR:-.} stays LITERAL so Claude Code interpolates it at server launch.
-#     memory (mcp-memory-service): a space (e.g. 'work') switches to memory_<space>.db.
 #
 # PERFORMANCE - network resolution is the cost of a slow new-session start, so it happens HERE
 # (install/update), never at launch:
@@ -549,7 +635,9 @@ MCP_MEMORY_VER="$(_pypi_latest mcp-memory-service)" || true
 CTX7_PIN="${MCP_CONTEXT7_VER:+@$MCP_CONTEXT7_VER}"
 PW_PIN="${MCP_PLAYWRIGHT_VER:+@$MCP_PLAYWRIGHT_VER}"
 SERENA_PIN="${MCP_SERENA_VER:+@$MCP_SERENA_VER}"
-MEMORY_PIN="${MCP_MEMORY_VER:+@$MCP_MEMORY_VER}"
+# The memory pin is spelled '==<ver>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<ver>',
+# FACT-EMBED) - not '@<ver>' like the others, which have no extras suffix to sit next to.
+MEMORY_PIN="${MCP_MEMORY_VER:+==$MCP_MEMORY_VER}"
 # Report what pinned vs. fell back to unpinned - the whole point of this step is 'frozen until update'.
 for _pv in "context7:$MCP_CONTEXT7_VER" "playwright:$MCP_PLAYWRIGHT_VER" "serena:$MCP_SERENA_VER" "memory:$MCP_MEMORY_VER"; do
   _pn="${_pv%%:*}"; _pver="${_pv#*:}"
@@ -557,9 +645,110 @@ for _pv in "context7:$MCP_CONTEXT7_VER" "playwright:$MCP_PLAYWRIGHT_VER" "serena
   else log "  !! could not resolve $_pn latest - installing unpinned (re-run when online to pin it)"; fi
 done
 
-MEMORY_BACKEND="sqlite_vec"; MEMORY_DB_FILE="memory.db"
-if [ -n "$SPACE" ]; then MEMORY_DB_FILE="memory_$SPACE.db"; fi  # space -> per-space DB; backend stays sqlite_vec (the only valid local backend)
-MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY_SQLITE_PATH=@HOME_MEMORY_DIR@/$MEMORY_DB_FILE -- uvx --with numpy --from mcp-memory-service${MEMORY_PIN} memory server"
+MEMORY_BACKEND="sqlite_vec"   # the only valid local backend; level (below) picks the db PATH
+
+# --memory-level: where the memory MCP's own SQLite db lives (FACT-SCHEMA / cross-task-facts.md) -
+# global ~/.memory-mcp/memory.db, scoped ~/.memory-mcp/memory_<space|default>.db, project
+# <project>/.memory-mcp/memory.db. Given, that level's default path is used (refusing 'project' with
+# no identifiable project root; 'project' with --scope global was refused with the other flags). Absent:
+# an EXISTING registration keeps its MCP_MEMORY_SQLITE_PATH byte-for-byte - only the runtime extra +
+# pragmas are upgraded below, never the path; no existing registration = global. A level change never
+# copies or deletes a db - whichever file the old memories are in stays there, and the one log line
+# below names both files (the guided commands quote it).
+# Mirrors stack/hooks/memory.js's pathForLevel/levelOfPath/registeredDbPath, reimplemented here (not
+# require()'d): this runs before the source snapshot's hooks are copied, and the .ps1 twin has no
+# require() at all - each twin needs its own copy of the formula regardless.
+# Joined with MEMORY_SEP, the separator _native_path answers with, so a path never mixes the two.
+_memory_default_path() {  # $1 = level -> the db path that level resolves to
+  case "$1" in
+    global)  printf '%s%smemory.db' "$HOME_MEMORY_DIR" "$MEMORY_SEP" ;;
+    scoped)  printf '%s%smemory_%s.db' "$HOME_MEMORY_DIR" "$MEMORY_SEP" "${SPACE:-default}" ;;
+    project) printf '%s' "$MEMORY_PROJECT_DB" ;;
+  esac
+}
+# The inverse - 'global'/'scoped'/'project' for a path matching one of the three shapes EXACTLY (never
+# a prefix/substring match, so a foreign path is never mistaken for one of ours); empty otherwise.
+_memory_level_of_path() {
+  local p="$1"
+  if [ -n "$MEMORY_PROJECT_DB" ] && [ "$p" = "$MEMORY_PROJECT_DB" ]; then printf 'project'; return; fi
+  [ "$p" = "$HOME_MEMORY_DIR${MEMORY_SEP}memory.db" ] && { printf 'global'; return; }
+  case "$p" in "$HOME_MEMORY_DIR$MEMORY_SEP"memory_*.db) printf 'scoped'; return ;; esac
+  return 0
+}
+# The CURRENTLY REGISTERED db path, if any (mirrors memory.js's registeredDbPath). Project scope: the
+# repo's .mcp.json first, else the account file (its user-scope entry, then this repo's local-scope
+# one). User scope reads ONLY the account file's user-scope entry: a repo's .mcp.json - a project-level
+# path an earlier project install wrote - must never become the account-wide path. The account file
+# is ACCOUNT_CLAUDE_JSON (~/.claude.json for the default account). Prints nothing when there is no
+# registration, node is missing, or a file cannot be read/parsed; never throws (every read is its own
+# try/catch) - callers still guard the substitution, since a crashed node would exit non-zero.
+_memory_registered_path() {
+  command -v node >/dev/null 2>&1 || return 0
+  node -e '
+const fs=require("fs");const path=require("path");
+const [scope,homeDir,accountFile,projectRoot]=process.argv.slice(1);
+function expandHome(p){ if(typeof p!=="string"||!p) return p; let out=p;
+  if(out==="~"||out.startsWith("~"+path.sep)||out.startsWith("~/")) out=path.join(homeDir,out.slice(1));
+  return out.replace(/\$\{HOME\}/g,homeDir).replace(/\$HOME\b/g,homeDir); }
+function readJson(f){ try{return JSON.parse(fs.readFileSync(f,"utf8"));}catch{return null;} }
+function envPath(entry){ const p=entry&&entry.env&&entry.env.MCP_MEMORY_SQLITE_PATH;
+  return typeof p==="string"&&p?path.normalize(expandHome(p)):null; }
+const projectScope=scope==="project";
+try{
+  if(projectScope&&projectRoot){
+    const mcp=readJson(path.join(projectRoot,".mcp.json"));
+    const found=envPath(mcp&&mcp.mcpServers&&mcp.mcpServers.memory);
+    if(found){ console.log(found); process.exit(0); }
+  }
+}catch{}
+try{
+  const account=readJson(accountFile);
+  if(account){
+    const userScope=envPath(account.mcpServers&&account.mcpServers.memory);
+    if(userScope){ console.log(userScope); process.exit(0); }
+    if(projectScope&&projectRoot){
+      const projects=account.projects||{};
+      const proj=projects[projectRoot]||projects[projectRoot.replace(/\\/g,"/")];
+      const projScope=envPath(proj&&proj.mcpServers&&proj.mcpServers.memory);
+      if(projScope){ console.log(projScope); process.exit(0); }
+    }
+  }
+}catch{}
+' "$CLAUDE_SCOPE" "$HOME" "$ACCOUNT_CLAUDE_JSON" "$MEMORY_TOPLEVEL" 2>/dev/null
+}
+
+MEMORY_EXISTING_PATH="$(_memory_registered_path)" || MEMORY_EXISTING_PATH=""
+if [ -n "$MEMORY_LEVEL_FLAG" ]; then
+  MEMORY_LEVEL="$MEMORY_LEVEL_FLAG"
+  if [ "$MEMORY_LEVEL" = "project" ] && [ -z "$MEMORY_PROJECT_ROOT" ]; then
+    usage >&2; echo "error: --memory-level project needs a project (not inside a git repo)" >&2; exit 1
+  fi
+  MEMORY_DB_PATH="$(_memory_default_path "$MEMORY_LEVEL")"
+  # A flag that MOVES an existing registration: the db file is never copied, so name both files.
+  if [ -n "$MEMORY_EXISTING_PATH" ] && [ "$MEMORY_EXISTING_PATH" != "$MEMORY_DB_PATH" ]; then
+    _memory_old_level="$(_memory_level_of_path "$MEMORY_EXISTING_PATH")" || _memory_old_level=""
+    [ -n "$_memory_old_level" ] || _memory_old_level="custom"
+    log "memory: level $_memory_old_level -> $MEMORY_LEVEL: $MEMORY_DB_PATH (old memories stay in $MEMORY_EXISTING_PATH)"
+  fi
+else
+  if [ -n "$MEMORY_EXISTING_PATH" ]; then
+    MEMORY_DB_PATH="$MEMORY_EXISTING_PATH"
+    MEMORY_LEVEL="$(_memory_level_of_path "$MEMORY_DB_PATH")" || MEMORY_LEVEL=""
+    [ -n "$MEMORY_LEVEL" ] || MEMORY_LEVEL="custom"
+    log "memory: no --memory-level given - keeping the existing registration's db path unchanged ($MEMORY_LEVEL): $MEMORY_DB_PATH"
+  else
+    MEMORY_LEVEL="global"
+    MEMORY_DB_PATH="$(_memory_default_path global)"
+  fi
+fi
+
+# FACT-EMBED: the '[sqlite]' extra is what gives real (ONNX, 384-dim) embeddings - without it the
+# server hash-embeds the first launch and then REFUSES to start on every later one once the db holds
+# rows. FACT-PRAGMA: the service's own busy_timeout default is 5000ms; MCP_MEMORY_SQLITE_PRAGMAS raises
+# it (and the python-level connect timeout with it) - always added since 5000 < 15000. Both survive
+# unquoted: read -ra below (and the verify step's own word-splitter) split on whitespace only, never
+# glob-expand an array element, so '[sqlite]' and the two '=' in 'busy_timeout=15000' need no quoting.
+MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --with numpy --from mcp-memory-service[sqlite]${MEMORY_PIN} memory server"
 
 # context7 runs REMOTE (the hosted server) by DEFAULT - no local process, and the key stays out of
 # the registration: put CONTEXT7_API_KEY in the ACCOUNT settings.json "env" (<account>/settings.json -
@@ -659,7 +848,7 @@ MCPS=(
   "chrome-devtools|-- npx -y chrome-devtools-mcp@latest" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
   "appium-mcp|-- npx -y appium-mcp@latest" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
   "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; --sentry-slug seeds the slug); --sentry-auth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
-  "$MEMORY_ENTRY"  # memory: cross-project recall - the subagent handoff runs on serena; comment out in a standalone project
+  "$MEMORY_ENTRY"  # memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives
   "$CONTEXT7_ENTRY"                           # up-to-date library/framework/SDK docs (beats recalled API knowledge)
 )
 
@@ -677,7 +866,8 @@ HOOKS=(
   "guard-secret-value.js::Grep::"                 # the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)
   "guard-unapproved-dispatch.js::Task|Agent::"    # block *-implementer dispatch without the docs-root flow/APPROVAL gate file (APPROVED/AUTO)
   "guard-ungated-commit.js::Bash|PowerShell::"               # block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)
-  "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, once per 1.5x of context growth past 40% of the window
+  "guard-stop-contract.js::@Stop::"               # Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth
+  "guard-stop-contract.js::@SubagentStop::"       # SubagentStop: hold ONCE a subagent that stops on a wait nobody will end (a first-person 'I'll wait for...' close or its own ScheduleWakeup call) while it started no background work of its own - the parent's history is not its situation (field report: a fork dropped its whole brief this way)
   "guard-stop-contract.js::AskUserQuestion::"  # PreToolUse AskUserQuestion: INJECT context into the ask being built - stale scope (an option naming repo/remote/job state with no fresh read this turn), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for a flow whose every stop is a tool call, a live credential, and the house voice in the ask's own text. Presence only, never denies
   "guard-fresh-session-start.js::Skill::"        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   "guard-fresh-session-start.js::@UserPromptSubmit::"   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
@@ -686,6 +876,12 @@ HOOKS=(
   "guard-answer-length.js::@UserPromptSubmit::"   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   "guard-answer-length.js::@SessionStart::"     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
   "guard-answer-length.js::@Stop::"               # Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget
+  "docs-session.js::@SessionStart::"              # the architecture docs as the session's starting point: merged branches' doc versions folded into mainline, then ORIENTATION.md, this branch's overrides and how to read by section
+  "docs-session.js::@SubagentStart::"             # the same orientation for a dispatched subagent - SessionStart context never reaches one, plus the snapshot the finish ask compares against
+  "docs-session.js::@SubagentStop::"              # the finish ask, per agent: what THAT agent changed, once - the seat that made the change is the only context that knows why
+  "docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::"  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
+  "docs-session.js::@Stop::"                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
+  "memory-session.js::@SessionStart::"            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows HOOKS. The stamp records these
@@ -741,8 +937,8 @@ AGENTS=(
   "angular-test-resolver.md"         # implement phase (sonnet/high): ng test/Jest -> red->green repair loop, anti-reward-hacking, capped
   "architecture-analyzer.md"                 # analysis support (sonnet/low): read-only per-module characterizer (purpose/surface/deps/patterns/smells) - the architecture + test-coverage captures fan it out, also independently callable
   "test-coverage-analyzer.md"             # analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the project-test-coverage-analyzer skill fans it out over the raw results; never runs the suite
-  "code-style-analyzer.md"                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/PROJECT-CODE-STYLE.md + the inject-code-style hook from its structured reports
-  "related-project-analyzer.md"           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-context/PROJECT-RELATED-CONTEXT.md
+  "code-style-analyzer.md"                # analysis phase (sonnet/medium): read-only per-language style characterizer - the project-code-style-analyzer skill fans it out per language and merges docs/code-style/CODE-STYLE.md + the generated project-code-style rule from its structured reports
+  "related-project-analyzer.md"           # analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the project-related-context skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md
   "ci-failure-diagnoser.md"          # analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route
   "runtime-failure-diagnoser.md"               # analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix
   "evidence-gatherer.md"             # diagnosis support (sonnet/low): read-only - a diagnoser dispatches it to reproduce/confirm and return a compact digest, keeping log volume off the opus seat
@@ -797,6 +993,7 @@ CLAUDE_RULES=(
   "baseline-git.md"
   "baseline-navigation.md"
   "baseline-docs-root.md"      # generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)
+  "baseline-memory.md"        # what goes to the memory MCP - locks it in, like baseline-navigation locks serena
   # Path-scoped routing
   "markdown-docs.md"          # markdown-style routing, path-scoped **/*.md
   "javascript-conventions.md"  # JS-family conventions, path-scoped js/jsx/mjs/cjs
@@ -839,7 +1036,7 @@ if [ "$INSTALLED_ONLY" = true ]; then
     done
     for f in "$_io_claude"/hooks/*.js; do
       [ -f "$f" ] || continue; _io_b="$(basename "${f%.js}")"
-      case "$_io_b" in inject-code-style) continue ;; esac
+      case "$_io_b" in inject-code-style|docs|memory) continue ;; esac   # docs.js/memory.js are engines, not hooks
       printf 'hook %s\n' "$_io_b"
     done
     if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
@@ -897,10 +1094,36 @@ if [ "$INSTALLED_ONLY" = true ]; then
       log "installed-only: adopting hook $_io_n - shipped by this release and absent here"
     done
   fi
+  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  # The always-on baseline (meta/recommendations.json `always.rules` / `always.mcps`) is adopted the
+  # same way: a rule or server every install carries reached an existing one ONLY here - measured, a
+  # pre-memory install updated to this release gained the start hook but never baseline-memory.md or
+  # the memory server, the rule and the server the switch-off of Claude's own memory depends on. A
+  # layer this install does not carry at all (no rule, or no server, found above) stays absent. There
+  # is NO drop exception here, unlike hooks: the always set is locked, like serena, so an always item
+  # absent from disk is adopted whatever the previous stamp says - a stamp that named the shipped list
+  # once read as a drop of everything a standalone run had failed to adopt, and memory never arrived.
+  # The file sits next to this script (a checkout or an extracted snapshot) or in --source; a bare
+  # curl-piped run has neither and adopts nothing - the import gate below then keeps memory on, and
+  # the next run that finds the file adopts.
+  _io_recs=""
+  for _io_c in "$_io_script_dir/../../meta/recommendations.json" "${SOURCE_DIR:+$SOURCE_DIR/meta/recommendations.json}"; do
+    if [ -n "$_io_c" ] && [ -f "$_io_c" ]; then _io_recs="$_io_c"; break; fi
+  done
+  if [ -n "$_io_recs" ] && command -v node >/dev/null 2>&1; then
+    for _io_cat in rule mcp; do
+      grep -q "^$_io_cat " "$SELECTION" || continue
+      _io_always="$(node -e 'try{const a=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).always||{})[process.argv[2]];if(Array.isArray(a))console.log(a.join(" "));}catch{}' "$_io_recs" "${_io_cat}s" 2>/dev/null || true)"
+      for _io_n in $_io_always; do
+        if grep -qxF "$_io_cat $_io_n" "$SELECTION"; then continue; fi
+        printf '%s %s\n' "$_io_cat" "$_io_n" >> "$SELECTION"
+        log "installed-only: adopting $_io_cat $_io_n - always shipped by this release and absent here"
+      done
+    done
+  fi
   # No hooks on disk must stay no hooks: the filter's no-hook-lines special case
   # would otherwise install all of them.
   grep -q '^hook ' "$SELECTION" || HOOKS=()
-  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
   _io_sel_js="$_io_script_dir/../stack-select.js"
   _io_graph="$_io_script_dir/../../meta/stack-graph.json"
   if command -v node >/dev/null 2>&1 && [ -f "$_io_sel_js" ] && [ -f "$_io_graph" ]; then
@@ -951,6 +1174,16 @@ if [ "$PRINT_PLAN" = true ]; then
   exit 0
 fi
 
+# project level: the db lives INSIDE the project, self-ignored so it is never committed - a
+# '.memory-mcp/.gitignore' holding '*' only when absent (FACT-GITIGNORE: neither twin otherwise ever
+# writes to a project's .gitignore; this file lives fully inside the folder it ignores, so that
+# precedent is untouched - the project's own .gitignore is never opened). Also covers a KEPT existing
+# path that happens to already be project-shaped. After the --print-plan exit: a dry run writes nothing.
+if [ "$MEMORY_LEVEL" = "project" ] && [ -n "$MEMORY_PROJECT_ROOT" ]; then
+  mkdir -p "$MEMORY_PROJECT_ROOT/.memory-mcp"
+  [ -f "$MEMORY_PROJECT_ROOT/.memory-mcp/.gitignore" ] || printf '*\n' > "$MEMORY_PROJECT_ROOT/.memory-mcp/.gitignore"
+fi
+
 # --- playwright: one server per browser engine --------------------------------------------------
 # A Playwright MCP server drives ONE browser, fixed at launch (`--browser`; @playwright/mcp 0.0.80 has
 # no tool to switch it - measured), so the manifest's single `playwright` entry expands HERE, after the
@@ -967,9 +1200,11 @@ _pw_registered() {
     node -e '
 const fs=require("fs");let s={};try{s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).mcpServers||{}}catch{}
 for(const [n,v] of Object.entries(s)){const m=n.match(/^playwright-(chrome|msedge|firefox|webkit)$/);if(m){console.log(m[1]);continue}
-if(n==="playwright"){const a=(v&&v.args)||[];const i=a.indexOf("--browser");console.log(i>=0?a[i+1]:"chrome")}}' "$PWD/.mcp.json" 2>/dev/null || true
+if(n==="playwright"){const a=(v&&v.args)||[];const i=a.indexOf("--browser");const eq=a.find(x=>/^--browser=/.test(x));console.log(i>=0?a[i+1]:eq?eq.slice(10):"chrome")}}' "$PWD/.mcp.json" 2>/dev/null || true
   elif command -v claude >/dev/null 2>&1; then
-    claude mcp list 2>/dev/null | sed -n -E 's/^playwright-(chrome|msedge|firefox|webkit):.*/\1/p; /^playwright:/{s/.*--browser ([a-z]+).*/\1/p;/--browser/!s/.*/chrome/p;}' || true
+    # the chrome fallback runs FIRST: after the engine substitution the line no longer carries
+    # --browser, so the other order printed chrome beside every named engine (measured)
+    claude mcp list 2>/dev/null | sed -n -E 's/^playwright-(chrome|msedge|firefox|webkit):.*/\1/p; /^playwright:/{/--browser/!s/.*/chrome/p;s/.*--browser[= ]([a-z]+).*/\1/p;}' || true
   fi
 }
 _pw_args_for() {  # $1 = manifest args $2 = engine -> the engine's args: --browser after the package, profile/<engine>
@@ -1199,6 +1434,8 @@ stack_src() {
     if [ -n "$STACK_SHA" ]; then
       # Stamp the URL the caller actually cloned from, not our default - they may have used a fork.
       STACK_REPO_URL="$(git -C "$SOURCE_DIR" remote get-url origin 2>/dev/null || echo "$STACK_REPO_URL")"
+      # an SSH remote is no browsable URL for the stamp's compare line - spell it as https
+      STACK_REPO_URL="$(printf '%s' "$STACK_REPO_URL" | sed -E 's#^(ssh://)?git@([^:/]+)[:/](.+)$#https://\2/\3#; s#\.git$##')"
     elif [ -f "$SOURCE_DIR/RELEASE-SOURCE" ]; then
       STACK_SHA="$(sed -n 's/^sha: //p' "$SOURCE_DIR/RELEASE-SOURCE" | head -1)"
       STACK_REF="$(sed -n 's/^ref: //p' "$SOURCE_DIR/RELEASE-SOURCE" | head -1)"
@@ -1316,8 +1553,18 @@ install_skills() {
   done
 }
 
+# Claude Code registers claude-plugins-official itself only on its first INTERACTIVE launch
+# (code.claude.com/docs/en/plugins), so an install before that failed every official plugin with 'not
+# found in marketplace' (measured on a fresh config). Register it (a no-op when present) and refresh it
+# so a stale clone knows the plugins this release names. Fail-soft both ways.
+ensure_official_marketplace() {
+  claude plugin marketplace add anthropics/claude-plugins-official >/dev/null 2>&1 || true
+  claude plugin marketplace update claude-plugins-official >/dev/null 2>&1 || true
+}
+
 install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
+  ensure_official_marketplace
   for mp in ${EXTRA_MARKETPLACES[@]+"${EXTRA_MARKETPLACES[@]}"}; do claude plugin marketplace add "$mp" 2>/dev/null || true; done
   for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
@@ -1329,15 +1576,17 @@ install_plugins() {
 }
 
 _mcp_argv() {  # $1 = manifest args -> spec_words: the argv for `claude mcp add`, path tokens resolved per word
-  # Split into argv words FIRST, then resolve @SERENA_CONTEXT@ / @HOME_MEMORY_DIR@ inside each word - so
-  # a resolved path that contains a space (a home dir like '/Users/Jane Doe') stays ONE argument instead
-  # of splitting into two. read -ra splits on whitespace into an array AND disables glob expansion, so
-  # a bare '*' in the spec is passed literally, never expanded.
+  # Split into argv words FIRST, then resolve @SERENA_CONTEXT@ / @MEMORY_DB_PATH@ inside each word -
+  # so a resolved path that contains a space (a home dir like '/Users/Jane Doe', or a --memory-level
+  # project root under one) stays ONE argument instead of splitting into two. read -ra
+  # splits on whitespace into an array AND disables glob expansion, so a bare '*' in the spec is passed
+  # literally, never expanded - which is also why MEMORY_DB_PATH travels as a placeholder token here
+  # rather than pre-substituted into the manifest string before this split.
   local i
   read -ra spec_words <<<"$1"
   for i in "${!spec_words[@]}"; do
     spec_words[i]="${spec_words[i]//@SERENA_CONTEXT@/$SERENA_CTX}"
-    spec_words[i]="${spec_words[i]//@HOME_MEMORY_DIR@/$HOME_MEMORY_DIR}"
+    spec_words[i]="${spec_words[i]//@MEMORY_DB_PATH@/$MEMORY_DB_PATH}"
   done
 }
 
@@ -1372,12 +1621,17 @@ prune_playwright_servers() {
   done
   if [ "$CLAUDE_SCOPE" = "project" ]; then
     [ -f "$PWD/.mcp.json" ] || return 0
-    for name in $drop; do grep -q "\"$name\"" "$PWD/.mcp.json" && claude mcp remove "$name" -s project >/dev/null 2>&1; done
+    # the names present BEFORE the CLI remove are the ones reported: a remove that worked left the
+    # node step nothing to find, so the removal went unreported (measured with the real CLI)
+    local present=""
+    for name in $drop; do grep -q "\"$name\"" "$PWD/.mcp.json" && present="$present $name"; done
+    [ -n "$present" ] || return 0
+    for name in $present; do claude mcp remove "$name" -s project >/dev/null 2>&1; done
     node -e '
-const fs=require("fs");const [p,...drop]=process.argv.slice(1);let d;try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch{process.exit(0)}
-const s=d.mcpServers||{};const gone=drop.filter(n=>n in s);if(!gone.length)process.exit(0);
-for(const n of gone)delete s[n];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n");
-for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one server per browser engine)":" (engine dropped)"))' "$PWD/.mcp.json" $drop || true
+const fs=require("fs");const [p,...gone]=process.argv.slice(1);let d;try{d=JSON.parse(fs.readFileSync(p,"utf8"))}catch{process.exit(0)}
+const s=d.mcpServers||{};const left=gone.filter(n=>n in s);
+if(left.length){for(const n of left)delete s[n];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")}
+for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one server per browser engine)":" (engine dropped)"))' "$PWD/.mcp.json" $present || true
   else
     for name in $drop; do
       claude mcp get "$name" >/dev/null 2>&1 && claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 && log "  mcp removed: $name"
@@ -1520,6 +1774,8 @@ _mcp_get_shape() {  # $1 = name -> 'http|<url>' / 'stdio|<command> <args>' as `c
     END { if (t == "http") printf "http|%s", u; else if (t != "") printf "stdio|%s %s", c, a }'
 }
 
+_mcp_shape_norm() { printf '%s' "$1" | sed -E 's/\$\{([A-Za-z_][A-Za-z0-9_]*):-[^}]*\}/${\1}/g'; }
+
 _verify_mcps_user() {
   local entry name args line kind want have
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
@@ -1532,13 +1788,17 @@ _verify_mcps_user() {
       # 'stdio|<command> <args>' - the env pairs and the -- separator are not in `mcp get`'s Command/Args lines.
       want="stdio|$(printf '%s' "$line" | cut -f3- | tr '\t' '\n' | awk '/^-e$/{skip=1;next} skip{skip=0;next} /^--$/{next} {printf "%s%s", (n++?" ":""), $0}')"
     fi
-    have="$(_mcp_get_shape "$name")"
+    # `claude mcp get` PRINTS a stored `${VAR:-default}` as `${VAR}` (CLI 2.1.272 - the stored entry keeps
+    # the default), so both sides compare with the default dropped; as printed, every playwright server
+    # read as drifted on every global run and failed it (measured).
+    want="$(_mcp_shape_norm "$want")"
+    have="$(_mcp_shape_norm "$(_mcp_get_shape "$name")")"
     [ -z "$have" ] && continue                     # an older CLI, or a server the account config does not expose - nothing to compare against
     [ "$have" = "$want" ] && continue
     log "  mcp shape drifted at user scope: $name - re-registering"
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
     _mcp_register "$name" "$args" >/dev/null 2>&1 || true
-    have="$(_mcp_get_shape "$name")"
+    have="$(_mcp_shape_norm "$(_mcp_get_shape "$name")")"
     if [ -n "$have" ] && [ "$have" != "$want" ]; then
       note_failure "mcp $name could not be brought to the current shape at user scope - remove it by hand (claude mcp remove $name -s user) and re-run"
     else
@@ -1593,6 +1853,16 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
     *" guard-stop-contract.js "*|*" guard-fresh-session-start.js "*)
       _install_from_src stack/hooks hook "$root/.claude/hooks" noexec model-windows.json ;;
   esac
+  # the docs hook's engine: required by docs-session.js from its own directory, and run by the model as
+  # `node .claude/hooks/docs.js` - copied only beside the hook
+  case " ${files[*]-} " in
+    *" docs-session.js "*) _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js ;;
+  esac
+  # the memory hook's engine: required by memory-session.js from its own directory - copied only
+  # beside the hook, same split as docs.js beside docs-session.js.
+  case " ${files[*]-} " in
+    *" memory-session.js "*) _install_from_src stack/hooks hook "$root/.claude/hooks" noexec memory.js ;;
+  esac
 }
 
 download_agents() {  # copy each subagent .md into .claude/agents/; per-agent fail-soft (keeps repo copy)
@@ -1625,6 +1895,68 @@ except Exception:
 s = open(rule, encoding="utf-8").read()
 open(rule, "w", encoding="utf-8").write(s.replace("__DOCS_ROOT__", val))
 PY
+}
+
+_resolve_docs_root() {  # $1 = repo root - print the resolved docs-path value: settings.json CLAUDE_STACK_DOCS_PATH, else the pre-0.2.43 CLAUDE_DOCS_PATH key, else the default - same resolution stamp_docs_root_rule stamps into the rule
+  local root="$1"
+  python3 - "$root/.claude/settings.json" <<'PY'
+import json, sys
+settings = sys.argv[1]
+val = ".claude/docs"
+try:
+    env = json.load(open(settings)).get("env", {})
+    v = env.get("CLAUDE_STACK_DOCS_PATH", "") or env.get("CLAUDE_DOCS_PATH", "")
+    if v: val = v
+except Exception:
+    pass
+print(val)
+PY
+}
+
+_migrate_docs_file() {  # $1 = old absolute path, $2 = new absolute path, $3 = label for the log line - ABSENT-ONLY: never overwrites an existing new file, never touches a missing old one (a plain rename/move, so content is unchanged)
+  local old="$1" new="$2" label="$3"
+  [ -f "$old" ] || return 0
+  if [ -e "$new" ]; then
+    log "  docs migration ($label): $new already exists - $old left in place, nothing overwritten"
+    return 0
+  fi
+  mkdir -p "$(dirname "$new")"
+  mv "$old" "$new"
+  log "  docs migration ($label): ${old##*/} -> $new"
+}
+
+_switch_on_docs_domain() {  # $1 = domain folder, $2 = the doc its capture writes there - ABSENT-ONLY: when that doc exists and the folder holds no watch.json, write the minimal one ({} - declares nothing, adds no source root to the gate), which is what makes the folder a domain the engine sees. Never overwrites a watch.json (any content, any validity), never creates the folder. Keyed on the doc at its NEW path, so an install an EARLIER run migrated is switched on too; the capture's next run replaces {} with its real entries.
+  local dir="$1" doc="$2"
+  [ -f "$dir/$doc" ] || return 0
+  if [ -e "$dir/watch.json" ] || [ -L "$dir/watch.json" ]; then return 0; fi   # -L: a dangling link is still theirs
+  # A doc an older capture wrote carries no section ids; once the folder is a domain `docs.js lint` flags each
+  # section. Said HERE rather than fixed: seed-ids would rewrite the project's docs across every domain.
+  local note=""
+  if grep -qE '^#{2,4}[[:space:]]' "$dir/$doc" 2>/dev/null && ! grep -qiE '<!--[[:space:]]*id:' "$dir/$doc" 2>/dev/null; then
+    note=" - its sections predate section ids, so 'docs.js lint' flags them until 'node .claude/hooks/docs.js seed-ids' or the capture's next run"
+  fi
+  if { printf '{}\n' > "$dir/watch.json"; } 2>/dev/null; then
+    log "  docs domain: ${dir##*/}/ switched on - watch.json written ({}; the capture's next run fills in its entries)$note"
+  else
+    log "  !! docs domain: could not write $dir/watch.json - ${dir##*/}/ stays invisible to the docs engine until its capture re-runs"
+  fi
+}
+
+migrate_docs_domains() {  # INSTALL + UPDATE: three absent-only moves onto the docs-domain layout - a file a capture used to write at the OLD path now writes at the NEW one, so an existing install's file is relocated once, byte-identical, and never overwrites a file already at the new path. Touches nothing else: related-context/ keeps every sibling-repo working paper - the capture's own drop-box for cross-repo plans, change requests, issue notes - exactly where it is; only the orientation doc this capture wrote moves out of it.
+  local root docs_root base
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  command -v python3 >/dev/null || { log "  !! python3 not found - skipping docs-domain migration (move by hand if upgrading: PROJECT-CODE-STYLE.md -> code-style/CODE-STYLE.md, architecture/ASSESSMENT.md -> quality/ASSESSMENT.md, related-context/PROJECT-RELATED-CONTEXT.md -> related-projects/RELATED-PROJECTS.md)"; return 0; }
+  docs_root="$(_resolve_docs_root "$root")"
+  base="$root/${docs_root%/}"
+  _migrate_docs_file "$base/PROJECT-CODE-STYLE.md" "$base/code-style/CODE-STYLE.md" "code style"
+  _migrate_docs_file "$base/architecture/ASSESSMENT.md" "$base/quality/ASSESSMENT.md" "architecture quality"
+  _migrate_docs_file "$base/related-context/PROJECT-RELATED-CONTEXT.md" "$base/related-projects/RELATED-PROJECTS.md" "related projects"
+  # The engine sees a folder as a domain only when it holds a watch.json (architecture/ alone is grandfathered),
+  # so a moved doc was invisible until its capture re-ran. Only these two: quality/ is recomputed every run and
+  # related-context/ is a drop box for sibling-repo papers - both are watch-less BY DESIGN, and a watch.json there
+  # would silently make each a domain.
+  _switch_on_docs_domain "$base/code-style" CODE-STYLE.md
+  _switch_on_docs_domain "$base/related-projects" RELATED-PROJECTS.md
 }
 
 seed_claude_md() {  # INSTALL: lay down a starter .claude/CLAUDE.md from the template when the project has none (never clobber a filled one)
@@ -1810,6 +2142,26 @@ write_stamp() {
     case ",$_sh_seen," in *",$_sh_n,"*) continue ;; esac
     _sh_seen="$_sh_seen,$_sh_n"; _stamp_hooks="${_stamp_hooks:+$_stamp_hooks,}$_sh_n"
   done
+  # The locked baseline (the snapshot's meta/recommendations.json `always.rules` / `always.mcps`) this
+  # install actually CARRIES as the run ends: rule files under the repo's .claude/rules (where every
+  # scope's rules land), servers in this project's .mcp.json or, at global scope, the account's
+  # registration file. What is on disk, never what shipped - and no run reads it back as a drop: the
+  # always set is locked, so --installed-only adopts an absent item every time. (The shipped list
+  # recorded here once made the next update read everything a standalone run failed to adopt as
+  # dropped.) Empty when the snapshot or node cannot say.
+  local _stamp_always="" _stamp_always_rules="" _stamp_always_mcps="" _stamp_rules_dir="" _stamp_mcp_file
+  _stamp_rules_dir="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -z "$_stamp_rules_dir" ] || _stamp_rules_dir="$_stamp_rules_dir/.claude/rules"
+  case "$CLAUDE_SCOPE" in user) _stamp_mcp_file="$ACCOUNT_CLAUDE_JSON" ;; *) _stamp_mcp_file="$PWD/.mcp.json" ;; esac
+  if command -v node >/dev/null 2>&1 && [ -f "$STACK_SRC/meta/recommendations.json" ]; then
+    _stamp_always="$(node -e 'const fs=require("fs"),path=require("path");const [recs,mcpFile,rulesDir]=process.argv.slice(1);
+let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,"utf8")).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,"utf8")).mcpServers||{};}catch{}
+const list=(x)=>(Array.isArray(x)?x:[]);
+console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+".md"))).join(","));
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(","));' "$STACK_SRC/meta/recommendations.json" "$_stamp_mcp_file" "$_stamp_rules_dir" 2>/dev/null || true)"
+    _stamp_always_rules="$(printf '%s\n' "$_stamp_always" | sed -n 1p)"
+    _stamp_always_mcps="$(printf '%s\n' "$_stamp_always" | sed -n 2p)"
+  fi
   cat > "$dest" <<STAMP
 # claude-stack install stamp - machine-local, written by claude-stack.sh / claude-stack.ps1.
 # The revision every artifact of this install was copied from. To see what changed since:
@@ -1824,6 +2176,8 @@ installed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 action: $ACTION
 scope: $CLAUDE_SCOPE
 shipped-hooks: $_stamp_hooks
+installed-always-rules: $_stamp_always_rules
+installed-always-mcps: $_stamp_always_mcps
 STAMP
   log "  stamp: $dest @ $(printf '%.12s' "$STACK_SHA")"
 }
@@ -1835,10 +2189,11 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   # NB: program via -c (not `python3 - <<heredoc`): a pipe + heredoc both target stdin and the pipe
   # wins, so a heredoc program would never run. -c frees stdin for the piped hook specs.
   local prog; prog=$(cat <<'PY'
-import json, os, sys
+import json, os, subprocess, sys
 path = sys.argv[1]
-deny_specs, mcp_names, retired_hooks, retired_deny, bucket = [], [], [], [], None
+deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, bucket = [], [], [], [], [], None
 for a in sys.argv[2:]:
+    if a == "--VERSIONING": bucket = versioning_flag; continue
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
@@ -1995,7 +2350,7 @@ for _key, _only_when in (("CLAUDE_STACK_FRESH_SESSION_PCT", None),
     if _key in env and (_only_when is None or env[_key] == _only_when):
         del env[_key]
         changed = True
-        print("  settings.json env: %s removed (retired - nothing reads it)" % _key)
+        print("  settings.json env: %s removed (%s)" % (_key, "retired - nothing reads it" if _only_when is None else "the old stack seed %s - the default applies" % _only_when))
 # Environment keys whose SEEDED DEFAULT turned out to be WRONG: clear the key when its value is
 # still exactly that seed - a value the user set by hand is theirs and is never touched. Keep any
 # entry identical in both installer twins and in meta/migrations.json.
@@ -2018,6 +2373,56 @@ for _key, _bad_seed, _to in (("CLAUDE_STACK_FRESH_SESSION_DEFAULT", "250000", "1
 if "CLAUDE_STACK_DOCS_PATH" not in env:
     env["CLAUDE_STACK_DOCS_PATH"] = ".claude/docs"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_PATH seeded (.claude/docs)")
+# how those docs are VERSIONED - a DECISION, not a guess: "git" = they are committed and git versions
+# them per branch (writes land in the doc file, nothing is ever written under <docs-path>/.branches/),
+# "local" = the machine-local overlay, where a feature branch's sections live under
+# <docs-path>/.branches/<branch>/ until it merges. --docs-versioning WRITES the value it is given, over one
+# already there; without it the key is seeded only when ABSENT, by the one rule docs.js keptOutOfGit(),
+# stamp-docs-root.js and the ps1 twin share (a table-driven test runs all four over the same repos): "local"
+# only when the docs are kept OUT of git - no domain is tracked AND either (a) a domain exists or (b) git
+# ignores the docs root - else "git", a fresh project whose docs root is not ignored included. A tracked domain
+# wins over an ignored root. From then on the SETTING wins even where the repo disagrees - a doc write is never
+# silently untracked or silently local - and `docs.js status` plus the session-start block say so.
+# `or "/"`: at the filesystem root the project root is the empty string, and an empty cwd raises
+# FileNotFoundError - which would abandon the whole settings write over a probe whose answer is optional.
+# The pathspec is right either way ("" + "/docs/architecture").
+def _dtracked(_root, _dir):
+    return subprocess.call(["git", "ls-files", "--error-unmatch", "--", _dir], cwd=_root or "/",
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+# `<docs>/` with the trailing slash, relative to the root: git answers check-ignore for a path that does not
+# exist yet, but a directory-only pattern (".claude/docs/") matches the bare name only once the folder exists.
+def _dignored(_root, _rel):
+    return bool(_rel) and subprocess.call(["git", "check-ignore", "-q", "--", _rel + "/"], cwd=_root or "/",
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+_vflag = (versioning_flag or [""])[0]
+if _vflag:
+    _vold = env.get("CLAUDE_STACK_DOCS_VERSIONING")
+    if _vold != _vflag:
+        env["CLAUDE_STACK_DOCS_VERSIONING"] = _vflag; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING %s -> '%s' (--docs-versioning%s)" % (
+        "absent" if _vold is None else "'%s'" % _vold, _vflag, ", unchanged" if _vold == _vflag else ""))
+elif "CLAUDE_STACK_DOCS_VERSIONING" not in env:
+    # Forward slashes DELIBERATELY, also on Windows: os.path.join would emit '\' under a Windows python and hand
+    # git a mixed-separator pathspec (C:/repo\docs\code-style), which can fail to match - and a false negative
+    # here seeds `local` over committed docs, the exact silent switch this seed exists to prevent.
+    _droot = os.path.dirname(os.path.dirname(path)).replace("\\", "/").rstrip("/")
+    _dparts = [p for p in env["CLAUDE_STACK_DOCS_PATH"].replace("\\", "/").split("/") if p]
+    _dbase = "/".join([_droot] + _dparts)
+    # Every DOMAIN is probed, never architecture/ alone: a watch.json is what makes a folder a domain
+    # (architecture/ is grandfathered in without one), so a project documented only in code-style/,
+    # decisions/ or related-projects/ is an ordinary shape. Same rule as docs.js domains(), reserved
+    # names and all; a watch-less folder like quality/ is no domain and no vote.
+    try:
+        _dnames = sorted(_d for _d in os.listdir(_dbase)
+                         if not _d.startswith(".") and _d not in ("references", "history")
+                         and os.path.isdir(os.path.join(_dbase, _d))
+                         and (_d == "architecture" or os.path.exists(os.path.join(_dbase, _d, "watch.json"))))
+    except OSError:
+        _dnames = []
+    _committed = any(_dtracked(_droot, "%s/%s" % (_dbase, _d)) for _d in _dnames)
+    _kept_out = not _committed and (bool(_dnames) or _dignored(_droot, "/".join(_dparts)))
+    env["CLAUDE_STACK_DOCS_VERSIONING"] = "local" if _kept_out else "git"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
@@ -2028,6 +2433,15 @@ if "CLAUDE_STACK_INSTRUMENT" not in env:
 if "CLAUDE_STACK_PUSH_GATE" not in env:
     env["CLAUDE_STACK_PUSH_GATE"] = "1"; changed = True
     print("  settings.json env: CLAUDE_STACK_PUSH_GATE seeded (1)")
+if "CLAUDE_STACK_DOCS_BLOCK" not in env:
+    env["CLAUDE_STACK_DOCS_BLOCK"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_BLOCK seeded (1)")
+if "CLAUDE_STACK_DOCS_GATE" not in env:
+    env["CLAUDE_STACK_DOCS_GATE"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_GATE seeded (1)")
+if "CLAUDE_STACK_DOCS_ASK" not in env:
+    env["CLAUDE_STACK_DOCS_ASK"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)")
 # rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
@@ -2036,7 +2450,7 @@ if "CLAUDE_STACK_ROTATE_ASK" not in env:
 # tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
 # at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the
 # ceiling), so the clamps decided and the knob lied about what it controlled. That key is retired
-# outright - nothing reads it any more; `0` on BOTH keys below is the off switch.
+# outright - nothing reads it any more; `0` on ALL THREE keys below is the off switch.
 # 400,000 on the 1M tier is deliberately ABOVE the harness's own auto-compaction (387,619-397,171
 # measured), so there the SessionStart compact route carries the offer - lower it to be asked first.
 if "CLAUDE_STACK_FRESH_SESSION_1M" not in env:
@@ -2070,7 +2484,105 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" || log "  !! settings.json wiring failed"
+  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" --VERSIONING "$DOCS_VERSIONING" || log "  !! settings.json wiring failed"
+}
+
+# ---------------------------------------------------------------------------
+# MEMORY IMPORT + SWITCH-OFF (once): after the memory MCP is registered AND baseline-memory.md has
+# landed, migrate Claude's own per-project auto-memory notes into it (scripts/memory-import.js, run from
+# the run's SOURCE snapshot - it lives in scripts/, never copied into the project), then flip
+# autoMemoryEnabled off in THIS repo's project .claude/settings.json - at global scope too. The rule
+# and the start hook land per repo, so the account settings.json would silence the memory of every
+# other project of the account, none of which has the rule telling Claude to save to the server.
+# Runs ONCE - skipped once that file already holds autoMemoryEnabled:false. A global scope run with no
+# identifiable project (not inside a git repo) has nothing to import from and is skipped, logged.
+# ---------------------------------------------------------------------------
+MEMORY_SWITCHED_OFF=false   # this repo's settings hold autoMemoryEnabled:false after the import step
+_memory_target_settings() {
+  if [ -n "$MEMORY_TOPLEVEL" ]; then printf '%s/.claude/settings.json' "$MEMORY_TOPLEVEL"; fi
+  return 0
+}
+
+# $1 = settings file path -> prints "true"/"false"/"absent"/"malformed" ('absent' also covers a
+# missing file - nothing has switched Claude's own memory off yet).
+_memory_autodetect_state() {
+  node -e '
+const fs=require("fs");
+try{
+  const raw=fs.readFileSync(process.argv[1],"utf8");
+  let d; try{d=JSON.parse(raw);}catch(e){console.log("malformed");process.exit(0);}
+  if(!d||typeof d!=="object"||Array.isArray(d)){console.log("malformed");process.exit(0);}
+  console.log(Object.prototype.hasOwnProperty.call(d,"autoMemoryEnabled")?String(d.autoMemoryEnabled):"absent");
+}catch(e){ console.log(e.code==="ENOENT"?"absent":"malformed"); }
+' "$1" 2>/dev/null
+}
+
+# $1 = settings file path - merge autoMemoryEnabled:false in, leaving every other key untouched.
+# Refuses (logs, writes nothing) on a file that fails to parse as a JSON object - the install continues.
+_memory_write_switch_off() {
+  node -e '
+const fs=require("fs");const path=require("path");
+const p=process.argv[1];
+let d={};
+try{
+  const raw=fs.readFileSync(p,"utf8");
+  if(raw.trim()){ d=JSON.parse(raw); }
+}catch(e){
+  if(e.code!=="ENOENT"){ console.log("  !! "+p+" is not valid JSON - autoMemoryEnabled left untouched; fix it and re-run"); process.exit(1); }
+}
+if(typeof d!=="object"||d===null||Array.isArray(d)){ console.log("  !! "+p+" top level is not an object - autoMemoryEnabled left untouched"); process.exit(1); }
+d.autoMemoryEnabled=false;
+fs.mkdirSync(path.dirname(p),{recursive:true});
+fs.writeFileSync(p, JSON.stringify(d,null,2)+"\n");
+console.log("  settings.json: autoMemoryEnabled set to false ("+p+")");
+' "$1"
+}
+
+import_memory_notes() {
+  command -v claude >/dev/null 2>&1 || return 0   # CLAUDE_MISSING already reported elsewhere
+  if [ -z "$MEMORY_TOPLEVEL" ]; then
+    log "memory: global install scope with no identifiable project (not inside a git repo) - skipping the notes import; Claude's own memory stays on"
+    return 0
+  fi
+  local target; target="$(_memory_target_settings)" || target=""
+  [ -n "$target" ] || return 0
+  local state; state="$(_memory_autodetect_state "$target")" || state=""
+  if [ "$state" = "false" ]; then MEMORY_SWITCHED_OFF=true; return 0; fi   # already switched off - never re-run
+  # The gate: Claude's own memory goes off only where its replacement is complete - the memory server
+  # in this run's MCP set AND baseline-memory.md (the rule telling Claude to save to it) in its rule
+  # set and actually on disk. Without either, the notes stay where Claude reads them.
+  local e has_server=false has_rule=false
+  for e in ${MCPS[@]+"${MCPS[@]}"}; do case "${e%%|*}" in memory) has_server=true ;; esac; done
+  for e in ${CLAUDE_RULES[@]+"${CLAUDE_RULES[@]}"}; do case "${e%%::*}" in baseline-memory.md) has_rule=true ;; esac; done
+  if [ "$has_server" != true ]; then
+    log "memory: the notes import was skipped - the memory MCP is not part of this install; Claude's own memory stays on"; return 0
+  fi
+  if [ "$has_rule" != true ]; then
+    log "memory: the notes import was skipped - baseline-memory.md is not part of this install; Claude's own memory stays on"; return 0
+  fi
+  if [ ! -f "$MEMORY_TOPLEVEL/.claude/rules/baseline-memory.md" ]; then
+    log "  !! memory: baseline-memory.md did not land in $MEMORY_TOPLEVEL/.claude/rules - the notes import was skipped; Claude's own memory stays on until a run delivers it"
+    return 0
+  fi
+  command -v node >/dev/null 2>&1 || { log "  !! node not found - the memory notes import was skipped; Claude's own memory stays on until it succeeds"; return 0; }
+  command -v uvx  >/dev/null 2>&1 || { log "  !! uvx not found - the memory notes import was skipped; Claude's own memory stays on until it succeeds"; return 0; }
+  stack_src || { log "  !! stack source unavailable - the memory notes import was skipped; Claude's own memory stays on until it succeeds"; return 0; }
+  local importer="$STACK_SRC/scripts/memory-import.js"
+  [ -f "$importer" ] || { log "  !! $importer not found in the source snapshot - memory notes import skipped"; return 0; }
+  # --config-dir only for an EXPLICIT account (CLAUDE_CONFIG_DIR, which a space exports): the default
+  # account's registrations live at ~/.claude.json, not inside ~/.claude, and the importer resolves that
+  # default itself.
+  local -a acct_args=()
+  if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then acct_args=(--config-dir "$CONFIG_DIR"); fi
+  log "memory: importing Claude's existing notes into the memory MCP (first run downloads the embedding model, ~1 min)"
+  # sits in an `if` DELIBERATELY: this runs under `set -euo pipefail`, and a plain (non-conditional)
+  # failing call here would abort the whole install instead of falling through to the fail-soft log line.
+  if node "$importer" --project-root "$MEMORY_TOPLEVEL" ${acct_args[@]+"${acct_args[@]}"}; then
+    if _memory_write_switch_off "$target"; then MEMORY_SWITCHED_OFF=true; fi   # fail-soft: a malformed settings file refuses the write and logs, the install still continues
+  else
+    log "  !! memory notes import failed - Claude's own memory stays ON until a later run imports successfully"
+  fi
+  return 0
 }
 
 # ===========================================================================
@@ -2103,7 +2615,9 @@ RETIRED_MCPS=()
 # budget, or to /claude-stack:status). Entries are the bare plugin NAME, without the @marketplace
 # suffix the PLUGINS block carries. A plugin the stack still SHIPS but this project does not need is
 # a different question - that is /claude-stack:validate's whole-stack-absent pass, not a retirement.
-RETIRED_PLUGINS=()
+RETIRED_PLUGINS=(
+  "ponytail"   # dropped from PLUGINS in 0.2.7x (the audit remediation); never joined this list until 0.2.85
+)
 
 remove_skills() {  # rm -rf each manifest skill under the scope dest, so update starts from a clean slate
   local dest entry name
@@ -2201,6 +2715,7 @@ prune_retired_plugins() {  # UPDATE: uninstall the known retired plugin names (R
 
 update_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
+  ensure_official_marketplace
   claude plugin marketplace update 2>/dev/null || true            # refresh marketplaces first
   local before after p name pscope v1 v2
   before="$(_plugin_scan)"
@@ -2386,9 +2901,9 @@ install_github_cli
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; seed_claude_md; seed_serena_project; ensure_playwright_browser
+  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser
 else
-  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; seed_serena_project; ensure_playwright_browser
+  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed
@@ -2399,7 +2914,8 @@ log "done: $ACTION [scope=$SCOPE, account=$CONFIG_DIR, agent=$AGENT]"
 _hook_files=0; _seen=""   # count hook FILES (a hook wired on two tools is one hook), matching the plan (ten hooks today)
 for _e in ${HOOKS[@]+"${HOOKS[@]}"}; do _n="${_e%%::*}"; case " $_seen " in *" $_n "*) continue ;; esac; _seen="$_seen $_n"; _hook_files=$((_hook_files + 1)); done
 _summary="  installed/refreshed this run - skills=${#SKILLS[@]}, plugins=${#PLUGINS[@]}, mcps=${#MCPS[@]}, hooks=$_hook_files, agents=${#AGENTS[@]}, rules=${#CLAUDE_RULES[@]}"
-[ -n "$SPACE" ] && _summary="$_summary; space=$SPACE, memory DB=$MEMORY_DB_FILE"
+_summary="$_summary; memory=$MEMORY_LEVEL ($MEMORY_DB_PATH)"
+[ -n "$SPACE" ] && _summary="$_summary; space=$SPACE"
 # Always stated, both ways: a run that RESET the pins to catalog defaults printed no line at all, so
 # the close had nothing to cite and asserted the reset from memory instead.
 if [ "$KEEP_PINS" = true ]; then _summary="$_summary; keep-pins=on"; else _summary="$_summary; keep-pins=off (agent model/effort pins reset to catalog defaults)"; fi
@@ -2425,13 +2941,18 @@ _gen_rules="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "$PWD")/.cl
 # This one is gated on the SEED still being unfilled, not on the file's absence: the installer has
 # just written it, so the file always exists by the time these lines print.
 grep -q 'Fill-in block - delete once done' "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "$PWD")/.claude/CLAUDE.md" 2>/dev/null && log "  - write your project's CLAUDE.md top from the template's authoring-outline comment (framework, stack, conventions, secret/config globs) - install seeds a starter from the template when the project has none; the claude-md-management plugin can help audit it"
-[ -f "$_gen_rules/baseline-project-related-context.md" ] || log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-context/PROJECT-RELATED-CONTEXT.md under the docs root"
-[ -f "$_gen_rules/baseline-project-architecture.md" ] && [ -f "$_gen_rules/project-code-style.md" ] || log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture map + assessment + awareness rule) and /project-code-style-analyzer (PROJECT-CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
+[ -f "$_gen_rules/baseline-project-related-context.md" ] || log "  - if this repo has sibling projects (a backend/frontend pair, a consumed package), run /project-related-context with their paths/URLs - it generates the awareness rule (baseline-project-related-context.md) + related-projects/RELATED-PROJECTS.md under the docs root"
+[ -f "$_gen_rules/baseline-project-architecture.md" ] && [ -f "$_gen_rules/project-code-style.md" ] || log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture/ARCHITECTURE.md + awareness rule) and /project-code-style-analyzer (code-style/CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 [ -f "$_gen_rules/baseline-project-agent-capabilities.md" ] || log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
 if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^serena|'; then
   log "  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): SERENA_HOME=.serena/home uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things"
 fi
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
+# A global install switches Claude's own memory off only where the memory rule and start hook landed -
+# this repo - so the card says so rather than letting 'global' read as 'every project'.
+if [ "$CLAUDE_SCOPE" = "user" ] && [ "$MEMORY_SWITCHED_OFF" = true ]; then
+  log "  - memory: Claude's own memory is off in this repo only ($(_memory_target_settings)) - a global install lands the memory rule and start hook per repo, so every other project of this account keeps its own memory until an install or update runs there"
+fi
 # One line, only when this run was TOLD which engine stays on (setup / configure): an update never
 # re-asks the user to toggle what they may already have toggled.
 if [ -n "$PLAYWRIGHT_ENABLED" ] && [ -n "$PLAYWRIGHT_BROWSERS" ]; then
@@ -2486,10 +3007,16 @@ The generated-docs root is CLAUDE_STACK_DOCS_PATH in .claude/settings.json env (
 generated docs inherit the .claude ignore above and are machine-local: not committed, not shared,
 re-captured after a fresh clone. To share them with the team, set CLAUDE_STACK_DOCS_PATH to a committed
 path (e.g. 'docs', forward slashes on every OS) and track <docs-path>/superpowers/ too.
+CLAUDE_STACK_DOCS_VERSIONING (same env block) says how every capture's docs are versioned - 'git' when
+they are committed (git versions them per branch), 'local' for the machine-local overlay under
+<docs-path>/.branches/. The install seeds 'local' only when the docs are already kept out of git (no
+domain tracked, and a domain exists or git ignores the docs root), else 'git' - so a project that adds
+the .claude ignore above AFTER this run still reads 'git': re-run update with --docs-versioning local.
+Moving the docs to a committed path takes --docs-versioning git.
 
-The same env block carries the fresh-session gate's two knobs (seeded, absent-only, so a
+The same env block carries the fresh-session gate's three knobs (seeded, absent-only, so a
 hand-edited value survives every update):
-  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a window over 200k may carry
+  CLAUDE_STACK_FRESH_SESSION_1M    the per-message TOKENS a session on a 1M window may carry
                                    before an orchestration run is offered a fresh one (default
                                    400000; 0 = off). Above the harness's own auto-compaction, so
                                    lower it to be asked before the harness decides for you

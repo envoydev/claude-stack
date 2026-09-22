@@ -122,16 +122,24 @@ const resolveLineCount = (raw) => {
   }
   return { lc: 0, resolved: false };
 };
+// The three trees the installers seed into serena's OWN `ignored_paths` (.serena/project.yml):
+// serena cannot index them, so naming its tools for a path under one of them hands the model a
+// remedy that errors. Measured twice - the denial named serena for a `.claude/...` path and the
+// redirect the model made from it failed. The ranged read is the remedy there.
+const SERENA_IGNORED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
 // The hint must be EXECUTABLE, not just correct. serena's tools are deferred behind tool search in
 // this harness, so naming them is not having them: measured, two sessions carried the rule text
 // saying exactly that and still made 100 Bash calls and 0 serena calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
-const serenaHint = (p) =>
-  `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
+const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
+  ? `serena cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
+    + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
+    + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
+  : `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
   `  ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol,mcp__serena__find_referencing_symbols\n` +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
-  `for a large body fetch it without the body first, then Read the range you need).`;
+  `for a large body fetch it without the body first, then Read the range you need).`);
 
 const input = payload.tool_input || {};
 
@@ -177,15 +185,60 @@ const CONVENTION_RULES = [
 // every SKILL.md marked markdown-docs said, and the authoring Write minutes later got nothing.
 // Measured twice, on an `awk | head -c 900` and on a `sed -n '1,20p'` loop, each re-paid across
 // the following messages. So: a write verb or a redirection into a file, or no announcement.
-const WRITES_RE = new RegExp([
-  '>>?\\s*[^&\\s>]',                                 // redirection into a path
-  '\\btee\\b',
-  '\\b(?:sed|perl)\\b[^\\n]*\\s-i\\b',                   // in-place edit
-  '\\b(?:cp|mv|touch|install)\\b',
-  '\\bgit\\s+(?:apply|checkout|restore|mv)\\b',
-  '\\bpatch\\b',
-  '\\b(?:python3?|node|perl|ruby)\\b[^\\n]*(?:writeFileSync|appendFileSync|open\\([^)]*[\'"][waxr])',
-].join('|'));
+// And the extension is read off the write TARGET, never off the command line: matching anywhere in
+// the text named javascript-conventions.md for `node <installer>/stamp-compare.js > out.txt` - the
+// EXECUTED script, not a write - in 3 of 5 measured bundles, and `2>/dev/null` on a read-only `find`
+// tested TRUE as 'a redirection into a path' and spent the once-per-session announcement.
+const shellWordsOf = (s) => {
+  const out = [];
+  let cur = ''; let q = null; let started = false;
+  for (let i = 0; i < String(s).length; i++) {
+    const c = String(s)[i];
+    if (q) { if (c === q) q = null; else cur += c; started = true; continue; }
+    if (c === '"' || c === '\'') { q = c; started = true; continue; }
+    if (/\s/.test(c)) { if (started) { out.push(cur); cur = ''; started = false; } continue; }
+    cur += c; started = true;
+  }
+  if (started) out.push(cur);
+  return out;
+};
+// A sed/perl SCRIPT is an argument, not a path - `sed -i '' 's/a/b/' f.cs` names ONE target.
+const SED_SCRIPT_ARG = /^(?:[sy]\/|\/.*\/[a-z]*$|\d*,?\$?[dpq=]$)/;
+const RUN = '[^|;&\\n]*';
+function writeTargets(text) {
+  const out = [];
+  const add = (t) => {
+    const v = String(t).replace(/^["']|["']$/g, '');
+    if (v && !v.startsWith('-') && !SED_SCRIPT_ARG.test(v) && !out.includes(v)) out.push(v);
+  };
+  const words = (s) => shellWordsOf(s).forEach(add);
+  // stdout into a path. A leading fd (`2>`, `&>`) and an fd target (`>&2`) are not a file write.
+  for (const m of text.matchAll(/(?:^|[^>&\d])1?>>?\s*(?!&)("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g)) add(m[1]);
+  for (const m of text.matchAll(new RegExp(`\\btee\\b(${RUN})`, 'g'))) words(m[1]);
+  for (const m of text.matchAll(new RegExp(`\\b(?:sed|perl)\\b((?=${RUN}\\s-[A-Za-z]*i\\b)${RUN})`, 'g'))) words(m[1]);
+  for (const m of text.matchAll(new RegExp(`\\b(?:cp|mv|install|rsync)\\b(${RUN})`, 'g'))) {
+    const w = shellWordsOf(m[1]).filter((x) => x && !x.startsWith('-'));
+    if (w.length) add(w[w.length - 1]); // the DESTINATION is the write; the source is a read
+  }
+  for (const m of text.matchAll(new RegExp(`\\b(?:touch|patch)\\b(${RUN})`, 'g'))) words(m[1]);
+  for (const m of text.matchAll(new RegExp(`\\bgit\\s+(?:apply|checkout|restore|mv)\\b(${RUN})`, 'g'))) words(m[1]);
+  for (const m of text.matchAll(/(?:writeFileSync|appendFileSync)\s*\(\s*(["'][^"']*["'])/g)) add(m[1]);
+  for (const m of text.matchAll(/\bopen\s*\(\s*(["'][^"']*["'])\s*,\s*["'][wax]/g)) add(m[1]);
+  return out;
+}
+// A rule that is not INSTALLED cannot be read: one measured bundle was told to read
+// `javascript-conventions.md` in a project that has no JS and never installed that rule. The hook's
+// own sibling directory is the install's rules dir (`.claude/hooks/` -> `.claude/rules/`); with no
+// rules directory anywhere this cannot be told, and the announcement is made rather than dropped.
+const ruleInstalled = (rule) => {
+  let known = false;
+  for (const d of [pathMod.join(__dirname, '..', 'rules'), ...anchorDirs.map((a) => pathMod.join(a, '.claude', 'rules'))]) {
+    if (!fs.existsSync(d)) continue;
+    known = true;
+    if (fs.existsSync(pathMod.join(d, rule))) return true;
+  }
+  return !known;
+};
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
 // neither is the install's own `.claude/` tree. A `.md` hit whose targets all live there is dropped.
 // The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with
@@ -195,21 +248,18 @@ const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
 function announceRules(text) {
-  if (!WRITES_RE.test(text)) return;
+  const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
+  const targets = writeTargets(String(text)).filter((t) => !(/\.md\b/i.test(t)
+    && (UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`))));
+  if (!targets.length) return;
   const hit = [];
-  for (const [re, rule] of CONVENTION_RULES) if (re.test(text) && !hit.includes(rule)) hit.push(rule);
-  if (hit.includes('markdown-docs.md')) {
-    const mdTargets = [...String(text).matchAll(/(?:^|[\s"'=])((?:[^\s"';|&]+)?\.md)\b/g)].map((m) => m[1]);
-    const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
-    if (mdTargets.length && mdTargets.every((f) => UNGOVERNED_MD.test(` ${f}`) || f.includes('.claude/') || f.includes(`${docsRel}/`)))
-      hit.splice(hit.indexOf('markdown-docs.md'), 1);
-  }
+  for (const t of targets) for (const [re, rule] of CONVENTION_RULES) if (re.test(t) && !hit.includes(rule)) hit.push(rule);
   if (!hit.length) return;
   let state = {};
   const f = sessionStateFile();
   try { state = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* fresh state */ }
   const said = state.__rules || [];
-  const fresh = hit.filter((r) => !said.includes(r));
+  const fresh = hit.filter((r) => !said.includes(r) && ruleInstalled(r));
   if (!fresh.length) return;
   const flush = () => {
     try {
@@ -280,7 +330,11 @@ if (isShellTool(payload.tool_name)) {
   // is exempt: no glob metacharacter means it names ONE file - the 'I know the name, not the path'
   // idiom, which falls through to the size check below like any other named target (its own denial
   // text used to advise doing exactly that).
-  const sweepM = command.match(/\bfor\s+\w+\s+in\b[^\n]*?\bdo\b[^\n]*?\bcat\b[^\n]*/i)
+  // The loop's own text ENDS at `done`: `[^\n]*?` ran straight past it, so an unrelated `cat` in a
+  // later statement was read as the loop's body. Measured twice at ~88k tokens a block - the
+  // capabilities skill's own grep-only loop followed by `; cat .mcp.json` was denied as a sweep.
+  const NOT_DONE = '(?:(?!\\bdone\\b)[^\\n])';
+  const sweepM = command.match(new RegExp(`\\bfor\\s+\\w+\\s+in\\b${NOT_DONE}*?\\bdo\\b${NOT_DONE}*?\\bcat\\b${NOT_DONE}*`, 'i'))
     || command.match(/\bfind\b[^\n]*?-exec\s+cat\b[^\n]*/i)
     || command.match(/[^\n]*?\|\s*xargs\s+(?:-\w+\s+)*cat\b[^\n]*/i);
   if (sweepM) {
@@ -414,12 +468,29 @@ if (!GATED_EXT.test(path)) {
   try { size = fs.statSync(path).size; } catch { /* missing - let Read surface its own error */ }
   const whole = (input.offset ?? 0) <= 1 && input.limit == null;
   if (size > BIG_BYTES && whole) {
+    // A grep remedy needs LINES. This branch judges size, not language, so it also catches the 93KB
+    // PNG and the one-line minified bundle, where `grep -n` and an offset+limit Read both answer
+    // nothing (measured: 2 wasted calls on an image). Sniff the first bytes and prescribe PAGING there.
+    let head = null;
+    try {
+      const fd = fs.openSync(path, 'r');
+      const buf = Buffer.alloc(4096);
+      const n = fs.readSync(fd, buf, 0, 4096, 0);
+      fs.closeSync(fd);
+      head = buf.subarray(0, n);
+    } catch { /* unreadable - fall back to the line-based remedy */ }
+    const unlined = !!head && (head.includes(0) || head.toString('latin1').split('\n').some((l) => l.length > 1000));
     process.stderr.write(
       `Blocked: whole-file Read of ${path} (${Math.round(size / 1024)}KB).\n` +
       `A file this large does not fit a tool result - reading it whole spends its entire size on\n` +
       `context, and every message after it re-sends that. Take what you came for instead:\n` +
-      `  grep -n '<pattern>' '${path}'   ->  then Read with offset+limit on the lines it names\n` +
-      `A persisted/spilled output is the common case here: grep or tail it, never Read it whole.`,
+      (unlined
+        ? `This file is binary or minified - it has no lines to grep or to Read by range. Page it:\n`
+          + `  head -c 2000 '${path}'      ->  the first bytes, capped\n`
+          + `  sed -n '1,40p' '${path}'    ->  a page, if it has lines at all\n`
+          + `  file '${path}'              ->  what it is, when the bytes say nothing`
+        : `  grep -n '<pattern>' '${path}'   ->  then Read with offset+limit on the lines it names\n`
+          + `A persisted/spilled output is the common case here: grep or tail it, never Read it whole.`),
     );
     process.exit(2);
   }

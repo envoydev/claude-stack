@@ -13,6 +13,19 @@
       }
     },
     {
+      "key": "CLAUDE_STACK_DOCS_VERSIONING",
+      "default": "git",
+      "ask": true,
+      "what": "how every capture's docs are VERSIONED - decided here, never guessed from git. `git`: the docs are committed and git versions them per branch, so a section is written into the doc file itself and nothing is ever written under `<docs-path>/.branches/` (promote and prune then have nothing to do). `local`: the machine-local overlay - a feature branch's sections live under `<docs-path>/.branches/<branch>/`, are merged into the mainline text at read time, and are folded into mainline when the branch merges. This decides HOW, never WHERE: the root stays CLAUDE_STACK_DOCS_PATH. When the key is missing, the installers write `local` only if the docs are kept out of git - git ignores the docs root, or docs exist and none of them is committed - and `git` in every other case, a brand-new project included. `--docs-versioning git|local` (`-DocsVersioning` on Windows) writes a chosen value over the existing one; without it, an existing value is never touched. From then on the setting wins even where the repo disagrees, and `docs.js status` plus the session-start block report the disagreement rather than resolving it the other way.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "git",
+          "local"
+        ]
+      }
+    },
+    {
       "key": "CLAUDE_STACK_INSTRUMENT",
       "default": "0",
       "ask": true,
@@ -95,6 +108,45 @@
       "validate": {
         "type": "window",
         "min": 100000
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_BLOCK",
+      "default": "1",
+      "ask": false,
+      "what": "the architecture docs hook's session-start block: ORIENTATION.md, this branch's doc overrides and conflicts, and how to read by section (also sent to dispatched subagents). `0` stops the push; promotion of merged branches still runs.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_GATE",
+      "default": "1",
+      "ask": false,
+      "what": "the first change under a source root waits until a covering doc section was read, and the hold hands that section over inline (at most two holds a session). `0` turns the hold off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "CLAUDE_STACK_DOCS_ASK",
+      "default": "1",
+      "ask": false,
+      "what": "at session end, a change that hit the capture's watch.json asks once for the owning sections to be rewritten when a rule moved, or confirmed. `0` turns the ask off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
       }
     }
   ]

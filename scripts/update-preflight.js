@@ -18,12 +18,22 @@
 // still reads), then:
 //
 //   changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>
+//   validate: yes|no                        (the version delta spans more than one release)
+//   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
 //   migration: <id>\t<detect kind>          (one line per DETECTED entry; none -> no lines)
 //   migrations: none detected               (only when none fired)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
+//
+// `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
+// installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
+// form - and prints the RESTART/'!!' facts the update close-out used to judge from a raw grep
+// dump in the model, one of two report rows the update.md BLOCKER measured missing 1-in-4/1-in-5:
+//
+//   restart: yes|no                         (mcps=<n> above 0 in the log, or --hooks <n> above 0)
+//   warn: <line>                            (one per '!!' fail-soft line; none printed if none)
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -90,26 +100,79 @@ function migrationFields(e)
 function changedClasses(compareLines)
 {
     const n = { skills: 0, agents: 0, rules: 0, hooks: 0, template: false };
+    const seen = { skills: new Set(), agents: new Set(), rules: new Set(), hooks: new Set() };
     for (const line of compareLines)
     {
         const m = /^(modified|added|removed|renamed)\t([^\t]+)/.exec(line);
         if (!m) continue;
         const p = m[2];
-        if (/^stack\/skills\//.test(p)) n.skills += 1;
-        else if (/^stack\/agents\//.test(p)) n.agents += 1;
-        else if (/^stack\/rules\//.test(p)) n.rules += 1;
-        else if (/^stack\/hooks\//.test(p)) n.hooks += 1;
+        // Distinct ITEMS, not files: a skill is its folder, so SKILL.md plus its references count once
+        // (measured: skills=108 reported against 78 shipped).
+        const item = /^stack\/(skills|agents|rules|hooks)\/([^/]+)/.exec(p);
+        if (item) seen[item[1]].add(item[2]);
         else if (/^stack\/CLAUDE\.template\.md$/.test(p)) n.template = true;
     }
+    for (const k of Object.keys(seen)) n[k] = seen[k].size;
     return n;
+}
+
+// Version-delta span, from the compare's own `version: <old> -> <new>` line - no second call,
+// no re-derivation: the same string stamp-compare already printed. Major/minor moving is always
+// multi-release; a patch-only move is multi-release past a single step.
+function parseVersion(v)
+{
+    const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(v || ''));
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function spansMultipleReleases(versionLine)
+{
+    const m = /^version: (\S+) -> (\S+)$/.exec(versionLine || '');
+    if (!m) return false;
+    const a = parseVersion(m[1]);
+    const b = parseVersion(m[2]);
+    if (!a || !b) return false;
+    if (a[0] !== b[0] || a[1] !== b[1]) return true;
+    return (b[2] - a[2]) > 1;
+}
+
+// The policy-rev second VALIDATE trigger - was two greps the caller ran by hand and then
+// re-confirmed 3 extra times in one audited run (~275k tokens): one printed row instead.
+function policyRevLine(root, snapshot)
+{
+    const installedFile = path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md');
+    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'project-agent-capabilities', 'SKILL.md');
+    const readRev = f => { try { return (fs.readFileSync(f, 'utf8').match(/policy-rev: ([0-9a-f]+)/) || [])[1]; } catch { return undefined; } };
+    if (!fs.existsSync(installedFile)) return 'policy-rev: none';
+    const installed = readRev(installedFile);
+    const snap = readRev(snapshotFile);
+    if (installed && snap && installed === snap) return 'policy-rev: current';
+    return `policy-rev: stale installed=${installed || 'none'} snapshot=${snap || 'none'}`;
+}
+
+// `--log` postcheck mode: the RESTART/'!!' facts read from the installer's own log, after it
+// runs - no --snapshot needed, so this never re-hits the compare API.
+function runLogMode(logFile)
+{
+    const hooks = Number(arg('--hooks', '0')) || 0;
+    let text = '';
+    try { text = fs.readFileSync(logFile, 'utf8'); } catch { text = ''; }
+    const warnLines = text.split('\n').filter(l => l.includes('!!'));
+    for (const l of warnLines) console.log(`warn: ${l.trim()}`);
+    const m = /mcps=(\d+)/.exec(text);
+    const mcps = m ? Number(m[1]) : 0;
+    console.log(`restart: ${(mcps > 0 || hooks > 0) ? 'yes' : 'no'}`);
 }
 
 function main()
 {
+    const logFile = arg('--log');
+    if (logFile) { runLogMode(logFile); return; }
+
     const snapshot = arg('--snapshot');
     if (!snapshot)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--repo <owner/name>] [--fixture <compare.json>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--repo <owner/name>] [--fixture <compare.json>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
         process.exit(1);
     }
     const root = arg('--root', '.');
@@ -126,6 +189,8 @@ function main()
     const lines = out ? out.split('\n') : [];
     const c = changedClasses(lines);
     console.log(`changed: skills=${c.skills} agents=${c.agents} rules=${c.rules} hooks=${c.hooks} template=${c.template ? 'yes' : 'no'}`);
+    console.log(`validate: ${spansMultipleReleases(lines.find(l => l.startsWith('version: '))) ? 'yes' : 'no'}`);
+    console.log(policyRevLine(root, snapshot));
 
     const catalog = readJson(path.join(snapshot, 'meta', 'migrations.json'));
     const entries = (catalog && catalog.migrations) || [];

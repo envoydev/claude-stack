@@ -237,6 +237,10 @@
       "mcps": [],
       "plugins": []
     },
+    "project-architecture-quality-analyzer": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-architecture-quality-loop": {
       "mcps": [],
       "plugins": []
@@ -276,7 +280,9 @@
       "plugins": []
     },
     "project-related-context": {
-      "mcps": [],
+      "mcps": [
+        "memory"
+      ],
       "plugins": []
     },
     "project-runtime-failure-signatures": {
@@ -922,6 +928,15 @@
       ],
       "paths": []
     },
+    "baseline-memory": {
+      "skills": [],
+      "agents": [],
+      "mcps": [
+        "memory"
+      ],
+      "plugins": [],
+      "paths": []
+    },
     "baseline-navigation": {
       "skills": [],
       "agents": [],
@@ -1104,6 +1119,7 @@
       "typescript-lsp"
     ],
     "hooks": [
+      "docs-session",
       "guard-answer-length",
       "guard-catastrophic-rm",
       "guard-cross-project-write",
@@ -1114,7 +1130,8 @@
       "guard-stop-contract",
       "guard-unapproved-dispatch",
       "guard-ungated-commit",
-      "instrument-tool-usage"
+      "instrument-tool-usage",
+      "memory-session"
     ]
   }
 }
