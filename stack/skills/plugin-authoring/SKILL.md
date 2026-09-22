@@ -142,7 +142,12 @@ Run these in this order; each is cheap and each catches a class the previous one
 3. `claude plugin details <plugin>@<marketplace>` for the installed copy, or
    `claude --plugin-dir <plugin-dir> plugin details <plugin>` for the working tree (a bare path is
    not accepted) - the always-on and on-invoke token cost. The inventory lists skills, agents, hooks,
-   MCP and LSP servers; COMMANDS are not in it, and the estimate ignores `disable-model-invocation`
+   MCP and LSP servers; COMMANDS are not in it, and neither is an agent LISTED by file in an
+   `agents` array - it reads `Agents (0)` and leaves those descriptions out of the always-on number,
+   yet every such seat registers (measured 2026-09-22: 42 of 42 listed seats in a real session's
+   init list; the same three seats read `Agents (0)`, ~456 tok listed and `Agents (3)`, ~828 tok
+   from a default `agents/` folder). So a plugin that lists its agents pays their descriptions ON
+   TOP of the number. The estimate also ignores `disable-model-invocation`
    (the skills docs say such a description is NOT in context, yet a user-only skill still shows an
    always-on number - measured on the claude-stack router: ~210 tok reported, 0 loaded). Read the
    number as the cost of every description the MODEL can see. The always-on number is what every session pays before
