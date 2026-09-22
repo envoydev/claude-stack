@@ -130,7 +130,9 @@ change (see the invariants below).
     `status` (`<level> <dbPath>`, or `none`). Fail-open: a missing database, a locked file, or
     `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart
     is never reported as a failure.
-  The guided walk's hooks layer makes them selectable (a selection with no `hook` lines installs all).
+  The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
+  no `hook` lines keeps every hook on; init's None emits `hook none` through `stack-select.js
+  --hooks-answered`, init only, which switches every hook off).
 - `stack/agents/` - 43 Claude-contract subagents, copied into `.claude/agents/`:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
@@ -155,7 +157,7 @@ change (see the invariants below).
 - `stack/rules/` - nineteen single-job rules copied into `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
   `project-commit-checkpoint` skill), navigation, docs-root (`CLAUDE_STACK_DOCS_PATH` is the ONLY lever;
-  installers stamp its value over `__DOCS_ROOT__` on every install/update, setup/configure re-stamp),
+  installers stamp its value over `__DOCS_ROOT__` on every install/update, init/configure re-stamp),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks serena).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
@@ -163,12 +165,25 @@ change (see the invariants below).
   `angular-repair-agents.md`) and nine convention rules, each glob-attaching ONE file family to its
   house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
-- `setup-plugin/` - the claude-stack plugin: five COMMANDS and one router SKILL.
-  - `/claude-stack:setup` (fresh install), `/claude-stack:update` (no-questions refresh + prune from the
-    stamp compare), `/claude-stack:configure` (add or drop), `/claude-stack:status` (read-only tables plus
-    the install's always-on FLOOR), `/claude-stack:validate` (project-relative two-way reconcile via
-    `stack-select.js --redundant` / `--missing` / `--evidence-gaps`, plus the settings.json `env` layer
-    against `environment.json`).
+- `setup-plugin/` - the claude-stack plugin: six COMMANDS and one router SKILL.
+  - `/claude-stack:init` (fresh install; reports `derive-state.js`'s `written` block, the one derivation
+    of what the project switches off, before installing), `/claude-stack:setup` (init's alias, kept for
+    one release), `/claude-stack:update` (refresh + prune from the stamp compare; its ONE ask offers
+    what the release ADDED - `update-preflight.js`'s `new:` lines, classified by
+    `derive-state.classifyNew` - and a yes is `--add '<category> <name>'` on `--installed-only`),
+    `/claude-stack:configure` (add or drop), `/claude-stack:status` (read-only tables plus the install's
+    always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/claude-stack:validate`
+    (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
+    `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`).
+  - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
+    writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
+    items of parked entries - and `parked_plugins`, so the walk's closure cannot switch either back
+    on), and they apply as `derive-state.js --delta` lines turned into `--add` / `--drop` over the same
+    read-back; only the frozen shell twin still takes `--selection`. On that route a drop runs BEFORE
+    the closure: one something kept requires, or a locked always-on rule or server, is logged 'not
+    applied'; a dropped seat is denied, a dropped hook named off, a dropped copy deleted (a copy-route
+    hook unwired too), and a stack entry nothing kept needs is disabled at the run's own scope and
+    route - never the core, the hooks entry or the three locked servers.
   - The script route prunes only names in the installers' RETIRED_SKILLS / RETIRED_AGENTS /
     RETIRED_RULES / RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend BOTH twins' lists when
     any of the six is renamed or removed (a stamp compare only names what left after the stamped commit).
@@ -180,7 +195,7 @@ change (see the invariants below).
     (up to 3 times per table) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog or the `plugin-settings.js` report. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`.
-  - None of the five carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
+  - None of the six carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
 - `meta/` - never installed:
   - `shared-rules.json` pins every deliberate multi-home rule (owner + marker-pinned copies); the lint
@@ -224,11 +239,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back |
+| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
 | Hooks | `claude-stack-hooks@claude-stack` plugin (all thirteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
-| Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); `.claude/agents/` keeps only the extras |
+| Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
-| Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit; configure diffs it against `main` |
+| Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + `security-guidance` hooks + the `security-auditor` agent |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -269,7 +284,7 @@ mirrored there in the same sitting.
     server's bundled playwright). One plugin per engine, not one plugin declaring four servers: a project
     that kept a single browser would otherwise load four copies of playwright's tool schemas in every
     session, which the registration route never did. `--playwright-browsers <csv>` / `--playwright-enabled`
-    (setup/configure ask both); absent = read back, a legacy `playwright` server migrates. The four
+    (init/configure ask both); absent = read back, a legacy `playwright` server migrates. The four
     playwright agents grant all four.
   - `angular-cli` - framework-specific.
   - `chrome-devtools`, `appium-mcp` - addable only, seeded by no stack (both fail at launch without
@@ -304,7 +319,7 @@ mirrored there in the same sitting.
   machine - the default for a fresh install), `scoped` (`~/.memory-mcp/memory_<space>.db`,
   `memory_default.db` with no space - one account), `project` (`<project>/.memory-mcp/memory.db`,
   gitignored - this project only). `--memory-level <global|scoped|project>` / `-MemoryLevel` sets
-  it; setup and configure ASK it (one AskUserQuestion, the three levels, `global` recommended),
+  it; init and configure ASK it (one AskUserQuestion, the three levels, `global` recommended),
   update passes it only when the invocation names one, changing it re-points the registration and
   never touches the database file. The registration needs the `[sqlite]` extra -
   `mcp-memory-service[sqlite]==<ver>` via `uvx --with numpy --from ...` - because that extra is

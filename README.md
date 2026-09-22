@@ -48,7 +48,7 @@ behind a flag.
 | --- | --- |
 | **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the two engines and the model-window table only - the thirteen wired hooks come from the `claude-stack-hooks` plugin; skills and agents: the extras only - the rest come from the per-stack plugins), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `claude-stack.stamp`; `<repo>/.mcp.json` only on the `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
-| **Starts** | one `claude plugin install` call per plugin (the five third-party picks, the stack's own `claude-stack-hooks`, and the entries carrying this project's skills and agents - `superpowers` needs no call of its own, the core entry depends on it), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to eight), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies of its own |
+| **Starts** | one `claude plugin install` call per plugin (the five third-party picks, the stack's own `claude-stack-hooks`, and the entries carrying this project's skills and agents - `superpowers` needs no call of its own, the core entry depends on it), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to eight), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, one skill, two references and one hook (`guard-layer-table.js`, the table-before-question gate), with no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/claude-stack:status` reports your own install's number |
 
@@ -84,14 +84,15 @@ The first line matters: the plugin depends on `superpowers`, which lives in the 
 marketplace. With that marketplace known, the install pulls `superpowers` in by itself; without it
 the install succeeds but reports the dependency as unsatisfied until the marketplace is added.
 
-Then `/claude-stack:setup` runs a fresh install (in a project it decides the selection FROM the
-project; outside one it offers a global install from the recommended set),
+Then `/claude-stack:init` runs a fresh install (in a project it decides the selection FROM the
+project; outside one it offers a global install from the recommended set; `/claude-stack:setup`
+stays as its alias for one release),
 `/claude-stack:update` refreshes an existing one to the newest release and prunes what the stack
 removed upstream, `/claude-stack:configure` adjusts it (add or drop items), and
 `/claude-stack:validate` reconciles an install against THIS project - prunes what its frameworks do
 not use and adds the detected stacks' missing artifacts, a per-layer walk (project mode only); and
 `/claude-stack:status` shows the install read-only, one table per area.
-Setup and configure walk the selection one layer at a time (rules ->
+Init and configure walk the selection one layer at a time (rules ->
 agents -> skills -> hooks -> MCPs -> plugins) as numbered full-catalog tables, locking only what
 something kept still requires - always with the reason shown. A deterministic evidence scan of
 the project's package manifests (csproj / package.json) pre-selects the specialist skills the
