@@ -895,3 +895,10 @@ test('superpowers is no longer a SEED, and the baseline closure still reaches it
     assert.ok((closure.plugins || []).includes('superpowers'),
         'it must still be reachable, or validate would stop reporting it absent on a broken install');
 });
+
+test('the recommended hook set is the whole catalog - a walk that takes it switches nothing off', () => {
+    const recs = require('../meta/recommendations.json');
+    const missing = (graph.catalog.hooks || []).filter(h => !(recs.always.hooks || []).includes(h));
+    assert.deepEqual(missing, [],
+        'a catalog hook the recommendation leaves out lands in CLAUDE_STACK_HOOKS_OFF on every default setup');
+});

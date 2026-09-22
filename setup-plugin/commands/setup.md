@@ -134,7 +134,7 @@ The full release catalog in one table - the generator `project-*` skills and eve
 
 ## 7. Hooks
 
-Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = all eleven: the ten always-on guards plus the env-gated `instrument-tool-usage` (wired like the guards, but inert until `CLAUDE_STACK_INSTRUMENT` flips to `1` - so keeping it costs nothing idle, and dropping it leaves the install unable to record a measured run without a manual re-wire). The whole set now ships together in the `claude-stack-hooks` plugin, so nothing is copied and nothing is wired per project: this answer is written as `CLAUDE_STACK_HOOKS_OFF` in the project's `.claude/settings.json` env - the rows you DROP are the ones named there - and it can be changed later by editing that value, no reinstall.
+Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = all thirteen: the ten always-on guards, the two session engines (`docs-session` - the docs start block and finish ask - and `memory-session` - the shared-memory slice at session start), plus the env-gated `instrument-tool-usage` (wired like the guards, but inert until `CLAUDE_STACK_INSTRUMENT` flips to `1` - so keeping it costs nothing idle, and dropping it leaves the install unable to record a measured run without a manual re-wire). The whole set now ships together in the `claude-stack-hooks` plugin, so nothing is copied and nothing is wired per project: this answer is written as `CLAUDE_STACK_HOOKS_OFF` in the project's `.claude/settings.json` env - the rows you DROP are the ones named there - and it can be changed later by editing that value, no reinstall.
 
 ## 8. MCPs
 

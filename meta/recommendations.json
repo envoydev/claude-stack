@@ -40,7 +40,9 @@
    "guard-fresh-session-start",
    "guard-cross-project-write",
    "guard-answer-length",
-   "instrument-tool-usage"
+   "instrument-tool-usage",
+   "docs-session",
+   "memory-session"
   ],
   "skills": [
    "project-agent-capabilities",
