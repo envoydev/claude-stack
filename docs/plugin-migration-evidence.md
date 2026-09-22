@@ -616,3 +616,70 @@ One gotcha recorded on the way out, and it is Phase 5 and Phase 7 work: `claude 
 settings.json, shared with your team). To disable just for you: claude plugin disable <p>@<m> --scope
 local'. Removing the marketplace pruned the entries from `enabledPlugins` instead. The installer's
 prune path (RETIRED_PLUGINS) cannot assume `uninstall` works at project scope.
+
+---
+
+## Phase 4 dependencies - what the docs settle and what the tests caught
+
+**Verified against the current docs, 2026-09-22** (`https://code.claude.com/docs/en/plugin-dependencies`,
+plus `/docs/en/plugins-reference` for `claude plugin disable`):
+
+| Claim | What the docs say |
+|---|---|
+| The lock is real | 'disabling a plugin is blocked if another enabled plugin still needs it', with a chained `claude plugin disable <dependent> && claude plugin disable <dependency>` in the refusal |
+| Enabling pulls the chain | 'When you enable a plugin, Claude Code also enables its dependencies at the same scope', writing an explicit `true` for each, even when the dependency's manifest sets `defaultEnabled: false` |
+| The one failure that matters here | 'A dependency is set to `false` at a scope with higher precedence than the target scope' makes the enable FAIL |
+| Cross-marketplace trust does not chain | only the ROOT marketplace's `allowCrossMarketplaceDependenciesOn` is consulted; a missing entry fails with a `cross-marketplace` error |
+
+Spike S8 had already measured the happy path: the dependency installs across marketplaces and the
+install ADDS a key to `settings.json` rather than rewriting the file.
+
+So `superpowers` leaves the installer's `PLUGINS` pick list and arrives as the core entry's
+dependency. It stays in the block COMMENTED, because three readers build their catalog from that
+block and 27 skills and agents cite it: `stack-graph.js` `catalog.plugins`, the parity lint's
+resolvable namespaces, and the walk's plugin layer. The walk now prints it with its own status
+(`dependency`, 'carried by claude-stack@claude-stack - cannot be dropped') rather than as a pick the
+closure happens to force.
+
+### Three defects, each found by reading a result rather than an exit code
+
+1. **The copy route would have lost it entirely.** With `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` and
+   `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false` no stack plugin is enabled, so nothing pulls the
+   dependency - and both switches promise the 0.2.x route UNCHANGED. Both twins now carry
+   `CORE_DEP_PLUGINS` and install it explicitly when, and only when, the run enables no stack
+   plugin. Lint check 51 pins that list to the generated core entry, in both directions.
+
+2. **A one-row `claude plugin list --json` was dropped by the ps1 twin** - pre-existing, and the
+   Phase 4 dependency-lock fixture is simply the first with exactly one row. `ConvertFrom-Json`
+   unwraps a one-element array into a single `PSCustomObject`, which is not `IEnumerable`, so the
+   shape test fell through to `@()` and every caller silently kept its defaults: `plugin update` at
+   the wrong scope, a parked plugin never enabled, a retired plugin never pruned. The sh twin was
+   never affected (`json.load` keeps the list). Fixed and regression-tested on the ps1 side.
+
+3. **Two test files were asserting the delivery route by accident** - `source-cache.test.js` (which
+   SOURCE a run resolved: archive, cache, marketplace clone, offline) and `skill-install.test.js`
+   (which skills a run copied, and which source it stamped). Both read their answer through a skill
+   landing in `.claude/skills`, and on the plugin route a stack skill is carried rather than copied,
+   so seven assertions stopped meaning anything the moment `selection-plugins.js` reached `HEAD` -
+   the file their own `git archive HEAD` / fixture-clone setups ship. They were green in the Phase 3
+   run only because that run happened before the commit. Both now pin the copy route explicitly,
+   with the reason: the delivery route has its own proofs in `mcp-verify.test.js` and the matrix.
+
+Plus test upkeep the change forces, not a defect: three assertions named `superpowers` as a PICK in
+the installer's derived plan (`selection.test.js` both twins, `skill-install.test.js`'s
+`--installed-only` plan). It no longer travels that loop, so they now name a plugin that does.
+
+### What did NOT need changing
+
+The in-marketplace edges (per-stack -> family base -> core) and the `allowCrossMarketplaceDependenciesOn`
+allowlist were already generated in Phase 1. They are now pinned by tests over the SHIPPED manifest:
+every entry's dependency closure reaches the core, no cycle, only the core reaches outside the
+marketplace, and the allowlist names exactly the marketplaces the entries reach into.
+
+### S4's Windows gap, closed as a constraint
+
+Spike S4 proved a plugin `bin/` entry lands on PATH on macOS and recorded Windows as NOT RUN: Windows
+has no shebang handling, and whether Claude Code shims a `bin/` entry there is unknown. There is no
+Windows machine in this session either, so the gap is enforced rather than re-reported: lint check 52
+fails when a `bin/` appears at the repo root or under `stack/` or `setup-plugin/`, or when any
+marketplace entry lists a path that reaches one. Running the Windows check is what lifts it.

@@ -592,7 +592,12 @@ EXTRA_MARKETPLACES=(
   "jarrodwatts/claude-hud"
 )
 PLUGINS=(
-  "superpowers@claude-plugins-official"       # workflow skills: plan, TDD, debug, verify-before-done
+  # "superpowers@claude-plugins-official"     # workflow skills: plan, TDD, debug, verify-before-done.
+  #   NOT a pick any more: it is a HARD `dependencies` entry on claude-stack@claude-stack, so the
+  #   core plugin installs and enables it (and Claude Code then REFUSES to disable it while the core
+  #   is enabled - code.claude.com/docs/en/plugin-dependencies). The row stays here, commented,
+  #   because three readers build their catalog from this block and 27 skills and agents cite it:
+  #   stack-graph.js catalog.plugins, the parity lint's resolvable namespaces, the walk's plugin layer.
   "claude-md-management@claude-plugins-official" # audit + revise CLAUDE.md files
   "csharp-lsp@claude-plugins-official"      # inline Roslyn diagnostics on edit (complements serena nav); needs csharp-ls (dotnet tool install -g csharp-ls)
   "typescript-lsp@claude-plugins-official"  # same for Angular/TS work
@@ -606,6 +611,12 @@ PLUGINS=(
 # registered from the run's throwaway source snapshot.
 STACK_MARKETPLACE="${CLAUDE_STACK_MARKETPLACE:-envoydev/claude-stack}"
 STACK_PLUGINS=("claude-stack-hooks@claude-stack")
+# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
+# the two together, so a dependency added there is a red lint until it is added here). Installed
+# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
+# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
+# route the core entry carries them and an explicit install here would only repeat the work.
+CORE_DEP_PLUGINS=("superpowers@claude-plugins-official")
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.
 #     @SERENA_CONTEXT@   -> resolved at install time to claude-code.
@@ -1702,6 +1713,37 @@ _stack_plugin_set() {
   if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then STACK_RUN_PLUGINS+=(${STACK_SKILL_PLUGINS[@]+"${STACK_SKILL_PLUGINS[@]}"}); fi
 }
 
+# The core's dependency plugins, but only when this run enables no stack plugin - see
+# CORE_DEP_PLUGINS. Fills a GLOBAL because macOS still ships bash 3.2, which has no namerefs.
+CORE_DEPS_NEEDED=()
+_core_deps_needed() {
+  CORE_DEPS_NEEDED=()
+  [ ${#STACK_RUN_PLUGINS[@]} -eq 0 ] || return 0
+  CORE_DEPS_NEEDED=(${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"})
+  return 0
+}
+
+# A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
+# with higher precedence than this one - the one documented enable failure whose symptom ('plugin
+# ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
+# Printed once, and only for a dependency the listing actually shows as disabled, so a run that
+# failed for an unrelated reason is not sent chasing it.
+_DEP_LOCK_HINT_SHOWN=false
+_dep_lock_hint() {
+  case "$1" in *@claude-stack) ;; *) return 0 ;; esac
+  [ "$_DEP_LOCK_HINT_SHOWN" = false ] || return 0
+  local listing dep name
+  listing="$(_plugin_scan)"
+  [ -n "$listing" ] || return 0
+  for dep in ${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"}; do
+    name="${dep%%@*}"
+    [ "$(_plugin_field "$listing" "$name" 4)" = "no" ] || continue
+    _DEP_LOCK_HINT_SHOWN=true
+    log "     $name is DISABLED and $1 depends on it - enable it first: claude plugin enable $dep --scope $(_plugin_field "$listing" "$name" 3)"
+  done
+  return 0
+}
+
 install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   ensure_official_marketplace
@@ -1711,12 +1753,13 @@ install_plugins() {
   local -a _plugins=(${PLUGINS[@]+"${PLUGINS[@]}"})
   _stack_plugin_set
   _plugins+=(${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"})
+  _core_deps_needed; _plugins+=(${CORE_DEPS_NEEDED[@]+"${CORE_DEPS_NEEDED[@]}"})
   for p in ${_plugins[@]+"${_plugins[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
     log "plugin [$pscope]: $p"
-    claude plugin install "$p" --scope "$pscope" -y || note_failure "plugin $p failed"   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
+    claude plugin install "$p" --scope "$pscope" -y || { note_failure "plugin $p failed"; _dep_lock_hint "$p"; }   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
   done
 }
 
@@ -2948,6 +2991,7 @@ update_plugins() {
   # installed, so the run ended with neither route live.
   _stack_plugin_set
   _all+=(${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"})
+  _core_deps_needed; _all+=(${CORE_DEPS_NEEDED[@]+"${CORE_DEPS_NEEDED[@]}"})
   before="$(_plugin_scan)"
   prune_retired_plugins "$before"
   for p in ${_all[@]+"${_all[@]}"}; do

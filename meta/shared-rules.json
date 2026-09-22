@@ -5148,6 +5148,19 @@
      "marker": "skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node \"$TMP/repo/scripts/selection-plugins.js\" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set"
     }
    ]
+  },
+  "dependency-plugin-not-removable": {
+   "_note": "A plugin the core marketplace entry hard-depends on is never proposed for removal: Claude Code refuses both `plugin uninstall` and `plugin disable` while the dependent is enabled, and names the dependent (code.claude.com/docs/en/plugin-dependencies, read 2026-09-22). Restated in both walks that remove plugins, beside the scope rule they already share.",
+   "owner": {
+    "file": "setup-plugin/commands/validate.md",
+    "marker": "never propose removing one: Claude Code refuses both the uninstall"
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "hard-depends on it, and Claude Code refuses both the uninstall and the disable while the core"
+    }
+   ]
   }
  }
 }

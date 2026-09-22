@@ -362,6 +362,12 @@ function emitTable(graph, layer, opts)
         return null;
     };
 
+    // A plugin the core marketplace entry hard-depends on is in the catalog (its citers are real
+    // edges) but it is neither droppable nor ours to install: enabling the core enables it, and
+    // Claude Code refuses to disable it while the core is enabled. Calling that row 'required by
+    // skill x' reads like a pick the user still has to make, so it gets its own status.
+    const dependencyPlugins = new Set(layer === 'plugins' ? (graph.catalog.dependencyPlugins || []) : []);
+
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
     const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
     const orphanWhy = {};
@@ -379,8 +385,11 @@ function emitTable(graph, layer, opts)
             // when nothing stronger claims it - a not-installed row showing 'MassTransit in
             // src/Api.csproj' tells the user the project uses what the install lacks.
             const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
-            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}` : reasons[name] || evidence || '-';
+            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}`
+                : dependencyPlugins.has(name) ? 'carried by claude-stack@claude-stack - cannot be dropped'
+                : reasons[name] || evidence || '-';
         }
+        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = 'carried by claude-stack@claude-stack - cannot be dropped'; }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
         else
         {

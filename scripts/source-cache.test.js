@@ -96,11 +96,16 @@ function work() {
 }
 
 // One install run of the sh twin, HOME isolated so the cache lands in this run's own account dir.
+// The COPY route on purpose: this file proves which SOURCE a run resolved (archive, cache, clone,
+// offline), and it reads that through a skill landing in .claude/skills. On the default plugin
+// route a stack skill is carried by a plugin instead of copied, so the same assertion would say
+// nothing about the source. The delivery route has its own proofs (mcp-verify.test.js, the matrix).
 function runSh(home, host, env = {}) {
     return execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', path.join(home, 'sel.txt'), '--skills-only'], {
         cwd: home,
         encoding: 'utf8',
-        env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, CLAUDE_CONFIG_DIR: '', ...env },
+        env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, CLAUDE_CONFIG_DIR: '',
+            CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', ...env },
     });
 }
 
@@ -353,7 +358,8 @@ test('the ps1 twin caches and reuses the same way', { skip: skipNoPwsh }, () => 
             '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
             cwd: home,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '',
+                CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' },
         });
         run();
         assert.strictEqual(host.assets, 1, 'the first run downloaded once');
@@ -376,7 +382,8 @@ test('the ps1 twin takes the marketplace clone the same way', { skip: skipNoPwsh
             '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
             cwd: home,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '',
+                CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' },
         });
         assert.match(out, /source: marketplace clone/, 'the ps1 run names the clone');
         assert.strictEqual(host.assets, 0, 'nothing was downloaded');

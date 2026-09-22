@@ -635,9 +635,20 @@ $ExtraMarketplaces = @(
 # registered from the run's throwaway source snapshot.
 $StackMarketplace = if ($env:CLAUDE_STACK_MARKETPLACE) { $env:CLAUDE_STACK_MARKETPLACE } else { 'envoydev/claude-stack' }
 $StackPlugins = @('claude-stack-hooks@claude-stack')
+# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
+# the two together, so a dependency added there is a red lint until it is added here). Installed
+# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
+# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
+# route the core entry carries them and an explicit install here would only repeat the work.
+$CoreDepPlugins = @('superpowers@claude-plugins-official')
 
 $Plugins = @(
-  'superpowers@claude-plugins-official'       # workflow skills: plan, TDD, debug, verify-before-done
+  # 'superpowers@claude-plugins-official'     # workflow skills: plan, TDD, debug, verify-before-done.
+  #   NOT a pick any more: it is a HARD `dependencies` entry on claude-stack@claude-stack, so the
+  #   core plugin installs and enables it (and Claude Code then REFUSES to disable it while the core
+  #   is enabled - code.claude.com/docs/en/plugin-dependencies). The row stays here, commented,
+  #   because three readers build their catalog from this block and 27 skills and agents cite it:
+  #   stack-graph.js catalog.plugins, the parity lint's resolvable namespaces, the walk's plugin layer.
   'claude-md-management@claude-plugins-official' # audit + revise CLAUDE.md files
   'csharp-lsp@claude-plugins-official'      # inline Roslyn diagnostics on edit (complements serena nav); needs csharp-ls (dotnet tool install -g csharp-ls)
   'typescript-lsp@claude-plugins-official'  # same for Angular/TS work
@@ -1893,20 +1904,49 @@ function Get-StackRunPlugins {
   return $out
 }
 
+function Get-CoreDepsNeeded {
+  # The core's dependency plugins, but only when this run enables no stack plugin - see $CoreDepPlugins.
+  param($StackRun)
+  if (@($StackRun).Count -gt 0) { return @() }
+  return @($CoreDepPlugins)
+}
+
+$script:DepLockHintShown = $false
+function Show-DepLockHint {
+  # A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
+  # with higher precedence than this one - the one documented enable failure whose symptom ('plugin
+  # ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
+  # Printed once, and only for a dependency the listing actually shows as disabled, so a run that
+  # failed for an unrelated reason is not sent chasing it.
+  param([string]$Plugin)
+  if ($Plugin -notlike '*@claude-stack') { return }
+  if ($script:DepLockHintShown) { return }
+  $listing = Get-InstalledPluginMap
+  foreach ($dep in $CoreDepPlugins) {
+    $name = ($dep -split '@')[0]
+    if (-not $listing.ContainsKey($name)) { continue }
+    if ($listing[$name].enabled) { continue }
+    $script:DepLockHintShown = $true
+    $depScope = if ($listing[$name].scope) { $listing[$name].scope } else { $ClaudeScope }
+    Log "     $name is DISABLED and $Plugin depends on it - enable it first: claude plugin enable $dep --scope $depScope"
+  }
+}
+
 function Install-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Initialize-OfficialMarketplace
   foreach ($mp in $ExtraMarketplaces) { try { & claude plugin marketplace add $mp 2>$null } catch {} }
   # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the hooks
   # plugin resolves in the same run that prunes the copied hooks it replaces.
-  $allPlugins = @($Plugins) + (Get-StackRunPlugins)
+  $stackRun = @(Get-StackRunPlugins)
+  $allPlugins = @($Plugins) + $stackRun + (Get-CoreDepsNeeded $stackRun)
   foreach ($p in $allPlugins) {
     # claude-hud is a statusline HUD - force USER scope regardless of $ClaudeScope. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
     Log "plugin [$pScope]: $p"
     try { & claude plugin install $p --scope $pScope -y } catch {}   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
-    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
+    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed"; Show-DepLockHint $p }
   }
 }
 
@@ -3187,7 +3227,11 @@ function Get-InstalledPluginMap {
   try { $raw = (& claude plugin list --json 2>$null) -join "`n" } catch { return $map }
   if (-not $raw.Trim()) { return $map }
   try { $doc = $raw | ConvertFrom-Json } catch { return $map }
-  $rows = if ($doc -is [System.Collections.IEnumerable] -and -not ($doc -is [string])) { $doc } elseif ($doc.PSObject.Properties.Name -contains 'installed') { $doc.installed } else { @() }
+  # ConvertFrom-Json UNWRAPS a one-element array into a single PSCustomObject, which is not
+  # IEnumerable - so the old shape test dropped the whole listing whenever exactly one plugin was
+  # installed, and every caller silently kept its defaults (wrong update scope, a parked plugin
+  # never enabled). @() wraps either shape; python's json.load on the sh side never had this.
+  $rows = if ($doc -and ($doc.PSObject.Properties.Name -contains 'installed')) { $doc.installed } else { @($doc) }
   $cwd = [System.IO.Path]::GetFullPath((Get-Location).Path)
   foreach ($e in @($rows)) {
     if (-not $e) { continue }
@@ -3230,7 +3274,8 @@ function Update-Plugins {
   # parked, then updated. Without it an update pruned the copied hooks, skills and agents and
   # enabled nothing in their place: `claude plugin update` is a no-op on a plugin that is not
   # installed, so the run ended with neither route live.
-  $allPlugins = @($Plugins) + (Get-StackRunPlugins)
+  $stackRun = @(Get-StackRunPlugins)
+  $allPlugins = @($Plugins) + $stackRun + (Get-CoreDepsNeeded $stackRun)
   $before = Get-InstalledPluginMap
   Remove-RetiredPlugins -Listing $before
   foreach ($p in $allPlugins) {

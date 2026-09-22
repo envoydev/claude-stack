@@ -162,7 +162,7 @@ run spent `--help`, an `ls examples` and a source grep at 258k context to confir
 
 ```json
 { "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
-  "hooks": ["guard-stop-contract"], "mcps": ["serena"], "plugins": ["superpowers"] }
+  "hooks": ["guard-stop-contract"], "mcps": ["serena"], "plugins": ["security-guidance"] }
 ```
 
 Seed BOTH before the first recompute - `raw.json` from the step-1 inventory, `dropped.json` as
@@ -309,7 +309,7 @@ Presence, never the value - run this and paste its lines as-is:
 ## 8. Plugins
 
 Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure;
-`superpowers` arrives via the skills and agents that cite it); the rest of the
+`superpowers` shows as `dependency` - the core plugin hard-depends on it, so it cannot be dropped and needs no install row); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
@@ -448,7 +448,9 @@ orphans) with its command shown before running it: delete the skill directory / 
 rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
 (show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP (playwright = every `playwright-<browser>` server);
 `claude plugin uninstall <name> --scope <the scope step 1's listing printed for it>` for a plugin -
-and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
+except one the table showed as `dependency`, which is never proposed for removal at all: the core
+plugin hard-depends on it, and Claude Code refuses both the uninstall and the disable while the core
+is enabled, naming the dependent - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`; 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when

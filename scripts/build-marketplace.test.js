@@ -130,3 +130,53 @@ test('the cost table carries today, planned and delta for every stack', () => {
     }
     assert.ok(table.markdown.includes('| aspnet |'), 'rendered as a markdown table');
 });
+
+// Phase 4. The dependency edges were generated in Phase 1; from here they are load-bearing, because
+// the installer stopped installing superpowers itself. Claude Code enables a plugin's dependencies
+// at the same scope and refuses to disable one while a dependent is enabled
+// (code.claude.com/docs/en/plugin-dependencies), so a broken edge is a project without the plugin
+// 27 skills and agents cite, not a warning.
+const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+const shippedBy = Object.fromEntries(SHIPPED.plugins.map(e => [e.name, e]));
+
+test('every shipped entry reaches the core through its dependencies, with no cycle', () => {
+    for (const e of SHIPPED.plugins)
+    {
+        if (e.name === 'claude-stack') continue;
+        const seen = new Set();
+        const stack = [e.name];
+        while (stack.length)
+        {
+            const name = stack.pop();
+            if (seen.has(name)) continue;
+            seen.add(name);
+            for (const d of shippedBy[name] ? shippedBy[name].dependencies || [] : [])
+            {
+                if (typeof d !== 'string') continue;          // cross-marketplace, checked below
+                assert.ok(shippedBy[d], `${name} depends on ${d}, which this marketplace does not ship`);
+                assert.notStrictEqual(d, e.name, `${e.name} and ${d} depend on each other`);
+                stack.push(d);
+            }
+        }
+        assert.ok(seen.has('claude-stack'), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
+    }
+});
+
+test('only the core carries a cross-marketplace dependency, and the allowlist names exactly what is reached', () => {
+    const reached = new Set();
+    for (const e of SHIPPED.plugins)
+        for (const d of e.dependencies || [])
+        {
+            if (typeof d === 'string') continue;
+            assert.strictEqual(e.name, 'claude-stack', `${e.name} reaches outside the marketplace; only the core may`);
+            assert.ok(d.marketplace, `${e.name}'s dependency on ${d.name} names no marketplace`);
+            reached.add(d.marketplace);
+        }
+    assert.deepStrictEqual([...reached].sort(), [...(SHIPPED.allowCrossMarketplaceDependenciesOn || [])].sort(),
+        'allowCrossMarketplaceDependenciesOn must name exactly the marketplaces the entries reach into - a missing name fails the install with a cross-marketplace error, an extra one widens trust for nothing');
+});
+
+test('the core depends on superpowers, which is what took it out of the installer pick list', () => {
+    const deps = (shippedBy['claude-stack'].dependencies || []).filter(d => typeof d !== 'string');
+    assert.deepStrictEqual(deps.map(d => `${d.name}@${d.marketplace}`), ['superpowers@claude-plugins-official']);
+});

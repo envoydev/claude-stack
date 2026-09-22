@@ -858,3 +858,40 @@ test('CLI: an unknown --stacks name is named on stderr and the table still rende
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Phase 4: superpowers is a HARD dependency of the core plugin, so the walk must not present it as
+// something to pick or drop. Claude Code refuses to disable it while the core is enabled
+// (code.claude.com/docs/en/plugin-dependencies), and the install never calls it by name.
+test('a plugin the core entry depends on gets its own row status, in both table modes', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deprow-'));
+    const sel = path.join(dir, 'raw.json');
+    const inv = path.join(dir, 'inv.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['baseline-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
+    fs.writeFileSync(inv, JSON.stringify({ plugins: ['superpowers'], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
+    const script = path.join(__dirname, 'stack-select.js');
+    const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+
+    const selected = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins'], { encoding: 'utf8' });
+    const row = selected.split('\n').find(l => l.includes('superpowers'));
+    assert.ok(/\bdependency\b/.test(row), `the row must say dependency, got: ${row}`);
+    assert.ok(/cannot be dropped/.test(row), `the row must say it cannot be dropped, got: ${row}`);
+    assert.ok(!/required by/.test(row), 'it must not read like a pick the closure happens to force');
+
+    const installedOut = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' });
+    const irow = installedOut.split('\n').find(l => l.includes('superpowers'));
+    assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
+    assert.ok(/carried by claude-stack@claude-stack/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('superpowers is no longer a SEED, and the baseline closure still reaches it', () => {
+    const recs = require('../meta/recommendations.json');
+    assert.ok(!(recs.always.plugins || []).includes('superpowers'),
+        'the installer does not seed it any more - the core plugin\'s dependency installs it');
+    const closure = computeClosure(graph, recs.always);
+    assert.ok((closure.plugins || []).includes('superpowers'),
+        'it must still be reachable, or validate would stop reporting it absent on a broken install');
+});

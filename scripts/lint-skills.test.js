@@ -647,3 +647,67 @@ test('check 48: a drifted matcher, a missing file and a missing gate are all fin
     assert.match(ghost.Stop[0].hooks[0].command, /guard-not-here\.js$/,
         'a wiring naming a missing file still generates, so the lint is what catches it');
 });
+
+// Check 51. The copy route installs the core's dependencies itself, so both twins carry that list -
+// and it has to be the list the generated entries declare. A name added to the placement and not to
+// the twins is a copy-route install without superpowers; a name left in the twins after the entry
+// dropped it installs a plugin nothing needs.
+test('check 51: the twins\' CORE_DEP_PLUGINS is clean today, and drift in either direction is a finding', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintCoreDependencies, paths } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped twins already agree with the entries');
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coredep-'));
+    const sh = path.join(tmp, 'sh');
+    const ps1 = path.join(tmp, 'ps1');
+    const entries = path.join(tmp, 'entries.json');
+    const write = (shList, psList, declared) => {
+        fs.writeFileSync(sh, `CORE_DEP_PLUGINS=(${shList.map(n => `"${n}@m"`).join(' ')})\n`);
+        fs.writeFileSync(ps1, `$CoreDepPlugins = @(${psList.map(n => `'${n}@m'`).join(', ')})\n`);
+        fs.writeFileSync(entries, JSON.stringify({ entries: [{ name: 'claude-stack', dependencies: declared.map(n => ({ name: n, marketplace: 'm' })) }] }));
+    };
+
+    write(['superpowers'], ['superpowers'], ['superpowers']);
+    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, entries), [], 'a matching trio is clean');
+
+    write(['superpowers'], ['superpowers', 'other'], ['superpowers']);
+    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /differs across the twins/, 'the twins must agree with each other');
+
+    write(['superpowers'], ['superpowers'], ['superpowers', 'other']);
+    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /the generated entries declare/, 'a dependency the entries added is a finding');
+
+    fs.writeFileSync(sh, '# no block here\n');
+    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /no CORE_DEP_PLUGINS/, 'a missing block is a finding, not a silent pass');
+
+    // An in-marketplace (string) dependency is Claude Code's to resolve, never ours to install.
+    write(['superpowers'], ['superpowers'], ['superpowers']);
+    fs.writeFileSync(entries, JSON.stringify({ entries: [
+        { name: 'claude-stack', dependencies: [{ name: 'superpowers', marketplace: 'm' }] },
+        { name: 'claude-stack-wpf', dependencies: ['claude-stack-csharp'] }] }));
+    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, entries), [], 'a string dependency is not a catalog plugin');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    assert.ok(paths, 'paths stays exported');
+});
+
+// Check 52. Spike S4 proved a plugin bin/ entry lands on PATH on macOS and recorded Windows as NOT
+// RUN. The plan's condition is that nothing shipped may depend on one until that check runs.
+test('check 52: the repo ships no plugin bin/, and one would be a finding wherever it sits', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintNoPluginBin } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintNoPluginBin(), [], 'nothing shipped depends on a bin/ entry today');
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nobin-'));
+    fs.mkdirSync(path.join(tmp, 'stack', 'bin'), { recursive: true });
+    assert.match(lintNoPluginBin(tmp)[0], /unproven on Windows/, 'a bin/ under stack is a finding');
+
+    fs.rmSync(path.join(tmp, 'stack', 'bin'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({ plugins: [{ name: 'x', commands: ['./stack/bin/tool.md'] }] }));
+    assert.match(lintNoPluginBin(tmp)[0], /lists .*bin.*under commands/, 'an entry reaching a bin/ path is a finding');
+    fs.rmSync(tmp, { recursive: true, force: true });
+});

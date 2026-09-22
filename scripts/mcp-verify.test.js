@@ -181,17 +181,19 @@ test('sh: a registration already in the manifest shape is left byte-identical an
 test('sh: update runs `plugin update` at the scope the plugin is actually installed at', () =>
 {
     const sb = sandbox({ sentry: STALE_SENTRY });
-    fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8') + 'plugin superpowers\n');
+    // A PICK, not superpowers: from Phase 4 superpowers arrives as the core entry's dependency and
+    // never travels this loop, so it would prove nothing about the scope the loop passes.
+    fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8') + 'plugin security-guidance\n');
     // Installed at USER scope while the run is --scope project: today the run passes its own scope
     // and `claude plugin update --scope project` is a no-op, so the plugin stays on its old version.
     fs.writeFileSync(sb.plugins, JSON.stringify([
-        { id: 'superpowers@claude-plugins-official', version: '6.2.0', scope: 'user', enabled: true },
+        { id: 'security-guidance@claude-plugins-official', version: '6.2.0', scope: 'user', enabled: true },
     ]));
     try
     {
         const out = runSh(sb, 'update');
-        assert.match(calls(sb), /plugin update superpowers@claude-plugins-official --scope user/, 'sh: the plugin was updated at the wrong scope');
-        assert.match(out, /plugin superpowers/, 'sh: the plugin version state is not reported');
+        assert.match(calls(sb), /plugin update security-guidance@claude-plugins-official --scope user/, 'sh: the plugin was updated at the wrong scope');
+        assert.match(out, /plugin security-guidance/, 'sh: the plugin version state is not reported');
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
@@ -204,14 +206,15 @@ for (const twin of ['sh', 'ps1'])
     test(`${twin}: install registers and refreshes the official marketplace before the first plugin install`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
         const sb = sandbox({ sentry: STALE_SENTRY });
-        fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8') + 'plugin superpowers\n');
+        // A PICK: superpowers leaves this loop in Phase 4 (the core entry's dependency carries it).
+        fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8') + 'plugin security-guidance\n');
         try
         {
             twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
             const log = calls(sb).split(/\r?\n/);
             const add = log.findIndex((l) => /^plugin marketplace add anthropics\/claude-plugins-official\b/.test(l));
             const upd = log.findIndex((l) => /^plugin marketplace update claude-plugins-official\b/.test(l));
-            const inst = log.findIndex((l) => /^plugin install superpowers@claude-plugins-official\b/.test(l));
+            const inst = log.findIndex((l) => /^plugin install security-guidance@claude-plugins-official\b/.test(l));
             assert.ok(inst >= 0, `${twin}: the plugin was never installed:\n${log.join('\n')}`);
             assert.ok(add >= 0 && add < inst, `${twin}: the official marketplace is not added before the install`);
             assert.ok(upd >= 0 && upd < inst, `${twin}: the official marketplace is not refreshed before the install`);
@@ -753,6 +756,124 @@ test('ps1: the default is playwright-chrome, and sh agrees with the file ps1 wro
         const afterPs = fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8');
         assert.doesNotMatch(runSh(sb, 'update'), /mcp repaired:/, 'sh: rewrote the chrome server ps1 wrote');
         assert.strictEqual(fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8'), afterPs, 'sh: reformatted the file ps1 wrote');
+    }
+    finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+});
+
+// Phase 4: superpowers stops being a pick and becomes a HARD `dependencies` entry on the core
+// (code.claude.com/docs/en/plugin-dependencies, read 2026-09-22: enabling a plugin enables its
+// dependencies at the same scope, and disabling one is refused while a dependent is enabled). The
+// risk the switch introduces is the COPY route - it enables no stack plugin, so nothing would pull
+// the dependency, and 27 skills and agents cite it.
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: the plugin route lets the core entry carry superpowers - no install call of our own`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const log = calls(sb);
+            assert.ok(/plugin install claude-stack@claude-stack --scope project/.test(log), `${twin}: the core plugin, which declares the dependency, was not installed`);
+            assert.ok(!/plugin install superpowers@/.test(log), `${twin}: superpowers was installed explicitly on the plugin route - the core entry already pulls it`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: the copy route installs the core's dependencies itself, or superpowers would simply be absent`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN = 'false';
+        sb.env.CLAUDE_STACK_SKILLS_VIA_PLUGIN = 'false';
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const log = calls(sb);
+            assert.ok(/plugin install superpowers@claude-plugins-official --scope project/.test(log), `${twin}: the copy route did not install superpowers:\n${log}`);
+            assert.ok(!/plugin install claude-stack@claude-stack/.test(log), `${twin}: the copy route installed a stack plugin`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: update carries the same fallback - a copy-route update does not drop the dependency`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN = 'false';
+        sb.env.CLAUDE_STACK_SKILLS_VIA_PLUGIN = 'false';
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'update') : runPs(sb, 'update');
+            assert.match(calls(sb), /plugin install superpowers@claude-plugins-official/, `${twin}: a copy-route update left superpowers absent`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
+// The one documented enable failure a user cannot diagnose from 'plugin ... failed': a dependency
+// set to false at a scope with HIGHER precedence than the target scope makes the enable refuse.
+// The stub CLI here fails every `plugin install` (exit 1) with superpowers listed as disabled.
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: a stack plugin that fails while superpowers is disabled prints the enable line, not just the failure`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        fs.writeFileSync(sb.plugins, JSON.stringify([
+            { id: 'superpowers@claude-plugins-official', version: '6.2.0', scope: 'user', enabled: false },
+        ]));
+        // Make every `plugin install` fail, the way the CLI does when a dependency cannot be enabled.
+        const shStub = path.join(sb.work, 'bin', 'claude');
+        fs.writeFileSync(shStub, fs.readFileSync(shStub, 'utf8').replace(
+            'exit 0\n', 'if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then exit 1; fi\nexit 0\n'), { mode: 0o755 });
+        const cmdStub = path.join(sb.work, 'bin', 'claude.cmd');
+        fs.writeFileSync(cmdStub, fs.readFileSync(cmdStub, 'utf8').replace(
+            'exit /b 0', 'if "%~1"=="plugin" if "%~2"=="install" exit /b 1\r\nexit /b 0'));
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            assert.match(out, /superpowers is DISABLED and claude-stack.*depends on it/, `${twin}: the dependency lock was not explained:\n${out}`);
+            assert.match(out, /claude plugin enable superpowers@claude-plugins-official --scope user/, `${twin}: the enable line does not name the scope the listing reports`);
+            assert.strictEqual((out.match(/is DISABLED and/g) || []).length, 1, `${twin}: the hint repeated once per failed plugin`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: a plugin failure with superpowers ENABLED says nothing about the dependency`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        fs.writeFileSync(sb.plugins, JSON.stringify([
+            { id: 'superpowers@claude-plugins-official', version: '6.2.0', scope: 'user', enabled: true },
+        ]));
+        const shStub = path.join(sb.work, 'bin', 'claude');
+        fs.writeFileSync(shStub, fs.readFileSync(shStub, 'utf8').replace(
+            'exit 0\n', 'if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then exit 1; fi\nexit 0\n'), { mode: 0o755 });
+        const cmdStub = path.join(sb.work, 'bin', 'claude.cmd');
+        fs.writeFileSync(cmdStub, fs.readFileSync(cmdStub, 'utf8').replace(
+            'exit /b 0', 'if "%~1"=="plugin" if "%~2"=="install" exit /b 1\r\nexit /b 0'));
+        try
+        {
+            const out = twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            assert.doesNotMatch(out, /is DISABLED and/, `${twin}: a run that failed for an unrelated reason was sent chasing the dependency`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
+// A listing with exactly ONE row: ConvertFrom-Json unwraps a one-element array into a single
+// PSCustomObject, which is not IEnumerable - the ps1 shape test dropped the whole listing, so every
+// caller silently kept its defaults (the wrong update scope, a parked plugin never enabled). Found
+// by the Phase 4 dependency-lock case, which is the first fixture with a single row.
+test('ps1: a one-plugin listing is read, not dropped', { skip: skipNoPwsh }, () =>
+{
+    const sb = sandbox({ sentry: STALE_SENTRY });
+    fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8') + 'plugin security-guidance\n');
+    fs.writeFileSync(sb.plugins, JSON.stringify([
+        { id: 'security-guidance@claude-plugins-official', version: '1.0.0', scope: 'user', enabled: true },
+    ]));
+    try
+    {
+        runPs(sb, 'update');
+        assert.match(calls(sb), /plugin update security-guidance@claude-plugins-official --scope user/,
+            'ps1: the single-row listing was dropped, so the update ran at the wrong scope');
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });

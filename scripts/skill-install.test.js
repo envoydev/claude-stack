@@ -15,6 +15,13 @@ const PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
 const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;
 const skipNoPwsh = hasPwsh ? false : 'pwsh not installed - ps1 behavioral test skipped';
 
+// This file proves which SOURCE a run installed from (fixture clone, --source checkout, release
+// archive) and which skills it COPIED, and it reads both through .claude/skills. On the default
+// plugin route a stack skill is carried by a plugin instead of copied, so the same assertions
+// would say nothing about either. The delivery route has its own proofs: mcp-verify.test.js and
+// the temp-project matrix.
+const COPY_ROUTE = { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' };
+
 // The clone-fallback path is pinned to -b main by design, but the installer under
 // test is the WORKING TREE's - pointing the clone at the real repo would couple the
 // test to whatever main last released (it broke on a layout change main did not have
@@ -37,7 +44,7 @@ function runSkillCopy(names, extraArgs = []) {
     const out = execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only', ...extraArgs], {
         cwd: work,
         encoding: 'utf8',
-        env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '' },
+        env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
     });
     return { work, out };
 }
@@ -108,7 +115,7 @@ test('an unreachable source writes NO stamp (a wrong stamp is worse than none)',
         execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: path.join(work, 'nope.git'), HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: path.join(work, 'nope.git'), HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.strictEqual(readStamp(work), null, 'no stamp when no revision was resolved');
     }
@@ -159,7 +166,7 @@ test('installs from the release archive and stamps its RELEASE-SOURCE commit', (
         const out = execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: `file://${fake}`, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: `file://${fake}`, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.match(out, /releases\/latest\/download/, 'took the archive route, not the clone fallback');
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'installed from the extracted archive');
@@ -208,7 +215,7 @@ test('--source pointed at a non-checkout fails once, clearly', () => {
         const out = execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', sel, '--skills-only', '--source', bogus], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.match(out, /is not a claude-stack checkout/, 'one clear diagnosis, not a per-file failure storm');
         assert.strictEqual(readStamp(work), null, 'no stamp when the source was never resolved');
@@ -231,7 +238,7 @@ test('ps1: install stamps the source revision it installed from (pwsh required)'
         execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'ps1 copied the selected skill');
         const mainTip = execFileSync('git', ['-C', SRC_REPO, 'rev-parse', 'main'], { encoding: 'utf8' }).trim();
@@ -264,7 +271,7 @@ test('ps1: -Source pointed at an extracted archive stamps from its RELEASE-SOURC
         execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly', '-Source', repo], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.strictEqual(readStamp(work).sha, FAKE_SHA, 'ps1 stamp read from RELEASE-SOURCE when there is no git checkout');
         assert.strictEqual(readStamp(work).version, '7.7.7', 'ps1 stamp version read from RELEASE-SOURCE');
@@ -289,7 +296,7 @@ test('ps1: -Source installs from a caller-provided checkout and never deletes it
         const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly', '-Source', checkout], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.match(out, /\(provided\)/, 'ps1 reports the borrowed source rather than cloning its own');
         assert.ok(fs.existsSync(path.join(work, '.claude', 'skills', 'csharp', 'SKILL.md')), 'installed from the provided checkout');
@@ -360,7 +367,7 @@ test('sh update --installed-only with no hooks on disk completes under the syste
         const res = spawnSync(bash, [SH, 'update', '--scope', 'project', '--installed-only', '--print-plan'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: SRC_REPO, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.strictEqual(res.status, 0, `exit 0 under ${bash}: ${res.stderr}`);
         assert.match(res.stdout + res.stderr, /csharp/, 'the disk-derived plan names the installed skill');
@@ -402,7 +409,9 @@ test('sh update --installed-only carries plugins into the refresh plan', () => {
         });
         assert.strictEqual(res.status, 0, `exit 0: ${res.stderr}`);
         const plan = (res.stdout.split('\n').find((l) => l.startsWith('plan plugins:')) || '');
-        assert.match(plan, /superpowers/, 'the plan names the stack plugins even with no CLI to list them');
+        // a PICK, not superpowers: from Phase 4 superpowers is the core entry's dependency and
+        // never travels the installer's plugin loop, so it proves nothing about the derived plan.
+        assert.match(plan, /security-guidance/, 'the plan names the stack plugins even with no CLI to list them');
         assert.match(plan, /claude-hud/, 'including the user-scoped one');
         const mcps = (res.stdout.split('\n').find((l) => l.startsWith('plan mcps:')) || '');
         assert.match(mcps, /serena/, 'mcps still come from .mcp.json');
@@ -1038,7 +1047,7 @@ test('ps1: one run clears ReadOnly/Hidden across the WHOLE .claude tree, not jus
         const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', sel, '-SkillsOnly'], {
             cwd: work,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: `file://${SRC_REPO}`, HOME: work, CLAUDE_CONFIG_DIR: '', ...COPY_ROUTE },
         });
         assert.strictEqual(stillBlocked(untouched), 0, 'every blocked file in the tree is cleared, not only the ones this run wrote');
         // The count is in the output because the silent version is what let 172 files stay blocked

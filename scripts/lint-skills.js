@@ -2328,6 +2328,10 @@ function main()
     for (const finding of lintMarketplaceEntries()) flag(finding);
     // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
     for (const finding of lintAgentPreloads()) flag(finding);
+    // 51. Both twins' CORE_DEP_PLUGINS mirror the core entry's cross-marketplace dependencies.
+    for (const finding of lintCoreDependencies()) flag(finding);
+    // 52. Nothing the marketplace ships depends on a plugin `bin/` entry (spike S4: Windows NOT RUN).
+    for (const finding of lintNoPluginBin()) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2460,6 +2464,70 @@ function isTracked(base, rel)
         return true;
     }
     catch { return false; }
+}
+
+// 51. A plugin the core entry hard-depends on is installed by Claude Code, not by the installer
+// loop - EXCEPT on the copy route, where no stack plugin is enabled and nothing would pull it. Both
+// twins carry that fallback list, so it has to be the same list the generated core entry declares:
+// a dependency added to the placement and not here would simply be absent for every copy-route
+// install, and a name left here after the entry dropped it would install a plugin nothing needs.
+function lintCoreDependencies(shFile, ps1File, entriesFile)
+{
+    const out = [];
+    const sh = fs.readFileSync(shFile || CLAUDE_SH, 'utf8');
+    const ps1 = fs.readFileSync(ps1File || CLAUDE_PS1, 'utf8');
+    const listOf = (text, re) =>
+    {
+        const m = text.match(re);
+        if (!m) return null;
+        return [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map(x => x[1].split('@')[0]).sort();
+    };
+    const shNames = listOf(sh, /^CORE_DEP_PLUGINS=\(([^)]*)\)/m);
+    const psNames = listOf(ps1, /^\$CoreDepPlugins = @\(([^)]*)\)/m);
+    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
+    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
+    if (!shNames || !psNames) return out;
+    if (shNames.join(',') !== psNames.join(','))
+        out.push(`CORE_DEP_PLUGINS differs across the twins: sh has [${shNames.join(', ')}], ps1 has [${psNames.join(', ')}].`);
+
+    let entries;
+    try { entries = JSON.parse(fs.readFileSync(entriesFile || path.join(ROOT, 'meta', 'plugin-entries.json'), 'utf8')); }
+    catch (err) { out.push(`meta/plugin-entries.json could not be read for the core-dependency check: ${err.message}`); return out; }
+    const declared = new Set();
+    for (const e of (entries && (entries.entries || entries.plugins)) || [])
+        for (const d of e.dependencies || [])
+            if (d && typeof d === 'object' && d.name) declared.add(d.name);   // a string dep is in-marketplace, never installed by us
+    const want = [...declared].sort();
+    if (want.join(',') !== shNames.join(','))
+        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] but the generated entries declare [${want.join(', ')}] as cross-marketplace dependencies - update both twins.`);
+    return out;
+}
+
+// 52. Spike S4 proved a plugin `bin/` entry lands on PATH on macOS and recorded Windows as NOT RUN:
+// Windows has no shebang handling, and whether Claude Code shims a `bin/` entry there is unknown.
+// The plan's own condition is that until that check runs, no shipped code path may depend on one.
+// This enforces it, at the repo root (every shared-source entry auto-discovers it, spike S9c) and
+// in the two trees the entries ship from. Running the Windows check is what lifts this.
+function lintNoPluginBin(root)
+{
+    const base = root || ROOT;
+    const out = [];
+    for (const rel of ['bin', path.join('stack', 'bin'), path.join('setup-plugin', 'bin')])
+    {
+        if (!fs.existsSync(path.join(base, rel))) continue;
+        out.push(`\`${rel}\` exists - a plugin \`bin/\` entry is unproven on Windows (spike S4 NOT RUN), so nothing shipped may depend on one. Run the Windows check before adding it.`);
+    }
+    try
+    {
+        const mk = JSON.parse(fs.readFileSync(path.join(base, '.claude-plugin', 'marketplace.json'), 'utf8'));
+        for (const e of mk.plugins || [])
+            for (const key of ['commands', 'skills', 'agents', 'hooks', 'mcpServers'])
+                for (const v of [].concat(e[key] || []))
+                    if (typeof v === 'string' && /(^|\/)bin(\/|$)/.test(v))
+                        out.push(`marketplace entry '${e.name}' lists \`${v}\` under ${key}, which reaches a bin/ path - unproven on Windows (spike S4).`);
+    }
+    catch { /* the schema check owns an unreadable manifest */ }
+    return out;
 }
 
 // 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
@@ -2655,6 +2723,8 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 module.exports = {
     lintPluginPlacement,
     lintHooksEntry,
+    lintCoreDependencies,
+    lintNoPluginBin,
     lintMarketplaceEntries,
     lintAgentPreloads,
     lintRepoRootReserved,

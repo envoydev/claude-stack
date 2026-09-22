@@ -40,7 +40,7 @@ test('sh: selection filters each category to the listed names', () => {
         'skill csharp', 'skill dotnet',
         'agent aspnet-implementer',
         'mcp serena',
-        'plugin superpowers',
+        'plugin security-guidance',
         'rule csharp-conventions',
     ]);
     const skills = planLine(out, 'skills');
@@ -49,7 +49,7 @@ test('sh: selection filters each category to the listed names', () => {
     assert.ok(!skills.includes('angular-conventions'), 'unlisted skill dropped');
     assert.deepStrictEqual(planLine(out, 'agents'), ['aspnet-implementer']);
     assert.deepStrictEqual(planLine(out, 'mcps'), ['serena']);
-    assert.deepStrictEqual(planLine(out, 'plugins'), ['superpowers']);
+    assert.deepStrictEqual(planLine(out, 'plugins'), ['security-guidance']);   // a PICK: superpowers is the core entry's dependency from Phase 4, never a plan line
     assert.deepStrictEqual(planLine(out, 'rules'), ['csharp-conventions']);
 });
 
@@ -90,7 +90,7 @@ test('sh: filterable arrays are always expanded nounset-safe (empty category mus
 const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;
 test('ps1: selection filters each category (pwsh required)', { skip: hasPwsh ? false : 'pwsh not installed - ps1 behavioral test skipped' }, () => {
     const { dir, file } = writeSelection([
-        'skill csharp', 'agent aspnet-implementer', 'mcp serena', 'plugin superpowers', 'rule csharp-conventions',
+        'skill csharp', 'agent aspnet-implementer', 'mcp serena', 'plugin security-guidance', 'rule csharp-conventions',
     ]);
     try
     {

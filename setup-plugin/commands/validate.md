@@ -231,7 +231,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   an accepted add is not an install at all: the name is removed from `CLAUDE_STACK_HOOKS_OFF` in the
   scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
-  The three always-baseline plugins (`superpowers`, `security-guidance`, `claude-hud`) show
+  The two always-baseline plugins (`security-guidance`, `claude-hud`) show
   MISSING on any install that lacks them, whatever the stack. `claude-md-management` is in the
   `general` opt-in list - offered, never seeded, and never flagged missing or redundant.
   Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
@@ -442,8 +442,10 @@ profile), output to `$TMP/select.out` - then:
 - **Removes**: `install --selection` does NOT uninstall - delete each accepted removal explicitly,
   showing the command first: the skill directory / agent file / rule file; a hook loses BOTH its
   `.claude/hooks/` file and its `.claude/settings.json` wiring; `claude mcp remove <name>` (playwright = every `playwright-<browser>` server);
-  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` - and the removal ask
-  that proposed it NAMES that scope ('enabled at USER scope - removing it removes it for every
+  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin the
+  core entry hard-depends on - never propose removing one: Claude Code refuses both the uninstall
+  and the disable while the core is enabled, naming the dependent. The removal ask that proposed it
+  NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
   block inside `.claude/rules/baseline-project-agent-capabilities.md` ships verbatim from the skill
