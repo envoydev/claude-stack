@@ -87,11 +87,102 @@ function serialize(entries)
     }, null, 2) + '\n';
 }
 
+// Puts the hooks entry into the live marketplace, in place, leaving every other entry - the
+// hand-written core included - exactly where it was. The entry is GENERATED from the installer's
+// wiring table, so this is a transcription, never a place to hand-edit a matcher.
+function applyHooksPlugin(mkt, entry)
+{
+    const wanted = entry || hooksPlugin();
+    const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
+    const at = plugins.findIndex(p => p && p.name === wanted.name);
+    if (at >= 0) plugins[at] = wanted; else plugins.push(wanted);
+    return mkt;
+}
+
 function applyToMarketplace(mkt, entries)
 {
     const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name));
     mkt.plugins = kept.concat(entries.filter(e => e.name !== CORE));
     return mkt;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The hooks plugin entry. The wiring table has ONE home - the `HOOKS=(...)` array in
+// scripts/os/claude-stack.sh, where each row is `file::matcher::args` and a matcher starting with
+// `@` names its own event (`@Stop`, `@SessionStart:compact`) instead of PreToolUse. Parsing that
+// array rather than retyping it is what keeps the plugin wiring and the settings.json wiring from
+// drifting while both routes exist, and the lint fails when the generated entry goes stale.
+//
+// The hooks are declared INLINE in the marketplace entry, not through a `hooks/hooks.json` at the
+// shared root: spike S9 assert (c) measured that a shared root is auto-discovered by every entry
+// over it, and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its
+// own hooks, fired once, for all six event types the stack uses.
+const INSTALLER_SH = path.join(REPO, 'scripts/os/claude-stack.sh');
+
+function parseHookWirings(file)
+{
+    const src = fs.readFileSync(file || INSTALLER_SH, 'utf8');
+    const start = src.indexOf('\nHOOKS=(');
+    if (start < 0) throw new Error('build-marketplace: no HOOKS=( array in the installer - the wiring table moved');
+    const end = src.indexOf('\n)', start);
+    if (end < 0) throw new Error('build-marketplace: the HOOKS=( array is not closed');
+    const out = [];
+    for (const line of src.slice(start, end).split('\n'))
+    {
+        const m = line.match(/^\s*"([^"]+)"/);
+        if (!m) continue;
+        const [file_, rawMatcher, rawArgs] = m[1].split('::');
+        const wiring = { file: file_ };
+        if (rawMatcher && rawMatcher.startsWith('@'))
+        {
+            const [event, matcher] = rawMatcher.slice(1).split(':');
+            wiring.event = event;
+            if (matcher) wiring.matcher = matcher;
+        }
+        else
+        {
+            wiring.event = 'PreToolUse';
+            if (rawMatcher) wiring.matcher = rawMatcher;
+        }
+        const args = String(rawArgs || '').trim();
+        if (args) wiring.args = args.split(/\s+/);
+        out.push(wiring);
+    }
+    if (!out.length) throw new Error('build-marketplace: the HOOKS=( array parsed to nothing');
+    return out;
+}
+
+function hooksBlock(wirings)
+{
+    const block = {};
+    for (const w of wirings || parseHookWirings())
+    {
+        const list = block[w.event] || (block[w.event] = []);
+        let group = list.find(b => String(b.matcher) === String(w.matcher));
+        if (!group)
+        {
+            group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
+            list.push(group);
+        }
+        const entry = { type: 'command', command: `\${CLAUDE_PLUGIN_ROOT}/stack/hooks/${w.file}`, timeout: 10 };
+        if (w.args) entry.args = w.args;
+        group.hooks.push(entry);
+    }
+    return block;
+}
+
+function hooksPlugin(options = {})
+{
+    return {
+        name: 'claude-stack-hooks',
+        source: './',
+        description: 'The thirteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, the stop contract, the answer budget, the fresh-session offer) plus the docs and memory session engines.',
+        version: options.version || marketplaceVersion(options),
+        author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
+        strict: false,
+        hooks: hooksBlock(options.wirings),
+        dependencies: [CORE],
+    };
 }
 
 const COMBOS = [
@@ -193,6 +284,18 @@ function main(argv)
         return 0;
     }
 
+    if (argv.includes('--hooks-entry'))
+    {
+        const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
+        const mkt = readJson(file, 'marketplace.json');
+        const before = JSON.stringify(mkt, null, 2) + '\n';
+        const after = JSON.stringify(applyHooksPlugin(mkt), null, 2) + '\n';
+        if (before === after) { console.log('hooks entry current: no change'); return 0; }
+        fs.writeFileSync(file, after);
+        console.log(`hooks entry written: ${Object.keys(hooksPlugin().hooks).length} event(s) -> ${path.relative(REPO, file)}`);
+        return 0;
+    }
+
     const wanted = serialize(entries);
     if (argv.includes('--check'))
     {
@@ -218,4 +321,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, serialize, applyToMarketplace, costTable, costDocument, ENTRIES_FILE, GATE_PCT };
+module.exports = { buildEntries, serialize, applyToMarketplace, applyHooksPlugin, costTable, costDocument, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, GATE_PCT };

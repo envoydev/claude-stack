@@ -75,8 +75,7 @@ Twelve user-facing steps; the machinery between them runs silently. One banner l
 Confirm the install (project mode, above), then **inventory the installed set from disk** - never
 from memory - exactly as configure does: skills = the directory names under `.claude/skills/`;
 agents = `.claude/agents/*.md`; rules = `.claude/rules/*.md` EXCLUDING the generated
-`baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = `.claude/hooks/*.js` EXCLUDING the generated legacy
-`inject-code-style.js` (bare basenames, no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = `claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"`
+`baseline-project-*.md` awareness rules and `project-code-style.md`; hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js` (no `.js` suffix - the catalog stores them bare); mcps = the server names in `<repo>/.mcp.json` (`playwright-<browser>` servers are the one catalog entry `playwright` - `stack-select.js` maps them); plugins = `claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"`
 (the SAME script configure runs - never re-derive its filter), which
 prints `name<TAB>version<TAB>scope<TAB>enabled` filtered to the entries that apply to THIS project
 (project scope at this path, or user scope) - the listing is machine-global, and an unfiltered read
@@ -228,7 +227,9 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 - **Hooks** are leaf - REDUNDANT never appears (hooks are always-baseline or deliberate); MISSING
   only if a baseline hook is absent - a removed guard, or the env-gated `instrument-tool-usage`
   on an install predating its catalog entry (measured: a v0.1.23-era install upgraded to
-  v0.2.17 had no guided route to the instrument hook until this entry existed).
+  v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
+  an accepted add is not an install at all: the name is removed from `CLAUDE_STACK_HOOKS_OFF` in the
+  scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
 - **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
   The three always-baseline plugins (`superpowers`, `security-guidance`, `claude-hud`) show
   MISSING on any install that lacks them, whatever the stack. `claude-md-management` is in the

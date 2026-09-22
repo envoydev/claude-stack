@@ -86,9 +86,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   directory names under `.claude/skills/` (or the account's `skills/`); agents =
   `.claude/agents/*.md`; rules = `.claude/rules/*.md` (exclude the GENERATED
   `baseline-project-*.md` awareness rules and `project-code-style.md` - they are written by capture skills, never installed);
-  hooks = `.claude/hooks/*.js` basenames WITHOUT the `.js` suffix - the graph catalog stores bare
-  names, and `stack-select.js` also strips a stray suffix (exclude the GENERATED legacy
-  `inject-code-style.js` - same reason);
+  hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js` - the graph catalog stores bare names, and `stack-select.js` also strips a stray suffix;
   mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
   apply to THIS project (project scope at this path, or user scope) - the listing is machine-global,
   so an unfiltered read folds sibling repos' plugins into this project's selection (measured: two
@@ -250,8 +248,11 @@ drops before them.
 ## 6. Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Dropping a wired hook removes its `.claude/settings.json` wiring too
-(step 12 shows that edit).
+cascade never reaches here. The set ships together in the `claude-stack-hooks` plugin, so dropping
+a row copies and unwires nothing: it is named in `CLAUDE_STACK_HOOKS_OFF` in the scope's
+`settings.json` env, and re-adding a row removes its name from that value. The environment area is
+where the same value can also be edited by hand. An install still on the copy route (`CLAUDE_STACK_HOOKS_VIA_PLUGIN=false`) keeps the
+old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit).
 
 ## 7. MCPs
 

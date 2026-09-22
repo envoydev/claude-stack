@@ -427,6 +427,96 @@ shared root at all. The root-cleanliness lint check stays as the guard that keep
 
 ---
 
+## Phase 2 - every event type through an INLINE entry - PASS
+
+**Question.** Phase 1's T7 proved the inline `hooks` form for SessionStart only. The stack wires six
+event types. Do they all fire inline, with their matchers honoured?
+
+**Run.** One entry, `source: './'`, `strict: false`, declaring SessionStart (bare and `matcher:
+compact`), UserPromptSubmit, PreToolUse with three matchers (`Bash`, `Task|Agent`, `Read`),
+SubagentStart, SubagentStop and Stop, all against
+`${CLAUDE_PLUGIN_ROOT}/stack/hooks/log-hook.js` in exec form with `args` and `timeout: 10`.
+
+```
+claude plugin validate . --strict          -> Validation passed
+
+session 1 (bash, then a dispatched Explore subagent):
+  SessionStart-any 1   UserPromptSubmit 3   PreToolUse-Bash 2   PreToolUse-Task 1
+  SubagentStart 1      SubagentStop 1       Stop 3             (12 rows)
+
+session 2 (one Read):
+  SessionStart-any 1   UserPromptSubmit 1   PreToolUse-Read 1   Stop 1
+```
+
+**Verdict: PASS.** All six event types fire from an inline entry, and the PreToolUse matcher is
+applied per entry (`Bash`, `Task|Agent` and `Read` each fired only for their own tool).
+`SubagentStart` and `SubagentStop` - which `docs-session.js` needs for per-agent write attribution -
+work the same way.
+
+**Still NOT RUN:** `matcher: "compact"` on a REAL compaction. It did not fire on either session, which
+is correct for a startup session and consistent with S5, but a one-shot `-p` run cannot compact. The
+hook that depends on it, `guard-fresh-session-start.js`, therefore keeps its copied wiring until that
+branch is exercised.
+
+---
+
+## Phase 2 delivery - what the temp-project matrix caught
+
+Four findings, all from reading RESULT files rather than exit codes. Each is fixed and covered.
+
+**1. The prune ran one step too early.** `update_hooks` is `prune_retired_hooks; download_hooks;
+wire_hooks_settings`, and the plugin route appended the whole `HOOKS_CATALOG` to `RETIRED_HOOKS`
+inside `wire_hooks_settings` - after the prune had already walked the list. An update over a 0.2.x
+install therefore dropped all thirteen WIRINGS and left all ten `guard-*.js` FILES on disk
+(`hookwindow: every stack guard file is pruned: expected '0', got '10'`). The append moved to load
+time in both twins, beside the `RETIRED_HOOKS` declaration. Re-run: 11 pass, 0 fail.
+
+**2. `hooksmoke` went hollow.** The case looped over `<project>/.claude/hooks/*.js` and skipped the
+two engines, so once the guards stopped being copied it smoked NOTHING and still reported PASS
+(`hooks smoked: 0` in the log, with a green line above it). The case now picks whichever home the
+install used - the copied files, else the source tree the plugin serves - prints it, and FAILS below
+13 hooks. This is the exact failure mode the matrix exists to catch, found in the matrix itself.
+
+**3. `CLAUDE_STACK_HOOKS_OFF` carried each hook twice.** A hook wired on two events has two
+`HOOKS_CATALOG` rows, so the complement listed `guard-read-whole-file.js` twice. De-duplicated in
+both twins; the value is a list of NAMES.
+
+**4. The `hooksoff` control proved nothing at first.** The case fired the switched-off guard on
+`cat src/main.ts`, a 1-line file the guard does not judge, so 'silent' was not evidence. It now
+writes a 400-line file, and asserts BOTH directions: silent with the value (exit 0, zero bytes) and
+judged without it (exit 2). Only the second assert makes the first one mean anything.
+
+### The walk's hooks layer - ruling R4
+
+The layer was going to be deleted. It stays and now feeds `CLAUDE_STACK_HOOKS_OFF` with the
+complement of the user's picks, because deleting it removes a real choice and renumbers a
+twelve-step walk in two commands. Only a selection that CARRIES `hook ` lines counts as an answer:
+`update --installed-only` reads hooks off disk, and on the plugin route there are none, which would
+otherwise be read as 'the user dropped all thirteen'. An answer OVERWRITES the stored value - the
+one exception to absent-only env seeding, since the user is looking at the question as it is asked.
+Covered by two tests in `scripts/mcp-verify.test.js` (both twins) and the `hooksoff` matrix case.
+
+### `status` reads the guard from either home
+
+`/claude-stack:status` is deliberately offline (no snapshot, no `$TMP`), and its presence read called
+`node .claude/hooks/guard-secret-value.js`, which the plugin route removes. The line now takes
+whichever home exists, newest first: the project copy, else
+`<config>/plugins/cache/claude-stack/claude-stack-hooks/*/hooks/`. The cache layout was verified in
+the same sitting against this machine's `~/.claude/plugins/installed_plugins.json` (`installPath`
+reads `<config>/plugins/cache/<marketplace>/<plugin>/<version>`), and the resolver was exercised in
+all four states - plugin only, both, copy only, neither - with the last leaving `$G` empty so the
+command falls through to its existing 'not checked' wording.
+
+### Still NOT RUN, carried forward
+
+`matcher: "compact"` on a REAL compaction, through a plugin. Phase 0 said
+`guard-fresh-session-start.js` would keep its copied wiring until that branch was exercised; it
+moved with the other twelve instead, because the matcher is evaluated by Claude Code before it
+dispatches to a hook and S5 already proved plugin SessionStart hooks fire. That is reasoning, not a
+measurement - recorded here as NOT RUN, not as a pass.
+
+---
+
 ## Cleanup
 
 The three scratch marketplaces (`shared-mkt`, `spike-mkt`, `dep-mkt`) are removed from the user

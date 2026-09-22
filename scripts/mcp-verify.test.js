@@ -220,6 +220,72 @@ for (const twin of ['sh', 'ps1'])
     });
 }
 
+// Phase 2 of the plugin migration: the thirteen wired hooks ship as claude-stack-hooks@claude-stack
+// instead of being copied into .claude/hooks and wired in settings.json. The two routes are one
+// switch (CLAUDE_STACK_HOOKS_VIA_PLUGIN), and both are proven here - the plugin one is the default.
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: the plugin route registers the stack marketplace, installs the hooks plugin, and copies no guard`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const log = calls(sb).split(/\r?\n/);
+            const add = log.findIndex((l) => /^plugin marketplace add envoydev\/claude-stack\b/.test(l));
+            const upd = log.findIndex((l) => /^plugin marketplace update claude-stack\b/.test(l));
+            const inst = log.findIndex((l) => /^plugin install claude-stack-hooks@claude-stack --scope project -y\b/.test(l));
+            assert.ok(inst >= 0, `${twin}: the hooks plugin was never installed:\n${log.join('\n')}`);
+            assert.ok(add >= 0 && add < inst, `${twin}: the stack marketplace is not added before the install`);
+            assert.ok(upd >= 0 && upd < inst, `${twin}: the stack marketplace is not refreshed before the install`);
+            const hooks = path.join(sb.repo, '.claude', 'hooks');
+            const copied = fs.existsSync(hooks) ? fs.readdirSync(hooks).sort() : [];
+            assert.ok(!copied.some((f) => f.startsWith('guard-')), `${twin}: a guard was copied on the plugin route: ${copied.join(' ')}`);
+            const settings = JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8'));
+            assert.ok(!JSON.stringify(settings.hooks || {}).includes('.claude/hooks/guard-'), `${twin}: a guard was wired on the plugin route`);
+            // The walk's hooks LAYER lands here now: this selection picked guard-secret-value alone,
+            // so every OTHER shipped hook is what the user dropped, and that is the value.
+            const off = String(settings.env.CLAUDE_STACK_HOOKS_OFF || '').split(',').filter(Boolean);
+            assert.ok(off.length > 5, `${twin}: the dropped hooks did not reach CLAUDE_STACK_HOOKS_OFF: ${off.join(',')}`);
+            assert.ok(!off.includes('guard-secret-value.js'), `${twin}: the SELECTED hook was switched off`);
+            assert.ok(off.includes('guard-read-whole-file.js'), `${twin}: a dropped hook is missing from the value`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: a selection that never answers the hooks layer leaves every hook running`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        // No 'hook' line at all - the pre-layer shape, and what `update --installed-only` produces on
+        // the plugin route, where no hook file is on disk to read back. It must NOT read as 'all off'.
+        fs.writeFileSync(sb.sel, fs.readFileSync(sb.sel, 'utf8').split(/\r?\n/).filter((l) => !l.startsWith('hook ')).join('\n'));
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const settings = JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8'));
+            assert.strictEqual(settings.env.CLAUDE_STACK_HOOKS_OFF, '', `${twin}: an unanswered layer switched hooks off`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+
+    test(`${twin}: the copy route touches no stack marketplace and still copies and wires the guard`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN = 'false';
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
+            const log = calls(sb);
+            assert.ok(!/plugin marketplace add envoydev\/claude-stack/.test(log), `${twin}: the stack marketplace was registered on the copy route`);
+            assert.ok(!/plugin install claude-stack-hooks/.test(log), `${twin}: the hooks plugin was installed on the copy route`);
+            assert.ok(fs.existsSync(path.join(sb.repo, '.claude', 'hooks', 'guard-secret-value.js')), `${twin}: the selected guard was not copied`);
+            const wired = JSON.stringify(JSON.parse(fs.readFileSync(path.join(sb.repo, '.claude', 'settings.json'), 'utf8')).hooks || {});
+            assert.ok(wired.includes('.claude/hooks/guard-secret-value.js'), `${twin}: the selected guard was not wired`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}
+
 // ponytail left both PLUGINS lists in 0.2.7x but never joined RETIRED_PLUGINS, so every existing
 // install kept it installed and enabled with no command able to remove it (measured 2026-09-15).
 for (const twin of ['sh', 'ps1'])

@@ -5114,6 +5114,23 @@
      "marker": "is pasted verbatim in a fenced block BEFORE the ask about it"
     }
    ]
+  },
+  "hooks-inventory-route": {
+   "_note": "How an installed hook SET is read back, once the hooks ship as a plugin: the route decides, and three commands inventory it (validate's two-way reconcile, configure's walk, status's table). A copy-route-only rule reports all thirteen MISSING on every plugin-route install.",
+   "owner": {
+    "file": "setup-plugin/commands/validate.md",
+    "marker": "with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`"
+   },
+   "sites": [
+    {
+     "file": "setup-plugin/commands/configure.md",
+     "marker": "with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`"
+    },
+    {
+     "file": "setup-plugin/commands/status.md",
+     "marker": "with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`"
+    }
+   ]
   }
  }
 }

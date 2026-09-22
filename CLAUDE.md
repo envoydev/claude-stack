@@ -12,6 +12,14 @@ A change that maps to Cursor is mirrored there in the same sitting; each repo li
 `.sh`/`.ps1` twins. Consuming projects pull from here; a
 change made only inside a consuming project is throwaway.
 
+**The goal every change serves: Sonnet at high / xhigh effort, run through this stack, does better
+work than Opus at high effort without it.** Skills, rules, hooks, agents, docs structures and scripts
+exist to close that gap - pre-digested context, deterministic scripts and hooks doing the navigation
+and checking, small pushed slices instead of broad reads. Judge every design by that yardstick: does
+it make Sonnet more correct, cheaper or more reliable? A feature that only pays off on Opus, or needs
+the model to infer what a script could state, works against the goal. Prove it like any behavioral
+change (see the invariants below).
+
 ## Layout - one home per concern
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
@@ -20,9 +28,17 @@ change made only inside a consuming project is throwaway.
   is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - thirteen hooks, copied into a project's `.claude/hooks/` and wired in
-  `.claude/settings.json` with the placeholder quoted (`"$CLAUDE_PROJECT_DIR/.claude/hooks/<file>"`).
-  Every wired hook carries `"timeout": 10` (a hook with no timeout gets Claude Code's 600s default).
+- `stack/hooks/` - thirteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
+  register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
+  two engines (`docs.js`, `memory.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
+  22 bodies shared with cursor-stack run `node .claude/hooks/docs.js`. The entry is GENERATED from the
+  installer's own `HOOKS_CATALOG` (`build-marketplace.js --hooks-entry`, lint check 48), so one table
+  owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
+  600s default). `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
+  the walk's hooks layer now writes the rows it did NOT pick into `CLAUDE_STACK_HOOKS_OFF` instead of
+  leaving files out. Both gates live in `hook-prelude.js`, never inlined thirteen times: the csv
+  opt-out, and the migration window where the plugin copy stands down while a project still wires its
+  copied twin (fail-open - a hook that cannot read the settings file runs).
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
@@ -196,8 +212,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | installer snapshot copy -> `.claude/skills` (or plugin `/claude-stack`) |
 | MCP | `claude mcp add` -> `<repo>/.mcp.json`, then VERIFIED against the manifest shape and rewritten on drift |
-| Plugins | 6 via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud); update runs at the scope `claude plugin list --json` reports and reads versions back |
-| Hooks | copied -> `.claude/hooks/`, wired in `.claude/settings.json` (all thirteen; instrumentation off via CLAUDE_STACK_INSTRUMENT=0) |
+| Plugins | 6 third-party via `claude plugin install` (superpowers, claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus the stack's own `claude-stack-hooks@claude-stack`; update runs at the scope `claude plugin list --json` reports and reads versions back |
+| Hooks | `claude-stack-hooks@claude-stack` plugin (all thirteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | `.claude/agents/` - the 43 pinned subagents, per-tool `tools:` allowlist |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit; configure diffs it against `main` |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |

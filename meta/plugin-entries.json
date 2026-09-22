@@ -6,7 +6,7 @@
       "name": "claude-stack-angular",
       "source": "./",
       "description": "claude-stack 4 skills and 2 agents used by the ionic-angular and web-angular stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -30,7 +30,7 @@
       "name": "claude-stack-aspnet",
       "source": "./",
       "description": "claude-stack 2 skills and 3 agents used by the aspnet stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -55,7 +55,7 @@
       "name": "claude-stack-aspnet-data",
       "source": "./",
       "description": "claude-stack 1 skill used by the aspnet and data stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -72,7 +72,7 @@
       "name": "claude-stack-browser-extension",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the browser-extension stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -96,7 +96,7 @@
       "name": "claude-stack-console",
       "source": "./",
       "description": "claude-stack 3 agents used by the console stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -117,7 +117,7 @@
       "name": "claude-stack-csharp",
       "source": "./",
       "description": "claude-stack 3 skills used by the aspnet, console, data, windows-service, winforms and wpf stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -136,7 +136,7 @@
       "name": "claude-stack-data",
       "source": "./",
       "description": "claude-stack 2 skills and 3 agents used by the data stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -160,7 +160,7 @@
       "name": "claude-stack-devops",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the devops stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -182,7 +182,7 @@
       "name": "claude-stack-dotnet",
       "source": "./",
       "description": "claude-stack 9 skills and 2 agents used by the aspnet, console, windows-service, winforms and wpf stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -211,7 +211,7 @@
       "name": "claude-stack-dotnet-hosting",
       "source": "./",
       "description": "claude-stack 1 skill used by the console and windows-service stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -228,7 +228,7 @@
       "name": "claude-stack-ionic-angular",
       "source": "./",
       "description": "claude-stack 3 skills and 3 agents used by the ionic-angular stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -254,7 +254,7 @@
       "name": "claude-stack-javascript",
       "source": "./",
       "description": "Enables the javascript stack: the shared claude-stack plugins it depends on, nothing of its own.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -269,7 +269,7 @@
       "name": "claude-stack-javascript-shared",
       "source": "./",
       "description": "claude-stack 1 skill used by the browser-extension, ionic-angular, javascript, typescript and web-angular stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -286,7 +286,7 @@
       "name": "claude-stack-tsjs",
       "source": "./",
       "description": "claude-stack 1 skill used by the browser-extension, javascript and typescript stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -303,7 +303,7 @@
       "name": "claude-stack-typescript",
       "source": "./",
       "description": "Enables the typescript stack: the shared claude-stack plugins it depends on, nothing of its own.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -319,7 +319,7 @@
       "name": "claude-stack-typescript-shared",
       "source": "./",
       "description": "claude-stack 1 skill used by the browser-extension, ionic-angular, typescript and web-angular stacks.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -336,7 +336,7 @@
       "name": "claude-stack-web-angular",
       "source": "./",
       "description": "claude-stack 3 agents used by the web-angular stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -357,7 +357,7 @@
       "name": "claude-stack-windows-service",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the windows-service stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -381,7 +381,7 @@
       "name": "claude-stack-winforms",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the winforms stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -404,7 +404,7 @@
       "name": "claude-stack-wpf",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the wpf stack.",
-      "version": "0.2.86",
+      "version": "0.2.87",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"

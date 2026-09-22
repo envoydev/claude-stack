@@ -10,11 +10,22 @@ const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
 test('marketplace.json is valid and points at the setup-plugin subdir', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     assert.strictEqual(mp.name, 'claude-stack');
-    assert.ok(Array.isArray(mp.plugins) && mp.plugins.length === 1);
-    const p = mp.plugins[0];
-    assert.strictEqual(p.name, 'claude-stack');
-    assert.strictEqual(p.source, './setup-plugin');
-    assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
+    assert.ok(Array.isArray(mp.plugins) && mp.plugins.length >= 1);
+    // The core entry is hand-written and stays on ./setup-plugin until Phase 3 moves it; every other
+    // entry is GENERATED over the shared root, which is why they carry `strict: false` and path lists.
+    const core = mp.plugins.find(x => x.name === 'claude-stack');
+    assert.ok(core, 'the core entry must survive every generator run');
+    assert.strictEqual(core.source, './setup-plugin');
+    assert.ok(typeof core.description === 'string' && core.description.trim() !== '');
+    for (const p of mp.plugins)
+    {
+        if (p === core) continue;
+        assert.strictEqual(p.source, './', `${p.name} shares the repo root as its source`);
+        assert.strictEqual(p.strict, false, `${p.name} carries no plugin.json of its own`);
+        assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
+    }
+    const hooks = mp.plugins.find(x => x.name === 'claude-stack-hooks');
+    assert.ok(hooks && hooks.hooks, 'the hooks entry declares its hooks INLINE, so nothing sits at the shared root');
 });
 
 test('plugin.json is valid, the five commands are listed, and the router skill exists', () => {

@@ -599,6 +599,13 @@ PLUGINS=(
   "security-guidance@claude-plugins-official" # security hooks: pattern warnings + LLM diff review on Stop/commit
   "claude-hud@claude-hud"                       # statusline HUD (global/user scope)
 )
+# The stack's OWN plugin deliveries, appended to PLUGINS only on the plugin route. Its marketplace is
+# this repo, registered from CLAUDE_STACK_MARKETPLACE - a github slug by default, or a durable local
+# path when the temp-project matrix proves the route against the working tree. A path that is deleted
+# after the run would leave the plugin unresolvable in the next session, so the marketplace is never
+# registered from the run's throwaway source snapshot.
+STACK_MARKETPLACE="${CLAUDE_STACK_MARKETPLACE:-envoydev/claude-stack}"
+STACK_PLUGINS=("claude-stack-hooks@claude-stack")
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.
 #     @SERENA_CONTEXT@   -> resolved at install time to claude-code.
@@ -884,6 +891,15 @@ HOOKS=(
   "memory-session.js::@SessionStart::"            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
+# ONE switch for the whole route change. true (the default from 1.0.0) means the thirteen hooks
+# arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
+# wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
+# run that enables the plugin - so the window where neither route fires is zero. The plugin's own
+# copies stand down while a project still wires a copied twin (stack/hooks/hook-prelude.js), which is
+# what keeps a half-updated project from firing every guard twice. Set to false to keep the 0.2.x
+# copy route, which is what the temp-project matrix uses to prove both.
+HOOKS_VIA_PLUGIN="${CLAUDE_STACK_HOOKS_VIA_PLUGIN:-true}"
+
 # The manifest as SHIPPED, taken before any selection filter narrows HOOKS. The stamp records these
 # names so a later --installed-only run can tell a hook the user DROPPED (shipped then, absent now)
 # from one this release ADDED (not shipped then) - on disk the two look the same.
@@ -1036,7 +1052,7 @@ if [ "$INSTALLED_ONLY" = true ]; then
     done
     for f in "$_io_claude"/hooks/*.js; do
       [ -f "$f" ] || continue; _io_b="$(basename "${f%.js}")"
-      case "$_io_b" in inject-code-style|docs|memory) continue ;; esac   # docs.js/memory.js are engines, not hooks
+      case "$_io_b" in inject-code-style|docs|memory|hook-prelude) continue ;; esac   # docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
       printf 'hook %s\n' "$_io_b"
     done
     if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
@@ -1566,7 +1582,15 @@ install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   ensure_official_marketplace
   for mp in ${EXTRA_MARKETPLACES[@]+"${EXTRA_MARKETPLACES[@]}"}; do claude plugin marketplace add "$mp" 2>/dev/null || true; done
-  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+  # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the
+  # hooks plugin resolves in the same run that prunes the copied hooks it replaces.
+  local -a _plugins=(${PLUGINS[@]+"${PLUGINS[@]}"})
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+    claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
+    claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
+    _plugins+=(${STACK_PLUGINS[@]+"${STACK_PLUGINS[@]}"})
+  fi
+  for p in ${_plugins[@]+"${_plugins[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
@@ -1844,9 +1868,23 @@ _install_from_src() {
 
 download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (keeps repo copy)
   local root entry file; local -a files=()
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+    # The thirteen WIRED hooks move to the plugin. The two ENGINES do not: docs.js and memory.js are
+    # CLIs the model runs by path (`node .claude/hooks/docs.js`), named in 22 skill, agent, rule and
+    # command bodies that are SHARED with cursor-stack, which has no plugin system. Copying them is
+    # what keeps that one route working on both stacks; model-windows.json rides along because the
+    # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
+    root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
+    _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js memory.js model-windows.json
+    log "  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied"
+    return 0
+  fi
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
   for entry in ${HOOKS[@]+"${HOOKS[@]}"}; do file="${entry%%::*}"; files+=("$file"); done   # empty-array-safe on bash 3.2 (macOS /bin/bash) under set -u
   _install_from_src stack/hooks hook "$root/.claude/hooks" exec ${files[@]+"${files[@]}"}
+  # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
+  # this route too - without it every hook takes the fail-open catch on every single invocation.
+  [ ${#files[@]} -eq 0 ] || _install_from_src stack/hooks hook "$root/.claude/hooks" noexec hook-prelude.js
   # the fresh-session hooks' model -> context window table: data, not a wired hook, so no exec bit -
   # copied only beside a hook that reads it
   case " ${files[*]-} " in
@@ -2184,6 +2222,31 @@ STAMP
 
 wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent)
   local root settings; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  # On the plugin route the stack wires nothing: every shipped hook name is already in RETIRED_HOOKS
+  # (appended at load), and the RETIRED pass below is what DROPS an older install's wirings. The
+  # deny-list and mcp allow-list passes still run - they are not hook wirings.
+  local -a wire_hooks=() hooks_off=() off_args=()
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+    # The walk's hooks layer still asks; on the plugin route its answer becomes the HOOKS_OFF value
+    # rather than a copy list - the hooks it did NOT pick. Only a selection that CARRIES hook lines
+    # counts as an answer: `update --installed-only` reads the hooks off DISK, and on this route
+    # there are none, which would otherwise read as 'the user dropped all thirteen'.
+    if [ -n "${SELECTION:-}" ] && [ -f "$SELECTION" ] && grep -q '^hook ' "$SELECTION"; then
+      # A hook wired on two events has two catalog rows, so de-duplicate: the value is a list of
+      # hook NAMES, and a name repeated twice is the same hook read twice.
+      local _c _s _hit _seen=""
+      for _c in ${HOOKS_CATALOG[@]+"${HOOKS_CATALOG[@]}"}; do
+        _c="${_c%%::*}"
+        case " $_seen " in *" $_c "*) continue;; esac
+        _seen="$_seen $_c"; _hit=false
+        for _s in ${HOOKS[@]+"${HOOKS[@]}"}; do [ "${_s%%::*}" = "$_c" ] && { _hit=true; break; }; done
+        [ "$_hit" = true ] || hooks_off+=("$_c")
+      done
+      off_args=(--HOOKS-OFF ${hooks_off[@]+"${hooks_off[@]}"})
+    fi
+  else
+    wire_hooks=(${HOOKS[@]+"${HOOKS[@]}"})
+  fi
   settings="$root/.claude/settings.json"; mkdir -p "$(dirname "$settings")"
   command -v python3 >/dev/null || { log "  !! python3 not found - wire hooks into settings.json by hand"; return 0; }
   # NB: program via -c (not `python3 - <<heredoc`): a pipe + heredoc both target stdin and the pipe
@@ -2191,13 +2254,15 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   local prog; prog=$(cat <<'PY'
 import json, os, subprocess, sys
 path = sys.argv[1]
-deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, bucket = [], [], [], [], [], None
+deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, hooks_off, bucket = [], [], [], [], [], [], None
+hooks_answered = False
 for a in sys.argv[2:]:
     if a == "--VERSIONING": bucket = versioning_flag; continue
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
     if a == "--RETIRED-DENY": bucket = retired_deny; continue
+    if a == "--HOOKS-OFF": bucket = hooks_off; hooks_answered = True; continue
     if bucket is not None: bucket.append(a)
 specs = []
 HOOK_TIMEOUT = 10   # seconds - see the note below; the default would be 600
@@ -2442,6 +2507,19 @@ if "CLAUDE_STACK_DOCS_GATE" not in env:
 if "CLAUDE_STACK_DOCS_ASK" not in env:
     env["CLAUDE_STACK_DOCS_ASK"] = "1"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)")
+# Absent-only, and this is where the walk's hooks LAYER lands once the set stopped being copied:
+# the hooks the selection did NOT pick arrive as --HOOKS-OFF and become the value, so the answer the
+# user gave at install time still decides which guards run. Empty means every hook runs.
+_off = ",".join(hooks_off)
+if hooks_answered:
+    # A walk answered the hooks layer THIS run - that answer wins over the stored value, the one
+    # exception to absent-only seeding (the user is looking at the question as it is asked).
+    if env.get("CLAUDE_STACK_HOOKS_OFF") != _off:
+        env["CLAUDE_STACK_HOOKS_OFF"] = _off; changed = True
+        print("  settings.json env: CLAUDE_STACK_HOOKS_OFF = %s" % (_off if _off else "(empty - every hook runs)"))
+elif "CLAUDE_STACK_HOOKS_OFF" not in env:
+    env["CLAUDE_STACK_HOOKS_OFF"] = ""; changed = True
+    print("  settings.json env: CLAUDE_STACK_HOOKS_OFF seeded (empty - every hook runs)")
 # rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
@@ -2484,7 +2562,7 @@ PY
 )
   local -a mcp_names; mcp_names=()
   for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" --VERSIONING "$DOCS_VERSIONING" || log "  !! settings.json wiring failed"
+  printf '%s\n' ${wire_hooks[@]+"${wire_hooks[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" ${off_args[@]+"${off_args[@]}"} --VERSIONING "$DOCS_VERSIONING" || log "  !! settings.json wiring failed"
 }
 
 # ---------------------------------------------------------------------------
@@ -2597,6 +2675,14 @@ import_memory_notes() {
 RETIRED_SKILLS=(frontend mobile project-task-flow project-task-cycle project-capabilities project-failure-signatures typescript-testing data-security dotnet-error-handling mobile-security)
 RETIRED_RULES=(baseline-agents-skills.md baseline-code-quality.md baseline-communication.md baseline-definition-of-done.md baseline-evaluating-proposals.md baseline-mcp-tools.md baseline-planning.md baseline-related-projects.md house-baseline.md web-conventions.md aspnet-conventions.md)
 RETIRED_HOOKS=(require-convention-skill.js inject-code-style.js)
+# The plugin route retires the whole COPY catalog: the same two passes that undo an upstream removal
+# (prune_retired_hooks drops the file, wire_hooks_settings drops the settings.json wiring) are what
+# migrate a 0.2.x install off its copied hooks. Appended HERE, at load, because update_hooks prunes
+# BEFORE it wires - an append inside wire_hooks_settings would reach the prune one run too late.
+if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+  for _e in ${HOOKS_CATALOG[@]+"${HOOKS_CATALOG[@]}"}; do RETIRED_HOOKS+=("${_e%%::*}"); done
+  unset _e
+fi
 RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-verifier.md mobile-solution-designer.md mobile-implementer.md mobile-verifier.md dotnet-windows-service-solution-designer.md dotnet-windows-service-implementer.md dotnet-windows-service-verifier.md code-analyzer.md issue-diagnoser.md)
 # MCP servers this stack no longer ships AT ALL. Empty today, and it is the mechanism that matters:
 # skills, agents, rules and hooks each got a retired list; MCPs never did, so a server the stack

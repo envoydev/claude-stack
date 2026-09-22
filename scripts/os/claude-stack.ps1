@@ -628,6 +628,14 @@ $Skills = @(
 $ExtraMarketplaces = @(
   'jarrodwatts/claude-hud'
 )
+# The stack's OWN plugin deliveries, appended to $Plugins only on the plugin route. Its marketplace
+# is this repo, registered from CLAUDE_STACK_MARKETPLACE - a github slug by default, or a durable
+# local path when the temp-project matrix proves the route against the working tree. A path deleted
+# after the run would leave the plugin unresolvable next session, so the marketplace is never
+# registered from the run's throwaway source snapshot.
+$StackMarketplace = if ($env:CLAUDE_STACK_MARKETPLACE) { $env:CLAUDE_STACK_MARKETPLACE } else { 'envoydev/claude-stack' }
+$StackPlugins = @('claude-stack-hooks@claude-stack')
+
 $Plugins = @(
   'superpowers@claude-plugins-official'       # workflow skills: plan, TDD, debug, verify-before-done
   'claude-md-management@claude-plugins-official' # audit + revise CLAUDE.md files
@@ -916,6 +924,15 @@ $Mcps = @(
 #     entry's gate `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` is POSIX and assumes the default
 #     (bash-like) hook shell; under the PowerShell hook-shell opt-in it fails as a non-blocking error
 #     and records nothing.
+# ONE switch for the whole route change. $true (the default from 1.0.0) means the thirteen hooks
+# arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
+# wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
+# run that enables the plugin - so the window where neither route fires is zero. The plugin's own
+# copies stand down while a project still wires a copied twin (stack/hooks/hook-prelude.js), which is
+# what keeps a half-updated project from firing every guard twice. $false keeps the 0.2.x copy route,
+# which is what the temp-project matrix uses to prove both.
+$HooksViaPlugin = ($env:CLAUDE_STACK_HOOKS_VIA_PLUGIN -ne 'false')
+
 $Hooks = @(
   'guard-protected-force-push.js::Bash|PowerShell::'         # block force-push to main/master/develop
   'guard-catastrophic-rm.js::Bash|PowerShell::'              # block recursive rm of /, ~, $HOME, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once
@@ -1099,7 +1116,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory')) { continue }                    # legacy generated; docs.js/memory.js are engines, not hooks
+    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory', 'hook-prelude')) { continue }    # legacy generated; docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -1751,7 +1768,15 @@ function Install-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Initialize-OfficialMarketplace
   foreach ($mp in $ExtraMarketplaces) { try { & claude plugin marketplace add $mp 2>$null } catch {} }
-  foreach ($p in $Plugins) {
+  # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the hooks
+  # plugin resolves in the same run that prunes the copied hooks it replaces.
+  $allPlugins = @($Plugins)
+  if ($HooksViaPlugin) {
+    try { & claude plugin marketplace add $StackMarketplace 2>$null } catch {}
+    try { & claude plugin marketplace update claude-stack 2>$null } catch {}
+    $allPlugins += $StackPlugins
+  }
+  foreach ($p in $allPlugins) {
     # claude-hud is a statusline HUD - force USER scope regardless of $ClaudeScope. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
@@ -2002,6 +2027,18 @@ function Test-McpRegistrations {
 
 function Get-Hooks {
   # Copy each hook file into the repo from the run's clone; per-hook fail-soft (keeps repo copy).
+  if ($HooksViaPlugin) {
+    # The thirteen WIRED hooks move to the plugin. The two ENGINES do not: docs.js and memory.js are
+    # CLIs the model runs by path (node .claude/hooks/docs.js), named in 22 skill, agent, rule and
+    # command bodies that are SHARED with cursor-stack, which has no plugin system. Copying them is
+    # what keeps that one route working on both stacks; model-windows.json rides along because the
+    # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
+    $root = Get-RepoRoot
+    if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
+    Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'model-windows.json')
+    Log '  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied'
+    return
+  }
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
   $files = @(foreach ($entry in $Hooks) { ($entry -split '::', 2)[0] })
@@ -2013,6 +2050,9 @@ function Get-Hooks {
   if ($files -contains 'docs-session.js') { $files += 'docs.js' }
   # the memory hook's engine: required by memory-session.js from its own directory - same split.
   if ($files -contains 'memory-session.js') { $files += 'memory.js' }
+  # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
+  # this route too - without it every hook takes the fail-open catch on every single invocation.
+  if ($files.Count -gt 0) { $files += 'hook-prelude.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -2478,8 +2518,28 @@ function Set-HookSettings {
   # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
   # match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
   # Keyed on the SELECTED $Hooks, so a hook the user de-selected keeps its entries (configure's job).
+  # On the plugin route the stack wires nothing: every shipped hook name is already in $RetiredHooks
+  # (appended at load), and the RETIRED pass below is what DROPS an older install's wirings, while
+  # $wireHooks stays empty so none is re-added. The deny-list and mcp allow-list passes below still
+  # run - they are not hook wirings.
+  # The walk's hooks layer still asks; on the plugin route its answer becomes the HOOKS_OFF value
+  # below rather than a copy list - the hooks it did NOT pick. A selection carrying no hook lines
+  # leaves $Hooks as the whole catalog, so the complement is empty and every hook runs.
+  $wireHooks = if ($HooksViaPlugin) { @() } else { @($Hooks) }
+  # Only a selection that CARRIES hook lines counts as an answer: `update -InstalledOnly` reads the
+  # hooks off DISK, and on this route there are none, which would read as 'all thirteen dropped'.
+  $hooksOff = @(); $hooksAnswered = $false
+  if ($HooksViaPlugin -and $Selection -and (Test-Path -LiteralPath $Selection) -and
+      (Select-String -LiteralPath $Selection -Pattern '^hook ' -Quiet)) {
+    $hooksAnswered = $true
+    # A hook wired on two events has two catalog rows, so de-duplicate: the value is a list of hook
+    # NAMES, and a name repeated twice is the same hook read twice.
+    $selected = @(foreach ($entry in $Hooks) { ($entry -split '::', 2)[0] })
+    $catalogNames = @(foreach ($entry in $HooksCatalog) { ($entry -split '::', 2)[0] })
+    $hooksOff = @($catalogNames | Where-Object { $selected -notcontains $_ } | Select-Object -Unique)
+  }
   $oursFiles = @(foreach ($entry in $Hooks) { ($entry -split '::', 3)[0] })
-  $wired = @(foreach ($entry in $Hooks) { $p = $entry -split '::', 3; if ($p[1] -and -not $p[1].StartsWith('@')) { "$($p[1])::$($p[0])" } })
+  $wired = @(foreach ($entry in $wireHooks) { $p = $entry -split '::', 3; if ($p[1] -and -not $p[1].StartsWith('@')) { "$($p[1])::$($p[0])" } })
   $kept = @()
   foreach ($e in $pre) {
     $hs = @(foreach ($h in @($e.hooks)) {
@@ -2489,7 +2549,7 @@ function Set-HookSettings {
     if ($hs.Count -gt 0) { $e.hooks = $hs; $kept += $e } else { $changed = $true }
   }
   $pre = $kept
-  foreach ($entry in $Hooks) {
+  foreach ($entry in $wireHooks) {
     $parts = $entry -split '::', 3
     $file = $parts[0]
     $matcher = $parts[1]
@@ -2697,6 +2757,31 @@ function Set-HookSettings {
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)'
   }
+
+  # Absent-only, and this is where the walk's hooks LAYER lands once the set stopped being copied:
+  # the hooks the selection did NOT pick ($hooksOff above) become the value, so the answer the user
+  # gave at install time still decides which guards run. Empty means every hook runs.
+  $off = ($hooksOff -join ',')
+  if ($hooksAnswered) {
+    # A walk answered the hooks layer THIS run - that answer wins over the stored value, the one
+    # exception to absent-only seeding (the user is looking at the question as it is asked).
+    if (-not $data.env.PSObject.Properties['CLAUDE_STACK_HOOKS_OFF']) {
+      $data.env | Add-Member -NotePropertyName CLAUDE_STACK_HOOKS_OFF -NotePropertyValue $off
+      $changed = $true
+      Log ('  settings.json env: CLAUDE_STACK_HOOKS_OFF = {0}' -f $(if ($off) { $off } else { '(empty - every hook runs)' }))
+    }
+    elseif ([string]$data.env.CLAUDE_STACK_HOOKS_OFF -ne $off) {
+      $data.env.CLAUDE_STACK_HOOKS_OFF = $off
+      $changed = $true
+      Log ('  settings.json env: CLAUDE_STACK_HOOKS_OFF = {0}' -f $(if ($off) { $off } else { '(empty - every hook runs)' }))
+    }
+  }
+  elseif (-not $data.env.PSObject.Properties['CLAUDE_STACK_HOOKS_OFF']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_HOOKS_OFF -NotePropertyValue ''
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_HOOKS_OFF seeded (empty - every hook runs)'
+  }
+
   # rotate ask: the stop contract asks once per credential exposure; '0' turns the ask off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_ROTATE_ASK']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
@@ -2866,6 +2951,11 @@ function Import-MemoryNotes {
 $RetiredSkills = @('frontend', 'mobile', 'project-task-flow', 'project-task-cycle', 'project-capabilities', 'project-failure-signatures', 'typescript-testing', 'data-security', 'dotnet-error-handling', 'mobile-security')
 $RetiredRules = @('baseline-agents-skills.md', 'baseline-code-quality.md', 'baseline-communication.md', 'baseline-definition-of-done.md', 'baseline-evaluating-proposals.md', 'baseline-mcp-tools.md', 'baseline-planning.md', 'baseline-related-projects.md', 'house-baseline.md', 'web-conventions.md', 'aspnet-conventions.md')
 $RetiredHooks = @('require-convention-skill.js', 'inject-code-style.js')
+# The plugin route retires the whole COPY catalog: the same two passes that undo an upstream removal
+# (Remove-RetiredHooks drops the file, Set-HookSettings drops the settings.json wiring) are what
+# migrate a 0.2.x install off its copied hooks. Appended HERE, at load, because Update-Hooks prunes
+# BEFORE it wires - an append inside Set-HookSettings would reach the prune one run too late.
+if ($HooksViaPlugin) { foreach ($entry in $HooksCatalog) { $RetiredHooks += ($entry -split '::', 2)[0] } }
 $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'angular-verifier.md', 'mobile-solution-designer.md', 'mobile-implementer.md', 'mobile-verifier.md', 'dotnet-windows-service-solution-designer.md', 'dotnet-windows-service-implementer.md', 'dotnet-windows-service-verifier.md', 'code-analyzer.md', 'issue-diagnoser.md')
 # MCP servers this stack no longer ships AT ALL. Empty today, and it is the mechanism that matters:
 # skills, agents, rules and hooks each got a retired list; MCPs never did, so a server the stack

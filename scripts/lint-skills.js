@@ -94,6 +94,8 @@ const NON_SKILL_TOKENS = new Set([
     'user-run',
     // the commit-gate hook, referenced by name from baseline-git.md and project-verify-code - a hook, not a skill.
     'guard-ungated-commit',
+    // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
+    'instrument-tool-usage',
     // npm flags, npmrc keys, and package names in the npm skill - tool identifiers, not skills.
     'ignore-scripts',
     'min-release-age',
@@ -2319,6 +2321,8 @@ function main()
     // 47. The marketplace manifest passes `claude plugin validate --strict`.
     for (const finding of lintPluginPlacement()) flag(finding);
     for (const finding of lintRepoRootReserved()) flag(finding);
+    // 48. The hooks plugin entry matches the installer's own wiring table.
+    for (const finding of lintHooksEntry()) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2453,6 +2457,60 @@ function isTracked(base, rel)
     catch { return false; }
 }
 
+// 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
+// the plugin route and the settings.json route cannot drift while both exist. A matcher edited in
+// one place and not the other is exactly the bug this catches: the copied hook would still gate a
+// tool the plugin hook no longer sees, or the reverse.
+function lintHooksEntry()
+{
+    const out = [];
+    let build;
+    try { build = require('./build-marketplace.js'); }
+    catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
+
+    let wanted;
+    try { wanted = build.hooksPlugin(); }
+    catch (err) { return [`the hooks entry could not be generated: ${err.message}`]; }
+
+    let mkt;
+    try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
+    catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+
+    const live = (mkt.plugins || []).find(p => p && p.name === wanted.name);
+    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`node scripts/build-marketplace.js --hooks-entry\`.`];
+    if (JSON.stringify(live) !== JSON.stringify(wanted))
+        out.push(`the \`${wanted.name}\` entry is STALE against the installer's HOOKS table - run \`node scripts/build-marketplace.js --hooks-entry\`.`);
+
+    // Every wired hook file exists, and every hook file that exists is either wired or an engine.
+    const ENGINES = new Set(['docs.js', 'memory.js', 'hook-prelude.js']);
+    const wired = new Set();
+    for (const blocks of Object.values(wanted.hooks))
+        for (const block of blocks)
+            for (const entry of block.hooks)
+            {
+                const file = entry.command.replace('${CLAUDE_PLUGIN_ROOT}/stack/hooks/', '');
+                wired.add(file);
+                if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
+                    out.push(`the hooks entry wires ${file}, which is not in stack/hooks/.`);
+            }
+    for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
+    {
+        if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;
+        out.push(`stack/hooks/${file} is wired by nothing - add it to the installer's HOOKS table or name it an engine.`);
+    }
+
+    // The two gates belong to every wired hook, and to no engine.
+    for (const file of wired)
+    {
+        const text = fs.readFileSync(path.join(ROOT, 'stack/hooks', file), 'utf8');
+        if (!text.includes('STACK HOOK GATES'))
+            out.push(`stack/hooks/${file} carries no stand-down gate - a plugin copy would fire beside a still-wired project copy.`);
+        else if (!text.includes(`standDown('${file.replace(/\.js$/, '')}')`))
+            out.push(`stack/hooks/${file} names another hook in standDown() - the gate must name itself.`);
+    }
+    return out;
+}
+
 // 47. The manifest the marketplace serves has to pass the CLI's own schema check. The CLI is not
 // present everywhere (a CI image, a fresh clone), and a missing tool is reported as NOT RUN rather
 // than laundered into a pass - the rule the stack applies to every other probe.
@@ -2540,6 +2598,7 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 
 module.exports = {
     lintPluginPlacement,
+    lintHooksEntry,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,

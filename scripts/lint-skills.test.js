@@ -628,3 +628,22 @@ test('check 46: the repo root reserves every name a shared-source entry auto-dis
     assert.ok(RESERVED_ROOT_NAMES.includes('commands') && RESERVED_ROOT_NAMES.includes('skills'));
     fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('check 48: the hooks entry matches the installer table, and every wired hook carries the gate', () => {
+    const { lintHooksEntry } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintHooksEntry(), [],
+        'the committed claude-stack-hooks entry must match `build-marketplace.js --hooks-entry`');
+});
+
+test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
+    const build = require('./build-marketplace.js');
+    const wirings = build.parseHookWirings();
+    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-read-whole-file.js' && w.matcher === 'Read'
+        ? { ...w, matcher: 'Read|Glob' } : w)));
+    assert.notStrictEqual(JSON.stringify(drifted), JSON.stringify(build.hooksBlock(wirings)),
+        'a changed matcher must change the generated block, which is what check 48 compares');
+
+    const ghost = build.hooksBlock([{ file: 'guard-not-here.js', event: 'Stop' }]);
+    assert.match(ghost.Stop[0].hooks[0].command, /guard-not-here\.js$/,
+        'a wiring naming a missing file still generates, so the lint is what catches it');
+});

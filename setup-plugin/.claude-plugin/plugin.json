@@ -6,6 +6,9 @@
     "name": "envoydev",
     "url": "https://github.com/envoydev"
   },
+  "dependencies": [
+    { "name": "superpowers", "marketplace": "claude-plugins-official" }
+  ],
   "commands": [
     "./commands/setup.md",
     "./commands/update.md",

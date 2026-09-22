@@ -297,7 +297,9 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // 'tokens' is an absolute per-message token count with 0 meaning off - the fresh-session
     // triggers, which replaced a percentage that the clamps made inert at its own default.
     // 'window' is a context-window SIZE in tokens: no off value, since a window of 0 is not a window.
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens', 'window']);
+    // 'csv' is a comma-separated name list whose EMPTY default means 'nothing switched off' -
+    // CLAUDE_STACK_HOOKS_OFF, which replaced the walk's hooks layer once the set stopped being copied.
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens', 'window', 'csv']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {

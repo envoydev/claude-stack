@@ -166,6 +166,9 @@ function sandbox(opts = {})
         ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: acct,
         PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: log, CLAUDE_STUB_PLUGINS: plugins,
+        // These cases read the hooks the installer COPIES, which still ship behind the Phase 2
+        // switch; the plugin route (the default) is proven in installer-settings.test.js.
+        CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false',
         NPX_STUB_LOG: npxLog,
         FAKE_MEMORY_DB: db, FAKE_MEMORY_CALLS_LOG: callsLog,
     };

@@ -31,7 +31,7 @@ The stack is built for this house's verticals:
 | **Skills** | 79 | house conventions + workflow skills, `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, `.claude/agents/` |
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 13 | deterministic guards, the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), `.claude/hooks/` |
+| **Hooks** | 13 | deterministic guards, the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), shipped as the `claude-stack-hooks` plugin; only the two engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 8 | per-project registrations in `<repo>/.mcp.json` |
 | **Plugins** | 6 | installed via the `claude` CLI |
 
@@ -45,9 +45,9 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/`, the `.claude/settings.json` `env` block plus thirteen hook wirings, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the two engines and the model-window table only - the thirteen wired hooks come from the `claude-stack-hooks` plugin), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `<repo>/.mcp.json`, `.serena/project.yml`, and `claude-stack.stamp` |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
-| **Starts** | six `claude plugin install` calls, up to eight `claude mcp add` registrations, and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies of its own |
+| **Starts** | seven `claude plugin install` calls (the six third-party ones plus the stack's own `claude-stack-hooks`), up to eight `claude mcp add` registrations, and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is five command bodies, one skill and two references with no hooks, no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/claude-stack:status` reports your own install's number |
 
@@ -59,9 +59,9 @@ the run did not install.
 An organisation enforcing `strictKnownMarketplaces` needs three `extraKnownMarketplaces` rows -
 `claude-stack` and `claude-hud` - since only `claude-plugins-official` is known by
 default, plus the seven `enabledPlugins` keys (the six above and `claude-stack` itself). And
-`allowManagedHooksOnly` silently disables all thirteen house hooks: the files still install and the
-wirings still land in `settings.json`, but no guard ever fires, so the stack's deterministic gates
-are gone with nothing reporting it. Decide that one before rolling the stack out under a managed
+`allowManagedHooksOnly` silently disables all thirteen house hooks: the plugin still installs and
+enables, but no guard ever fires, so the stack's deterministic gates are gone with nothing reporting
+it. `CLAUDE_STACK_HOOKS_OFF` is the supported way to switch individual hooks off. Decide that one before rolling the stack out under a managed
 policy.
 
 ## Install - with the marketplace plugin (guided)
@@ -74,9 +74,14 @@ deliberately):
 
 ```
 cd <your-project>
+claude plugin marketplace add anthropics/claude-plugins-official
 claude plugin marketplace add envoydev/claude-stack
 claude plugin install claude-stack@claude-stack
 ```
+
+The first line matters: the plugin depends on `superpowers`, which lives in the official
+marketplace. With that marketplace known, the install pulls `superpowers` in by itself; without it
+the install succeeds but reports the dependency as unsatisfied until the marketplace is added.
 
 Then `/claude-stack:setup` runs a fresh install (in a project it decides the selection FROM the
 project; outside one it offers a global install from the recommended set),
@@ -134,8 +139,8 @@ Each run stamps the installed source commit into `claude-stack.stamp`;
 
 ## Token & tool usage analysis
 
-The one piece of the stack worth naming here: the installed hook
-`.claude/hooks/instrument-tool-usage.js` records per-run tool / skill / MCP usage - wired by
+The one piece of the stack worth naming here: the `instrument-tool-usage` hook, shipped with the
+rest in the `claude-stack-hooks` plugin, records per-run tool / skill / MCP usage - wired by
 default behind an env gate, so it costs nothing until you flip `CLAUDE_STACK_INSTRUMENT` from `"0"` to
 `"1"` in `.claude/settings.json` env (flip it back after the measured run), and
 [`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus
