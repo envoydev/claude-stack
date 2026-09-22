@@ -42,8 +42,10 @@ const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes
 // `claude plugin list --json` -> one row per plugin NAME. A row carrying a projectPath belongs to
 // that project and is dropped unless it is this one; where both exist, THIS project's row wins over
 // the account-level one. Anything unparseable is an empty listing, never a crash: the callers all
-// treat 'the listing cannot say' as a real answer.
-function parsePluginList(json, projectRoot)
+// treat 'the listing cannot say' as a real answer. `marketplace` keeps only that marketplace's rows,
+// BEFORE the per-name pick: the official marketplace ships plugins named like stack entries
+// (`serena`, `sentry`, `playwright`), and a name-only read took theirs for ours.
+function parsePluginList(json, projectRoot, { marketplace } = {})
 {
     let data;
     try { data = typeof json === 'string' ? JSON.parse(json) : json; }
@@ -54,15 +56,16 @@ function parsePluginList(json, projectRoot)
     for (const row of rows)
     {
         if (!row || typeof row !== 'object') continue;
-        const name = String(row.id ?? '').split('@')[0];
+        const [name, market = ''] = String(row.id ?? '').split('@');
         if (!name) continue;
+        if (marketplace && market !== marketplace) continue;
         const pp = row.projectPath;
         if (pp && path.resolve(String(pp)) !== here) continue;
         const rank = pp ? 0 : 1;                      // this project first, then the account rows
         const prev = best.get(name);
         if (prev && prev.rank <= rank) continue;
         best.set(name, {
-            rank, name,
+            rank, name, marketplace: market,
             version: String(row.version ?? '?'),
             scope: String(row.scope ?? ''),
             enabled: row.enabled !== false,

@@ -51,7 +51,17 @@ test('plugin-list: THIS project\'s row wins over the account row, and another pr
         { id: 'claude-stack@claude-stack', version: '1.0.0', scope: 'project', enabled: true, projectPath: '/repo' },
         { id: 'other@x', version: '2.0.0', scope: 'project', enabled: true, projectPath: '/elsewhere' },
     ] }), '/repo');
-    assert.deepStrictEqual(listing, [{ name: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true }]);
+    assert.deepStrictEqual(listing, [{ name: 'claude-stack', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true }]);
+});
+
+test('plugin-list: a marketplace filter runs BEFORE the per-name pick - a same-named foreign row never wins', () =>
+{
+    const json = JSON.stringify({ installed: [
+        { id: 'serena@claude-plugins-official', version: '9', scope: 'project', enabled: true, projectPath: '/repo' },
+        { id: 'serena@claude-stack', version: '1', scope: 'user', enabled: true },
+    ] });
+    assert.deepStrictEqual(P.parsePluginList(json, '/repo', { marketplace: 'claude-stack' }).map((r) => r.version), ['1']);
+    assert.deepStrictEqual(P.parsePluginList(json, '/repo').map((r) => r.marketplace), ['claude-plugins-official']);
 });
 
 test('plugin-list: a missing `enabled` is enabled, and garbage is an EMPTY listing, never a crash', () =>

@@ -28,6 +28,7 @@ const settings = require('./settings.js');
 const serena = require('./serena.js');
 const memory = require('./memory.js');
 const docs = require('./docs.js');
+const { deriveState, writable } = require('../derive-state.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
@@ -47,6 +48,7 @@ Every flag means exactly what it means on scripts/os/claude-stack.sh - this is a
 redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.`;
 
 const HOOKS_PLUGIN = 'claude-stack-hooks@claude-stack';
+const STACK_MARKET_NAME = HOOKS_PLUGIN.split('@')[1];
 const STACK_MARKETPLACE = 'envoydev/claude-stack';
 const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
@@ -121,24 +123,35 @@ function main(argv, env, io)
         const routes = plugins.pluginRoutes(env);
 
         let picked = null;
+        let listedEngines = [];
+        // The off-state surfaces this run may write back: a walk's selection answers the agents
+        // layer, and the hooks layer when it carries hook lines (none = every hook, as on disk); a
+        // read-back answers only what it found evidence of.
+        let answered = { hooks: true, agents: true };
         if (args.installedOnly)
         {
-            const listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot) : [];
-            let lines = selection.deriveFromDisk({
+            const raw = hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }) : '';
+            const back = selection.readBack({
                 claudeDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
-                plugins: listing.map((r) => r.name),
-                knownPlugins: manifest.plugins,
+                listing: plugins.parsePluginList(raw, projectRoot),
+                stackListing: plugins.parsePluginList(raw, projectRoot, { marketplace: STACK_MARKET_NAME }),
+                settings: readJson(path.join(claudeDir, 'settings.json')),
+                routes, manifest, sourceDir: resolved.dir,
+                stampHooks: readStampHooks(path.join(claudeDir, 'claude-stack.stamp')),
+                always: readJson(path.join(resolved.dir, 'meta', 'recommendations.json')).always || {},
+                marketplace: STACK_MARKET_NAME, log,
             });
-            if (!selection.hasInstall(lines))
+            if (!back.installed)
             {
                 err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /claude-stack:setup) first\n`);
                 return 1;
             }
-            const stamp = readStampHooks(path.join(claudeDir, 'claude-stack.stamp'));
-            lines = selection.adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stamp, log });
-            lines = selection.adoptAlways({ lines, always: readJson(path.join(resolved.dir, 'meta', 'recommendations.json')).always || {}, log });
-            picked = selection.parseSelection(lines.join('\n'));
+            picked = selection.parseSelection(back.lines.join('\n'));
+            answered = back.answered;
+            listedEngines = back.engines;
+            if (back.context7Local && !args.context7Given)
+            { args.context7 = 'local'; log('installed-only: context7 stays local - its local entry is enabled here'); }
         }
         else if (args.selection)
         {
@@ -146,6 +159,7 @@ function main(argv, env, io)
             try { text = fs.readFileSync(args.selection, 'utf8'); }
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
             picked = selection.parseSelection(text);
+            answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
         if (picked) lists = selection.applySelection(lists, picked);
 
@@ -168,7 +182,7 @@ function main(argv, env, io)
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
             browsers: args.playwrightBrowsers,
-            registered: registeredEngines(mcpFile),
+            registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines])],
             enabled: args.playwrightEnabled,
         });
         lists.mcps = pw.mcps;
@@ -192,7 +206,7 @@ function main(argv, env, io)
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home,
-            pins, tokens, remotes, level, hasClaude, picked,
+            pins, tokens, remotes, level, hasClaude, picked, answered,
         };
 
         const pinSnapshot = args.keepPins
@@ -378,15 +392,17 @@ function installHooksAndRules(ctx)
     const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
     const migrations = readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')).env || {};
     const wired = ctx.routes.hooks ? [] : ctx.lists.hooks;
-    const off = ctx.routes.hooks && ctx.picked
-        ? ctx.manifest.catalogs.hooks
-            .map((e) => e.split('::')[0].replace(/\.js$/, ''))
-            .filter((n, i, a) => a.indexOf(n) === i && !ctx.picked.has(`hook ${n}`))
-        : [];
+    // ONE derivation decides what this project does NOT take (Phase 8): the hooks named off and the
+    // seats denied. It runs whenever the run holds a selection: one a walk answered, or the one
+    // --installed-only read back from this very state (`selection.readBack`), which writes it back
+    // as it was - and only for the surfaces the read found evidence of (`writable`). No selection
+    // at all (a bare install) writes no off-state.
+    const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
+    const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, { routes: ctx.routes, answered: ctx.answered });
     settings.writeSettings({
         file: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,
-        denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY,
+        denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
         retiredHooks: ctx.routes.hooks ? [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))] : [],
         docsVersioning: {
             value: ctx.args.docsVersioning,
@@ -396,7 +412,7 @@ function installHooksAndRules(ctx)
         mcpOff: ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : [],
         memoryDb: ctx.level.dbPath,
         sentryAuth: ctx.args.sentryAuth || 'token',
-        hooksOff: off, hooksAnswered: Boolean(ctx.picked),
+        hooksOff, hooksAnswered,
         log: ctx.log, note: ctx.note,
     });
 }

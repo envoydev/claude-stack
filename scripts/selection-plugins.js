@@ -22,11 +22,18 @@ const REPO = path.resolve(__dirname, '..');
 
 function readSelection(file)
 {
-    const picked = { skills: new Set(), agents: new Set(), mcps: new Set() };
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { throw new Error(`selection-plugins: cannot read ${file} - ${err.message}`); }
-    for (const line of raw.split('\n'))
+    return parseSelectionText(raw);
+}
+
+// The same parse over text already in hand - the installer holds the selection as lines, not as a
+// file, on the `--installed-only` route where nothing was ever written to disk.
+function parseSelectionText(raw)
+{
+    const picked = { skills: new Set(), agents: new Set(), mcps: new Set() };
+    for (const line of String(raw).split('\n'))
     {
         const m = line.trim().match(/^(skill|agent|mcp)\s+(\S+)$/);
         if (!m) continue;
@@ -131,4 +138,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { mcpPlugin, readSelection, pluginsFor, itemsOf, REPO };
+module.exports = { mcpPlugin, readSelection, parseSelectionText, pluginsFor, itemsOf, REPO };

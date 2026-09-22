@@ -18,7 +18,9 @@
 //
 //   - AGENTS have a real lever. Spike S3: `permissions.deny: ["Agent(<plugin>:<name>)"]` drops the
 //     seat from the listing and its description from the bill, -434 tokens for one seat. With 43
-//     seats shipped that is the largest trim left. It is written only for a seat an ENABLED plugin
+//     seats shipped that is the largest trim left. The scoped identifier is the measured address;
+//     the docs give the general form as `Agent(AgentName)` ('Agent (subagents)',
+//     code.claude.com/docs/en/permissions), which is the spelling for a project-local seat. It is written only for a seat an ENABLED plugin
 //     carries: a seat in a plugin this project never enabled is not loaded at all, so denying it is
 //     noise now and a trap later - the day that plugin is enabled, the stale entry silently drops a
 //     seat the user just asked for.
@@ -30,14 +32,21 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { pluginsFor, readSelection, itemsOf } = require('./selection-plugins.js');
+const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./selection-plugins.js');
 const { placement, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
+const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 
 const REPO = path.resolve(__dirname, '..');
 
-// The scoped identifier, never the bare name: the bare spelling was measured doing nothing.
+// The scoped identifier - the address S1's dispatch finding and S3's deny measurement both used.
+// `Tool(param:value)` rules exist too, but only for a direct field of the tool's input ('Match by
+// input parameter', code.claude.com/docs/en/permissions) - so a plugin named like an Agent field
+// (`model`, `isolation`) would be read as one; every stack entry starts `claude-stack`.
 const denySpec = (agent, plugin) => `Agent(${plugin}:${agent})`;
+
+// The seat a stack deny names, under ANY stack entry's spelling - null for a user's own entry.
+const stackSeat = (spec) => (/^Agent\(claude-stack[a-z0-9-]*:([A-Za-z0-9_-]+)\)$/.exec(String(spec)) || [])[1] || null;
 
 // Which plugin carries each agent - the deny spelling needs the home, not just the name.
 function agentHomes(place)
@@ -48,11 +57,12 @@ function agentHomes(place)
     return homes;
 }
 
-const pickedLines = (file) =>
+// The two kinds selection-plugins does not read: they are copied and wired by NAME, so nothing has
+// to resolve them to a plugin.
+const pickedLines = (text) =>
 {
     const picked = { rules: new Set(), hooks: new Set() };
-    const text = fs.readFileSync(file, 'utf8');
-    for (const line of text.split('\n'))
+    for (const line of String(text).split('\n'))
     {
         const m = line.trim().match(/^(rule|hook)\s+(\S+)$/);
         if (m) picked[m[1] === 'rule' ? 'rules' : 'hooks'].add(m[2].replace(/\.(md|js)$/, ''));
@@ -60,12 +70,14 @@ const pickedLines = (file) =>
     return picked;
 };
 
-function deriveState({ selection, sourceDir = REPO, marketplace = 'claude-stack' } = {})
+// `selection` is a FILE; `selectionText` is the same lines already in hand, which is what the
+// installer holds on the --installed-only route where nothing was written to disk.
+function deriveState({ selection, selectionText, sourceDir = REPO, marketplace = 'claude-stack' } = {})
 {
     // readSelection throws with the path in the message when the file is unreadable; an empty
     // install derived from a missing file is the failure mode this refuses to have.
-    const picked = readSelection(selection);
-    const flat = pickedLines(selection);
+    const picked = selectionText === undefined ? readSelection(selection) : parseSelectionText(selectionText);
+    const flat = pickedLines(selectionText === undefined ? fs.readFileSync(selection, 'utf8') : selectionText);
 
     const place = placement();
     const { plugins, copy } = pluginsFor(picked, { placement: place });
@@ -75,6 +87,10 @@ function deriveState({ selection, sourceDir = REPO, marketplace = 'claude-stack'
     const homes = agentHomes(place);
 
     const off = carried.agents.filter((a) => !picked.agents.has(a));
+    // The seats an enabled plugin carries AND the selection kept. Their specs exist for one job:
+    // clearing a deny a PREVIOUS run wrote, so a seat added back through configure actually comes
+    // back. A seat this run copied (an extra) never had a scoped spec to clear.
+    const kept = carried.agents.filter((a) => picked.agents.has(a));
     const shipped = [...new Set(loadManifest(sourceDir).catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
     const hooksOn = shipped.filter((h) => flat.hooks.has(h));
     const hooksOff = shipped.filter((h) => !flat.hooks.has(h));
@@ -92,12 +108,74 @@ function deriveState({ selection, sourceDir = REPO, marketplace = 'claude-stack'
             on: [...picked.agents].sort(),
             off,
             deny: off.map((a) => denySpec(a, homes.get(a) || CORE)),
+            allow: kept.map((a) => denySpec(a, homes.get(a) || CORE)),
             extras: copy.agents,
         },
         rules: { copy: [...flat.rules].sort() },
         hooks: { on: hooksOn, off: hooksOff },
         mcps: [...picked.mcps].sort(),
         env: { CLAUDE_STACK_HOOKS_OFF: hooksOff.join(',') },
+    };
+}
+
+// The hooks entry and the two MCP families that fan one catalog row out into several plugins.
+const HOOKS_ENTRY = 'claude-stack-hooks';
+const catalogServer = (name) => String(name)
+    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
+    .replace(/^context7-local$/, 'context7');
+
+// THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
+// project carries NOW on each plugin route. On those routes `.claude/` holds only the extras, so the
+// disk read alone found no seat and no hook - and the derivation above then switched every one of
+// them off. Each surface is read from the state ITS route writes: the enabled entries' contents
+// minus the seats `permissions.deny` names, the hook catalog minus CLAUDE_STACK_HOOKS_OFF, the MCP
+// entries folded onto the catalog. Deriving from these lines writes back the state they came from,
+// which is how a seat or hook the user switched off survives an update. `plugins` is this stack's
+// ENABLED entries only (`install/selection.js` readBack filters the listing); a surface whose route
+// is off, or whose entry is absent, reads back nothing and the caller's disk read decides.
+function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO } = {})
+{
+    const names = [...new Set(plugins.map((p) => String(p).split('@')[0]))];
+    const lines = [];
+    if (routes.skills)
+    {
+        const place = placement();
+        const carried = itemsOf(names.filter((n) => place.plugins[n]), { placement: place });
+        // By SEAT, under any stack entry's spelling: a release that moves a seat to another entry
+        // changes its deny spelling, and the seat the user switched off must stay off across it.
+        const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+        for (const s of carried.skills) lines.push(`skill ${s}`);
+        for (const a of carried.agents) if (!denied.has(a)) lines.push(`agent ${a}`);
+    }
+    const manifest = loadManifest(sourceDir);
+    if (routes.hooks && names.includes(HOOKS_ENTRY))
+    {
+        // The prelude's own matcher, so the read-back honours exactly the spellings the hooks do.
+        const env = { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') };
+        const shipped = [...new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
+        for (const h of shipped) if (!hookDisabled(h, env)) lines.push(`hook ${h}`);
+    }
+    if (routes.mcps)
+    {
+        const catalog = new Set(manifest.catalogs.mcps.map((row) => row.split('|')[0]));
+        for (const server of new Set(names.map(catalogServer))) if (catalog.has(server)) lines.push(`mcp ${server}`);
+    }
+    return lines;
+}
+
+// What of a derived state this run may WRITE. A walk's selection answers both surfaces; a read-back
+// answers only what it found evidence of (`answered`), so a failed `claude plugin list` writes
+// nothing instead of switching every hook and seat off. The off-lists exist only on the routes
+// that load through a plugin: on the copy routes absence from disk is the off-state.
+function writable(state, { routes = {}, answered = { hooks: true, agents: true } } = {})
+{
+    const hooks = Boolean(state && answered.hooks);
+    const agents = Boolean(state && answered.agents && routes.skills);
+    return {
+        hooksOff: hooks && routes.hooks ? state.hooks.off : [],
+        hooksAnswered: hooks,
+        agentDeny: agents ? state.agents.deny : [],
+        agentAllow: agents ? state.agents.allow : [],
     };
 }
 
@@ -125,4 +203,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { deriveState, denySpec, agentHomes, REPO };
+module.exports = { deriveState, readInstalled, writable, denySpec, stackSeat, agentHomes, REPO };

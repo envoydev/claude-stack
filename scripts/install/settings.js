@@ -26,6 +26,7 @@
 // because the user is looking at the question as it is asked.
 const fs = require('node:fs');
 const path = require('node:path');
+const { stackSeat } = require('../derive-state.js');
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -226,6 +227,7 @@ function writeSettings(opts)
 {
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
+        agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, sentryAuth, hooksOff, hooksAnswered = false,
         log = () => {}, note = () => {},
@@ -250,6 +252,26 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  settings.json: dropped retired deny entry ${rule}`); }
+
+    // The agent off-list (Phase 8). Same array, two directions, and the ALLOW side runs last on
+    // purpose: a seat named by both lists is a seat this run installed, and resolving toward the
+    // seat WORKING is the safe direction - the other way silently disables what was just asked for.
+    // Both lists are empty on a run that holds no selection, which leaves the deny array exactly as
+    // it was; an --installed-only refresh passes the lists it READ BACK from this array, so it
+    // writes the same seat state it found. A seat's OTHER stack spellings go either way: a release
+    // that moved the seat to another entry left an entry addressing nothing.
+    const dropSeat = (rule, keep) =>
+    {
+        const seat = stackSeat(rule);
+        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
+        { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  settings.json: agent allowed again ${entry}` : `  settings.json: agent entry dropped ${entry} (the seat's old spelling)`); }
+    };
+    for (const rule of agentDeny)
+    {
+        dropSeat(rule, rule);
+        if (!deny.includes(rule)) { deny.push(rule); changed = true; log(`  settings.json: agent denied ${rule}`); }
+    }
+    for (const rule of agentAllow) dropSeat(rule, null);
 
     // enabledMcpjsonServers: pre-approve exactly the .mcp.json servers we register, so there is no
     // per-launch trust prompt - never blanket enableAllProjectMcpServers.

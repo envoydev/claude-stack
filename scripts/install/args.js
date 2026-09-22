@@ -94,6 +94,9 @@ function parseArgs(argv, env = {})
     // The flag wins, else the environment, else the default. The two enums are lower-cased so a
     // non-canonical casing like 'Global' is accepted the same as on the case-insensitive twin.
     out.scope = lower(out.scope || env.SCOPE || 'project');
+    // Whether the transport was CHOSEN, before the default fills it in: an update that asks nothing
+    // reads the installed transport back instead of resetting a local install to remote.
+    out.context7Given = Boolean(out.context7 || env.CONTEXT7_MODE);
     out.context7 = lower(out.context7 || env.CONTEXT7_MODE || 'remote');
     out.sentryAuth = lower(out.sentryAuth);
     out.docsVersioning = lower(out.docsVersioning);

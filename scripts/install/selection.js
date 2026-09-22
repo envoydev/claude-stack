@@ -23,6 +23,7 @@
 //     the shipped list once read as a drop of everything, and the memory rule never arrived.
 const fs = require('node:fs');
 const path = require('node:path');
+const { readInstalled } = require('../derive-state.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -174,7 +175,39 @@ function adoptAlways({ lines, always = {}, log = () => {} })
     return out;
 }
 
+// THE --installed-only READ-BACK, whole. The disk first (the copy routes, the extras, the rules),
+// then the state each PLUGIN route writes - on those routes `.claude/` holds only the extras, and a
+// disk-only read derived every seat and hook as dropped. The plugin state is read from the ENABLED
+// entries of this stack's marketplace only: a parked entry stays parked, and another marketplace's
+// `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
+// caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
+// call) switches nothing off instead of switching everything off for good.
+function readBack({ claudeDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], always = {}, marketplace = 'claude-stack', log = () => {} })
+{
+    let lines = deriveFromDisk({ claudeDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
+    const none = { lines, installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
+    if (!hasInstall(lines)) return none;
+
+    const names = (stackListing || listing).filter((r) => r.marketplace === marketplace && r.enabled).map((r) => r.name);
+    const stored = settings && typeof settings === 'object' ? settings : {};
+    const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
+    const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
+    for (const line of readInstalled({ plugins: names, deny, hooksOff: env.CLAUDE_STACK_HOOKS_OFF, routes, sourceDir }))
+        if (!lines.includes(line)) lines.push(line);
+
+    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes('claude-stack') };
+    const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
+    const context7Local = Boolean(routes.mcps) && names.includes('context7-local');
+    // Adoption is for hooks read off DISK. Read from the hooks entry, CLAUDE_STACK_HOOKS_OFF is the
+    // whole answer already - a hook it does not name is on, a new release's included - and adopting
+    // against an older stamp would switch back on the very hooks the user named there.
+    if (!(routes.hooks && names.includes('claude-stack-hooks')))
+        lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
+    lines = adoptAlways({ lines, always, log });
+    return { lines, installed: true, answered, engines, context7Local };
+}
+
 module.exports = {
     parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
+    adoptHooks, adoptAlways, readBack, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
 };

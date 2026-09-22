@@ -209,3 +209,76 @@ test('adopt-always: a layer this install does not carry at all stays absent', ()
     });
     assert.ok(!out.some((l) => l.startsWith('mcp ')), 'servers were adopted into an install that registers none');
 });
+
+// THE --installed-only READ-BACK, whole (Phase 8 T1). On the plugin routes `.claude/` holds only the
+// extras, so the seats, hooks and MCP entries are read back from the state those routes write - and
+// NOTHING is written back for a surface the run found no evidence of: a failed `claude plugin list`
+// once turned into all thirteen hooks switched off and the eight core seats denied, for good.
+const ROOT_DIR = path.join(__dirname, '..');
+const { loadManifest } = require('./install/manifest.js');
+const MANIFEST = loadManifest(ROOT_DIR);
+const ALL = { skills: true, hooks: true, mcps: true };
+const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
+
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [] } = {})
+{
+    const claudeDir = target({ rules: ['baseline-security'], hooks });
+    return sel.readBack({
+        claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
+        stampHooks: [], always: {},
+    });
+}
+
+test('read-back: a healthy listing reads seats, hooks and MCP entries back, and answers both surfaces', () =>
+{
+    const r = readBackCase({
+        listing: [row('claude-stack@claude-stack'), row('claude-stack-hooks@claude-stack'), row('claude-stack-aspnet@claude-stack'), row('serena@claude-stack')],
+        settings: { permissions: { deny: ['Agent(claude-stack:security-auditor)'] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } },
+    });
+    assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent security-auditor'));
+    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
+    assert.ok(r.lines.includes('mcp serena'));
+    assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
+});
+
+test('read-back: an EMPTY listing (the CLI failed) answers neither surface - nothing is switched off', () =>
+{
+    const r = readBackCase({ listing: [] });
+    assert.ok(r.installed, 'the rules on disk still prove an install');
+    assert.deepStrictEqual(r.answered, { hooks: false, agents: false });
+    assert.ok(!r.lines.some((l) => /^(agent|hook) /.test(l)));
+});
+
+test('read-back: copied hooks on disk still answer the hooks surface without the hooks entry', () =>
+{
+    const r = readBackCase({ listing: [], hooks: ['guard-read-whole-file'] });
+    assert.strictEqual(r.answered.hooks, true);
+});
+
+test('read-back: a PARKED entry reads back nothing - a disabled browser stays disabled', () =>
+{
+    const r = readBackCase({ listing: [
+        row('claude-stack@claude-stack'), row('claude-stack-hooks@claude-stack', { enabled: false }),
+        row('playwright-firefox@claude-stack', { enabled: false }), row('playwright-webkit@claude-stack'),
+    ] });
+    assert.strictEqual(r.answered.hooks, false, 'a parked hooks entry is no evidence of the hook state');
+    assert.deepStrictEqual(r.engines, ['webkit']);
+});
+
+test('read-back: another marketplace\'s same-named plugin is never read as a stack pick', () =>
+{
+    const r = readBackCase({ listing: [row('claude-stack@claude-stack'), row('sentry@claude-plugins-official', { scope: 'user' }), row('playwright@claude-plugins-official')] });
+    assert.ok(!r.lines.includes('mcp sentry') && !r.lines.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
+});
+
+test('read-back: the local context7 transport is read back as local mode', () =>
+{
+    assert.strictEqual(readBackCase({ listing: [row('context7@claude-stack'), row('context7-local@claude-stack')] }).context7Local, true);
+    assert.strictEqual(readBackCase({ listing: [row('context7@claude-stack')] }).context7Local, false);
+});
+
+test('read-back: a malformed deny or env block reads as absent, never aborts the update', () =>
+{
+    const r = readBackCase({ listing: [row('claude-stack@claude-stack')], settings: { permissions: { deny: { oops: 1 } }, env: 'x' } });
+    assert.ok(r.lines.includes('agent security-auditor'));
+});

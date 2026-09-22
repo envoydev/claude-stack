@@ -256,3 +256,68 @@ test('settings-env: HOOKS_OFF is absent-only UNLESS a walk answered the layer th
     assert.strictEqual(envPass({}, { hooksAnswered: true, hooksOff: [] }).env.CLAUDE_STACK_HOOKS_OFF, '',
         'answering "keep every hook" must write the empty value, not skip the key');
 });
+
+// ---- the agent off-list (Phase 8, T1) --------------------------------------------------------
+// Spike S3 measured a denied seat costing -434 tokens less per session, which makes this the
+// largest per-item trim the stack has. It writes into the SAME `permissions.deny` array as the
+// secret-file blocks, so the two must not fight: a re-added seat clears only its own entry, and the
+// project's own rules are never touched by either.
+
+test('settings-writer: a dropped seat is denied, and the project keeps its own deny rules', () =>
+{
+    const file = settingsFile({ permissions: { deny: ['Agent(my-own-seat)', 'Read(./private)'] } });
+    const { data } = write(file, {
+        denySpecs: ['Read(./.env)'],
+        agentDeny: ['Agent(claude-stack:evidence-gatherer)', 'Agent(claude-stack-aspnet:aspnet-verifier)'],
+    });
+    assert.ok(data.permissions.deny.includes('Agent(claude-stack:evidence-gatherer)'));
+    assert.ok(data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'));
+    assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), "the project's own Agent rule was dropped");
+    assert.ok(data.permissions.deny.includes('Read(./private)'), "the project's own Read rule was dropped");
+    assert.ok(data.permissions.deny.includes('Read(./.env)'), 'the secret blocks still land beside them');
+});
+
+test('settings-writer: a seat the selection now KEEPS has its deny cleared', () =>
+{
+    // The failure this prevents: a user adds a seat back through configure, the install enables its
+    // plugin, and a stale deny from the previous run silently drops the seat they just asked for.
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)', 'Agent(my-own-seat)'] } });
+    const { data, logs } = write(file, { agentAllow: ['Agent(claude-stack-aspnet:aspnet-verifier)'] });
+    assert.ok(!data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'));
+    assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), 'clearing one entry cleared another');
+    assert.ok(logs.some((m) => /aspnet-verifier/.test(m)), 'a silent clear is unauditable');
+});
+
+test('settings-writer: deny and allow for the same seat is a KEPT seat - the allow wins', () =>
+{
+    // Both lists come from one derivation, so this can only happen through a caller bug or a
+    // hand-edited selection. Resolving it toward the seat WORKING is the safe direction: the other
+    // way silently disables a seat the run just installed.
+    const file = settingsFile({});
+    const { data } = write(file, {
+        agentDeny: ['Agent(claude-stack:evidence-gatherer)'],
+        agentAllow: ['Agent(claude-stack:evidence-gatherer)'],
+    });
+    assert.deepStrictEqual(data.permissions.deny, []);
+});
+
+test('settings-writer: no agent lists means the deny array is left exactly as it was', () =>
+{
+    // A run holding no selection passes no agent lists, so it may not rewrite the seat state a user
+    // chose - the same rule CLAUDE_STACK_HOOKS_OFF follows.
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack:evidence-gatherer)'] } });
+    const { data } = write(file, { denySpecs: ['Read(./.env)'] });
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(claude-stack:evidence-gatherer)', 'Read(./.env)']);
+});
+
+test('settings-writer: a seat that moved home loses its OLD stack spelling, whichever way it goes', () =>
+{
+    // The deny names the carrying plugin; a release that moves the seat changes the spelling. The
+    // old entry then addresses nothing and would sit in the file forever.
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-old:security-auditor)', 'Agent(claude-stack-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } });
+    const { data } = write(file, {
+        agentDeny: ['Agent(claude-stack:security-auditor)'],
+        agentAllow: ['Agent(claude-stack:evidence-gatherer)'],
+    });
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own:security-auditor)', 'Agent(claude-stack:security-auditor)']);
+});

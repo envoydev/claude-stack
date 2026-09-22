@@ -235,3 +235,12 @@ test('install-entry: a --source that is not the stack fails before any layer is 
     // reads the same whichever route produced it.
     assert.match(r.out, /not a claude-stack checkout/);
 });
+
+test('install-args: context7Given says whether the TRANSPORT was chosen, so an update can read it back', () =>
+{
+    // The default is 'remote'; an --installed-only run that found the local entry enabled keeps it
+    // local unless this run named a transport itself.
+    assert.strictEqual(ok(['update']).context7Given, false);
+    assert.strictEqual(ok(['update', '--context7', 'remote']).context7Given, true);
+    assert.strictEqual(parseArgs(['update'], { CONTEXT7_MODE: 'remote' }).context7Given, true);
+});
