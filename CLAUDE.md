@@ -385,25 +385,30 @@ mirrored there in the same sitting.
   server the project added by hand is never touched. `scripts/mcp-verify.test.js` pins it on both twins.
 - Editing a consuming project's installed copy is local-only; mirror it into both installer twins here
   (and into cursor-stack when it touches the shared baseline or a twinned agent/rule).
-- **Everything installs from ONE source snapshot** per run (`stack_src` / `Get-StackSrc`): the release
-  archive (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version), falling
-  back to a shallow clone. A change ships only once merged to `main`; until then the per-file fail-soft
-  keeps existing copies. Never reintroduce a raw fetch of a repo-owned file (per-file, stale, mixes
+- **Everything installs from ONE source snapshot** per run (`stack_src` / `Get-StackSrc`), resolved in
+  this order: a handed `--source`; the PLUGIN CACHE; the release archive
+  (`releases/latest/download`, with a `RELEASE-SOURCE` file naming commit + version); a shallow clone
+  of `main`. A change ships only once merged to `main`; until then the per-file fail-soft keeps
+  existing copies. Never reintroduce a raw fetch of a repo-owned file (per-file, stale, mixes
   revisions).
-- **One download per RUN.** The plugin commands download the snapshot anyway and pass it with
+- **The plugin cache IS the snapshot, so the common run downloads NOTHING** (`_stack_plugin_cache` /
+  `Get-StackPluginCache`): `<config>/plugins/cache/<marketplace>/claude-stack/<version>/` is the whole
+  repo, because every marketplace entry is sourced from the repo ROOT - measured on a real install
+  (`stack/rules`, `stack/CLAUDE.template.md`, both hook engines, `meta/`, `scripts/`,
+  `RELEASE-SOURCE`). The NEWEST valid entry across marketplaces wins, by `sort -V` over the directory
+  names; an entry counts only with `stack/skills` + `stack/agents`, so a half-written one is rejected.
+  It is by construction the revision the enabled plugins run from, so seed and plugins can never be
+  two releases. The stack writes no cache of its own - the per-release `<config>/cache/stack-source/`
+  cache, its week-old promote, the `HEAD /releases/latest` probe, the marketplace-clone route and
+  `STACK_SOURCE_CACHE` are all RETIRED. A shape change is still a four-site edit (`stack_src`,
+  `Get-StackSrc`, the protocol's two snippets); `scripts/source-cache.test.js` covers it. The install
+  BOOTSTRAPS on a first run: no cache and a plugin route means the core plugin is installed first so
+  its cache can serve the same run.
+- **One download per RUN.** The plugin commands resolve the snapshot themselves and pass it with
   `--source` / `-Source`; a borrowed source is never deleted by the script
   (`STACK_SRC_OWNED` / `$script:StackSrcOwned`) - the skills remove their `$TMP` on every exit path.
-  Standalone (no `--source`) still fetches and cleans up; keep that path working.
-- **One download per RELEASE - the source cache** at `<config>/cache/stack-source/<repo-slug>/<version>`,
-  reused when a `HEAD` of `/releases/latest` says that version is newest. Both twins and the guided walks
-  write the same layout, so a shape change is a four-site edit (`stack_src`, `Get-StackSrc`, the
-  protocol's two snippets). Keyed by VERSION, never time; an entry counts only with `stack/skills` +
-  `stack/agents`; a promote drops siblings older than a WEEK, never 'all but current'.
-  `STACK_SOURCE_CACHE=0` restores always-fresh; an unwritable cache is never fatal.
-- **The marketplace clone** (`<config>/plugins/marketplaces/<name>`) is taken into the cache only when
-  its `origin` is this repo AND its plugin manifest carries the exact version the probe named. Exception:
-  when archive, probe and clone all failed, it is taken UNVERIFIED (logged, and the stamp names the
-  commit). Same four sites; `scripts/source-cache.test.js` covers it.
+  Standalone (no `--source`) still resolves and cleans up what it fetched; keep that path working.
+  Never `rm -rf` a plugin-cache entry: that is the CLI's own plugin install, not a copy of it.
 - **The install is versioned, not the file.** `version:` exists only in plugin.json - a `version:` key on
   a skill/agent/rule is ignored; don't add one. Each run writes `claude-stack.stamp` (source commit +
   release version); configure diffs it via the GitHub compare API. A run whose source never resolved

@@ -291,7 +291,7 @@ function runStandaloneInstalledOnly(twin, sb)
 {
     const dir = path.join(sb.work, 'standalone', 'os');
     fs.mkdirSync(dir, { recursive: true });
-    const env = { ...sb.env, STACK_SKILLS_REPO: `file://${standaloneSource()}`, STACK_SOURCE_CACHE: '0' };
+    const env = { ...sb.env, STACK_SKILLS_REPO: `file://${standaloneSource()}` };
     if (twin === 'sh')
     {
         const copy = path.join(dir, 'claude-stack.sh');

@@ -39,6 +39,12 @@ Three rules the schema does not shout about:
   pointed at, and validate rejects the shape.
 - **Path fields REPLACE the default folder for that component, except `skills`, which ADDS.**
   Setting `commands: ["./cmd"]` means `./commands/` is no longer scanned; setting `skills` scans both.
+- **The cache entry is the whole SOURCE, not the paths the entry lists.** An entry sourced from a
+  repo ROOT caches that repo entire - every sibling folder, not just the subdir it serves as the
+  plugin (measured on a real install). That is free tooling if you mean it: a plugin whose
+  installer needs the repo's scripts reads them out of
+  `<config>/plugins/cache/<marketplace>/<plugin>/<version>/` instead of downloading anything. It is
+  also the leak to watch - anything in that repo ships to every machine that installs the plugin.
 - **`version` in plugin.json is authoritative, silently.** A version in the marketplace entry is
   ignored when plugin.json carries one - set it in ONE place and let the other inherit. An explicit
   version also gates updates: a source change that does not bump the version is not delivered.

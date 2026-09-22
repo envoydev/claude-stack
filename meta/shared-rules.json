@@ -4298,23 +4298,23 @@
    ]
   },
   "guided-one-snapshot-preamble": {
-   "_note": "The four downloading commands open with the same one-snapshot contract paragraph - resolve once into $TMP/repo (cache first), every tool from it, --source to the installer, $TMP removed on every exit path. The protocol file owns the mechanics; this pins the paragraph the commands carry, since command bodies do not co-load.",
+   "_note": "The four source-reading commands open with the same one-snapshot contract paragraph - resolve once into $TMP/repo (the plugin cache first, a download only when there is none), every tool from it, --source to the installer, $TMP removed on every exit path. The protocol file owns the mechanics; this pins the paragraph the commands carry, since command bodies do not co-load.",
    "owner": {
     "file": "setup-plugin/commands/setup.md",
-    "marker": "ONE release archive is the entire download - and the cache usually spares you even that"
+    "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
    },
    "sites": [
     {
      "file": "setup-plugin/commands/configure.md",
-     "marker": "ONE release archive is the entire download - and the cache usually spares you even that"
+     "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
     },
     {
      "file": "setup-plugin/commands/update.md",
-     "marker": "ONE release archive is the entire download - and the cache usually spares you even that"
+     "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
     },
     {
      "file": "setup-plugin/commands/validate.md",
-     "marker": "ONE release archive is the entire download - and the cache usually spares you even that"
+     "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
     }
    ]
   },

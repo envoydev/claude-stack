@@ -1334,140 +1334,34 @@ STACK_SRC_TRIED=false   # memoises the OUTCOME, so a dead source costs one fetch
 STACK_SRC_OWNED=false   # true only when WE fetched it - the EXIT trap removes ours, never the caller's
 STACK_SRC_ROOT=""       # the temp dir an owned fetch lives in (the EXIT trap's removal target)
 
-# THE SOURCE CACHE - one download per RELEASE, not one per run.
-# The snapshot above was fetched into a temp dir and deleted at the end of every run, so a second
-# project - or the same project twice - paid the archive again (measured: 1.4MB / ~1.8s per run,
-# against 0.3s for the version probe below and 0.1s to read the extracted 5.4MB snapshot off disk).
-# The cache keeps the EXTRACTED snapshot at <config>/cache/stack-source/<repo>/<version>, and a run
-# reuses it whenever the probe says that version is still the newest release. The guided plugin
-# walk writes the same layout, so a script install reuses what a `/claude-stack:setup` fetched and
-# the other way round. Two properties keep it honest:
-#   - VERSIONED, never time-boxed. A new release wins the moment it exists, because the probe names
-#     the version and a run only ever reuses the entry with that exact name. There is no TTL to
-#     tune and no window in which an install silently lands last week's stack.
-#   - NEVER TRUSTED BLIND. An entry counts only when it carries stack/skills + stack/agents - the
-#     same check a --source dir gets - so an interrupted promote is re-downloaded, not installed.
-# And when the cache is empty, the download may still be avoidable: Claude Code's marketplace clone
-# is a full checkout of this repo (see _stack_marketplace_clone), so a machine with the plugin
-# installed already holds the release. STACK_SOURCE_CACHE=0 restores the old always-fresh temp
-# download.
-STACK_CACHE_ENABLED=true
-[ "${STACK_SOURCE_CACHE:-1}" = "0" ] && STACK_CACHE_ENABLED=false
-
-_stack_cache_root() {
-  # Keyed by REPO as well as version: a fork or a test fixture must never read - or poison - the
-  # canonical snapshot, and the slug is the same tr/cut idiom the plugin walk's marker file uses.
-  printf '%s/cache/stack-source/%s' "$CONFIG_DIR" \
-    "$(printf '%s' "$STACK_REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
-}
-
-_stack_probe_version() {
-  # The newest release's version, read from the Location of /releases/latest (GitHub 302s to
-  # /releases/tag/v<version>, and the release workflow tags v<plugin manifest version>, which is
-  # exactly what RELEASE-SOURCE carries - so probe and archive agree by construction). HEAD only:
-  # no body, no archive. Prints NOTHING when it cannot be answered - a fork without releases, a
-  # file:// or local-path source, no curl, an offline run - and every caller reads empty as
-  # 'just download', which is why a dead probe costs correctness nothing.
-  # Every failure is swallowed HERE rather than left to the caller: the script runs under
-  # `set -euo pipefail`, where an unreachable host would otherwise take the whole run down with it
-  # (a failing curl in a pipeline is a failing assignment), and today it only survives because
-  # every stack_src caller happens to use `|| ...`, which suspends errexit for the body.
-  case "$STACK_REPO_URL" in http://*|https://*) ;; *) return 0 ;; esac
-  command -v curl >/dev/null 2>&1 || return 0
-  local loc
-  loc="$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$STACK_REPO_URL/releases/latest" 2>/dev/null || true)"
-  printf '%s' "$loc" | sed -n 's|.*/releases/tag/v\{0,1\}||p' | head -1
-}
-
-_stack_cache_valid() { [ -d "$1/stack/skills" ] && [ -d "$1/stack/agents" ]; }
-
-_stack_cache_prune() {
-  # Keep the entry just promoted; drop ones a week old. NOT 'everything but the current': another
-  # run resolved its own entry seconds ago and reads from it for the length of its install, and
-  # deleting that out from under it is the one way this cache could break a run that used to work.
-  find "$1" -mindepth 1 -maxdepth 1 -type d ! -name "$2" -mtime +7 -exec rm -rf {} + 2>/dev/null || true
-  find "$1" -mindepth 1 -maxdepth 1 -type d -name '.dl.*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
-  return 0
-}
-
-_stack_cache_promote() {
-  # Move a freshly extracted snapshot into the cache and echo the entry, or echo nothing. Staged
-  # INSIDE the cache root so the rename is same-filesystem, and a race is resolved in favour of
-  # whoever landed first - a valid entry is never replaced, only an absent or broken one.
-  local repo="$1" root="$2" v
-  v="$(sed -n 's/^version: //p' "$repo/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-  [ -n "$v" ] || return 0
-  mkdir -p "$root" 2>/dev/null || return 0
-  if ! _stack_cache_valid "$root/$v"; then
-    rm -rf "$root/.dl.$$"
-    if cp -R "$repo" "$root/.dl.$$" 2>/dev/null; then
-      rm -rf "$root/$v"
-      mv "$root/.dl.$$" "$root/$v" 2>/dev/null || rm -rf "$root/.dl.$$"
-    fi
-  fi
-  _stack_cache_valid "$root/$v" && printf '%s' "$root/$v"
-  return 0
-}
-
-_stack_manifest_version() {
-  # tr -d '\r' is not decoration: Git for Windows checks out with core.autocrlf=true by default, so
-  # the manifest in a marketplace clone has CRLF line ends and the captured version would carry a
-  # trailing CR - never equal to the probe's, which would disable the clone route on Windows only.
-  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1 | tr -d '\r' || true
-}
-
-_stack_marketplace_clone() {
-  # Claude Code's own clone of the marketplace repo - <config>/plugins/marketplaces/<name> - is a
-  # FULL checkout of this repo, not just the plugin subdir it serves (measured: 7.1MB, with
-  # scripts/ meta/ stack/ all present), so on any machine with the plugin installed the release is
-  # usually already on disk and the archive is a second copy of what is already there.
-  # Prints the path of the clone whose origin is OUR repo and whose plugin manifest carries $1 -
-  # the version match is what makes it safe, since the clone only moves when the user refreshes the
-  # marketplace and may otherwise sit a release behind. $1 empty means 'any valid clone', which is
-  # the offline last resort below and nothing else.
-  local want="$1" dir origin v
-  command -v git >/dev/null 2>&1 || return 0
-  [ -d "$CONFIG_DIR/plugins/marketplaces" ] || return 0
-  for dir in "$CONFIG_DIR"/plugins/marketplaces/*; do
-    [ -d "$dir" ] || continue
-    _stack_cache_valid "$dir" || continue
-    origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
-    [ "${origin%.git}" = "${STACK_REPO_URL%.git}" ] || continue
-    if [ -n "$want" ]; then
-      v="$(_stack_manifest_version "$dir")"
-      [ "$v" = "$want" ] || continue
-    fi
-    printf '%s' "$dir"
-    return 0
+# THE SOURCE IS WHAT CLAUDE CODE ALREADY CACHED.
+# Every marketplace entry shares this repo's root as its `source`, so installing the core plugin
+# leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/claude-stack/<version> - measured on
+# a real install: stack/rules, stack/CLAUDE.template.md, the two hook engines, meta/, scripts/ and
+# RELEASE-SOURCE are all there. That is the same snapshot the installer used to download, fetched
+# once per release by the CLI itself, so the stack keeps no second cache of its own. The archive and
+# clone routes below remain for the two paths that have no plugin cache to read: the copy route
+# (both VIA_PLUGIN switches off) and a machine with no `claude` CLI.
+_stack_plugin_cache() {
+  # Prints the newest valid version directory of the core plugin's cache entry, or nothing.
+  # 'Newest' is by sort -V over the directory names, which ARE the release versions the CLI writes.
+  local base="$CONFIG_DIR/plugins/cache" mkt dir v best=""
+  [ -d "$base" ] || return 0
+  for mkt in "$base"/*; do
+    [ -d "$mkt/claude-stack" ] || continue
+    for dir in "$mkt"/claude-stack/*; do
+      _stack_src_valid "$dir" || continue
+      v="$(basename "$dir")"
+      if [ -z "$best" ] || [ "$(printf '%s\n%s\n' "$(basename "$best")" "$v" | sort -V | tail -1)" = "$v" ]; then best="$dir"; fi
+    done
   done
+  [ -n "$best" ] && printf '%s' "$best"
   return 0
 }
 
-_stack_marketplace_promote() {
-  # Copy a matching clone into the cache under its version and synthesize the RELEASE-SOURCE the
-  # archive would have carried, so nothing downstream - the stamp, the guided walk's plugin-version
-  # check, the next run's cache hit - can tell the two routes apart. `.git` is dropped: 1.7MB of
-  # history no install reads, and a copy that kept it would out-vote RELEASE-SOURCE the next time
-  # the entry is handed to a run as --source.
-  local src="$1" root="$2" v="$3" sha ref
-  sha="$(git -C "$src" rev-parse HEAD 2>/dev/null || true)"
-  ref="$(git -C "$src" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  [ -n "$sha" ] || return 0
-  mkdir -p "$root" 2>/dev/null || return 0
-  if ! _stack_cache_valid "$root/$v"; then
-    rm -rf "$root/.dl.$$"
-    if cp -R "$src" "$root/.dl.$$" 2>/dev/null; then
-      rm -rf "$root/.dl.$$/.git"
-      printf 'sha: %s\nref: %s\nversion: %s\nsource: marketplace-clone\n' \
-        "$sha" "${ref:-main}" "$v" > "$root/.dl.$$/RELEASE-SOURCE" 2>/dev/null || true
-      rm -rf "$root/$v"
-      mv "$root/.dl.$$" "$root/$v" 2>/dev/null || rm -rf "$root/.dl.$$"
-    fi
-  fi
-  _stack_cache_valid "$root/$v" && printf '%s' "$root/$v"
-  return 0
-}
+# The one validity test every source route shares: a directory counts as the stack only when it
+# carries both trees, so an interrupted write is rejected rather than half-installed.
+_stack_src_valid() { [ -d "$1/stack/skills" ] && [ -d "$1/stack/agents" ]; }
 
 _cleanup_stack_src() {
   if $STACK_SRC_OWNED && [ -n "$STACK_SRC_ROOT" ]; then rm -rf "$STACK_SRC_ROOT"; fi
@@ -1513,33 +1407,15 @@ stack_src() {
     return 0
   fi
 
-  # Cached snapshot first: the probe costs one HEAD, and a hit costs no download at all.
-  local cache_root="" want="" mkt="" mkt_entry=""
-  if $STACK_CACHE_ENABLED; then
-    cache_root="$(_stack_cache_root)"
-    want="$(_stack_probe_version)"
-    if [ -n "$want" ] && _stack_cache_valid "$cache_root/$want"; then
-      STACK_SRC="$cache_root/$want"; STACK_SRC_OWNED=false
-      STACK_SHA="$(sed -n 's/^sha: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-      STACK_REF="$(sed -n 's/^ref: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-      log "source: cache $STACK_SRC @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (release $want, no download)"
-      return 0
-    fi
-    # Nothing cached, but the marketplace clone may already BE this release - copy it into the
-    # cache instead of paying the archive. Only ever on an exact version match: the probe named the
-    # newest release, so a clone carrying that version is the same revision the archive would be.
-    if [ -n "$want" ]; then
-      mkt="$(_stack_marketplace_clone "$want")"
-      if [ -n "$mkt" ]; then mkt_entry="$(_stack_marketplace_promote "$mkt" "$cache_root" "$want")"; fi
-      if [ -n "$mkt_entry" ]; then
-        STACK_SRC="$mkt_entry"; STACK_SRC_OWNED=false
-        STACK_SHA="$(sed -n 's/^sha: //p' "$mkt_entry/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-        STACK_REF="$(sed -n 's/^ref: //p' "$mkt_entry/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-        log "source: marketplace clone $mkt @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (release $want, no download)"
-        _stack_cache_prune "$cache_root" "$want"
-        return 0
-      fi
-    fi
+  # What the CLI already cached: no probe, no download, and it is the exact snapshot the enabled
+  # plugins are running from, so the seed and the plugins can never be two different releases.
+  local cached; cached="$(_stack_plugin_cache)"
+  if [ -n "$cached" ]; then
+    STACK_SRC="$cached"; STACK_SRC_OWNED=false
+    STACK_SHA="$(sed -n 's/^sha: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
+    STACK_REF="$(sed -n 's/^ref: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
+    log "source: plugin cache $STACK_SRC @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (no download)"
+    return 0
   fi
 
   # Release archive: one asset is one revision, and no git is needed to take it.
@@ -1549,19 +1425,11 @@ stack_src() {
      curl -fsSL "$url" -o "$tmp/claude-stack.tar.gz" 2>/dev/null &&
      mkdir -p "$tmp/repo" &&
      tar -xzf "$tmp/claude-stack.tar.gz" -C "$tmp/repo" 2>/dev/null &&
-     [ -d "$tmp/repo/stack/skills" ] && [ -d "$tmp/repo/stack/agents" ]; then
+     _stack_src_valid "$tmp/repo"; then
     STACK_SRC="$tmp/repo"; STACK_SRC_ROOT="$tmp"; STACK_SRC_OWNED=true
     STACK_SHA="$(sed -n 's/^sha: //p' "$tmp/repo/RELEASE-SOURCE" 2>/dev/null | head -1)"
     STACK_REF="$(sed -n 's/^ref: //p' "$tmp/repo/RELEASE-SOURCE" 2>/dev/null | head -1)"
-    # Promote and run FROM the cache entry, so this download is the last one this release needs.
-    local entry=""
-    [ -n "$cache_root" ] && entry="$(_stack_cache_promote "$tmp/repo" "$cache_root")"
-    if [ -n "$entry" ]; then
-      rm -rf "$tmp"
-      STACK_SRC="$entry"; STACK_SRC_ROOT=""; STACK_SRC_OWNED=false
-      _stack_cache_prune "$cache_root" "$(basename "$entry")"
-    fi
-    log "source: $url @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}")${entry:+ (cached for the next run)}"
+    log "source: $url @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}")"
     return 0
   fi
   rm -rf "$tmp"
@@ -1573,20 +1441,9 @@ stack_src() {
   tmp="$(mktemp -d)"
   if ! git clone --depth 1 -b main "$STACK_REPO_URL" "$tmp" >/dev/null 2>&1; then
     rm -rf "$tmp"
-    # Everything networked is gone - archive, probe and clone. The marketplace clone is the one
-    # source that needs no network at all, so take it UNVERIFIED rather than install nothing: it
-    # may be a release behind (the probe is what would have proven otherwise, and there is no
-    # probe offline), but the stamp records its exact commit, so the next online run reports the
-    # drift instead of hiding it.
-    local off; off="$(_stack_marketplace_clone "")"
-    if [ -n "$off" ]; then
-      STACK_SRC="$off"; STACK_SRC_OWNED=false; STACK_SRC_ROOT=""
-      STACK_SHA="$(git -C "$off" rev-parse HEAD 2>/dev/null || true)"
-      STACK_REF="$(git -C "$off" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-      log "source: marketplace clone $off @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (offline - release $(_stack_manifest_version "$off"), not checked against the release host)"
-      return 0
-    fi
-    note_failure "release archive and clone of $STACK_REPO_URL both failed - stack source unavailable (nothing refreshed; existing copies kept)"
+    # Nothing networked answered, and the plugin cache above was empty too - which is the only
+    # offline source now, and the one an ordinary machine has.
+    note_failure "release archive and clone of $STACK_REPO_URL both failed, and no plugin cache is present - stack source unavailable (nothing refreshed; existing copies kept)"
     return 1
   fi
   STACK_SRC="$tmp"; STACK_SRC_ROOT="$tmp"; STACK_SRC_OWNED=true
@@ -1741,6 +1598,24 @@ _dep_lock_hint() {
     _DEP_LOCK_HINT_SHOWN=true
     log "     $name is DISABLED and $1 depends on it - enable it first: claude plugin enable $dep --scope $(_plugin_field "$listing" "$name" 3)"
   done
+  return 0
+}
+
+# Put the SOURCE on disk before anything asks for it, by letting the CLI fetch it: installing the
+# core entry leaves the whole repo in the plugin cache, which is what stack_src reads. Only runs
+# when the plugin route is on, the CLI exists and no cache is there yet - so it is a no-op on every
+# run after the first, and the archive download below it stays as the fail-soft.
+_bootstrap_stack_source() {
+  # Read the normalised route flags, never the env again: one rule, one home.
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || return 0
+  command -v claude >/dev/null 2>&1 || return 0
+  [ -n "$SOURCE_DIR" ] && return 0
+  [ -z "$(_stack_plugin_cache)" ] || return 0
+  ensure_official_marketplace
+  claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
+  claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
+  log "source: fetching the core plugin so its cache can serve this run"
+  claude plugin install "claude-stack@claude-stack" --scope "$CLAUDE_SCOPE" -y >/dev/null 2>&1 || true
   return 0
 }
 
@@ -3189,9 +3064,9 @@ install_github_cli
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser
+  _bootstrap_stack_source; install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser
 else
-  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser
+  _bootstrap_stack_source; update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed

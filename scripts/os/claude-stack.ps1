@@ -1461,138 +1461,42 @@ $script:StackSrcTried = $false # memoises the OUTCOME, so a dead source costs on
 $script:StackSrcOwned = $false # true only when WE fetched it - Remove-StackSrc removes ours, never the caller's
 $script:StackSrcRoot = ''      # the temp dir an owned fetch lives in (Remove-StackSrc's removal target)
 
-# THE SOURCE CACHE - one download per RELEASE, not one per run. The twin of the sh installer's
-# cache, sharing its layout byte for byte: <config>/cache/stack-source/<repo>/<version> holds the
-# EXTRACTED snapshot, so a script install on this account reuses what a guided /claude-stack:setup
-# fetched, and the other way round. Versioned rather than time-boxed (a new release wins the moment
-# the probe names it) and never trusted without stack/skills + stack/agents (an interrupted promote
-# is re-downloaded, not installed). STACK_SOURCE_CACHE=0 restores the always-fresh temp download.
-$script:StackCacheEnabled = ($env:STACK_SOURCE_CACHE -ne '0')
+# THE SOURCE IS WHAT CLAUDE CODE ALREADY CACHED - the twin of the sh installer's resolver.
+# Every marketplace entry shares this repo's root as its `source`, so installing the core plugin
+# leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/claude-stack/<version>: stack/rules,
+# stack/CLAUDE.template.md, the two hook engines, meta/, scripts/ and RELEASE-SOURCE included. That
+# is the same snapshot this installer used to download, fetched once per release by the CLI itself,
+# so the stack keeps no second cache of its own. The archive and clone routes below remain for the
+# two paths with no plugin cache to read: the copy route (both VIA_PLUGIN switches off) and a
+# machine with no `claude` CLI.
 
-function Get-StackCacheRoot {
-  # Keyed by REPO as well as version: a fork or a test fixture must never read - or poison - the
-  # canonical snapshot.
-  $slug = ([regex]::Replace($StackRepoUrl, '[^A-Za-z0-9]', '-'))
-  if ($slug.Length -gt 80) { $slug = $slug.Substring(0, 80) }
-  return (Join-Path (Join-Path $ConfigDir 'cache/stack-source') $slug)
-}
-
-function Get-StackProbeVersion {
-  # The newest release's version, from the redirect of /releases/latest (GitHub sends
-  # /releases/tag/v<version>, and the release workflow tags v<plugin manifest version> - the same
-  # string RELEASE-SOURCE carries). HEAD only: no body, no archive. Returns '' whenever it cannot
-  # be answered - a fork without releases, a file:// source, an offline run - and the caller reads
-  # that as 'just download', so a dead probe costs correctness nothing.
-  if ($StackRepoUrl -notmatch '^https?://') { return '' }
-  try {
-    $resp = Invoke-WebRequest -Uri "$StackRepoUrl/releases/latest" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-    $final = [string]$resp.BaseResponse.RequestMessage.RequestUri
-  } catch { return '' }
-  if ($final -match '/releases/tag/v?(.+)$') { return $Matches[1] }
-  return ''
-}
-
-function Test-StackCacheEntry { param([string]$Dir)
+function Test-StackSrcDir { param([string]$Dir)
+  # The one validity test every source route shares: both trees present, so an interrupted write is
+  # rejected rather than half-installed.
   return ((Test-Path -LiteralPath (Join-Path $Dir 'stack/skills') -PathType Container) -and
           (Test-Path -LiteralPath (Join-Path $Dir 'stack/agents') -PathType Container))
 }
 
-function Remove-StaleStackCache { param([string]$Root, [string]$Keep)
-  # Keep the entry just promoted; drop ones a week old. NOT 'everything but the current': another
-  # run resolved its own entry seconds ago and reads from it for the length of its install.
-  Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue | Where-Object {
-    ($_.Name -ne $Keep -and $_.LastWriteTime -lt (Get-Date).AddDays(-7)) -or
-    ($_.Name -like '.dl.*' -and $_.LastWriteTime -lt (Get-Date).AddDays(-1))
-  } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
-}
-
-function Move-StackSrcToCache {
-  # Move a freshly extracted snapshot into the cache and return the entry, or ''. Staged inside the
-  # cache root so the rename is same-volume, and a race resolves in favour of whoever landed first:
-  # a valid entry is never replaced, only an absent or broken one.
-  param([string]$Repo, [string]$Root)
-  $file = Join-Path $Repo 'RELEASE-SOURCE'
-  if (-not (Test-Path -LiteralPath $file)) { return '' }
-  $v = ((Get-Content -LiteralPath $file | Where-Object { $_ -match '^version: ' } | Select-Object -First 1) -replace '^version: ', '').Trim()
-  if (-not $v) { return '' }
-  $entry = Join-Path $Root $v
-  if (-not (Test-StackCacheEntry -Dir $entry)) {
-    try {
-      New-Item -ItemType Directory -Path $Root -Force -ErrorAction Stop | Out-Null
-      $staging = Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-      Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-      Copy-Item -LiteralPath $Repo -Destination $staging -Recurse -Force -ErrorAction Stop
-      Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
-      Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
-    } catch { Remove-Item -LiteralPath (Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)) -Recurse -Force -ErrorAction SilentlyContinue }
+function Get-StackPluginCache {
+  # The newest valid version directory of the core plugin's cache entry, or ''. The directory names
+  # ARE the release versions the CLI writes, so they sort as versions.
+  $base = Join-Path $ConfigDir 'plugins/cache'
+  if (-not (Test-Path -LiteralPath $base -PathType Container)) { return '' }
+  $best = ''
+  $bestVer = $null
+  foreach ($mkt in (Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue)) {
+    $entry = Join-Path $mkt.FullName 'claude-stack'
+    if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
+    foreach ($dir in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
+      if (-not (Test-StackSrcDir -Dir $dir.FullName)) { continue }
+      $v = $null
+      [void][System.Version]::TryParse(($dir.Name -replace '[^0-9.].*$', ''), [ref]$v)
+      if (-not $best -or ($v -and $bestVer -and $v -gt $bestVer) -or ($v -and -not $bestVer)) {
+        $best = $dir.FullName; $bestVer = $v
+      }
+    }
   }
-  if (Test-StackCacheEntry -Dir $entry) { return $entry }
-  return ''
-}
-
-function Get-StackManifestVersion { param([string]$Dir)
-  $file = Join-Path $Dir 'setup-plugin/.claude-plugin/plugin.json'
-  if (-not (Test-Path -LiteralPath $file)) { return '' }
-  $m = [regex]::Match((Get-Content -LiteralPath $file -Raw), '"version"\s*:\s*"([^"]*)"')
-  if ($m.Success) { return $m.Groups[1].Value }
-  return ''
-}
-
-function Get-StackMarketplaceClone { param([string]$Want)
-  # Claude Code's own clone of the marketplace repo - <config>/plugins/marketplaces/<name> - is a
-  # FULL checkout of this repo, not just the plugin subdir it serves (measured: 7.1MB, with
-  # scripts/ meta/ stack/ all present), so on any machine with the plugin installed the release is
-  # usually already on disk and the archive is a second copy of what is already there.
-  # Returns the clone whose origin is OUR repo and whose plugin manifest carries $Want - the
-  # version match is what makes it safe, since the clone only moves when the user refreshes the
-  # marketplace and may otherwise sit a release behind. An empty $Want means 'any valid clone',
-  # which is the offline last resort below and nothing else.
-  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return '' }
-  $root = Join-Path $ConfigDir 'plugins/marketplaces'
-  if (-not (Test-Path -LiteralPath $root -PathType Container)) { return '' }
-  foreach ($dir in (Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue)) {
-    if (-not (Test-StackCacheEntry -Dir $dir.FullName)) { continue }
-    $origin = (& git -C $dir.FullName remote get-url origin 2>$null)
-    if (-not $origin) { continue }
-    if (($origin -replace '\.git$', '') -ne ($StackRepoUrl -replace '\.git$', '')) { continue }
-    if ($Want -and (Get-StackManifestVersion -Dir $dir.FullName) -ne $Want) { continue }
-    return $dir.FullName
-  }
-  return ''
-}
-
-function Move-StackCloneToCache { param([string]$Src, [string]$Root, [string]$Ver)
-  # Copy a matching clone into the cache under its version and synthesize the RELEASE-SOURCE the
-  # archive would have carried, so nothing downstream - the stamp, the guided walk's plugin-version
-  # check, the next run's cache hit - can tell the two routes apart. `.git` is dropped: 1.7MB of
-  # history no install reads, and a copy that kept it would out-vote RELEASE-SOURCE the next time
-  # the entry is handed to a run as -Source.
-  $sha = (& git -C $Src rev-parse HEAD 2>$null)
-  $ref = (& git -C $Src rev-parse --abbrev-ref HEAD 2>$null)
-  if (-not $sha) { return '' }
-  if (-not $ref) { $ref = 'main' }
-  $entry = Join-Path $Root $Ver
-  if (-not (Test-StackCacheEntry -Dir $entry)) {
-    $staging = Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-    try {
-      New-Item -ItemType Directory -Path $Root -Force -ErrorAction Stop | Out-Null
-      Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-      Copy-Item -LiteralPath $Src -Destination $staging -Recurse -Force -ErrorAction Stop
-      Remove-Item -LiteralPath (Join-Path $staging '.git') -Recurse -Force -ErrorAction SilentlyContinue
-      # LF + no BOM, byte-for-byte what the sh twin writes - this file goes into the SHARED cache
-      # and is parsed by both twins (`sed -n 's/^sha: //p'` on one side, `-match '^sha: '` on the
-      # other). Set-Content would give it [Environment]::NewLine (CRLF on Windows, so every value
-      # ends in a stray CR) and, on PS 5.1, -Encoding utf8 prefixes a BOM that breaks the first
-      # line's match outright.
-      [System.IO.File]::WriteAllText((Join-Path $staging 'RELEASE-SOURCE'),
-        "sha: $sha`nref: $ref`nversion: $Ver`nsource: marketplace-clone`n",
-        (New-Object System.Text.UTF8Encoding($false)))
-      Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
-      Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
-    } catch { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
-  }
-  if (Test-StackCacheEntry -Dir $entry) { return $entry }
-  return ''
+  return $best
 }
 
 function Read-ReleaseSource {
@@ -1645,41 +1549,17 @@ function Get-StackSrc {
     return $true
   }
 
-  # Cached snapshot first: the probe costs one HEAD, and a hit costs no download at all.
-  $cacheRoot = ''
-  if ($script:StackCacheEnabled) {
-    $cacheRoot = Get-StackCacheRoot
-    $want = Get-StackProbeVersion
-    if ($want) {
-      $entry = Join-Path $cacheRoot $want
-      if (Test-StackCacheEntry -Dir $entry) {
-        $script:StackSrc = $entry
-        $script:StackSrcOwned = $false
-        Read-ReleaseSource -Dir $entry
-        $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
-        $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-        Log "source: cache $entry @ $refName $shortSha (release $want, no download)"
-        return $true
-      }
-      # Nothing cached, but the marketplace clone may already BE this release - copy it into the
-      # cache instead of paying the archive. Only ever on an exact version match: the probe named
-      # the newest release, so a clone carrying that version is the same revision the archive would
-      # be.
-      $mkt = Get-StackMarketplaceClone -Want $want
-      if ($mkt) {
-        $mktEntry = Move-StackCloneToCache -Src $mkt -Root $cacheRoot -Ver $want
-        if ($mktEntry) {
-          $script:StackSrc = $mktEntry
-          $script:StackSrcOwned = $false
-          Read-ReleaseSource -Dir $mktEntry
-          $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
-          $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-          Log "source: marketplace clone $mkt @ $refName $shortSha (release $want, no download)"
-          Remove-StaleStackCache -Root $cacheRoot -Keep $want
-          return $true
-        }
-      }
-    }
+  # What the CLI already cached: no probe, no download, and it is the exact snapshot the enabled
+  # plugins are running from, so the seed and the plugins can never be two different releases.
+  $cached = Get-StackPluginCache
+  if ($cached) {
+    $script:StackSrc = $cached
+    $script:StackSrcOwned = $false
+    Read-ReleaseSource -Dir $cached
+    $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
+    $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
+    Log "source: plugin cache $cached @ $refName $shortSha (no download)"
+    return $true
   }
 
   # Release archive: one asset is one revision, and no git is needed to take it.
@@ -1691,26 +1571,14 @@ function Get-StackSrc {
     Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp 'claude-stack.zip') -UseBasicParsing -ErrorAction Stop
     Expand-Archive -LiteralPath (Join-Path $tmp 'claude-stack.zip') -DestinationPath $repo -Force
   } catch { <# fall through to the clone below #> }
-  if ((Test-Path -LiteralPath (Join-Path $repo 'stack/skills') -PathType Container) -and
-      (Test-Path -LiteralPath (Join-Path $repo 'stack/agents') -PathType Container)) {
+  if (Test-StackSrcDir -Dir $repo) {
     $script:StackSrc = $repo
     $script:StackSrcRoot = $tmp
     $script:StackSrcOwned = $true
     Read-ReleaseSource -Dir $repo
-    # Promote and run FROM the cache entry, so this download is the last one this release needs.
-    $cached = ''
-    if ($cacheRoot) { $cached = Move-StackSrcToCache -Repo $repo -Root $cacheRoot }
-    if ($cached) {
-      Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-      $script:StackSrc = $cached
-      $script:StackSrcRoot = ''
-      $script:StackSrcOwned = $false
-      Remove-StaleStackCache -Root $cacheRoot -Keep (Split-Path -Leaf $cached)
-    }
     $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
     $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-    $suffix = if ($cached) { ' (cached for the next run)' } else { '' }
-    Log "source: $url @ $refName $shortSha$suffix"
+    Log "source: $url @ $refName $shortSha"
     return $true
   }
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -1724,24 +1592,9 @@ function Get-StackSrc {
   & git clone --depth 1 -b main $StackRepoUrl $tmp *> $null
   if ($LASTEXITCODE -ne 0) {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-    # Everything networked is gone - archive, probe and clone. The marketplace clone is the one
-    # source that needs no network at all, so take it UNVERIFIED rather than install nothing: it
-    # may be a release behind (the probe is what would have proven otherwise, and there is no probe
-    # offline), but the stamp records its exact commit, so the next online run reports the drift
-    # instead of hiding it.
-    $off = Get-StackMarketplaceClone -Want ''
-    if ($off) {
-      $script:StackSrc = $off
-      $script:StackSrcRoot = ''
-      $script:StackSrcOwned = $false
-      $script:StackSha = (& git -C $off rev-parse HEAD 2>$null)
-      $script:StackRef = (& git -C $off rev-parse --abbrev-ref HEAD 2>$null)
-      $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
-      $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-      Log "source: marketplace clone $off @ $refName $shortSha (offline - release $(Get-StackManifestVersion -Dir $off), not checked against the release host)"
-      return $true
-    }
-    Add-Failure "release archive and clone of $StackRepoUrl both failed - stack source unavailable (nothing refreshed; existing copies kept)"
+    # Nothing networked answered, and the plugin cache above was empty too - which is the only
+    # offline source now, and the one an ordinary machine has.
+    Add-Failure "release archive and clone of $StackRepoUrl both failed, and no plugin cache is present - stack source unavailable (nothing refreshed; existing copies kept)"
     return $false
   }
   $script:StackSrc = $tmp
@@ -1930,6 +1783,25 @@ function Show-DepLockHint {
     $depScope = if ($listing[$name].scope) { $listing[$name].scope } else { $ClaudeScope }
     Log "     $name is DISABLED and $Plugin depends on it - enable it first: claude plugin enable $dep --scope $depScope"
   }
+}
+
+function Initialize-StackSource {
+  # Put the SOURCE on disk before anything asks for it, by letting the CLI fetch it: installing the
+  # core entry leaves the whole repo in the plugin cache, which is what Get-StackSrc reads. Only
+  # runs when the plugin route is on, the CLI exists and no cache is there yet - a no-op on every
+  # run after the first, with the archive download below it as the fail-soft.
+  # Read the normalised route flags, never the env again: one rule, one home.
+  if (-not ($HooksViaPlugin -or $SkillsViaPlugin)) { return }
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { return }
+  if ($Source) { return }
+  if (Get-StackPluginCache) { return }
+  Initialize-OfficialMarketplace
+  try { & claude plugin marketplace add $StackMarketplace 2>$null } catch {}
+  try { & claude plugin marketplace update claude-stack 2>$null } catch {}
+  $global:LASTEXITCODE = 0
+  Log 'source: fetching the core plugin so its cache can serve this run'
+  try { & claude plugin install 'claude-stack@claude-stack' --scope $ClaudeScope -y *> $null } catch {}
+  $global:LASTEXITCODE = 0
 }
 
 function Install-Plugins {
@@ -3545,8 +3417,8 @@ Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills u
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Import-MemoryNotes; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Import-MemoryNotes; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Initialize-StackSource; Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Import-MemoryNotes; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  else { Initialize-StackSource; Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Import-MemoryNotes; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
   Restore-Pins
   Write-Stamp
 }

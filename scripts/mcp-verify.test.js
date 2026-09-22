@@ -877,3 +877,38 @@ test('ps1: a one-plugin listing is read, not dropped', { skip: skipNoPwsh }, () 
     }
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
+
+// Phase 5 pins the distinction the roadmap missed: the plugin route's prune and the RETIRED lists
+// do DIFFERENT jobs, and deleting either strands files in every 0.2.x project.
+//   - a copy a plugin now CARRIES is removed by the Phase 3 prune (it would shadow the plugin's own);
+//   - a copy of something the stack no longer ships AT ALL is carried by no plugin, so only
+//     RETIRED_SKILLS / RETIRED_AGENTS reach it.
+for (const twin of ['sh', 'ps1'])
+{
+    test(`${twin}: the plugin route removes BOTH a plugin-carried copy and a retired-upstream one`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        const sb = sandbox({ sentry: STALE_SENTRY });
+        const skills = path.join(sb.repo, '.claude', 'skills');
+        const agents = path.join(sb.repo, '.claude', 'agents');
+        // what a 0.2.x install left behind: one skill a plugin now carries, one retired upstream,
+        // one retired agent, and one the user wrote themselves.
+        for (const [dir, name] of [[skills, 'markdown-style'], [skills, 'frontend'], [skills, 'my-own-skill']])
+        {
+            fs.mkdirSync(path.join(dir, name), { recursive: true });
+            fs.writeFileSync(path.join(dir, name, 'SKILL.md'), `---\nname: ${name}\ndescription: x\n---\nbody\n`);
+        }
+        fs.mkdirSync(agents, { recursive: true });
+        fs.writeFileSync(path.join(agents, 'code-analyzer.md'), '---\nname: code-analyzer\n---\nbody\n');
+        fs.writeFileSync(path.join(agents, 'my-own-agent.md'), '---\nname: my-own-agent\n---\nbody\n');
+        try
+        {
+            twin === 'sh' ? runSh(sb, 'update') : runPs(sb, 'update');
+            assert.ok(!fs.existsSync(path.join(skills, 'markdown-style')), `${twin}: the plugin-carried copy was left to shadow the plugin`);
+            assert.ok(!fs.existsSync(path.join(skills, 'frontend')), `${twin}: the retired-upstream copy was stranded - RETIRED_SKILLS is what reaches it`);
+            assert.ok(!fs.existsSync(path.join(agents, 'code-analyzer.md')), `${twin}: the retired-upstream agent was stranded`);
+            assert.ok(fs.existsSync(path.join(skills, 'my-own-skill')), `${twin}: a skill the project wrote itself was removed`);
+            assert.ok(fs.existsSync(path.join(agents, 'my-own-agent.md')), `${twin}: an agent the project wrote itself was removed`);
+        }
+        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
+    });
+}

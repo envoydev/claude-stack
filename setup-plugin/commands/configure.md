@@ -35,9 +35,9 @@ the ask, re-offer it ONCE. Measured: this command's siblings entered at 131,345 
 per message with no ask at all, and one of them authored its own prose decision that was never put
 to the user.
 
-**ONE release archive is the entire download - and the cache usually spares you even that** - the shared contract lives at
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
 `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
-it: resolve the snapshot once into `$TMP/repo` - a cached release copy when the version probe says it is current, a download when it is not (the reference owns the fallback), use every tool
+it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool
 from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
 call: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
