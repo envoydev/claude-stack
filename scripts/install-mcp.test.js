@@ -1,0 +1,271 @@
+'use strict';
+// THE MCP LAYER OF THE NODE SEED - Phase 7, T3.
+//
+// The twin sandbox tests in mcp-verify.test.js stay: the shell twins are still the DEFAULT route
+// until T5 flips it, and they ship for one release after that (R1). These pin the same behaviours
+// on the module that replaces them - including R7's four, whose intent carries over unchanged.
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const mcp = require('./install/mcp.js');
+
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-mcp-'));
+test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+
+const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over });
+const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
+const CATALOG = ['serena|-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena', 'context7|@HTTP@',
+    'memory|@HTTP@', 'playwright|-- npx -y @playwright/mcp@1.0', 'sentry|@HTTP@'];
+
+let seq = 0;
+const mcpFile = (servers) =>
+{
+    const file = path.join(TMP, `mcp-${seq++}.json`);
+    if (servers !== undefined) fs.writeFileSync(file, typeof servers === 'string' ? servers : `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`);
+    return file;
+};
+
+// --- the argv rules -------------------------------------------------------
+
+test('mcp-argv: a placeholder resolving to a path WITH A SPACE stays ONE argument', () =>
+{
+    // The word is split first and the token resolved inside it - the other order turned
+    // '/Users/Jane Doe/.memory-mcp/memory.db' into two arguments and the server never started.
+    const argv = mcp.mcpArgv('-e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -- uvx memory',
+        { MEMORY_DB_PATH: '/Users/Jane Doe/.memory-mcp/memory.db' });
+    assert.deepStrictEqual(argv, ['-e', 'MCP_MEMORY_SQLITE_PATH=/Users/Jane Doe/.memory-mcp/memory.db', '--', 'uvx', 'memory']);
+});
+
+test('mcp-argv: a bare * is passed literally, never glob-expanded', () =>
+{
+    assert.deepStrictEqual(mcp.mcpArgv('-- npx -y pkg --match *'), ['--', 'npx', '-y', 'pkg', '--match', '*']);
+});
+
+test('register-spec: a hosted server registers http with its header, and an EMPTY header registers none', () =>
+{
+    const remotes = { sentry: { url: 'https://mcp.sentry.dev/mcp/acme', header: 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}' } };
+    assert.deepStrictEqual(mcp.registerSpec({ name: 'sentry', args: '@HTTP@', scope: 'project', remotes }),
+        ['mcp', 'add', '--transport', 'http', '--scope', 'project', 'sentry',
+            'https://mcp.sentry.dev/mcp/acme', '--header', 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}']);
+    // --sentry-auth oauth: no --header at all, so the browser consent flow stays on.
+    const oauth = mcp.registerSpec({ name: 'sentry', args: '@HTTP@', scope: 'project', remotes: { sentry: { url: 'https://x/mcp/a', header: '' } } });
+    assert.ok(!oauth.includes('--header'), oauth.join(' '));
+});
+
+// --- R7: the locked three ------------------------------------------------
+
+test('R7: on the plugin route the seed registers NOTHING and retires the whole catalog', () =>
+{
+    const retired = mcp.retiredMcps({ routes: ROUTES(), catalog: CATALOG, authored: ['old-server'] });
+    for (const name of ['serena', 'context7', 'memory', 'playwright', 'sentry', 'old-server'])
+        assert.ok(retired.includes(name), `${name} was not retired: ${retired.join(',')}`);
+    // The four engine spellings an earlier release wrote are retired by name - they are not catalog rows.
+    for (const e of mcp.PW_ENGINES) assert.ok(retired.includes(`playwright-${e}`), retired.join(','));
+    assert.deepStrictEqual(mcp.bareNamedMcps({ routes: ROUTES(), mcps: CATALOG }), []);
+});
+
+test('R7: the MCP route OFF but the core still on - the locked three stay plugin-carried, the picks come back', () =>
+{
+    // The middle case, and the one the matrix caught: hooks or skills on means the core entry is
+    // enabled, and its `dependencies` already carry serena, context7 and memory.
+    const routes = ROUTES({ mcps: false });
+    const retired = mcp.retiredMcps({ routes, catalog: CATALOG, authored: [] });
+    assert.deepStrictEqual(retired.sort(), [...mcp.LOCKED].sort());
+    assert.deepStrictEqual(mcp.bareNamedMcps({ routes, mcps: CATALOG }), ['playwright', 'sentry']);
+});
+
+test('R7: on the FULL copy route the core is never enabled, so all three come back to .mcp.json', () =>
+{
+    assert.deepStrictEqual(mcp.retiredMcps({ routes: COPY, catalog: CATALOG, authored: ['old-server'] }), ['old-server']);
+    assert.deepStrictEqual(mcp.bareNamedMcps({ routes: COPY, mcps: CATALOG }),
+        ['serena', 'context7', 'memory', 'playwright', 'sentry']);
+});
+
+test('R7: a locked server carried by the core has no shape to verify', () =>
+{
+    // Writing the shape back would put the entry the prune just removed straight back in the file.
+    const routes = ROUTES({ mcps: false });
+    const expects = CATALOG
+        .map((e) => ({ name: e.split('|')[0], args: e.split('|')[1] }))
+        .filter((e) => !(mcp.isLocked(e.name) && mcp.corePluginOn(routes)))
+        .map((e) => e.name);
+    assert.deepStrictEqual(expects, ['playwright', 'sentry']);
+});
+
+// --- the project-scope verify pass ---------------------------------------
+
+test('verify-project: a stale registration the CLI silently refused to rewrite is repaired', () =>
+{
+    const file = mcpFile({ serena: { type: 'stdio', command: 'uvx', args: ['--from', 'serena@0.0.1', 'serena'], env: {} } });
+    const logs = [];
+    const out = mcp.verifyProject({
+        mcpFile: file,
+        expects: [mcp.expectShape({ name: 'serena', args: '-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena' })],
+        log: (m) => logs.push(m),
+    });
+    assert.deepStrictEqual(out.repaired, ['serena']);
+    const written = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers.serena;
+    assert.deepStrictEqual(written, { type: 'stdio', command: 'uvx', args: ['--from', 'serena@1.0', 'serena'], env: { SERENA_HOME: '.serena/home' } });
+    assert.ok(logs.some((m) => /mcp repaired: serena \(was stdio uvx --from serena@0\.0\.1/.test(m)), logs.join(' | '));
+});
+
+test('verify-project: an entry already in the manifest shape is left BYTE-IDENTICAL', () =>
+{
+    const expect = mcp.expectShape({ name: 'context7', args: '@HTTP@', remotes: { context7: { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY}' } } });
+    // Written with the PROJECT's own formatting, not ours: a no-op that rewrote the file would
+    // reformat it, and every release would land as a diff in a repo that commits this file.
+    const file = mcpFile();
+    fs.writeFileSync(file, `${JSON.stringify({ mcpServers: { context7: mcp.wantFor(expect) } }, null, 4)}\n`);
+    const before = fs.readFileSync(file);
+    const out = mcp.verifyProject({ mcpFile: file, expects: [expect] });
+    assert.deepStrictEqual(out.repaired, []);
+    assert.ok(fs.readFileSync(file).equals(before), 'a no-op verify rewrote the file - every release would look like a diff');
+});
+
+test('verify-project: a server the project added by hand is never read, compared or written', () =>
+{
+    const mine = { type: 'stdio', command: 'node', args: ['x.js'] };
+    const file = mcpFile({ 'my-own-server': mine, serena: { type: 'stdio', command: 'old' } });
+    mcp.verifyProject({ mcpFile: file, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers['my-own-server'], mine);
+});
+
+test('verify-project: malformed or unreadable input is REPORTED and changes nothing', () =>
+{
+    const bad = mcpFile('{ not json');
+    const logs = [];
+    const out = mcp.verifyProject({ mcpFile: bad, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })], log: (m) => logs.push(m) });
+    assert.strictEqual(out.read, false);
+    assert.deepStrictEqual(out.repaired, []);
+    assert.strictEqual(fs.readFileSync(bad, 'utf8'), '{ not json', 'an unparseable file was overwritten');
+    assert.ok(logs.some((m) => /not valid JSON/.test(m)), logs.join(' | '));
+});
+
+test('verify-project: an absent file is written from scratch, BOM and all handled', () =>
+{
+    const missing = path.join(TMP, 'none', 'mcp.json');
+    fs.mkdirSync(path.dirname(missing), { recursive: true });
+    const out = mcp.verifyProject({ mcpFile: missing, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] });
+    assert.deepStrictEqual(out.repaired, ['serena']);
+    const bom = mcpFile();
+    fs.writeFileSync(bom, `﻿${JSON.stringify({ mcpServers: { serena: { type: 'stdio', command: 'uvx', args: ['serena'], env: {} } } })}`);
+    assert.deepStrictEqual(mcp.verifyProject({ mcpFile: bom, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] }).repaired, []);
+});
+
+// --- the user-scope verify pass ------------------------------------------
+
+test('verify-user: a ${VAR:-default} argument printed as ${VAR} by `mcp get` is NOT drift', () =>
+{
+    // As printed, every playwright server read as drifted on every global run and failed it.
+    const expect = mcp.expectShape({ name: 'playwright', args: '-- npx -y @playwright/mcp@1.0 --browser chrome --user-data-dir ${PW_DIR:-/tmp/pw}' });
+    const out = mcp.verifyUser({
+        expects: [expect], scope: 'user',
+        getShape: () => 'Type: stdio\n  Command: npx\n  Args: -y @playwright/mcp@1.0 --browser chrome --user-data-dir ${PW_DIR}\n',
+        reregister: () => assert.fail('a normalised match was treated as drift'),
+    });
+    assert.deepStrictEqual(out.repaired, []);
+});
+
+test('verify-user: a drifted registration is re-registered through the CLI and confirmed', () =>
+{
+    const expect = mcp.expectShape({ name: 'serena', args: '-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena' });
+    let fixed = false;
+    const out = mcp.verifyUser({
+        expects: [expect], scope: 'user',
+        getShape: () => (fixed ? 'Type: stdio\n Command: uvx\n Args: --from serena@1.0 serena\n' : 'Type: stdio\n Command: uvx\n Args: --from serena@0.0.1 serena\n'),
+        reregister: () => { fixed = true; },
+    });
+    assert.deepStrictEqual(out.repaired, ['serena']);
+});
+
+test('verify-user: a registration the retry cannot fix is REPORTED, never silently accepted', () =>
+{
+    const notes = [];
+    const out = mcp.verifyUser({
+        expects: [mcp.expectShape({ name: 'serena', args: '-- uvx --from serena@1.0 serena' })], scope: 'user',
+        getShape: () => 'Type: stdio\n Command: uvx\n Args: --from serena@0.0.1 serena\n',
+        reregister: () => {}, note: (m) => notes.push(m),
+    });
+    assert.deepStrictEqual(out.repaired, []);
+    assert.ok(notes.some((m) => /could not be brought to the current shape/.test(m)), notes.join(' | '));
+});
+
+test('verify-user: a server the account config does not expose is skipped, not re-registered', () =>
+{
+    mcp.verifyUser({
+        expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })], scope: 'user',
+        getShape: () => '', reregister: () => assert.fail('an unreadable `mcp get` was treated as drift'),
+    });
+});
+
+// --- playwright and the tool-name down-convert ---------------------------
+
+test('playwright: the engines this run does not keep are dropped, and the plugin route drops none', () =>
+{
+    assert.deepStrictEqual(mcp.playwrightDrop({ routes: COPY, browsers: ['chrome'] }),
+        ['playwright', 'playwright-msedge', 'playwright-firefox', 'playwright-webkit']);
+    assert.deepStrictEqual(mcp.playwrightDrop({ routes: ROUTES(), browsers: ['chrome'] }), []);
+    assert.deepStrictEqual(mcp.playwrightDrop({ routes: COPY, browsers: [] }), []);
+});
+
+test('down-convert: only the servers this run registered BARE are re-spelled', () =>
+{
+    // The locked three ride the core plugin on a hooks-only copy route, so their tool names must
+    // keep the plugin spelling while the droppable picks are re-spelled.
+    const root = path.join(TMP, `dc-${seq++}`);
+    fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'a.md'), 'use mcp__plugin_sentry_sentry__find_issues and mcp__plugin_serena_serena__find_symbol\n');
+    fs.writeFileSync(path.join(root, 'sub', 'b.yml'), 'mcp__plugin_sentry_sentry__find_issues\n');
+    const logs = [];
+    const n = mcp.downconvertToolNames({ roots: [root], bare: ['sentry'], log: (m) => logs.push(m) });
+    assert.strictEqual(n, 1);
+    // The expected bare spelling is BUILT, never typed: lint check 54 bans the literal everywhere
+    // under scripts/, and the down-converter itself builds it the same way.
+    const bareTool = (server, tool) => `mcp__${server}__${tool}`;
+    assert.strictEqual(fs.readFileSync(path.join(root, 'a.md'), 'utf8'),
+        `use ${bareTool('sentry', 'find_issues')} and mcp__plugin_serena_serena__find_symbol\n`);
+    assert.match(fs.readFileSync(path.join(root, 'sub', 'b.yml'), 'utf8'), /mcp__plugin_sentry_sentry__/, 'a .yml is not a target extension');
+    assert.ok(logs.some((m) => /re-spelled .* in 1 file/.test(m)), logs.join(' | '));
+});
+
+test('down-convert: an empty bare list touches nothing', () =>
+{
+    const root = path.join(TMP, `dc-${seq++}`);
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'a.md'), 'mcp__plugin_sentry_sentry__x\n');
+    assert.strictEqual(mcp.downconvertToolNames({ roots: [root], bare: [] }), 0);
+    assert.match(fs.readFileSync(path.join(root, 'a.md'), 'utf8'), /mcp__plugin_sentry_sentry__x/);
+});
+
+// --- the playwright expansion --------------------------------------------
+
+test('playwright: the one manifest row becomes one entry per kept engine, each with its own profile', () =>
+{
+    const row = 'playwright|-- npx -y @playwright/mcp@0.0.80 --user-data-dir .playwright';
+    const out = mcp.expandPlaywright({ mcps: ['serena|-- uvx serena', row], browsers: ['chrome', 'firefox'] });
+    assert.deepStrictEqual(out.mcps, [
+        'serena|-- uvx serena',
+        'playwright-chrome|-- npx -y @playwright/mcp@0.0.80 --browser chrome --user-data-dir .playwright/chrome',
+        'playwright-firefox|-- npx -y @playwright/mcp@0.0.80 --browser firefox --user-data-dir .playwright/firefox',
+    ]);
+});
+
+test('playwright: with no flag the kept set is what is REGISTERED, else chrome', () =>
+{
+    assert.deepStrictEqual(mcp.playwrightKept({ registered: ['webkit', 'chrome'] }), ['chrome', 'webkit']);
+    assert.deepStrictEqual(mcp.playwrightKept({ registered: [], enabled: 'msedge' }), ['msedge']);
+    assert.deepStrictEqual(mcp.playwrightKept({}), ['chrome']);
+    // An explicit set always wins over what is on the machine.
+    assert.deepStrictEqual(mcp.playwrightKept({ browsers: ['firefox'], registered: ['chrome'] }), ['firefox']);
+});
+
+test('playwright: a selection without playwright is left exactly as it is', () =>
+{
+    const mcps = ['serena|-- uvx serena'];
+    const out = mcp.expandPlaywright({ mcps, browsers: ['chrome'] });
+    assert.deepStrictEqual(out.mcps, mcps);
+    assert.deepStrictEqual(out.browsers, []);
+});

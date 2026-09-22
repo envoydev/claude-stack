@@ -7,10 +7,12 @@
 // path is the same code path as a macOS one rather than a second implementation of it.
 //
 // UNTIL THE LAYERS LAND, THIS REFUSES TO INSTALL. T1 is the flag surface and the source snapshot;
-// the copy, settings, plugin, MCP, serena, memory and docs layers are T2 to T4. A seed that ran
-// with half its layers would write a half-installed project and report success, which is worse than
-// not running - so `install` and `update` exit non-zero and name the shell twin, and `--print-plan`
-// is the one action that works, because it only reports.
+// the copy, settings, plugin, MCP, serena, memory and docs layers are T2 to T4, each landing as a
+// tested module before any of them is WIRED HERE. The wiring is the last step of T4, so that T5
+// flips the route onto a seed that already runs end to end. A seed that ran with half its layers
+// would write a half-installed project and report success, which is worse than not running - so
+// `install` and `update` exit non-zero and name the shell twin, and `--print-plan` is the one
+// action that works, because it only reports.
 //
 // The twins stay the default route until this is complete and proven (Phase 7's R1): there is no
 // Windows machine here, and `pwsh` on macOS proves PowerShell syntax, never Windows path semantics.
@@ -32,8 +34,9 @@ Named flags (any order, each optional): ${FLAG_LIST}
 Every flag means exactly what it means on scripts/os/claude-stack.sh - this is a rewrite, not a
 redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.`;
 
-// The layers this seed still needs before it can install anything. Named, so the refusal says what
-// is missing rather than 'not implemented'.
+// The layers this entry does not yet RUN. Named, so the refusal says what is missing rather than
+// 'not implemented'. A module can exist and still be listed here: what makes a layer done is this
+// entry calling it, which is one step, taken once, at the end of T4.
 const PENDING_LAYERS = ['copy', 'settings', 'plugins', 'mcp', 'serena', 'memory', 'docs', 'stamp'];
 
 function main(argv, env, io)
@@ -78,7 +81,7 @@ function main(argv, env, io)
             return 0;
         }
 
-        err(`error: this seed is incomplete - the ${PENDING_LAYERS.join(', ')} layers are not built yet (Phase 7, T2-T4).\n`
+        err(`error: this seed is incomplete - the ${PENDING_LAYERS.join(', ')} layers are not wired in yet (Phase 7, T2-T4).\n`
             + `Use the shell installer for a real run: bash scripts/os/claude-stack.sh ${args.action} ...\n`);
         return 2;
     }
