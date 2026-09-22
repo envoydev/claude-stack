@@ -100,9 +100,14 @@ commands check prerequisites before anything runs, and `/claude-stack` alone rou
 
 ## Install - with the script
 
-The **action** (`install` | `update`) is the one required argument. Download the installer into
-the project's `.claude/` and keep it there - the copy is the per-project manifest you trim and
-re-run.
+The **action** (`install` | `update`) is the one required argument.
+
+Inside a checkout or a plugin-cache copy of this repo the installer is one `node` command on every
+OS - `node scripts/install/claude-stack.js install [flags]` - and that is what the
+`/claude-stack:*` commands run. The two scripts below are the STANDALONE route: one file to
+download, no checkout needed, and the route `CLAUDE_STACK_SEED=shell` keeps for a release. Download
+the installer into the project's `.claude/` and keep it there - the copy is the per-project manifest
+you trim and re-run.
 
 macOS / Linux (`claude-stack.sh`):
 

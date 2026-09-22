@@ -792,7 +792,7 @@ const house = {
   meta: "Convention skills, authored in this repo and published to envoydev/claude-stack. Carried by the per-stack plugins the install enables; only the extras no plugin closure reaches are copied. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
   invokeColumn: true,
   source: "https://github.com/envoydev/claude-stack",
-  install: "claude-stack.sh install --skills-only",
+  install: "node scripts/install/claude-stack.js install --skills-only",
   rows: [
     ["create-ticket","Tickets / tracker","Generate a bug, user story, epic, or technical task ticket in English from a raw description (Ukrainian or English input). Detects the type and routes to a per-type template (references/{bug,story,epic,task}.md). Tracker-agnostic Markdown (Jira, Azure DevOps, GitHub, GitLab, YouTrack); offers to file via a connected tracker MCP."],
     ["dev-log-convert","Logs / docs","Convert daily Ukrainian/English/mixed raw work logs into structured form. Trigger: literal 'dev-log'."],
