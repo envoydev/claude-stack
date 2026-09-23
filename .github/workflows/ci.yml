@@ -21,20 +21,26 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    # The suite drives the installers hundreds of times on runners that carry no uvx, csharp-ls or
+    # typescript-language-server on purpose: skip their prerequisite warnings and the Windows serena
+    # uv-cache steps (a real uv cache never exists here). Every test inherits it through process.env.
+    env:
+      CLAUDE_STACK_SKIP_PREREQS: '1'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-26, windows-2025]
     steps:
       # Full fetch + a local main ref: the installer tests exercise the fallback clone,
       # which is pinned to -b main (the release branch), against THIS checkout - so
       # refs/heads/main must exist locally even when the run is for a develop push/PR.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: git show-ref --verify --quiet refs/heads/main || git branch main origin/main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
       - run: npm install --no-audit --no-fund
       - run: npm test

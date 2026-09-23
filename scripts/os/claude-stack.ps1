@@ -296,6 +296,12 @@ function Install-GitHubCli {  # opt-in via -GitHubCli; fail-soft like everything
 
 function Test-Prerequisites {
   # Warn (not fail) on missing prerequisites, matching the script's fail-soft philosophy.
+  # CLAUDE_STACK_SKIP_PREREQS=1 (set by CI, whose runners lack these tools on purpose) skips the
+  # warnings; the claude probe still runs because later steps read ClaudeMissing.
+  if ($env:CLAUDE_STACK_SKIP_PREREQS -eq '1') {
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true }
+    return
+  }
   Log 'prerequisites check'
   $ok = $true
   # uvx: required by serena and memory MCP servers.
@@ -3488,6 +3494,7 @@ function Start-SerenaPreWarm {
   # #311 TS-LSP workaround below, whose own header says to delete the whole block once that ships
   # upstream - which would have taken this with it, silently, for a reason unrelated to #311.
   if (-not $OnWindows) { return }
+  if ($env:CLAUDE_STACK_SKIP_PREREQS -eq '1') { return }   # CI: no real uv cache to warm
   if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { return }
   $serenaOn = $false
   try { & claude mcp get serena *> $null; $serenaOn = ($LASTEXITCODE -eq 0) } catch {}
@@ -3508,6 +3515,7 @@ function Repair-SerenaTsLspWindows {
   #      fetched from the repo like the hooks. Fail-soft throughout. No-op on the .sh twin (Unix runs
   #      the shim directly via its shebang). REMOVE this whole block once #311 ships upstream.
   if (-not $OnWindows) { return }
+  if ($env:CLAUDE_STACK_SKIP_PREREQS -eq '1') { return }   # CI: no real uv cache to patch
   if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { return }
   $serenaOn = $false
   try { & claude mcp get serena *> $null; $serenaOn = ($LASTEXITCODE -eq 0) } catch {}

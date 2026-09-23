@@ -310,6 +310,9 @@ note_failure() { FAIL_COUNT=$((FAIL_COUNT + 1)); log "  !! $*"; }
 
 prerequisites_check() {
   # Warn (not fail) on missing prerequisites, matching the script's fail-soft philosophy.
+  # CLAUDE_STACK_SKIP_PREREQS=1 (set by CI, whose runners lack these tools on purpose) skips the
+  # warnings; the claude probe still runs because later steps read CLAUDE_MISSING.
+  if [ "${CLAUDE_STACK_SKIP_PREREQS:-}" = 1 ]; then command -v claude >/dev/null 2>&1 || CLAUDE_MISSING=true; return 0; fi
   log "prerequisites check"
   local ok=true
   if command -v uvx >/dev/null 2>&1; then
