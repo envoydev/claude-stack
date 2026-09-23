@@ -4,8 +4,8 @@
 // install lands what it claims, a re-run changes nothing, and a project's own MCP server, settings key
 // and hook survive the installer's merge. Each case drives the Node seed end to end inside the
 // recording sandbox the other seed tests use (seed-sandbox.js): isolated HOME and CLAUDE_CONFIG_DIR, a
-// stub `claude`, and every outward tool (npm and curl for the pin lookups, uvx, npx) answering 'no', so
-// no registry is reached and no account on the machine is read or written.
+// stub `claude`, and every outward tool (npm and curl for the pin lookups, uvx, npx) answering 'no' by
+// the sandbox's own default, so no registry is reached and no account on the machine is read or written.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -14,7 +14,6 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const ROOT = path.join(__dirname, '..');
 const SELECTION = 'skill markdown-style\nrule markdown-docs\nhook guard-secret-value\nmcp serena\nmcp context7\nmcp memory\n';
-const OFFLINE = { npm: 'exit 1', curl: 'exit 1' };
 const ROUTES = {
     plugin: {},
     copy: { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' },
@@ -44,7 +43,7 @@ function tree(repo)
 }
 const untimed = (stamp) => stamp.replace(/^installed: .*$/m, 'installed: <time>');
 const json = (repo, rel) => JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8'));
-const run = (actions, route, extra = {}) => seedRun(actions, SELECTION, { env: ROUTES[route], tools: OFFLINE, ...extra });
+const run = (actions, route, extra = {}) => seedRun(actions, SELECTION, { env: ROUTES[route], ...extra });
 
 for (const route of Object.keys(ROUTES))
 {
