@@ -638,6 +638,55 @@
         }
       ]
     },
+    "over-build-never-flag": {
+      "_note": "What the over-build review must never flag - without it a yagni finding on a validator is a plausible verifier output. Every domain verifier and the in-chat verifier carry it.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        },
+        {
+          "file": "stack/skills/project-verify-code/SKILL.md",
+          "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
+        }
+      ]
+    },
     "implementer-model-routing": {
       "_note": "The per-task implementer_model routing designers emit (haiku mechanical / sonnet floor on risk).",
       "owner": {
