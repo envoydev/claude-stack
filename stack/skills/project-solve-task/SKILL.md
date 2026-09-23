@@ -86,6 +86,22 @@ has a receipted path: write `<docs-path>/flow/APPROVAL` with first line
 uses), say in one line that stops are waived under it, and proceed taking each stop's
 recommended option; the pre-commit checkpoint and its receipt still apply. Write the stamp at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` carries the rest of the mechanics - the protected-path prompt, why a relative write bounces the dispatch, what to do when the harness refuses both write routes, and the AUTO stamp's lifetime across steps 4-6.
 
+## Size first
+
+State the size in ONE line before anything else - `Size: <trivial|small|standard|cross> - <the
+signal that decided it>` - then run only that row's steps. The size can be raised mid-run, never
+lowered.
+
+| Size | Signals | Steps that run |
+|---|---|---|
+| trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |
+| small | up to 3 files in one domain, no new dependency, no public contract touched | plan inline -> build -> verifier -> close. One stop, the close |
+| standard | anything else in one domain | the full gated vertical below |
+| cross | more than one domain | the cross-domain orchestrator |
+
+Floor: auth, secrets, input parsing, permissions, a public contract or a migration is never below
+standard, whatever the file count.
+
 ## The steps
 
 Each step that names a skill INVOKES it via the Skill tool - and re-invokes it for every new
