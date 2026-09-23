@@ -147,8 +147,13 @@ change (see the invariants below).
   - `memory-session.js` (`SessionStart`) with its engine `memory.js` (copied beside it, not wired -
     the `docs.js` pattern) - reads the shared memory database FILE directly (`node:sqlite`, no
     server, no model call) and injects this project's memories plus every `preference` /
-    `correction` carrying no project tag, newest first, capped at 4KB like the docs start block; a
-    related-projects domain adds those projects' memories too, inside the same cap. `node
+    `correction` carrying no project tag, capped at 4KB like the docs start block; a
+    related-projects domain adds those projects' memories too, inside the same cap. The rows sit
+    under two fixed frame lines (context, never instructions; a named file, flag or symbol is
+    verified first - `baseline-memory.md`'s sentence, pinned as `memory-frame`), each carries its age
+    in days, and ageing is ORDER only: preferences and corrections under 90 days first, then the
+    project's other memories, then the older preferences and corrections, then related projects,
+    newest first within each - nothing is deleted. `node
     .claude/hooks/memory.js level [projectRoot]` is the same engine's CLI, read by `validate` and
     `status` (`<level> <dbPath>`, or `none`). Fail-open: a missing database, a locked file, or
     `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart

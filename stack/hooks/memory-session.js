@@ -87,8 +87,11 @@ async function main() {
   // no header, no body - still short enough to never be worth suppressing.
   const tagLine = `This project's memory tag: project:${project}`;
   const searchLine = `Store, search or list more: ${TOOL_SEARCH_LINE}`;
+  // The frame (memory.js's own two lines) sits between the header and the rows, so every recalled row
+  // is read as context under it; an older engine copy without it prints the rows as before.
+  const frame = Array.isArray(memory.MEMORY_FRAME) ? memory.MEMORY_FRAME : [];
   const lines = text
-    ? [`Memory (memory MCP, ${level}):`, tagLine, text, '', searchLine]
+    ? [`Memory (memory MCP, ${level}):`, tagLine, ...frame, text, '', searchLine]
     : [tagLine, searchLine];
   emit('SessionStart', lines.join('\n'));
 }
