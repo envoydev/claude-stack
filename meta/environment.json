@@ -105,6 +105,19 @@
       }
     },
     {
+      "key": "CLAUDE_STACK_HISTORY",
+      "default": "1",
+      "ask": false,
+      "what": "history-session.js: at Stop, a machine-local record of the session under `<docs-path>/history/` (its commits, the files left dirty, the user's AskUserQuestion answers - credential shapes scrubbed); at SessionStart, the last three records of the same branch injected in at most 600 chars. `1` (the seed) is on; `0` is off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
       "key": "CLAUDE_STACK_FRESH_SESSION_1M",
       "default": "400000",
       "ask": true,

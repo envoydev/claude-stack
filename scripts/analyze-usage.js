@@ -110,6 +110,10 @@ function proseOf(text) {
 }
 const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
+// A correction counts as saved when a memory store follows within this many replies - the plugin
+// route's name or a registration's (history plan, Gate G2).
+const SAVE_WINDOW = 3;
+const MEMORY_STORE_RE = /^mcp__(?:plugin_memory_)?memory__memory_store$/;
 const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and still count as its check
 // Build output, package trees, caches and lockfiles - a read there is a read of nothing the session
 // wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges.
@@ -1106,6 +1110,8 @@ async function analyzeTranscript(file, window) {
       greenClaims: 0, unverifiedGreenClaims: [],
       correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
+      correctionsSaved: 0,       // of those, followed by a memory store within SAVE_WINDOW replies
+      correctionsUnsaved: [],    // timestamps of the ones that were not
       longAnswered: 0,           // 1,500+ char answers a user turn followed
       finalAnswers: 0, longAnswers: 0,
       navigation: { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 },
@@ -1167,6 +1173,7 @@ async function analyzeTranscript(file, window) {
   let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
   const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
   const turns = [];                // { role, len } - the correction-streak view, as the hook builds it
+  let pendingSaves = [];           // corrections still inside their save window: { ts, left }
   let lastAsstId = null;
   // A carried stamp ends at the next HUMAN turn that does not CONTINUE the run, not only at the
   // next Skill call: a new request is a new phase, and the carry otherwise charged that phase to
@@ -1178,6 +1185,13 @@ async function analyzeTranscript(file, window) {
     turnHadCheck = false;
     const t = String(typed || '').trim();
     if (!t || /^</.test(t)) return;
+    // A human turn closes one reply for every correction still waiting on a memory store.
+    pendingSaves = pendingSaves.filter((p) => {
+      p.left -= 1;
+      if (p.left > 0) return true;
+      s.efficiency.correctionsUnsaved.push(p.ts);
+      return false;
+    });
     if (!continuesRun(t)) {
       if (lastSkill) s.skillTimeline.push({ ts: ts || null, skill: null });
       lastSkill = null;
@@ -1187,7 +1201,13 @@ async function analyzeTranscript(file, window) {
     {
       let j = turns.length - 2, alen = 0;
       while (j >= 0 && turns[j].role === 'assistant') { alen += turns[j].len; j -= 1; }
-      if (alen >= STREAK_LONG) { s.efficiency.longAnswered += 1; if (t.length <= STREAK_SHORT) s.efficiency.correctionTurns += 1; }
+      if (alen >= STREAK_LONG) {
+        s.efficiency.longAnswered += 1;
+        if (t.length <= STREAK_SHORT) {
+          s.efficiency.correctionTurns += 1;
+          pendingSaves.push({ ts: ts || null, left: SAVE_WINDOW });
+        }
+      }
     }
     let streak = 0;
     for (let i = turns.length - 1; i >= 1; i -= 2) {
@@ -1489,6 +1509,10 @@ async function analyzeTranscript(file, window) {
         }
         const info = { name: c.name };
         toolSeq += 1;
+        if (MEMORY_STORE_RE.test(c.name)) {
+          s.efficiency.correctionsSaved += pendingSaves.length;
+          pendingSaves = [];
+        }
         {
           // What the call READS, on both routes - the scorecard's build-dir and re-read rows.
           const i = c.input || {};
@@ -1905,6 +1929,8 @@ async function analyzeTranscript(file, window) {
     }
   }
   s.companionOf = companionOf;
+  // A correction the session ended on, with no store after it, was never saved.
+  for (const p of pendingSaves) s.efficiency.correctionsUnsaved.push(p.ts);
   // Sets do not survive JSON.stringify - the --json dump is the report's own input.
   s.availableSkills = s.availableSkills ? [...s.availableSkills].sort() : null;
   s.availableAgents = s.availableAgents ? [...s.availableAgents].sort() : null;
@@ -2409,6 +2435,11 @@ function efficiencyRows(main, agg, blockLedger) {
   }
   rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
   rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
+  {
+    const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
+    const unsaved = (e.correctionsUnsaved || []).length;
+    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make is a preference or a lesson; one never stored is made again next session' });
+  }
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
   {
     const n = agg.navigation || { reads: 0, located: 0, grepLocated: 0, symbolCalls: 0 };
@@ -3127,9 +3158,11 @@ async function runAnalysis() {
     // history folder is just the depth-0 case of the same walk.
     const files = findSessionFiles(target)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)}`);
+    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)} ${rpad('corr-saved', 10)}`);
     const grand = newTally();
     let grandUsd = 0;
+    // Corrections saved to memory, over the run: the number the S2.2 threshold (25% unsaved) reads.
+    const grandCorr = { saved: 0, total: 0 };
     // Fed one session at a time and never held as a list: the corpus answer must not cost the
     // corpus. Each session's installed set is resolved from its OWN cwd (cached per cwd, so a
     // one-project folder resolves exactly once), because a corpus spans projects that installed
@@ -3151,13 +3184,18 @@ async function runAnalysis() {
       // server health check is judged on across a corpus
       const mcp = { calls: 0, errors: 0 };
       for (const x of [s, ...agents.map((a) => a.stats)]) for (const m of Object.values(x.mcp || {})) { mcp.calls += m.calls; mcp.errors += m.errors; }
-      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)}`;
-      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp });
+      const eff = s.efficiency || {};
+      const corrections = { saved: eff.correctionsSaved || 0, total: (eff.correctionsSaved || 0) + (eff.correctionsUnsaved || []).length };
+      grandCorr.saved += corrections.saved; grandCorr.total += corrections.total;
+      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)} ${rpad(corrections.total ? `${corrections.saved}/${corrections.total}` : '-', 10)}`;
+      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp, corrections });
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, inventory: invUse }, null, 2)); return; }
-    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)}`);
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse }, null, 2)); return; }
+    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)} ${rpad('', 8)} ${rpad(grandCorr.total ? `${grandCorr.saved}/${grandCorr.total}` : '-', 10)}`);
+    const unsaved = grandCorr.total - grandCorr.saved;
+    console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;

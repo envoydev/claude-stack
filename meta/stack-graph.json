@@ -1139,6 +1139,7 @@
       "guard-stop-contract",
       "guard-unapproved-dispatch",
       "guard-ungated-commit",
+      "history-session",
       "instrument-tool-usage",
       "memory-session",
       "monitor-session"

@@ -65,9 +65,10 @@ const RETIRED_DENY = [
     'Read(~/.claude/settings.json)', 'Read(~/.claude/settings.local.json)',
     'Read(~/.claude-*/settings.json)', 'Read(~/.claude-*/settings.local.json)',
 ];
-// The two hook ENGINES and the window table are copied beside the hooks rather than wired: 22
-// bodies shared with cursor-stack run `node .claude/hooks/docs.js`.
-const HOOK_ENGINES = ['docs.js', 'memory.js', 'model-windows.json'];
+// The three hook ENGINES and the window table are copied beside the hooks rather than wired: 22
+// bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
+// points at `node .claude/hooks/history.js rulings`.
+const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
 
 function main(argv, env, io)
 {
@@ -508,7 +509,7 @@ function installHooksAndRules(ctx)
     if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks, 'hook', 'now carried by a plugin');
     pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');
 
-    // Only the two ENGINES and the window table are copied; the hooks themselves ride their plugin.
+    // Only the three ENGINES and the window table are copied; the hooks themselves ride their plugin.
     const hookFiles = ctx.routes.hooks
         ? HOOK_ENGINES
         : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, 'hook-prelude.js', 'fresh-session.js');

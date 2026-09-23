@@ -917,6 +917,8 @@ HOOKS=(
   "monitor-session.js::@UserPromptSubmit::"      # a new turn: the monitor's per-turn counts reset
   "check-turn-build.js::@PostToolUse:Write|Edit|MultiEdit::"   # seeded OFF (CLAUDE_STACK_TURN_CHECK=0): records each written path for the turn's one build check
   "check-turn-build.js::@Stop::"              # the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception (this twin writes 10 - a longer check is killed, fail-open)
+  "history-session.js::@SessionStart::"          # what the last sessions on this branch did and ruled, injected at start (600 chars) - engine history.js copied beside it; CLAUDE_STACK_HISTORY=0 off
+  "history-session.js::@Stop::"                  # records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <docs-path>/history/
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
 # ONE switch for the whole route change. true (the default from 1.0.0) means the fifteen hooks
@@ -2011,7 +2013,7 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
     # what keeps that one route working on both stacks; model-windows.json rides along because the
     # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
     root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
-    _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js memory.js model-windows.json
+    _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js memory.js history.js model-windows.json
     log "  hooks: the fifteen via the claude-stack-hooks plugin; the docs and memory engines copied"
     return 0
   fi
@@ -2038,6 +2040,11 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
   # beside the hook, same split as docs.js beside docs-session.js.
   case " ${files[*]-} " in
     *" memory-session.js "*) _install_from_src stack/hooks hook "$root/.claude/hooks" noexec memory.js ;;
+  esac
+  # the history hook's engine: required by history-session.js, and run by the model as
+  # `node .claude/hooks/history.js rulings` - same split.
+  case " ${files[*]-} " in
+    *" history-session.js "*) _install_from_src stack/hooks hook "$root/.claude/hooks" noexec history.js ;;
   esac
 }
 
@@ -2720,6 +2727,10 @@ if "CLAUDE_STACK_MONITOR" not in env:
 if "CLAUDE_STACK_TURN_CHECK" not in env:
     env["CLAUDE_STACK_TURN_CHECK"] = "0"; changed = True
     print("  settings.json env: CLAUDE_STACK_TURN_CHECK seeded (0)")
+# session history: on - a machine-local record of what each session did and ruled; "0" is off.
+if "CLAUDE_STACK_HISTORY" not in env:
+    env["CLAUDE_STACK_HISTORY"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_HISTORY seeded (1)")
 # fresh-session gate - one ABSOLUTE trigger per window tier, seeded so both are visible and
 # tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
 # at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the

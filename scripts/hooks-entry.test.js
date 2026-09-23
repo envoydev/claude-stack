@@ -13,7 +13,7 @@ const block = hooksBlock(wirings);
 test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
     const files = new Set(wirings.map(w => w.file));
-    assert.strictEqual(files.size, 16, 'sixteen hooks, however many wirings they take');
+    assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 
@@ -66,7 +66,7 @@ test('every generated hook command runs a non-executable script, under a root wi
         for (const entry of [hooksPlugin(), coreEntry()])
             for (const blocks of Object.values(entry.hooks))
                 for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 17, `expected the sixteen hooks plus the layer-table guard, got ${commands.size}`);
+        assert.ok(commands.size >= 18, `expected the seventeen hooks plus the layer-table guard, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {

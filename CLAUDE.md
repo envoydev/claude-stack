@@ -38,10 +38,10 @@ change (see the invariants below).
   all three read their six lists from. `docs/claude-stack.html` is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - sixteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
+- `stack/hooks/` - seventeen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
   register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
-  two engines (`docs.js`, `memory.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
-  22 bodies shared with cursor-stack run `node .claude/hooks/docs.js`. The entry is GENERATED from the
+  three engines (`docs.js`, `memory.js`, `history.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
+  22 bodies shared with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js rulings`). The entry is GENERATED from the
   installer's own `HOOKS_CATALOG` (`build-marketplace.js --hooks-entry`, lint check 48), so one table
   owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
   600s default) - `check-turn-build.js` carries 60, the one declared exception, from the same
@@ -173,6 +173,14 @@ change (see the invariants below).
     find the server one way (`serviceEntry`): a registration, else the installed
     `memory@claude-stack` plugin's own declaration with the db path pinned - the plugin route has no
     registration, which is why the notes import found no server there until 1.1.0.
+  - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
+    wired) - a machine-local record per session under `<docs-path>/history/` (a `.gitignore` of `*` written
+    INSIDE that folder, the project's own never opened; no `watch.json`, so no docs domain): at `Stop` it
+    reads only the transcript bytes past a stored offset (8MB at most per pass) and keeps the commits since
+    the session's start sha, the files left dirty, the plan file written and the user's AskUserQuestion
+    answers (credential shapes scrubbed, 300 chars each, 60 kept); at `SessionStart` it injects the last
+    three records of the SAME branch in at most 600 chars, framed as history, never instructions, and
+    prunes past 200 records or 180 days. No model call, fail-open, `CLAUDE_STACK_HISTORY=0` off.
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; init's None emits `hook none` through `stack-select.js
   --hooks-answered`, init only, which switches every hook off).
@@ -289,7 +297,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
-| Hooks | `claude-stack-hooks@claude-stack` plugin (all sixteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
+| Hooks | `claude-stack-hooks@claude-stack` plugin (all seventeen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release, the twin - takes what the enabled entries carry as its picks); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |
@@ -384,8 +392,17 @@ mirrored there in the same sitting.
   too - and waits for that import to succeed first: a failed import leaves Claude's own memory ON
   and is reported as such, never retried into a false success, and the old `MEMORY.md` /
   `memory/*.md` files are never deleted either way. A note a PRE-fix registration imported was
-  hash-embedded rather than given a real 384-dim embedding, has no re-embed path in the service, and
-  so still loads by project tag but may miss a `memory_search` by meaning.
+  hash-embedded rather than given a real 384-dim embedding, so it loads by project tag but misses a
+  `memory_search` by meaning; the service has no re-embed tool, so `memory.js reembed` does it - the
+  marker is the stored vector's norm (about 11 for a hash embedding, 1 for the sentence model, read
+  from the vec0 shadow tables), and each row is deleted, stored and given back its dates through the
+  service (`memory_update` with `preserve_timestamps: false`), after an owner-only backup of the whole
+  rows under `~/.memory-mcp/backups/` (never beside a project db, inside a repo), which `reembed
+  --restore <backup>` replays. A row tied to another memory (superseded, a child, a `memory_graph`
+  edge) is left alone, since a delete drops its edges; the first row goes alone and stops the run when
+  its new vector is still not unit length; the `conflict:unresolved` tag the service adds on a store is
+  reported, never counted as a changed field. `memory.js duplicates` reports same-content pairs and
+  deletes nothing.
 - **serena self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
   enabled), so the installers SEED `.serena/project.yml` on install and update: project name, the
@@ -418,7 +435,7 @@ mirrored there in the same sitting.
   ('.serena' is not recognized as a command) - and an absolute path at the first space in the
   project's own path. Both launchers pass a stop signal on to uvx (`runUvx`), or the server outlives
   them.
-- **Three memory stores, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
+- **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
   level (global/scoped/project) read by every Claude account and Cursor at that level; serena's
   per-project memory (`.serena/memories/`) is the EPHEMERAL handoff bus between agents within one
@@ -427,7 +444,9 @@ mirrored there in the same sitting.
   one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in the generated `.claude/rules/baseline-project-related-context.md` (the
-  `/project-related-context` skill), not memory.
+  `/project-related-context` skill), not memory. The session HISTORY (`<docs-path>/history/`,
+  `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
+  the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `project-architecture-analyzer`) are the DURABLE truth every seat reads to orient, refreshed

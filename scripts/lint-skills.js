@@ -2806,7 +2806,7 @@ function lintHooksEntry()
         out.push(`the \`${wanted.name}\` entry is STALE against the installer's HOOKS table - run \`node scripts/build-marketplace.js --hooks-entry\`.`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'memory.js', 'hook-prelude.js', 'fresh-session.js']);
+    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js']);
     const wired = new Set();
     for (const blocks of Object.values(wanted.hooks))
         for (const block of blocks)

@@ -812,6 +812,55 @@ test('scorecard: a green claim with no check in its turn is listed, a checked or
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('scorecard: a correction is saved when a memory store follows within three replies, and unsaved otherwise', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const store = (id, ts, name = 'mcp__plugin_memory_memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const long = 'prose '.repeat(280);
+  // Transcript A, hand-counted: correction 1 saved in the first reply; correction 2 saved in the
+  // THIRD reply (still inside the window); correction 3 never saved over three replies.
+  let a = scHuman(scT(0), 'write it') + endTurn('a1', scT(1), long) + scHuman(scT(2), 'no, shorter');
+  a += store('a2', scT(3)) + endTurn('a3', scT(4), 'Saved, shorter now.');
+  a += scHuman(scT(5), 'next') + endTurn('a4', scT(6), long) + scHuman(scT(7), 'wrong again');
+  a += endTurn('a5', scT(8), 'Fixed.') + scHuman(scT(9), 'hm') + endTurn('a6', scT(10), 'Yes.') + scHuman(scT(11), 'ok');
+  a += store('a7', scT(12)) + endTurn('a8', scT(13), 'Noted.');
+  a += scHuman(scT(14), 'more') + endTurn('a9', scT(15), long) + scHuman(scT(16), 'no');
+  a += endTurn('a10', scT(17), 'Right.') + scHuman(scT(18), 'x') + endTurn('a11', scT(19), 'Sure.') + scHuman(scT(20), 'y') + endTurn('a12', scT(21), 'Fine.');
+  a += scHuman(scT(22), 'z') + store('a13', scT(23)) + endTurn('a14', scT(24), 'Late save.');
+  // Transcript B: a save through the registration route's bare name counts (joined here, so the
+  // shipped-name sweep of lint check 54 never reads it as a tool this repo ships); a correction the
+  // session ended on, with no reply saving it, is unsaved.
+  const bareStore = ['mcp', 'memory', 'memory_store'].join('__');
+  let b = scHuman(scT(30), 'go') + endTurn('b1', scT(31), long) + scHuman(scT(32), 'not that');
+  b += store('b2', scT(33), bareStore) + endTurn('b3', scT(34), 'Stored.');
+  b += scHuman(scT(35), 'again') + endTurn('b4', scT(36), long) + scHuman(scT(37), 'still wrong');
+  const fa = path.join(dir, 'a.jsonl');
+  const fb = path.join(dir, 'b.jsonl');
+  fs.writeFileSync(fa, a);
+  fs.writeFileSync(fb, b);
+  const ea = run([fa]).main.efficiency;
+  assert.strictEqual(ea.correctionTurns, 3);
+  assert.strictEqual(ea.correctionsSaved, 2);
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(16)]);
+  const eb = run([fb]).main.efficiency;
+  assert.strictEqual(eb.correctionTurns, 2);
+  assert.strictEqual(eb.correctionsSaved, 1);
+  assert.deepStrictEqual(eb.correctionsUnsaved, [scT(37)]);
+  const md = execFileSync('node', [SCRIPT, fa, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /corrections saved to memory.*2 of 3 correction\(s\) saved within 3 replies; 1 unsaved \(33%\)/);
+  // Over the run: the rollup carries each session's pair and the total the S2.2 threshold reads.
+  const roll = run([dir]);
+  const bySession = Object.fromEntries(roll.sessions.map((x) => [x.session, x.corrections]));
+  assert.deepStrictEqual(bySession, { a: { saved: 2, total: 3 }, b: { saved: 1, total: 2 } });
+  assert.deepStrictEqual(roll.corrections, { saved: 3, total: 5 });
+  const rtxt = execFileSync('node', [SCRIPT, dir], { encoding: 'utf8' });
+  assert.match(rtxt, /corr-saved/);
+  assert.match(rtxt, /^\s+a\s.*\s2\/3\s*$/m);
+  assert.match(rtxt, /^\s+TOTAL\s.*\s3\/5\s*$/m);
+  assert.match(rtxt, /^corrections saved to memory over 2 sessions: 3 of 5; 2 unsaved \(40%\)$/m);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('scorecard: dispatch overhead flags a seat whose input was mostly its own first-message context', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const file = path.join(dir, 'session.jsonl');

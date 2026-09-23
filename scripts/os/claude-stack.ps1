@@ -1013,6 +1013,8 @@ $Hooks = @(
   'monitor-session.js::@UserPromptSubmit::'      # a new turn: the monitor's per-turn counts reset
   'check-turn-build.js::@PostToolUse:Write|Edit|MultiEdit::'   # seeded OFF (CLAUDE_STACK_TURN_CHECK=0): records each written path for the turn's one build check
   'check-turn-build.js::@Stop::'              # the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception (this twin writes 10 - a longer check is killed, fail-open)
+  'history-session.js::@SessionStart::'          # what the last sessions on this branch did and ruled, injected at start (600 chars) - engine history.js copied beside it; CLAUDE_STACK_HISTORY=0 off
+  'history-session.js::@Stop::'                  # records this session: commits, files left dirty, the user's AskUserQuestion answers - machine-local, <docs-path>/history/
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -2166,7 +2168,7 @@ function Get-Hooks {
     # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
     $root = Get-RepoRoot
     if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
-    Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'model-windows.json')
+    Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'history.js', 'model-windows.json')
     Log '  hooks: the fifteen via the claude-stack-hooks plugin; the docs and memory engines copied'
     return
   }
@@ -2181,6 +2183,9 @@ function Get-Hooks {
   if ($files -contains 'docs-session.js') { $files += 'docs.js' }
   # the memory hook's engine: required by memory-session.js from its own directory - same split.
   if ($files -contains 'memory-session.js') { $files += 'memory.js' }
+  # the history hook's engine: required by history-session.js, and run by the model as
+  # `node .claude/hooks/history.js rulings` - same split.
+  if ($files -contains 'history-session.js') { $files += 'history.js' }
   # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
   # this route too - without it every hook takes the fail-open catch on every single invocation.
   if ($files.Count -gt 0) { $files += 'hook-prelude.js' }
@@ -2998,6 +3003,12 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_TURN_CHECK -NotePropertyValue '0'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_TURN_CHECK seeded (0)'
+  }
+  # session history: on - a machine-local record of what each session did and ruled; '0' is off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_HISTORY']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_HISTORY -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_HISTORY seeded (1)'
   }
   # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both
