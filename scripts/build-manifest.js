@@ -137,6 +137,22 @@ function rowToObject(row, block, src)
     return out;
 }
 
+// One RETIRED_* array in either twin: a one-line list, or a block with a comment per row.
+function retiredList(file, opener, quote)
+{
+    const line = fs.readFileSync(file, 'utf8').split('\n').find((l) => l.startsWith(opener));
+    if (!line) throw new Error(`retired: '${opener}' not found in ${path.basename(file)}`);
+    const rest = line.slice(opener.length);
+    if (!rest.includes(')')) return readBlock(file, opener, quote).filter((r) => r.active).map((r) => r.value);
+    const body = rest.slice(0, rest.indexOf(')'));
+    return quote === "'"
+        ? [...body.matchAll(/'([^']+)'/g)].map((m) => m[1])
+        : body.split(/\s+/).filter(Boolean).map((v) => v.replace(/^"|"$/g, ''));
+}
+
+const RETIRED = [['skills', 'SKILLS', 'Skills'], ['agents', 'AGENTS', 'Agents'], ['rules', 'RULES', 'Rules'],
+    ['hooks', 'HOOKS', 'Hooks'], ['mcps', 'MCPS', 'Mcps'], ['plugins', 'PLUGINS', 'Plugins']];
+
 function build()
 {
     const SH_SRC = fs.readFileSync(SH, 'utf8');
@@ -171,6 +187,31 @@ function build()
         }
         if (!sh.length) problems.push(`${block.key}: the sh block '${block.sh}' read zero rows`);
         manifest[block.key] = sh.map((r) => rowToObject(r, block, SH_SRC));
+    }
+    // A plugin from a marketplace that is neither the official one nor this repo installs only once
+    // that marketplace is registered. The twins keep the sources in a block of their own; the manifest
+    // carries each on the plugin rows it serves, which is what the seed reads. A marketplace is named
+    // in its own marketplace.json - claude-hud's matches its repo name - so a source serving no row
+    // is reported rather than silently dropped.
+    const shSources = readBlock(SH, 'EXTRA_MARKETPLACES=(', '"').filter((r) => r.active).map((r) => r.value);
+    const ps1Sources = readBlock(PS1, '$ExtraMarketplaces = @(', "'").filter((r) => r.active).map((r) => r.value);
+    if (JSON.stringify([...shSources].sort()) !== JSON.stringify([...ps1Sources].sort()))
+        problems.push(`marketplaces: the twins disagree - sh: ${shSources.join(', ') || 'none'}; ps1: ${ps1Sources.join(', ') || 'none'}`);
+    for (const source of shSources)
+    {
+        const served = manifest.plugins.filter((r) => r.id.endsWith(`@${source.split('/').pop()}`));
+        if (!served.length) problems.push(`marketplaces: ${source} serves no plugin row`);
+        for (const row of served) row.marketplace = source;
+    }
+    // The names a release RETIRED, which a run prunes from a project that still carries them.
+    manifest.retired = {};
+    for (const [key, sh, ps1] of RETIRED)
+    {
+        const fromSh = retiredList(SH, `RETIRED_${sh}=(`, '"');
+        const fromPs1 = retiredList(PS1, `$Retired${ps1} = @(`, "'");
+        if (JSON.stringify([...fromSh].sort()) !== JSON.stringify([...fromPs1].sort()))
+            problems.push(`retired ${key}: the twins disagree - sh: ${fromSh.join(', ') || 'none'}; ps1: ${fromPs1.join(', ') || 'none'}`);
+        manifest.retired[key] = fromSh;
     }
     return { manifest, problems };
 }

@@ -81,3 +81,22 @@ test('manifest: every MCP entry keeps its install-time placeholders intact', () 
     const memory = m.mcps.find((e) => e.startsWith('memory|'));
     assert.match(memory, /@MEMORY_DB_PATH@/);
 });
+
+test('manifest: a manifest with no retired block, or a partial one, prunes nothing it does not name', () =>
+{
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'manifest-retired-'));
+    try
+    {
+        fs.mkdirSync(path.join(dir, 'meta'));
+        const file = path.join(dir, 'meta', 'stack-manifest.json');
+        fs.writeFileSync(file, JSON.stringify({ skills: [], agents: [], rules: [], hooks: [], plugins: [], mcps: [] }));
+        assert.deepStrictEqual(loadManifest(dir).retired, { skills: [], agents: [], rules: [], hooks: [], mcps: [], plugins: [] });
+        fs.writeFileSync(file, JSON.stringify({ skills: [], agents: [], rules: [], hooks: [], plugins: [], mcps: [], retired: { plugins: ['ponytail'] } }));
+        const r = loadManifest(dir).retired;
+        assert.deepStrictEqual(r.plugins, ['ponytail']);
+        assert.deepStrictEqual(r.agents, []);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

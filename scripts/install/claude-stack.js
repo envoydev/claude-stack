@@ -335,6 +335,19 @@ function bootstrapSource(ctx)
     ctx.cli(['plugin', 'marketplace', 'update', 'claude-stack'], { quiet: true });
 }
 
+// Remove each named copy the stack itself shipped. A file no list names is the project's own and is
+// never touched.
+function pruneCopies(ctx, dir, names, label, why)
+{
+    for (const name of names)
+    {
+        const target = path.join(dir, name);
+        if (!fs.existsSync(target)) continue;
+        fs.rmSync(target, { recursive: true, force: true });
+        ctx.log(`  ${label} pruned (${why}): ${name}`);
+    }
+}
+
 function installSkillsAndAgents(ctx)
 {
     const closure = plugins.resolveStackPlugins({
@@ -349,10 +362,16 @@ function installSkillsAndAgents(ctx)
     // own with no error and no sign in the transcript - so the prune runs BEFORE the enable.
     const skillNames = ctx.lists.skills.map((e) => e.split('|').pop());
     const keepSkills = ctx.routes.skills ? closure.extraSkills : skillNames;
+    // The same holds for a seat: a project agent outranks the plugin's own, so a leftover copy keeps
+    // the old seat running. What a release retired goes on either route.
+    const agentsDir = path.join(ctx.claudeDir, 'agents');
+    pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream');
+    pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream');
     if (ctx.routes.skills)
-        for (const name of ctx.manifest.skills.map((e) => e.split('|').pop()))
-            if (!closure.extraSkills.includes(name) && fs.existsSync(path.join(ctx.skillsDir, name)))
-            { fs.rmSync(path.join(ctx.skillsDir, name), { recursive: true, force: true }); ctx.log(`  skill pruned (now carried by a plugin): ${name}`); }
+    {
+        pruneCopies(ctx, ctx.skillsDir, ctx.manifest.skills.map((e) => e.split('|').pop()).filter((n) => !closure.extraSkills.includes(n)), 'skill', 'now carried by a plugin');
+        pruneCopies(ctx, agentsDir, ctx.manifest.agents.filter((f) => !closure.extraAgents.includes(f.replace(/\.md$/, ''))), 'agent', 'now carried by a plugin');
+    }
 
     fs.mkdirSync(ctx.skillsDir, { recursive: true });
     for (const name of keepSkills)
@@ -367,7 +386,7 @@ function installSkillsAndAgents(ctx)
     const agents = ctx.routes.skills ? closure.extraAgents.map((n) => `${n}.md`) : ctx.lists.agents;
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
-        destDir: path.join(ctx.claudeDir, 'agents'), files: agents, log: ctx.log, note: ctx.note,
+        destDir: agentsDir, files: agents, log: ctx.log, note: ctx.note,
     });
 }
 
@@ -379,11 +398,12 @@ function installPlugins(ctx)
         routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: HOOKS_PLUGIN,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS,
     });
+    const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
     if (ctx.args.action === 'update')
     {
-        plugins.prunedRetired({ listing, retired: [], scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
+        plugins.prunedRetired({ listing, retired: ctx.manifest.retired.plugins, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, before: listing, cli: ctx.cli, log: ctx.log,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, cli: ctx.cli, log: ctx.log,
             after: () => plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot),
         });
         for (const row of ctx.dropEntries || [])
@@ -398,7 +418,7 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, listing, coreDeps: CORE_DEP_PLUGINS,
+        plugins: set, scope: ctx.cliScope, marketplaces, listing, coreDeps: CORE_DEP_PLUGINS,
         cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
@@ -406,7 +426,7 @@ function installPlugins(ctx)
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
-    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: [] });
+    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.manifest.retired.mcps });
     for (const name of retired)
         if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true })) ctx.log(`  mcp pruned: ${name}`);
 
@@ -450,6 +470,13 @@ function installMcps(ctx)
 
 function installHooksAndRules(ctx)
 {
+    // On the plugin route a copied hook is dead weight once unwired, so its file goes too; what a
+    // release retired goes on either route, file and wiring together.
+    const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
+    pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), ctx.manifest.retired.hooks, 'hook', 'retired upstream');
+    if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks, 'hook', 'now carried by a plugin');
+    pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');
+
     // Only the two ENGINES and the window table are copied; the hooks themselves ride their plugin.
     const hookFiles = ctx.routes.hooks
         ? HOOK_ENGINES
@@ -480,9 +507,9 @@ function installHooksAndRules(ctx)
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
-        retiredHooks: ctx.routes.hooks
-            ? [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))]
-            : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`),
+        retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
+            ? catalogHooks
+            : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`)),
         docsVersioning: {
             value: ctx.args.docsVersioning,
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot) }),

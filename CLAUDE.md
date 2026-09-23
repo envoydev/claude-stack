@@ -186,8 +186,10 @@ change (see the invariants below).
     route - never the core, the hooks entry or the three locked servers.
   - The script route prunes only names in the installers' RETIRED_SKILLS / RETIRED_AGENTS /
     RETIRED_RULES / RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend BOTH twins' lists when
-    any of the six is renamed or removed (a stamp compare only names what left after the stamped commit).
-    A retired pathless rule, hook wiring, MCP registration or plugin keeps costing every session until
+    any of the six is renamed or removed (a stamp compare only names what left after the stamped commit),
+    then `node scripts/build-manifest.js --write`: the seed reads them from `meta/stack-manifest.json`
+    `retired`. On the plugin routes the seed also prunes every shipped skill, agent and hook COPY a
+    plugin now carries (a project agent outranks the plugin's own). A retired pathless rule, hook wiring, MCP registration or plugin keeps costing every session until
     pruned. A shipped-but-unneeded server or plugin is validate's whole-stack-absent pass, not a retirement.
   - The `/claude-stack` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.

@@ -829,7 +829,8 @@
     },
     {
       "id": "claude-hud@claude-hud",
-      "note": "statusline HUD (global/user scope)"
+      "note": "statusline HUD (global/user scope)",
+      "marketplace": "jarrodwatts/claude-hud"
     }
   ],
   "mcps": [
@@ -877,5 +878,53 @@
       },
       "note": "up-to-date library/framework/SDK docs (beats recalled API knowledge)"
     }
-  ]
+  ],
+  "retired": {
+    "skills": [
+      "frontend",
+      "mobile",
+      "project-task-flow",
+      "project-task-cycle",
+      "project-capabilities",
+      "project-failure-signatures",
+      "typescript-testing",
+      "data-security",
+      "dotnet-error-handling",
+      "mobile-security"
+    ],
+    "agents": [
+      "angular-solution-designer.md",
+      "angular-implementer.md",
+      "angular-verifier.md",
+      "mobile-solution-designer.md",
+      "mobile-implementer.md",
+      "mobile-verifier.md",
+      "dotnet-windows-service-solution-designer.md",
+      "dotnet-windows-service-implementer.md",
+      "dotnet-windows-service-verifier.md",
+      "code-analyzer.md",
+      "issue-diagnoser.md"
+    ],
+    "rules": [
+      "baseline-agents-skills.md",
+      "baseline-code-quality.md",
+      "baseline-communication.md",
+      "baseline-definition-of-done.md",
+      "baseline-evaluating-proposals.md",
+      "baseline-mcp-tools.md",
+      "baseline-planning.md",
+      "baseline-related-projects.md",
+      "house-baseline.md",
+      "web-conventions.md",
+      "aspnet-conventions.md"
+    ],
+    "hooks": [
+      "require-convention-skill.js",
+      "inject-code-style.js"
+    ],
+    "mcps": [],
+    "plugins": [
+      "ponytail"
+    ]
+  }
 }

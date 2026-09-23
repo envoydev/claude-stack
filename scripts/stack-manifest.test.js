@@ -140,3 +140,34 @@ test('stack-manifest: the JSON, the sh twin and the ps1 twin all still say the s
     assert.deepStrictEqual(manifest, onDisk,
         'meta/stack-manifest.json is STALE - regenerate it with `node scripts/build-manifest.js --write`');
 });
+
+// A plugin whose marketplace is neither the official one nor this repo is not installable until that
+// marketplace is registered. The twins register every source in EXTRA_MARKETPLACES; the seed reads
+// the manifest, so the source rides on the plugin row it serves - measured on the 1.0.0 release
+// check, where a fresh account failed claude-hud with 'not found in marketplace'.
+test('stack-manifest: a plugin from a third-party marketplace names the source it is registered from', () =>
+{
+    const { readBlock } = require('./build-manifest.js');
+    const m = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+    assert.strictEqual(m.plugins.find((r) => r.id === 'claude-hud@claude-hud').marketplace, 'jarrodwatts/claude-hud');
+    const sources = readBlock(SH, 'EXTRA_MARKETPLACES=(', '"').filter((r) => r.active).map((r) => r.value);
+    assert.ok(sources.length > 0, 'the sh twin lists no extra marketplace - the block moved');
+    for (const s of sources)
+        assert.ok(m.plugins.some((r) => r.marketplace === s), `${s} is attached to the plugin row it serves`);
+});
+
+// The names a release RETIRED ride the manifest too, so the seed prunes what the twins prune - an
+// update from any 0.2.x install otherwise keeps a retired always-on rule costing every session, or a
+// retired hook still wired.
+test('stack-manifest: the retired lists are the sh twin\'s own, and the ps1 twin agrees', () =>
+{
+    const m = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+    const sh = fs.readFileSync(SH, 'utf8');
+    const inline = (name) => sh.match(new RegExp(`^${name}=\\(([^)]*)\\)`, 'm'))[1].split(/\s+/).filter(Boolean);
+    assert.deepStrictEqual(m.retired.skills, inline('RETIRED_SKILLS'));
+    assert.deepStrictEqual(m.retired.agents, inline('RETIRED_AGENTS'));
+    assert.deepStrictEqual(m.retired.rules, inline('RETIRED_RULES'));
+    assert.deepStrictEqual(m.retired.hooks, inline('RETIRED_HOOKS'));
+    assert.deepStrictEqual(m.retired.mcps, []);
+    assert.deepStrictEqual(m.retired.plugins, ['ponytail']);
+});

@@ -213,9 +213,18 @@ function prunedRetired({ listing, retired = [], scope, cli, log = () => {} })
     return gone;
 }
 
-// UPDATE: adopt, enable, update, then READ THE VERSIONS BACK.
-function updatePlugins({ plugins, scope, before = [], after, cli, log = () => {} })
+// The third-party marketplaces THIS run needs registered: the source each installed plugin's
+// manifest row names. A source for a plugin the run does not install is never added to the account.
+function extraMarketplaces(rows, set)
 {
+    return [...new Set((rows || []).filter((r) => r.marketplace && set.includes(r.id)).map((r) => r.marketplace))];
+}
+
+// UPDATE: adopt, enable, update, then READ THE VERSIONS BACK. An absent plugin is INSTALLED here, so
+// its marketplace is registered first, exactly as the install pass does.
+function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, cli, log = () => {} })
+{
+    for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     for (const spec of plugins)
     {
         const name = bareName(spec);
@@ -256,5 +265,5 @@ module.exports = {
     OFFICIAL_MARKETPLACE, USER_SCOPE_PLUGINS,
     pluginRoutes, corePluginOn, parsePluginList, fieldOf, scopeFor,
     resolveStackPlugins, selectionLines, coreDepsNeeded, pluginSet, depLockHint,
-    installPlugins, prunedRetired, updatePlugins,
+    installPlugins, prunedRetired, updatePlugins, extraMarketplaces,
 };

@@ -151,6 +151,14 @@ test('scope: claude-hud is user scope whatever the run says, and the LISTING win
     assert.strictEqual(P.scopeFor('claude-stack@claude-stack', 'project', [{ name: 'claude-stack', version: '1', scope: 'user', enabled: true }]), 'user');
 });
 
+test('marketplaces: a third-party source is registered only for a plugin this run installs', () =>
+{
+    const rows = [{ id: 'claude-hud@claude-hud', marketplace: 'jarrodwatts/claude-hud' }, { id: 'csharp-lsp@claude-plugins-official' }];
+    assert.deepStrictEqual(P.extraMarketplaces(rows, ['claude-hud@claude-hud', 'csharp-lsp@claude-plugins-official']), ['jarrodwatts/claude-hud']);
+    assert.deepStrictEqual(P.extraMarketplaces(rows, ['csharp-lsp@claude-plugins-official']), []);
+    assert.deepStrictEqual(P.extraMarketplaces(undefined, ['claude-hud@claude-hud']), []);
+});
+
 // --- install --------------------------------------------------------------
 
 test('install: the official marketplace is registered and refreshed BEFORE the first plugin install', () =>
@@ -263,4 +271,45 @@ test('update: the listing is read AFTER the loop, never before it', () =>
     });
     assert.strictEqual(asked, 1);
     assert.match(report[0], /plugin absent: 1\.0\.0 \(already newest\)/);
+});
+
+test('update: a third-party marketplace is registered before an absent plugin from it is installed', () =>
+{
+    const run = cli();
+    P.updatePlugins({ plugins: ['claude-hud@claude-hud'], marketplaces: ['jarrodwatts/claude-hud'], scope: 'project', before: [], after: [], cli: run });
+    const add = run.calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
+    const inst = run.calls.findIndex((c) => /^plugin install claude-hud@claude-hud /.test(c));
+    assert.ok(add >= 0 && inst > add, run.calls.join(' | '));
+});
+
+// --- the seed, end to end, against a recording CLI --------------------------------------------------
+// The cases above prove what each function does with what it is HANDED; these prove the seed hands
+// it. Measured on the 1.0.0 release check: the seed called installPlugins with no marketplaces, so a
+// fresh account failed claude-hud with 'not found in marketplace' while every unit case stayed green.
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+
+const HUD_SELECTION = 'skill markdown-style\nrule markdown-docs\nplugin claude-hud\n';
+
+test('seed install: claude-hud\'s marketplace is registered before claude-hud is installed', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('install', HUD_SELECTION);
+    const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
+    const inst = calls.findIndex((c) => /^plugin install claude-hud@claude-hud /.test(c));
+    assert.ok(inst >= 0, `claude-hud was never installed:\n${calls.join('\n')}`);
+    assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
+});
+
+test('seed install: a run that installs no claude-hud registers no marketplace for it', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n');
+    assert.ok(!calls.some((c) => /marketplace add jarrodwatts\/claude-hud/.test(c)), calls.join('\n'));
+});
+
+test('seed update: an absent claude-hud gets its marketplace before the install', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('update', HUD_SELECTION);
+    const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
+    const inst = calls.findIndex((c) => /^plugin install claude-hud@claude-hud /.test(c));
+    assert.ok(inst >= 0, `claude-hud was never installed:\n${calls.join('\n')}`);
+    assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
 });

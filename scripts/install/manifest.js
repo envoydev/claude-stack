@@ -44,6 +44,8 @@ function loadManifest(sourceDir)
             plugins: (raw.plugins || []).map((r) => r.id),
             skills: (raw.skills || []).map(renderSkill),
         },
+        // What a release retired - pruned from a project that still carries it.
+        retired: { skills: [], agents: [], rules: [], hooks: [], mcps: [], plugins: [], ...(raw.retired || {}) },
         rows: raw,
     };
 }
