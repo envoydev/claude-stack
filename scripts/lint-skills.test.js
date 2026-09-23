@@ -723,3 +723,19 @@ test('hiddenChars flags zero-width, bidi, mid-file BOM and tag characters with t
     assert.deepStrictEqual(at('\uFEFFfirst line\n', 'script.js'), ['1:FEFF'], 'a BOM at byte 0 anywhere else is flagged');
     assert.deepStrictEqual(at('plain text with an escape \\u200B written out\n'), [], 'an escape spelled out is not the character');
 });
+
+test('lintWorkflows flags script injection, floating third-party actions and a pull_request_target head checkout', () => {
+    const { lintWorkflows } = require('./lint-skills.js');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const dir = path.join(__dirname, 'fixtures', 'workflows');
+    const of = (f) => lintWorkflows([{ file: f, text: fs.readFileSync(path.join(dir, f), 'utf8') }]);
+    const a = of('a-run-injection.yml');
+    assert.strictEqual(a.length, 1, 'an event field spliced into run'); assert.match(a[0], /a-run-injection\.yml.*github\.event\.pull_request\.title/);
+    assert.deepStrictEqual(of('b-env-passthrough.yml'), [], 'the value through env: is clean');
+    const c = of('c-uses.yml');
+    assert.strictEqual(c.length, 1, 'only the third-party tag floats'); assert.match(c[0], /some\/action@v3/);
+    const d = of('d-pr-target.yml');
+    assert.strictEqual(d.length, 1, 'pull_request_target checking out the PR head'); assert.match(d[0], /pull_request_target/);
+    assert.deepStrictEqual(lintWorkflows([{ file: 'bad.yml', text: 'jobs: [unclosed' }]).length, 1, 'unparseable YAML is one finding, not a crash');
+});

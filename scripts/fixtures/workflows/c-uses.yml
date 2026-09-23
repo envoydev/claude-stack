@@ -1,0 +1,10 @@
+name: c
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: some/action@v3
+      - uses: actions/checkout@v4
+      - uses: some/action@0123456789abcdef0123456789abcdef01234567
+      - uses: ./local-action

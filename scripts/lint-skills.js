@@ -658,6 +658,59 @@ function hiddenChars(text, file)
     return out;
 }
 
+// 55. Our own workflows are checked the way a PR reviewer would not bother to: an event field
+// spliced into a `run` script is shell the PR author writes (a title of `"; curl ... | sh #` runs);
+// a third-party action on a tag runs whatever that tag points at tomorrow; `pull_request_target`
+// checking out the PR head hands a fork's code the base repo's secrets. GitHub-owned actions
+// (`actions/`, `github/`) and local ones (`./`) may float; everything else pins a 40-hex commit.
+const WORKFLOW_EVENT_SPLICE = /\$\{\{\s*github\.(event\.|head_ref)[^}]*\}\}/;
+function lintWorkflows(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+    {
+        let doc;
+        try { doc = yaml.load(text); }
+        catch (err) { out.push(`workflow ${file}: not parseable YAML - ${String(err.message).split('\n')[0]}`); continue; }
+        if (!doc || typeof doc !== 'object') continue;
+        const on = doc.on === undefined ? doc.true : doc.on;
+        const triggers = typeof on === 'string' ? [on] : Array.isArray(on) ? on : Object.keys(on || {});
+        const prTarget = triggers.includes('pull_request_target');
+        for (const [jobName, job] of Object.entries(doc.jobs || {}))
+        {
+            const steps = (job && Array.isArray(job.steps)) ? job.steps : [];
+            steps.forEach((step, i) =>
+            {
+                if (!step || typeof step !== 'object') return;
+                const where = `workflow ${file}: job ${jobName} step ${i + 1}`;
+                if (typeof step.run === 'string')
+                {
+                    const m = WORKFLOW_EVENT_SPLICE.exec(step.run);
+                    if (m) out.push(`${where}: \`${m[0]}\` is spliced into run - pass it through env: and read "$VAR"`);
+                }
+                if (typeof step.uses === 'string')
+                {
+                    const u = step.uses.trim();
+                    const owned = /^(actions|github)\//.test(u) || u.startsWith('./');
+                    const pinned = /@[0-9a-f]{40}$/.test(u) || /^docker:\/\/.+@sha256:[0-9a-f]{64}$/.test(u);
+                    if (!owned && !pinned) out.push(`${where}: \`${u}\` floats on a tag - pin the 40-hex commit, the tag as a trailing comment`);
+                }
+                const ref = step.with && typeof step.with.ref === 'string' ? step.with.ref : '';
+                if (prTarget && /github\.(event\.pull_request\.head|head_ref)/.test(ref))
+                    out.push(`${where}: pull_request_target checks out the PR head (\`${ref}\`) - fork code with the base repo's secrets`);
+            });
+        }
+    }
+    return out;
+}
+function workflowFiles()
+{
+    const dir = path.join(ROOT, '.github', 'workflows');
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => /\.ya?ml$/.test(n)).sort(); } catch { return []; }
+    return names.map((n) => ({ file: `.github/workflows/${n}`, text: fs.readFileSync(path.join(dir, n), 'utf8') }));
+}
+
 function lintSuggestionEdges(label, text)
 {
     const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || '');
@@ -2364,6 +2417,9 @@ function main()
     for (const finding of lintMcpEntries()) flag(finding);
     // 54. No shipped file names an MCP tool by its BARE server spelling - it would never resolve.
     for (const finding of lintMcpToolNames()) flag(finding);
+    // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
+    //     pull_request_target checkout of the PR head.
+    for (const finding of lintWorkflows(workflowFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2913,6 +2969,7 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 
 module.exports = {
     hiddenChars,
+    lintWorkflows,
     lintPluginPlacement,
     lintHooksEntry,
     lintMcpEntries,
