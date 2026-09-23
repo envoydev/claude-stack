@@ -242,6 +242,8 @@ change (see the invariants below).
   - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
     `scripts/plugin-settings.js`: walks report and ask in the plugins layer turn, apply after install;
     add-only by default (`--replace` overwrites); each row names the verified plugin VERSION (lint 28).
+  - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and
+    fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers).
   - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
     `env` RENAMES the env pass applies every run (order pinned as `env-pass-order`). A renamed key is read
     under its old spelling as fallback until every install has it (e.g. `CLAUDE_STACK_DOCS_PATH`,

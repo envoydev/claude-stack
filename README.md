@@ -153,7 +153,7 @@ default behind an env gate, so it costs nothing until you flip `CLAUDE_STACK_INS
 `"1"` in `.claude/settings.json` env (flip it back after the measured run), and
 [`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus
 its dispatched subagents) into a token/consumption report - join the two with `--hook-log` to see
-what fired and what it cost. Every per-session report carries an efficiency scorecard - cache misses by Claude Code's own rule, compaction re-reads, build-dir reads, scoped against whole-suite test runs, checked commits, green claims with no check behind them, correction streaks, long answers, navigation (located reads against grep-then-read, whole-file denials), dispatch overhead - each a measured number with its denominator, so a hook or rule change is read from a week of sessions instead of asserted.
+what fired and what it cost. Every per-session report carries an efficiency scorecard - the session's cost at list price (main and per seat, from the dated table in `meta/model-prices.json`), cache misses by Claude Code's own rule, compaction re-reads, build-dir reads, scoped against whole-suite test runs, checked commits, green claims with no check behind them, correction streaks, long answers, navigation (located reads against grep-then-read, whole-file denials), dispatch overhead - each a measured number with its denominator, so a hook or rule change is read from a week of sessions instead of asserted.
 
 ```bash
 node scripts/analyze-usage.js ~/.claude/projects/<encoded-project>/<session-id>.jsonl

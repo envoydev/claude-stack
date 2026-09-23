@@ -23,6 +23,7 @@
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
+//   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
 //
 // INVENTORY vs USE answers the complement of every consumption table: which installed skill,
 // agent, rule, plugin and MCP server the session (or, in directory mode, the corpus) never
@@ -219,6 +220,46 @@ function mergeTally(a, b) {
   a.input += b.input; a.cacheCreate += b.cacheCreate; a.cacheRead += b.cacheRead;
   a.output += b.output; a.msgs += b.msgs;
 }
+
+// ---------- list prices ----------
+// The cost row prices every API message at LIST price from one dated table - meta/model-prices.json,
+// which names its source page and fetch date - so a dollar figure always says what it was priced
+// against. Priced from the FOLDED usage per message.id: one response arrives as several rows (1.99
+// rows per id across 842 local transcripts, 12,526 ids with output growing row to row), and a
+// per-row sum would have billed cache-read 1.92x and output 1.80x (measured 2026-09-23; the folded
+// totals sit at a median 1.000 (cache-read) and 0.999 (output) of cost-state's own, 177 sessions).
+let priceFile = path.join(__dirname, '..', 'meta', 'model-prices.json');
+let priceCache = null;
+function priceTable() {
+  if (priceCache) return priceCache;
+  try {
+    const t = JSON.parse(fs.readFileSync(priceFile, 'utf8'));
+    if (!Array.isArray(t.models)) throw new Error('no models array');
+    priceCache = { table: t, byId: new Map(t.models.map((m) => [m.id, m])) };
+  } catch (e) {
+    priceCache = { error: e.code === 'ENOENT' ? 'not found' : e.message };
+  }
+  return priceCache;
+}
+// The dated IDs of models before the 4.6 generation carry a snapshot date, and the harness can add a
+// window suffix (`[1m]`); the table keys the dateless id.
+const priceId = (model) => String(model || '').toLowerCase().replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '');
+// usage.cache_creation splits a write by TTL, and the two bill differently (1.25x and 2x input) -
+// measured locally at 56% 5-minute and 44% 1-hour writes by tokens, so one rate would misprice both.
+// Fast mode scales every input column by the row's fast/standard input ratio and bills its own output.
+function messageUsd(p, r) {
+  const fast = r.fast && p.fast;
+  const f = fast ? p.fast.input / p.input : 1;
+  const w1h = r.split ? Math.min(r.c1h, r.u.cc) : 0;
+  const w5 = r.u.cc - w1h;
+  return (r.u.in * p.input * f + w5 * p.cache_write_5m * f + w1h * p.cache_write_1h * f
+    + r.u.cr * p.cache_read * f + r.u.out * (fast ? p.fast.output : p.output)) / 1e6;
+}
+const fmtUsd = (n) => {
+  if (n == null) return '-';
+  if (n === 0) return '$0';
+  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+};
 
 function readJsonl(file, onObj) {
   return new Promise((resolve, reject) => {
@@ -1367,7 +1408,7 @@ async function analyzeTranscript(file, window) {
         }
         let r = msgReg.get(m.id);
         if (!r) {
-          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, foreign, u: { in: 0, cc: 0, cr: 0, out: 0 } };
+          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, foreign, u: { in: 0, cc: 0, cr: 0, out: 0 }, split: false, c1h: 0, fast: false };
           msgReg.set(m.id, r);
           if (activeInvoke) activeInvoke.msgs += 1;
           // context size is fixed at message start, so first sighting is exact for spikes
@@ -1425,6 +1466,10 @@ async function analyzeTranscript(file, window) {
         r.u.cc = Math.max(r.u.cc, m.usage.cache_creation_input_tokens || 0);
         r.u.cr = Math.max(r.u.cr, m.usage.cache_read_input_tokens || 0);
         r.u.out = Math.max(r.u.out, m.usage.output_tokens || 0);
+        // what the price depends on beyond the four counts: the write's TTL split and fast mode
+        const ccs = m.usage.cache_creation;
+        if (ccs && typeof ccs === 'object') { r.split = true; r.c1h = Math.max(r.c1h, ccs.ephemeral_1h_input_tokens || 0); }
+        if (m.usage.speed === 'fast') r.fast = true;
         if (o.attributionSkill && (!r.skill || r.carried)) { r.skill = o.attributionSkill; r.carried = false; }
       }
       if (Array.isArray(m.content)) for (const c of m.content) {
@@ -1815,7 +1860,23 @@ async function analyzeTranscript(file, window) {
   // their parent (resolved transitively) so a nested reference load never steals the run
   const resolveParent = (k) => { const seen = new Set(); while (companionOf[k] && !seen.has(k)) { seen.add(k); k = companionOf[k]; } return k; };
   const carryRun = {};
+  const pt = priceTable();
+  // A copied fork prefix was billed in the parent session, so its dollars are named apart and
+  // never added to this session's cost - the rollup would otherwise bill that run twice.
+  s.cost = pt.error ? { error: pt.error } : { usd: 0, prefixUsd: 0, byModel: {}, unpriced: {}, noSplitMsgs: 0, fastMsgs: 0 };
   for (const r of msgReg.values()) {
+    if (!pt.error) {
+      const p = pt.byId.get(priceId(r.model));
+      const usd = p ? messageUsd(p, r) : 0;
+      if (r.foreign) s.cost.prefixUsd += usd;
+      else if (!p) s.cost.unpriced[r.model] = (s.cost.unpriced[r.model] || 0) + 1;
+      else {
+        s.cost.usd += usd;
+        s.cost.byModel[r.model] = (s.cost.byModel[r.model] || 0) + usd;
+        if (r.u.cc && !r.split) s.cost.noSplitMsgs += 1;
+        if (r.fast) s.cost.fastMsgs += 1;
+      }
+    }
     const u = { input_tokens: r.u.in, cache_creation_input_tokens: r.u.cc, cache_read_input_tokens: r.u.cr, output_tokens: r.u.out };
     addUsage(s.total, u);
     if (r.foreign) { s.forkPrefix.msgs += 1; s.forkPrefix.cacheRead += r.u.cr; s.forkPrefix.cacheCreate += r.u.cc; s.forkPrefix.output += r.u.out; }
@@ -1928,8 +1989,9 @@ function computeAggregates(main, agents) {
   for (const a of agents) {
     mergeTally(agentTotal, a.stats.total);
     const type = a.meta.agentType || '(unknown)';
-    const g = byType[type] || (byType[type] = { n: 0, tally: newTally(), tools: {}, descs: [], wall: 0, span: 0, seatMs: 0, intervals: [], firstTs: null, lastTs: null });
+    const g = byType[type] || (byType[type] = { n: 0, tally: newTally(), tools: {}, descs: [], wall: 0, span: 0, seatMs: 0, intervals: [], firstTs: null, lastTs: null, cost: 0 });
     g.n += 1; mergeTally(g.tally, a.stats.total);
+    g.cost += (a.stats.cost && a.stats.cost.usd) || 0;
     for (const [name, t] of Object.entries(a.stats.toolCalls)) g.tools[name] = (g.tools[name] || 0) + t.calls;
     if (a.meta.description && g.descs.length < 2) g.descs.push(maskSecrets(a.meta.description));
     if (a.stats.firstTs && a.stats.lastTs) {
@@ -2067,7 +2129,19 @@ function computeAggregates(main, agents) {
     for (const k of Object.keys(navigation)) navigation[k] += n[k] || 0;
     wholeFileBracket += (src.denialsByHook && src.denialsByHook[WHOLE_FILE_HOOK]) || 0;
   }
-  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead, navigation, wholeFileBracket };
+  // Dollars: the session is its main transcript plus every seat, each priced from its own folded
+  // messages; the seat types are the table's per-seat rows.
+  const cost = { usd: 0, main: 0, subagents: 0, seats: agents.length, byType: {}, unpriced: {}, noSplitMsgs: 0, fastMsgs: 0, prefixUsd: 0, error: null };
+  for (const src of [main, ...agents.map((a) => a.stats)]) {
+    const c = src.cost || {};
+    if (c.error) { cost.error = c.error; continue; }
+    cost.usd += c.usd || 0; cost.prefixUsd += c.prefixUsd || 0;
+    cost.noSplitMsgs += c.noSplitMsgs || 0; cost.fastMsgs += c.fastMsgs || 0;
+    for (const [m, n] of Object.entries(c.unpriced || {})) cost.unpriced[m] = (cost.unpriced[m] || 0) + n;
+  }
+  cost.main = (main.cost && main.cost.usd) || 0;
+  for (const [type, g] of Object.entries(byType)) { cost.byType[type] = g.cost; cost.subagents += g.cost; }
+  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead, navigation, wholeFileBracket, cost };
 }
 
 // ---------- hook-block ledger (which GUARD fired, not just which tool was denied) ----------
@@ -2277,6 +2351,23 @@ function efficiencyRows(main, agg, blockLedger) {
   const e = main.efficiency || {};
   const rows = [];
   const tsList = (arr, n = 6) => arr.slice(0, n).map((t) => (t ? String(t).slice(11, 19) : '?')).join(', ') + (arr.length > n ? ` … +${arr.length - n}` : '');
+  {
+    const c = agg.cost || {};
+    const pt = priceTable();
+    if (c.error || pt.error) {
+      rows.push({ practice: 'cost at list price', measured: `price table unreadable (${c.error || pt.error}) - no cost computed`, tests: 'meta/model-prices.json, or the file --prices names' });
+    } else {
+      const seats = Object.entries(c.byType || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, usd]) => `${t} ${fmtUsd(usd)}`).join(', ');
+      const unpriced = Object.entries(c.unpriced || {}).map(([m, n]) => `${m} x${n} msg${n === 1 ? '' : 's'}`).join(', ');
+      const parts = [`~${fmtUsd(c.usd)} - main ${fmtUsd(c.main)}${c.seats ? `, subagents ${fmtUsd(c.subagents)} over ${c.seats} seat(s) (${seats})` : ''}`];
+      if (main.totalCostUSD != null) parts.push(`cost-state billed ${fmtUsd(Number(main.totalCostUSD))}`);
+      if (unpriced) parts.push(`unpriced: ${unpriced}`);
+      if (c.noSplitMsgs) parts.push(`${c.noSplitMsgs} msg(s) with no cache-write split, billed at the 5-minute rate`);
+      if (c.fastMsgs) parts.push(`${c.fastMsgs} fast-mode msg(s)`);
+      if (c.prefixUsd) parts.push(`fork prefix ${fmtUsd(c.prefixUsd)} left to the parent session's bill`);
+      rows.push({ practice: 'cost at list price', measured: parts.join('; '), tests: `list price from ${pt.table.source}, fetched ${pt.table.fetched} - what the work costs at the API's list price, not what a subscription charges; a gap to cost-state's billed figure is the harness's untranscribed side calls; refresh the table from its page, never from memory` });
+    }
+  }
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
     rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /claude-stack:status reports it per install' });
@@ -2405,14 +2496,14 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
 
   if (agents.length) {
     console.log('\nSUBAGENTS (exact per-dispatch cost, grouped by agent type)');
-    console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('wall', 7)}  top tools`);
+    console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('cost', 8)} ${rpad('wall', 7)}  top tools`);
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
       // seat-time is printed for EVERY multi-dispatch group: when seats overlap it shows the
       // parallelism win, when they don't it stops the outer span being read as per-seat cost
       // (measured: a 1h17m span over ~22m of actual seat activity framed as 'most expensive pair').
       const waves = g.n > 1 && g.span > g.wall * 1.5 ? `, dispatched in waves over ${dur(g.span)}` : '';
-      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''}`);
+      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(agg.cost.error ? '-' : fmtUsd(g.cost), 8)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''}`);
       if (g.descs.length) console.log(`  ${pad('', 28)} e.g. ${g.descs.map((d) => JSON.stringify(d.slice(0, 40))).join(', ')}`);
     }
   }
@@ -2676,11 +2767,11 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
 
   if (agents.length) {
     out.push('## Subagent dispatches (exact per-dispatch cost, grouped by agent type)', '');
-    out.push('| agent type | n | output | cache-read | msgs | wall | top tools |', '|---|---|---|---|---|---|---|');
+    out.push('| agent type | n | output | cache-read | msgs | cost | wall | top tools |', '|---|---|---|---|---|---|---|---|');
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
       const waves = g.n > 1 && g.span > g.wall * 1.5 ? `, dispatched in waves over ${dur(g.span)}` : '';
-      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''} | ${top} |`);
+      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${agg.cost.error ? '-' : fmtUsd(g.cost)} | ${dur(g.wall)}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''} | ${top} |`);
     }
     out.push('');
   }
@@ -2983,7 +3074,7 @@ async function main() {
 async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
-  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
+  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   // The report CHECK is its own pass: it reads a filled report, not a transcript.
   const checkFile = flagVal('--check-report');
@@ -2998,6 +3089,8 @@ async function runAnalysis() {
   const docsRoot = flagVal('--docs-root');
   const inventoryDir = flagVal('--inventory');
   const pluginsFile = flagVal('--plugins');
+  const pricesFile = flagVal('--prices');
+  if (pricesFile) { priceFile = path.resolve(pricesFile); priceCache = null; }
   // one spelling for both routes: backslashes normalized, `./` dropped, one trailing slash
   if (docsRoot) {
     const r = String(docsRoot).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') + '/';
@@ -3008,7 +3101,7 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
   }
 
@@ -3018,8 +3111,9 @@ async function runAnalysis() {
     // history folder is just the depth-0 case of the same walk.
     const files = findSessionFiles(target)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)}`);
+    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)}`);
     const grand = newTally();
+    let grandUsd = 0;
     // Fed one session at a time and never held as a list: the corpus answer must not cost the
     // corpus. Each session's installed set is resolved from its OWN cwd (cached per cwd, so a
     // one-project folder resolves exactly once), because a corpus spans projects that installed
@@ -3033,13 +3127,17 @@ async function runAnalysis() {
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
       mergeTally(grand, s.total); mergeTally(grand, at);
-      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)}`;
-      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length });
+      // one cost per session - its own messages plus its seats, a fork prefix left to its parent
+      const priced = !s.cost.error;
+      const usd = priced ? [s, ...agents.map((a) => a.stats)].reduce((n, x) => n + ((x.cost && x.cost.usd) || 0), 0) : null;
+      if (priced) grandUsd += usd;
+      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)}`;
+      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd });
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, inventory: invUse }, null, 2)); return; }
-    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)}`);
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, inventory: invUse }, null, 2)); return; }
+    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)}`);
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;
@@ -3059,9 +3157,10 @@ async function runAnalysis() {
     // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
     // Fold them into the dump beside the ledger they describe.
-    const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, computeAggregates(mainStats, agents).tools) : null;
+    const agg = computeAggregates(mainStats, agents);
+    const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, agg.tools) : null;
     const hl = hookLog ? (({ rowsIdx, ...rest }) => rest)(hookLog) : hookLog;   // the row index is the join's input, not a report field
-    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: computeAggregates(mainStats, agents).dispatchOverhead, inventory: invUse };
+    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: agg.dispatchOverhead, cost: agg.cost, inventory: invUse };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }

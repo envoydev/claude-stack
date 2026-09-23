@@ -1473,3 +1473,117 @@ test('navigation C: main and seat windows are counted apart and summed, a symbol
   assert.match(txt, /navigation\s+4 of 5 source-file read\(s\) had a locate step in the 3 calls before \(80%\); symbol tools 2 call\(s\) against 0 grep-then-read sequence\(s\); 1 whole-file denial\(s\) \(transcript bracket - pass --hook-blocks for the ledger\)/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------- dollars: a dated list-price table, a cost per session and per seat ----------
+
+test('price table: every row is complete, sourced and dated, and the page\'s stated multipliers hold', () => {
+  const t = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'model-prices.json'), 'utf8'));
+  assert.match(t.source, /^https:\/\/platform\.claude\.com\/docs\//);
+  assert.match(t.fetched, /^\d{4}-\d{2}-\d{2}$/);
+  const ids = t.models.map((m) => m.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'one row per model id');
+  // The page states the cache columns as multipliers of the base input price: 1.25x for a
+  // 5-minute write, 2x for a 1-hour write, 0.1x for a hit except the two it names. A refresh that
+  // mistypes one column breaks here, not in a report.
+  const hit = { 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025, 'claude-opus-5-5': 0.05 };
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  for (const m of t.models) {
+    assert.match(m.id, /^claude-[a-z]+-\d+(?:-\d+)?$/, `${m.id}: a dateless API id`);
+    for (const k of ['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output']) assert.ok(m[k] > 0, `${m.id}: ${k}`);
+    assert.ok(near(m.cache_write_5m, 1.25 * m.input), `${m.id}: 5m write is 1.25x input`);
+    assert.ok(near(m.cache_write_1h, 2 * m.input), `${m.id}: 1h write is 2x input`);
+    assert.ok(near(m.cache_read, (hit[m.id] || 0.1) * m.input), `${m.id}: cache hit multiplier`);
+    if (m.fast) assert.ok(m.fast.input > m.input && m.fast.output > m.output, `${m.id}: fast mode is a premium`);
+  }
+});
+
+// A synthetic table with round prices, so every dollar below is counted by hand and stays true
+// whatever the real table says after its next refresh.
+function writePrices(dir) {
+  const f = path.join(dir, 'prices.json');
+  fs.writeFileSync(f, JSON.stringify({ source: 'https://example.test/pricing', fetched: '2026-01-01', models: [
+    { id: 'claude-test-a', input: 1, cache_write_5m: 1.25, cache_write_1h: 2, cache_read: 0.1, output: 5, fast: { input: 2, output: 10 } },
+    { id: 'claude-test-b', input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 1, output: 50 },
+  ] }));
+  return f;
+}
+const costUsage = (i, cc, cr, out, split, extra = {}) => ({ ...usage(i, cc, cr, out), ...(split ? { cache_creation: { ephemeral_5m_input_tokens: split[0], ephemeral_1h_input_tokens: split[1] } } : {}), ...extra });
+const costAsst = (id, ts, model, u) => line({ type: 'assistant', timestamp: ts, message: { id, model, usage: u, content: [] } });
+
+test('cost: priced once per message from the folded usage, split by cache TTL, fast mode scaled, unpriced named, seats summed', () => {
+  // main m1 (claude-test-a, a dated id): three STREAMED rows of one message, output growing 10 ->
+  //   200 -> 2000 while the input side repeats - folded once: in 1000, 5m write 1000, 1h write 3000,
+  //   read 100000, out 2000 = 1000*1 + 1000*1.25 + 3000*2 + 100000*0.1 + 2000*5 = 28,250 -> $0.02825
+  //   (a per-row sum would have billed 3000 in, 12000 written, 300000 read, 2210 out)
+  // main m2 (claude-test-a[1m], fast, no split): write 1000 at the 5m rate, read 50000, out 1000,
+  //   every input column x2 (fast input 2 / input 1), output at the fast 10:
+  //   1000*1.25*2 + 50000*0.1*2 + 1000*10 = 22,500 -> $0.0225
+  // main m3 (claude-mystery-9): unpriced, named with its message count
+  // seat s1 aspnet-implementer (claude-test-b): 100*10 + 10000*1 + 100*50 = 16,000 -> $0.016
+  // seat s2 evidence-gatherer (claude-test-b): 1000*50 = 50,000 -> $0.05
+  // hand count: main $0.05075, seats $0.066, session $0.11675
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file,
+    costAsst('m1', scT(0), 'claude-test-a-20260101', costUsage(1000, 4000, 100000, 10, [1000, 3000])) +
+    costAsst('m1', scT(1), 'claude-test-a-20260101', costUsage(1000, 4000, 100000, 200, [1000, 3000])) +
+    costAsst('m1', scT(2), 'claude-test-a-20260101', costUsage(1000, 4000, 100000, 2000, [1000, 3000])) +
+    costAsst('m2', scT(3), 'claude-test-a[1m]', costUsage(0, 1000, 50000, 1000, null, { speed: 'fast' })) +
+    costAsst('m3', scT(4), 'claude-mystery-9', costUsage(10, 0, 0, 10, [0, 0])) +
+    line({ type: 'cost-state', timestamp: scT(5), totalCostUSD: 0.2, modelUsage: { 'claude-test-a': { inputTokens: 1000, outputTokens: 3000, cacheReadInputTokens: 150000, cacheCreationInputTokens: 5000 } } }));
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  fs.writeFileSync(path.join(sub, 'agent-s1.jsonl'), costAsst('s1', scT(6), 'claude-test-b', costUsage(100, 0, 10000, 100, [0, 0])));
+  fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'aspnet-implementer' }));
+  fs.writeFileSync(path.join(sub, 'agent-s2.jsonl'), costAsst('s2', scT(7), 'claude-test-b', costUsage(0, 0, 0, 1000, [0, 0])));
+  fs.writeFileSync(path.join(sub, 'agent-s2.meta.json'), JSON.stringify({ agentType: 'evidence-gatherer' }));
+  const prices = writePrices(dir);
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-12, `${what}: ${a} vs ${b}`);
+  const out = run([file, '--prices', prices]);
+  assert.strictEqual(out.main.total.output, 3010, 'the streamed rows fold to their last snapshot, never a per-row sum');
+  assert.strictEqual(out.main.total.cacheRead, 150000);
+  near(out.main.cost.usd, 0.05075, 'main');
+  assert.deepStrictEqual(out.main.cost.unpriced, { 'claude-mystery-9': 1 });
+  assert.strictEqual(out.main.cost.noSplitMsgs, 1);
+  assert.strictEqual(out.main.cost.fastMsgs, 1);
+  near(out.agents.find((a) => a.id === 's1').stats.cost.usd, 0.016, 'seat s1');
+  near(out.cost.usd, 0.11675, 'session');
+  near(out.cost.subagents, 0.066, 'seats');
+  near(out.cost.byType['evidence-gatherer'], 0.05, 'seat type');
+  const txt = execFileSync('node', [SCRIPT, file, '--prices', prices], { encoding: 'utf8' });
+  assert.match(txt, /cost at list price\s+~\$0\.12 - main \$0\.05, subagents \$0\.07 over 2 seat\(s\) \(evidence-gatherer \$0\.05, aspnet-implementer \$0\.02\); cost-state billed \$0\.20; unpriced: claude-mystery-9 x1 msg; 1 msg\(s\) with no cache-write split, billed at the 5-minute rate; 1 fast-mode msg\(s\)/);
+  assert.match(txt, /tests: list price from https:\/\/example\.test\/pricing, fetched 2026-01-01/);
+  assert.match(txt, /evidence-gatherer\s+1\s+1\.0k\s+0\s+1\s+\$0\.05/, 'the seat table carries a cost column');
+  const md = execFileSync('node', [SCRIPT, file, '--prices', prices, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| agent type \| n \| output \| cache-read \| msgs \| cost \| wall \| top tools \|/);
+  assert.match(md, /\| cost at list price \| ~\$0\.12 - main \$0\.05/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('cost: a copied fork prefix is the parent\'s bill, a rollup carries a cost per session, a missing table says so', () => {
+  const dir = tmp();
+  const prices = writePrices(dir);
+  // the parent's message (read 5000 at 0.1, out 1 at 5 = 505 -> $0.000505) is copied into the fork;
+  // the fork's own message (out 100 at 5 = 500 -> $0.0005) is the fork's whole cost
+  const parentRow = { type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'p1', model: 'claude-test-a', usage: usage(0, 0, 5000, 1), content: [] } };
+  const ownRow = { type: 'assistant', timestamp: '2026-07-15T07:10:00.000Z', message: { id: 'o1', model: 'claude-test-a', usage: usage(0, 0, 0, 100), content: [] } };
+  const file = forkFixture(dir, {
+    parentRows: [{ ...parentRow, sessionId: PARENT_SID, session_id: PARENT_SID }],
+    ownRows: [{ ...parentRow, sessionId: OWN_SID, session_id: PARENT_SID }, { ...ownRow, sessionId: OWN_SID, session_id: OWN_SID }],
+  });
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-12, `${what}: ${a} vs ${b}`);
+  const out = run([file, '--prices', prices]);
+  near(out.main.cost.usd, 0.0005, 'own');
+  near(out.main.cost.prefixUsd, 0.000505, 'prefix');
+  // rollup: one cost per session, the fork's own and the parent's own - the prefix is never billed twice
+  const roll = run([dir, '--prices', prices]);
+  const bySid = Object.fromEntries(roll.sessions.map((r) => [r.session, r.cost]));
+  near(bySid[OWN_SID], 0.0005, 'fork row');
+  near(bySid[PARENT_SID], 0.000505, 'parent row');
+  const rtxt = execFileSync('node', [SCRIPT, dir, '--prices', prices], { encoding: 'utf8' });
+  assert.match(rtxt, /\bcost\b/);
+  assert.match(rtxt, /\$0\.0005\b/);
+  const none = execFileSync('node', [SCRIPT, file, '--prices', path.join(dir, 'absent.json')], { encoding: 'utf8' });
+  assert.match(none, /cost at list price\s+price table unreadable/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
