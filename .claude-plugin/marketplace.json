@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the claude-stack plugin.",
-    "version": "0.2.87"
+    "version": "1.0.0"
   },
   "allowCrossMarketplaceDependenciesOn": [
     "claude-plugins-official"
@@ -16,7 +16,7 @@
       "name": "claude-stack-hooks",
       "source": "./",
       "description": "The thirteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, the stop contract, the answer budget, the fresh-session offer) plus the docs and memory session engines.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -244,7 +244,7 @@
       "name": "serena",
       "source": "./",
       "description": "serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -274,7 +274,7 @@
       "name": "context7",
       "source": "./",
       "description": "context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. This is the one the core depends on, so it can never be dropped; `--context7 local` adds the context7-local entry beside it for the npx transport.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -294,7 +294,7 @@
       "name": "memory",
       "source": "./",
       "description": "memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -319,7 +319,7 @@
       "name": "angular-cli",
       "source": "./",
       "description": "The Angular CLI MCP server as a plugin: workspace-aware Angular tooling. Unpinned on purpose - it matches the ng the workspace itself resolves.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -343,7 +343,7 @@
       "name": "chrome-devtools",
       "source": "./",
       "description": "chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -366,7 +366,7 @@
       "name": "appium-mcp",
       "source": "./",
       "description": "The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -389,7 +389,7 @@
       "name": "sentry",
       "source": "./",
       "description": "Sentry's hosted remote MCP as a plugin: issues, events and releases from the project's own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -410,7 +410,7 @@
       "name": "context7-local",
       "source": "./",
       "description": "context7 over the local npx transport, as a plugin: the same up-to-date library and framework documentation as the hosted server, run as a local process instead - for a setup that bakes CONTEXT7_API_KEY into the registration rather than reading it from the account settings. Added by `--context7 local`; disable the hosted `context7` server beside it, or both answer.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -433,7 +433,7 @@
       "name": "playwright-chrome",
       "source": "./",
       "description": "playwright (chrome) as a plugin: drive a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -462,7 +462,7 @@
       "name": "playwright-msedge",
       "source": "./",
       "description": "playwright (msedge) as a plugin: drive a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -491,7 +491,7 @@
       "name": "playwright-firefox",
       "source": "./",
       "description": "playwright (firefox) as a plugin: drive a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -520,7 +520,7 @@
       "name": "playwright-webkit",
       "source": "./",
       "description": "playwright (webkit) as a plugin: drive a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -549,7 +549,7 @@
       "name": "claude-stack",
       "source": "./",
       "description": "The Claude Code stack, guided: init installs it from scratch into a project (or globally; setup is its alias for one release), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -634,7 +634,7 @@
       "name": "claude-stack-angular",
       "source": "./",
       "description": "claude-stack 4 skills and 2 agents used by the ionic-angular and web-angular stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -658,7 +658,7 @@
       "name": "claude-stack-aspnet",
       "source": "./",
       "description": "claude-stack 2 skills and 3 agents used by the aspnet stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -683,7 +683,7 @@
       "name": "claude-stack-aspnet-data",
       "source": "./",
       "description": "claude-stack 1 skill used by the aspnet and data stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -700,7 +700,7 @@
       "name": "claude-stack-browser-extension",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the browser-extension stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -724,7 +724,7 @@
       "name": "claude-stack-console",
       "source": "./",
       "description": "claude-stack 3 agents used by the console stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -745,7 +745,7 @@
       "name": "claude-stack-csharp",
       "source": "./",
       "description": "claude-stack 3 skills used by the aspnet, console, data, windows-service, winforms and wpf stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -764,7 +764,7 @@
       "name": "claude-stack-data",
       "source": "./",
       "description": "claude-stack 2 skills and 3 agents used by the data stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -788,7 +788,7 @@
       "name": "claude-stack-devops",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the devops stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -810,7 +810,7 @@
       "name": "claude-stack-dotnet",
       "source": "./",
       "description": "claude-stack 9 skills and 2 agents used by the aspnet, console, windows-service, winforms and wpf stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -839,7 +839,7 @@
       "name": "claude-stack-dotnet-hosting",
       "source": "./",
       "description": "claude-stack 1 skill used by the console and windows-service stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -856,7 +856,7 @@
       "name": "claude-stack-ionic-angular",
       "source": "./",
       "description": "claude-stack 3 skills and 3 agents used by the ionic-angular stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -882,7 +882,7 @@
       "name": "claude-stack-javascript",
       "source": "./",
       "description": "Enables the javascript stack: the shared claude-stack plugins it depends on, nothing of its own.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -897,7 +897,7 @@
       "name": "claude-stack-javascript-shared",
       "source": "./",
       "description": "claude-stack 1 skill used by the browser-extension, ionic-angular, javascript, typescript and web-angular stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -914,7 +914,7 @@
       "name": "claude-stack-tsjs",
       "source": "./",
       "description": "claude-stack 1 skill used by the browser-extension, javascript and typescript stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -931,7 +931,7 @@
       "name": "claude-stack-typescript",
       "source": "./",
       "description": "Enables the typescript stack: the shared claude-stack plugins it depends on, nothing of its own.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -947,7 +947,7 @@
       "name": "claude-stack-typescript-shared",
       "source": "./",
       "description": "claude-stack 1 skill used by the browser-extension, ionic-angular, typescript and web-angular stacks.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -964,7 +964,7 @@
       "name": "claude-stack-web-angular",
       "source": "./",
       "description": "claude-stack 3 agents used by the web-angular stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -985,7 +985,7 @@
       "name": "claude-stack-windows-service",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the windows-service stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1009,7 +1009,7 @@
       "name": "claude-stack-winforms",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the winforms stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1032,7 +1032,7 @@
       "name": "claude-stack-wpf",
       "source": "./",
       "description": "claude-stack 1 skill and 3 agents used by the wpf stack.",
-      "version": "0.2.87",
+      "version": "1.0.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
