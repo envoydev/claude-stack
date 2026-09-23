@@ -110,6 +110,10 @@ function proseOf(text) {
 }
 const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
+// A correction counts as saved when a memory store follows within this many replies - the plugin
+// route's name or a registration's (history plan, Gate G2).
+const SAVE_WINDOW = 3;
+const MEMORY_STORE_RE = /^mcp__(?:plugin_memory_)?memory__memory_store$/;
 const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and still count as its check
 // Build output, package trees, caches and lockfiles - a read there is a read of nothing the session
 // wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges.
@@ -1106,6 +1110,8 @@ async function analyzeTranscript(file, window) {
       greenClaims: 0, unverifiedGreenClaims: [],
       correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
+      correctionsSaved: 0,       // of those, followed by a memory store within SAVE_WINDOW replies
+      correctionsUnsaved: [],    // timestamps of the ones that were not
       longAnswered: 0,           // 1,500+ char answers a user turn followed
       finalAnswers: 0, longAnswers: 0,
       navigation: { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 },
@@ -1167,6 +1173,7 @@ async function analyzeTranscript(file, window) {
   let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
   const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
   const turns = [];                // { role, len } - the correction-streak view, as the hook builds it
+  let pendingSaves = [];           // corrections still inside their save window: { ts, left }
   let lastAsstId = null;
   // A carried stamp ends at the next HUMAN turn that does not CONTINUE the run, not only at the
   // next Skill call: a new request is a new phase, and the carry otherwise charged that phase to
@@ -1178,6 +1185,13 @@ async function analyzeTranscript(file, window) {
     turnHadCheck = false;
     const t = String(typed || '').trim();
     if (!t || /^</.test(t)) return;
+    // A human turn closes one reply for every correction still waiting on a memory store.
+    pendingSaves = pendingSaves.filter((p) => {
+      p.left -= 1;
+      if (p.left > 0) return true;
+      s.efficiency.correctionsUnsaved.push(p.ts);
+      return false;
+    });
     if (!continuesRun(t)) {
       if (lastSkill) s.skillTimeline.push({ ts: ts || null, skill: null });
       lastSkill = null;
@@ -1187,7 +1201,13 @@ async function analyzeTranscript(file, window) {
     {
       let j = turns.length - 2, alen = 0;
       while (j >= 0 && turns[j].role === 'assistant') { alen += turns[j].len; j -= 1; }
-      if (alen >= STREAK_LONG) { s.efficiency.longAnswered += 1; if (t.length <= STREAK_SHORT) s.efficiency.correctionTurns += 1; }
+      if (alen >= STREAK_LONG) {
+        s.efficiency.longAnswered += 1;
+        if (t.length <= STREAK_SHORT) {
+          s.efficiency.correctionTurns += 1;
+          pendingSaves.push({ ts: ts || null, left: SAVE_WINDOW });
+        }
+      }
     }
     let streak = 0;
     for (let i = turns.length - 1; i >= 1; i -= 2) {
@@ -1489,6 +1509,10 @@ async function analyzeTranscript(file, window) {
         }
         const info = { name: c.name };
         toolSeq += 1;
+        if (MEMORY_STORE_RE.test(c.name)) {
+          s.efficiency.correctionsSaved += pendingSaves.length;
+          pendingSaves = [];
+        }
         {
           // What the call READS, on both routes - the scorecard's build-dir and re-read rows.
           const i = c.input || {};
@@ -1905,6 +1929,8 @@ async function analyzeTranscript(file, window) {
     }
   }
   s.companionOf = companionOf;
+  // A correction the session ended on, with no store after it, was never saved.
+  for (const p of pendingSaves) s.efficiency.correctionsUnsaved.push(p.ts);
   // Sets do not survive JSON.stringify - the --json dump is the report's own input.
   s.availableSkills = s.availableSkills ? [...s.availableSkills].sort() : null;
   s.availableAgents = s.availableAgents ? [...s.availableAgents].sort() : null;
@@ -2409,6 +2435,11 @@ function efficiencyRows(main, agg, blockLedger) {
   }
   rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
   rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
+  {
+    const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
+    const unsaved = (e.correctionsUnsaved || []).length;
+    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make is a preference or a lesson; one never stored is made again next session' });
+  }
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
   {
     const n = agg.navigation || { reads: 0, located: 0, grepLocated: 0, symbolCalls: 0 };
