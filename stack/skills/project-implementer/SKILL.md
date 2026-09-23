@@ -41,6 +41,8 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 
 **Reuse before recreation.** Before new code, stop at the first rung that holds: the stdlib, runtime or framework already does it; an existing helper in this repo or an already-referenced package does it (search first - a second copy is a defect, consolidate to the existing seam); it is one line; only then the minimum code that works. Less code that still works - never the flimsier algorithm, never at the cost of validation at a trust boundary, error handling that prevents data loss, or secret handling.
 
+**Callers first on a bug fix.** Before changing a function to fix a bug, list its callers (serena's `find_referencing_symbols`) and fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff.
+
 ## When the plan meets reality
 
 - **A task proves wrong mid-build** (the seam isn't where the plan said, a trap the audit missed): stop the task and name the delta - never silently redesign while implementing. The re-entry is the USER's call on the FIRST occurrence, not a counter you spend: end the turn with ONE AskUserQuestion - re-design this slice with `project-solution-design` (recommended, the delta named in the option) / continue against the delta as it stands / stop the build here (plain-text options where the harness lacks the tool) - and re-enter only on that answer. The plan is the contract; reality wins, but through a revision, not a drift.

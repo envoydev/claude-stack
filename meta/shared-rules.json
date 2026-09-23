@@ -613,6 +613,31 @@
         }
       ]
     },
+    "callers-first-bug-fix": {
+      "_note": "Before changing a function to fix a bug, list its callers and fix once where they all route through. The in-chat implementer and the four repair resolvers each carry it, because each is the seat that makes the fix.",
+      "owner": {
+        "file": "stack/skills/project-implementer/SKILL.md",
+        "marker": "fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/dotnet-build-error-resolver.md",
+          "marker": "fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff"
+        },
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff"
+        }
+      ]
+    },
     "implementer-model-routing": {
       "_note": "The per-task implementer_model routing designers emit (haiku mechanical / sonnet floor on risk).",
       "owner": {
