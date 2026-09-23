@@ -1840,7 +1840,15 @@ async function analyzeTranscript(file, window) {
           const mc = s.mcp[mcpServerOf(info.name)];
           // The same carve-out the tool tally makes above: a user declining an MCP-driven ask is an
           // answer, not a server failure, and counting it inflated the error rate of a working server.
-          if (mc) { mc.resultChars += chars; if (c.is_error && !isDecline) mc.errors += 1; }
+          // A guard denial or a harness rejection (a schema failure, the auto-mode classifier) never
+          // reached the server either, so it is counted apart: `errors` is what the SERVER answered
+          // with an error - the one number a server health check is opened on. `is_error` is the
+          // whole signal: over 3,242 local MCP calls no result opened on an error string without it.
+          if (mc) {
+            mc.resultChars += chars;
+            if (c.is_error && (isHookBlock || harnessDenial)) mc.rejected = (mc.rejected || 0) + 1;
+            else if (c.is_error && !isDecline) mc.errors += 1;
+          }
         }
       }
       const textJoined = content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n');
@@ -2088,8 +2096,8 @@ function computeAggregates(main, agents) {
   const mcpServers = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [server, m] of Object.entries(src.mcp)) {
-      const e = mcpServers[server] || (mcpServers[server] = { calls: 0, resultChars: 0, errors: 0, tools: {} });
-      e.calls += m.calls; e.resultChars += m.resultChars; e.errors += m.errors;
+      const e = mcpServers[server] || (mcpServers[server] = { calls: 0, resultChars: 0, errors: 0, rejected: 0, tools: {} });
+      e.calls += m.calls; e.resultChars += m.resultChars; e.errors += m.errors; e.rejected += m.rejected || 0;
       for (const [t, n] of Object.entries(m.tools)) e.tools[t] = (e.tools[t] || 0) + n;
     }
   }
@@ -2410,6 +2418,14 @@ function efficiencyRows(main, agg, blockLedger) {
       ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
       : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
     rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'baseline-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
+  }
+  {
+    const servers = Object.entries(agg.mcpServers || {});
+    const calls = servers.reduce((n, [, m]) => n + m.calls, 0);
+    const errs = servers.reduce((n, [, m]) => n + m.errors, 0);
+    const rejected = servers.reduce((n, [, m]) => n + (m.rejected || 0), 0);
+    const per = servers.filter(([, m]) => m.errors).sort((a, b) => b[1].errors - a[1].errors).map(([s, m]) => `${s} ${m.errors}/${m.calls}`).join(', ');
+    rows.push({ practice: 'MCP failures', measured: calls ? `${errs} of ${calls} MCP call(s) returned an error${per ? `: ${per}` : ''}${rejected ? `; ${rejected} more rejected before the server ran (a guard or the harness)` : ''}` : 'no MCP call', tests: "main and seats: a server that errors on a material share of its calls is down or misconfigured, not misused - that count, never one error, is what opens a server health check; a guard denial, a harness rejection and a declined ask are not the server's" });
   }
   {
     const d = agg.dispatchOverhead || { seats: 0 };
@@ -3111,7 +3127,7 @@ async function runAnalysis() {
     // history folder is just the depth-0 case of the same walk.
     const files = findSessionFiles(target)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)}`);
+    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)}`);
     const grand = newTally();
     let grandUsd = 0;
     // Fed one session at a time and never held as a list: the corpus answer must not cost the
@@ -3131,8 +3147,12 @@ async function runAnalysis() {
       const priced = !s.cost.error;
       const usd = priced ? [s, ...agents.map((a) => a.stats)].reduce((n, x) => n + ((x.cost && x.cost.usd) || 0), 0) : null;
       if (priced) grandUsd += usd;
-      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)}`;
-      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd });
+      // MCP calls the server answered with an error, main and seats - the per-session number a
+      // server health check is judged on across a corpus
+      const mcp = { calls: 0, errors: 0 };
+      for (const x of [s, ...agents.map((a) => a.stats)]) for (const m of Object.values(x.mcp || {})) { mcp.calls += m.calls; mcp.errors += m.errors; }
+      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)}`;
+      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp });
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;

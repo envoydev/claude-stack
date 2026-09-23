@@ -1587,3 +1587,67 @@ test('cost: a copied fork prefix is the parent\'s bill, a rollup carries a cost 
   assert.match(none, /cost at list price\s+price table unreadable/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------- MCP failures: the calls a server answered with an error, per server, per session ----------
+
+test('MCP failures: a server error counts per server across main and seats; a guard, a harness rejection and a decline do not', () => {
+  // main: serena find_symbol ok | serena find_symbol ERROR (the server's own 'Error executing tool')
+  //       serena get_symbols_overview ok | context7 query-docs ERROR (MCP timeout)
+  //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
+  //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
+  //       playwright-chrome browser_click: the user declined -> an answer, not a failure
+  // seat: serena find_symbol ERROR | sentry search_issues ok
+  // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  const mcpName = (server, tool) => `mcp__plugin_${server}_${server}__${tool}`;
+  navTranscript(file, [
+    navCall('e1', mcpName('serena', 'find_symbol'), { name_path: 'A' }),
+    navCall('e2', mcpName('serena', 'find_symbol'), { name_path: 'B' }),
+    navCall('e3', mcpName('serena', 'get_symbols_overview'), { relative_path: 'src/a.cs' }),
+    navCall('e4', mcpName('context7', 'query-docs'), { query: 'x' }),
+    navCall('e5', mcpName('context7', 'resolve-library-id'), { libraryName: 'y' }),
+    navCall('e6', mcpName('memory', 'memory_search'), {}),
+    navCall('e7', mcpName('playwright-chrome', 'browser_click'), { element: 'OK' }),
+  ], {
+    e2: { text: 'Error executing tool find_symbol: language server not running', error: true },
+    e4: { text: 'MCP error -32001: Request timed out', error: true },
+    e5: { text: 'Blocked: this call is gated [node "/x/hooks/guard-unapproved-dispatch.js"]', error: true },
+    e6: { text: '<tool_use_error>InputValidationError: memory_search failed due to the following issue: query is required</tool_use_error>', error: true },
+    e7: { text: "The user doesn't want to proceed with this tool use.", error: true },
+  });
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  navTranscript(path.join(sub, 'agent-s1.jsonl'), [
+    navCall('f1', mcpName('serena', 'find_symbol'), { name_path: 'C' }),
+    navCall('f2', mcpName('sentry', 'search_issues'), { query: 'z' }),
+  ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
+  const { main, agents } = run([file]);
+  assert.strictEqual(main.mcp.serena.errors, 1);
+  assert.strictEqual(main.mcp.context7.errors, 1);
+  assert.strictEqual(main.mcp.context7.rejected, 1, 'a guard denial is a rejection, not a server failure');
+  assert.strictEqual(main.mcp.memory.errors, 0);
+  assert.strictEqual(main.mcp.memory.rejected, 1, 'a schema failure never reached the server');
+  assert.strictEqual(main.mcp['playwright-chrome'].errors, 0, 'a decline is an answer');
+  assert.strictEqual(agents[0].stats.mcp.serena.errors, 1);
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: serena 2\/4, context7 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| serena \| 4 \| [^|]+ \| 2 \|/, 'the MCP table counts server errors only');
+  assert.match(md, /\| MCP failures \| 3 of 9 MCP call\(s\)/);
+  // per session, in the rollup
+  const roll = run([dir]);
+  assert.deepStrictEqual(roll.sessions[0].mcp, { calls: 9, errors: 3 });
+  const rtxt = execFileSync('node', [SCRIPT, dir], { encoding: 'utf8' });
+  assert.match(rtxt, /mcp-err/);
+  assert.match(rtxt, /\b3\/9\b/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('MCP failures: a session with no MCP call says so', () => {
+  const dir = tmp();
+  const file = writeFixture(dir);
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /MCP failures\s+no MCP call/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
