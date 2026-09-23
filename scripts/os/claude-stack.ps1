@@ -506,7 +506,7 @@ if ($MemoryProjectRoot) { $MemoryProjectRoot = [System.IO.Path]::GetFullPath($Me
 # MANIFEST - edit these, then run.
 # ===========================================================================
 
-# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (79).
+# (1) Skills "repo|skill" (comment a line to skip). Full inventory - every skill (80).
 $Skills = @(
   # House (envoydev/claude-stack)
   'envoydev/claude-stack|create-ticket'             # ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md
@@ -516,6 +516,7 @@ $Skills = @(
   'envoydev/claude-stack|project-architecture-quality-loop'        # deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only
   'envoydev/claude-stack|project-code-style-analyzer'    # deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only
   'envoydev/claude-stack|project-architecture-analyzer'  # deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only
+  'envoydev/claude-stack|project-first-look'             # provisional ORIENTATION.md from one manifest scan (scripts/scan-evidence.js --orientation) - stack, modules, build/test/run commands, entry points; never over a capture, replaced by the architecture capture
   'envoydev/claude-stack|project-architecture-quality-analyzer' # deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only
   'envoydev/claude-stack|project-test-coverage-analyzer' # deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)
   'envoydev/claude-stack|project-test-coverage-loop'     # deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only
@@ -641,11 +642,10 @@ $ExtraMarketplaces = @(
 # registered from the run's throwaway source snapshot.
 $StackMarketplace = if ($env:CLAUDE_STACK_MARKETPLACE) { $env:CLAUDE_STACK_MARKETPLACE } else { 'envoydev/claude-stack' }
 $StackPlugins = @('claude-stack-hooks@claude-stack')
-# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
-# the two together, so a dependency added there is a red lint until it is added here). Installed
-# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
-# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
-# route the core entry carries them and an explicit install here would only repeat the work.
+# The core's cross-marketplace companion, mirrored from the seed's CORE_DEP_PLUGINS (the lint pins
+# the three together). Installed EXPLICITLY on every run: the core declares no dependencies, because
+# `claude plugin update` over an older core installs none a release adds and a plugin missing one is
+# disabled at load, its commands with it.
 $CoreDepPlugins = @('superpowers@claude-plugins-official')
 
 $Plugins = @(
@@ -684,15 +684,20 @@ $McpContext7Ver   = Get-NpmLatest  '@upstash/context7-mcp'
 $McpPlaywrightVer = Get-NpmLatest  '@playwright/mcp'
 $McpSerenaVer     = Get-PypiLatest 'serena-agent'
 $McpMemoryVer     = Get-PypiLatest 'mcp-memory-service'
+$McpChromeDevtoolsVer = Get-NpmLatest 'chrome-devtools-mcp'
+$McpAppiumVer         = Get-NpmLatest 'appium-mcp'
 # Version-pin suffix: '@1.2.3' when resolved, '' (unpinned fallback) when offline.
 $Ctx7Pin   = if ($McpContext7Ver)   { '@' + $McpContext7Ver }   else { '' }
 $PwPin     = if ($McpPlaywrightVer) { '@' + $McpPlaywrightVer } else { '' }
 $SerenaPin = if ($McpSerenaVer)     { '@' + $McpSerenaVer }     else { '' }
+$CdPin     = if ($McpChromeDevtoolsVer) { '@' + $McpChromeDevtoolsVer } else { '' }
+$ApPin     = if ($McpAppiumVer)     { '@' + $McpAppiumVer }     else { '' }
 # The memory pin is spelled '==<ver>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<ver>',
 # FACT-EMBED) - not '@<ver>' like the others, which have no extras suffix to sit next to.
 $MemoryPin = if ($McpMemoryVer)     { '==' + $McpMemoryVer }     else { '' }
 # Report what pinned vs. fell back to unpinned - the whole point of this step is 'frozen until update'.
-$resolvedVers = [ordered]@{ 'context7' = $McpContext7Ver; 'playwright' = $McpPlaywrightVer; 'serena' = $McpSerenaVer; 'memory' = $McpMemoryVer }
+$resolvedVers = [ordered]@{ 'context7' = $McpContext7Ver; 'playwright' = $McpPlaywrightVer; 'serena' = $McpSerenaVer; 'memory' = $McpMemoryVer
+                             'chrome-devtools' = $McpChromeDevtoolsVer; 'appium-mcp' = $McpAppiumVer }
 foreach ($k in $resolvedVers.Keys) {
   if ($resolvedVers[$k]) { Log "  pinned $k@$($resolvedVers[$k])" }
   else { Log "  !! could not resolve $k latest - installing unpinned (re-run when online to pin it)" }
@@ -917,15 +922,15 @@ $AngularCliEntry = 'angular-cli|-- ' + $Npx + ' -y @angular/cli mcp'
 $PlaywrightEntry = 'playwright|-- ' + $Npx + " -y @playwright/mcp$PwPin " + '--user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/output'
 $SerenaEntry     = 'serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent' + $SerenaPin + ' serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd'
 $SentryEntry     = 'sentry|@HTTP@'
-$ChromeDevtoolsEntry = 'chrome-devtools|-- ' + $Npx + ' -y chrome-devtools-mcp@latest'
-$AppiumMcpEntry      = 'appium-mcp|-- ' + $Npx + ' -y appium-mcp@latest'
+$ChromeDevtoolsEntry = 'chrome-devtools|-- ' + $Npx + ' -y chrome-devtools-mcp' + $CdPin
+$AppiumMcpEntry      = 'appium-mcp|-- ' + $Npx + ' -y appium-mcp' + $ApPin
 
 $Mcps = @(
   $AngularCliEntry                            # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
   $SerenaEntry                                # LSP symbol navigation; PyPI-pinned (not git), dashboard off
   $PlaywrightEntry                            # drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser
-  $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
-  $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
+  $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads
+  $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects
   $SentryEntry  # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; -SentrySlug seeds the slug); -SentryAuth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
   $MemoryEntry  # memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; -MemoryLevel picks where its db lives
   $Context7Entry                              # up-to-date library/framework/SDK docs (beats recalled API knowledge)
@@ -941,7 +946,7 @@ $Mcps = @(
 #     entry's gate `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` is POSIX and assumes the default
 #     (bash-like) hook shell; under the PowerShell hook-shell opt-in it fails as a non-blocking error
 #     and records nothing.
-# ONE switch for the whole route change. $true (the default from 1.0.0) means the thirteen hooks
+# ONE switch for the whole route change. $true (the default from 1.0.0) means the fifteen hooks
 # arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
 # wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
 # run that enables the plugin - so the window where neither route fires is zero. The plugin's own
@@ -958,9 +963,9 @@ $HooksViaPlugin = ($env:CLAUDE_STACK_HOOKS_VIA_PLUGIN -ne 'false')
 # being a stack-owned artifact and holds only what the project itself added. $false keeps the 0.2.x
 # `claude mcp add` route, which is what the temp-project matrix uses to prove both.
 $McpsViaPlugin = ($env:CLAUDE_STACK_MCPS_VIA_PLUGIN -ne 'false')
-# The three servers that can never be dropped are hard `dependencies` of the CORE plugin entry, so
-# Claude Code installs them with it whatever this switch says. That makes them plugin-only whenever
-# the core is enabled at all - registering them as well would run each one twice and pay both sets
+# The three servers that can never be dropped are plugins this run installs beside the CORE entry
+# whatever this switch says (not its dependencies - a missing one would disable the core at load).
+# That makes them plugin-only whenever the core is enabled at all - registering them as well would run each one twice and pay both sets
 # of tool schemas every session. They come back to .mcp.json only on the FULL copy route, where no
 # plugin route is on and the core is never enabled.
 $McpsLocked = @('serena', 'context7', 'memory')
@@ -992,6 +997,8 @@ $Hooks = @(
   'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   'guard-fresh-session-start.js::@UserPromptSubmit::'   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
   'guard-fresh-session-start.js::@SessionStart:compact::'  # the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too
+  'guard-fresh-session-start.js::@PreCompact::'          # before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it
+  'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell::'  # an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, CLAUDE_STACK_CONFIG_PROTECT=0 turns it off
   'guard-cross-project-write.js::Write|Edit|NotebookEdit|Bash|PowerShell::'  # one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@SessionStart::'     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
@@ -1002,6 +1009,10 @@ $Hooks = @(
   'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::'  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
   'docs-session.js::@Stop::'                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
   'memory-session.js::@SessionStart::'            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
+  'monitor-session.js::@PostToolUse::'           # a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when CLAUDE_STACK_MONITOR=inject
+  'monitor-session.js::@UserPromptSubmit::'      # a new turn: the monitor's per-turn counts reset
+  'check-turn-build.js::@PostToolUse:Write|Edit|MultiEdit::'   # seeded OFF (CLAUDE_STACK_TURN_CHECK=0): records each written path for the turn's one build check
+  'check-turn-build.js::@Stop::'              # the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception (this twin writes 10 - a longer check is killed, fail-open)
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -1180,7 +1191,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory', 'hook-prelude')) { continue }    # legacy generated; docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
+    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory', 'hook-prelude', 'fresh-session')) { continue }    # legacy generated; docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -1815,31 +1826,16 @@ function Get-StackRunPlugins {
 }
 
 function Get-CoreDepsNeeded {
-  # The core's dependency plugins, but only when this run enables no stack plugin - see $CoreDepPlugins.
+  # The core's companions: $CoreDepPlugins on every run, and - while the core is on - each locked
+  # server the selection did not already name (the MCP route off). The core declares no
+  # dependencies, so nothing else installs them.
   param($StackRun)
-  if (@($StackRun).Count -gt 0) { return @() }
-  return @($CoreDepPlugins)
-}
-
-$script:DepLockHintShown = $false
-function Show-DepLockHint {
-  # A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
-  # with higher precedence than this one - the one documented enable failure whose symptom ('plugin
-  # ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
-  # Printed once, and only for a dependency the listing actually shows as disabled, so a run that
-  # failed for an unrelated reason is not sent chasing it.
-  param([string]$Plugin)
-  if ($Plugin -notlike '*@claude-stack') { return }
-  if ($script:DepLockHintShown) { return }
-  $listing = Get-InstalledPluginMap
-  foreach ($dep in $CoreDepPlugins) {
-    $name = ($dep -split '@')[0]
-    if (-not $listing.ContainsKey($name)) { continue }
-    if ($listing[$name].enabled) { continue }
-    $script:DepLockHintShown = $true
-    $depScope = if ($listing[$name].scope) { $listing[$name].scope } else { $ClaudeScope }
-    Log "     $name is DISABLED and $Plugin depends on it - enable it first: claude plugin enable $dep --scope $depScope"
+  $out = @()
+  if (Test-CorePluginOn) {
+    $have = @(@($StackRun) | ForEach-Object { ($_ -split '@')[0] })
+    foreach ($name in $McpsLocked) { if ($have -notcontains $name) { $out += "$name@claude-stack" } }
   }
+  return @($out + $CoreDepPlugins)
 }
 
 function Initialize-StackSource {
@@ -1875,7 +1871,7 @@ function Install-Plugins {
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
     Log "plugin [$pScope]: $p"
     try { & claude plugin install $p --scope $pScope -y } catch {}   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
-    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed"; Show-DepLockHint $p }
+    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
   }
 }
 
@@ -1958,7 +1954,7 @@ function Install-Mcps {
     $name = $parts[0]
     $spec = $parts[1]
     if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) {
-      Log "  mcp ${name}: carried by the core plugin's dependencies - not registered here"
+      Log "  mcp ${name}: installed as a plugin beside the core - not registered here"
       continue
     }
     # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
@@ -2157,7 +2153,7 @@ function Get-Hooks {
     $root = Get-RepoRoot
     if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
     Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'model-windows.json')
-    Log '  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied'
+    Log '  hooks: the fifteen via the claude-stack-hooks plugin; the docs and memory engines copied'
     return
   }
   $root = Get-RepoRoot
@@ -2174,6 +2170,8 @@ function Get-Hooks {
   # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
   # this route too - without it every hook takes the fail-open catch on every single invocation.
   if ($files.Count -gt 0) { $files += 'hook-prelude.js' }
+  # the fresh-session engine both fresh-session hooks require from their own directory
+  if ($files.Count -gt 0) { $files += 'fresh-session.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -2675,7 +2673,7 @@ function Set-HookSettings {
   # leaves $Hooks as the whole catalog, so the complement is empty and every hook runs.
   $wireHooks = if ($HooksViaPlugin) { @() } else { @($Hooks) }
   # Only a selection that CARRIES hook lines counts as an answer: `update -InstalledOnly` reads the
-  # hooks off DISK, and on this route there are none, which would read as 'all thirteen dropped'.
+  # hooks off DISK, and on this route there are none, which would read as 'all fifteen dropped'.
   $hooksOff = @(); $hooksAnswered = $false
   if ($HooksViaPlugin -and $Selection -and (Test-Path -LiteralPath $Selection) -and
       (Select-String -LiteralPath $Selection -Pattern '^hook ' -Quiet)) {
@@ -2966,6 +2964,26 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)'
+  }
+  # config protection: an existing check config cannot be weakened to pass the check; '0' turns it off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_CONFIG_PROTECT']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONFIG_PROTECT -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_CONFIG_PROTECT seeded (1)'
+  }
+  # session monitor: 'log' writes its rows and injects nothing (the observation week), 'inject' also
+  # hands each note back to the model, '0' is off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_MONITOR']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_MONITOR -NotePropertyValue 'log'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_MONITOR seeded (log)'
+  }
+  # turn build check: seeded OFF - it turns on per project only after a measured week of 'green' claims
+  # with no check behind them.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_TURN_CHECK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_TURN_CHECK -NotePropertyValue '0'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_TURN_CHECK seeded (0)'
   }
   # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both
@@ -3352,16 +3370,16 @@ function Update-Mcps {
     Log 'mcp: carried by the plugins - registrations pruned, nothing re-registered'
     return
   }
-  # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
-  # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
-  # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
+  # Every npm / PyPI entry is pinned at install and bumps here via remove + re-add; angular-cli stays
+  # unpinned by design (it must match the workspace ng), the hosted servers (context7 remote, sentry)
+  # have nothing to pin, and an offline lookup degrades to the unpinned form. An add that lands on a
   # name the remove did not clear exits 0 without writing - Test-McpRegistrations is what makes this stick.
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
     $spec = $parts[1]
     if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) {
-      Log "  mcp ${name}: carried by the core plugin's dependencies - not re-registered here"
+      Log "  mcp ${name}: installed as a plugin beside the core - not re-registered here"
       continue
     }
     Log "mcp refresh [$ClaudeScope]: $name"
@@ -3580,8 +3598,8 @@ Install-GitHubCli
 # after the copies land. The skills and agents a PLUGIN carries cannot be re-spelled - they are read
 # from the plugin cache, not from .claude/ - so the mixed combination is reported, never half-fixed.
 function Convert-McpToolNames {
-  # Only the servers THIS run registered under a bare name. The three locked ones ride the core
-  # plugin's dependencies whenever any plugin route is on, so on a hooks-only copy route their tool
+  # Only the servers THIS run registered under a bare name. The three locked ones are plugins beside
+  # the core whenever any plugin route is on, so on a hooks-only copy route their tool
   # names must stay plugin-spelled while the droppable picks are re-spelled.
   $bare = @(Get-BareNamedMcps)
   if (-not $bare.Count) { return }

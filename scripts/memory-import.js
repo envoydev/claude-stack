@@ -7,10 +7,12 @@
 //
 // Usage: node scripts/memory-import.js --project-root <root> [--config-dir <dir>] [--memory-dir <dir>]
 //
-// The server is spawned EXACTLY as the `memory` entry registers it: read command/args/env from
-// <root>/.mcp.json, else the account's registration file (final review A, I1: the DEFAULT
-// account's file is `$HOME/.claude.json` - a sibling of the `.claude` dir, never inside it; only an
-// explicit `--config-dir` or a live `CLAUDE_CONFIG_DIR` moves it to `<dir>/.claude.json`).
+// The server is spawned EXACTLY as the project runs it (the memory engine's serviceEntry): the
+// `memory` registration in <root>/.mcp.json, else the account's registration file (final review A,
+// I1: the DEFAULT account's file is `$HOME/.claude.json` - a sibling of the `.claude` dir, never
+// inside it; only an explicit `--config-dir` or a live `CLAUDE_CONFIG_DIR` moves it to
+// `<dir>/.claude.json`), else - the plugin route, where no registration exists - the server the
+// installed memory@claude-stack plugin declares, with the database path pinned.
 //
 // `--memory-dir` pins a single explicit notes folder (tests, or a caller that already knows the
 // answer) and skips everything below. Left out, the importer AUTODETECTS every notes folder that
@@ -38,9 +40,10 @@
 // No notes anywhere, direct or through a transcript, is always 'nothing to import', exit 0 - never a
 // failure. `--memory-dir` skips all of the above - an explicit answer is never second-guessed.
 //
-// Idempotence: PRIMARILY a read-only node:sqlite precheck against the registration's own
-// MCP_MEMORY_SQLITE_PATH, for a live row (`deleted_at IS NULL`) holding the exact same content - skips
-// the store call outright on a hit. SECOND line, only for notes the precheck did not resolve
+// Idempotence: PRIMARILY a read-only node:sqlite precheck against the server's own
+// MCP_MEMORY_SQLITE_PATH, for a live row (`deleted_at IS NULL`) holding the same content hash or the
+// exact same content - skips the store call outright on a hit, and with nothing left to store the
+// server never starts. SECOND line, only for notes the precheck did not resolve
 // (node:sqlite unavailable below Node 22.13, the db file not created yet, or the registration's env
 // carries no MCP_MEMORY_SQLITE_PATH): the memory MCP's OWN duplicate-content detection, read from the
 // store response text. final review A, M1: every store call also carries its own `conversation_id`
@@ -64,15 +67,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { spawn, execFileSync } = require('node:child_process');
-const { randomUUID } = require('node:crypto');
-
-const CALL_TIMEOUT_MS = 30000;
-// final review A, I6: FACT-EMBED measured a 41.3s cold first launch (wheels plus the 166MB ONNX
-// model) - well past the old 30s. `initialize` alone gets the longer budget; the overall 5-minute cap
-// (which bounds the whole run, initialize included) is unchanged.
-const INIT_TIMEOUT_MS = 180000;
-const OVERALL_TIMEOUT_MS = 5 * 60 * 1000;
+const { execFileSync } = require('node:child_process');
+// The server route - finding the server, the precheck, the store loop, the post-exit verify - lives in
+// the memory engine, shared with its `import` verb, so both imports store the same way.
+const engine = require('../stack/hooks/memory.js');
 
 const KIND_MAP = {
     user: 'preference_signal',
@@ -328,34 +326,6 @@ function extraDirsFromTranscripts(configDirs, projectRoot, alreadyCoveredDirs)
 
 // Read command/args/env for the `memory` server exactly as it is registered: the project's
 // .mcp.json first, else the account file. Neither is ever written.
-function accountRegistrationFile(explicitConfigDir, home)
-{
-    if (explicitConfigDir) return path.join(explicitConfigDir, '.claude.json');
-    if (process.env.CLAUDE_CONFIG_DIR) return path.join(path.resolve(process.env.CLAUDE_CONFIG_DIR), '.claude.json');
-    // final review A, I1: the DEFAULT account's own file is `$HOME/.claude.json` - a sibling of
-    // the `.claude` dir, never inside it (context7 /websites/code_claude confirms this placement).
-    return path.join(home, '.claude.json');
-}
-
-function findMemoryRegistration(projectRoot, explicitConfigDir, home)
-{
-    const projMcp = path.join(projectRoot, '.mcp.json');
-    if (fs.existsSync(projMcp))
-    {
-        const data = readJsonSafe(projMcp);
-        const entry = data && data.mcpServers && data.mcpServers.memory;
-        if (entry && entry.command) return entry;
-    }
-    const acctFile = accountRegistrationFile(explicitConfigDir, home);
-    if (fs.existsSync(acctFile))
-    {
-        const data = readJsonSafe(acctFile);
-        const entry = data && data.mcpServers && data.mcpServers.memory;
-        if (entry && entry.command) return entry;
-    }
-    return null;
-}
-
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 // final review A, C1: a flat frontmatter parser - no YAML library, so the importer runs from a
@@ -427,192 +397,6 @@ function buildContent(description, body)
     return description || body;
 }
 
-function extractResultText(result)
-{
-    if (!result) return '';
-    if (Array.isArray(result.content))
-    {
-        return result.content
-            .map((c) => (c && c.type === 'text' && typeof c.text === 'string' ? c.text : ''))
-            .join('\n');
-    }
-    return '';
-}
-
-function loadSqlite()
-{
-    // Test hook: forces the same fallback path a genuinely unavailable node:sqlite takes, so the
-    // fallback is exercisable on any Node version, not only below 22.13.
-    if (process.env.CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE === '1') return null;
-    try
-    {
-        // Silences the (harmless) ExperimentalWarning node:sqlite prints below Node 24 - same
-        // pattern this plan uses elsewhere for the same module.
-        process.removeAllListeners('warning');
-        return require('node:sqlite');
-    }
-    catch (e)
-    {
-        return null; // Node < 22.13 without --experimental-sqlite - node:sqlite is unavailable
-    }
-}
-
-function openDbReadOnly(DatabaseSync, dbPath)
-{
-    try { return new DatabaseSync(dbPath, { readOnly: true }); }
-    catch (e)
-    {
-        try { return new DatabaseSync(`file:${dbPath}?mode=ro&immutable=1`, { readOnly: true }); }
-        catch (e2) { return null; } // e.g. the db file does not exist yet (first-ever import)
-    }
-}
-
-function hasLiveDuplicate(db, content)
-{
-    try
-    {
-        const row = db.prepare('SELECT 1 FROM memories WHERE content = ? AND deleted_at IS NULL LIMIT 1').get(content);
-        return !!row;
-    }
-    catch (e)
-    {
-        return false; // a query failure is 'no precheck available' for this note, never a false match
-    }
-}
-
-// Fix round 3 (binding): NEVER `immutable=1` here - that flag ignores the WAL, so a row the server just
-// committed can read back as missing even though it is safely on disk (the suspected cause of the 1-of-
-// 15 real-run miss this fixes). A plain read-only open first; if THAT fails, read-write - by the time
-// this is called the server that held the file is confirmed exited, so nothing else has it open.
-function openDbForVerify(DatabaseSync, dbPath)
-{
-    try { return new DatabaseSync(dbPath, { readOnly: true }); }
-    catch (e)
-    {
-        try { return new DatabaseSync(dbPath); }
-        catch (e2) { return null; }
-    }
-}
-
-// Fix round 3 (binding): confirms every note this run counted as imported or already present is
-// actually a live row, after the server has fully exited. Returns the names of any note NOT found;
-// throws only when the db cannot be reopened at all (a real anomaly - the server was writing to this
-// exact file moments ago).
-function verifyNotesPersisted(DatabaseSync, dbPath, notes)
-{
-    const db = openDbForVerify(DatabaseSync, dbPath);
-    if (!db) throw new Error(`could not re-open ${dbPath} to confirm the import after the server exited`);
-    try
-    {
-        const missing = [];
-        for (const note of notes)
-        {
-            const content = buildContent(note.description, note.body);
-            const row = db.prepare('SELECT 1 FROM memories WHERE content = ? AND deleted_at IS NULL LIMIT 1').get(content);
-            if (!row) missing.push(note.name);
-        }
-        return missing;
-    }
-    finally { try { db.close(); } catch (e) { /* already closed */ } }
-}
-
-function startServer(entry, cwd)
-{
-    const command = entry.command;
-    const args = Array.isArray(entry.args) ? entry.args : [];
-    const env = Object.assign({}, process.env, entry.env || {});
-    return spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
-}
-
-// Fix round 3 (binding): a pending write must not be cut off by an immediate SIGKILL. Closes stdin
-// (the server's own natural shutdown trigger) and waits for its 'exit', bounded - only killing it if
-// it has not exited on its own within that window. Resolves once the process is confirmed gone either
-// way, so the caller can safely re-open its db file next.
-const SHUTDOWN_WAIT_MS = 5000;
-
-function shutdownServer(child)
-{
-    return new Promise((resolve) =>
-    {
-        if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; } // already exited
-        let timer;
-        const finish = () => { clearTimeout(timer); resolve(); };
-        child.once('exit', finish);
-        try { child.stdin.end(); } catch (e) { /* already closed */ }
-        timer = setTimeout(() =>
-        {
-            try { child.kill('SIGKILL'); } catch (e) { /* already gone */ }
-        }, SHUTDOWN_WAIT_MS);
-    });
-}
-
-// A minimal JSON-RPC-over-stdio client: one line per message, both directions - no MCP client
-// library needed (matches the spike's driver.js approach).
-function createRpcClient(child)
-{
-    let buf = '';
-    let nextId = 1;
-    const pending = new Map();
-    let fatalError = null;
-    let stderrTail = '';
-
-    child.stdout.on('data', (chunk) =>
-    {
-        buf += chunk.toString('utf8');
-        let idx;
-        while ((idx = buf.indexOf('\n')) !== -1)
-        {
-            const line = buf.slice(0, idx);
-            buf = buf.slice(idx + 1);
-            if (!line.trim()) continue;
-            let msg;
-            try { msg = JSON.parse(line); } catch (e) { continue; }
-            if (msg && msg.id !== undefined && pending.has(msg.id))
-            {
-                const { resolve } = pending.get(msg.id);
-                pending.delete(msg.id);
-                resolve(msg);
-            }
-        }
-    });
-    child.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk.toString('utf8')).slice(-4000); });
-    const failAll = (err) =>
-    {
-        if (!fatalError) fatalError = err;
-        for (const { reject } of pending.values()) reject(err);
-        pending.clear();
-    };
-    child.on('error', (err) => failAll(new Error(`could not start the memory MCP server: ${err.message}`)));
-    child.on('exit', (code, signal) => failAll(new Error(
-        `memory MCP server exited unexpectedly (code=${code} signal=${signal})${stderrTail ? ` - stderr: ${stderrTail.slice(-500)}` : ''}`,
-    )));
-
-    function call(method, params, timeoutMs)
-    {
-        return new Promise((resolve, reject) =>
-        {
-            if (fatalError) { reject(fatalError); return; }
-            const id = nextId++;
-            const timer = setTimeout(() =>
-            {
-                pending.delete(id);
-                reject(new Error(`timed out waiting for '${method}' after ${timeoutMs}ms`));
-            }, timeoutMs);
-            pending.set(id, {
-                resolve: (msg) => { clearTimeout(timer); resolve(msg); },
-                reject: (err) => { clearTimeout(timer); reject(err); },
-            });
-            child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-        });
-    }
-    function notify(method, params)
-    {
-        if (fatalError) return;
-        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
-    }
-    return { call, notify };
-}
-
 async function runImport(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
 {
     let memoryDirs;
@@ -659,112 +443,33 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
     // with sessions but no notes is the normal case, not a sign the folder computation is wrong.
     if (noteEntries.length === 0) return { ok: true, message: `nothing to import, from ${fromLabel}` };
 
-    const entry = findMemoryRegistration(projectRoot, explicitConfigDir, home);
+    // A registration (the copy route, any pre-1.0.0 install), else the installed memory@claude-stack
+    // plugin: from 1.0.0 the server rides that plugin and no registration exists, which is why the
+    // notes import found nothing to store into on every plugin-route install until 1.1.0.
+    const entry = engine.serviceEntry(projectRoot, { home, configDir: explicitConfigDir || undefined });
     if (!entry)
     {
         throw new Error(
-            "no 'memory' MCP server registered (checked .mcp.json and the account config) - nothing to import into",
+            "no 'memory' MCP server registered (checked .mcp.json, the account config and the installed memory plugin) - nothing to import into",
         );
     }
 
     const projectName = path.basename(gitTopLevel(projectRoot)).replace(/,/g, '');
-    const notes = noteEntries.map(({ dir, file }) =>
+    const items = noteEntries.map(({ dir, file }) =>
     {
         const full = path.join(dir, file);
         let raw;
         try { raw = fs.readFileSync(full, 'utf8'); }
         catch (e) { throw new Error(`could not read ${full}: ${e.message}`); }
-        return parseNote(raw, file);
+        const note = parseNote(raw, file);
+        const noteName = note.name.replace(/,/g, '');
+        // final review A, M2: a 'user' note describes the PERSON, not the project - no project: tag,
+        // so it reads back as a global preference. Every other kind keeps one.
+        const tags = note.rawType === 'user' ? [noteName] : [`project:${projectName}`, noteName];
+        return { label: note.name, content: buildContent(note.description, note.body), tags, type: mapKind(note.rawType) };
     });
 
-    // The db precheck is a pure local file read - resolved before spawning the server at all. The
-    // registration's own env names the exact file the server itself will open.
-    let db = null;
-    let sqlite = null;
-    let sqliteNote = '';
-    const dbPath = entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
-    if (dbPath)
-    {
-        sqlite = loadSqlite();
-        if (sqlite) db = openDbReadOnly(sqlite.DatabaseSync, dbPath);
-        else sqliteNote = ' (node:sqlite unavailable - idempotence checked via the server response text only)';
-    }
-
-    const child = startServer(entry, projectRoot);
-    const rpc = createRpcClient(child);
-    const deadline = Date.now() + OVERALL_TIMEOUT_MS;
-    const timeLeft = () => Math.max(1, deadline - Date.now());
-
-    let imported = 0;
-    let present = 0;
-    try
-    {
-        await rpc.call('initialize', {
-            protocolVersion: '2024-11-05',
-            capabilities: {},
-            clientInfo: { name: 'claude-stack-memory-import', version: '1.0.0' },
-        }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
-        rpc.notify('notifications/initialized');
-
-        for (const note of notes)
-        {
-            if (Date.now() > deadline) throw new Error('import timed out after 5 minutes');
-            const content = buildContent(note.description, note.body);
-            if (db && hasLiveDuplicate(db, content)) { present++; continue; }
-
-            const kind = mapKind(note.rawType);
-            const noteName = note.name.replace(/,/g, '');
-            // final review A, M2: a 'user' note describes the PERSON, not the project - no
-            // project: tag, so it reads back as a global preference. Every other kind keeps one.
-            const tags = note.rawType === 'user' ? [noteName] : [`project:${projectName}`, noteName];
-            const resp = await rpc.call('tools/call', {
-                name: 'memory_store',
-                // final review A, M1: a fresh conversation_id per note bypasses the server's
-                // semantic-similarity dedup ACROSS calls (FACT-TOOLS), so two genuinely distinct
-                // notes are never silently collapsed into one. Idempotence for a genuine re-import
-                // stays on the db precheck above, second line the response text below.
-                arguments: { content, conversation_id: randomUUID(), metadata: { tags, type: kind } },
-            }, Math.min(CALL_TIMEOUT_MS, timeLeft()));
-
-            if (resp.error) throw new Error(`memory_store failed for '${note.name}': ${resp.error.message || JSON.stringify(resp.error)}`);
-            const text = extractResultText(resp.result);
-            if (resp.result && resp.result.isError) throw new Error(`memory_store failed for '${note.name}': ${text}`);
-            // Read the text: the server wraps BOTH a genuine failure and a benign duplicate-content
-            // report as isError:false text starting 'Error storing memory:' - only the duplicate
-            // case counts as 'already present'; anything else with that prefix is a hard failure.
-            // Second line only - the db precheck above is the primary idempotence check.
-            if (/duplicate content detected/i.test(text)) present++;
-            else if (/error storing memory/i.test(text)) throw new Error(`memory_store failed for '${note.name}': ${text}`);
-            else imported++;
-        }
-    }
-    finally
-    {
-        // Fix round 3 (binding): close stdin and wait for the server's own exit (bounded) before
-        // ever killing it, so a write still landing after the last response is not cut off.
-        await shutdownServer(child);
-        if (db) { try { db.close(); } catch (e) { /* already closed */ } }
-    }
-
-    // Fix round 3 (binding): 1 of 15 real update-path runs switched Claude's own memory off while a
-    // seeded note was NOT in the db afterwards (a store answering before its write committed, or a
-    // read that missed the WAL - cause unknown, made impossible instead of diagnosed). Only reached
-    // when the store loop above completed without throwing. Re-opens the db FRESH, after the server
-    // has fully exited, and confirms every note this run counted (imported or already present) is a
-    // live row - never with `immutable=1` (see verifyNotesPersisted).
-    if (dbPath && sqlite)
-    {
-        const missing = verifyNotesPersisted(sqlite.DatabaseSync, dbPath, notes);
-        if (missing.length)
-        {
-            throw new Error(
-                `memory_store reported success for ${missing.length} note(s) not found in the db after the ` +
-                `server exited (never acceptable - a store may have answered before its write committed): ` +
-                `${missing.join(', ')}`,
-            );
-        }
-    }
-
+    const { imported, present, sqliteNote } = await engine.storeThroughService({ entry, cwd: projectRoot, items });
     return { ok: true, message: `${imported} imported, ${present} already present, from ${fromLabel}${sqliteNote}` };
 }
 
@@ -795,5 +500,5 @@ if (require.main === module)
 
 module.exports = {
     mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir,
-    INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
+    INIT_TIMEOUT_MS: engine.INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS: engine.OVERALL_TIMEOUT_MS,
 };

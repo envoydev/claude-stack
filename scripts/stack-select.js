@@ -362,10 +362,9 @@ function emitTable(graph, layer, opts)
         return null;
     };
 
-    // A plugin the core marketplace entry hard-depends on is in the catalog (its citers are real
-    // edges) but it is neither droppable nor ours to install: enabling the core enables it, and
-    // Claude Code refuses to disable it while the core is enabled. Calling that row 'required by
-    // skill x' reads like a pick the user still has to make, so it gets its own status.
+    // A plugin every install carries beside the core is in the catalog (its citers are real edges)
+    // but it is neither droppable nor a pick: the installer puts it back on every run. Calling that
+    // row 'required by skill x' reads like a pick the user still has to make, so it gets its own status.
     const dependencyPlugins = new Set(layer === 'plugins' ? (graph.catalog.dependencyPlugins || []) : []);
 
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;

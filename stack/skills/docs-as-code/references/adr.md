@@ -20,11 +20,14 @@ what they inherit.
 - **Immutable** - never rewrite an accepted ADR; write a new one and mark the old
   `superseded by ADR-NNNN` (both link to each other). Adding newly discovered consequences later
   is allowed - that is additive, not mutation.
-- **Numbered and named**: monotonic zero-padded sequence, lowercase dash-separated title -
-  `0001-use-postgresql.md` - so a directory listing reads as the log.
+- **Numbered by the engine, never by hand**: `node .claude/hooks/docs.js adr new '<title>'` takes
+  the next number under `<docs-path>/decisions/`, writes the `NNNN-<slug>.md` skeleton (Nygard,
+  status Proposed) and rewrites the `DECISIONS.md` index table - then fill the record. A project
+  whose ADRs already live elsewhere keeps its own numbering there.
 - **Written for a future developer**: full sentences, active voice ('We will ...'), inverted
   pyramid, consequences stated honestly - positive, negative, AND neutral.
-- Status lifecycle: proposed -> accepted -> deprecated / superseded. Never delete.
+- Status lifecycle: proposed -> accepted -> deprecated / superseded. Never delete. After a status
+  change, `docs.js adr index` carries it into the table.
 
 ## Nygard format (the default - lightest ceremony)
 
@@ -97,6 +100,7 @@ a load test holds read-side p95 under 200ms.
 ```
 
 Pick Nygard for brevity; MADR when the options analysis or the Confirmation step carries value.
+For MADR, restructure the skeleton `adr new` wrote - the index reads `status:` from the front matter.
 
 ## Operational discipline (what actually decides success)
 
@@ -107,8 +111,9 @@ operational, not editorial:
   on merge. The discussion IS the review trail.
 - **Definition of done**: an architecturally significant change is not done without its ADR
   written or superseded; an ADR is not done until the decision is implemented.
-- **An index**: keep a decision-log index (a README table or generated TOC) - an unfindable log
-  loses trust and dies. Tooling if wanted: adr-tools, the dotnet-adr global tool, Log4brains.
+- **An index**: an unfindable log loses trust and dies. Under `<docs-path>/decisions/` the
+  `DECISIONS.md` table is generated from the records by `adr new` / `adr index` - never edit it by
+  hand. An ADR home elsewhere keeps its own index (adr-tools, the dotnet-adr global tool, Log4brains).
 - **Granularity**: ADR the load-bearing decisions (session state placement, consistency model,
   monolith vs split). Skip the trivial (CSS framework) and the cosmic ('we will be cloud-native')
   - the classic dead log is full of both and missing the decisions that mattered.
@@ -122,7 +127,7 @@ rationale here, not on diagrams - a diagram shows the outcome and links the ADR 
 
 ## Checklist
 
-- One decision, short, `NNNN-kebab-title` naming.
+- One decision, short, numbered by `docs.js adr new`.
 - Superseded, never rewritten or deleted; supersede links run both ways.
 - All consequences listed, negative included.
 - Reviewed via PR; part of the definition of done; indexed.

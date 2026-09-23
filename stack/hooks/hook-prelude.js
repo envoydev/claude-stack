@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 //
-// The two gates every stack hook runs before it does anything, kept in ONE file because thirteen
-// inlined copies of the same twelve lines is thirteen chances to drift. The hooks already reach
+// The two gates every stack hook runs before it does anything, kept in ONE file because a copy
+// of the same twelve lines inlined in every hook is a chance to drift per hook. The hooks already reach
 // siblings this way (`require('./docs.js')`, `model-windows.json` through `__dirname`), so this is
 // the established shape rather than a new one.
 //
@@ -14,8 +14,8 @@
 // `guard-secret-value`.
 //
 // GATE 2 - the migration window. Between the release that starts shipping hooks through the plugin
-// and the update run that prunes the copies, a project can carry BOTH: the thirteen copied files
-// wired in `.claude/settings.json` and the same thirteen enabled through the plugin. Every guard
+// and the update run that prunes the copies, a project can carry BOTH: the copied hook files
+// wired in `.claude/settings.json` and the same hooks enabled through the plugin. Every guard
 // would then fire twice - two denials for one command, two block rows in the ledger, two
 // AskUserQuestions. The PLUGIN copy is the one that steps aside, because the copied one is what the
 // project's own settings file points at and is the older, already-trusted route.

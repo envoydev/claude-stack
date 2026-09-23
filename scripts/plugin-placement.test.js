@@ -5,10 +5,10 @@ const { placement, costOf, costToday, GROUP_NAMES, CORE, EXTRAS } = require('./p
 
 const p = placement();
 
-test('the core plugin is exactly the always closure - 21 skills, 8 agents', () => {
+test('the core plugin is exactly the always closure - 22 skills, 8 agents', () => {
     const core = p.plugins[CORE];
     assert.ok(core, 'the core plugin must exist');
-    assert.strictEqual(core.skills.length, 21);
+    assert.strictEqual(core.skills.length, 22);
     assert.strictEqual(core.agents.length, 8);
     for (const s of ['project-agent-capabilities', 'project-solve-cross-task'])
         assert.ok(core.skills.includes(s), `${s} is always-closure, so it belongs to the core`);
@@ -65,7 +65,7 @@ test('every skill and agent has exactly one home, and the union is complete', ()
     }
     for (const s of p.extras.skills) note('skill', s, EXTRAS);
     for (const a of p.extras.agents) note('agent', a, EXTRAS);
-    assert.strictEqual(seen.size, 79 + 43, 'every one of the 79 skills and 43 agents is placed once');
+    assert.strictEqual(seen.size, 80 + 43, 'every one of the 80 skills and 43 agents is placed once');
 });
 
 test('the 25 opt-in skills and the one opt-in agent are extras, not a plugin', () => {

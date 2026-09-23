@@ -253,7 +253,7 @@ test('readInstalled: a hook HOOKS_OFF does not name is on - a new release hook i
     const hooks = lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5));
     assert.ok(!hooks.includes('guard-answer-length'));
     assert.ok(hooks.includes('docs-session') && hooks.includes('memory-session'));
-    assert.strictEqual(hooks.length, 12);
+    assert.strictEqual(hooks.length, 15);
 });
 
 test('readInstalled: each surface reads back only while its own route is on', () =>

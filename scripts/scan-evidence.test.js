@@ -153,3 +153,152 @@ test('every reported path uses forward slashes, on every platform', () =>
     assert.ok(/src\/Api\/Api\.csproj/.test(hits), 'the reported path is posix-style');
     assert.ok(!/[A-Za-z0-9]\\\\[A-Za-z0-9]/.test(hits), 'no native separator survives into a reported path');
 });
+
+// --orientation (plan 4.12): the first-look scan. The same manifests the evidence scan reads, printed as a provisional
+// ORIENTATION.md - stack, modules, build / test / run commands, entry points - so a project with no architecture
+// capture still starts its sessions with a map. Every row is read from a manifest; nothing is inferred.
+const { spawnSync } = require('node:child_process');
+const MARKER = 'provisional - replaced by the architecture capture';
+function tree(files)
+{
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-orient-')));
+    for (const [rel, text] of Object.entries(files))
+    {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), text);
+    }
+    return root;
+}
+const orient = (root, ...extra) => spawnSync('node', [SCRIPT, '--orientation', '--root', root, ...extra], { encoding: 'utf8' });
+const csproj = (sdk, props = '', refs = '') => `<Project Sdk="${sdk}">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>${props}\n  </PropertyGroup>\n  <ItemGroup>${refs}</ItemGroup>\n</Project>\n`;
+const DOTNET = {
+    'Shop.sln': 'Microsoft Visual Studio Solution File, Format Version 12.00\n',
+    'src/Api/Api.csproj': csproj('Microsoft.NET.Sdk.Web'),
+    'src/Api/Program.cs': 'var app = WebApplication.Create(args);\n',
+    'src/Domain/Domain.csproj': csproj('Microsoft.NET.Sdk'),
+    'src/Desk/Desk.csproj': csproj('Microsoft.NET.Sdk', '\n    <OutputType>WinExe</OutputType>\n    <UseWPF>true</UseWPF>'),
+    'src/Desk/App.xaml': '<Application />\n',
+    'tests/Api.Tests/Api.Tests.csproj': csproj('Microsoft.NET.Sdk', '', '\n    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />'),
+};
+
+test('--orientation on a .NET solution: stack, modules, commands and entry points, read from the manifests', () =>
+{
+    const root = tree(DOTNET);
+    try
+    {
+        const r = orient(root);
+        assert.strictEqual(r.status, 0, r.stderr);
+        const md = r.stdout;
+        assert.match(md, /^Captured: no git, \d{4}-\d{2}-\d{2}\n/, 'the capture stamp opens the doc, honest about a tree with no git');
+        assert.ok(md.includes(`# Orientation (${MARKER})`), 'the marker the docs engine keys on');
+        assert.match(md, /\| Stack \| [^\n]*\.NET 8[^\n]*ASP\.NET Core[^\n]*WPF/);
+        for (const m of ['`src/Api` (web)', '`src/Domain` (library)', '`src/Desk` (wpf)', '`tests/Api.Tests` (test)']) assert.ok(md.includes(m), `${m} in\n${md}`);
+        assert.match(md, /\| Build \| `dotnet build Shop\.sln` \|/);
+        assert.match(md, /\| Test \| `dotnet test Shop\.sln` \|/);
+        assert.match(md, /\| Run \| `dotnet run --project src\/Api\/Api\.csproj`; `dotnet run --project src\/Desk\/Desk\.csproj` \|/);
+        assert.match(md, /\| Entry points \| `src\/Api\/Program\.cs`; `src\/Desk\/App\.xaml` \|/);
+        assert.doesNotMatch(md, /Api\.Tests\.csproj`/, 'a test project is never a run target');
+        assert.ok(Buffer.byteLength(md) <= 4096, 'inside the orientation cap');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--orientation on node packages: the package manager, declared scripts and entries; the npm placeholder test is no test', () =>
+{
+    const root = tree({
+        'web/package.json': JSON.stringify({ scripts: { build: 'ng build', test: 'ng test', start: 'ng serve' }, dependencies: { '@angular/core': '^17.1.0' }, devDependencies: { typescript: '~5.4.0' } }),
+        'web/pnpm-lock.yaml': 'lockfileVersion: 9.0\n',
+        'web/angular.json': JSON.stringify({ projects: { shop: { architect: { build: { options: { browser: 'src/main.ts' } } } } } }),
+        'web/src/main.ts': 'bootstrapApplication(App);\n',
+        'tools/cli/package.json': JSON.stringify({ bin: { shopctl: 'bin/cli.js' }, scripts: { test: 'echo "Error: no test specified" && exit 1' } }),
+        'tools/cli/bin/cli.js': '#!/usr/bin/env node\n',
+    });
+    try
+    {
+        const r = orient(root);
+        assert.strictEqual(r.status, 0, r.stderr);
+        const md = r.stdout;
+        assert.match(md, /\| Stack \| [^\n]*`web\/` Angular 17 \+ TypeScript[^\n]*`tools\/cli\/` JavaScript/);
+        assert.match(md, /\| Build \| `pnpm run build` in `web\/` \|/);
+        assert.match(md, /\| Test \| `pnpm run test` in `web\/` \|/, 'the placeholder test script of tools/cli is left out');
+        assert.match(md, /\| Run \| `pnpm run start` in `web\/` \|/);
+        assert.match(md, /\| Entry points \| `web\/src\/main\.ts`; `tools\/cli\/bin\/cli\.js` \|/);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--orientation stamps the branch and commit, and a large tree stays under the 4096-byte cap', () =>
+{
+    const files = { ...DOTNET };
+    for (let i = 0; i < 40; i++) files[`src/Module${i}/Module${i}.csproj`] = csproj('Microsoft.NET.Sdk');
+    const root = tree(files);
+    try
+    {
+        const git = (...a) => execFileSync('git', a, { cwd: root, encoding: 'utf8' }).trim();
+        git('init', '-q', '-b', 'develop');
+        git('-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'seed');
+        const r = orient(root);
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(r.stdout, new RegExp(`^Captured: develop@${git('rev-parse', '--short', 'HEAD')}\\+dirty, \\d{4}-\\d{2}-\\d{2}\\n`), 'untracked manifests make the tree dirty');
+        assert.match(r.stdout, /\(\+\d+ more\)/, 'the module list is capped, the rest counted');
+        assert.ok(Buffer.byteLength(r.stdout) <= 4096, `${Buffer.byteLength(r.stdout)} bytes`);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// Found on a temp project: a fresh `git init` has a branch but no commit, and `rev-parse --abbrev-ref HEAD` fails there.
+test('--orientation on a repo with no commit yet names its branch, not a detached HEAD', () =>
+{
+    const root = tree(DOTNET);
+    try
+    {
+        execFileSync('git', ['init', '-q', '-b', 'develop'], { cwd: root });
+        const r = orient(root);
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(r.stdout, /^Captured: develop@no-commits\+dirty, \d{4}-\d{2}-\d{2}\n/);
+        execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'seed'], { cwd: root });
+        const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+        execFileSync('git', ['checkout', '-q', '--detach'], { cwd: root });
+        assert.match(orient(root).stdout, new RegExp(`^Captured: detached@${sha}\\+dirty, `), 'a real detached HEAD still says so');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--orientation with no manifest it knows prints nothing and exits 1', () =>
+{
+    const root = tree({ 'README.md': '# A project\n' });
+    try
+    {
+        const r = orient(root);
+        assert.strictEqual(r.status, 1);
+        assert.strictEqual(r.stdout, '');
+        assert.match(r.stderr, /no manifest recognized/);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--orientation --out writes the file, refreshes a provisional one, and never replaces a capture', () =>
+{
+    const root = tree(DOTNET);
+    const out = path.join(root, '.claude/docs/architecture/ORIENTATION.md');
+    try
+    {
+        assert.strictEqual(orient(root, '--out', out).status, 0, 'the folders are created');
+        assert.ok(fs.readFileSync(out, 'utf8').includes(MARKER));
+        fs.appendFileSync(out, 'stale line\n');
+        assert.strictEqual(orient(root, '--out', out).status, 0, 'a provisional file is refreshed');
+        assert.ok(!fs.readFileSync(out, 'utf8').includes('stale line'));
+        fs.writeFileSync(out, 'Captured: develop@abc1234, 2026-09-01\n\nThe real map.\n');
+        const refused = orient(root, '--out', out);
+        assert.strictEqual(refused.status, 1);
+        assert.match(refused.stderr, /not provisional - the architecture capture wrote it/);
+        assert.strictEqual(fs.readFileSync(out, 'utf8'), 'Captured: develop@abc1234, 2026-09-01\n\nThe real map.\n');
+        fs.rmSync(out);
+        fs.writeFileSync(path.join(path.dirname(out), 'ARCHITECTURE.md'), '# Architecture\n');
+        const beside = orient(root, '--out', out);
+        assert.strictEqual(beside.status, 1);
+        assert.match(beside.stderr, /ARCHITECTURE\.md/);
+        assert.ok(!fs.existsSync(out), 'nothing written beside a capture');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

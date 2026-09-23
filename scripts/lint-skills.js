@@ -638,6 +638,79 @@ function absentAgentsFor(closures, kind, name, agentNames)
 // actually uses comes from meta/evidence.json matched against ITS OWN manifests; what a stack
 // always needs is a meta/recommendations.json seed. What a seat loads at RUNTIME stays a body
 // matter, by description (checks 25 and 26), and reaches no install decision.
+// Characters a reader cannot see: zero-width and joiner marks, bidi overrides and isolates (the
+// Trojan Source class, CVE-2021-42574), word joiners, a byte-order mark past byte 0, and the Unicode
+// tag block (U+E0000-E007F), which carries invisible text a model reads and a reviewer does not.
+// Written as escapes here so this file passes its own sweep. A BOM at byte 0 of a .ps1 is kept:
+// Windows PowerShell 5.1 reads a BOM-less script as the ANSI code page.
+const HIDDEN_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]/g;
+function hiddenChars(text, file)
+{
+    const out = [];
+    String(text).split('\n').forEach((l, i) =>
+    {
+        for (const m of l.matchAll(HIDDEN_CHAR_RE))
+        {
+            if (i === 0 && m.index === 0 && m[0] === '\uFEFF' && /\.ps1$/i.test(file)) continue;
+            out.push({ line: i + 1, hex: m[0].codePointAt(0).toString(16).toUpperCase() });
+        }
+    });
+    return out;
+}
+
+// 55. Our own workflows are checked the way a PR reviewer would not bother to: an event field
+// spliced into a `run` script is shell the PR author writes (a title of `"; curl ... | sh #` runs);
+// a third-party action on a tag runs whatever that tag points at tomorrow; `pull_request_target`
+// checking out the PR head hands a fork's code the base repo's secrets. GitHub-owned actions
+// (`actions/`, `github/`) and local ones (`./`) may float; everything else pins a 40-hex commit.
+const WORKFLOW_EVENT_SPLICE = /\$\{\{\s*github\.(event\.|head_ref)[^}]*\}\}/;
+function lintWorkflows(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+    {
+        let doc;
+        try { doc = yaml.load(text); }
+        catch (err) { out.push(`workflow ${file}: not parseable YAML - ${String(err.message).split('\n')[0]}`); continue; }
+        if (!doc || typeof doc !== 'object') continue;
+        const on = doc.on === undefined ? doc.true : doc.on;
+        const triggers = typeof on === 'string' ? [on] : Array.isArray(on) ? on : Object.keys(on || {});
+        const prTarget = triggers.includes('pull_request_target');
+        for (const [jobName, job] of Object.entries(doc.jobs || {}))
+        {
+            const steps = (job && Array.isArray(job.steps)) ? job.steps : [];
+            steps.forEach((step, i) =>
+            {
+                if (!step || typeof step !== 'object') return;
+                const where = `workflow ${file}: job ${jobName} step ${i + 1}`;
+                if (typeof step.run === 'string')
+                {
+                    const m = WORKFLOW_EVENT_SPLICE.exec(step.run);
+                    if (m) out.push(`${where}: \`${m[0]}\` is spliced into run - pass it through env: and read "$VAR"`);
+                }
+                if (typeof step.uses === 'string')
+                {
+                    const u = step.uses.trim();
+                    const owned = /^(actions|github)\//.test(u) || u.startsWith('./');
+                    const pinned = /@[0-9a-f]{40}$/.test(u) || /^docker:\/\/.+@sha256:[0-9a-f]{64}$/.test(u);
+                    if (!owned && !pinned) out.push(`${where}: \`${u}\` floats on a tag - pin the 40-hex commit, the tag as a trailing comment`);
+                }
+                const ref = step.with && typeof step.with.ref === 'string' ? step.with.ref : '';
+                if (prTarget && /github\.(event\.pull_request\.head|head_ref)/.test(ref))
+                    out.push(`${where}: pull_request_target checks out the PR head (\`${ref}\`) - fork code with the base repo's secrets`);
+            });
+        }
+    }
+    return out;
+}
+function workflowFiles()
+{
+    const dir = path.join(ROOT, '.github', 'workflows');
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => /\.ya?ml$/.test(n)).sort(); } catch { return []; }
+    return names.map((n) => ({ file: `.github/workflows/${n}`, text: fs.readFileSync(path.join(dir, n), 'utf8') }));
+}
+
 function lintSuggestionEdges(label, text)
 {
     const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || '');
@@ -1997,6 +2070,8 @@ function main()
         try
         {
             const dashed = [];
+            // ... and the same walk flags characters nobody can see (hiddenChars above), over scripts/ too.
+            const hidden = [];
             // A RUN's own output is not shipped text: `setup-plugin/evals/results/` holds the eval
             // report and its aggregate JSON, written by Claude Code with its own punctuation and
             // re-dated on every run (gitignored for the same reason). Sweeping it made the house
@@ -2011,16 +2086,22 @@ function main()
                     const full = path.join(dir, e.name);
                     const r = `${rel}/${e.name}`;
                     if (e.isDirectory()) sweep(full, r);
-                    else if (/\.(md|js|sh|ps1|json)$/.test(e.name))
+                    else if (/\.(md|js|sh|ps1|json|ya?ml)$/.test(e.name))
                     {
                         const text = fs.readFileSync(full, 'utf8');
-                        const hit = text.split('\n').findIndex(l => /[\u2014\u2015]/.test(l));
-                        if (hit !== -1) dashed.push(`${r}:${hit + 1}`);
+                        // the em-dash is house voice for what SHIPS; scripts/ is swept for hidden characters only
+                        if (rel.split('/')[0] !== 'scripts')
+                        {
+                            const hit = text.split('\n').findIndex(l => /[\u2014\u2015]/.test(l));
+                            if (hit !== -1) dashed.push(`${r}:${hit + 1}`);
+                        }
+                        for (const h of hiddenChars(text, e.name)) hidden.push(`hidden character U+${h.hex} at ${r}:${h.line} - write it as an escape`);
                     }
                 }
             };
-            for (const d of ['stack', 'setup-plugin', 'meta']) sweep(path.join(ROOT, d), d);
+            for (const d of ['stack', 'setup-plugin', 'meta', 'scripts']) sweep(path.join(ROOT, d), d);
             for (const site of dashed) flag(`house voice: an em-dash in shipped text at ${site} - single dashes only`);
+            for (const line of hidden) flag(line);
         }
         catch (err)
         {
@@ -2336,6 +2417,11 @@ function main()
     for (const finding of lintMcpEntries()) flag(finding);
     // 54. No shipped file names an MCP tool by its BARE server spelling - it would never resolve.
     for (const finding of lintMcpToolNames()) flag(finding);
+    // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
+    //     pull_request_target checkout of the PR head.
+    for (const finding of lintWorkflows(workflowFiles())) flag(finding);
+    // 56. No retired plugin's name is left in shipped stack text.
+    for (const finding of lintRetiredNames(stackTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2470,12 +2556,12 @@ function isTracked(base, rel)
     catch { return false; }
 }
 
-// 51. A plugin the core entry hard-depends on is installed by Claude Code, not by the installer
-// loop - EXCEPT on the copy route, where no stack plugin is enabled and nothing would pull it. Both
-// twins carry that fallback list, so it has to be the same list the generated core entry declares:
-// a dependency added to the placement and not here would simply be absent for every copy-route
-// install, and a name left here after the entry dropped it would install a plugin nothing needs.
-function lintCoreDependencies(shFile, ps1File, entriesFile)
+// 51. The core declares no dependencies (a missing one disables it at load), so the installer puts
+// its cross-marketplace companion beside it on every run - the seed from CORE_DEP_PLUGINS in
+// install/plugins.js, each twin from its own copy. The three lists have to agree: a name added to the
+// seed and not the twins is a shell-route install without superpowers, and a name left in a twin
+// installs a plugin nothing needs.
+function lintCoreDependencies(shFile, ps1File, seedList)
 {
     const out = [];
     const sh = fs.readFileSync(shFile || CLAUDE_SH, 'utf8');
@@ -2488,32 +2574,14 @@ function lintCoreDependencies(shFile, ps1File, entriesFile)
     };
     const shNames = listOf(sh, /^CORE_DEP_PLUGINS=\(([^)]*)\)/m);
     const psNames = listOf(ps1, /^\$CoreDepPlugins = @\(([^)]*)\)/m);
-    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
-    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
+    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the shell route would silently lose the core plugin\'s companions.');
+    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the shell route would silently lose the core plugin\'s companions.');
     if (!shNames || !psNames) return out;
     if (shNames.join(',') !== psNames.join(','))
         out.push(`CORE_DEP_PLUGINS differs across the twins: sh has [${shNames.join(', ')}], ps1 has [${psNames.join(', ')}].`);
-
-    let entries;
-    try { entries = JSON.parse(fs.readFileSync(entriesFile || path.join(ROOT, 'meta', 'plugin-entries.json'), 'utf8')); }
-    catch (err) { out.push(`meta/plugin-entries.json could not be read for the core-dependency check: ${err.message}`); return out; }
-    const declared = new Set();
-    for (const e of (entries && (entries.entries || entries.plugins)) || [])
-        for (const d of e.dependencies || [])
-        {
-            // A string dep is in-marketplace and never installed by us. An OBJECT dep naming this
-            // stack's OWN marketplace is in-marketplace too - from Phase 6 the core depends on the
-            // serena, context7 and memory plugins that way. CORE_DEP_PLUGINS exists for the copy
-            // route, where the CLI installs no dependencies for us, and on that route those three
-            // servers are registered directly rather than enabled as plugins - so listing them
-            // there would install a plugin the run has just decided not to use.
-            if (!d || typeof d !== 'object' || !d.name) continue;
-            if (d.marketplace === 'claude-stack') continue;
-            declared.add(d.name);
-        }
-    const want = [...declared].sort();
+    const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map(n => n.split('@')[0]).sort();
     if (want.join(',') !== shNames.join(','))
-        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] but the generated entries declare [${want.join(', ')}] as cross-marketplace dependencies - update both twins.`);
+        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] in the twins but [${want.join(', ')}] in the seed - update both twins.`);
     return out;
 }
 
@@ -2679,6 +2747,40 @@ function lintMcpToolNames()
     return out;
 }
 
+// 56. A retired plugin's NAME does not outlive the plugin in shipped text. The seats kept its
+// disciplines inline under house terms; a leftover name points a seat at a plugin no install
+// carries, and the interaction rule already bans its code markers.
+const RETIRED_TERMS = [
+    { name: 'ponytail', re: /\bponytail/i, use: "'build lean' / 'question the need' / 'over-build review'" },
+];
+function lintRetiredNames(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+        text.split('\n').forEach((line, i) =>
+        {
+            for (const t of RETIRED_TERMS)
+                if (t.re.test(line)) out.push(`${file}:${i + 1} names the retired '${t.name}' plugin - the house terms are ${t.use}`);
+        });
+    return out;
+}
+function stackTextFiles(root = ROOT)
+{
+    const files = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const full = path.join(dir, e.name);
+            if (e.isDirectory()) walk(full);
+            else if (/\.(md|mdc|js|json|sh|ps1|ya?ml|txt)$/.test(e.name))
+                files.push({ file: path.relative(root, full).split(path.sep).join('/'), text: fs.readFileSync(full, 'utf8') });
+        }
+    };
+    walk(path.join(root, 'stack'));
+    return files;
+}
+
 // 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
 // the plugin route and the settings.json route cannot drift while both exist. A matcher edited in
 // one place and not the other is exactly the bug this catches: the copied hook would still gate a
@@ -2704,7 +2806,7 @@ function lintHooksEntry()
         out.push(`the \`${wanted.name}\` entry is STALE against the installer's HOOKS table - run \`node scripts/build-marketplace.js --hooks-entry\`.`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'memory.js', 'hook-prelude.js']);
+    const ENGINES = new Set(['docs.js', 'memory.js', 'hook-prelude.js', 'fresh-session.js']);
     const wired = new Set();
     for (const blocks of Object.values(wanted.hooks))
         for (const block of blocks)
@@ -2884,10 +2986,14 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 }
 
 module.exports = {
+    hiddenChars,
+    lintWorkflows,
     lintPluginPlacement,
     lintHooksEntry,
     lintMcpEntries,
     lintMcpToolNames,
+    lintRetiredNames,
+    stackTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,
     lintMarketplaceEntries,

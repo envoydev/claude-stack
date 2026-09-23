@@ -178,7 +178,8 @@ build property on modern .NET) - see the references.
 - UI end-to-end automation rides Windows UI Automation; **FlaUI** is the modern choice and keeps to
   smoke and critical-path coverage only. Do not adopt WinAppDriver fresh (see
   **references/net-framework-48.md** for why). Test framework and structure are the `dotnet-testing`
-  skill's.
+  skill's. How the FlaUI tests are built - the UIA2 backend, locator priority, one page object per
+  form, explicit waits, the CI job - is **references/ui-automation.md**.
 
 ## Forbidden in a presenter or ViewModel
 

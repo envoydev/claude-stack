@@ -236,6 +236,37 @@ test('install-entry: a --source that is not the stack fails before any layer is 
     assert.match(r.out, /not a claude-stack checkout/);
 });
 
+// An install carrying one copied skill and nothing else, read back by a copy-route update's dry run.
+function planOverSkillOnly(skill)
+{
+    const repo = fs.mkdtempSync(path.join(TMP_ENTRY, `only-${skill}-`));
+    fs.mkdirSync(path.join(repo, '.claude', 'skills', skill), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'stack', 'skills', skill, 'SKILL.md'), path.join(repo, '.claude', 'skills', skill, 'SKILL.md'));
+    let out = '';
+    let err = '';
+    const copyRoute = { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' };
+    const code = main(['update', '--source', ROOT, '--installed-only', '--print-plan'],
+        { HOME: '/nonexistent-home', CLAUDE_CONFIG_DIR: path.join(repo, '.acct'), ...copyRoute },
+        { out: (s) => { out += s; }, err: (s) => { err += s; }, cwd: repo });
+    assert.strictEqual(code, 0, `the update failed: ${err}`);
+    return (/^plan mcps:(.*)$/m.exec(out) || [])[1].trim().split(/\s+/).filter(Boolean);
+}
+
+test('install-entry: an update over an install carrying no server plans all three locked servers in ONE run', () =>
+{
+    // The read-back adopts the locked servers only into an install that carries the mcp layer, and
+    // the closure brings that layer in AFTER it (csharp requires context7) - so the first update
+    // registered context7 alone and the second added serena and memory. One update is the fixed point.
+    const mcps = planOverSkillOnly('csharp');
+    for (const name of ['serena', 'context7', 'memory'])
+        assert.ok(mcps.includes(name), `${name} is not in the plan: ${mcps.join(' ')}`);
+});
+
+test('install-entry: an install whose picks need no server stays without one - the layer is still not carried', () =>
+{
+    assert.deepStrictEqual(planOverSkillOnly('markdown-style'), []);
+});
+
 test('install-args: context7Given says whether the TRANSPORT was chosen, so an update can read it back', () =>
 {
     // The default is 'remote'; an --installed-only run that found the local entry enabled keeps it

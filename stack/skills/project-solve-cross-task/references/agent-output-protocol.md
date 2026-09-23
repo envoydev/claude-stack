@@ -68,6 +68,7 @@ validation_performed:
   - dotnet test ...
 regression_proof: [none]        # a spec proven red against the pre-fix code / a captured repro - recorded so the verifier CONFIRMS the artifact, not re-derives the repro
 risks_or_concerns: [...]
+ceilings: [none]                # where | limit | revisit when - one row per deliberate simplification; the close files them
 contract_deviations: [none]
 next_recommended_action: [run aspnet-verifier]
 ```
@@ -85,6 +86,14 @@ findings:
   - { severity: high, task_owner: backend-02, problem: ..., required_fix: ... }
 signoff: false
 ```
+
+A finding's severity is a claim: the orchestrator re-checks each one against the anchors and the skip-list below before routing it to an owner, and the integration-reviewer holds its own findings to the same three paragraphs.
+
+**Severity anchors.** `high` - a behavior the plan specified is broken, data can be lost or corrupted, a security check is missing, or a failure is hidden (below). `med` - a real defect on a path the tests skip, or contract drift a consumer will hit. `low` - nothing breaks today: naming, a comment, over-build, a style nit. A missing doc comment, a formatting nit or an over-build finding is never `high`.
+
+**Not a finding.** Drop these rather than route them: a pattern the plan's `## Decisions` ledger or the project's code-style capture records as deliberate; a pre-existing issue in code the diff did not touch (a line in `summary`, never a task for an implementer); a test-only shortcut inside a test project (a fixed clock, a hard-coded fixture); a 'could fail under load' with no trigger condition named; a warning the build itself does not raise.
+
+**A fallback that hides a failure** is its own class - `high` on a data, money or auth path, `med` elsewhere: a default value returned on error, `.catch(() => [])`, a `catch` that returns `null` or an empty list, `?? []` over a call that failed. The caller cannot tell 'empty' from 'broken', so the failure ships silent; the required fix surfaces it at the seam (a throw, a result type, or an error the caller can tell apart), never a quieter default.
 
 ## Integration gate output
 

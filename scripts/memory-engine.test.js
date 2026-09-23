@@ -40,6 +40,10 @@ function buildDb(dir, rows) {
   db.close();
   return file;
 }
+// A fixed clock for the selection: fixture rows sit at created_at <= 1_000_000 seconds, so every one of
+// them is 0-11 days old against NOW - young enough that the pre-ageing order cases keep their meaning.
+const NOW = 1_000_000;
+const DAY = 86400;
 const tmpDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 const rmDir = (dir) => fs.rmSync(dir, { recursive: true, force: true });
 
@@ -330,7 +334,7 @@ test('preferences and corrections (own or global) come first, newest first, then
       { content: 'a global correction', tags: '', memory_type: 'user_correction', created_at: 300 },
       { content: 'sibling note', tags: 'project:sibling-a', memory_type: 'reference', created_at: 450 },
     ]);
-    const { text, counts } = m.selectForSession(file, { project: 'myapp', related: ['sibling-a'], capBytes: 100000 });
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', related: ['sibling-a'], now: NOW, capBytes: 100000 });
     const order = text.split('\n').map((l) => l.replace(/^- \[[^\]]+\] /, ''));
     // Group 1 (preference/correction, own-or-untagged) beats group 2 (this project's other memories)
     // even though the group-2 rows are newer - a correction is never crowded out by recency (I4).
@@ -346,7 +350,7 @@ test('a project-tagged preference or correction joins group 1 too, ahead of the 
       { content: 'own reference, newer', tags: 'project:myapp', memory_type: 'reference', created_at: 500 },
       { content: 'own correction, older', tags: 'project:myapp', memory_type: 'user_correction', created_at: 100 },
     ]);
-    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
+    const { text } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
     const order = text.split('\n').map((l) => l.replace(/^- \[[^\]]+\] /, ''));
     assert.deepStrictEqual(order, ['own correction, older', 'own reference, newer']);
   } finally { rmDir(dir); }
@@ -360,7 +364,7 @@ test('tag matching is exact on the comma-split list, never a substring - "app" d
       { content: 'a different project entirely', tags: 'project:app-web', memory_type: 'reference' },
       { content: 'bare form of a different project', tags: 'app-web', memory_type: 'reference' },
     ]);
-    const { text, counts } = m.selectForSession(file, { project: 'app', capBytes: 100000 });
+    const { text, counts } = m.selectForSession(file, { project: 'app', now: NOW, capBytes: 100000 });
     assert.match(text, /real own note/);
     assert.doesNotMatch(text, /a different project entirely/);
     assert.doesNotMatch(text, /bare form of a different project/);
@@ -375,7 +379,7 @@ test('a preference tagged with another project is excluded everywhere - it is th
       { content: 'scoped preference', tags: 'project:otherproject', memory_type: 'preference_signal' },
       { content: 'truly global preference', tags: '', memory_type: 'preference_signal' },
     ]);
-    const { text, counts } = m.selectForSession(file, { project: 'myapp', related: [], capBytes: 100000 });
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', related: [], now: NOW, capBytes: 100000 });
     assert.doesNotMatch(text, /scoped preference/);
     assert.match(text, /truly global preference/);
     assert.strictEqual(counts.preference, 1);
@@ -390,7 +394,7 @@ test('agent: tagged rows are never selected, whatever else they carry', { skip: 
       { content: 'an agent-saved global preference', tags: 'agent:some-seat', memory_type: 'preference_signal' },
       { content: 'a real own row', tags: 'project:myapp', memory_type: 'reference', created_at: 1 },
     ]);
-    const { text, counts } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
     assert.doesNotMatch(text, /an agent-saved/);
     assert.doesNotMatch(text, /an own-project row an agent saved/);
     assert.match(text, /a real own row/);
@@ -412,14 +416,14 @@ test('each printed line carries the friendly label, never the service\'s raw sub
       { content: 'a learning row', tags: 'project:myapp', memory_type: 'learning', created_at: 100 },
       { content: 'an unvalidated-kind row', tags: 'project:myapp', memory_type: 'observation', created_at: 50 },
     ]);
-    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
+    const { text } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
     const lines = text.split('\n');
     assert.deepStrictEqual(lines, [
-      '- [preference] a preference row',
-      '- [correction] a correction row',
-      '- [project fact] a reference row',
-      '- [lesson] a learning row',
-      '- [observation] an unvalidated-kind row',
+      '- [preference, 11 days old] a preference row',
+      '- [correction, 11 days old] a correction row',
+      '- [project fact, 11 days old] a reference row',
+      '- [lesson, 11 days old] a learning row',
+      '- [observation, 11 days old] an unvalidated-kind row',
     ]);
   } finally { rmDir(dir); }
 });
@@ -431,7 +435,7 @@ test('a soft-deleted row (deleted_at set) is never selected', { skip: skipNoSqli
       { content: 'deleted own row', tags: 'project:myapp', memory_type: 'reference', deleted_at: 12345 },
       { content: 'live own row', tags: 'project:myapp', memory_type: 'reference' },
     ]);
-    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
+    const { text } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
     assert.doesNotMatch(text, /deleted own row/);
     assert.match(text, /live own row/);
   } finally { rmDir(dir); }
@@ -440,19 +444,20 @@ test('a soft-deleted row (deleted_at set) is never selected', { skip: skipNoSqli
 test('the cap stops between memories, never inside one', { skip: skipNoSqlite }, () => {
   const dir = tmpDir('memory-select-');
   try {
-    // 6 identical-shaped lines, 39 bytes then 40 bytes each (leading \n) once joined - measured directly
-    // from the same line format selectForSession emits, so this cap is not a guess: 39 + 40 + 40 = 119
-    // (items 0-2) is the last total at or under 120; item 3 would push it to 159.
+    // 6 identical-shaped lines, 52 bytes then 53 bytes each (leading \n) once joined - measured directly
+    // from the same line format selectForSession emits (the age label ', 11 days old' included), so this
+    // cap is not a guess: 52 + 53 + 53 = 158 (items 0-2) is the last total at or under 160; item 3 would
+    // push it to 211.
     const rows = [0, 1, 2, 3, 4, 5].map((i) => ({ content: `${'a'.repeat(20)}-${i}`, tags: 'project:myapp', memory_type: 'reference', created_at: 100 - i }));
     const file = buildDb(dir, rows);
-    const { text, counts } = m.selectForSession(file, { project: 'myapp', capBytes: 120 });
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 160 });
     const lines = text.split('\n');
     assert.strictEqual(lines.length, 3, text);
     assert.deepStrictEqual(lines.map((l) => l.match(/-(\d)$/)[1]), ['0', '1', '2']);
-    assert.ok(Buffer.byteLength(text, 'utf8') <= 120);
+    assert.ok(Buffer.byteLength(text, 'utf8') <= 160);
     assert.strictEqual(counts.own, 3);
     // Never a truncated line: every kept line is one of the exact lines that would have been emitted whole.
-    for (const l of lines) assert.match(l, /^- \[project fact\] a{20}-\d$/);
+    for (const l of lines) assert.match(l, /^- \[project fact, 11 days old\] a{20}-\d$/);
   } finally { rmDir(dir); }
 });
 
@@ -460,7 +465,7 @@ test('a cap smaller than the only memory yields nothing, never a partial line', 
   const dir = tmpDir('memory-select-');
   try {
     const file = buildDb(dir, [{ content: 'a'.repeat(200), tags: 'project:myapp', memory_type: 'reference' }]);
-    const { text, counts } = m.selectForSession(file, { project: 'myapp', capBytes: 10 });
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 10 });
     assert.strictEqual(text, '');
     assert.deepStrictEqual(counts, { own: 0, preference: 0, related: 0 });
   } finally { rmDir(dir); }
@@ -479,7 +484,7 @@ test('one oversized newest row no longer blanks the block - a smaller row behind
     ]);
     // 100 bytes: even truncated to 400 chars + '...', the oversized row's line alone is far over the
     // cap and must be skipped, not treated as the end of selection.
-    const { text, counts } = m.selectForSession(file, { project: 'myapp', capBytes: 100 });
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100 });
     assert.doesNotMatch(text, /x{50}/, text);
     assert.match(text, /a small note that fits/, text);
     assert.strictEqual(counts.own, 1);
@@ -491,8 +496,8 @@ test('a memory line is cut to 400 chars with \'...\', never dropped whole just f
   try {
     const long = 'y'.repeat(1000);
     const file = buildDb(dir, [{ content: long, tags: 'project:myapp', memory_type: 'reference' }]);
-    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 100000 });
-    assert.strictEqual(text, `- [project fact] ${'y'.repeat(400)}...`);
+    const { text } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
+    assert.strictEqual(text, `- [project fact, today] ${'y'.repeat(400)}...`);
   } finally { rmDir(dir); }
 });
 
@@ -506,10 +511,70 @@ test('with 20 recent project facts and 3 older corrections, the corrections are 
     // A cap that cannot possibly hold all 23 rows - proves the corrections are not merely present
     // because everything fit, but because group 1 (preference/correction) is selected ahead of the
     // 20 newer facts rather than being crowded out by their recency.
-    const { text } = m.selectForSession(file, { project: 'myapp', capBytes: 300 });
+    const { text } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 300 });
     for (let i = 0; i < 3; i++) assert.match(text, new RegExp(`older correction ${i}`), text);
     const lines = text.split('\n');
     assert.ok(lines.length < 23, `expected the cap to leave some facts out, got ${lines.length} lines`);
+  } finally { rmDir(dir); }
+});
+
+// --- ageing (improvement plan 2.3) ---------------------------------------------------------------
+
+test('each line carries its age in whole days - today, 1 day old, N days old - and a future timestamp reads as today', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-age-');
+  try {
+    const file = buildDb(dir, [
+      { content: 'written this morning', tags: 'project:myapp', memory_type: 'reference', created_at: NOW - 0.2 * DAY },
+      { content: 'written yesterday', tags: 'project:myapp', memory_type: 'reference', created_at: NOW - 1.5 * DAY },
+      { content: 'written last month', tags: 'project:myapp', memory_type: 'reference', created_at: NOW - 40 * DAY },
+      { content: 'a clock ahead of ours', tags: 'project:myapp', memory_type: 'reference', created_at: NOW + 3600 },
+    ]);
+    const lines = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 }).text.split('\n');
+    assert.ok(lines.includes('- [project fact, today] written this morning'), lines.join('\n'));
+    assert.ok(lines.includes('- [project fact, 1 day old] written yesterday'), lines.join('\n'));
+    assert.ok(lines.includes('- [project fact, 40 days old] written last month'), lines.join('\n'));
+    assert.ok(lines.includes('- [project fact, today] a clock ahead of ours'), lines.join('\n'));
+  } finally { rmDir(dir); }
+});
+
+test('ageing orders young preferences and corrections, then this project\'s other memories, then the older preferences and corrections, then related projects', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-age-');
+  try {
+    const file = buildDb(dir, [
+      { content: 'own fact, new', tags: 'project:myapp', memory_type: 'reference', created_at: NOW - 1 * DAY },
+      { content: 'sibling note', tags: 'project:sibling-a', memory_type: 'reference', created_at: NOW - 2 * DAY },
+      { content: 'young global preference', tags: '', memory_type: 'preference_signal', created_at: NOW - 5 * DAY },
+      { content: 'young own correction', tags: 'project:myapp', memory_type: 'user_correction', created_at: NOW - 89 * DAY },
+      { content: 'old global preference', tags: '', memory_type: 'preference_signal', created_at: NOW - 90 * DAY },
+      { content: 'old own correction', tags: 'project:myapp', memory_type: 'user_correction', created_at: NOW - 200 * DAY },
+      { content: 'own fact, old', tags: 'myapp', memory_type: 'learning', created_at: NOW - 300 * DAY },
+    ]);
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', related: ['sibling-a'], now: NOW, capBytes: 100000 });
+    const order = text.split('\n').map((l) => l.replace(/^- \[[^\]]+\] /, ''));
+    // 89 days is still young, 90 is the first old day.
+    assert.deepStrictEqual(order, ['young global preference', 'young own correction', 'own fact, new', 'own fact, old', 'old global preference', 'old own correction', 'sibling note']);
+    assert.deepStrictEqual(counts, { own: 2, preference: 4, related: 1 });
+  } finally { rmDir(dir); }
+});
+
+test('a 4KB overflow drops the OLDEST correction, not a fact - and nothing is deleted from the database', { skip: skipNoSqlite }, () => {
+  const dir = tmpDir('memory-age-');
+  try {
+    const rows = [{ content: 'young correction', tags: '', memory_type: 'user_correction', created_at: NOW - 10 * DAY }];
+    for (let i = 0; i < 9; i++) rows.push({ content: `fact ${i} ${'f'.repeat(395)}`, tags: 'project:myapp', memory_type: 'reference', created_at: NOW - (i + 1) * DAY });
+    rows.push({ content: `old correction ${'c'.repeat(300)}`, tags: '', memory_type: 'user_correction', created_at: NOW - 100 * DAY });
+    const file = buildDb(dir, rows);
+    // Uncapped, every row is selected - so what the 4KB cap leaves out below is an overflow, not a filter.
+    const all = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 1000000 });
+    assert.deepStrictEqual(all.counts, { own: 9, preference: 2, related: 0 });
+    assert.ok(Buffer.byteLength(all.text, 'utf8') > 4096, 'the fixture does not overflow 4KB');
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 4096 });
+    assert.doesNotMatch(text, /old correction/, 'the oldest correction should be the row the cap drops');
+    assert.match(text, /young correction/);
+    for (let i = 0; i < 9; i++) assert.match(text, new RegExp(`fact ${i} f`), `fact ${i} was dropped instead`);
+    assert.deepStrictEqual(counts, { own: 9, preference: 1, related: 0 });
+    const db = new DatabaseSync(file, { readOnly: true });
+    try { assert.strictEqual(db.prepare('SELECT COUNT(*) n FROM memories WHERE deleted_at IS NULL').get().n, 11); } finally { db.close(); }
   } finally { rmDir(dir); }
 });
 
@@ -562,7 +627,7 @@ test(
     db.close();
     fs.chmodSync(dbDir, 0o500);
     try {
-      const { text, counts } = m.selectForSession(file, { project: 'demo', capBytes: 100000 });
+      const { text, counts } = m.selectForSession(file, { project: 'demo', now: NOW, capBytes: 100000 });
       assert.match(text, /wal note/, 'the immutable-URI retry should have recovered the row');
       assert.strictEqual(counts.own, 1);
     } finally {
@@ -583,7 +648,7 @@ test('a 500-row database selects in well under 1s', { skip: skipNoSqlite }, () =
     }
     const file = buildDb(dir, rows);
     const started = Date.now();
-    const { counts } = m.selectForSession(file, { project: 'myapp', related: ['sibling-a'], capBytes: 100000 });
+    const { counts } = m.selectForSession(file, { project: 'myapp', related: ['sibling-a'], now: NOW, capBytes: 100000 });
     const elapsed = Date.now() - started;
     assert.ok(elapsed < 1000, `took ${elapsed}ms`);
     assert.ok(counts.own > 0 && counts.related > 0 && counts.preference > 0);

@@ -70,6 +70,9 @@ homework: the record would drift toward whatever the last automated run preferre
 would reopen an argument that was supposed to be settled. `notOwned` makes the rule unbreakable rather
 than merely stated: every write to this domain, from any actor and any spelling, is refused by the
 engine itself (`docs.js set` answers 'is maintained by another skill - this engine does not write it').
+The one exception is clerical and changes no record: `docs.js adr new`, run when a person asks for
+an ADR, takes the next number, writes an empty skeleton and regenerates the `DECISIONS.md` table from
+the records.
 
 **Falsifiable by code, not only protected from it.** `decisions/watch.json` still carries ordinary
 `watch` entries - `covers:` globs on each ADR's own section, naming the code that decision constrains,
@@ -129,7 +132,7 @@ No bucket has a size limit. **Worth knowing retirement rule** - what stops the l
 - **Worth knowing** - one line per entry plus its promotion condition; detail spills to a `references/` topic file when it needs more. A long list stays cheap to read - that is what the lighter shape is for.
 - **Deliberate tradeoffs** - the decision and the reason it was made, so no later run re-litigates it. Sourced from the decision log (gate question 4) - never written here from this skill's own judgment.
 - **Proposed decisions** - a repeatedly-declined Must-fix entry, or a tradeoff this run judged worth recording, shaped ready to accept: the claim, the reason, what it costs. This skill NEVER writes to the decision log; a person accepts a proposal by writing it themselves, at which point the next run's gate question 4 picks it up and the entry moves out of Must fix.
-- **Summary** - the per-bucket and Must-fix tier tally, and the top few highest-leverage fixes.
+- **Summary** - the per-bucket and Must-fix tier tally, the top few highest-leverage fixes, and the over-build line: the over-build entries by title and tag, biggest cut first, closing `net: -N lines, -M dependencies possible` (`net: none` when the lens found nothing that passed the gate).
 
 ## Format discipline - the budget
 

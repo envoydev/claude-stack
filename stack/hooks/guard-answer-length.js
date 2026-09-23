@@ -24,7 +24,7 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
 // CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
@@ -179,7 +179,7 @@ const BUDGET_TEXT =
         `points, ~${BUDGET} characters of prose. Lead with the result and stop - no preamble, no ` +
         `restating the request, no listing what you considered, no caveat paragraph. Code, ` +
         `tables and command output are exempt and do not count. Write more ONLY if THIS message ` +
-        `asked for depth, in ANY language (in detail / walk me through / write a plan; детально, ` +
+        `asked for depth, in English, Ukrainian or Russian (in detail / walk me through / write a plan; детально, ` +
         `покроково, розпиши); 'explain' by itself does ` +
         `not - explanations are capped too, and short means plainer words, never compressed jargon. ` +
         `House voice, same rule, same source: single dashes, never em-dashes, and single quotes in ` +

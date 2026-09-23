@@ -1,7 +1,7 @@
 # claude-stack plugin evals
 
-`claude plugin eval setup-plugin` runs these cases against the plugin and again WITHOUT it, and
-reports the delta. Every run is a real, billed model call on your own account.
+`claude plugin eval` runs these cases against the plugin and again WITHOUT it, and reports the
+delta. Every run is a real, billed model call on your own account.
 
 ## Why this suite exists at all
 
@@ -11,7 +11,7 @@ six commands and the router skill carry `disable-model-invocation`. That excuse 
 walk makes a valid case - and its without-arm cannot resolve the command at all, which is the
 cleanest delta a suite can produce.
 
-Both cases are READ-ONLY by construction: neither grants `Bash`, `Write` or `Edit`, so no run can
+The two setup cases are READ-ONLY by construction: neither grants `Bash`, `Write` or `Edit`, so no run can
 install anything, and both fire in the run's empty sandbox working directory where there is no
 install to change.
 
@@ -21,6 +21,14 @@ install to change.
 |---|---|---|
 | `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:init` instead of rendering its fixed table shapes from the command body |
 | `router-hands-back-one-command` | `/claude-stack` | the router reads the state, names ONE command, and does not start the walk itself |
+| `size-first-trivial` | `/project-solve-task fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
+| `size-first-small` | `/project-solve-task the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
+| `size-first-floor` | `/project-solve-task add a password reset endpoint` | the floor holds - an auth task on a one-file API is standard and starts at the design step |
+
+The three `size-first-*` cases grade the `## Size first` section of `project-solve-task`. They are the
+only cases that write (`Edit` is granted, the floor case excepted), each into its own scaffolded
+workspace - `scaffold.sh` beside `case.yaml`, run only under `--scaffold`. The small row's verifier seat
+ships in a per-stack plugin, never in the core, so no case grades it.
 
 ## Last recorded run
 
@@ -39,9 +47,14 @@ own contract, and a `with` score under 1.00 is the command failing it outright.
 ## Running it
 
 ```bash
-claude plugin eval setup-plugin --max-cost-usd 3 --judge-model claude-haiku-4-5
+claude plugin eval setup-plugin --case '[rs][ot]*' --max-cost-usd 3 --judge-model claude-haiku-4-5   # router + status
 claude plugin eval setup-plugin --case status-no-install --runs 1 --ablation none   # iterate cheaply
+claude plugin eval claude-stack@claude-stack --eval-dir setup-plugin/evals --case 'size-first-*' --scaffold --max-cost-usd 5
 ```
+
+The `size-first-*` cases need the CORE plugin as the target, because `setup-plugin/` alone does not
+carry `project-solve-task`. That target resolves the INSTALLED release; to grade a working tree, add
+it as the marketplace first (`claude plugin marketplace add <repo>`) in a throwaway config dir.
 
 Two things measured on 2.1.269 that the docs page does not spell out, so do not re-derive them: a
 `regex` grader's `target` accepts `last_message` (the default) and `files`, and a plain string like

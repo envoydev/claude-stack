@@ -82,6 +82,20 @@ test('a plugin-settings run with nothing to offer is no table - later asks pass'
   assert.strictEqual(run([settings(), result('t1', none), say('Next: the CLAUDE.md step.')]).status, 0);
 });
 
+// validate's post-check pastes the install audit before its one ask on a high row.
+const installAudit = (extra = '') => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/audit-install.js" .${extra}` });
+const auditTable = '| Severity | Where | Finding | Fix |\n|---|---|---|---|\n| high | .mcp.json | mcp server a launches an unpinned package | pin it to a version, or re-run the stack update |';
+
+test('the install audit counts as a decision table - its last row must be pasted', () => {
+  assert.strictEqual(run([installAudit(), result('t1', auditTable)]).status, 2);
+  assert.strictEqual(run([installAudit(), result('t1', auditTable), say('```\n' + auditTable + '\n```')]).status, 0);
+});
+
+test('an install audit with nothing to report, or its --json form, is no table', () => {
+  assert.strictEqual(run([installAudit(), result('t1', 'install audit: nothing to report'), say('Clean.')]).status, 0);
+  assert.strictEqual(run([installAudit(' --json'), result('t1', '[]')]).status, 0);
+});
+
 // A command continued over lines with a trailing backslash is the same table call.
 test('a multi-line stack-select --table command is still a table call', () => {
   const multi = call('t1', 'Bash', { command: 'node "$TMP/repo/scripts/stack-select.js" \\\n  --selection "$TMP/raw.json" \\\n  --table skills --recs r.json' });

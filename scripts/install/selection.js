@@ -28,8 +28,8 @@ const { hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
-// docs.js / memory.js are ENGINES and hook-prelude.js the shared gate module - none is a hook.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|hook-prelude)$/;
+// docs.js / memory.js / fresh-session.js are ENGINES and hook-prelude.js the shared gate module - none is a hook.
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|hook-prelude|fresh-session)$/;
 const PW_ENGINE = /^playwright-(chrome|msedge|firefox|webkit)$/;
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
@@ -188,12 +188,16 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
 {
     let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
-    if (!hasInstall(lines)) return none;
+    const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
+    // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
+    // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
+    // entry is every project's, and would read a project the stack never touched as installed.
+    const ownEntries = ours.some((r) => r.enabled && (r.scope === 'project' || r.scope === 'local'));
+    if (!hasInstall(lines) && !ownEntries) return none;
 
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
     const closeFrom = [...lines];
-    const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     const names = ours.filter((r) => r.enabled).map((r) => r.name);
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
@@ -329,8 +333,8 @@ function dropLines(lines, drop = [], log = () => {})
 // apart - parked, neither installed nor absent.
 const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name === 'context7-local' ? 'context7' : name);
 //
-// `pluginCatalog` is every plugin the catalog names, the core's hard dependencies included: an
-// enabled one is installed whatever the selection says (superpowers rides the core entry), or an
+// `pluginCatalog` is every plugin the catalog names, the core's companions included: an
+// enabled one is installed whatever the selection says (every run installs superpowers), or an
 // unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
 // seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
 function planInventory({ lists, listing = [], answered, pluginCatalog = [], leftOut = [] })

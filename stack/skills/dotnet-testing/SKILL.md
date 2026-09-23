@@ -42,6 +42,8 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 - **Deterministic**: no real time - the clock seam (inject `TimeProvider`, never call `DateTime.UtcNow` directly) is `csharp`'s baseline rule; the test side is advancing that seam explicitly with `FakeTimeProvider` instead of waiting on the wall clock. No real I/O, no network, no `Thread.Sleep`. Seed any randomness.
 - **Parameterized tests** for branch and boundary matrices instead of duplicated single-case tests.
 - **Test naming**: `Do_Something_When_Condition` (PascalCase with underscores) regardless of runner.
+- **A fix's test is named for the defect it pins**, in that same shape - `Total_Keeps_Discount_When_Currency_Changes`, not `Total_Works` - and fails on the unfixed code before it passes, so a later red names the regression it guards.
+- **A self-review is never the check.** Re-reading your own change applies the assumptions that wrote it, so it finds only what they already allow; the check is a run - the test, the build, the analyzer - or a reviewer who did not write the change.
 - If production code is **untestable** (hidden statics, sealed deps, no seams, hidden side effects), refactor for testability (extract interface, constructor injection) rather than writing a bad test. Flag these explicitly.
 - **Substitute behavior, not implementation.** Verify the call your code makes to its collaborator (the boundary), not the internal sequence of calls. Avoid asserting on private methods or implementation details.
 

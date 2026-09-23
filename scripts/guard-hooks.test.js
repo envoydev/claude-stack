@@ -770,6 +770,26 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'PreCompact' }), 0, 'an unrelated event');
 });
 
+test('guard-stop-contract: the quality loop\'s mode ask and stage-close ask in prose are sent to ONE AskUserQuestion; the same words through the tool pass', () => {
+  // project-quality-loop's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
+  // worded as a statement they end on no '?', so the question shape alone never caught them.
+  const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp });
+  const prose = (id, text) => stop(transcript(id, [assistantRow('a', text)]));
+  assert.equal(prose('ql-m1', 'DISCOVERY is next. Run the pipeline inline in this session, or dispatch the audit and fix seats - pick one and I start.'), 2, 'the mode ask as a statement');
+  assert.equal(prose('ql-m2', 'Which mode: inline or delegated.'), 2, "'which mode' with no question mark");
+  assert.equal(prose('ql-s1', 'Stage 01 reached SATISFIED on pass 3 and RUN-STATE.md is written. Continue in a fresh session from the loops folder (recommended), or continue here.'), 2, 'the stage-close ask as a statement');
+  assert.equal(prose('ql-s2', 'Close this stage and resume fresh, or keep going here.'), 2, "'close this stage' with no question mark");
+  // The same words handed to the tool: the turn ends on the AskUserQuestion call, which is the contract.
+  const viaTool = transcript('ql-t', [{ type: 'assistant', message: { id: 'q', content: [
+    { type: 'text', text: 'Stage 01 reached SATISFIED on pass 3 and RUN-STATE.md is written.' },
+    { type: 'tool_use', id: 'u', name: 'AskUserQuestion', input: { questions: [{ question: 'Continue in a fresh session from the loops folder, or continue here?', header: 'Stage close', multiSelect: false, options: [{ label: 'Fresh session (Recommended)', description: 'resume from the loops folder' }, { label: 'Continue here', description: 'keep this context' }] }] } },
+  ] } }]);
+  assert.equal(stop(viaTool), 0, 'the ask made through the tool');
+  // A record of an answer already given is no ask.
+  assert.equal(prose('ql-r1', 'Mode: DELEGATED - the user chose to dispatch the audit and fix seats. Stage 01 started.'), 0, 'the mode, recorded');
+  assert.equal(prose('ql-r2', 'Stage 01: SATISFIED on pass 3, continue: fresh - "fresh session". The resume block is below.'), 0, 'the stage outcome, recorded');
+});
+
 test('guard-stop-contract: last_assistant_message wins over a lagging transcript', () => {
   // The harness documents the transcript as written asynchronously: here it still holds the
   // PREVIOUS turn's clean close while the payload field carries this turn's decision stop.
@@ -1979,4 +1999,227 @@ test('guard-stop-contract: the hold fires once per subagent - the second stop go
 test('guard-stop-contract: an unreadable subagent transcript never holds (no proof it started nothing)', () => {
   assert.equal(subStop(path.join(TMP, 'no-such-transcript.jsonl'), FORK_CLOSE).status, 0);
   assert.equal(subStop(undefined, FORK_CLOSE).status, 0);
+});
+
+// --- guard-config-protection.js: the cheapest way to 'pass' a check is to weaken it ---------------
+function cfgProject(prefix) {
+  const root = fs.mkdtempSync(path.join(TMP, prefix));
+  const at = (rel, body) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, body); return p; };
+  return { root, at };
+}
+function withProject(root, env, fn) {
+  const keys = ['CLAUDE_PROJECT_DIR', ...Object.keys(env)];
+  const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  process.env.CLAUDE_PROJECT_DIR = root;
+  for (const [k, v] of Object.entries(env)) process.env[k] = v;
+  try { return fn(); }
+  finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+}
+
+test('guard-config-protection: an existing check config cannot be weakened, a new one can be created', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
+  const sh = (command, tool = 'Bash') => run(H, { tool_name: tool, cwd: root, tool_input: { command } });
+  withProject(root, {}, () => {
+    const eslint = at('eslint.config.js', 'export default [];');
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'existing eslint config is protected');
+    assert.strictEqual(write(path.join(root, '.prettierrc'), '{}'), 0, 'creating a config is allowed');
+
+    const ts = at('tsconfig.json', '{ "compilerOptions": { "strict": true, "paths": {} } }');
+    assert.strictEqual(edit(ts, '"paths": {}', '"paths": { "@app/*": ["src/*"] }'), 0, 'a non-strictness key is open');
+    assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'a strictness key is protected');
+    assert.strictEqual(write(ts, '{ "compilerOptions": { "strict": true, "paths": { "a": ["b"] } } }'), 0, 'a whole-file Write keeping every strictness line is open');
+    assert.strictEqual(write(ts, '{ "compilerOptions": { "strict": true, "skipLibCheck": true } }'), 2, 'a whole-file Write adding one is not');
+    assert.strictEqual(run(H, { tool_name: 'MultiEdit', cwd: root, tool_input: { file_path: ts, edits: [
+      { old_string: '"paths": {}', new_string: '"paths": {}, "noImplicitAny": false' }] } }), 2, 'MultiEdit is judged edit by edit');
+
+    const proj = at('src/App/App.csproj', '<Project><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>');
+    assert.strictEqual(edit(proj, '</PropertyGroup>', '<NoWarn>CS8602</NoWarn></PropertyGroup>'), 2, 'NoWarn added');
+    assert.strictEqual(edit(proj, '</Project>', '<ItemGroup><PackageReference Include="X" Version="1.0.0" /></ItemGroup></Project>'), 0, 'a package reference is open');
+
+    at('.editorconfig', 'root = true');
+    at('.eslintrc.json', '{}');
+    assert.strictEqual(sh("sed -i '' 's/true/false/' .editorconfig"), 2, 'in-place sed');
+    assert.strictEqual(sh('echo x > .editorconfig'), 2, 'redirect');
+    assert.strictEqual(sh('echo x | tee .editorconfig'), 2, 'tee after a pipe');
+    assert.strictEqual(sh('rm .eslintrc.json'), 2, 'deleting the check is weakening it');
+    assert.strictEqual(sh('cp /tmp/loose.json .eslintrc.json'), 2, 'copying over it');
+    assert.strictEqual(sh("Set-Content -Path .editorconfig -Value 'root = false'", 'PowerShell'), 2, 'the PowerShell route');
+    assert.strictEqual(sh('cat .editorconfig | grep root'), 0, 'a read passes');
+    assert.strictEqual(sh('git restore .editorconfig'), 0, 'restoring the committed check passes');
+    assert.strictEqual(sh('cp .eslintrc.json /tmp/backup.json'), 0, 'copying FROM it passes');
+    assert.strictEqual(sh('npx eslint --fix src'), 0, 'running the check passes');
+
+    const outside = fs.mkdtempSync(path.join(TMP, 'cfg-outside-'));
+    fs.writeFileSync(path.join(outside, '.editorconfig'), 'root = true');
+    assert.strictEqual(write(path.join(outside, '.editorconfig'), ''), 0, 'outside the project - the cross-project guard owns it');
+
+    at('.claude/docs/flow/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, 'the receipt is honoured');
+    assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'for the file it names only');
+    const old = new Date(Date.now() - 9 * 60 * 60 * 1000);
+    fs.utimesSync(path.join(root, '.claude/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'a receipt older than 8h is not');
+  });
+  withProject(root, { CLAUDE_STACK_CONFIG_PROTECT: '0' }, () =>
+    assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
+  withProject(root, { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length,guard-config-protection' }, () =>
+    assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
+});
+
+test('guard-config-protection: the denial routes a wanted change through ONE ask and the receipt', () => {
+  const { root, at } = cfgProject('cfg-msg-');
+  const file = at('.editorconfig', 'root = true');
+  const r = withProject(root, {}, () => spawnSync(process.execPath, [path.join(HOOKS, 'guard-config-protection.js')],
+    { input: JSON.stringify({ tool_name: 'Write', cwd: root, tool_input: { file_path: file, content: '' } }), encoding: 'utf8' }));
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /Blocked: \.editorconfig already exists/);
+  assert.match(r.stderr, /ONE AskUserQuestion/);
+  assert.match(r.stderr, /\.claude\/docs\/flow\/CONFIG-EDIT-ALLOW/);
+});
+
+test('guard-config-protection: a block writes one ledger row naming the hook', () => {
+  const { root } = cfgProject('cfg-led-');
+  fs.writeFileSync(path.join(root, '.editorconfig'), 'root = true');
+  withProject(root, {}, () => {
+    run('guard-config-protection.js', { session_id: 's1', tool_name: 'Write', cwd: root, tool_input: { file_path: path.join(root, '.editorconfig'), content: '' } });
+    const rows = fs.readFileSync(path.join(root, '.claude/docs/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].hook, 'guard-config-protection.js');
+    assert.deepStrictEqual(rows[0].detail, { file: '.editorconfig', why: 'it is a lint / format / analyzer config' });
+  });
+});
+
+// --- the staged-diff scan on the commit branch -------------------------------------------------
+// A fact check on what the commit would add - conflict markers, a debugger, a focused test, a
+// credential - ahead of the trivial-diff exemption and of every receipt.
+const stagedRepo = (files, { stage = true } = {}) => {
+  const dir = cleanRepo();
+  for (const [f, body] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), body); }
+  if (stage) spawnSync('git', ['-C', dir, 'add', '-A']);
+  return dir;
+};
+const commitIn = (files, command = 'git commit -m "x"', opts) => gateIn(stagedRepo(files, opts), command);
+
+test('guard-ungated-commit: the staged scan blocks conflict markers, debugger, focused tests and credentials - on ADDED lines only', () => {
+  const token = ['ghp', '0123456789abcdefghij0123456789abcdef'].join('_');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\ndebugger;\n' }), 2, 'debugger');
+  assert.equal(commitIn({ 'a.spec.ts': "fdescribe('x', () => {});\n" }), 2, 'focused test');
+  assert.equal(commitIn({ 'src/a.test.js': "it.only('x', () => {});\n" }), 2, 'it.only');
+  assert.equal(commitIn({ 'a.cs': 'System.Diagnostics.Debugger.Launch();\n' }), 2, 'Debugger.Launch');
+  assert.equal(commitIn({ 'a.txt': '<<<<<<< HEAD\n' }), 2, 'conflict marker');
+  assert.equal(commitIn({ 'notes.md': `token ${token}\n` }), 2, 'a credential blocks even in markdown');
+  assert.equal(commitIn({ 'notes.md': 'never commit a `debugger;` line\n' }), 0, 'prose about the pattern passes');
+  assert.equal(commitIn({ 'model.py': 'model.fit(x, y)\n' }), 0, 'fit( outside a test file is not a focused test');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\n' }), 0, 'a clean one-line diff stays trivial and passes');
+});
+
+test('guard-ungated-commit: the staged scan reads what THIS act commits', () => {
+  // a chained add stages mid-command: nothing is staged when the hook runs, so the tree is read
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add . && git commit -m "x"', { stage: false }), 2, 'git add . && commit');
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add -A; git commit -m "x"', { stage: false }), 2, 'git add -A; commit');
+  // a plain commit takes only the index: an unstaged debugger is not part of it
+  const dir = stagedRepo({ 'clean.ts': 'const a = 1;\n' });
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n<<<<<<< HEAD\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'an unstaged conflict marker is not committed');
+  assert.equal(gateIn(dir, 'git commit -am "x"'), 2, 'commit -a takes the unstaged change too');
+  // a REMOVED line is never a finding
+  const rm = cleanRepo();
+  fs.writeFileSync(path.join(rm, 'b.ts'), 'const b = 1;\ndebugger;\n');
+  spawnSync('git', ['-C', rm, 'add', '-A']); spawnSync('git', ['-C', rm, 'commit', '-qm', 'seed debugger']);
+  fs.writeFileSync(path.join(rm, 'b.ts'), 'const b = 1;\n'); spawnSync('git', ['-C', rm, 'add', '-A']);
+  assert.equal(gateIn(rm, 'git commit -m "remove debugger"'), 0, 'removing a debugger line passes');
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git commit --dry-run -m "x"'), 0, 'a dry run is never scanned');
+});
+
+test('guard-ungated-commit: no receipt opens the staged scan, and the block names file and line', () => {
+  const dir = stagedRepo({ 'n1.txt': forty(), 'n2.txt': forty(), 'n3.txt': forty() });
+  const gate = path.join(dir, '.claude', 'docs', 'flow', 'COMMIT-GATE');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  fs.writeFileSync(gate, 'WAIVED - "commit it without the review"\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'the waiver opens the gate on a clean non-trivial diff');
+  fs.writeFileSync(path.join(dir, 'n4.ts'), 'const a = 1;\ndebugger;\n'); spawnSync('git', ['-C', dir, 'add', '-A']);
+  const r = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' }, session_id: 'scan-sess' },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(r.status, 2, 'the same waiver does not open the scan');
+  assert.match(r.stderr, /n4\.ts:2 - a debugger statement/, 'file and line named');
+  const ledger = path.join(dir, '.claude', 'docs', 'hook-blocks', 'scan-sess.jsonl');
+  const row = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop());
+  assert.deepEqual(row.detail, { branch: 'staged-scan', count: 1 }, 'the block row carries the scan branch');
+});
+
+test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and passes past it', () => {
+  const LIMIT = 2 * 1024 * 1024;
+  const dir = cleanRepo();
+  const file = path.join(dir, 'big.ts');
+  const diffLen = () => spawnSync('git', ['-C', dir, 'diff', '--cached', '-U0', '--no-color'], { maxBuffer: 16 * LIMIT }).stdout.length;
+  const sized = (target) => {
+    let pad = target;
+    for (let i = 0; i < 3; i++) {
+      fs.writeFileSync(file, `debugger;\n${'x'.repeat(pad)}\n`); spawnSync('git', ['-C', dir, 'add', '-A']);
+      pad += target - diffLen();
+    }
+    assert.equal(diffLen(), target, `fixture diff is exactly ${target} bytes`);
+  };
+  sized(LIMIT - 1);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'a diff one byte under the cap is scanned');
+  sized(LIMIT + 1);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'a diff one byte over the cap passes unscanned');
+});
+
+test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits it names, for 8h', () => {
+  const dir = stagedRepo({ 'a.spec.ts': "fit('x', () => {});\n", 'b.ts': 'debugger;\n' });
+  const allow = path.join(dir, '.claude', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
+  fs.mkdirSync(path.dirname(allow), { recursive: true });
+  fs.writeFileSync(allow, 'a.spec.ts:1\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'one hit kept, the other still blocks');
+  fs.writeFileSync(allow, 'a.spec.ts:1\nb.ts\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'every hit named - the commit passes');
+  const hours = (h) => { const t = new Date(Date.now() - h * 3600 * 1000); fs.utimesSync(allow, t, t); };
+  hours(7.9);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'just under 8h still holds');
+  hours(8.1);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'past 8h the receipt is absent');
+});
+
+// --- one home for the fresh-session arithmetic ---------------------------------------------------
+const FRESH_FNS = ['freshAt', 'tableWindow', 'coldFloor', 'worthResuming', 'ctxThreshold', 'sessionModelId'];
+
+test('fresh-session engine: the arithmetic both fresh-session hooks share lives in ONE file', () => {
+  const eng = require(path.join(HOOKS, 'fresh-session.js'));
+  for (const fn of FRESH_FNS) assert.equal(typeof eng[fn], 'function', `the engine exports ${fn}`);
+  for (const h of ['guard-stop-contract.js', 'guard-fresh-session-start.js']) {
+    const src = fs.readFileSync(path.join(HOOKS, h), 'utf8');
+    for (const fn of FRESH_FNS) assert.ok(!new RegExp(`(const|let|function)\\s+${fn}\\b`).test(src), `${h} no longer defines ${fn}`);
+  }
+  eng.use({});
+  assert.equal(eng.freshAt('NO_SUCH_FRESH_KEY', 7), 7, 'garbage or absent takes the default');
+  assert.equal(eng.worthResuming(300000), true, 'an unreadable floor answers yes');
+});
+
+test('fresh-session engine: both hooks run silent when the engine file is missing', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'no-engine-'));
+  for (const f of ['guard-stop-contract.js', 'guard-fresh-session-start.js', 'hook-prelude.js', 'model-windows.json']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f));
+  const tp = transcript('no-engine', [{ type: 'assistant', message: { model: 'claude-sonnet-5', role: 'assistant', content: [{ type: 'text', text: 'Done.' }], usage: { input_tokens: 1, cache_read_input_tokens: 900000 } } }]);
+  const go = (hook, payload) => spawnSync(process.execPath, [path.join(dir, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const stop = go('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: 'Done.' });
+  assert.equal(stop.status, 0, stop.stderr); assert.equal(stop.stderr, ''); assert.equal(stop.stdout, '');
+  const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'project-verify-code' }, transcript_path: tp });
+  assert.equal(skill.status, 0, skill.stderr); assert.equal(skill.stderr, ''); assert.equal(skill.stdout, '');
+});
+
+test('guard-stop-contract: a turn that ends on a tool call logs one skip-tool-end row and passes', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'tool-end-'));
+  const tp = transcript('tool-end', [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] } }]);
+  const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], {
+    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'tool-end-sess', transcript_path: tp }), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+  });
+  assert.equal(r.status, 0);
+  const rows = fs.readFileSync(path.join(dir, '.claude', 'docs', 'hook-blocks', 'tool-end-sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].mode, 'skip-tool-end');
+  assert.equal(rows[0].hook, 'guard-stop-contract.js');
 });

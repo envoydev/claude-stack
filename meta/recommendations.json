@@ -39,10 +39,13 @@
    "guard-stop-contract",
    "guard-fresh-session-start",
    "guard-cross-project-write",
+   "guard-config-protection",
    "guard-answer-length",
    "instrument-tool-usage",
    "docs-session",
-   "memory-session"
+   "memory-session",
+   "monitor-session",
+   "check-turn-build"
   ],
   "skills": [
    "project-agent-capabilities",
@@ -52,6 +55,7 @@
    "project-code-style-analyzer",
    "project-commit-checkpoint",
    "project-diagnose-failure",
+   "project-first-look",
    "project-implementer",
    "project-quality-loop",
    "project-solution-design",

@@ -26,7 +26,7 @@ const fs = require('fs');
 const os = require('os');
 const pathMod = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
 // CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
@@ -404,7 +404,7 @@ if (process.argv[2] === '--redacted') {
   let out = '';
   try {
     if (fs.statSync(file).size > MAX_BYTES) out = `# ${fileArg}: larger than ${MAX_BYTES} bytes - not a credential file this guard judges; read it in ranges\n`;
-    else text = fs.readFileSync(file, 'utf8').replace(/^﻿/, '');
+    else text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
   } catch { out = `# ${fileArg}: not found\n`; }
   if (text != null) {
     let masked = 0;

@@ -103,9 +103,8 @@ function sandbox(mcpServers)
         // cases below turn it back off explicitly.
         CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false',
         // The skills switch goes with it, for the reason Phase 6's R7 records: serena, context7 and
-        // memory are hard `dependencies` of the core plugin entry, so while ANY plugin route is on
-        // the core carries them and the installer registers none of the three - registering as well
-        // would run each server twice. The full copy route is the only place their registrations
+        // memory are plugins installed beside the core while ANY plugin route is on, and the
+        // installer registers none of the three - registering as well would run each server twice. The full copy route is the only place their registrations
         // exist to be verified, which is what this file is for.
         CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false',
         CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false',
@@ -790,27 +789,26 @@ test('ps1: the default is playwright-chrome, and sh agrees with the file ps1 wro
     finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
 });
 
-// Phase 4: superpowers stops being a pick and becomes a HARD `dependencies` entry on the core
-// (code.claude.com/docs/en/plugin-dependencies, read 2026-09-22: enabling a plugin enables its
-// dependencies at the same scope, and disabling one is refused while a dependent is enabled). The
-// risk the switch introduces is the COPY route - it enables no stack plugin, so nothing would pull
-// the dependency, and 27 skills and agents cite it.
+// 1.1.0: the core declares no dependencies. `claude plugin update` over an older core installs none a
+// release adds, and a plugin missing one is disabled at load, its commands with it (measured on
+// 2.1.280, a 0.2.87 -> 1.0.0 upgrade) - so every route installs superpowers itself, and 27 skills and
+// agents that cite it find it whichever route the project took.
 for (const twin of ['sh', 'ps1'])
 {
-    test(`${twin}: the plugin route lets the core entry carry superpowers - no install call of our own`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    test(`${twin}: the plugin route installs superpowers itself - the core no longer pulls it in`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
         const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         try
         {
             twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
             const log = calls(sb);
-            assert.ok(/plugin install claude-stack@claude-stack --scope project/.test(log), `${twin}: the core plugin, which declares the dependency, was not installed`);
-            assert.ok(!/plugin install superpowers@/.test(log), `${twin}: superpowers was installed explicitly on the plugin route - the core entry already pulls it`);
+            assert.ok(/plugin install claude-stack@claude-stack --scope project/.test(log), `${twin}: the core plugin was not installed`);
+            assert.ok(/plugin install superpowers@claude-plugins-official --scope project/.test(log), `${twin}: the plugin route left superpowers to a dependency the core no longer declares:\n${log}`);
         }
         finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
     });
 
-    test(`${twin}: the copy route installs the core's dependencies itself, or superpowers would simply be absent`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    test(`${twin}: the copy route installs superpowers itself too, or it would simply be absent`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
         const sb = sandbox({ sentry: STALE_SENTRY });
         sb.env.CLAUDE_STACK_HOOKS_VIA_PLUGIN = 'false';
@@ -839,34 +837,10 @@ for (const twin of ['sh', 'ps1'])
     });
 }
 
-// The one documented enable failure a user cannot diagnose from 'plugin ... failed': a dependency
-// set to false at a scope with HIGHER precedence than the target scope makes the enable refuse.
-// The stub CLI here fails every `plugin install` (exit 1) with superpowers listed as disabled.
+// A failed plugin install is reported as itself. The core declares no dependencies (1.1.0), so there
+// is no 'a dependency is disabled' lock left to explain - the hint that did is gone from both twins.
 for (const twin of ['sh', 'ps1'])
 {
-    test(`${twin}: a stack plugin that fails while superpowers is disabled prints the enable line, not just the failure`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
-    {
-        const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
-        fs.writeFileSync(sb.plugins, JSON.stringify([
-            { id: 'superpowers@claude-plugins-official', version: '6.2.0', scope: 'user', enabled: false },
-        ]));
-        // Make every `plugin install` fail, the way the CLI does when a dependency cannot be enabled.
-        const shStub = path.join(sb.work, 'bin', 'claude');
-        fs.writeFileSync(shStub, fs.readFileSync(shStub, 'utf8').replace(
-            'exit 0\n', 'if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then exit 1; fi\nexit 0\n'), { mode: 0o755 });
-        const cmdStub = path.join(sb.work, 'bin', 'claude.cmd');
-        fs.writeFileSync(cmdStub, fs.readFileSync(cmdStub, 'utf8').replace(
-            'exit /b 0', 'if "%~1"=="plugin" if "%~2"=="install" exit /b 1\r\nexit /b 0'));
-        try
-        {
-            const out = twin === 'sh' ? runSh(sb, 'install') : runPs(sb, 'install');
-            assert.match(out, /superpowers is DISABLED and claude-stack.*depends on it/, `${twin}: the dependency lock was not explained:\n${out}`);
-            assert.match(out, /claude plugin enable superpowers@claude-plugins-official --scope user/, `${twin}: the enable line does not name the scope the listing reports`);
-            assert.strictEqual((out.match(/is DISABLED and/g) || []).length, 1, `${twin}: the hint repeated once per failed plugin`);
-        }
-        finally { fs.rmSync(sb.work, { recursive: true, force: true }); }
-    });
-
     test(`${twin}: a plugin failure with superpowers ENABLED says nothing about the dependency`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
     {
         const sb = sandbox({ sentry: STALE_SENTRY });
@@ -959,10 +933,10 @@ const PLUGIN_ROUTE_MCPS = (sb) =>
     return sb;
 };
 
-// The locked three ride the CORE plugin's dependencies whenever any plugin route is on, so the
-// installer registers none of them there (R7). This is the middle case: the MCP route is off, but
-// the hooks route keeps the core enabled - the droppable picks come back to .mcp.json and the three
-// do not.
+// The locked three are PLUGINS whenever any plugin route is on - installed beside the core by the
+// installer, since the core declares no dependencies - so the installer registers none of them there
+// (R7). This is the middle case: the MCP route is off, but the hooks route keeps the core enabled -
+// the droppable picks come back to .mcp.json and the three are installed as plugins instead.
 const HOOKS_PLUGIN_ONLY = (sb) =>
 {
     sb.env.CLAUDE_STACK_MCPS_VIA_PLUGIN = 'false';
@@ -1054,6 +1028,17 @@ for (const twin of ['sh', 'ps1'])
         for (const locked of ['serena', 'context7', 'memory'])
             assert.ok(!names.includes(locked), `${twin}: ${locked} was registered although the core plugin carries it (${names.join(',')})`);
         assert.ok(names.includes('sentry'), `${twin}: the droppable pick was not registered (${names.join(',')})`);
+    });
+
+    test(`${twin}: with the core plugin on and the MCP route off, the locked three are installed as plugins`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    {
+        // No dependency edge brings them any more, and no registration either - so the install does.
+        const sb = HOOKS_PLUGIN_ONLY(sandbox());
+        (twin === 'sh' ? runSh : runPs)(sb, 'install');
+        const log = calls(sb);
+        for (const locked of ['serena', 'context7', 'memory'])
+            assert.match(log, new RegExp(`plugin install ${locked}@claude-stack `), `${twin}: ${locked} was neither registered nor installed:\n${log}`);
+        assert.match(log, /plugin install superpowers@claude-plugins-official /, `${twin}: superpowers was not installed`);
     });
 
     test(`${twin}: an update with the core plugin on takes an older install's locked registrations OUT`, { skip: twin === 'ps1' && skipNoPwsh }, () =>

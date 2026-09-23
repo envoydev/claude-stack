@@ -94,6 +94,19 @@ ALTER TABLE orders SET (autovacuum_vacuum_scale_factor = 0.05, autovacuum_analyz
 ANALYZE orders;
 ```
 
+- Which tables need that tuning is measured, not guessed - dead rows against live ones, and when each table was last vacuumed:
+
+```sql
+SELECT relname, n_live_tup, n_dead_tup,
+       round(100.0 * n_dead_tup / nullif(n_live_tup + n_dead_tup, 0), 1) AS dead_pct,
+       last_vacuum, last_autovacuum
+FROM pg_stat_user_tables
+ORDER BY n_dead_tup DESC
+LIMIT 20;
+```
+
+A high `dead_pct` with an old `last_autovacuum` is the table whose scale factor to lower.
+
 - `work_mem` is per sort/hash node, not per connection - keep `work_mem * max_connections` under ~25% of RAM or sorts spill to disk.
 - A prepared statement can lock in a generic plan that hurts skewed values; if a prepared query degrades, force per-value planning (`plan_cache_mode = force_custom_plan`).
 

@@ -28,9 +28,9 @@ const fs = require('fs');
 // (the installers rename the key in place on the next install/update).
 const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
 // CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
@@ -551,6 +551,118 @@ if (publishMatch) {
 
 // --- the COMMIT gate ----------------------------------------------------------------------
 if (!commitMatch) process.exit(0);
+
+// --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
+// Conflict markers, a debugger, a focused test and a credential-shaped literal on an ADDED line of
+// what THIS act commits. It runs before the trivial-diff exemption and before every commit-gate
+// receipt - the review receipt is a different claim - and a hit the user means to keep is opened
+// only by its own STAGED-SCAN-ALLOW receipt. What the act commits: the index; plus the unstaged
+// tracked changes under `commit -a` or a chained `git add` (nothing is staged yet when this hook
+// runs); plus the untracked files that add takes in. At most 2MB of diff is read - past it, and on
+// any failure of our own, the scan passes.
+// The two shapes are COPIES of guard-secret-value.js, pinned by meta/shared-rules.json
+// (credential-literal-shapes, credential-literal-pem). No g flag.
+const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
+const PEM_PRIVATE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
+const SCAN_LIMIT = 2 * 1024 * 1024;
+const TEST_FILE = /(^|\/)(__tests__|e2e|cypress)\/|\.(spec|test|cy|e2e)\.[cm]?[jt]sx?$/;
+function lineFinding(file, text) {
+  if (/^(<{7}|>{7}) /.test(text)) return 'a conflict marker';
+  if (SECRET_SHAPE.test(text) || PEM_PRIVATE.test(text)) return 'a credential-shaped literal';
+  if (/\.(md|mdx|txt|rst)$/i.test(file)) return '';
+  if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file) && /(^|[^\w.'"`])debugger\s*;?\s*$/.test(text)) return 'a debugger statement';
+  if (/\.cs$/.test(file) && /\bDebugger\.(Break|Launch)\s*\(/.test(text)) return 'Debugger.Break / Launch';
+  if (TEST_FILE.test(file) && /\b(fdescribe|fit)\s*\(|\b(describe|it|test)\.only\s*\(/.test(text)) return 'a focused test';
+  return '';
+}
+function commitScope() {
+  const before = scannedQuoted.slice(0, commitMatch.index);
+  const commitSeg = commitMatch.opaque ? '' : (scannedQuoted.slice(commitMatch.index).split(/[;&|\n]/)[0] || '');
+  const scope = { dryRun: /\s--dry-run\b/.test(commitSeg), tracked: /\s-[b-zA-Z]*a[a-zA-Z]*(?=\s|$)|\s--all\b/.test(commitSeg), untracked: false, paths: [] };
+  const addRe = /(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g;
+  let m;
+  while ((m = addRe.exec(before))) {
+    const args = command.slice(m.index + m[0].length).split(/[;&|\n]/)[0].trim().split(/\s+/).filter(Boolean).map(unq);
+    if (args.some((a) => /^(-N|--intent-to-add)$/.test(a))) continue; // a scope survey stages nothing
+    if (args.some((a) => /^(-u|--update)$/.test(a))) scope.tracked = true;
+    if (args.some((a) => /^(-A|--all)$/.test(a) || a === '.' || a === ':/')) { scope.tracked = true; scope.untracked = true; continue; }
+    scope.paths.push(...args.filter((a) => !a.startsWith('-')));
+  }
+  return scope;
+}
+function stagedFindings() {
+  const scope = commitScope();
+  if (scope.dryRun) return [];
+  const out = [];
+  let budget = SCAN_LIMIT;
+  const read = (args) => {
+    const text = execFileSync('git', args, { cwd: root, timeout: 5000, maxBuffer: budget }).toString();
+    budget -= Buffer.byteLength(text);
+    if (budget < 0) throw new Error('over the scan cap');
+    return text;
+  };
+  const scanDiff = (diff) => {
+    let file = '', line = 0;
+    for (const row of diff.split('\n')) {
+      if (row.startsWith('+++ ')) { file = row.slice(4).replace(/^b\//, ''); continue; }
+      const hunk = row.match(/^@@ -\S+ \+(\d+)/);
+      if (hunk) { line = Number(hunk[1]); continue; }
+      if (!row.startsWith('+')) continue;
+      const hit = lineFinding(file, row.slice(1));
+      if (hit) out.push({ file, line, hit });
+      line += 1;
+    }
+  };
+  try {
+    scanDiff(read(['diff', '--cached', '-U0', '--no-color']));
+    if (scope.tracked) scanDiff(read(['diff', '-U0', '--no-color']));
+    else if (scope.paths.length) scanDiff(read(['diff', '-U0', '--no-color', '--', ...scope.paths]));
+    const others = scope.untracked ? read(['ls-files', '--others', '--exclude-standard'])
+      : scope.paths.length ? read(['ls-files', '--others', '--exclude-standard', '--', ...scope.paths]) : '';
+    for (const f of others.split('\n').filter(Boolean)) {
+      const text = fs.readFileSync(path.join(root, f), 'utf8');
+      budget -= Buffer.byteLength(text);
+      if (budget < 0) return [];
+      text.split('\n').forEach((row, i) => { const hit = lineFinding(f, row); if (hit) out.push({ file: f, line: i + 1, hit }); });
+    }
+  } catch { return []; } // no repo, git unavailable, or past the 2MB cap - never block on our own failure
+  return out;
+}
+{
+  const found = stagedFindings();
+  // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
+  // or `*` per line; this session's own, under 8h.
+  const allowFile = path.resolve(root, docsRootEnv(), 'flow', 'STAGED-SCAN-ALLOW');
+  let allow = [];
+  try {
+    const st = fs.statSync(allowFile);
+    let sessionStartMs = 0;
+    try {
+      const tr = fs.statSync(String(payload.transcript_path || ''));
+      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
+    } catch { sessionStartMs = 0; }
+    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
+      allow = fs.readFileSync(allowFile, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+    }
+  } catch { allow = []; }
+  const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
+  if (open.length) {
+    global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
+    const allowRel = path.relative(root, allowFile).split(path.sep).join('/');
+    process.stderr.write(
+      `Blocked: the commit adds what must never land -\n${open.slice(0, 15).map((f) => `  ${f.file}:${f.line} - ${f.hit}`).join('\n')}\n` +
+      (open.length > 15 ? `  ... and ${open.length - 15} more\n` : '') +
+      `Remove it and stage again. This is a fact check on the diff, separate from the commit-gate receipt,\n` +
+      `which does not open it. If a hit is MEANT to land (a test fixture, a documented sample), do not decide\n` +
+      `for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
+      `  'Remove it and stage again (Recommended)'\n` +
+      `  'Commit it as is' - the user keeps the line on purpose\n` +
+      `On 'Commit it as is', write ${allowRel} with one \`file:line\` per kept hit and retry the SAME\n` +
+      `command. It is honoured for this session only, under 8h.\n`,
+    );
+    process.exit(2);
+  }
+}
 if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
 // Trivial-diff exemption: total churn across the uncommitted tree (staged + unstaged -
 // a chained `git add && git commit` stages mid-command, so staged-only would undercount).

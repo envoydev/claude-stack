@@ -45,7 +45,7 @@ const BLOCKS = [
 // The install-time variables. Anything NOT on this list that arrives as `${...}` is a literal bound
 // for .mcp.json, and an unknown one is an error rather than a guess - a silently mis-classified
 // variable is a server that launches with a broken argument.
-const INSTALL_TIME = new Set(['SERENA_PIN', 'PW_PIN', 'CTX7_PIN', 'MEMORY_PIN', 'MEMORY_BACKEND']);
+const INSTALL_TIME = new Set(['SERENA_PIN', 'PW_PIN', 'CTX7_PIN', 'MEMORY_PIN', 'CD_PIN', 'AP_PIN', 'MEMORY_BACKEND']);
 
 // Two MCP rows are not literals in either twin: the sh writes `$MEMORY_ENTRY` / `$CONTEXT7_ENTRY`
 // and the ps1 writes every row as a variable. They are not data that can be flattened either -

@@ -269,6 +269,10 @@
         "superpowers"
       ]
     },
+    "project-first-look": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-implementer": {
       "mcps": [],
       "plugins": [
@@ -1122,9 +1126,11 @@
       "superpowers"
     ],
     "hooks": [
+      "check-turn-build",
       "docs-session",
       "guard-answer-length",
       "guard-catastrophic-rm",
+      "guard-config-protection",
       "guard-cross-project-write",
       "guard-fresh-session-start",
       "guard-protected-force-push",
@@ -1134,7 +1140,8 @@
       "guard-unapproved-dispatch",
       "guard-ungated-commit",
       "instrument-tool-usage",
-      "memory-session"
+      "memory-session",
+      "monitor-session"
     ]
   }
 }

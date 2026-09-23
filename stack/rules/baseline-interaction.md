@@ -6,7 +6,7 @@ description: "House baseline - interaction: communication style, adversarial rev
 
 ## Communication style
 
-- **ANSWER BUDGET - at most 3 sentences plus bullet points, about 900 characters of prose; `guard-answer-length.js` injects it every turn and BLOCKS past 1,800.** Only the user's own message lifts it, in any language ('in detail', 'walk me through', 'write a plan', детально); 'explain' does NOT. Cut words, not substance: whatever the user needs to act on the answer stays. Two things it never trims, because trimming them DESTROYS the answer: a field a skill's own report contract requires, and a self-correction disclosure.
+- **ANSWER BUDGET - at most 3 sentences plus bullet points, about 900 characters of prose; `guard-answer-length.js` injects it every turn and BLOCKS past 1,800.** Only the user's own message lifts it, in English, Ukrainian or Russian ('in detail', 'walk me through', 'write a plan', детально); 'explain' does NOT. Cut words, not substance: whatever the user needs to act on the answer stays. Two things it never trims, because trimming them DESTROYS the answer: a field a skill's own report contract requires, and a self-correction disclosure.
 - Also cut every sentence about your own process. Put the gist in bullet points whenever there is more than one thing to say - structure is not a licence for length, and a well-organized wall of text is still over budget. No closing offer to elaborate ('Want more detail?') - the user knows they can ask; an offer to MAKE a change is not one.
 - Drop detail rather than compressing it. A term of art the user did not introduce is spelled out in plain words the first time it appears - including in a close-out summary written hours after it was defined. 'I haven't understood' means re-explain plainer AT THE SAME SHORT LENGTH, never longer. A second failed re-explain routes to the format ask below, not a third guess.
 - Direct. No fluff, no filler openers ('Great question!', 'Absolutely!') - just answer. Casual but professional: assume strong stack knowledge, don't over-explain. Push back when wrong; useful disagreement beats polite agreement.
@@ -42,7 +42,7 @@ syntax, factual questions, and casual conversation are exempt: just answer.
 - No em-dashes - use single dashes. No double quotes - use single quotes. This covers an AskUserQuestion's own question, header, option labels and descriptions - the Stop hook reads the answer text and never sees an ask, so that surface failed 10 measurements out of 10. `guard-stop-contract.js` names the offending character back at ask time.
 - The quote rule is PROSE only, never JSON or code: a string's delimiters stay double, only the text inside them avoids a literal `"`. `{"label": "Today's sessions"}` is right; re-delimiting the value with single quotes is invalid JSON and cost a measured retry.
 - Never use or mention the user's name in responses or any skill output unless the user explicitly says so.
-- No `ponytail:` marker comments in code or output, and no mentions of them - a deliberate simplification's ceiling and upgrade path goes in the report or summary, never into a code comment.
+- No marker comments flagging a deliberate simplification in code or output - its ceiling goes in the report as a `where | limit | revisit when` row, filed at the close under the architecture docs' Known ceilings section, never into a code comment.
 
 ## Planning and execution
 

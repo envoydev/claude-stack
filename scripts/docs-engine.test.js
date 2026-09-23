@@ -1974,3 +1974,148 @@ test('a section deleted under a waiting agent refuses too, and an empty hash is 
     assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /Also unguarded\./);
   } finally { r.rm(); }
 });
+
+// ADR numbering and the decision-log index (plan 4.13): `adr new '<title>'` allocates the next number under the docs
+// root's decisions/, writes the record's skeleton and rewrites DECISIONS.md's index table from the record files.
+const DEC = '.claude/docs/decisions';
+const adrRecord = (num, title, status) => `# ADR-${num}: ${title}\n\n## Status\n${status}\n\n## Context\nForces.\n`;
+const INDEX_HEAD = '| ADR | Title | Status |\n|---|---|---|\n';
+
+test('adr new: an absent or empty decisions folder starts at 0001, writes the index and protects the records', () => {
+  for (const setup of [() => {}, (r) => fs.mkdirSync(path.join(r.root, DEC), { recursive: true })]) {
+    const r = repo({ docs: {} });
+    try {
+      setup(r);
+      const out = r.cli(['adr', 'new', 'Use PostgreSQL']);
+      assert.strictEqual(out.status, 0, out.stdout);
+      assert.match(out.stdout, /created \.claude\/docs\/decisions\/0001-use-postgresql\.md/);
+      const rec = r.read(`${DEC}/0001-use-postgresql.md`);
+      assert.match(rec, /^# ADR-0001: Use PostgreSQL\n/);
+      assert.match(rec, /\n## Status\nProposed\n/);
+      assert.match(rec, /\n## Context\n[\s\S]*\n## Decision\n[\s\S]*\n## Consequences\n/);
+      assert.match(r.read(`${DEC}/DECISIONS.md`), /\| ADR \| Title \| Status \|\n\|---\|---\|---\|\n\| \[0001\]\(0001-use-postgresql\.md\) \| Use PostgreSQL \| Proposed \|\n/);
+      assert.deepStrictEqual(JSON.parse(r.read(`${DEC}/watch.json`)), { notOwned: ['**.md'] });
+      // The seeded catch-all is what keeps a person's record out of `set`: the engine numbers records, never rewrites one.
+      const set = r.cli(['set', 'decisions/0001-use-postgresql#status'], '## Status\nAccepted\n');
+      assert.strictEqual(set.status, 1, set.stdout);
+      assert.match(set.stdout, /maintained by another skill/);
+    } finally { r.rm(); }
+  }
+});
+
+test('adr new: the next number is one past the highest, and a gap is never refilled', () => {
+  const r = repo({ docs: {} });
+  try {
+    r.write(`${DEC}/0001-first.md`, adrRecord('0001', 'First', 'Accepted'));
+    r.write(`${DEC}/0003-third.md`, adrRecord('0003', 'Third', 'Accepted'));
+    r.write(`${DEC}/notes.md`, 'Not a record.\n');
+    assert.strictEqual(r.cli(['adr', 'new', 'Fourth']).status, 0);
+    assert.ok(r.exists(`${DEC}/0004-fourth.md`), 'max + 1, the 0002 gap stays a gap');
+    assert.ok(!r.exists(`${DEC}/0002-fourth.md`));
+    const again = r.cli(['adr', 'new', 'Fifth']);
+    assert.match(again.stdout, /0005-fifth\.md/);
+    const index = r.read(`${DEC}/DECISIONS.md`);
+    assert.match(index, /\[0001\][\s\S]*\[0003\][\s\S]*\[0004\][\s\S]*\[0005\]/, 'rows in number order');
+    assert.doesNotMatch(index, /notes\.md/, 'a file without a number is no record');
+  } finally { r.rm(); }
+});
+
+test('adr new: an existing index table is rewritten in place from the records, the text around it kept', () => {
+  const r = repo({ docs: {} });
+  try {
+    r.write(`${DEC}/watch.json`, JSON.stringify({ notOwned: ['**.md'] }));
+    r.write(`${DEC}/0001-refunds-sync.md`, adrRecord('0001', 'Refunds stay synchronous', 'Accepted'));
+    const before = '# Decisions\n\nWhy we chose what we chose.\n\n';
+    const after = '\n## Refund sync\n<!-- id: refund-sync -->\nRefunds are deliberately synchronous.\n';
+    r.write(`${DEC}/DECISIONS.md`, `${before}${INDEX_HEAD}| [0001](0001-refunds-sync.md) | Refunds stay synchronous | Proposed |\n${after}`);
+    const out = r.cli(['adr', 'new', 'Queue depth cap']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.match(out.stdout, /index rewritten: \.claude\/docs\/decisions\/DECISIONS\.md \(2 records\)/);
+    assert.strictEqual(r.read(`${DEC}/DECISIONS.md`), `${before}${INDEX_HEAD}`
+      + '| [0001](0001-refunds-sync.md) | Refunds stay synchronous | Accepted |\n'
+      + '| [0002](0002-queue-depth-cap.md) | Queue depth cap | Proposed |\n'
+      + after, 'the status comes from the record, and nothing outside the table moved');
+    assert.ok(!out.stdout.includes('seeded'), 'an existing watch.json is left alone');
+    // A status change in a record alone reaches the table through `adr index`.
+    r.write(`${DEC}/0002-queue-depth-cap.md`, adrRecord('0002', 'Queue depth cap', 'Superseded by ADR-0003'));
+    assert.strictEqual(r.cli(['adr', 'index']).status, 0);
+    assert.match(r.read(`${DEC}/DECISIONS.md`), /\| \[0002\]\(0002-queue-depth-cap\.md\) \| Queue depth cap \| Superseded by ADR-0003 \|/);
+    // A log with no table yet gets one above its first section, never inside it.
+    r.write(`${DEC}/DECISIONS.md`, `# Decisions\n${after}`);
+    assert.strictEqual(r.cli(['adr', 'index']).status, 0);
+    assert.match(r.read(`${DEC}/DECISIONS.md`), /^# Decisions\n\n\| ADR \| Title \| Status \|\n[\s\S]*\| \[0002\][^\n]*\n\n## Refund sync\n/);
+  } finally { r.rm(); }
+});
+
+test('adr new: a title that needs a slug keeps its words in the record and the index', () => {
+  const r = repo({ docs: {} });
+  try {
+    const out = r.cli(['adr', 'new', 'Cache: Redis | "sessions" & carts (v2)!']);
+    assert.strictEqual(out.status, 0, out.stdout);
+    assert.ok(r.exists(`${DEC}/0001-cache-redis-sessions-carts-v2.md`), out.stdout);
+    assert.match(r.read(`${DEC}/0001-cache-redis-sessions-carts-v2.md`), /^# ADR-0001: Cache: Redis \| "sessions" & carts \(v2\)!\n/);
+    assert.match(r.read(`${DEC}/DECISIONS.md`), /\| Cache: Redis \\\| "sessions" & carts \(v2\)! \| Proposed \|/, 'a pipe in the title cannot split the row');
+    assert.strictEqual(r.cli(['adr', 'new', 'Кеш сесій']).status, 0);
+    assert.ok(r.exists(`${DEC}/0002-decision.md`), 'a title with nothing to slug still gets a file name');
+    const bare = r.cli(['adr', 'new', '   ']);
+    assert.strictEqual(bare.status, 1);
+    assert.match(bare.stdout, /adr new needs a title/);
+    assert.ok(!r.exists(`${DEC}/0003-decision.md`), 'nothing allocated without a title');
+  } finally { r.rm(); }
+});
+
+test('adr new: a malformed index is left intact and reported, and the number is still taken', () => {
+  const cases = [
+    ['no rule row under the header', '| ADR | Title | Status |\n| [0001](0001-a.md) | A | Accepted |\n', /is not a \|---\|---\|---\| rule/],
+    ['a row with the wrong cell count', `${INDEX_HEAD}| [0001](0001-a.md) | A |\n`, /2 cells, the index has 3/],
+    ['a row naming no record', `${INDEX_HEAD}| [0001](0001-a.md) | A | Accepted |\n| [0009](0009-gone.md) | Gone | Accepted |\n`, /names 0009-gone\.md, which is not a record/],
+    ['two index tables', `${INDEX_HEAD}| [0001](0001-a.md) | A | Accepted |\n\n${INDEX_HEAD}`, /2 index tables/],
+  ];
+  for (const [what, table, reason] of cases) {
+    const r = repo({ docs: {} });
+    try {
+      r.write(`${DEC}/0001-a.md`, adrRecord('0001', 'A', 'Accepted'));
+      const index = `# Decisions\n\n${table}`;
+      r.write(`${DEC}/DECISIONS.md`, index);
+      const out = r.cli(['adr', 'new', 'B']);
+      assert.strictEqual(out.status, 1, `${what}: ${out.stdout}`);
+      assert.match(out.stdout, /created \.claude\/docs\/decisions\/0002-b\.md/, what);
+      assert.match(out.stdout, /index NOT rewritten/, what);
+      assert.match(out.stdout, reason, what);
+      assert.strictEqual(r.read(`${DEC}/DECISIONS.md`), index, `${what}: left byte for byte`);
+      assert.ok(r.exists(`${DEC}/0002-b.md`), `${what}: the record is written`);
+    } finally { r.rm(); }
+  }
+});
+
+// A provisional ORIENTATION.md (plan 4.12) is the first-look scan's output, not a capture: every reader treats it as
+// stale by definition. Written here by the scan itself, so the marker the scan prints and the one the engine keys on
+// cannot drift apart unnoticed.
+const SCAN = path.join(__dirname, 'scan-evidence.js');
+test('a provisional ORIENTATION.md is stale by definition: status, stale and lint say so', () => {
+  const r = repo({ files: { 'src/Api/Api.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>\n', 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    assert.match(r.cli(['status']).stdout, /^orientation: none$/m);
+    const scan = spawnSync(process.execPath, [SCAN, '--orientation', '--root', r.root, '--out', path.join(r.root, '.claude/docs/architecture/ORIENTATION.md')], { encoding: 'utf8' });
+    assert.strictEqual(scan.status, 0, scan.stderr);
+    assert.match(r.cli(['status']).stdout, /^orientation: provisional - a first-look scan, stale by definition until the architecture capture replaces it$/m);
+    assert.match(r.cli(['stale']).stdout, /^architecture\/ORIENTATION\.md - provisional: stale by definition until the architecture capture replaces it$/m);
+    const lint = r.cli(['lint']);
+    assert.strictEqual(lint.status, 0, lint.stdout);
+    assert.match(lint.stdout, /note {4}ORIENTATION\.md is provisional/);
+    r.write('.claude/docs/architecture/ORIENTATION.md', 'Api -> Domain. `src/Api/Program.cs` starts it.\n');
+    assert.match(r.cli(['status']).stdout, /^orientation: captured$/m);
+    assert.doesNotMatch(r.cli(['stale']).stdout, /provisional/);
+  } finally { r.rm(); }
+});
+
+// verifyBlock read `src/...` anywhere in a path, so `web/src/main.ts` was checked as `src/main.ts` and reported missing.
+test('lint checks a path the orientation names from its first segment only', () => {
+  const r = repo({ files: { 'web/src/main.ts': 'x\n', 'src/Api/Program.cs': 'x\n' }, docs: { 'ORIENTATION.md': 'Entry: `web/src/main.ts`, `src/Api/Program.cs`, `src/Api/Gone.cs`.\n' } });
+  try {
+    const out = r.cli(['lint']).stdout;
+    assert.doesNotMatch(out, /does not exist: src\/main\.ts/, out);
+    assert.match(out, /names a path that does not exist: src\/Api\/Gone\.cs/, 'a real miss still fails');
+    assert.doesNotMatch(out, /does not exist: src\/Api\/Program\.cs/);
+  } finally { r.rm(); }
+});

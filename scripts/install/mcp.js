@@ -8,10 +8,11 @@
 //
 // Four rules earned the hard way, each one a bug that shipped:
 //
-//   - R7, THE LOCKED THREE. serena, context7 and memory are hard `dependencies` of the core plugin
-//     entry, so the CLI installs them whenever the core is enabled at all - which is whenever ANY
-//     plugin route is on. Registering them as well double-loads them. They come back to `.mcp.json`
-//     only on the FULL copy route, where the core is never enabled.
+//   - R7, THE LOCKED THREE. serena, context7 and memory are plugins the installer puts beside the
+//     core whenever the core is enabled at all - which is whenever ANY plugin route is on (not
+//     dependencies: a missing one would disable the core at load). Registering them as well
+//     double-loads them. They come back to `.mcp.json` only on the FULL copy route, where the core
+//     is never enabled.
 //   - `claude mcp add` OVER AN EXISTING NAME prints 'already exists' and EXITS 0. A `remove` that
 //     did not take is therefore indistinguishable from a successful rewrite, and the stale entry
 //     survives forever. The CLI stays the happy path; `verifyProject` / `verifyUser` check the
@@ -32,8 +33,8 @@ const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`)];
 
 const isLocked = (name) => LOCKED.includes(name);
 
-// A plugin route being on at all means the CORE entry is enabled, and the core's dependencies carry
-// the locked three.
+// A plugin route being on at all means the CORE entry is enabled, and the locked three are installed
+// as plugins beside it.
 const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes.mcps);
 
 // The names this run must UNREGISTER. On the plugin route that is every server the stack ever
@@ -149,7 +150,7 @@ function verifyProject({ mcpFile, expects = [], log = () => {} })
         else { log(`  !! .mcp.json unreadable (${err.message}) - MCP registrations were not verified`); return { repaired: [], read: false }; }
     }
     let data;
-    try { data = raw.replace(/^﻿/, '').trim() ? JSON.parse(raw.replace(/^﻿/, '')) : {}; }
+    try { data = raw.replace(/^\uFEFF/, '').trim() ? JSON.parse(raw.replace(/^\uFEFF/, '')) : {}; }
     catch { log('  !! .mcp.json is not valid JSON - MCP registrations were not verified; fix it and re-run'); return { repaired: [], read: false }; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
     const servers = (data.mcpServers && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers))
@@ -245,6 +246,8 @@ function resolvePins({ npmLatest, pypiLatest, log = () => {} })
         playwright: ask(npmLatest, '@playwright/mcp'),
         serena: ask(pypiLatest, 'serena-agent'),
         memory: ask(pypiLatest, 'mcp-memory-service'),
+        'chrome-devtools': ask(npmLatest, 'chrome-devtools-mcp'),
+        'appium-mcp': ask(npmLatest, 'appium-mcp'),
     };
     for (const [name, version] of Object.entries(found))
     {
@@ -256,6 +259,8 @@ function resolvePins({ npmLatest, pypiLatest, log = () => {} })
         PW_PIN: found.playwright ? `@${found.playwright}` : '',
         SERENA_PIN: found.serena ? `@${found.serena}` : '',
         MEMORY_PIN: found.memory ? `==${found.memory}` : '',
+        CD_PIN: found['chrome-devtools'] ? `@${found['chrome-devtools']}` : '',
+        AP_PIN: found['appium-mcp'] ? `@${found['appium-mcp']}` : '',
         MEMORY_BACKEND: 'sqlite_vec',
         versions: found,
     };
@@ -315,7 +320,7 @@ function playwrightDrop({ routes, browsers = [] })
 
 // COPY ROUTE ONLY: a registered server answers `mcp__<server>__<tool>`, never the plugin spelling
 // the shipped files carry. Only the names THIS run registered bare are re-spelled - on a hooks-only
-// copy route the locked three still ride the core plugin, and re-spelling them was the bug this
+// copy route the locked three are still plugins beside the core, and re-spelling them was the bug this
 // list exists to prevent.
 const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
 const DOWNCONVERT_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];

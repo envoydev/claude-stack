@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: size-first-trivial
+description: A one-file typo fix is sized trivial and runs edit -> check -> close, with no design and no stop.
+tags: [solve-task, size-first]
+context:
+  scaffold_script: scaffold.sh

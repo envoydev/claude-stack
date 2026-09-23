@@ -28,6 +28,11 @@ const USER_SCOPE_PLUGINS = ['claude-hud'];
 
 const OFFICIAL_MARKETPLACE = 'anthropics/claude-plugins-official';
 
+// The plugin every install carries beside the core from ANOTHER marketplace. It is not a dependency
+// of the core: `claude plugin update` over an older core installs none a release adds, and a plugin
+// missing one is disabled at load, its commands with it (measured on 2.1.280) - so the run installs it.
+const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
+
 // `...=false` restores the copy route - the documented contract, and the only value either twin
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
 // 'false' as on; on every documented value they agree, and this takes the documented reading.)
@@ -138,60 +143,39 @@ function selectionLines({ routes, skills = [], agents = [], mcps = [], context7M
     return lines;
 }
 
-// The core's dependency plugins, but ONLY when this run enables no stack plugin of its own -
-// otherwise the CLI installs them transitively with the core.
-const coreDepsNeeded = (stackEntries, coreDeps = []) => (stackEntries.length ? [] : [...coreDeps]);
-
 // Everything this run hands to `claude plugin install`, in order: the third-party picks, then the
 // stack's own entries (the hooks plugin first, so it resolves in the same run that prunes the
-// copied hooks it replaces), then the core deps when nothing else pulls them in.
-function pluginSet({ routes, thirdParty = [], hooksPlugin, stackEntries = [], coreDeps = [] })
+// copied hooks it replaces), then the core's companions. While the core is on, the locked servers
+// ride as plugins: the selection names them on the MCP route, and any it did not name join here.
+// `coreDeps` join on every route - on the full copy route nothing else would bring superpowers either.
+function pluginSet({ routes, thirdParty = [], hooksPlugin, stackEntries = [], coreDeps = [], locked = [] })
 {
     const stack = [];
     if (corePluginOn(routes))
     {
         if (routes.hooks && hooksPlugin) stack.push(hooksPlugin);
         stack.push(...stackEntries);
+        for (const name of locked)
+            if (!stack.some((spec) => bareName(spec) === name)) stack.push(`${name}@claude-stack`);
     }
-    return [...thirdParty, ...stack, ...coreDepsNeeded(stack, coreDeps)];
-}
-
-// A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
-// with higher precedence - the one documented enable failure whose symptom ('plugin ... failed')
-// names nothing the user can act on. Printed once, and only for a dependency the listing actually
-// shows as disabled, so a run that failed for another reason is not sent chasing it.
-function depLockHint({ spec, listing, coreDeps = [], log = () => {} })
-{
-    if (!String(spec).endsWith('@claude-stack')) return false;
-    for (const dep of coreDeps)
-    {
-        const name = bareName(dep);
-        if (fieldOf(listing, name, 'enabled') !== false) continue;
-        log(`     ${name} is DISABLED and ${spec} depends on it - enable it first: claude plugin enable ${dep} --scope ${fieldOf(listing, name, 'scope') || 'user'}`);
-        return true;
-    }
-    return false;
+    return [...thirdParty, ...stack, ...coreDeps];
 }
 
 // INSTALL: register the marketplaces, then install each plugin at its scope. A failure is noted and
 // the run continues - fail-soft, like every other layer.
-function installPlugins({ plugins, scope, marketplaces = [], listing = [], coreDeps = [], cli, log = () => {}, note = () => {} })
+function installPlugins({ plugins, scope, marketplaces = [], cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     cli(['plugin', 'marketplace', 'update', 'claude-plugins-official'], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
 
-    let hinted = false;
     for (const spec of plugins)
     {
         const pscope = USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : scope;
         log(`plugin [${pscope}]: ${spec}`);
         // -y: the marketplace-command consent prompt cannot be answered when stdin is not a TTY,
         // which is every guided run.
-        const ok = cli(['plugin', 'install', spec, '--scope', pscope, '-y']);
-        if (ok) continue;
-        note(`plugin ${spec} failed`);
-        if (!hinted) hinted = depLockHint({ spec, listing, coreDeps, log });
+        if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'])) note(`plugin ${spec} failed`);
     }
 }
 
@@ -262,8 +246,8 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
 }
 
 module.exports = {
-    OFFICIAL_MARKETPLACE, USER_SCOPE_PLUGINS,
+    OFFICIAL_MARKETPLACE, USER_SCOPE_PLUGINS, CORE_DEP_PLUGINS,
     pluginRoutes, corePluginOn, parsePluginList, fieldOf, scopeFor,
-    resolveStackPlugins, selectionLines, coreDepsNeeded, pluginSet, depLockHint,
+    resolveStackPlugins, selectionLines, pluginSet,
     installPlugins, prunedRetired, updatePlugins, extraMarketplaces,
 };

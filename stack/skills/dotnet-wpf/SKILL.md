@@ -188,6 +188,10 @@ mechanics are the `dotnet-testing` skill's. The check is the test run itself: a 
 to pass is the failure - it proves the View-knows-ViewModel line was crossed - so quote the run and the first failure
 rather than asserting the layering holds.
 
+End-to-end UI tests stay at smoke and the critical path, on FlaUI over UI Automation; how they are built -
+the UIA3 backend, locator priority, one page object per window, explicit waits, the CI job - is
+`references/ui-automation.md`.
+
 ## Styling and theming
 
 Styling is a View-only concern, the same line as MVVM: the ViewModel exposes state, resources and

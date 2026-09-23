@@ -51,7 +51,7 @@ redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.
 const HOOKS_PLUGIN = 'claude-stack-hooks@claude-stack';
 const STACK_MARKET_NAME = HOOKS_PLUGIN.split('@')[1];
 const STACK_MARKETPLACE = 'envoydev/claude-stack';
-const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
+const { CORE_DEP_PLUGINS } = plugins;
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
 const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
@@ -179,7 +179,14 @@ function main(argv, env, io)
             // update's closure undoes is no drop at all.
             const withDrops = selection.dropLines(withAdds, drops, log);
             const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log: say });
-            const closed = close(withDrops, [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l)), log);
+            const from = [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l));
+            let closed = close(withDrops, from, log);
+            // A layer the closure brought in (a skill requiring context7 in an install that carried
+            // no server) is carried now, so the locked set joins it in THIS run - adopted only by the
+            // next update, one update was not the fixed point.
+            const adopted = selection.adoptAlways({ lines: closed, always, log });
+            if (adopted.length > closed.length)
+                closed = close(adopted, [...from, ...adopted.filter((l) => !closed.includes(l))], log);
             args.dropApplied = drops.filter((l) => !closed.includes(l));
             for (const l of drops.filter((d) => closed.includes(d)))
                 log(`installed-only: --drop ${l} not applied - something kept requires it (named in the required line above)`);
@@ -211,7 +218,7 @@ function main(argv, env, io)
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { CTX7_PIN: '', PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
+            ? { CTX7_PIN: '', PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', CD_PIN: '', AP_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
             : mcp.resolvePins({ npmLatest: npmLatest(rt), pypiLatest: pypiLatest(rt), log });
 
         const level = memory.resolveLevel({
@@ -252,7 +259,7 @@ function main(argv, env, io)
         const tokens = {
             SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: level.dbPath,
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, CTX7_PIN: pins.CTX7_PIN,
-            MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
+            MEMORY_PIN: pins.MEMORY_PIN, CD_PIN: pins.CD_PIN, AP_PIN: pins.AP_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
         };
         const remotes = {
             sentry: { url: SENTRY_URL, header: args.sentryAuth === 'oauth' ? '' : SENTRY_HEADER },
@@ -396,7 +403,7 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot);
     const set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: HOOKS_PLUGIN,
-        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS,
+        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
     if (ctx.args.action === 'update')
@@ -418,8 +425,7 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, listing, coreDeps: CORE_DEP_PLUGINS,
-        cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
 
@@ -480,7 +486,7 @@ function installHooksAndRules(ctx)
     // Only the two ENGINES and the window table are copied; the hooks themselves ride their plugin.
     const hookFiles = ctx.routes.hooks
         ? HOOK_ENGINES
-        : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, 'hook-prelude.js');
+        : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, 'hook-prelude.js', 'fresh-session.js');
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
         destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, log: ctx.log, note: ctx.note,
@@ -535,7 +541,11 @@ function importMemory(ctx)
     const acct = ctx.env.CLAUDE_CONFIG_DIR ? ['--config-dir', ctx.configDir] : [];
     memory.importNotes({
         gate, importer, settingsFile,
-        runImport: () => ctx.rt.runNode(importer, ['--project-root', ctx.projectRoot, ...acct], { cwd: ctx.projectRoot, env: ctx.env }).ok,
+        runImport: () =>
+        {
+            const r = ctx.rt.runNode(importer, ['--project-root', ctx.projectRoot, ...acct], { cwd: ctx.projectRoot, env: ctx.env });
+            return { ok: r.ok, output: `${r.stdout}\n${r.stderr}` };
+        },
         log: ctx.log,
     });
 }

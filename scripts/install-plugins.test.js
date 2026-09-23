@@ -25,7 +25,9 @@ function cli(fails = [])
 
 const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over });
 const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
-const CORE_DEPS = ['superpowers@claude-plugins-official', 'serena@claude-stack'];
+const CORE_DEPS = ['superpowers@claude-plugins-official'];
+const LOCKED = ['serena', 'context7', 'memory'];
+const LOCKED_SPECS = LOCKED.map((n) => `${n}@claude-stack`);
 
 // --- the route switches ---------------------------------------------------
 
@@ -36,7 +38,7 @@ test('routes: every route defaults ON, and only the documented `false` turns one
     assert.strictEqual(P.pluginRoutes({ CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'true' }).hooks, true);
 });
 
-test('routes: the core plugin is on while ANY route is - that is what carries its dependencies', () =>
+test('routes: the core plugin is on while ANY route is - that is when its companions are installed', () =>
 {
     assert.strictEqual(P.corePluginOn(ROUTES({ skills: false, mcps: false })), true);
     assert.strictEqual(P.corePluginOn(COPY), false);
@@ -119,26 +121,28 @@ test('closure: the full copy route asks for no closure at all', () =>
     assert.deepStrictEqual(out.entries, []);
 });
 
-// --- the set, and the core's dependencies ---------------------------------
+// --- the set, and the core's companions ------------------------------------
 
-test('core-deps: the dependencies are installed ONLY when this run enables no stack plugin', () =>
-{
-    // With a stack entry on, the CLI installs them transitively with the core - installing them
-    // again would be a second install of the same thing at a possibly different scope.
-    assert.deepStrictEqual(P.coreDepsNeeded(['claude-stack@claude-stack'], CORE_DEPS), []);
-    assert.deepStrictEqual(P.coreDepsNeeded([], CORE_DEPS), CORE_DEPS);
-});
-
-test('set: the hooks plugin leads the stack entries, and the copy route ships the deps itself', () =>
+// The core declares no dependencies: `claude plugin update` over an older core installs none a
+// release adds, and a plugin missing one is disabled at load, commands and all (measured on 2.1.280).
+// So the run installs the companions itself, whatever else the set holds.
+test('set: superpowers is installed on every run, a stack entry or not', () =>
 {
     const third = ['claude-hud@claude-plugins-official'];
+    const entries = ['claude-stack@claude-stack', ...LOCKED_SPECS];
     assert.deepStrictEqual(
-        P.pluginSet({ routes: ROUTES(), thirdParty: third, hooksPlugin: 'claude-stack-hooks@claude-stack', stackEntries: ['claude-stack@claude-stack'], coreDeps: CORE_DEPS }),
-        [...third, 'claude-stack-hooks@claude-stack', 'claude-stack@claude-stack']);
-    // Full copy route: no stack entry is enabled, so superpowers would simply be ABSENT unless the
-    // run installs it explicitly.
-    assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, hooksPlugin: 'h@claude-stack', stackEntries: [], coreDeps: CORE_DEPS }),
-        [...third, ...CORE_DEPS]);
+        P.pluginSet({ routes: ROUTES(), thirdParty: third, hooksPlugin: 'claude-stack-hooks@claude-stack', stackEntries: entries, coreDeps: CORE_DEPS, locked: LOCKED }),
+        [...third, 'claude-stack-hooks@claude-stack', ...entries, ...CORE_DEPS],
+        'the hooks plugin leads, the selection names the locked three once, superpowers comes last');
+    assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, hooksPlugin: 'h@claude-stack', stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED }),
+        [...third, ...CORE_DEPS], 'the full copy route registers the locked three instead of installing them');
+});
+
+test('set: with the MCP route off and the core on, the locked three are installed as plugins', () =>
+{
+    // The selection names no MCP plugin on that route, and nothing else would bring them in now.
+    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), hooksPlugin: 'claude-stack-hooks@claude-stack', stackEntries: ['claude-stack@claude-stack'], coreDeps: CORE_DEPS, locked: LOCKED });
+    assert.deepStrictEqual(set, ['claude-stack-hooks@claude-stack', 'claude-stack@claude-stack', ...LOCKED_SPECS, ...CORE_DEPS]);
 });
 
 // --- scope ----------------------------------------------------------------
@@ -185,26 +189,17 @@ test('install: every install carries -y and its own scope, and a failure is note
     assert.deepStrictEqual(notes, ['plugin bad@m failed']);
 });
 
-test('install: a stack plugin that fails while a core dependency is DISABLED prints the enable line, once', () =>
+test('update: a stuck upgrade - the core on, its companions absent - installs each one, not one per run', () =>
 {
-    const run = cli(['plugin install']);
-    const logs = [];
-    const listing = [{ name: 'superpowers', version: '1.0.0', scope: 'user', enabled: false }];
-    P.installPlugins({ plugins: ['a@claude-stack', 'b@claude-stack'], scope: 'project', cli: run, listing, coreDeps: CORE_DEPS, log: (m) => logs.push(m), note: () => {} });
-    const hints = logs.filter((m) => /is DISABLED and/.test(m));
-    assert.strictEqual(hints.length, 1, logs.join(' | '));
-    assert.match(hints[0], /claude plugin enable superpowers@claude-plugins-official --scope user/);
-});
-
-test('install: a failure with the dependency ENABLED says nothing about it', () =>
-{
-    const logs = [];
-    P.installPlugins({
-        plugins: ['a@claude-stack'], scope: 'project', cli: cli(['plugin install']),
-        listing: [{ name: 'superpowers', version: '1.0.0', scope: 'user', enabled: true }],
-        coreDeps: CORE_DEPS, log: (m) => logs.push(m), note: () => {},
+    // What `claude plugin update` left behind on a real 0.2.87 -> 1.0.0 upgrade.
+    const run = cli();
+    const set = P.pluginSet({ routes: ROUTES(), stackEntries: ['claude-stack@claude-stack', ...LOCKED_SPECS], coreDeps: CORE_DEPS, locked: LOCKED });
+    P.updatePlugins({
+        plugins: set, scope: 'project', cli: run, log: () => {},
+        before: [{ name: 'claude-stack', version: '1.0.0', scope: 'user', enabled: true }],
+        after: [],
     });
-    assert.ok(!logs.some((m) => /is DISABLED/.test(m)), logs.join(' | '));
+    assert.deepStrictEqual(run.matching(/^plugin install /).map((c) => c.split(' ')[2]), [...LOCKED_SPECS, ...CORE_DEPS]);
 });
 
 // --- retired --------------------------------------------------------------

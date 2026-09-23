@@ -133,7 +133,7 @@ test('order: a FAILED import leaves Claude\'s own memory ON', () =>
     fs.writeFileSync(importer, '');
     const logs = [];
     const out = memory.importNotes({
-        gate: { go: true }, importer, runImport: () => false,
+        gate: { go: true }, importer, runImport: () => ({ ok: false }),
         settingsFile: settingsOf(root), log: (m) => logs.push(m),
     });
     assert.deepStrictEqual(out, { switchedOff: false, imported: false });
@@ -149,12 +149,34 @@ test('order: the switch-off happens only AFTER the import succeeds', () =>
     const seen = [];
     const out = memory.importNotes({
         gate: { go: true }, importer,
-        runImport: () => { seen.push(`state-at-import:${memory.autoMemoryState(settingsOf(root))}`); return true; },
+        runImport: () => { seen.push(`state-at-import:${memory.autoMemoryState(settingsOf(root))}`); return { ok: true }; },
         settingsFile: settingsOf(root),
     });
     assert.deepStrictEqual(seen, ['state-at-import:absent'], 'the switch-off ran before the import');
     assert.strictEqual(out.switchedOff, true);
     assert.strictEqual(memory.autoMemoryState(settingsOf(root)), 'false');
+});
+
+test('order: the importer\'s own lines are logged - its count on success, the REASON on failure', () =>
+{
+    // The twins print the importer's output as-is; the seed swallowed it, so 1.0.0's plugin-route
+    // failure read 'import failed' with no reason at all.
+    const root = project({ settings: '{}' });
+    const importer = path.join(TMP, 'importer3.js');
+    fs.writeFileSync(importer, '');
+    const logs = [];
+    memory.importNotes({
+        gate: { go: true }, importer, settingsFile: settingsOf(root), log: (m) => logs.push(m),
+        runImport: () => ({ ok: false, output: "\nmemory import: no 'memory' MCP server registered - nothing to import into\n" }),
+    });
+    assert.ok(logs.includes("  memory import: no 'memory' MCP server registered - nothing to import into"), logs.join(' | '));
+    assert.ok(logs.indexOf("  memory import: no 'memory' MCP server registered - nothing to import into") < logs.findIndex((m) => /import failed/.test(m)), 'the reason comes before the verdict');
+    const ok = [];
+    memory.importNotes({
+        gate: { go: true }, importer, settingsFile: settingsOf(root), log: (m) => ok.push(m),
+        runImport: () => ({ ok: true, output: 'memory import: 2 imported, 0 already present, from x\n' }),
+    });
+    assert.ok(ok.includes('  memory import: 2 imported, 0 already present, from x'), ok.join(' | '));
 });
 
 test('order: a refused gate never runs the importer', () =>

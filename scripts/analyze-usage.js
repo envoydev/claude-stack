@@ -23,6 +23,7 @@
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
+//   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
 //
 // INVENTORY vs USE answers the complement of every consumption table: which installed skill,
 // agent, rule, plugin and MCP server the session (or, in directory mode, the corpus) never
@@ -159,6 +160,33 @@ function rmVerifyTail(cmd) {
   return targets.some((t) => tail.includes(t));
 }
 
+// NAVIGATION, as baseline-navigation words it: locate with serena or the LSP, then read the range. A
+// read of a SOURCE file is LOCATED when a locate step sits in the NAV_WINDOW tool calls before it, or
+// in the same call (`rg -n x src && sed -n '10,40p' src/a.ts`). A symbol step in the window wins
+// over a grep, so 'grep-then-read' is a read that only a name-match located. Glob and find locate a
+// FILE, not a place in it, and a grep that FILTERS a pipe (`git log | grep x`) locates nothing - so
+// a shell grep counts only when it opens a command segment. Doc and config reads carry no symbol to
+// locate and stay out of the denominator; build-dir reads have their own row.
+const NAV_WINDOW = 3;
+const WHOLE_FILE_HOOK = 'guard-read-whole-file.js';
+const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$/i;
+const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview']);
+const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
+function locateClass(name, input) {
+  if (name === 'LSP') return 'symbol';
+  if (name === 'Grep') return 'grep';
+  if (String(name).startsWith('mcp__') && mcpServerOf(name) === 'serena') {
+    const tool = String(name).split('__').slice(2).join('__');
+    if (SERENA_SYMBOL_TOOLS.has(tool)) return 'symbol';
+    return tool === 'search_for_pattern' ? 'grep' : null;
+  }
+  if (isShellTool(name) && input && typeof input.command === 'string') {
+    const code = maskQuoted(maskHeredocs(input.command));
+    if (code.split(/&&|\|\||;|\n/).some((seg) => SHELL_GREP_RE.test(seg))) return 'grep';
+  }
+  return null;
+}
+
 function classifyCheck(cmdCode, cmdShell) {
   for (const kind of ['test', 'build', 'lint', 'ci']) {
     if (CHECK_RES[kind].test(cmdCode)) return { kind, scoped: kind === 'test' ? SCOPED_RE.test(cmdShell) : undefined };
@@ -192,6 +220,46 @@ function mergeTally(a, b) {
   a.input += b.input; a.cacheCreate += b.cacheCreate; a.cacheRead += b.cacheRead;
   a.output += b.output; a.msgs += b.msgs;
 }
+
+// ---------- list prices ----------
+// The cost row prices every API message at LIST price from one dated table - meta/model-prices.json,
+// which names its source page and fetch date - so a dollar figure always says what it was priced
+// against. Priced from the FOLDED usage per message.id: one response arrives as several rows (1.99
+// rows per id across 842 local transcripts, 12,526 ids with output growing row to row), and a
+// per-row sum would have billed cache-read 1.92x and output 1.80x (measured 2026-09-23; the folded
+// totals sit at a median 1.000 (cache-read) and 0.999 (output) of cost-state's own, 177 sessions).
+let priceFile = path.join(__dirname, '..', 'meta', 'model-prices.json');
+let priceCache = null;
+function priceTable() {
+  if (priceCache) return priceCache;
+  try {
+    const t = JSON.parse(fs.readFileSync(priceFile, 'utf8'));
+    if (!Array.isArray(t.models)) throw new Error('no models array');
+    priceCache = { table: t, byId: new Map(t.models.map((m) => [m.id, m])) };
+  } catch (e) {
+    priceCache = { error: e.code === 'ENOENT' ? 'not found' : e.message };
+  }
+  return priceCache;
+}
+// The dated IDs of models before the 4.6 generation carry a snapshot date, and the harness can add a
+// window suffix (`[1m]`); the table keys the dateless id.
+const priceId = (model) => String(model || '').toLowerCase().replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '');
+// usage.cache_creation splits a write by TTL, and the two bill differently (1.25x and 2x input) -
+// measured locally at 56% 5-minute and 44% 1-hour writes by tokens, so one rate would misprice both.
+// Fast mode scales every input column by the row's fast/standard input ratio and bills its own output.
+function messageUsd(p, r) {
+  const fast = r.fast && p.fast;
+  const f = fast ? p.fast.input / p.input : 1;
+  const w1h = r.split ? Math.min(r.c1h, r.u.cc) : 0;
+  const w5 = r.u.cc - w1h;
+  return (r.u.in * p.input * f + w5 * p.cache_write_5m * f + w1h * p.cache_write_1h * f
+    + r.u.cr * p.cache_read * f + r.u.out * (fast ? p.fast.output : p.output)) / 1e6;
+}
+const fmtUsd = (n) => {
+  if (n == null) return '-';
+  if (n === 0) return '$0';
+  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+};
 
 function readJsonl(file, onObj) {
   return new Promise((resolve, reject) => {
@@ -1040,6 +1108,7 @@ async function analyzeTranscript(file, window) {
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
       longAnswered: 0,           // 1,500+ char answers a user turn followed
       finalAnswers: 0, longAnswers: 0,
+      navigation: { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 },
     },
   };
   const msgReg = new Map();       // message.id -> {model, skill, carried, u:{in,cc,cr,out}} folded max per field
@@ -1093,6 +1162,7 @@ async function analyzeTranscript(file, window) {
   let afterCompaction = false;     // the next API message is an EXPECTED rebuild, not a miss
   const readPaths = new Set();     // every file read so far, by the path the call named
   let toolSeq = 0;                 // tool_use ordinal in this transcript
+  const navRecent = [];            // locate class of the last NAV_WINDOW own tool calls
   let lastCheckSeq = -1;           // ordinal of the last test / build / lint / ci-status call
   let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
   const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
@@ -1338,7 +1408,7 @@ async function analyzeTranscript(file, window) {
         }
         let r = msgReg.get(m.id);
         if (!r) {
-          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, foreign, u: { in: 0, cc: 0, cr: 0, out: 0 } };
+          r = { model: m.model, skill: o.attributionSkill || lastSkill || null, carried: !o.attributionSkill && !!lastSkill, foreign, u: { in: 0, cc: 0, cr: 0, out: 0 }, split: false, c1h: 0, fast: false };
           msgReg.set(m.id, r);
           if (activeInvoke) activeInvoke.msgs += 1;
           // context size is fixed at message start, so first sighting is exact for spikes
@@ -1396,6 +1466,10 @@ async function analyzeTranscript(file, window) {
         r.u.cc = Math.max(r.u.cc, m.usage.cache_creation_input_tokens || 0);
         r.u.cr = Math.max(r.u.cr, m.usage.cache_read_input_tokens || 0);
         r.u.out = Math.max(r.u.out, m.usage.output_tokens || 0);
+        // what the price depends on beyond the four counts: the write's TTL split and fast mode
+        const ccs = m.usage.cache_creation;
+        if (ccs && typeof ccs === 'object') { r.split = true; r.c1h = Math.max(r.c1h, ccs.ephemeral_1h_input_tokens || 0); }
+        if (m.usage.speed === 'fast') r.fast = true;
         if (o.attributionSkill && (!r.skill || r.carried)) { r.skill = o.attributionSkill; r.carried = false; }
       }
       if (Array.isArray(m.content)) for (const c of m.content) {
@@ -1427,6 +1501,21 @@ async function analyzeTranscript(file, window) {
             const cur = s.efficiency.compactionRereads[s.efficiency.compactionRereads.length - 1];
             if (cur && cur.before.has(readTarget) && !cur.seen.has(readTarget)) { cur.seen.add(readTarget); info.reread = true; }
             readPaths.add(readTarget);
+          }
+          // A copied fork prefix is the parent's navigation, counted in the parent's transcript.
+          if (!foreign) {
+            const nav = s.efficiency.navigation;
+            const cls = locateClass(c.name, i);
+            if (cls === 'symbol') nav.symbolCalls += 1;
+            else if (cls === 'grep') nav.grepCalls += 1;
+            if (readTarget && !info.buildDir && SOURCE_EXT_RE.test(readTarget)) {
+              nav.reads += 1;
+              const win = cls ? navRecent.concat(cls) : navRecent;
+              if (win.includes('symbol')) { nav.located += 1; nav.symbolLocated += 1; }
+              else if (win.includes('grep')) { nav.located += 1; nav.grepLocated += 1; }
+            }
+            navRecent.push(cls);
+            if (navRecent.length > NAV_WINDOW) navRecent.shift();
           }
           // a dispatched seat may have run the check in its own transcript - the turn is covered
           if (c.name === 'Agent' || c.name === 'Task') turnHadCheck = true;
@@ -1751,7 +1840,15 @@ async function analyzeTranscript(file, window) {
           const mc = s.mcp[mcpServerOf(info.name)];
           // The same carve-out the tool tally makes above: a user declining an MCP-driven ask is an
           // answer, not a server failure, and counting it inflated the error rate of a working server.
-          if (mc) { mc.resultChars += chars; if (c.is_error && !isDecline) mc.errors += 1; }
+          // A guard denial or a harness rejection (a schema failure, the auto-mode classifier) never
+          // reached the server either, so it is counted apart: `errors` is what the SERVER answered
+          // with an error - the one number a server health check is opened on. `is_error` is the
+          // whole signal: over 3,242 local MCP calls no result opened on an error string without it.
+          if (mc) {
+            mc.resultChars += chars;
+            if (c.is_error && (isHookBlock || harnessDenial)) mc.rejected = (mc.rejected || 0) + 1;
+            else if (c.is_error && !isDecline) mc.errors += 1;
+          }
         }
       }
       const textJoined = content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n');
@@ -1771,7 +1868,23 @@ async function analyzeTranscript(file, window) {
   // their parent (resolved transitively) so a nested reference load never steals the run
   const resolveParent = (k) => { const seen = new Set(); while (companionOf[k] && !seen.has(k)) { seen.add(k); k = companionOf[k]; } return k; };
   const carryRun = {};
+  const pt = priceTable();
+  // A copied fork prefix was billed in the parent session, so its dollars are named apart and
+  // never added to this session's cost - the rollup would otherwise bill that run twice.
+  s.cost = pt.error ? { error: pt.error } : { usd: 0, prefixUsd: 0, byModel: {}, unpriced: {}, noSplitMsgs: 0, fastMsgs: 0 };
   for (const r of msgReg.values()) {
+    if (!pt.error) {
+      const p = pt.byId.get(priceId(r.model));
+      const usd = p ? messageUsd(p, r) : 0;
+      if (r.foreign) s.cost.prefixUsd += usd;
+      else if (!p) s.cost.unpriced[r.model] = (s.cost.unpriced[r.model] || 0) + 1;
+      else {
+        s.cost.usd += usd;
+        s.cost.byModel[r.model] = (s.cost.byModel[r.model] || 0) + usd;
+        if (r.u.cc && !r.split) s.cost.noSplitMsgs += 1;
+        if (r.fast) s.cost.fastMsgs += 1;
+      }
+    }
     const u = { input_tokens: r.u.in, cache_creation_input_tokens: r.u.cc, cache_read_input_tokens: r.u.cr, output_tokens: r.u.out };
     addUsage(s.total, u);
     if (r.foreign) { s.forkPrefix.msgs += 1; s.forkPrefix.cacheRead += r.u.cr; s.forkPrefix.cacheCreate += r.u.cc; s.forkPrefix.output += r.u.out; }
@@ -1884,8 +1997,9 @@ function computeAggregates(main, agents) {
   for (const a of agents) {
     mergeTally(agentTotal, a.stats.total);
     const type = a.meta.agentType || '(unknown)';
-    const g = byType[type] || (byType[type] = { n: 0, tally: newTally(), tools: {}, descs: [], wall: 0, span: 0, seatMs: 0, intervals: [], firstTs: null, lastTs: null });
+    const g = byType[type] || (byType[type] = { n: 0, tally: newTally(), tools: {}, descs: [], wall: 0, span: 0, seatMs: 0, intervals: [], firstTs: null, lastTs: null, cost: 0 });
     g.n += 1; mergeTally(g.tally, a.stats.total);
+    g.cost += (a.stats.cost && a.stats.cost.usd) || 0;
     for (const [name, t] of Object.entries(a.stats.toolCalls)) g.tools[name] = (g.tools[name] || 0) + t.calls;
     if (a.meta.description && g.descs.length < 2) g.descs.push(maskSecrets(a.meta.description));
     if (a.stats.firstTs && a.stats.lastTs) {
@@ -1982,8 +2096,8 @@ function computeAggregates(main, agents) {
   const mcpServers = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [server, m] of Object.entries(src.mcp)) {
-      const e = mcpServers[server] || (mcpServers[server] = { calls: 0, resultChars: 0, errors: 0, tools: {} });
-      e.calls += m.calls; e.resultChars += m.resultChars; e.errors += m.errors;
+      const e = mcpServers[server] || (mcpServers[server] = { calls: 0, resultChars: 0, errors: 0, rejected: 0, tools: {} });
+      e.calls += m.calls; e.resultChars += m.resultChars; e.errors += m.errors; e.rejected += m.rejected || 0;
       for (const [t, n] of Object.entries(m.tools)) e.tools[t] = (e.tools[t] || 0) + n;
     }
   }
@@ -2014,7 +2128,28 @@ function computeAggregates(main, agents) {
       if (dispatchOverhead.heavySeats.length < 8) dispatchOverhead.heavySeats.push({ type: a.meta.agentType || '(unknown)', msgs: st.total.msgs, floor: st.floorCtx, share: Math.round((100 * preload) / inTok) });
     }
   }
-  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead };
+  // Navigation is counted per transcript - a seat's locate window never reaches into the main
+  // session's calls - and summed here, because the seats do most of the code reading.
+  const navigation = { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 };
+  let wholeFileBracket = 0;
+  for (const src of [main, ...agents.map((a) => a.stats)]) {
+    const n = (src.efficiency && src.efficiency.navigation) || {};
+    for (const k of Object.keys(navigation)) navigation[k] += n[k] || 0;
+    wholeFileBracket += (src.denialsByHook && src.denialsByHook[WHOLE_FILE_HOOK]) || 0;
+  }
+  // Dollars: the session is its main transcript plus every seat, each priced from its own folded
+  // messages; the seat types are the table's per-seat rows.
+  const cost = { usd: 0, main: 0, subagents: 0, seats: agents.length, byType: {}, unpriced: {}, noSplitMsgs: 0, fastMsgs: 0, prefixUsd: 0, error: null };
+  for (const src of [main, ...agents.map((a) => a.stats)]) {
+    const c = src.cost || {};
+    if (c.error) { cost.error = c.error; continue; }
+    cost.usd += c.usd || 0; cost.prefixUsd += c.prefixUsd || 0;
+    cost.noSplitMsgs += c.noSplitMsgs || 0; cost.fastMsgs += c.fastMsgs || 0;
+    for (const [m, n] of Object.entries(c.unpriced || {})) cost.unpriced[m] = (cost.unpriced[m] || 0) + n;
+  }
+  cost.main = (main.cost && main.cost.usd) || 0;
+  for (const [type, g] of Object.entries(byType)) { cost.byType[type] = g.cost; cost.subagents += g.cost; }
+  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead, navigation, wholeFileBracket, cost };
 }
 
 // ---------- hook-block ledger (which GUARD fired, not just which tool was denied) ----------
@@ -2028,7 +2163,9 @@ function computeAggregates(main, agents) {
 // directory is narrowed to `<session-id>.jsonl` and, when that is absent, to nothing at all: an
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
 function readBlockLedger(target, sessionId) {
-  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [] };
+  // `given` separates 'no ledger passed' from 'a ledger with no row for this session' - the second
+  // is a measured zero, the first is no measurement at all.
+  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [], given: !!target };
   if (!target) return out;
   let files = [];
   try {
@@ -2050,8 +2187,9 @@ function readBlockLedger(target, sessionId) {
       let o;
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.hook) continue;
-      // A probe row is a MEASUREMENT, not a block: the fork-liveness probe logs and denies nothing.
-      if (o.mode === 'probe') { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || 'probe'] = (out.probeKinds[o.kind || 'probe'] || 0) + 1; continue; }
+      // A row carrying a `mode` is a MEASUREMENT, not a block: the fork-liveness probe and the stop
+      // hook's tool-ended skip both log and deny nothing.
+      if (o.mode) { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1; continue; }
       out.rows += 1;
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
@@ -2217,10 +2355,27 @@ function interruptLine(main) {
 // One row per practice, each a measured number with its denominator and what the number tests.
 // The report JUDGES the rows; the analyzer never scores a session - a rate is read against the
 // practice, the turn is opened before a row becomes a finding.
-function efficiencyRows(main, agg) {
+function efficiencyRows(main, agg, blockLedger) {
   const e = main.efficiency || {};
   const rows = [];
   const tsList = (arr, n = 6) => arr.slice(0, n).map((t) => (t ? String(t).slice(11, 19) : '?')).join(', ') + (arr.length > n ? ` … +${arr.length - n}` : '');
+  {
+    const c = agg.cost || {};
+    const pt = priceTable();
+    if (c.error || pt.error) {
+      rows.push({ practice: 'cost at list price', measured: `price table unreadable (${c.error || pt.error}) - no cost computed`, tests: 'meta/model-prices.json, or the file --prices names' });
+    } else {
+      const seats = Object.entries(c.byType || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, usd]) => `${t} ${fmtUsd(usd)}`).join(', ');
+      const unpriced = Object.entries(c.unpriced || {}).map(([m, n]) => `${m} x${n} msg${n === 1 ? '' : 's'}`).join(', ');
+      const parts = [`~${fmtUsd(c.usd)} - main ${fmtUsd(c.main)}${c.seats ? `, subagents ${fmtUsd(c.subagents)} over ${c.seats} seat(s) (${seats})` : ''}`];
+      if (main.totalCostUSD != null) parts.push(`cost-state billed ${fmtUsd(Number(main.totalCostUSD))}`);
+      if (unpriced) parts.push(`unpriced: ${unpriced}`);
+      if (c.noSplitMsgs) parts.push(`${c.noSplitMsgs} msg(s) with no cache-write split, billed at the 5-minute rate`);
+      if (c.fastMsgs) parts.push(`${c.fastMsgs} fast-mode msg(s)`);
+      if (c.prefixUsd) parts.push(`fork prefix ${fmtUsd(c.prefixUsd)} left to the parent session's bill`);
+      rows.push({ practice: 'cost at list price', measured: parts.join('; '), tests: `list price from ${pt.table.source}, fetched ${pt.table.fetched} - what the work costs at the API's list price, not what a subscription charges; a gap to cost-state's billed figure is the harness's untranscribed side calls; refresh the table from its page, never from memory` });
+    }
+  }
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
     rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /claude-stack:status reports it per install' });
@@ -2255,6 +2410,23 @@ function efficiencyRows(main, agg) {
   rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
   rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
+  {
+    const n = agg.navigation || { reads: 0, located: 0, grepLocated: 0, symbolCalls: 0 };
+    // The ledger names the guard for every denial; the transcript's bracket misses the JSON
+    // permission route, so it is the fallback and says so.
+    const denials = blockLedger && blockLedger.given
+      ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
+      : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
+    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'baseline-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
+  }
+  {
+    const servers = Object.entries(agg.mcpServers || {});
+    const calls = servers.reduce((n, [, m]) => n + m.calls, 0);
+    const errs = servers.reduce((n, [, m]) => n + m.errors, 0);
+    const rejected = servers.reduce((n, [, m]) => n + (m.rejected || 0), 0);
+    const per = servers.filter(([, m]) => m.errors).sort((a, b) => b[1].errors - a[1].errors).map(([s, m]) => `${s} ${m.errors}/${m.calls}`).join(', ');
+    rows.push({ practice: 'MCP failures', measured: calls ? `${errs} of ${calls} MCP call(s) returned an error${per ? `: ${per}` : ''}${rejected ? `; ${rejected} more rejected before the server ran (a guard or the harness)` : ''}` : 'no MCP call', tests: "main and seats: a server that errors on a material share of its calls is down or misconfigured, not misused - that count, never one error, is what opens a server health check; a guard denial, a harness rejection and a declined ask are not the server's" });
+  }
   {
     const d = agg.dispatchOverhead || { seats: 0 };
     rows.push({ practice: 'dispatch overhead', measured: d.seats ? `${d.heavy} of ${d.seats} seat(s) spent over 60% of their input re-sending their own first-message context; ~${fmt(d.preloadTokens)} of ~${fmt(d.seatInputTokens)} seat input tok is that context${d.heavySeats.length ? ` - ${d.heavySeats.slice(0, 4).map((h) => `${h.type} (${h.msgs} msg, ${h.share}%)`).join(', ')}` : ''}` : 'no dispatch', tests: 'a dispatch pays its preload before any work - a brief that returns less than that preload is a trade lost; a one-message seat is 100% by construction' });
@@ -2340,14 +2512,14 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
 
   if (agents.length) {
     console.log('\nSUBAGENTS (exact per-dispatch cost, grouped by agent type)');
-    console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('wall', 7)}  top tools`);
+    console.log(`  ${pad('agent type', 28)} ${rpad('n', 3)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 5)} ${rpad('cost', 8)} ${rpad('wall', 7)}  top tools`);
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
       // seat-time is printed for EVERY multi-dispatch group: when seats overlap it shows the
       // parallelism win, when they don't it stops the outer span being read as per-seat cost
       // (measured: a 1h17m span over ~22m of actual seat activity framed as 'most expensive pair').
       const waves = g.n > 1 && g.span > g.wall * 1.5 ? `, dispatched in waves over ${dur(g.span)}` : '';
-      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''}`);
+      console.log(`  ${pad(type, 28)} ${rpad(g.n, 3)} ${rpad(fmt(g.tally.output), 8)} ${rpad(fmt(g.tally.cacheRead), 11)} ${rpad(g.tally.msgs, 5)} ${rpad(agg.cost.error ? '-' : fmtUsd(g.cost), 8)} ${rpad(dur(g.wall), 7)}  ${top}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''}`);
       if (g.descs.length) console.log(`  ${pad('', 28)} e.g. ${g.descs.map((d) => JSON.stringify(d.slice(0, 40))).join(', ')}`);
     }
   }
@@ -2434,7 +2606,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   }
 
   console.log('\nEFFICIENCY (the practice scorecard - measured numbers with their denominators; the rate is judged, never the presence)');
-  for (const r of efficiencyRows(main, agg)) {
+  for (const r of efficiencyRows(main, agg, blockLedger)) {
     console.log(`  ${pad(r.practice, 22)} ${r.measured}`);
     console.log(`  ${pad('', 22)} tests: ${r.tests}`);
   }
@@ -2611,11 +2783,11 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
 
   if (agents.length) {
     out.push('## Subagent dispatches (exact per-dispatch cost, grouped by agent type)', '');
-    out.push('| agent type | n | output | cache-read | msgs | wall | top tools |', '|---|---|---|---|---|---|---|');
+    out.push('| agent type | n | output | cache-read | msgs | cost | wall | top tools |', '|---|---|---|---|---|---|---|---|');
     for (const [type, g] of Object.entries(agg.byType).sort((a, b) => b[1].tally.output - a[1].tally.output)) {
       const top = Object.entries(g.tools).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${n}×${c}`).join(' ');
       const waves = g.n > 1 && g.span > g.wall * 1.5 ? `, dispatched in waves over ${dur(g.span)}` : '';
-      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${dur(g.wall)}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''} | ${top} |`);
+      out.push(`| ${type} | ${g.n} | ${fmt(g.tally.output)} | ${fmt(g.tally.cacheRead)} | ${g.tally.msgs} | ${agg.cost.error ? '-' : fmtUsd(g.cost)} | ${dur(g.wall)}${g.n > 1 ? ` (seat-time ${dur(g.seatMs)}${waves})` : ''} | ${top} |`);
     }
     out.push('');
   }
@@ -2717,7 +2889,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   out.push('## Efficiency scorecard (machine-written; judge the rate, never the presence)', '');
   out.push('Each row measures the session against one practice - the official Claude Code guidance and the stack\'s own audits agree on all of them. A number here is not yet a finding: the row says what to open before it becomes one.', '');
   out.push('| practice | measured | what it tests |', '|---|---|---|');
-  for (const r of efficiencyRows(main, agg)) out.push(`| ${r.practice} | ${r.measured.replace(/\|/g, '\\|')} | ${r.tests.replace(/\|/g, '\\|')} |`);
+  for (const r of efficiencyRows(main, agg, blockLedger)) out.push(`| ${r.practice} | ${r.measured.replace(/\|/g, '\\|')} | ${r.tests.replace(/\|/g, '\\|')} |`);
   out.push('');
 
   if (main.spikes.length) {
@@ -2918,7 +3090,7 @@ async function main() {
 async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
-  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
+  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   // The report CHECK is its own pass: it reads a filled report, not a transcript.
   const checkFile = flagVal('--check-report');
@@ -2933,6 +3105,8 @@ async function runAnalysis() {
   const docsRoot = flagVal('--docs-root');
   const inventoryDir = flagVal('--inventory');
   const pluginsFile = flagVal('--plugins');
+  const pricesFile = flagVal('--prices');
+  if (pricesFile) { priceFile = path.resolve(pricesFile); priceCache = null; }
   // one spelling for both routes: backslashes normalized, `./` dropped, one trailing slash
   if (docsRoot) {
     const r = String(docsRoot).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '') + '/';
@@ -2943,7 +3117,7 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
   }
 
@@ -2953,8 +3127,9 @@ async function runAnalysis() {
     // history folder is just the depth-0 case of the same walk.
     const files = findSessionFiles(target)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)}`);
+    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)}`);
     const grand = newTally();
+    let grandUsd = 0;
     // Fed one session at a time and never held as a list: the corpus answer must not cost the
     // corpus. Each session's installed set is resolved from its OWN cwd (cached per cwd, so a
     // one-project folder resolves exactly once), because a corpus spans projects that installed
@@ -2968,13 +3143,21 @@ async function runAnalysis() {
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
       mergeTally(grand, s.total); mergeTally(grand, at);
-      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)}`;
-      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length });
+      // one cost per session - its own messages plus its seats, a fork prefix left to its parent
+      const priced = !s.cost.error;
+      const usd = priced ? [s, ...agents.map((a) => a.stats)].reduce((n, x) => n + ((x.cost && x.cost.usd) || 0), 0) : null;
+      if (priced) grandUsd += usd;
+      // MCP calls the server answered with an error, main and seats - the per-session number a
+      // server health check is judged on across a corpus
+      const mcp = { calls: 0, errors: 0 };
+      for (const x of [s, ...agents.map((a) => a.stats)]) for (const m of Object.values(x.mcp || {})) { mcp.calls += m.calls; mcp.errors += m.errors; }
+      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)}`;
+      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp });
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, inventory: invUse }, null, 2)); return; }
-    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)}`);
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, inventory: invUse }, null, 2)); return; }
+    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)}`);
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;
@@ -2994,9 +3177,10 @@ async function runAnalysis() {
     // The join's own numbers were computed only at RENDER time, so `--json` could not see them and
     // nothing could test them - which is how the NaN cross-check above shipped and stayed shipped.
     // Fold them into the dump beside the ledger they describe.
-    const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, computeAggregates(mainStats, agents).tools) : null;
+    const agg = computeAggregates(mainStats, agents);
+    const join = hookLog ? hookJoinStats(mainStats, agents, hookLog, agg.tools) : null;
     const hl = hookLog ? (({ rowsIdx, ...rest }) => rest)(hookLog) : hookLog;   // the row index is the join's input, not a report field
-    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: computeAggregates(mainStats, agents).dispatchOverhead, inventory: invUse };
+    const body = { main: mainStats, agents, hookLog: hl && join ? { ...hl, ...join.coverage ? { coverage: join.coverage } : {} } : hl, hookBlocks: blockLedger, dispatchOverhead: agg.dispatchOverhead, cost: agg.cost, inventory: invUse };
     console.log(JSON.stringify(window ? { window: { from: fromStr, to: toStr }, ...body } : body, null, 2));
     return;
   }

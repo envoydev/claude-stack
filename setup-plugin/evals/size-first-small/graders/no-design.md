@@ -1,0 +1,9 @@
+---
+type: tool_used
+weight: 2
+tool: Skill
+input_match: project-solution-design
+max: 0
+---
+
+A small task plans inline: the `## Size first` table's small row runs no design step.

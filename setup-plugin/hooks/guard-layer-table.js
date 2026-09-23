@@ -9,8 +9,9 @@
 // Decision tables: `stack-select.js --table <layer>` (proof: its `total: N <layer>` footer), the
 // four validate-only audit flags `--redundant`/`--missing`/`--evidence-gaps`/`--judgment` (proof: the
 // rendered table's own state words - REDUNDANT/MISSING/DISABLED or JUDGMENT-DROP/JUDGMENT-ADD - since
-// those calls redirect to a file and print no footer of their own), and the `plugin-settings.js`
-// report without `--apply` (proof: the result's closing line). Fires only when
+// those calls redirect to a file and print no footer of their own), and two reports proven by the
+// result's closing line - the `plugin-settings.js` report without `--apply`, and validate's install
+// audit (`audit-install.js`) without `--json`. Fires only when
 // the LATEST such call has no proof in the assistant text after it. It keeps denying: the measured skills turn announced 'pasted
 // below' three times running with no table, and once in the ask's preview panel, which the user
 // never saw. A valve lets the ask through after MAX_DENIALS for the same table call, so a paste
@@ -49,7 +50,12 @@ const TABLE_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--table\s+["']?([a-z]+)/;
 // proof is the state word its rendered table is required to print verbatim.
 const AUDIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--(redundant|missing|evidence-gaps|judgment)\b/;
 const AUDIT_PROOF = /\b(REDUNDANT|MISSING|DISABLED|JUDGMENT-DROP|JUDGMENT-ADD)\b/;
-const SETTINGS_RE = /plugin-settings\.js\b/;
+// Reports proven by their LAST line in the assistant text. `skip` is the flag that makes the same
+// script print no table; `empty` is the all-clear line, which setup and validate pass over silently.
+const LAST_LINE_REPORTS = [
+  { re: /plugin-settings\.js\b/, skip: /--apply\b/, empty: /nothing to offer/, name: 'plugin-settings report' },
+  { re: /audit-install\.js\b/, skip: /--json\b/, empty: /nothing to report/, name: 'install audit' },
+];
 const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
 
 // Walk backwards: collect assistant text, tool results and our own earlier denials until the latest
@@ -75,15 +81,16 @@ for (let i = rows.length - 1; i >= 0 && !table; i--) {
       const cmd = String((b.input && b.input.command) || '');
       const m = TABLE_RE.exec(cmd);
       const am = !m && AUDIT_RE.exec(cmd);
+      const report = !m && !am && LAST_LINE_REPORTS.find((r) => r.re.test(cmd) && !r.skip.test(cmd));
       if (m) table = { name: `${m[1]} table`, proof: new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`) };
       else if (am) table = { name: `${am[1]} audit`, proof: AUDIT_PROOF };
-      else if (SETTINGS_RE.test(cmd) && !/--apply\b/.test(cmd)) {
+      else if (report) {
         const last = (results[b.id] || '').split('\n').map((l) => l.trim()).filter(Boolean).pop();
-        // no result read back (a truncated tail) - nothing to prove against, so nothing to deny; and a
-        // run with `nothing to offer` printed no table, which setup skips silently (measured: every
-        // later ask was denied three times over a table that never existed)
-        const noTable = !last || /nothing to offer/.test(results[b.id] || '');
-        table = { name: 'plugin-settings report', proof: noTable ? null : { test: (t) => t.includes(last) } };
+        // no result read back (a truncated tail) - nothing to prove against, so nothing to deny; and an
+        // all-clear run printed no table, which the walk skips silently (measured on plugin-settings:
+        // every later ask was denied three times over a table that never existed)
+        const noTable = !last || report.empty.test(results[b.id] || '');
+        table = { name: report.name, proof: noTable ? null : { test: (t) => t.includes(last) } };
       }
     }
   }

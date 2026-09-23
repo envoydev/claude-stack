@@ -283,7 +283,10 @@ already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`,
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
 it re-points the registration, and the installer prints
 `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
-and report it, never assert it. Pass the answer to the installer as
+and report it, never assert it. The post-check then offers the move as two copy-ready commands the
+user runs - `node .claude/hooks/memory.js export --db <oldPath> > memories.jsonl`, then `node
+.claude/hooks/memory.js import memories.jsonl` (stored through the new level's server; a re-run
+stores nothing) - and runs neither itself. Pass the answer to the installer as
 `--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
 `memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.
@@ -318,7 +321,7 @@ Presence, never the value - run this and paste its lines as-is:
 ## 8. Plugins
 
 Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure;
-`superpowers` shows as `dependency` - the core plugin hard-depends on it, so it cannot be dropped and needs no install row); the rest of the
+`superpowers` shows as `dependency` - every install carries it beside the core plugin, so it cannot be dropped and needs no install row); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
@@ -478,9 +481,8 @@ one line per item, never deleted a second time by hand; then each removal the in
 make, with its command shown before running it: `claude mcp remove <name>` for an MCP on the copy
 route (playwright = every `playwright-<browser>` server);
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
-except one the table showed as `dependency`, which is never proposed for removal at all: the core
-plugin hard-depends on it, and Claude Code refuses both the uninstall and the disable while the core
-is enabled, naming the dependent - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
+except one the table showed as `dependency`, which is never proposed for removal at all: every
+install carries it beside the core, and the next run installs it again - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. Under the shell seed the twin deletes
 nothing it did not select, so every dropped copy is deleted here as well: the skill directory, agent

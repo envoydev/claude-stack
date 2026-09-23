@@ -687,6 +687,21 @@ test('hook-blocks: a probe row is counted apart from the blocks', () => {
   assert.strictEqual(Object.keys(hookBlocks.byHook).length, 1, 'the probe is not a hook block row');
 });
 
+test('hook-blocks: every log-only row (any mode) is counted apart from the blocks', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    line({ ts: '2026-07-15T07:00:00.500Z', hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'Blocked: whole-file Read of Big.cs' }),
+    line({ ts: '2026-07-15T07:00:02.500Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call - logged, not judged' }),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rows, 1, 'one block');
+  assert.deepStrictEqual(hookBlocks.probeKinds, { 'tool-ended-turn': 1 });
+  assert.ok(!hookBlocks.byHook['guard-stop-contract.js'], 'a skip row is not a stop-contract block');
+});
+
 // ---------- the efficiency scorecard ----------
 // Each row is a measured practice with a denominator; these pin the classifiers on synthetic
 // transcripts so a regex drift cannot silently move a rate the observation week is read from.
@@ -1338,5 +1353,301 @@ test('a token past the label cut is still masked - the mask runs before the slic
   const label = main.topResults[0].label;
   assert.ok(!label.includes('sk-ant-'), 'not even the head of the token survives the cut');
   assert.ok(label.length <= 70);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------- navigation: located reads, symbol tools against grep-then-read, whole-file denials ----------
+// Three synthetic transcripts, each counted by hand below. A read counts when it names a SOURCE file
+// (a code extension, outside a build dir) on either route; it is LOCATED when a symbol tool (serena's
+// three symbol tools, the LSP tool) or a grep (the Grep tool, serena's pattern search, a shell grep/rg
+// opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
+// in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
+// else from the transcript's own hook bracket.
+const SERENA = (tool) => `mcp__plugin_serena_serena__${tool}`;
+const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
+function navTranscript(file, calls, results = {}) {
+  let body = '';
+  calls.forEach((c, n) => {
+    body += scAsst(`m-${c.id}`, scT(2 * n), usage(1, 0, 100, 5), [c]);
+    const r = results[c.id];
+    body += toolRes(scT(2 * n + 1), c.id, r ? r.text : 'ok', r && r.error);
+  });
+  fs.writeFileSync(file, body);
+}
+
+test('navigation A: serena-first reads are located, a read after an edit is not', () => {
+  // a1 find_symbol (symbol) | a2 Read Orders.cs: window [symbol] -> LOCATED by symbol
+  // a3 get_symbols_overview, a4 find_referencing_symbols (symbol x2)
+  // a5 Read Billing.cs: window [read, symbol, symbol] -> LOCATED by symbol
+  // a6 Read README.md: not a source file | a7 Edit (nothing)
+  // a8 Read Orders.cs: window [read, read, edit] -> NOT located
+  // hand count: 3 source reads, 2 located (2 symbol, 0 grep), 3 symbol calls, 0 grep calls, 0 denials
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('a1', SERENA('find_symbol'), { name_path: 'Orders' }),
+    navCall('a2', 'Read', { file_path: 'src/Orders.cs', offset: 10, limit: 30 }),
+    navCall('a3', SERENA('get_symbols_overview'), { relative_path: 'src/Billing.cs' }),
+    navCall('a4', SERENA('find_referencing_symbols'), { name_path: 'Bill' }),
+    navCall('a5', 'Read', { file_path: 'src/Billing.cs', offset: 1, limit: 20 }),
+    navCall('a6', 'Read', { file_path: 'README.md' }),
+    navCall('a7', 'Edit', { file_path: 'src/Orders.cs', old_string: 'a', new_string: 'b' }),
+    navCall('a8', 'Read', { file_path: 'src/Orders.cs' }),
+  ]);
+  const { main } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 3, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 3, grepCalls: 0 });
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /navigation\s+2 of 3 source-file read\(s\) had a locate step in the 3 calls before \(67%\); symbol tools 3 call\(s\) against 0 grep-then-read sequence\(s\); 0 whole-file denial\(s\) \(transcript bracket - pass --hook-blocks for the ledger\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('navigation B: grep-then-read on both routes, a pipe filter is no locate step, denials come from the ledger', () => {
+  // b1 Grep (grep) | b2 Read Foo.ts: window [grep] -> LOCATED by grep
+  // b3 shell grep (grep) | b4 sed -n of bar.ts: window [grep, read, grep] -> LOCATED by grep
+  // b5 `rg ... && cat baz.py`: a grep AND a read in one call -> LOCATED by grep
+  // b6 npm test, b7 Glob (a file locate, not a place in it), b8 `git log | grep` (a filter, not a locate)
+  // b9 Read Big.cs: window [b6, b7, b8] -> NOT located, and the guard denies it
+  // b10 ranged Read Big.cs: window [b7, b8, b9] -> NOT located
+  // hand count: 5 source reads, 3 located (0 symbol, 3 grep), 0 symbol calls, 3 grep calls;
+  // the ledger holds 1 whole-file row and 1 row of another guard -> 1 whole-file denial
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('b1', 'Grep', { pattern: 'class Foo' }),
+    navCall('b2', 'Read', { file_path: 'src/Foo.ts', offset: 5, limit: 20 }),
+    navCall('b3', 'Bash', { command: 'grep -rn "bar(" src' }),
+    navCall('b4', 'Bash', { command: "sed -n '10,40p' src/bar.ts" }),
+    navCall('b5', 'Bash', { command: 'rg -n baz src && cat src/baz.py' }),
+    navCall('b6', 'Bash', { command: 'npm test' }),
+    navCall('b7', 'Glob', { pattern: '**/*.cs' }),
+    navCall('b8', 'Bash', { command: 'git log --oneline | grep fix' }),
+    navCall('b9', 'Read', { file_path: 'src/Big.cs' }),
+    navCall('b10', 'Read', { file_path: 'src/Big.cs', offset: 1, limit: 40 }),
+  ], { b9: { text: 'Blocked: whole-file Read of src/Big.cs (900 lines) - locate the symbol first.', error: true } });
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'),
+    line({ ts: scT(16), hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'whole-file Read of src/Big.cs' }) +
+    line({ ts: scT(10), hook: 'guard-secret-value.js', event: 'PreToolUse', tool: 'Bash', reason: 'credential read' }));
+  const { main } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 5, located: 3, symbolLocated: 0, grepLocated: 3, symbolCalls: 0, grepCalls: 3 });
+  const txt = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(txt, /navigation\s+3 of 5 source-file read\(s\) had a locate step in the 3 calls before \(60%\); symbol tools 0 call\(s\) against 3 grep-then-read sequence\(s\); 1 whole-file denial\(s\) \(hook-block ledger\)/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| navigation \| 3 of 5 source-file read\(s\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('navigation C: main and seat windows are counted apart and summed, a symbol step beats a grep in one window', () => {
+  // main: c1 LSP (symbol) | c2 Read app.component.ts: window [symbol] -> LOCATED by symbol
+  //       c3 Read huge.ts: window [symbol, read] -> LOCATED by symbol; the guard denies it (bracket only)
+  // seat: s1 search_for_pattern (grep) | s2 find_symbol (symbol)
+  //       s3 Read Svc.cs: window [grep, symbol] -> LOCATED by symbol (the symbol wins)
+  //       s4 Read package.json: not a source file
+  //       s5 Read Other.cs: window [symbol, read, read] -> LOCATED by symbol
+  //       s6 `cat src/x.go`: window [read, read, read] -> NOT located
+  // hand count: main 2/2 located, seat 2/3 located; the sum is 5 reads, 4 located (4 symbol, 0 grep),
+  // 2 symbol calls, 1 grep call, and 1 whole-file denial from the transcript bracket (no ledger passed)
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('c1', 'LSP', { operation: 'goToDefinition', filePath: 'src/app.component.ts', line: 3, character: 5 }),
+    navCall('c2', 'Read', { file_path: 'src/app.component.ts', offset: 1, limit: 30 }),
+    navCall('c3', 'Read', { file_path: 'src/huge.ts' }),
+  ], { c3: { text: 'Blocked: whole-file Read of src/huge.ts [node "/x/hooks/guard-read-whole-file.js"]', error: true } });
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  navTranscript(path.join(sub, 'agent-s1.jsonl'), [
+    navCall('s1', SERENA('search_for_pattern'), { substring_pattern: 'Svc' }),
+    navCall('s2', SERENA('find_symbol'), { name_path: 'Svc' }),
+    navCall('s3', 'Read', { file_path: 'src/Svc.cs', offset: 1, limit: 30 }),
+    navCall('s4', 'Read', { file_path: 'package.json' }),
+    navCall('s5', 'Read', { file_path: 'src/Other.cs', offset: 1, limit: 30 }),
+    navCall('s6', 'Bash', { command: 'cat src/x.go' }),
+  ]);
+  fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'aspnet-implementer' }));
+  const { main, agents } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 2, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 1, grepCalls: 0 });
+  assert.deepStrictEqual(agents[0].stats.efficiency.navigation, { reads: 3, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 1, grepCalls: 1 });
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /navigation\s+4 of 5 source-file read\(s\) had a locate step in the 3 calls before \(80%\); symbol tools 2 call\(s\) against 0 grep-then-read sequence\(s\); 1 whole-file denial\(s\) \(transcript bracket - pass --hook-blocks for the ledger\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------- dollars: a dated list-price table, a cost per session and per seat ----------
+
+test('price table: every row is complete, sourced and dated, and the page\'s stated multipliers hold', () => {
+  const t = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'model-prices.json'), 'utf8'));
+  assert.match(t.source, /^https:\/\/platform\.claude\.com\/docs\//);
+  assert.match(t.fetched, /^\d{4}-\d{2}-\d{2}$/);
+  const ids = t.models.map((m) => m.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'one row per model id');
+  // The page states the cache columns as multipliers of the base input price: 1.25x for a
+  // 5-minute write, 2x for a 1-hour write, 0.1x for a hit except the two it names. A refresh that
+  // mistypes one column breaks here, not in a report.
+  const hit = { 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025, 'claude-opus-5-5': 0.05 };
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  for (const m of t.models) {
+    assert.match(m.id, /^claude-[a-z]+-\d+(?:-\d+)?$/, `${m.id}: a dateless API id`);
+    for (const k of ['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output']) assert.ok(m[k] > 0, `${m.id}: ${k}`);
+    assert.ok(near(m.cache_write_5m, 1.25 * m.input), `${m.id}: 5m write is 1.25x input`);
+    assert.ok(near(m.cache_write_1h, 2 * m.input), `${m.id}: 1h write is 2x input`);
+    assert.ok(near(m.cache_read, (hit[m.id] || 0.1) * m.input), `${m.id}: cache hit multiplier`);
+    if (m.fast) assert.ok(m.fast.input > m.input && m.fast.output > m.output, `${m.id}: fast mode is a premium`);
+  }
+});
+
+// A synthetic table with round prices, so every dollar below is counted by hand and stays true
+// whatever the real table says after its next refresh.
+function writePrices(dir) {
+  const f = path.join(dir, 'prices.json');
+  fs.writeFileSync(f, JSON.stringify({ source: 'https://example.test/pricing', fetched: '2026-01-01', models: [
+    { id: 'claude-test-a', input: 1, cache_write_5m: 1.25, cache_write_1h: 2, cache_read: 0.1, output: 5, fast: { input: 2, output: 10 } },
+    { id: 'claude-test-b', input: 10, cache_write_5m: 12.5, cache_write_1h: 20, cache_read: 1, output: 50 },
+  ] }));
+  return f;
+}
+const costUsage = (i, cc, cr, out, split, extra = {}) => ({ ...usage(i, cc, cr, out), ...(split ? { cache_creation: { ephemeral_5m_input_tokens: split[0], ephemeral_1h_input_tokens: split[1] } } : {}), ...extra });
+const costAsst = (id, ts, model, u) => line({ type: 'assistant', timestamp: ts, message: { id, model, usage: u, content: [] } });
+
+test('cost: priced once per message from the folded usage, split by cache TTL, fast mode scaled, unpriced named, seats summed', () => {
+  // main m1 (claude-test-a, a dated id): three STREAMED rows of one message, output growing 10 ->
+  //   200 -> 2000 while the input side repeats - folded once: in 1000, 5m write 1000, 1h write 3000,
+  //   read 100000, out 2000 = 1000*1 + 1000*1.25 + 3000*2 + 100000*0.1 + 2000*5 = 28,250 -> $0.02825
+  //   (a per-row sum would have billed 3000 in, 12000 written, 300000 read, 2210 out)
+  // main m2 (claude-test-a[1m], fast, no split): write 1000 at the 5m rate, read 50000, out 1000,
+  //   every input column x2 (fast input 2 / input 1), output at the fast 10:
+  //   1000*1.25*2 + 50000*0.1*2 + 1000*10 = 22,500 -> $0.0225
+  // main m3 (claude-mystery-9): unpriced, named with its message count
+  // seat s1 aspnet-implementer (claude-test-b): 100*10 + 10000*1 + 100*50 = 16,000 -> $0.016
+  // seat s2 evidence-gatherer (claude-test-b): 1000*50 = 50,000 -> $0.05
+  // hand count: main $0.05075, seats $0.066, session $0.11675
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file,
+    costAsst('m1', scT(0), 'claude-test-a-20260101', costUsage(1000, 4000, 100000, 10, [1000, 3000])) +
+    costAsst('m1', scT(1), 'claude-test-a-20260101', costUsage(1000, 4000, 100000, 200, [1000, 3000])) +
+    costAsst('m1', scT(2), 'claude-test-a-20260101', costUsage(1000, 4000, 100000, 2000, [1000, 3000])) +
+    costAsst('m2', scT(3), 'claude-test-a[1m]', costUsage(0, 1000, 50000, 1000, null, { speed: 'fast' })) +
+    costAsst('m3', scT(4), 'claude-mystery-9', costUsage(10, 0, 0, 10, [0, 0])) +
+    line({ type: 'cost-state', timestamp: scT(5), totalCostUSD: 0.2, modelUsage: { 'claude-test-a': { inputTokens: 1000, outputTokens: 3000, cacheReadInputTokens: 150000, cacheCreationInputTokens: 5000 } } }));
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  fs.writeFileSync(path.join(sub, 'agent-s1.jsonl'), costAsst('s1', scT(6), 'claude-test-b', costUsage(100, 0, 10000, 100, [0, 0])));
+  fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'aspnet-implementer' }));
+  fs.writeFileSync(path.join(sub, 'agent-s2.jsonl'), costAsst('s2', scT(7), 'claude-test-b', costUsage(0, 0, 0, 1000, [0, 0])));
+  fs.writeFileSync(path.join(sub, 'agent-s2.meta.json'), JSON.stringify({ agentType: 'evidence-gatherer' }));
+  const prices = writePrices(dir);
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-12, `${what}: ${a} vs ${b}`);
+  const out = run([file, '--prices', prices]);
+  assert.strictEqual(out.main.total.output, 3010, 'the streamed rows fold to their last snapshot, never a per-row sum');
+  assert.strictEqual(out.main.total.cacheRead, 150000);
+  near(out.main.cost.usd, 0.05075, 'main');
+  assert.deepStrictEqual(out.main.cost.unpriced, { 'claude-mystery-9': 1 });
+  assert.strictEqual(out.main.cost.noSplitMsgs, 1);
+  assert.strictEqual(out.main.cost.fastMsgs, 1);
+  near(out.agents.find((a) => a.id === 's1').stats.cost.usd, 0.016, 'seat s1');
+  near(out.cost.usd, 0.11675, 'session');
+  near(out.cost.subagents, 0.066, 'seats');
+  near(out.cost.byType['evidence-gatherer'], 0.05, 'seat type');
+  const txt = execFileSync('node', [SCRIPT, file, '--prices', prices], { encoding: 'utf8' });
+  assert.match(txt, /cost at list price\s+~\$0\.12 - main \$0\.05, subagents \$0\.07 over 2 seat\(s\) \(evidence-gatherer \$0\.05, aspnet-implementer \$0\.02\); cost-state billed \$0\.20; unpriced: claude-mystery-9 x1 msg; 1 msg\(s\) with no cache-write split, billed at the 5-minute rate; 1 fast-mode msg\(s\)/);
+  assert.match(txt, /tests: list price from https:\/\/example\.test\/pricing, fetched 2026-01-01/);
+  assert.match(txt, /evidence-gatherer\s+1\s+1\.0k\s+0\s+1\s+\$0\.05/, 'the seat table carries a cost column');
+  const md = execFileSync('node', [SCRIPT, file, '--prices', prices, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| agent type \| n \| output \| cache-read \| msgs \| cost \| wall \| top tools \|/);
+  assert.match(md, /\| cost at list price \| ~\$0\.12 - main \$0\.05/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('cost: a copied fork prefix is the parent\'s bill, a rollup carries a cost per session, a missing table says so', () => {
+  const dir = tmp();
+  const prices = writePrices(dir);
+  // the parent's message (read 5000 at 0.1, out 1 at 5 = 505 -> $0.000505) is copied into the fork;
+  // the fork's own message (out 100 at 5 = 500 -> $0.0005) is the fork's whole cost
+  const parentRow = { type: 'assistant', timestamp: '2026-07-15T07:00:00.000Z', message: { id: 'p1', model: 'claude-test-a', usage: usage(0, 0, 5000, 1), content: [] } };
+  const ownRow = { type: 'assistant', timestamp: '2026-07-15T07:10:00.000Z', message: { id: 'o1', model: 'claude-test-a', usage: usage(0, 0, 0, 100), content: [] } };
+  const file = forkFixture(dir, {
+    parentRows: [{ ...parentRow, sessionId: PARENT_SID, session_id: PARENT_SID }],
+    ownRows: [{ ...parentRow, sessionId: OWN_SID, session_id: PARENT_SID }, { ...ownRow, sessionId: OWN_SID, session_id: OWN_SID }],
+  });
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-12, `${what}: ${a} vs ${b}`);
+  const out = run([file, '--prices', prices]);
+  near(out.main.cost.usd, 0.0005, 'own');
+  near(out.main.cost.prefixUsd, 0.000505, 'prefix');
+  // rollup: one cost per session, the fork's own and the parent's own - the prefix is never billed twice
+  const roll = run([dir, '--prices', prices]);
+  const bySid = Object.fromEntries(roll.sessions.map((r) => [r.session, r.cost]));
+  near(bySid[OWN_SID], 0.0005, 'fork row');
+  near(bySid[PARENT_SID], 0.000505, 'parent row');
+  const rtxt = execFileSync('node', [SCRIPT, dir, '--prices', prices], { encoding: 'utf8' });
+  assert.match(rtxt, /\bcost\b/);
+  assert.match(rtxt, /\$0\.0005\b/);
+  const none = execFileSync('node', [SCRIPT, file, '--prices', path.join(dir, 'absent.json')], { encoding: 'utf8' });
+  assert.match(none, /cost at list price\s+price table unreadable/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------- MCP failures: the calls a server answered with an error, per server, per session ----------
+
+test('MCP failures: a server error counts per server across main and seats; a guard, a harness rejection and a decline do not', () => {
+  // main: serena find_symbol ok | serena find_symbol ERROR (the server's own 'Error executing tool')
+  //       serena get_symbols_overview ok | context7 query-docs ERROR (MCP timeout)
+  //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
+  //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
+  //       playwright-chrome browser_click: the user declined -> an answer, not a failure
+  // seat: serena find_symbol ERROR | sentry search_issues ok
+  // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  const mcpName = (server, tool) => `mcp__plugin_${server}_${server}__${tool}`;
+  navTranscript(file, [
+    navCall('e1', mcpName('serena', 'find_symbol'), { name_path: 'A' }),
+    navCall('e2', mcpName('serena', 'find_symbol'), { name_path: 'B' }),
+    navCall('e3', mcpName('serena', 'get_symbols_overview'), { relative_path: 'src/a.cs' }),
+    navCall('e4', mcpName('context7', 'query-docs'), { query: 'x' }),
+    navCall('e5', mcpName('context7', 'resolve-library-id'), { libraryName: 'y' }),
+    navCall('e6', mcpName('memory', 'memory_search'), {}),
+    navCall('e7', mcpName('playwright-chrome', 'browser_click'), { element: 'OK' }),
+  ], {
+    e2: { text: 'Error executing tool find_symbol: language server not running', error: true },
+    e4: { text: 'MCP error -32001: Request timed out', error: true },
+    e5: { text: 'Blocked: this call is gated [node "/x/hooks/guard-unapproved-dispatch.js"]', error: true },
+    e6: { text: '<tool_use_error>InputValidationError: memory_search failed due to the following issue: query is required</tool_use_error>', error: true },
+    e7: { text: "The user doesn't want to proceed with this tool use.", error: true },
+  });
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  navTranscript(path.join(sub, 'agent-s1.jsonl'), [
+    navCall('f1', mcpName('serena', 'find_symbol'), { name_path: 'C' }),
+    navCall('f2', mcpName('sentry', 'search_issues'), { query: 'z' }),
+  ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
+  const { main, agents } = run([file]);
+  assert.strictEqual(main.mcp.serena.errors, 1);
+  assert.strictEqual(main.mcp.context7.errors, 1);
+  assert.strictEqual(main.mcp.context7.rejected, 1, 'a guard denial is a rejection, not a server failure');
+  assert.strictEqual(main.mcp.memory.errors, 0);
+  assert.strictEqual(main.mcp.memory.rejected, 1, 'a schema failure never reached the server');
+  assert.strictEqual(main.mcp['playwright-chrome'].errors, 0, 'a decline is an answer');
+  assert.strictEqual(agents[0].stats.mcp.serena.errors, 1);
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: serena 2\/4, context7 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| serena \| 4 \| [^|]+ \| 2 \|/, 'the MCP table counts server errors only');
+  assert.match(md, /\| MCP failures \| 3 of 9 MCP call\(s\)/);
+  // per session, in the rollup
+  const roll = run([dir]);
+  assert.deepStrictEqual(roll.sessions[0].mcp, { calls: 9, errors: 3 });
+  const rtxt = execFileSync('node', [SCRIPT, dir], { encoding: 'utf8' });
+  assert.match(rtxt, /mcp-err/);
+  assert.match(rtxt, /\b3\/9\b/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('MCP failures: a session with no MCP call says so', () => {
+  const dir = tmp();
+  const file = writeFixture(dir);
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /MCP failures\s+no MCP call/);
   fs.rmSync(dir, { recursive: true, force: true });
 });

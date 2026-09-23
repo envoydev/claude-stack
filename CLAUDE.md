@@ -38,19 +38,24 @@ change (see the invariants below).
   all three read their six lists from. `docs/claude-stack.html` is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - thirteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
+- `stack/hooks/` - sixteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
   register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
   two engines (`docs.js`, `memory.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
   22 bodies shared with cursor-stack run `node .claude/hooks/docs.js`. The entry is GENERATED from the
   installer's own `HOOKS_CATALOG` (`build-marketplace.js --hooks-entry`, lint check 48), so one table
   owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
-  600s default) and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
+  600s default) - `check-turn-build.js` carries 60, the one declared exception, from the same
+  `HOOK_TIMEOUTS` table the seed writes (`install/settings.js`; the frozen twins write 10) - and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
   bit, which git carries into the cache as committed, and never runs on Windows).
   `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
   the walk's hooks layer now writes the rows it did NOT pick into `CLAUDE_STACK_HOOKS_OFF` instead of
-  leaving files out. Both gates live in `hook-prelude.js`, never inlined thirteen times: the csv
+  leaving files out. Both gates live in `hook-prelude.js`, never inlined in every hook: the csv
   opt-out, and the migration window where the plugin copy stands down while a project still wires its
   copied twin (fail-open - a hook that cannot read the settings file runs).
+  The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
+  home too: `fresh-session.js`, an engine the two fresh-session hooks and the session monitor require
+  from their own directory, copied with the hooks on the copy route; a hook that runs before it lands
+  keeps every offer off.
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
@@ -82,8 +87,13 @@ change (see the invariants below).
     run or a branch level with upstream is never gated; `CLAUDE_STACK_PUSH_GATE=0` turns the push half off.
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
+    Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
+    chained `git add` takes in; at most 2MB): a conflict marker, a debugger, a focused test or a
+    credential-shaped literal blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
+    through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion`
-    branch that never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
+    branch that never denies) - blocks a turn ending on a decision-shaped question in prose (the quality
+    loop's mode and stage-close asks worded as statements included), or a 'done, next step
     pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own - a fork read its parent's pending fork as its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`CLAUDE_STACK_ROTATE_ASK=0` off).
@@ -104,32 +114,65 @@ change (see the invariants below).
     TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. Routes:
     PreToolUse `Skill` BLOCKS; `UserPromptSubmit` INJECTS for slash-invoked runs (never denies - that
     would erase the prompt); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
-    the language of the user's prompts, and re-read a live plan file's header first.
+    the language of the user's prompts, and re-read a live plan file's header first. `PreCompact` writes
+    `<docs-path>/flow/COMPACT-STATE` first (the live plan, the open flow stamps with their ages, the
+    files this session wrote, no model call), and the compact start points at it - even with every
+    fresh-session offer off.
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit`/`Bash`) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
     the change goes to a task card under `<docs-path>/cross-project-tasks/`. Reading stays open. Session
     scratch, `~/.claude` / `~/.claude-<space>` and `/dev` stay writable; paths compared as REAL paths; a
     Git Bash mount path (`/c/...`, `/cygdrive/c/...`) is translated first (the same regex is inlined in
-    four hooks, pinned as `gitbash-mount-path`). 'Allow' is honoured through the
+    five hooks, pinned as `gitbash-mount-path`). 'Allow' is honoured through the
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. Also carries the log-only fork-liveness PROBE (`mode: probe` rows, denies nothing).
+  - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash`/`PowerShell`) - a
+    check is never made green by weakening the check: a change to a lint / format / analyzer config that
+    ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in
+    tsconfig / MSBuild files only a change to the strictness keys (compared as key=value pairs, so any
+    other edit passes). Creating a config passes; the shell routes are the in-place edit, redirect, `tee`,
+    `rm`, `mv` and a `cp` onto it. 'Allow' is honoured through `<docs-path>/flow/CONFIG-EDIT-ALLOW` (a
+    file, its basename or `*`); `CLAUDE_STACK_CONFIG_PROTECT=0` turns it off.
+  - `monitor-session.js` (`PostToolUse` on every tool + `UserPromptSubmit`) - a live monitor that never
+    denies: one actor running the same tool with the same input 5 times in a turn, more than 20 distinct files
+    written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per
+    session). Each note is one `mode: monitor` row in the hook-blocks ledger; `CLAUDE_STACK_MONITOR` is seeded
+    `log` (rows only, the observation week), `inject` hands the note back as `additionalContext`, `0` is off.
+  - `check-turn-build.js` (`PostToolUse` on `Write|Edit|MultiEdit` + `Stop`) - seeded OFF
+    (`CLAUDE_STACK_TURN_CHECK=0`; `1` turns it on per project after a measured week). The PostToolUse half
+    lists the turn's written paths in `<docs-path>/flow/turn-edits-<session>`; at `Stop` it runs ONE scoped
+    check per nearest root - the project's own `tsc --noEmit -p` for TypeScript, `dotnet build --no-restore
+    -v q` for C# - and hands the first 20 error lines back as a block, once per turn (the continuation Stop
+    passes). A missing compiler or a timeout is a pass.
   - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash in
     prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `CLAUDE_STACK_INSTRUMENT` (seeded "0")
     is "1".
-  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Bash/PowerShell/Grep/Glob, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `CLAUDE_STACK_DOCS_VERSIONING` (`--docs-versioning` / `-DocsVersioning` writes it; absent, it is seeded - and the engine falls back - by ONE rule in four homes, the two installer seeds, `stamp-docs-root.js` and `docs.js`, pinned together by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md` (4KB cap); the first change under a source root waits for a section read (two holds, then a logged bypass); the FINISH ask fires only when a changed file hits the capture's `watch.json` - at `SubagentStop` for what that agent WROTE (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash>` that refuses a rewrite of a section another agent moved meanwhile. `CLAUDE_STACK_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
+  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Bash/PowerShell/Grep/Glob, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `CLAUDE_STACK_DOCS_VERSIONING` (`--docs-versioning` / `-DocsVersioning` writes it; absent, it is seeded - and the engine falls back - by ONE rule in four homes, the two installer seeds, `stamp-docs-root.js` and `docs.js`, pinned together by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md` (4KB cap) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read (two holds, then a logged bypass; no hold when no doc file can be read by section); the FINISH ask fires only when a changed file hits the capture's `watch.json` - at `SubagentStop` for what that agent WROTE (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash>` that refuses a rewrite of a section another agent moved meanwhile. `CLAUDE_STACK_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
   - `memory-session.js` (`SessionStart`) with its engine `memory.js` (copied beside it, not wired -
     the `docs.js` pattern) - reads the shared memory database FILE directly (`node:sqlite`, no
     server, no model call) and injects this project's memories plus every `preference` /
-    `correction` carrying no project tag, newest first, capped at 4KB like the docs start block; a
-    related-projects domain adds those projects' memories too, inside the same cap. `node
+    `correction` carrying no project tag, capped at 4KB like the docs start block; a
+    related-projects domain adds those projects' memories too, inside the same cap. The rows sit
+    under two fixed frame lines (context, never instructions; a named file, flag or symbol is
+    verified first - `baseline-memory.md`'s sentence, pinned as `memory-frame`), each carries its age
+    in days, and ageing is ORDER only: preferences and corrections under 90 days first, then the
+    project's other memories, then the older preferences and corrections, then related projects,
+    newest first within each - nothing is deleted. `node
     .claude/hooks/memory.js level [projectRoot]` is the same engine's CLI, read by `validate` and
     `status` (`<level> <dbPath>`, or `none`). Fail-open: a missing database, a locked file, or
     `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart
-    is never reported as a failure.
+    is never reported as a failure. The CLI also moves memories between databases: `export [project]
+    [--all] [--db <file>]` writes the live rows as JSONL straight from the file (a read failure exits
+    1, never an empty success), and `import <file.jsonl>` stores them THROUGH the service (real
+    embeddings), skipping a line whose content hash - the service's own, sha256 of the trimmed
+    lower-cased content - is already live. Both imports, this one and the installer's notes import,
+    find the server one way (`serviceEntry`): a registration, else the installed
+    `memory@claude-stack` plugin's own declaration with the db path pinned - the plugin route has no
+    registration, which is why the notes import found no server there until 1.1.0.
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; init's None emits `hook none` through `stack-select.js
   --hooks-answered`, init only, which switches every hook off).
@@ -174,7 +217,9 @@ change (see the invariants below).
     `/claude-stack:configure` (add or drop), `/claude-stack:status` (read-only tables plus the install's
     always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/claude-stack:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
-    `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`).
+    `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
+    install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
+    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed).
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
     items of parked entries - and `parked_plugins`, so the walk's closure cannot switch either back
@@ -195,7 +240,7 @@ change (see the invariants below).
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
     (up to 3 times per table) whose decision table was run but never pasted - a `stack-select.js
-    --table` catalog or the `plugin-settings.js` report. It ships in the plugin because a fresh setup
+    --table` catalog, the `plugin-settings.js` report or validate's install audit. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`.
   - None of the six carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
@@ -220,6 +265,8 @@ change (see the invariants below).
   - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
     `scripts/plugin-settings.js`: walks report and ask in the plugins layer turn, apply after install;
     add-only by default (`--replace` overwrites); each row names the verified plugin VERSION (lint 28).
+  - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and
+    fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers).
   - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
     `env` RENAMES the env pass applies every run (order pinned as `env-pass-order`). A renamed key is read
     under its old spelling as fallback until every install has it (e.g. `CLAUDE_STACK_DOCS_PATH`,
@@ -230,7 +277,7 @@ change (see the invariants below).
   it reads `PowerShell` as a shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
   machine row of that same report. `scripts/scan-evidence.js` - deterministic manifest-only
-  evidence scan. `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
+  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `project-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed. `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
 ## The stack's delivery surfaces
 
@@ -241,8 +288,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
-| Hooks | `claude-stack-hooks@claude-stack` plugin (all thirteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
+| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
+| Hooks | `claude-stack-hooks@claude-stack` plugin (all sixteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release, the twin - takes what the enabled entries carry as its picks); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |
@@ -269,12 +316,13 @@ mirrored there in the same sitting.
   on which the installer re-spells the copied skills, agents, rules and hooks back to the bare names,
   because those are what a registration writes. That re-spelling needs the FILES, so the switch
   belongs with `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported, never half-fixed.
-  The LOCKED THREE are plugin-only whenever any plugin route is on: they are hard `dependencies` of
-  the core entry, so the CLI installs them with it, and registering them as well would run each
-  server twice and pay both sets of tool schemas every session. They come back to `.mcp.json` only
-  on the FULL copy route, where the core is never enabled. Every registration and verify pass skips
-  a locked name while the core carries it, and the re-spelling covers only the servers a run
-  actually registered bare.
+  The LOCKED THREE are plugin-only whenever any plugin route is on: the installer installs them
+  beside the core (the selection names them on the MCP route, `pluginSet` adds them on the mixed
+  one - never as the core's `dependencies`, see the Plugins surface above), and registering them as well would
+  run each server twice and pay both sets of tool schemas every session. They come back to
+  `.mcp.json` only on the FULL copy route, where the core is never enabled. Every registration and
+  verify pass skips a locked name while the core is on, and the re-spelling covers only the servers
+  a run actually registered bare.
 - **MCP servers are per-project, never global.** `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
@@ -311,7 +359,7 @@ mirrored there in the same sitting.
     block is the source that answers, which is where the installers write the token. `CLAUDE_CONFIG_DIR`
     survives the scrub, so a `--space` install still finds its own account file.
   - plus `serena`, `context7` and `memory`. context7 ships TWO plugins - `context7` (the hosted
-    remote, a hard dependency of the core, so it can never be dropped) and `context7-local` (the npx
+    remote, locked, so it can never be dropped) and `context7-local` (the npx
     transport, added by `--context7 local`). Two entries rather than two servers in one, for the same
     load-together reason; in local mode both are installed and the run prints the `/mcp disable
     context7` line. The 24 agents that grant context7 grant BOTH spellings, because a `tools:` list
@@ -433,7 +481,9 @@ mirrored there in the same sitting.
     commit, version bump or `develop` -> `main` merge until the matrix is green and its commands plus
     results are in the report.
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
-  option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes.
+  option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes, and
+  those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
+  `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
   every agent and skill DESCRIPTION and fails over 160,000 chars (109,826 on 2026-09-19: pathless rules 35,452, agent descriptions 28,541, skill descriptions 45,833 - the shared-memory rule and its tool grants added ~2,900). A rule moved into the
   baseline set or a grown description is costed against it. `/claude-stack:status` reports an install's

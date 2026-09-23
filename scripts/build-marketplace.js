@@ -26,6 +26,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, costOf, costToday, CORE } = require('./plugin-placement.js');
+const { timeoutFor } = require('./install/settings.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -103,7 +104,6 @@ function coreEntry(options = {})
             }],
         },
     };
-    if (Array.isArray(setup.dependencies) && setup.dependencies.length) entry.dependencies = setup.dependencies;
     return entry;
 }
 
@@ -222,7 +222,7 @@ function hooksBlock(wirings)
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
         }
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: 10 });
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file) });
     }
     return block;
 }
@@ -232,7 +232,7 @@ function hooksPlugin(options = {})
     return {
         name: 'claude-stack-hooks',
         source: './',
-        description: 'The thirteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, the stop contract, the answer budget, the fresh-session offer) plus the docs and memory session engines.',
+        description: 'The sixteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs and memory session engines.',
         version: options.version || marketplaceVersion(options),
         author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
         strict: false,
@@ -374,11 +374,11 @@ function mcpServerShapes(options = {})
         },
         'chrome-devtools': {
             description: 'chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.',
-            servers: { 'chrome-devtools': { command: 'npx', args: ['-y', 'chrome-devtools-mcp@latest'] } },
+            servers: { 'chrome-devtools': { command: 'npx', args: ['-y', `chrome-devtools-mcp${suffix('chrome-devtools')}`] } },
         },
         'appium-mcp': {
             description: 'The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.',
-            servers: { 'appium-mcp': { command: 'npx', args: ['-y', 'appium-mcp@latest'] } },
+            servers: { 'appium-mcp': { command: 'npx', args: ['-y', `appium-mcp${suffix('appium-mcp')}`] } },
         },
         sentry: {
             description: 'Sentry\'s hosted remote MCP as a plugin: issues, events and releases from the project\'s own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.',
@@ -417,8 +417,9 @@ function mcpPlugins(options = {})
             strict: false,
             mcpServers: spec.servers,
         };
-        // The locked three are `dependencies` OF the core, so they must not depend back on it.
-        // The droppable five are ordinary picks and name the core the way the hooks entry does.
+        // The locked three depend on nothing: the installer puts them beside the core on every run,
+        // and an entry with no dependency can never be disabled at load for a missing one. The
+        // droppable five are ordinary picks and name the core the way the hooks entry does.
         if (!spec.locked) entry.dependencies = [CORE];
         return entry;
     });

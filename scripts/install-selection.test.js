@@ -109,7 +109,7 @@ test('derive: generated project-owned files and the engine modules are NOT items
     // engines and hook-prelude.js the shared gate module - none of them is a hook.
     const dir = target({
         rules: ['baseline-security', 'baseline-project-agent-capabilities', 'project-code-style'],
-        hooks: ['docs-session', 'docs', 'memory', 'hook-prelude'],
+        hooks: ['docs-session', 'docs', 'memory', 'hook-prelude', 'fresh-session'],
     });
     const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] });
     assert.deepStrictEqual(lines.filter((l) => l.startsWith('rule ')), ['rule baseline-security']);
@@ -248,6 +248,24 @@ test('read-back: an EMPTY listing (the CLI failed) answers neither surface - not
     assert.ok(r.installed, 'the rules on disk still prove an install');
     assert.deepStrictEqual(r.answered, { hooks: false, agents: false });
     assert.ok(!r.lines.some((l) => /^(agent|hook) /.test(l)));
+});
+
+test('read-back: a plugin-route install with nothing on disk is still an install - its own project entries prove it', () =>
+{
+    // Every pick carried by an entry and no rule copied (a hand selection) left `.claude/` empty of
+    // skills, seats, rules and hooks, and the update refused with 'found nothing installed'.
+    const bare = (listing) => sel.readBack({
+        claudeDir: target({}), mcpServers: [], listing, settings: {}, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
+    });
+    const project = bare([row('claude-stack@claude-stack'), row('claude-stack-csharp@claude-stack'), row('claude-stack-hooks@claude-stack')]);
+    assert.ok(project.installed, 'the project-scoped entries were not read as an install');
+    assert.ok(project.lines.includes('skill csharp') && project.lines.some((l) => l.startsWith('hook ')), project.lines.join(', '));
+    assert.ok(bare([row('claude-stack@claude-stack', { scope: 'local' })]).installed, 'a local-scope entry is this project too');
+    // An ACCOUNT-scope entry is every project's - reading it as this one's would install into a
+    // project the stack never touched.
+    assert.strictEqual(bare([row('claude-stack@claude-stack', { scope: 'user' })]).installed, false);
+    assert.strictEqual(bare([row('claude-stack@claude-stack', { enabled: false })]).installed, false, 'a parked entry is no install');
+    assert.strictEqual(bare([row('claude-stack@other-market')]).installed, false, 'another marketplace is not ours');
 });
 
 test('read-back: copied hooks on disk still answer the hooks surface without the hooks entry', () =>
