@@ -243,7 +243,9 @@ test('serviceEntry: a registration wins; else the installed plugin, its root sub
     const sb = sandbox();
     const viaPlugin = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
     assert.strictEqual(viaPlugin.command, process.execPath);
-    assert.deepStrictEqual(viaPlugin.args, [path.join(sb.pluginRoot, 'fake-memory-server.js')]);
+    // Substituted the way Claude Code substitutes it - a plain string swap, so the separator after the
+    // root stays the template's '/' on Windows too, which node resolves the same.
+    assert.deepStrictEqual(viaPlugin.args, [`${sb.pluginRoot}/fake-memory-server.js`]);
     assert.strictEqual(viaPlugin.env.MCP_MEMORY_SQLITE_PATH, sb.dbFile);
     assert.strictEqual(viaPlugin.env.MCP_MEMORY_STORAGE_BACKEND, 'sqlite_vec');
 

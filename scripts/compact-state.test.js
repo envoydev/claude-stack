@@ -23,13 +23,14 @@ let seq = 0;
 function project()
 {
     const root = fs.mkdtempSync(path.join(TMP, `root-${seq++}-`));
-    // docs-session keeps its attribution state in os.tmpdir(); a private TMPDIR per case keeps a
-    // planted state from reaching the next case.
+    // docs-session keeps its attribution state in os.tmpdir(); a private temp dir per case keeps a
+    // planted state from reaching the next case. os.tmpdir() reads TMPDIR on POSIX and TEMP / TMP on
+    // Windows, so all three are pointed at it.
     const tmpdir = fs.mkdtempSync(path.join(TMP, `tmp-${seq}-`));
     const sid = `sess-${seq}`;
     const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], {
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: sid, cwd: root, ...payload }),
-        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, TMPDIR: tmpdir, ...env },
+        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, TMPDIR: tmpdir, TEMP: tmpdir, TMP: tmpdir, ...env },
     });
     const flow = path.join(root, '.claude', 'docs', 'flow');
     const state = path.join(flow, 'COMPACT-STATE');
