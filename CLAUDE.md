@@ -82,6 +82,10 @@ change (see the invariants below).
     run or a branch level with upstream is never gated; `CLAUDE_STACK_PUSH_GATE=0` turns the push half off.
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
+    Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
+    chained `git add` takes in; at most 2MB): a conflict marker, a debugger, a focused test or a
+    credential-shaped literal blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
+    through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion`
     branch that never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
     pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own

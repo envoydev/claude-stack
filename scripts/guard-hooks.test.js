@@ -2071,3 +2071,95 @@ test('guard-config-protection: a block writes one ledger row naming the hook', (
     assert.deepStrictEqual(rows[0].detail, { file: '.editorconfig', why: 'it is a lint / format / analyzer config' });
   });
 });
+
+// --- the staged-diff scan on the commit branch -------------------------------------------------
+// A fact check on what the commit would add - conflict markers, a debugger, a focused test, a
+// credential - ahead of the trivial-diff exemption and of every receipt.
+const stagedRepo = (files, { stage = true } = {}) => {
+  const dir = cleanRepo();
+  for (const [f, body] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), body); }
+  if (stage) spawnSync('git', ['-C', dir, 'add', '-A']);
+  return dir;
+};
+const commitIn = (files, command = 'git commit -m "x"', opts) => gateIn(stagedRepo(files, opts), command);
+
+test('guard-ungated-commit: the staged scan blocks conflict markers, debugger, focused tests and credentials - on ADDED lines only', () => {
+  const token = ['ghp', '0123456789abcdefghij0123456789abcdef'].join('_');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\ndebugger;\n' }), 2, 'debugger');
+  assert.equal(commitIn({ 'a.spec.ts': "fdescribe('x', () => {});\n" }), 2, 'focused test');
+  assert.equal(commitIn({ 'src/a.test.js': "it.only('x', () => {});\n" }), 2, 'it.only');
+  assert.equal(commitIn({ 'a.cs': 'System.Diagnostics.Debugger.Launch();\n' }), 2, 'Debugger.Launch');
+  assert.equal(commitIn({ 'a.txt': '<<<<<<< HEAD\n' }), 2, 'conflict marker');
+  assert.equal(commitIn({ 'notes.md': `token ${token}\n` }), 2, 'a credential blocks even in markdown');
+  assert.equal(commitIn({ 'notes.md': 'never commit a `debugger;` line\n' }), 0, 'prose about the pattern passes');
+  assert.equal(commitIn({ 'model.py': 'model.fit(x, y)\n' }), 0, 'fit( outside a test file is not a focused test');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\n' }), 0, 'a clean one-line diff stays trivial and passes');
+});
+
+test('guard-ungated-commit: the staged scan reads what THIS act commits', () => {
+  // a chained add stages mid-command: nothing is staged when the hook runs, so the tree is read
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add . && git commit -m "x"', { stage: false }), 2, 'git add . && commit');
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git add -A; git commit -m "x"', { stage: false }), 2, 'git add -A; commit');
+  // a plain commit takes only the index: an unstaged debugger is not part of it
+  const dir = stagedRepo({ 'clean.ts': 'const a = 1;\n' });
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n<<<<<<< HEAD\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'an unstaged conflict marker is not committed');
+  assert.equal(gateIn(dir, 'git commit -am "x"'), 2, 'commit -a takes the unstaged change too');
+  // a REMOVED line is never a finding
+  const rm = cleanRepo();
+  fs.writeFileSync(path.join(rm, 'b.ts'), 'const b = 1;\ndebugger;\n');
+  spawnSync('git', ['-C', rm, 'add', '-A']); spawnSync('git', ['-C', rm, 'commit', '-qm', 'seed debugger']);
+  fs.writeFileSync(path.join(rm, 'b.ts'), 'const b = 1;\n'); spawnSync('git', ['-C', rm, 'add', '-A']);
+  assert.equal(gateIn(rm, 'git commit -m "remove debugger"'), 0, 'removing a debugger line passes');
+  assert.equal(commitIn({ 'a.ts': 'debugger;\n' }, 'git commit --dry-run -m "x"'), 0, 'a dry run is never scanned');
+});
+
+test('guard-ungated-commit: no receipt opens the staged scan, and the block names file and line', () => {
+  const dir = stagedRepo({ 'n1.txt': forty(), 'n2.txt': forty(), 'n3.txt': forty() });
+  const gate = path.join(dir, '.claude', 'docs', 'flow', 'COMMIT-GATE');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  fs.writeFileSync(gate, 'WAIVED - "commit it without the review"\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'the waiver opens the gate on a clean non-trivial diff');
+  fs.writeFileSync(path.join(dir, 'n4.ts'), 'const a = 1;\ndebugger;\n'); spawnSync('git', ['-C', dir, 'add', '-A']);
+  const r = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' }, session_id: 'scan-sess' },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(r.status, 2, 'the same waiver does not open the scan');
+  assert.match(r.stderr, /n4\.ts:2 - a debugger statement/, 'file and line named');
+  const ledger = path.join(dir, '.claude', 'docs', 'hook-blocks', 'scan-sess.jsonl');
+  const row = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop());
+  assert.deepEqual(row.detail, { branch: 'staged-scan', count: 1 }, 'the block row carries the scan branch');
+});
+
+test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and passes past it', () => {
+  const LIMIT = 2 * 1024 * 1024;
+  const dir = cleanRepo();
+  const file = path.join(dir, 'big.ts');
+  const diffLen = () => spawnSync('git', ['-C', dir, 'diff', '--cached', '-U0', '--no-color'], { maxBuffer: 16 * LIMIT }).stdout.length;
+  const sized = (target) => {
+    let pad = target;
+    for (let i = 0; i < 3; i++) {
+      fs.writeFileSync(file, `debugger;\n${'x'.repeat(pad)}\n`); spawnSync('git', ['-C', dir, 'add', '-A']);
+      pad += target - diffLen();
+    }
+    assert.equal(diffLen(), target, `fixture diff is exactly ${target} bytes`);
+  };
+  sized(LIMIT - 1);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'a diff one byte under the cap is scanned');
+  sized(LIMIT + 1);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'a diff one byte over the cap passes unscanned');
+});
+
+test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits it names, for 8h', () => {
+  const dir = stagedRepo({ 'a.spec.ts': "fit('x', () => {});\n", 'b.ts': 'debugger;\n' });
+  const allow = path.join(dir, '.claude', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
+  fs.mkdirSync(path.dirname(allow), { recursive: true });
+  fs.writeFileSync(allow, 'a.spec.ts:1\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'one hit kept, the other still blocks');
+  fs.writeFileSync(allow, 'a.spec.ts:1\nb.ts\n');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'every hit named - the commit passes');
+  const hours = (h) => { const t = new Date(Date.now() - h * 3600 * 1000); fs.utimesSync(allow, t, t); };
+  hours(7.9);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'just under 8h still holds');
+  hours(8.1);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'past 8h the receipt is absent');
+});
