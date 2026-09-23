@@ -44,7 +44,15 @@ Karma, `jest.fn()` under Jest, `vi.fn()` under Vitest - and do not mix them.
   outputs through `inputBinding()` / `outputBinding()` / `twoWayBinding()` on `createComponent`
   rather than reaching into the instance. Under zoneless, an error thrown in an event listener
   surfaces to the error handler instead of being swallowed - expect some previously-silent
-  specs to start failing honestly.
+  specs to start failing honestly. An input set AFTER creation goes through
+  `fixture.componentRef.setInput('name', value)`, then `fixture.detectChanges()` - a signal
+  `input()` is read-only from inside the component, so the test sets it the way a parent would.
+- **Routed components** - through the real router: `provideRouter(routes)` in the TestBed, then
+  `const harness = await RouterTestingHarness.create()` and
+  `await harness.navigateByUrl('/user/123', UserProfile)`, asserting on
+  `harness.routeNativeElement`. Never mock `Router` or `ActivatedRoute` - a mocked router stays
+  green while the real route table, param binding or guard is broken (`RouterTestingModule` is
+  deprecated).
 
 ## Timing and async
 
@@ -94,6 +102,12 @@ traffic; no assertion-free or coverage-padding specs, no `expect(true)`.
   `<`) passes every 'renders the list' test; only a directional assertion catches it.
 - Build fixtures with factory or object-mother helpers so the same literal is not copy-pasted
   across specs.
+- A spec added for a fix is NAMED for the defect it pins - `it('keeps the discount when the
+  currency changes')`, not `it('works')` - and fails on the unfixed code before it passes, so a
+  later red names the regression it guards.
+- A self-review is never the check: re-reading your own change applies the assumptions that
+  wrote it, so it finds only what they already allow. The check is a run - the spec, the build -
+  or a reviewer who did not write the change.
 
 When reviewing an existing suite (or running mutation testing), load this skill's own
 `references/suite-audit.md` - the false-confidence catalog, the assertion-depth and mock-usage
