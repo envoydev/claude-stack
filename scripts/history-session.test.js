@@ -15,9 +15,16 @@ const HOOK = path.join(HOOKS, 'history-session.js');
 const tmpDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 const rmDir = (dir) => fs.rmSync(dir, { recursive: true, force: true });
 
+// An empty global git config OUTSIDE every project: os.devNull is `\\.\nul` on Windows, which git for
+// Windows cannot open ('unable to access'), and a file inside the project would show as dirty.
+const gitConfigDir = tmpDir('history-session-gitconfig-');
+const EMPTY_GIT_CONFIG = path.join(gitConfigDir, 'config');
+fs.writeFileSync(EMPTY_GIT_CONFIG, '');
+test.after(() => rmDir(gitConfigDir));
+
 // A clean env: nothing the developer's own shell carries (a docs root, an off switch) leaks into a case.
 function env(root, extra = {}) {
-  return { PATH: process.env.PATH, HOME: root, CLAUDE_PROJECT_DIR: root, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1', ...extra };
+  return { PATH: process.env.PATH, HOME: root, CLAUDE_PROJECT_DIR: root, GIT_CONFIG_GLOBAL: EMPTY_GIT_CONFIG, GIT_CONFIG_NOSYSTEM: '1', ...extra };
 }
 function project() {
   const root = tmpDir('history-session-');
