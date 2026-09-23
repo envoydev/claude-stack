@@ -1122,7 +1122,7 @@ if [ "$INSTALLED_ONLY" = true ]; then
     done
     for f in "$_io_claude"/hooks/*.js; do
       [ -f "$f" ] || continue; _io_b="$(basename "${f%.js}")"
-      case "$_io_b" in inject-code-style|docs|memory|hook-prelude) continue ;; esac   # docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
+      case "$_io_b" in inject-code-style|docs|memory|hook-prelude|fresh-session) continue ;; esac   # docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
       printf 'hook %s\n' "$_io_b"
     done
     if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
@@ -2016,6 +2016,8 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
   # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
   # this route too - without it every hook takes the fail-open catch on every single invocation.
   [ ${#files[@]} -eq 0 ] || _install_from_src stack/hooks hook "$root/.claude/hooks" noexec hook-prelude.js
+  # the fresh-session engine both fresh-session hooks require from their own directory
+  [ ${#files[@]} -eq 0 ] || _install_from_src stack/hooks hook "$root/.claude/hooks" noexec fresh-session.js
   # the fresh-session hooks' model -> context window table: data, not a wired hook, so no exec bit -
   # copied only beside a hook that reads it
   case " ${files[*]-} " in

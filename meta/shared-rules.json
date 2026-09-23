@@ -3114,19 +3114,6 @@
         }
       ]
     },
-    "context-window-tier": {
-      "_note": "The context WINDOW the fresh-session trigger scales against, identical in the two hooks that use it (the gate and the offer must never sit on different triggers in one session): the session model id's row in the shipped hooks/model-windows.json, else CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW - ONE rule, nothing else read (no id suffix, no carry, no compaction; each of those fixed one case and broke another). A 200k window takes CLAUDE_STACK_FRESH_SESSION_200K, a 1M one _1M, anything else - including no window at all - CLAUDE_STACK_FRESH_SESSION_DEFAULT.",
-      "owner": {
-        "file": "stack/hooks/guard-fresh-session-start.js",
-        "marker": "which context WINDOW is this session running in?"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "which context WINDOW is this session running in?"
-        }
-      ]
-    },
     "env-pass-order": {
       "_note": "The settings.json env pass runs RENAMES first, carrying the user's value to the new key and dropping the old one, THEN the absent-only seeds - seeding first would write a key's default over a value the user had set under the old name. A NEW variable needs no migration entry (the seeds cover it); a RENAMED or RETIRED one needs its pair in both installer twins and in migrations.json. The pass deletes only a key this stack RETIRED - the value is dead, never carried anywhere - and a key that still means something outside this stack is dropped only while it holds the value the installer itself seeded, which is why the update command reports the whole pass instead of asking for prune consent.",
       "owner": {
@@ -3151,7 +3138,7 @@
     "where-to-run-ask-threshold": {
       "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own trigger - CLAUDE_STACK_FRESH_SESSION_200K, default 150000, CLAUDE_STACK_FRESH_SESSION_1M, default 400000, or CLAUDE_STACK_FRESH_SESSION_DEFAULT, default 180000, for any other or unreadable window), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers.",
       "owner": {
-        "file": "stack/hooks/guard-fresh-session-start.js",
+        "file": "stack/hooks/fresh-session.js",
         "marker": "The trigger is an ABSOLUTE token count per WINDOW TIER"
       },
       "sites": [
@@ -3199,16 +3186,12 @@
       ]
     },
     "fresh-session-trigger-tiers": {
-      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The hooks' own comment block is canonical (the code enforces the numbers); the two skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: both of these said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs all four.",
+      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the two skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: both of these said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs all four.",
       "owner": {
-        "file": "stack/hooks/guard-fresh-session-start.js",
+        "file": "stack/hooks/fresh-session.js",
         "marker": "the trigger on anything else (default 180,000)"
       },
       "sites": [
-        {
-          "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "the trigger on anything else (default 180,000)"
-        },
         {
           "file": "stack/skills/project-agent-capabilities/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
@@ -3249,19 +3232,6 @@
         {
           "file": "stack/hooks/guard-read-whole-file.js",
           "marker": "const CD_RE = /(?:^|&&|\\|\\||;|\\n|\\(|\\|)\\s*(?:cd|pushd)\\s+(\"[^\"]+\"|'[^']+'|[^\\s;|&()]+)/g;"
-        }
-      ]
-    },
-    "fresh-session-recoverable-floor": {
-      "_note": "What a fresh-session resume would actually RECOVER - the carry MINUS this session's own first-message floor - guarded at 40% of the carry, and identical in the two hooks that make the offer (the gate and the offer must never sit on different arithmetic in one session, the same reason context-window-tier is pinned). Measured: an 18-minute single-command run that started from /clear had a 103,964 first message and tripped the 150,000 trigger at 159,363, after ~55k of real conversation; the ask and its close cost two messages and 320,973 context and moved nothing. Floors run 87k-134k across the nine audited projects. An unreadable floor answers yes, which is the behaviour that shipped before the rule.",
-      "owner": {
-        "file": "stack/hooks/guard-fresh-session-start.js",
-        "marker": "what a resume would actually RECOVER: the session's own cold floor"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-stop-contract.js",
-          "marker": "what a resume would actually RECOVER: the session's own cold floor"
         }
       ]
     },

@@ -687,6 +687,21 @@ test('hook-blocks: a probe row is counted apart from the blocks', () => {
   assert.strictEqual(Object.keys(hookBlocks.byHook).length, 1, 'the probe is not a hook block row');
 });
 
+test('hook-blocks: every log-only row (any mode) is counted apart from the blocks', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    line({ ts: '2026-07-15T07:00:00.500Z', hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'Blocked: whole-file Read of Big.cs' }),
+    line({ ts: '2026-07-15T07:00:02.500Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call - logged, not judged' }),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rows, 1, 'one block');
+  assert.deepStrictEqual(hookBlocks.probeKinds, { 'tool-ended-turn': 1 });
+  assert.ok(!hookBlocks.byHook['guard-stop-contract.js'], 'a skip row is not a stop-contract block');
+});
+
 // ---------- the efficiency scorecard ----------
 // Each row is a measured practice with a denominator; these pin the classifiers on synthetic
 // transcripts so a regex drift cannot silently move a rate the observation week is read from.

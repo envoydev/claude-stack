@@ -1186,7 +1186,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory', 'hook-prelude')) { continue }    # legacy generated; docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
+    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory', 'hook-prelude', 'fresh-session')) { continue }    # legacy generated; docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -2180,6 +2180,8 @@ function Get-Hooks {
   # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
   # this route too - without it every hook takes the fail-open catch on every single invocation.
   if ($files.Count -gt 0) { $files += 'hook-prelude.js' }
+  # the fresh-session engine both fresh-session hooks require from their own directory
+  if ($files.Count -gt 0) { $files += 'fresh-session.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 

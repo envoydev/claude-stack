@@ -2050,8 +2050,9 @@ function readBlockLedger(target, sessionId) {
       let o;
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || !o.hook) continue;
-      // A probe row is a MEASUREMENT, not a block: the fork-liveness probe logs and denies nothing.
-      if (o.mode === 'probe') { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || 'probe'] = (out.probeKinds[o.kind || 'probe'] || 0) + 1; continue; }
+      // A row carrying a `mode` is a MEASUREMENT, not a block: the fork-liveness probe and the stop
+      // hook's tool-ended skip both log and deny nothing.
+      if (o.mode) { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1; continue; }
       out.rows += 1;
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });

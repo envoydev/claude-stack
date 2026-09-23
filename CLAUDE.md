@@ -51,6 +51,9 @@ change (see the invariants below).
   leaving files out. Both gates live in `hook-prelude.js`, never inlined in every hook: the csv
   opt-out, and the migration window where the plugin copy stands down while a project still wires its
   copied twin (fail-open - a hook that cannot read the settings file runs).
+  The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
+  home too: `fresh-session.js`, an engine both fresh-session hooks require from their own directory,
+  copied with the hooks on the copy route; a hook that runs before it lands keeps every offer off.
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is

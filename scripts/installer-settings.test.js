@@ -150,7 +150,7 @@ const stampOf = (sb) => fs.readFileSync(path.join(sb.repo, '.claude', 'claude-st
 const shippedHooks = (sb) => (/^shipped-hooks: (.*)$/m.exec(stampOf(sb)) || [, ''])[1].split(',').filter(Boolean);
 // The engines and the shared gate module live in the same folder and are not hooks - the installer's
 // own --installed-only scan skips the same three names.
-const NOT_HOOKS = new Set(['docs', 'memory', 'hook-prelude']);
+const NOT_HOOKS = new Set(['docs', 'memory', 'hook-prelude', 'fresh-session']);
 const hooksOnDisk = (sb) => fs.readdirSync(path.join(sb.repo, '.claude', 'hooks')).filter(f => f.endsWith('.js')).map(f => f.replace(/\.js$/, '')).filter(n => !NOT_HOOKS.has(n)).sort();
 
 // --installed-only is mutually exclusive with --selection, so this path needs its own runners.

@@ -480,7 +480,7 @@ function installHooksAndRules(ctx)
     // Only the two ENGINES and the window table are copied; the hooks themselves ride their plugin.
     const hookFiles = ctx.routes.hooks
         ? HOOK_ENGINES
-        : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, 'hook-prelude.js');
+        : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, 'hook-prelude.js', 'fresh-session.js');
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
         destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, log: ctx.log, note: ctx.note,

@@ -2163,3 +2163,43 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits i
   hours(8.1);
   assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'past 8h the receipt is absent');
 });
+
+// --- one home for the fresh-session arithmetic ---------------------------------------------------
+const FRESH_FNS = ['freshAt', 'tableWindow', 'coldFloor', 'worthResuming', 'ctxThreshold', 'sessionModelId'];
+
+test('fresh-session engine: the arithmetic both fresh-session hooks share lives in ONE file', () => {
+  const eng = require(path.join(HOOKS, 'fresh-session.js'));
+  for (const fn of FRESH_FNS) assert.equal(typeof eng[fn], 'function', `the engine exports ${fn}`);
+  for (const h of ['guard-stop-contract.js', 'guard-fresh-session-start.js']) {
+    const src = fs.readFileSync(path.join(HOOKS, h), 'utf8');
+    for (const fn of FRESH_FNS) assert.ok(!new RegExp(`(const|let|function)\\s+${fn}\\b`).test(src), `${h} no longer defines ${fn}`);
+  }
+  eng.use({});
+  assert.equal(eng.freshAt('NO_SUCH_FRESH_KEY', 7), 7, 'garbage or absent takes the default');
+  assert.equal(eng.worthResuming(300000), true, 'an unreadable floor answers yes');
+});
+
+test('fresh-session engine: both hooks run silent when the engine file is missing', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'no-engine-'));
+  for (const f of ['guard-stop-contract.js', 'guard-fresh-session-start.js', 'hook-prelude.js', 'model-windows.json']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f));
+  const tp = transcript('no-engine', [{ type: 'assistant', message: { model: 'claude-sonnet-5', role: 'assistant', content: [{ type: 'text', text: 'Done.' }], usage: { input_tokens: 1, cache_read_input_tokens: 900000 } } }]);
+  const go = (hook, payload) => spawnSync(process.execPath, [path.join(dir, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const stop = go('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: 'Done.' });
+  assert.equal(stop.status, 0, stop.stderr); assert.equal(stop.stderr, ''); assert.equal(stop.stdout, '');
+  const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'project-verify-code' }, transcript_path: tp });
+  assert.equal(skill.status, 0, skill.stderr); assert.equal(skill.stderr, ''); assert.equal(skill.stdout, '');
+});
+
+test('guard-stop-contract: a turn that ends on a tool call logs one skip-tool-end row and passes', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'tool-end-'));
+  const tp = transcript('tool-end', [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] } }]);
+  const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], {
+    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'tool-end-sess', transcript_path: tp }), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+  });
+  assert.equal(r.status, 0);
+  const rows = fs.readFileSync(path.join(dir, '.claude', 'docs', 'hook-blocks', 'tool-end-sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].mode, 'skip-tool-end');
+  assert.equal(rows[0].hook, 'guard-stop-contract.js');
+});
