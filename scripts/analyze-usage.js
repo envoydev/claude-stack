@@ -3158,9 +3158,11 @@ async function runAnalysis() {
     // history folder is just the depth-0 case of the same walk.
     const files = findSessionFiles(target)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)}`);
+    if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)} ${rpad('corr-saved', 10)}`);
     const grand = newTally();
     let grandUsd = 0;
+    // Corrections saved to memory, over the run: the number the S2.2 threshold (25% unsaved) reads.
+    const grandCorr = { saved: 0, total: 0 };
     // Fed one session at a time and never held as a list: the corpus answer must not cost the
     // corpus. Each session's installed set is resolved from its OWN cwd (cached per cwd, so a
     // one-project folder resolves exactly once), because a corpus spans projects that installed
@@ -3182,13 +3184,18 @@ async function runAnalysis() {
       // server health check is judged on across a corpus
       const mcp = { calls: 0, errors: 0 };
       for (const x of [s, ...agents.map((a) => a.stats)]) for (const m of Object.values(x.mcp || {})) { mcp.calls += m.calls; mcp.errors += m.errors; }
-      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)}`;
-      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp });
+      const eff = s.efficiency || {};
+      const corrections = { saved: eff.correctionsSaved || 0, total: (eff.correctionsSaved || 0) + (eff.correctionsUnsaved || []).length };
+      grandCorr.saved += corrections.saved; grandCorr.total += corrections.total;
+      const row = `  ${pad(path.basename(f, '.jsonl'), 38)} ${pad((s.firstTs || '?').slice(0, 10), 12)} ${rpad(fmt(s.total.output), 8)} ${rpad(fmt(s.total.cacheRead), 11)} ${rpad(s.total.msgs, 6)} ${rpad(fmt(ctxOf(s.total)), 8)} ${rpad(agents.length, 6)} ${rpad(fmt(at.output), 9)} ${rpad(fmtUsd(usd), 9)} ${rpad(mcp.calls ? `${mcp.errors}/${mcp.calls}` : '-', 8)} ${rpad(corrections.total ? `${corrections.saved}/${corrections.total}` : '-', 10)}`;
+      if (asJson) rollupJson.sessions.push({ session: path.basename(f, '.jsonl'), start: s.firstTs, total: s.total, agents: agents.length, cost: usd, mcp, corrections });
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, inventory: invUse }, null, 2)); return; }
-    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)}`);
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse }, null, 2)); return; }
+    console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)} ${rpad('', 8)} ${rpad(grandCorr.total ? `${grandCorr.saved}/${grandCorr.total}` : '-', 10)}`);
+    const unsaved = grandCorr.total - grandCorr.saved;
+    console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;

@@ -848,6 +848,16 @@ test('scorecard: a correction is saved when a memory store follows within three 
   assert.deepStrictEqual(eb.correctionsUnsaved, [scT(37)]);
   const md = execFileSync('node', [SCRIPT, fa, '--report-md'], { encoding: 'utf8' });
   assert.match(md, /corrections saved to memory.*2 of 3 correction\(s\) saved within 3 replies; 1 unsaved \(33%\)/);
+  // Over the run: the rollup carries each session's pair and the total the S2.2 threshold reads.
+  const roll = run([dir]);
+  const bySession = Object.fromEntries(roll.sessions.map((x) => [x.session, x.corrections]));
+  assert.deepStrictEqual(bySession, { a: { saved: 2, total: 3 }, b: { saved: 1, total: 2 } });
+  assert.deepStrictEqual(roll.corrections, { saved: 3, total: 5 });
+  const rtxt = execFileSync('node', [SCRIPT, dir], { encoding: 'utf8' });
+  assert.match(rtxt, /corr-saved/);
+  assert.match(rtxt, /^\s+a\s.*\s2\/3\s*$/m);
+  assert.match(rtxt, /^\s+TOTAL\s.*\s3\/5\s*$/m);
+  assert.match(rtxt, /^corrections saved to memory over 2 sessions: 3 of 5; 2 unsaved \(40%\)$/m);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
