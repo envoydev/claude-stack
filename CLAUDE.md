@@ -165,7 +165,14 @@ change (see the invariants below).
     .claude/hooks/memory.js level [projectRoot]` is the same engine's CLI, read by `validate` and
     `status` (`<level> <dbPath>`, or `none`). Fail-open: a missing database, a locked file, or
     `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart
-    is never reported as a failure.
+    is never reported as a failure. The CLI also moves memories between databases: `export [project]
+    [--all] [--db <file>]` writes the live rows as JSONL straight from the file (a read failure exits
+    1, never an empty success), and `import <file.jsonl>` stores them THROUGH the service (real
+    embeddings), skipping a line whose content hash - the service's own, sha256 of the trimmed
+    lower-cased content - is already live. Both imports, this one and the installer's notes import,
+    find the server one way (`serviceEntry`): a registration, else the installed
+    `memory@claude-stack` plugin's own declaration with the db path pinned - the plugin route has no
+    registration, which is why the notes import found no server there until 1.1.0.
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; init's None emits `hook none` through `stack-select.js
   --hooks-answered`, init only, which switches every hook off).

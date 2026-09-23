@@ -283,7 +283,10 @@ already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`,
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
 it re-points the registration, and the installer prints
 `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
-and report it, never assert it. Pass the answer to the installer as
+and report it, never assert it. The post-check then offers the move as two copy-ready commands the
+user runs - `node .claude/hooks/memory.js export --db <oldPath> > memories.jsonl`, then `node
+.claude/hooks/memory.js import memories.jsonl` (stored through the new level's server; a re-run
+stores nothing) - and runs neither itself. Pass the answer to the installer as
 `--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
 `memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.

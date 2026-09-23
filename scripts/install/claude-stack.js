@@ -542,7 +542,11 @@ function importMemory(ctx)
     const acct = ctx.env.CLAUDE_CONFIG_DIR ? ['--config-dir', ctx.configDir] : [];
     memory.importNotes({
         gate, importer, settingsFile,
-        runImport: () => ctx.rt.runNode(importer, ['--project-root', ctx.projectRoot, ...acct], { cwd: ctx.projectRoot, env: ctx.env }).ok,
+        runImport: () =>
+        {
+            const r = ctx.rt.runNode(importer, ['--project-root', ctx.projectRoot, ...acct], { cwd: ctx.projectRoot, env: ctx.env });
+            return { ok: r.ok, output: `${r.stdout}\n${r.stderr}` };
+        },
         log: ctx.log,
     });
 }

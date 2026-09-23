@@ -5,13 +5,23 @@
 // since a markdown command cannot call a JS function):
 //   level [projectRoot]   which level (global/scoped/project) the registered memory server points at,
 //                          and the db path - `<level> <dbPath>`, or `none`. Exit 0 always.
+//   export [project] [--all] [--db <file>] [--root <dir>]
+//                          one JSON line per live memory tagged to the project (this one by default,
+//                          every row with --all) to stdout, read straight from the database file
+//                          (--db names a file no longer registered - the one an old level left behind).
+//   import <file.jsonl> [--root <dir>]
+//                          stores each line THROUGH the memory service - the server the project's
+//                          registration or installed memory plugin runs, the route the installer's
+//                          notes import takes - so every row gets the service's own embedding. A line
+//                          whose content hash is already live is skipped, so a re-run stores nothing.
 // Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.memory-mcp/memory.db; scoped
 // ~/.memory-mcp/memory_<space>.db (no space: memory_default.db); project <project>/.memory-mcp/memory.db.
 'use strict';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const crypto = require('crypto');
+const { execFileSync, spawn } = require('child_process');
 
 function pathForLevel(level, { home, space, projectRoot } = {}) {
   if (level === 'global') return path.join(home, '.memory-mcp', 'memory.db');
@@ -226,7 +236,7 @@ const MEMORY_QUERY = 'SELECT id, content, tags, memory_type, created_at FROM mem
 
 // Opens read-only and reads every live row, retrying once via the immutable URI on the two codes above.
 // Returns null on any failure (node:sqlite unavailable, missing/locked/wrong-schema file) - never throws.
-function readMemoryRows(dbPath) {
+function readMemoryRows(dbPath, query = MEMORY_QUERY) {
   const sqlite = nodeSqlite();
   if (!sqlite) return null;
   const { DatabaseSync } = sqlite;
@@ -240,7 +250,7 @@ function readMemoryRows(dbPath) {
       return null;
     }
     try {
-      return db.prepare(MEMORY_QUERY).all();
+      return db.prepare(query).all();
     } catch (err) {
       if (i === 0 && retryable(err)) continue;
       return null;
@@ -344,7 +354,312 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096,
   return { text: lines.join('\n'), counts };
 }
 
-module.exports = { pathForLevel, levelOfPath, registeredDbPath, projectName, relatedProjects, selectForSession, MEMORY_FRAME };
+// ---- Moving memories: export, and storing THROUGH the service --------------------------------------
+
+// The service's own content hash, measured on a live 11.13.0 database (50 of 50 rows): sha256 of the
+// trimmed, lower-cased content. A store is skipped when this hash - or the exact content - is already
+// a live row, which is what makes both imports safe to re-run.
+const contentHash = (content) => crypto.createHash('sha256').update(String(content).trim().toLowerCase()).digest('hex');
+
+const EXPORT_QUERY = 'SELECT content, tags, memory_type, created_at, content_hash FROM memories WHERE deleted_at IS NULL ORDER BY created_at';
+
+// The live rows tagged to `project` (every live row with `all`), oldest first so an import replays
+// them in the order they were saved. null when the file cannot be read - never an empty success.
+function exportRows(dbPath, { project = '', all = false } = {}) {
+  const rows = readMemoryRows(dbPath, EXPORT_QUERY);
+  if (!rows) return null;
+  return rows
+    .filter((row) => all || matchesProject(splitTags(row.tags), project))
+    .map((row) => ({ content: row.content, tags: splitTags(row.tags), memory_type: row.memory_type, created_at: row.created_at, content_hash: row.content_hash || contentHash(row.content) }));
+}
+
+const STACK_MEMORY_PLUGIN = 'memory@claude-stack';
+
+// A registration the copy route (or a pre-1.0.0 install) wrote: the project's .mcp.json, then the
+// account file's user-scope and project-scope entries - the files registeredDbPath reads.
+function registrationEntry(projectRoot, home, configDir) {
+  const withCommand = (entry) => (entry && typeof entry.command === 'string' && entry.command ? entry : null);
+  const mcp = readJson(path.join(projectRoot, '.mcp.json'));
+  const project = withCommand(mcp && mcp.mcpServers && mcp.mcpServers.memory);
+  if (project) return project;
+  const account = readJson(path.join(configDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json'));
+  if (!account) return null;
+  const user = withCommand(account.mcpServers && account.mcpServers.memory);
+  if (user) return user;
+  const projects = account.projects || {};
+  const proj = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
+  return withCommand(proj && proj.mcpServers && proj.mcpServers.memory);
+}
+
+// From 1.0.0 the server rides the memory@claude-stack PLUGIN, and no registration exists to read. The
+// plugin's install directory is the whole stack repo (every marketplace entry is sourced from its
+// root), so its own marketplace.json declares the server exactly as Claude Code launches it. This
+// project's install first, then an account-level one; another project's install, or a `memory`
+// plugin from any other marketplace, is never used.
+function installedPluginRoots(projectRoot, home, configDir) {
+  const dir = configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
+  const data = readJson(path.join(dir, 'plugins', 'installed_plugins.json'));
+  const rows = data && data.plugins && Array.isArray(data.plugins[STACK_MEMORY_PLUGIN]) ? data.plugins[STACK_MEMORY_PLUGIN] : [];
+  const here = new Set([projectRoot, mainCheckoutRoot(projectRoot)].map(dirKey));
+  const valid = rows.filter((r) => r && typeof r.installPath === 'string' && r.installPath);
+  const mine = valid.filter((r) => r.projectPath && here.has(dirKey(String(r.projectPath))));
+  const account = valid.filter((r) => !r.projectPath);
+  return [...mine, ...account].map((r) => r.installPath);
+}
+
+function pluginServerEntry(root) {
+  const market = readJson(path.join(root, '.claude-plugin', 'marketplace.json'));
+  const plugin = market && Array.isArray(market.plugins) ? market.plugins.find((p) => p && p.name === 'memory') : null;
+  const server = plugin && plugin.mcpServers && plugin.mcpServers.memory;
+  if (!server || typeof server.command !== 'string') return null;
+  const inRoot = (v) => String(v).split('${CLAUDE_PLUGIN_ROOT}').join(root);
+  return { command: inRoot(server.command), args: (Array.isArray(server.args) ? server.args : []).map(inRoot), env: { ...(server.env || {}) } };
+}
+
+// The memory server as this project runs it: a registration, else the installed plugin - with the
+// database path pinned in its env, the same file the plugin's launcher resolves, so the precheck and
+// the post-exit verify read the file the server writes. null when neither exists.
+function serviceEntry(projectRoot, { home = os.homedir(), configDir } = {}) {
+  const registered = registrationEntry(projectRoot, home, configDir);
+  if (registered) return registered;
+  for (const root of installedPluginRoots(projectRoot, home, configDir)) {
+    const entry = pluginServerEntry(root);
+    if (!entry) continue;
+    entry.env.MCP_MEMORY_SQLITE_PATH = registeredDbPath(projectRoot, { home, configDir }) || pathForLevel('global', { home });
+    return entry;
+  }
+  return null;
+}
+
+const CALL_TIMEOUT_MS = 30000;
+// A cold first launch downloads and loads the embedding model (measured 41.3s), hence the long init.
+const INIT_TIMEOUT_MS = 180000;
+const OVERALL_TIMEOUT_MS = 5 * 60 * 1000;
+const SHUTDOWN_WAIT_MS = 5000;
+const PRESENT_QUERY = 'SELECT 1 FROM memories WHERE (content_hash = ? OR content = ?) AND deleted_at IS NULL LIMIT 1';
+
+// Test hook: forces the path a genuinely unavailable node:sqlite takes, on any Node version.
+const storeSqlite = () => (process.env.CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE === '1' ? null : nodeSqlite());
+
+function openForPrecheck(DatabaseSync, dbPath) {
+  try { return new DatabaseSync(dbPath, { readOnly: true }); } catch {}
+  try { return new DatabaseSync(`file:${dbPath}?mode=ro&immutable=1`, { readOnly: true }); } catch {}
+  return null;   // the db file does not exist yet (a first-ever import)
+}
+
+// A query failure is 'no precheck for this item', never a false match.
+function isLive(db, content) {
+  try { return !!db.prepare(PRESENT_QUERY).get(contentHash(content), content); } catch { return false; }
+}
+
+// Never `immutable=1` here: that flag ignores the WAL, so a row the server just committed could read
+// as missing. Read-only first, read-write second - the server that held the file has exited by now.
+function openForVerify(DatabaseSync, dbPath) {
+  try { return new DatabaseSync(dbPath, { readOnly: true }); } catch {}
+  try { return new DatabaseSync(dbPath); } catch {}
+  return null;
+}
+
+function resultText(result) {
+  if (!result || !Array.isArray(result.content)) return '';
+  return result.content.map((c) => (c && c.type === 'text' && typeof c.text === 'string' ? c.text : '')).join('\n');
+}
+
+// Closes stdin (the server's own shutdown trigger) and waits for its exit, killing it only past
+// SHUTDOWN_WAIT_MS - a write still landing after the last response is never cut off.
+function shutdownServer(child) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+    let timer;
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    try { child.stdin.end(); } catch {}
+    timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, SHUTDOWN_WAIT_MS);
+  });
+}
+
+// JSON-RPC over stdio, one line per message both ways - no MCP client library needed.
+function rpcClient(child) {
+  let buf = '';
+  let nextId = 1;
+  const pending = new Map();
+  let fatal = null;
+  let stderrTail = '';
+  child.stdout.on('data', (chunk) => {
+    buf += chunk.toString('utf8');
+    let idx;
+    while ((idx = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, idx);
+      buf = buf.slice(idx + 1);
+      if (!line.trim()) continue;
+      let msg;
+      try { msg = JSON.parse(line); } catch { continue; }
+      if (msg && msg.id !== undefined && pending.has(msg.id)) {
+        const { resolve } = pending.get(msg.id);
+        pending.delete(msg.id);
+        resolve(msg);
+      }
+    }
+  });
+  child.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk.toString('utf8')).slice(-4000); });
+  const failAll = (err) => {
+    if (!fatal) fatal = err;
+    for (const { reject } of pending.values()) reject(err);
+    pending.clear();
+  };
+  child.on('error', (err) => failAll(new Error(`could not start the memory MCP server: ${err.message}`)));
+  child.on('exit', (code, signal) => failAll(new Error(
+    `memory MCP server exited unexpectedly (code=${code} signal=${signal})${stderrTail ? ` - stderr: ${stderrTail.slice(-500)}` : ''}`,
+  )));
+  const call = (method, params, timeoutMs) => new Promise((resolve, reject) => {
+    if (fatal) { reject(fatal); return; }
+    const id = nextId++;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`timed out waiting for '${method}' after ${timeoutMs}ms`)); }, timeoutMs);
+    pending.set(id, {
+      resolve: (msg) => { clearTimeout(timer); resolve(msg); },
+      reject: (err) => { clearTimeout(timer); reject(err); },
+    });
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+  });
+  const notify = (method, params) => { if (!fatal) child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`); };
+  return { call, notify };
+}
+
+// Stores `items` ({ label, content, tags, type }) through the server `entry` describes. Items already
+// live are counted present BEFORE the server starts, and with nothing left to store it never starts.
+// Each store carries a fresh conversation_id - the service's documented bypass for its semantic-
+// similarity dedup, so two distinct memories are never collapsed as 'too similar'; exact repeats are
+// the precheck's job, second line the server's own 'duplicate content' reply. After the server has
+// exited, every item counted is re-read as a live row: a store that answered before its write
+// committed is a failure, never a success. Throws on any failure; `sqliteNote` says when the precheck
+// could not run.
+async function storeThroughService({ entry, cwd, items }) {
+  const dbPath = entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
+  const sqlite = dbPath ? storeSqlite() : null;
+  const sqliteNote = dbPath && !sqlite ? ' (node:sqlite unavailable - idempotence checked via the server response text only)' : '';
+  let pendingItems = items;
+  if (sqlite) {
+    const db = openForPrecheck(sqlite.DatabaseSync, dbPath);
+    if (db) {
+      try { pendingItems = items.filter((item) => !isLive(db, item.content)); } finally { try { db.close(); } catch {} }
+    }
+  }
+  let present = items.length - pendingItems.length;
+  let imported = 0;
+  if (pendingItems.length) {
+    const child = spawn(entry.command, Array.isArray(entry.args) ? entry.args : [], { cwd, env: { ...process.env, ...(entry.env || {}) }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const rpc = rpcClient(child);
+    const deadline = Date.now() + OVERALL_TIMEOUT_MS;
+    const timeLeft = () => Math.max(1, deadline - Date.now());
+    try {
+      await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-stack-memory-import', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
+      rpc.notify('notifications/initialized');
+      for (const item of pendingItems) {
+        if (Date.now() > deadline) throw new Error('import timed out after 5 minutes');
+        const resp = await rpc.call('tools/call', {
+          name: 'memory_store',
+          arguments: { content: item.content, conversation_id: crypto.randomUUID(), metadata: { tags: item.tags, type: item.type } },
+        }, Math.min(CALL_TIMEOUT_MS, timeLeft()));
+        if (resp.error) throw new Error(`memory_store failed for '${item.label}': ${resp.error.message || JSON.stringify(resp.error)}`);
+        const text = resultText(resp.result);
+        if (resp.result && resp.result.isError) throw new Error(`memory_store failed for '${item.label}': ${text}`);
+        // The server wraps BOTH a benign duplicate and a genuine failure as 'Error storing memory:' text.
+        if (/duplicate content detected/i.test(text)) present++;
+        else if (/error storing memory/i.test(text)) throw new Error(`memory_store failed for '${item.label}': ${text}`);
+        else imported++;
+      }
+    } finally {
+      await shutdownServer(child);
+    }
+  }
+  if (sqlite) {
+    const db = openForVerify(sqlite.DatabaseSync, dbPath);
+    if (!db) throw new Error(`could not re-open ${dbPath} to confirm the import after the server exited`);
+    let missing;
+    try { missing = items.filter((item) => !isLive(db, item.content)).map((item) => item.label); } finally { try { db.close(); } catch {} }
+    if (missing.length) {
+      throw new Error(
+        `memory_store reported success for ${missing.length} memor${missing.length === 1 ? 'y' : 'ies'} not found in the db after the ` +
+        `server exited (never acceptable - a store may have answered before its write committed): ${missing.join(', ')}`,
+      );
+    }
+  }
+  return { imported, present, sqliteNote };
+}
+
+// One memory per non-blank line: an object with a non-empty string `content`, `tags` an array of
+// strings when present, `memory_type` a string when present. Anything else refuses the WHOLE file
+// before a server starts - a half-imported file is worse than none.
+function parseJsonl(text) {
+  const items = [];
+  const bad = [];
+  String(text).split(/\r?\n/).forEach((line, i) => {
+    if (!line.trim()) return;
+    let row;
+    try { row = JSON.parse(line); } catch { bad.push(i + 1); return; }
+    const okTags = row && (row.tags === undefined || (Array.isArray(row.tags) && row.tags.every((t) => typeof t === 'string')));
+    const okType = row && (row.memory_type === undefined || typeof row.memory_type === 'string');
+    if (!row || typeof row !== 'object' || Array.isArray(row) || typeof row.content !== 'string' || !row.content.trim() || !okTags || !okType) { bad.push(i + 1); return; }
+    items.push({ label: `line ${i + 1}`, content: row.content, tags: (row.tags || []).map((t) => t.replace(/,/g, '')), type: row.memory_type || 'reference' });
+  });
+  return { items, bad };
+}
+
+function cliArgs(args) {
+  const out = { positional: [], all: false, db: null, root: null };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--all') out.all = true;
+    else if (args[i] === '--db') out.db = args[++i];
+    else if (args[i] === '--root') out.root = args[++i];
+    else out.positional.push(args[i]);
+  }
+  return out;
+}
+
+const cliRoot = (opts) => path.resolve(opts.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+
+function cliExport(args) {
+  const opts = cliArgs(args);
+  const projectRoot = cliRoot(opts);
+  const dbPath = opts.db ? path.resolve(opts.db) : registeredDbPath(projectRoot);
+  if (!dbPath) { process.stderr.write('memory export: no memory database registered for this project - name one with --db <file>\n'); return 1; }
+  const project = opts.positional[0] || projectName(projectRoot);
+  const rows = exportRows(dbPath, { project, all: opts.all });
+  if (!rows) { process.stderr.write(`memory export: could not read ${dbPath}\n`); return 1; }
+  for (const row of rows) process.stdout.write(`${JSON.stringify(row)}\n`);
+  process.stderr.write(`memory export: ${rows.length} memor${rows.length === 1 ? 'y' : 'ies'} (${opts.all ? 'all' : `project ${project}`}) from ${dbPath}\n`);
+  return 0;
+}
+
+async function cliImport(args) {
+  const opts = cliArgs(args);
+  const file = opts.positional[0];
+  if (!file) { process.stderr.write('memory import: usage: memory.js import <file.jsonl> [--root <dir>]\n'); return 1; }
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (err) { process.stderr.write(`memory import: could not read ${file}: ${err.message}\n`); return 1; }
+  const { items, bad } = parseJsonl(text);
+  if (bad.length) {
+    const shown = bad.slice(0, 10).join(', ') + (bad.length > 10 ? ', ...' : '');
+    process.stderr.write(`memory import: ${path.basename(file)} ${bad.length === 1 ? `line ${shown} is not a memory` : `lines ${shown} are not memories`} - nothing imported\n`);
+    return 1;
+  }
+  if (!items.length) { console.log(`memory import: nothing to import, from ${file}`); return 0; }
+  const projectRoot = cliRoot(opts);
+  const entry = serviceEntry(projectRoot);
+  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no memory@claude-stack plugin installed for it\n'); return 1; }
+  try {
+    const res = await storeThroughService({ entry, cwd: projectRoot, items });
+    console.log(`memory import: ${res.imported} imported, ${res.present} already present, from ${file}${res.sqliteNote}`);
+    return 0;
+  } catch (err) {
+    process.stderr.write(`memory import: ${err && err.message ? err.message : err}\n`);
+    return 1;
+  }
+}
+
+module.exports = {
+  pathForLevel, levelOfPath, registeredDbPath, projectName, relatedProjects, selectForSession, MEMORY_FRAME,
+  contentHash, exportRows, serviceEntry, storeThroughService, parseJsonl, INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
+};
 
 if (require.main === module) {
   const [, , cmd, ...args] = process.argv;
@@ -354,6 +669,11 @@ if (require.main === module) {
       const home = os.homedir();
       const dbPath = registeredDbPath(projectRoot, { home });
       console.log(dbPath ? `${levelOfPath(dbPath, { home, projectRoot }) || 'unknown'} ${dbPath}` : 'none');
+    } else if (cmd === 'export') {
+      process.exit(cliExport(args));
+    } else if (cmd === 'import') {
+      cliImport(args).then((code) => process.exit(code), (err) => { process.stderr.write(`memory import: ${err && err.message ? err.message : err}\n`); process.exit(1); });
+      return;
     } else {
       console.log(`unknown command: ${cmd || '(none)'}`);
     }

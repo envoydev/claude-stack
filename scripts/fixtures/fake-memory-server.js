@@ -23,6 +23,7 @@
 // not exist here yet, or node:sqlite being unavailable, is silently skipped (best-effort only).
 // FAKE_MEMORY_SKIP_SQLITE_WRITE=1 turns that write off - the deliberate 'acknowledged but not
 // persisted' shape fix round 3's own regression test needs.
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const readline = require('node:readline');
 
@@ -42,7 +43,9 @@ function writeLiveRowToRealDb(content, tags, memoryType)
     try
     {
         const tagsStr = Array.isArray(tags) ? tags.join(',') : (tags || '');
-        const hash = `fake-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        // The real service's content_hash (measured on a live 11.13.0 db): sha256 of the trimmed,
+        // lower-cased content - so a hash precheck reads this fixture the way it reads the real file.
+        const hash = crypto.createHash('sha256').update(String(content).trim().toLowerCase()).digest('hex');
         db.prepare(
             'INSERT INTO memories (content_hash, content, tags, memory_type, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)',
         ).run(hash, content, tagsStr, memoryType || '', Date.now() / 1000);

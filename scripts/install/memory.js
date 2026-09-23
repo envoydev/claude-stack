@@ -131,6 +131,9 @@ function importGate({ projectRoot, settingsFile, mcps = [], rules = [], tools = 
 }
 
 // The import, then the switch-off - in that order, and the second only if the first succeeded.
+// `runImport` returns { ok, output }: the importer's own lines - its count, or WHY it failed - are
+// logged as the twins print them, before the verdict. Swallowed, a failure read 'import failed' with
+// no reason (1.0.0's plugin-route miss did).
 function importNotes({ gate, importer, runImport, settingsFile, log = () => {} })
 {
     if (!gate.go)
@@ -144,7 +147,9 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
         return { switchedOff: false, imported: false };
     }
     log("memory: importing Claude's existing notes into the memory MCP (first run downloads the embedding model, ~1 min)");
-    if (!runImport())
+    const res = runImport() || {};
+    for (const line of String(res.output || '').split('\n').map((l) => l.trim()).filter(Boolean)) log(`  ${line}`);
+    if (!res.ok)
     {
         log("  !! memory notes import failed - Claude's own memory stays ON until a later run imports successfully");
         return { switchedOff: false, imported: false };
