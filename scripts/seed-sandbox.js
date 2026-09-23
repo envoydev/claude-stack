@@ -17,8 +17,10 @@ const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub i
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
 // sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment.
 // `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), for a case that needs a registry
-// lookup to answer one fixed way.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, prepare = () => {}, inspect = () => null } = {})
+// lookup to answer one fixed way. `action` may be a list - the runs share one sandbox, in order, and
+// `each(repo, i)` reads the tree after run `i` (its answers come back as `steps`); `out` is the last
+// run's output, `outs` every run's.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, prepare = () => {}, inspect = () => null, each = () => null } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -43,10 +45,16 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     try
     {
         prepare(repo);
-        const out = execFileSync(process.execPath, [SEED, action, '--selection', path.join(work, 'sel.txt'), '--source', ROOT],
-            { cwd: repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        const outs = [];
+        const steps = [];
+        for (const act of [].concat(action))
+        {
+            outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), '--source', ROOT],
+                { cwd: repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+            steps.push(each(repo, steps.length));
+        }
         const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
-        return { calls, out, result: inspect(repo) };
+        return { calls, out: outs[outs.length - 1], outs, steps, result: inspect(repo) };
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
