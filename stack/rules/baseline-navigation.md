@@ -25,6 +25,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
   the rest of the run. Repeating it is the waste: every repeat costs a round trip to learn what the first call already
   said. A dispatching skill passes the fact to the seats it fans out next, so they start on the
   fallback instead of rediscovering it one by one.
+- **Where serena has nothing to serve** - a language `.serena/project.yml` does not list, or a large JSON / YAML / lock / fixture file - the ranged discipline still holds: the language takes the LSP-then-grep ladder above from its first call, and a data file is queried (`jq '.path'`, `grep -n` to the key, then a ranged Read), never read whole.
 - serena is the cheap path only while the symbol is small: for a large body, fetch the symbol WITHOUT its body first (signature/children), then Read the range you need - a multi-thousand-token symbol body costs more than the ranged Read it was meant to avoid.
 - `get_symbols_overview` takes ONE file, never a directory - enumerate a module with a directory listing or Glob first, then overview the files that matter (a directory call only errors and costs the round trip).
 - An EMPTY reference result for a symbol that plausibly has callers is suspect, not proof: in a multi-tsconfig monorepo without composite project references, serena and the LSP share the same cross-lib blind spot - cross-check with a grep before concluding 'no callers'.
