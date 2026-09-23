@@ -1980,3 +1980,94 @@ test('guard-stop-contract: an unreadable subagent transcript never holds (no pro
   assert.equal(subStop(path.join(TMP, 'no-such-transcript.jsonl'), FORK_CLOSE).status, 0);
   assert.equal(subStop(undefined, FORK_CLOSE).status, 0);
 });
+
+// --- guard-config-protection.js: the cheapest way to 'pass' a check is to weaken it ---------------
+function cfgProject(prefix) {
+  const root = fs.mkdtempSync(path.join(TMP, prefix));
+  const at = (rel, body) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, body); return p; };
+  return { root, at };
+}
+function withProject(root, env, fn) {
+  const keys = ['CLAUDE_PROJECT_DIR', ...Object.keys(env)];
+  const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  process.env.CLAUDE_PROJECT_DIR = root;
+  for (const [k, v] of Object.entries(env)) process.env[k] = v;
+  try { return fn(); }
+  finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+}
+
+test('guard-config-protection: an existing check config cannot be weakened, a new one can be created', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
+  const sh = (command, tool = 'Bash') => run(H, { tool_name: tool, cwd: root, tool_input: { command } });
+  withProject(root, {}, () => {
+    const eslint = at('eslint.config.js', 'export default [];');
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'existing eslint config is protected');
+    assert.strictEqual(write(path.join(root, '.prettierrc'), '{}'), 0, 'creating a config is allowed');
+
+    const ts = at('tsconfig.json', '{ "compilerOptions": { "strict": true, "paths": {} } }');
+    assert.strictEqual(edit(ts, '"paths": {}', '"paths": { "@app/*": ["src/*"] }'), 0, 'a non-strictness key is open');
+    assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'a strictness key is protected');
+    assert.strictEqual(write(ts, '{ "compilerOptions": { "strict": true, "paths": { "a": ["b"] } } }'), 0, 'a whole-file Write keeping every strictness line is open');
+    assert.strictEqual(write(ts, '{ "compilerOptions": { "strict": true, "skipLibCheck": true } }'), 2, 'a whole-file Write adding one is not');
+    assert.strictEqual(run(H, { tool_name: 'MultiEdit', cwd: root, tool_input: { file_path: ts, edits: [
+      { old_string: '"paths": {}', new_string: '"paths": {}, "noImplicitAny": false' }] } }), 2, 'MultiEdit is judged edit by edit');
+
+    const proj = at('src/App/App.csproj', '<Project><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>');
+    assert.strictEqual(edit(proj, '</PropertyGroup>', '<NoWarn>CS8602</NoWarn></PropertyGroup>'), 2, 'NoWarn added');
+    assert.strictEqual(edit(proj, '</Project>', '<ItemGroup><PackageReference Include="X" Version="1.0.0" /></ItemGroup></Project>'), 0, 'a package reference is open');
+
+    at('.editorconfig', 'root = true');
+    at('.eslintrc.json', '{}');
+    assert.strictEqual(sh("sed -i '' 's/true/false/' .editorconfig"), 2, 'in-place sed');
+    assert.strictEqual(sh('echo x > .editorconfig'), 2, 'redirect');
+    assert.strictEqual(sh('echo x | tee .editorconfig'), 2, 'tee after a pipe');
+    assert.strictEqual(sh('rm .eslintrc.json'), 2, 'deleting the check is weakening it');
+    assert.strictEqual(sh('cp /tmp/loose.json .eslintrc.json'), 2, 'copying over it');
+    assert.strictEqual(sh("Set-Content -Path .editorconfig -Value 'root = false'", 'PowerShell'), 2, 'the PowerShell route');
+    assert.strictEqual(sh('cat .editorconfig | grep root'), 0, 'a read passes');
+    assert.strictEqual(sh('git restore .editorconfig'), 0, 'restoring the committed check passes');
+    assert.strictEqual(sh('cp .eslintrc.json /tmp/backup.json'), 0, 'copying FROM it passes');
+    assert.strictEqual(sh('npx eslint --fix src'), 0, 'running the check passes');
+
+    const outside = fs.mkdtempSync(path.join(TMP, 'cfg-outside-'));
+    fs.writeFileSync(path.join(outside, '.editorconfig'), 'root = true');
+    assert.strictEqual(write(path.join(outside, '.editorconfig'), ''), 0, 'outside the project - the cross-project guard owns it');
+
+    at('.claude/docs/flow/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, 'the receipt is honoured');
+    assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'for the file it names only');
+    const old = new Date(Date.now() - 9 * 60 * 60 * 1000);
+    fs.utimesSync(path.join(root, '.claude/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
+    assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'a receipt older than 8h is not');
+  });
+  withProject(root, { CLAUDE_STACK_CONFIG_PROTECT: '0' }, () =>
+    assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
+  withProject(root, { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length,guard-config-protection' }, () =>
+    assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
+});
+
+test('guard-config-protection: the denial routes a wanted change through ONE ask and the receipt', () => {
+  const { root, at } = cfgProject('cfg-msg-');
+  const file = at('.editorconfig', 'root = true');
+  const r = withProject(root, {}, () => spawnSync(process.execPath, [path.join(HOOKS, 'guard-config-protection.js')],
+    { input: JSON.stringify({ tool_name: 'Write', cwd: root, tool_input: { file_path: file, content: '' } }), encoding: 'utf8' }));
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /Blocked: \.editorconfig already exists/);
+  assert.match(r.stderr, /ONE AskUserQuestion/);
+  assert.match(r.stderr, /\.claude\/docs\/flow\/CONFIG-EDIT-ALLOW/);
+});
+
+test('guard-config-protection: a block writes one ledger row naming the hook', () => {
+  const { root } = cfgProject('cfg-led-');
+  fs.writeFileSync(path.join(root, '.editorconfig'), 'root = true');
+  withProject(root, {}, () => {
+    run('guard-config-protection.js', { session_id: 's1', tool_name: 'Write', cwd: root, tool_input: { file_path: path.join(root, '.editorconfig'), content: '' } });
+    const rows = fs.readFileSync(path.join(root, '.claude/docs/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].hook, 'guard-config-protection.js');
+    assert.deepStrictEqual(rows[0].detail, { file: '.editorconfig', why: 'it is a lint / format / analyzer config' });
+  });
+});

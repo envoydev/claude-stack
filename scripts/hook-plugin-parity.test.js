@@ -7,12 +7,13 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
-// The thirteen the installers wire. The two engines (docs.js, memory.js) are copied beside them and
+// The fourteen the installers wire. The two engines (docs.js, memory.js) are copied beside them and
 // never wired, so they carry no gate.
 const WIRED = [
     'guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'guard-secret-value',
     'guard-unapproved-dispatch', 'guard-ungated-commit', 'guard-stop-contract', 'guard-fresh-session-start',
-    'guard-cross-project-write', 'guard-answer-length', 'docs-session', 'memory-session', 'instrument-tool-usage',
+    'guard-cross-project-write', 'guard-config-protection', 'guard-answer-length', 'docs-session', 'memory-session',
+    'instrument-tool-usage',
 ];
 
 // A payload every hook parses without acting: a benign Bash read in the project root.

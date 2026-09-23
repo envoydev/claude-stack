@@ -2815,6 +2815,10 @@
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
+          "file": "stack/hooks/guard-config-protection.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
           "file": "stack/hooks/guard-fresh-session-start.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
@@ -3378,6 +3382,10 @@
       },
       "sites": [
         {
+          "file": "stack/hooks/guard-config-protection.js",
+          "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
+        },
+        {
           "file": "stack/hooks/guard-read-whole-file.js",
           "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
         },
@@ -3398,6 +3406,10 @@
         "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
       },
       "sites": [
+        {
+          "file": "stack/hooks/guard-config-protection.js",
+          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
+        },
         {
           "file": "stack/hooks/guard-read-whole-file.js",
           "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"

@@ -39,6 +39,7 @@
    "guard-stop-contract",
    "guard-fresh-session-start",
    "guard-cross-project-write",
+   "guard-config-protection",
    "guard-answer-length",
    "instrument-tool-usage",
    "docs-session",

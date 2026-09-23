@@ -24,7 +24,7 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
 // CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,

@@ -739,6 +739,12 @@
       "note": "the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too"
     },
     {
+      "file": "guard-config-protection.js",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+      "event": "",
+      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, CLAUDE_STACK_CONFIG_PROTECT=0 turns it off"
+    },
+    {
       "file": "guard-cross-project-write.js",
       "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell",
       "event": "",

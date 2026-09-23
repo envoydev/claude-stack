@@ -43,6 +43,7 @@ const ROUTES = [
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
+  { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
@@ -58,6 +59,13 @@ const ROUTES = [
 // the point - it costs one line and a reason, and it keeps every UNDECLARED silence loud.
 // The evidence a declared route needs is proof the gate CAN fire: its own unit coverage.
 const UNEXERCISED = {
+  // Replayed 2026-09-23 over 820 transcripts: 29,058 Bash and 1,523 Write payloads, none aimed at a
+  // check config that already existed - the sessions never shell-edited or overwrote one. The gate
+  // fires on both routes in guard-hooks.test.js.
+  'guard-config-protection.js::PreToolUse:Bash':
+    'no shell write to an existing check config in 29k Bash payloads; the gate fires in guard-hooks.test.js',
+  'guard-config-protection.js::PreToolUse:Write':
+    'no overwrite of an existing check config in 1.5k Write payloads; the gate fires in guard-hooks.test.js',
   'guard-protected-force-push.js::PreToolUse:Bash':
     'no force-push to a protected branch occurred in 21.5k Bash payloads; the gate fires in guard-hooks.test.js',
   'guard-secret-value.js::PreToolUse:Grep':

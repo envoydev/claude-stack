@@ -946,7 +946,7 @@ $Mcps = @(
 #     entry's gate `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` is POSIX and assumes the default
 #     (bash-like) hook shell; under the PowerShell hook-shell opt-in it fails as a non-blocking error
 #     and records nothing.
-# ONE switch for the whole route change. $true (the default from 1.0.0) means the thirteen hooks
+# ONE switch for the whole route change. $true (the default from 1.0.0) means the fourteen hooks
 # arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
 # wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
 # run that enables the plugin - so the window where neither route fires is zero. The plugin's own
@@ -997,6 +997,7 @@ $Hooks = @(
   'guard-fresh-session-start.js::Skill::'        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   'guard-fresh-session-start.js::@UserPromptSubmit::'   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
   'guard-fresh-session-start.js::@SessionStart:compact::'  # the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too
+  'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell::'  # an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, CLAUDE_STACK_CONFIG_PROTECT=0 turns it off
   'guard-cross-project-write.js::Write|Edit|NotebookEdit|Bash|PowerShell::'  # one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card
   'guard-answer-length.js::@UserPromptSubmit::'   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   'guard-answer-length.js::@SessionStart::'     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
@@ -2162,7 +2163,7 @@ function Get-Hooks {
     $root = Get-RepoRoot
     if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
     Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'model-windows.json')
-    Log '  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied'
+    Log '  hooks: the fourteen via the claude-stack-hooks plugin; the docs and memory engines copied'
     return
   }
   $root = Get-RepoRoot
@@ -2680,7 +2681,7 @@ function Set-HookSettings {
   # leaves $Hooks as the whole catalog, so the complement is empty and every hook runs.
   $wireHooks = if ($HooksViaPlugin) { @() } else { @($Hooks) }
   # Only a selection that CARRIES hook lines counts as an answer: `update -InstalledOnly` reads the
-  # hooks off DISK, and on this route there are none, which would read as 'all thirteen dropped'.
+  # hooks off DISK, and on this route there are none, which would read as 'all fourteen dropped'.
   $hooksOff = @(); $hooksAnswered = $false
   if ($HooksViaPlugin -and $Selection -and (Test-Path -LiteralPath $Selection) -and
       (Select-String -LiteralPath $Selection -Pattern '^hook ' -Quiet)) {
@@ -2971,6 +2972,12 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)'
+  }
+  # config protection: an existing check config cannot be weakened to pass the check; '0' turns it off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_CONFIG_PROTECT']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONFIG_PROTECT -NotePropertyValue '1'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_CONFIG_PROTECT seeded (1)'
   }
   # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both

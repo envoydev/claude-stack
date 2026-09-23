@@ -898,6 +898,7 @@ HOOKS=(
   "guard-fresh-session-start.js::Skill::"        # PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice
   "guard-fresh-session-start.js::@UserPromptSubmit::"   # the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)
   "guard-fresh-session-start.js::@SessionStart:compact::"  # the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too
+  "guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell::"  # an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, CLAUDE_STACK_CONFIG_PROTECT=0 turns it off
   "guard-cross-project-write.js::Write|Edit|NotebookEdit|Bash|PowerShell::"  # one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card
   "guard-answer-length.js::@UserPromptSubmit::"   # inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized
   "guard-answer-length.js::@SessionStart::"     # re-inject the budget after a COMPACTION rebuilds the context without it (measured absent for 277 of 366 messages in one session) - a startup/resume session gets it before the first prompt too
@@ -910,7 +911,7 @@ HOOKS=(
   "memory-session.js::@SessionStart::"            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
-# ONE switch for the whole route change. true (the default from 1.0.0) means the thirteen hooks
+# ONE switch for the whole route change. true (the default from 1.0.0) means the fourteen hooks
 # arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
 # wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
 # run that enables the plugin - so the window where neither route fires is zero. The plugin's own
@@ -2006,7 +2007,7 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
     # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
     root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
     _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js memory.js model-windows.json
-    log "  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied"
+    log "  hooks: the fourteen via the claude-stack-hooks plugin; the docs and memory engines copied"
     return 0
   fi
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
@@ -2382,7 +2383,7 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
     # The walk's hooks layer still asks; on the plugin route its answer becomes the HOOKS_OFF value
     # rather than a copy list - the hooks it did NOT pick. Only a selection that CARRIES hook lines
     # counts as an answer: `update --installed-only` reads the hooks off DISK, and on this route
-    # there are none, which would otherwise read as 'the user dropped all thirteen'.
+    # there are none, which would otherwise read as 'the user dropped all fourteen'.
     if [ -n "${SELECTION:-}" ] && [ -f "$SELECTION" ] && grep -q '^hook ' "$SELECTION"; then
       # A hook wired on two events has two catalog rows, so de-duplicate: the value is a list of
       # hook NAMES, and a name repeated twice is the same hook read twice.
@@ -2698,6 +2699,10 @@ elif "CLAUDE_STACK_HOOKS_OFF" not in env:
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
     print("  settings.json env: CLAUDE_STACK_ROTATE_ASK seeded (1)")
+# config protection: an existing check config cannot be weakened to pass the check; "0" turns it off.
+if "CLAUDE_STACK_CONFIG_PROTECT" not in env:
+    env["CLAUDE_STACK_CONFIG_PROTECT"] = "1"; changed = True
+    print("  settings.json env: CLAUDE_STACK_CONFIG_PROTECT seeded (1)")
 # fresh-session gate - one ABSOLUTE trigger per window tier, seeded so both are visible and
 # tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
 # at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the

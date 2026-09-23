@@ -38,7 +38,7 @@ change (see the invariants below).
   all three read their six lists from. `docs/claude-stack.html` is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - thirteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
+- `stack/hooks/` - fourteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
   register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
   two engines (`docs.js`, `memory.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
   22 bodies shared with cursor-stack run `node .claude/hooks/docs.js`. The entry is GENERATED from the
@@ -48,7 +48,7 @@ change (see the invariants below).
   bit, which git carries into the cache as committed, and never runs on Windows).
   `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
   the walk's hooks layer now writes the rows it did NOT pick into `CLAUDE_STACK_HOOKS_OFF` instead of
-  leaving files out. Both gates live in `hook-prelude.js`, never inlined thirteen times: the csv
+  leaving files out. Both gates live in `hook-prelude.js`, never inlined in every hook: the csv
   opt-out, and the migration window where the plugin copy stands down while a project still wires its
   copied twin (fail-open - a hook that cannot read the settings file runs).
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
@@ -111,9 +111,16 @@ change (see the invariants below).
     the change goes to a task card under `<docs-path>/cross-project-tasks/`. Reading stays open. Session
     scratch, `~/.claude` / `~/.claude-<space>` and `/dev` stay writable; paths compared as REAL paths; a
     Git Bash mount path (`/c/...`, `/cygdrive/c/...`) is translated first (the same regex is inlined in
-    four hooks, pinned as `gitbash-mount-path`). 'Allow' is honoured through the
+    five hooks, pinned as `gitbash-mount-path`). 'Allow' is honoured through the
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `CLAUDE_STACK_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. Also carries the log-only fork-liveness PROBE (`mode: probe` rows, denies nothing).
+  - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit`/`Bash`/`PowerShell`) - a
+    check is never made green by weakening the check: a change to a lint / format / analyzer config that
+    ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in
+    tsconfig / MSBuild files only a change to the strictness keys (compared as key=value pairs, so any
+    other edit passes). Creating a config passes; the shell routes are the in-place edit, redirect, `tee`,
+    `rm`, `mv` and a `cp` onto it. 'Allow' is honoured through `<docs-path>/flow/CONFIG-EDIT-ALLOW` (a
+    file, its basename or `*`); `CLAUDE_STACK_CONFIG_PROTECT=0` turns it off.
   - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash in
     prose at any length. After the third consecutive short correction following a long answer it injects
@@ -244,7 +251,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
-| Hooks | `claude-stack-hooks@claude-stack` plugin (all thirteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
+| Hooks | `claude-stack-hooks@claude-stack` plugin (all fourteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release, the twin - takes what the enabled entries carry as its picks); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |

@@ -232,7 +232,7 @@ function hooksPlugin(options = {})
     return {
         name: 'claude-stack-hooks',
         source: './',
-        description: 'The thirteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, the stop contract, the answer budget, the fresh-session offer) plus the docs and memory session engines.',
+        description: 'The fourteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer) plus the docs and memory session engines.',
         version: options.version || marketplaceVersion(options),
         author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
         strict: false,

@@ -65,6 +65,19 @@
       }
     },
     {
+      "key": "CLAUDE_STACK_CONFIG_PROTECT",
+      "default": "1",
+      "ask": false,
+      "what": "guard-config-protection.js: an EXISTING lint / format / analyzer config (eslint, prettier, stylelint, biome, .editorconfig, a .ruleset) or a strictness setting in tsconfig / MSBuild (strict flags, NoWarn, TreatWarningsAsErrors, Nullable) cannot be changed to get a check green - weakening the check is the cheapest false pass. Creating a config passes; a change the user wants goes through one ask and the `<docs-path>/flow/CONFIG-EDIT-ALLOW` receipt. `0` turns the gate off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
       "key": "CLAUDE_STACK_FRESH_SESSION_1M",
       "default": "400000",
       "ask": true,

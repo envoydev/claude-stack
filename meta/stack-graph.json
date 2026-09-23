@@ -1125,6 +1125,7 @@
       "docs-session",
       "guard-answer-length",
       "guard-catastrophic-rm",
+      "guard-config-protection",
       "guard-cross-project-write",
       "guard-fresh-session-start",
       "guard-protected-force-push",
