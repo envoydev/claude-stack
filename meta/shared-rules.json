@@ -468,108 +468,108 @@
         }
       ]
     },
-    "ponytail-seat-disciplines": {
-      "_note": "The per-seat-class ponytail discipline briefs (ultra / full / review).",
+    "lean-seat-disciplines": {
+      "_note": "The per-seat-class lean discipline briefs (question the need / build lean / over-build review).",
       "owner": {
         "file": "stack/skills/project-solve-cross-task/references/token-reduction.md",
-        "marker": "Run it at full discipline for the seats that write or judge code, lite for the seats that plan"
+        "marker": "the seats that write code build lean, the seats that plan question the need, the seats that judge code run the over-build review"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest pipeline that fully meets the requirement"
+          "marker": "question the need: build the smallest pipeline that fully meets the requirement"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "the ponytail 'ultra' discipline: build the smallest plan that fully meets the requirement"
+          "marker": "question the need: build the smallest plan that fully meets the requirement"
         },
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "the ponytail 'full' discipline: implement the smallest correct version of your assigned task"
+          "marker": "Build lean: implement the smallest correct version of your assigned task"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+          "marker": "build lean, applied to a repair: the smallest correct edit, then stop"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+          "marker": "build lean, applied to a repair: the smallest correct edit, then stop"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+          "marker": "build lean, applied to a repair: the smallest correct edit, then stop"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "the ponytail 'full' discipline: the smallest correct edit, then stop"
+          "marker": "build lean, applied to a repair: the smallest correct edit, then stop"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
@@ -3866,48 +3866,48 @@
         }
       ]
     },
-    "implementer-full-not-ultra": {
-      "_note": "The implementer builds the ponytail 'full' discipline - never trims scope, that call is the designer's. Restated in every *-implementer.",
+    "implementer-never-questions-the-need": {
+      "_note": "The implementer builds lean and never questions the need - never trims scope, that call is the designer's. Restated in every *-implementer.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+        "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Full, not ultra: do not challenge or trim the task's scope - that call is the designer's"
+          "marker": "Questioning the need is not yours: do not challenge or trim the task's scope - that call is the designer's"
         }
       ]
     },

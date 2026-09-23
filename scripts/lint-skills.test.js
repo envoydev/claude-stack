@@ -739,3 +739,13 @@ test('lintWorkflows flags script injection, floating third-party actions and a p
     assert.strictEqual(d.length, 1, 'pull_request_target checking out the PR head'); assert.match(d[0], /pull_request_target/);
     assert.deepStrictEqual(lintWorkflows([{ file: 'bad.yml', text: 'jobs: [unclosed' }]).length, 1, 'unparseable YAML is one finding, not a crash');
 });
+
+test('lintRetiredNames flags a retired plugin name left in shipped stack text, and the live stack/ carries none', () => {
+    const { lintRetiredNames, stackTextFiles } = require('./lint-skills.js');
+    const hit = lintRetiredNames([{ file: 'stack/agents/x.md', text: 'one\n- Build lean - the Ponytail full discipline\n' }]);
+    assert.strictEqual(hit.length, 1, 'one line, one finding');
+    assert.match(hit[0], /stack\/agents\/x\.md:2 .*ponytail.*build lean/i, 'the finding names file:line and the house term');
+    assert.deepStrictEqual(lintRetiredNames([{ file: 'stack/agents/y.md', text: '- Build lean: implement the smallest correct version\n' }]), [], 'the house term is clean');
+    assert.ok(stackTextFiles().length > 100, 'the walk reaches the shipped tree');
+    assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
+});

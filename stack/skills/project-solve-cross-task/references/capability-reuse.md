@@ -33,7 +33,7 @@ Only serena is locked into every install. The rest of the baseline's servers - t
   learned, use it rather than letting each seat work around the drift; it is an opt-in, so a project without it
   fixes the file by hand instead.
 - **Minimal-code and report terseness** are the token-reduction disciplines, per `token-reduction.md`. Each seat
-  carries its own rung inline - designers 'ultra', implementers and repair resolvers 'full', verifiers 'review' -
+  carries its own rung inline - designers 'question the need', implementers and repair resolvers 'build lean', verifiers 'over-build review' -
   so the discipline is the seat's, never a plugin's; the stack ships no plugin for it.
 
 ## Redundant reads

@@ -2420,6 +2420,8 @@ function main()
     // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
     //     pull_request_target checkout of the PR head.
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
+    // 56. No retired plugin's name is left in shipped stack text.
+    for (const finding of lintRetiredNames(stackTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2763,6 +2765,40 @@ function lintMcpToolNames()
     return out;
 }
 
+// 56. A retired plugin's NAME does not outlive the plugin in shipped text. The seats kept its
+// disciplines inline under house terms; a leftover name points a seat at a plugin no install
+// carries, and the interaction rule already bans its code markers.
+const RETIRED_TERMS = [
+    { name: 'ponytail', re: /\bponytail/i, use: "'build lean' / 'question the need' / 'over-build review'" },
+];
+function lintRetiredNames(files)
+{
+    const out = [];
+    for (const { file, text } of files)
+        text.split('\n').forEach((line, i) =>
+        {
+            for (const t of RETIRED_TERMS)
+                if (t.re.test(line)) out.push(`${file}:${i + 1} names the retired '${t.name}' plugin - the house terms are ${t.use}`);
+        });
+    return out;
+}
+function stackTextFiles(root = ROOT)
+{
+    const files = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const full = path.join(dir, e.name);
+            if (e.isDirectory()) walk(full);
+            else if (/\.(md|mdc|js|json|sh|ps1|ya?ml|txt)$/.test(e.name))
+                files.push({ file: path.relative(root, full).split(path.sep).join('/'), text: fs.readFileSync(full, 'utf8') });
+        }
+    };
+    walk(path.join(root, 'stack'));
+    return files;
+}
+
 // 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
 // the plugin route and the settings.json route cannot drift while both exist. A matcher edited in
 // one place and not the other is exactly the bug this catches: the copied hook would still gate a
@@ -2974,6 +3010,8 @@ module.exports = {
     lintHooksEntry,
     lintMcpEntries,
     lintMcpToolNames,
+    lintRetiredNames,
+    stackTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,
     lintMarketplaceEntries,
