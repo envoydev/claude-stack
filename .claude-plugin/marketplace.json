@@ -15,7 +15,7 @@
     {
       "name": "claude-stack-hooks",
       "source": "./",
-      "description": "The fourteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer) plus the docs and memory session engines.",
+      "description": "The fifteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs and memory session engines.",
       "version": "1.0.0",
       "author": {
         "name": "envoydev",
@@ -199,6 +199,11 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
                 "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
+                "timeout": 10
               }
             ]
           }
@@ -240,6 +245,17 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
                 "timeout": 10
               }
             ]

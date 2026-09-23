@@ -946,7 +946,7 @@ $Mcps = @(
 #     entry's gate `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` is POSIX and assumes the default
 #     (bash-like) hook shell; under the PowerShell hook-shell opt-in it fails as a non-blocking error
 #     and records nothing.
-# ONE switch for the whole route change. $true (the default from 1.0.0) means the fourteen hooks
+# ONE switch for the whole route change. $true (the default from 1.0.0) means the fifteen hooks
 # arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
 # wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
 # run that enables the plugin - so the window where neither route fires is zero. The plugin's own
@@ -1008,6 +1008,8 @@ $Hooks = @(
   'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::'  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
   'docs-session.js::@Stop::'                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
   'memory-session.js::@SessionStart::'            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
+  'monitor-session.js::@PostToolUse::'           # a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when CLAUDE_STACK_MONITOR=inject
+  'monitor-session.js::@UserPromptSubmit::'      # a new turn: the monitor's per-turn counts reset
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -2163,7 +2165,7 @@ function Get-Hooks {
     $root = Get-RepoRoot
     if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
     Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'model-windows.json')
-    Log '  hooks: the fourteen via the claude-stack-hooks plugin; the docs and memory engines copied'
+    Log '  hooks: the fifteen via the claude-stack-hooks plugin; the docs and memory engines copied'
     return
   }
   $root = Get-RepoRoot
@@ -2683,7 +2685,7 @@ function Set-HookSettings {
   # leaves $Hooks as the whole catalog, so the complement is empty and every hook runs.
   $wireHooks = if ($HooksViaPlugin) { @() } else { @($Hooks) }
   # Only a selection that CARRIES hook lines counts as an answer: `update -InstalledOnly` reads the
-  # hooks off DISK, and on this route there are none, which would read as 'all fourteen dropped'.
+  # hooks off DISK, and on this route there are none, which would read as 'all fifteen dropped'.
   $hooksOff = @(); $hooksAnswered = $false
   if ($HooksViaPlugin -and $Selection -and (Test-Path -LiteralPath $Selection) -and
       (Select-String -LiteralPath $Selection -Pattern '^hook ' -Quiet)) {
@@ -2980,6 +2982,13 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_CONFIG_PROTECT -NotePropertyValue '1'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_CONFIG_PROTECT seeded (1)'
+  }
+  # session monitor: 'log' writes its rows and injects nothing (the observation week), 'inject' also
+  # hands each note back to the model, '0' is off.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_MONITOR']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_MONITOR -NotePropertyValue 'log'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_MONITOR seeded (log)'
   }
   # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both

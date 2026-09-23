@@ -1135,7 +1135,8 @@
       "guard-unapproved-dispatch",
       "guard-ungated-commit",
       "instrument-tool-usage",
-      "memory-session"
+      "memory-session",
+      "monitor-session"
     ]
   }
 }

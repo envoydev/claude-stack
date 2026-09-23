@@ -43,7 +43,8 @@
    "guard-answer-length",
    "instrument-tool-usage",
    "docs-session",
-   "memory-session"
+   "memory-session",
+   "monitor-session"
   ],
   "skills": [
    "project-agent-capabilities",

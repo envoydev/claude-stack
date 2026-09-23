@@ -175,7 +175,41 @@ function worthResuming(ctx) {
   return (ctx - floor) >= ctx * MIN_RECOVERABLE_SHARE;
 }
 
+// The context the LAST assistant message carried, read BACKWARDS from a small tail - for a hook that
+// fires on every tool call, where the Stop hooks' 512KB forward scan would be paid hundreds of times
+// a session. A tail holding no usage row widens once; anything unreadable is 0 (nothing to report).
+function contextNow(tail = 64 * 1024) {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return 0;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - tail);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"usage"')) continue;
+      try {
+        const o = JSON.parse(lines[i]);
+        const u = o.type === 'assistant' && o.message && o.message.model !== '<synthetic>' && o.message.usage;
+        if (u) return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+      } catch { /* partial first line of the tail - skip */ }
+    }
+    return start > 0 && tail < 1024 * 1024 ? contextNow(1024 * 1024) : 0;
+  } catch { return 0; }
+}
+// The LOWEST trigger any window could resolve to, without reading the model: every live tier's own
+// number, or 90% of the smallest window the table accepts when the clamp would bring it down. A
+// context under a share of this cannot be past that share of the real trigger, so the per-call
+// caller skips the model lookup (a second 512KB scan) until it can matter. null = every tier off.
+function lowestTrigger() {
+  const live = [FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT].filter((n) => n > 0);
+  return live.length ? Math.min(...live, 90000) : null;
+}
+
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, sessionModelId, tableWindow,
-  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming,
+  envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
 };

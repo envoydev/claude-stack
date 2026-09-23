@@ -805,6 +805,18 @@
       "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired"
     },
     {
+      "file": "monitor-session.js",
+      "matcher": "@PostToolUse",
+      "event": "",
+      "note": "a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when CLAUDE_STACK_MONITOR=inject"
+    },
+    {
+      "file": "monitor-session.js",
+      "matcher": "@UserPromptSubmit",
+      "event": "",
+      "note": "a new turn: the monitor's per-turn counts reset"
+    },
+    {
       "file": "instrument-tool-usage.js",
       "matcher": ".*",
       "event": "",

@@ -909,9 +909,11 @@ HOOKS=(
   "docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob::"  # doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline
   "docs-session.js::@Stop::"                      # once per session: a change that hit watch.json asks for the owning sections to be rewritten or confirmed
   "memory-session.js::@SessionStart::"            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
+  "monitor-session.js::@PostToolUse::"           # a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when CLAUDE_STACK_MONITOR=inject
+  "monitor-session.js::@UserPromptSubmit::"      # a new turn: the monitor's per-turn counts reset
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
-# ONE switch for the whole route change. true (the default from 1.0.0) means the fourteen hooks
+# ONE switch for the whole route change. true (the default from 1.0.0) means the fifteen hooks
 # arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
 # wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
 # run that enables the plugin - so the window where neither route fires is zero. The plugin's own
@@ -2007,7 +2009,7 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
     # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
     root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
     _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js memory.js model-windows.json
-    log "  hooks: the fourteen via the claude-stack-hooks plugin; the docs and memory engines copied"
+    log "  hooks: the fifteen via the claude-stack-hooks plugin; the docs and memory engines copied"
     return 0
   fi
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
@@ -2385,7 +2387,7 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
     # The walk's hooks layer still asks; on the plugin route its answer becomes the HOOKS_OFF value
     # rather than a copy list - the hooks it did NOT pick. Only a selection that CARRIES hook lines
     # counts as an answer: `update --installed-only` reads the hooks off DISK, and on this route
-    # there are none, which would otherwise read as 'the user dropped all fourteen'.
+    # there are none, which would otherwise read as 'the user dropped all fifteen'.
     if [ -n "${SELECTION:-}" ] && [ -f "$SELECTION" ] && grep -q '^hook ' "$SELECTION"; then
       # A hook wired on two events has two catalog rows, so de-duplicate: the value is a list of
       # hook NAMES, and a name repeated twice is the same hook read twice.
@@ -2705,6 +2707,11 @@ if "CLAUDE_STACK_ROTATE_ASK" not in env:
 if "CLAUDE_STACK_CONFIG_PROTECT" not in env:
     env["CLAUDE_STACK_CONFIG_PROTECT"] = "1"; changed = True
     print("  settings.json env: CLAUDE_STACK_CONFIG_PROTECT seeded (1)")
+# session monitor: "log" writes its rows and injects nothing (the observation week), "inject" also
+# hands each note back to the model, "0" is off.
+if "CLAUDE_STACK_MONITOR" not in env:
+    env["CLAUDE_STACK_MONITOR"] = "log"; changed = True
+    print("  settings.json env: CLAUDE_STACK_MONITOR seeded (log)")
 # fresh-session gate - one ABSOLUTE trigger per window tier, seeded so both are visible and
 # tunable in one place. They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert
 # at its default on both real tiers (200k x 40% fell under the floor, 1M x 40% sat over the
