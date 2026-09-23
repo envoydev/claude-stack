@@ -1307,3 +1307,29 @@ test('a bare watch entry ambiguous across two domains is asked about by the hook
     assert.strictEqual(out.status, 0, out.stdout);
   } finally { r.rm(); }
 });
+
+// A provisional orientation (plan 4.12) reaches every session with the warning that it is stale by definition; and a
+// docs root holding nothing to read by section - only that file - has nothing for the first-change gate to hand over.
+const PROVISIONAL = 'Captured: develop@abc1234, 2026-09-23\n\n# Orientation (provisional - replaced by the architecture capture)\n\n| Build | `dotnet build Shop.sln` |\n';
+test('a provisional orientation is pushed with its stale warning, and with no section to read the gate stands down', () => {
+  const r = repo({ files: { 'src/Api/Refund.cs': 'x\n' }, docs: { 'ORIENTATION.md': PROVISIONAL } });
+  try {
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
+    assert.match(text, /dotnet build Shop\.sln/);
+    assert.match(text, /This orientation is PROVISIONAL/);
+    assert.doesNotMatch(text, /Before your first change/, 'no section exists to read first');
+    assert.match(ctx(r.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'a1' })), /This orientation is PROVISIONAL/);
+    const s = sid();
+    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/New.cs', content: 'x' }, s))), 'nothing to read, no hold');
+    r.write('.claude/docs/architecture/references/patterns.md', PATTERNS);
+    assert.ok(denied(r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, sid()))), 'with a section to read the gate holds as before');
+    assert.match(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /Before your first change/);
+  } finally { r.rm(); }
+});
+
+test('a captured orientation carries no provisional warning', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
+  try {
+    assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /PROVISIONAL/);
+  } finally { r.rm(); }
+});

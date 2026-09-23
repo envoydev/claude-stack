@@ -610,6 +610,7 @@
         "./stack/skills/project-code-style-analyzer",
         "./stack/skills/project-commit-checkpoint",
         "./stack/skills/project-diagnose-failure",
+        "./stack/skills/project-first-look",
         "./stack/skills/project-implementer",
         "./stack/skills/project-quality-loop",
         "./stack/skills/project-runtime-failure-signatures",

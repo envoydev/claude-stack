@@ -16,7 +16,8 @@
 //   hash <file>#<id>                that section's current hash, for the --expect above
 //   status                          mode, branch, overrides, conflicts, orphans, outgrown count, deleted unmerged branches,
 //                                   and any disagreement between the declared mode and the repo
-//   stale                           sections whose covered code changed since they were written
+//   stale                           sections whose covered code changed since they were written, and a provisional
+//                                   ORIENTATION.md (the first-look scan's), which is stale by definition
 //   promote <branch> | --merged     fold a branch's overrides into mainline, section by section, three ways
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
 //   lint                            metadata and budget problems (exit 1 when any)
@@ -91,6 +92,10 @@ const ID = /<!--\s*id:\s*([\w.-]+)\s*-->/i;
 const STAMP = /<!--\s*captured:\s*([0-9a-f]{7,40})(?:\s+with:\s*([^>]*?))?\s*-->/i;
 const COVERS = /<!--\s*covers:\s*([^>]*?)\s*-->/i;
 const HISTORY = /<!--\s*orient:\s*history\s*-->/i;
+// The first-look scan (scan-evidence.js --orientation) writes ORIENTATION.md with this marker before any capture
+// exists. It describes the tree from manifests only, so every reader treats it as stale by definition: status and
+// stale say so, and the session hook pushes it with that warning, until the architecture capture replaces the file.
+const PROVISIONAL = /provisional - replaced by the architecture capture/i;
 const COMMENT = /^\s*<!--.*-->\s*$/;
 const STOP = new Set(['test', 'tests', 'common', 'features', 'endpoints', 'endpoint', 'src', 'file', 'class', 'async', 'http', 'json', 'with', 'from', 'this', 'that', 'into', 'over', 'core', 'main', 'code']);
 const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/\n+$/, '');
@@ -273,8 +278,9 @@ function verifyBlock() {
   for (const ref of [...new Set(block.match(/[\w.-]+#[\w-]+/g) || [])]) {
     if (!ids.has(ref)) problems.push(`points at a section that does not exist: ${ref}`);
   }
-  // A path the block names must exist. '<Area>' style placeholders and globs stand for any one segment.
-  for (const raw of [...new Set(block.match(/(?:src|tests|contracts|docs|scripts)\/[\w./<>*-]*/g) || [])]) {
+  // A path the block names must exist. '<Area>' style placeholders and globs stand for any one segment. Matched from
+  // a path's FIRST segment only: inside `web/src/main.ts` the tail `src/main.ts` is not a path the block names.
+  for (const raw of [...new Set(block.match(/(?<![\w./-])(?:src|tests|contracts|docs|scripts)\/[\w./<>*-]*/g) || [])]) {
     const p = raw.replace(/[.,;:]$/, '');
     const hasHole = /[<*]/.test(p);
     if (!hasHole) {
@@ -352,6 +358,7 @@ function captureStamp(covers) {
 function stale() {
   return allSections().filter((s) => !s.history).map((s) => ({ s, files: outgrownFiles(s) })).filter((x) => x.files.length);
 }
+const orientationState = () => (!fs.existsSync(BLOCK_FILE) ? 'none' : PROVISIONAL.test(safeRead(BLOCK_FILE)) ? 'provisional' : 'captured');
 
 const walkFiles = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }) : [])
   .flatMap((e) => (e.isDirectory() ? walkFiles(path.join(dir, e.name)) : [path.join(dir, e.name)]))
@@ -1399,6 +1406,7 @@ function status() {
     conflicts: view.filter((s) => s.conflict).map((s) => s.id),
     orphans: view.filter((s) => s.orphan).map((s) => s.id),
     outgrown: stale().length,
+    orientation: orientationState(),
     deletedUnmerged: stuck.deleted,
     liveOnMainline: stuck.onMainline,
     shallow: gitRepo && isShallow(),
@@ -1429,6 +1437,7 @@ function lint() {
     const bytes = fs.statSync(BLOCK_FILE).size;
     if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
     for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
+    if (orientationState() === 'provisional') notes.push('ORIENTATION.md is provisional - a first-look scan the architecture capture replaces');
   } else notes.push('no ORIENTATION.md: sessions start with no map');
   const w = loadWatch();
   problems.push(...w.problems);
@@ -1809,7 +1818,7 @@ module.exports = {
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
-  sectionHash, firstSentence, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew,
+  sectionHash, firstSentence, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };
 if (require.main !== module) return;
 
@@ -1832,6 +1841,7 @@ const commands = {
   files: () => console.log(docFiles().map((f) => `${key(f)}  ${shown(f)} (${fs.statSync(f).size} chars, ${sections(f).length} sections${isHistory(f) ? ', history' : ''})`).join('\n')),
   stale: () => {
     const rows = stale();
+    if (orientationState() === 'provisional') console.log('architecture/ORIENTATION.md - provisional: stale by definition until the architecture capture replaces it');
     console.log(rows.length ? rows.map((r) => `${r.s.id} - ${r.files.length} covered file(s) changed since ${r.s.stamp}: ${r.files.slice(0, 3).join(', ')}`).join('\n') : 'no section has been outgrown');
   },
   hash: () => {
@@ -1891,6 +1901,7 @@ const commands = {
       ...(s.conflicts.length ? [`conflicts: ${s.conflicts.join(', ')}`] : []),
       ...(s.orphans.length ? [`orphaned (mainline removed the section): ${s.orphans.join(', ')}`] : []),
       `outgrown sections: ${s.outgrown}`,
+      `orientation: ${s.orientation === 'provisional' ? 'provisional - a first-look scan, stale by definition until the architecture capture replaces it' : s.orientation}`,
       ...(s.deletedUnmerged.length ? [`deleted branches never detected as merged: ${s.deletedUnmerged.join(', ')}`] : []),
       ...(s.liveOnMainline && s.liveOnMainline.length ? [`branches sitting on mainline with no proof they merged: ${s.liveOnMainline.join(', ')} - if one landed, 'promote <branch>' folds it in; one that only caught up needs nothing`] : []),
       ...(s.shallow ? ['shallow clone: merged branches cannot be detected'] : []),

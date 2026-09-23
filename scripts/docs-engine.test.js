@@ -2087,3 +2087,35 @@ test('adr new: a malformed index is left intact and reported, and the number is 
     } finally { r.rm(); }
   }
 });
+
+// A provisional ORIENTATION.md (plan 4.12) is the first-look scan's output, not a capture: every reader treats it as
+// stale by definition. Written here by the scan itself, so the marker the scan prints and the one the engine keys on
+// cannot drift apart unnoticed.
+const SCAN = path.join(__dirname, 'scan-evidence.js');
+test('a provisional ORIENTATION.md is stale by definition: status, stale and lint say so', () => {
+  const r = repo({ files: { 'src/Api/Api.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>\n', 'src/Api/Program.cs': 'app.Run();\n' } });
+  try {
+    assert.match(r.cli(['status']).stdout, /^orientation: none$/m);
+    const scan = spawnSync(process.execPath, [SCAN, '--orientation', '--root', r.root, '--out', path.join(r.root, '.claude/docs/architecture/ORIENTATION.md')], { encoding: 'utf8' });
+    assert.strictEqual(scan.status, 0, scan.stderr);
+    assert.match(r.cli(['status']).stdout, /^orientation: provisional - a first-look scan, stale by definition until the architecture capture replaces it$/m);
+    assert.match(r.cli(['stale']).stdout, /^architecture\/ORIENTATION\.md - provisional: stale by definition until the architecture capture replaces it$/m);
+    const lint = r.cli(['lint']);
+    assert.strictEqual(lint.status, 0, lint.stdout);
+    assert.match(lint.stdout, /note {4}ORIENTATION\.md is provisional/);
+    r.write('.claude/docs/architecture/ORIENTATION.md', 'Api -> Domain. `src/Api/Program.cs` starts it.\n');
+    assert.match(r.cli(['status']).stdout, /^orientation: captured$/m);
+    assert.doesNotMatch(r.cli(['stale']).stdout, /provisional/);
+  } finally { r.rm(); }
+});
+
+// verifyBlock read `src/...` anywhere in a path, so `web/src/main.ts` was checked as `src/main.ts` and reported missing.
+test('lint checks a path the orientation names from its first segment only', () => {
+  const r = repo({ files: { 'web/src/main.ts': 'x\n', 'src/Api/Program.cs': 'x\n' }, docs: { 'ORIENTATION.md': 'Entry: `web/src/main.ts`, `src/Api/Program.cs`, `src/Api/Gone.cs`.\n' } });
+  try {
+    const out = r.cli(['lint']).stdout;
+    assert.doesNotMatch(out, /does not exist: src\/main\.ts/, out);
+    assert.match(out, /names a path that does not exist: src\/Api\/Gone\.cs/, 'a real miss still fails');
+    assert.doesNotMatch(out, /does not exist: src\/Api\/Program\.cs/);
+  } finally { r.rm(); }
+});

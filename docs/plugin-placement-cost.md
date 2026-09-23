@@ -8,21 +8,21 @@ project enables. The gate is +10%: over it anywhere, the placement rule adjusts,
 
 | Project stacks | Today (per-item) | Planned (plugins) | Delta | Plugins | Skills + agents |
 |---|---:|---:|---:|---:|---:|
-| aspnet | 22787 | 22787 | +0% | 5 | 49 |
-| web-angular | 20187 | 20187 | +0% | 5 | 40 |
-| wpf | 23398 | 23398 | +0% | 4 | 47 |
-| winforms | 23618 | 23618 | +0% | 4 | 47 |
-| console | 23453 | 23453 | +0% | 5 | 47 |
-| windows-service | 24292 | 24292 | +0% | 5 | 48 |
-| ionic-angular | 23684 | 23684 | +0% | 5 | 43 |
-| data | 21345 | 21345 | +0% | 4 | 38 |
-| devops | 18490 | 18490 | +0% | 2 | 33 |
-| browser-extension | 20384 | 20384 | +0% | 5 | 36 |
-| typescript | 16971 | 16971 | +0% | 5 | 32 |
-| javascript | 16258 | 16258 | +0% | 4 | 31 |
-| aspnet + web-angular + data | 31679 | 31679 | +0% | 10 | 65 |
-| aspnet + data | 26749 | 26749 | +0% | 6 | 54 |
-| web-angular + devops | 23420 | 23420 | +0% | 6 | 44 |
+| aspnet | 23242 | 23242 | +0% | 5 | 50 |
+| web-angular | 20642 | 20642 | +0% | 5 | 41 |
+| wpf | 23853 | 23853 | +0% | 4 | 48 |
+| winforms | 24073 | 24073 | +0% | 4 | 48 |
+| console | 23908 | 23908 | +0% | 5 | 48 |
+| windows-service | 24747 | 24747 | +0% | 5 | 49 |
+| ionic-angular | 24139 | 24139 | +0% | 5 | 44 |
+| data | 21800 | 21800 | +0% | 4 | 39 |
+| devops | 18945 | 18945 | +0% | 2 | 34 |
+| browser-extension | 20839 | 20839 | +0% | 5 | 37 |
+| typescript | 17426 | 17426 | +0% | 5 | 33 |
+| javascript | 16713 | 16713 | +0% | 4 | 32 |
+| aspnet + web-angular + data | 32134 | 32134 | +0% | 10 | 66 |
+| aspnet + data | 27204 | 27204 | +0% | 6 | 55 |
+| web-angular + devops | 23875 | 23875 | +0% | 6 | 45 |
 
 ## Why the delta is zero
 

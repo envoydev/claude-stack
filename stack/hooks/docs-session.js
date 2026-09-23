@@ -145,9 +145,14 @@ function orientation(root, docs) {
   let doms = [];
   try { doms = docs.domains(); } catch {}
   const rootRel = path.relative(root, docs.DOCS_ROOT).split(path.sep).join('/');
+  // The first-look scan's file: read from manifests, never captured - pushed, but with the warning beside it. An
+  // older engine copy beside this hook has no orientationState, and reads as not provisional.
+  let provisional = false;
+  try { provisional = typeof docs.orientationState === 'function' && docs.orientationState() === 'provisional'; } catch {}
   return [
     'How this project is documented - read this before deciding how to implement anything.',
     ...(block ? ['', block] : []),
+    ...(provisional ? ['', 'This orientation is PROVISIONAL - a first-look scan of the manifests, not a capture: treat it as stale, verify a row against the code before relying on it; the architecture capture replaces it.'] : []),
     '',
     `The docs live under \`${rootRel}/\` (${doms.join(', ')}). Read them by section, not whole files:`,
     `\`${READ} where <path>\` names the sections covering a file; \`${READ} show <file>#<id>\` prints one.`,
@@ -200,7 +205,11 @@ function sessionStart(input, root, docs, state) {
   if (st && st.mainline && st.deletedUnmerged.length) extra.push(`Doc versions of deleted branches never detected as merged: ${st.deletedUnmerged.join(', ')} - \`${READ} promote <branch>\` folds one in, \`${READ} prune <branch>\` drops it.`);
   if (st && st.mainline && st.liveOnMainline && st.liveOnMainline.length) extra.push(`Doc versions of branches sitting on mainline with no proof they merged: ${st.liveOnMainline.join(', ')} - one that was merged fast-forward looks exactly like one that only caught up, so nothing was folded in; if it landed, \`${READ} promote <branch>\`.`);
   if (st && st.outgrown) extra.push(`${st.outgrown} section(s) describe code that changed since they were written - each says so when opened, and the code wins there.`);
-  if (process.env.CLAUDE_STACK_DOCS_GATE !== '0') {
+  // With no doc file to read by section (a provisional orientation alone, or a domain whose every file is protected),
+  // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
+  let readable = true;
+  try { readable = docs.docFiles().length > 0; } catch {}
+  if (process.env.CLAUDE_STACK_DOCS_GATE !== '0' && readable) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
     extra.push(`Before your first change under ${roots.map((x) => `${x}/`).join(' or ')}, read the section covering the file.`);
@@ -580,6 +589,10 @@ function preToolUse(input, root, docs, state) {
     if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
   };
   if (process.env.CLAUDE_STACK_DOCS_GATE === '0' || state.consults.length) { allow(); return; }
+  // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
+  let readable = true;
+  try { readable = docs.docFiles().length > 0; } catch {}
+  if (!readable) { allow(); return; }
   if (state.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
   state.holds++;
   saveState(input.session_id, state);

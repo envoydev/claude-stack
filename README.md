@@ -29,7 +29,7 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 79 | house conventions + workflow skills, carried by the project's own plugin closure; only the extras land in `.claude/skills/` |
+| **Skills** | 80 | house conventions + workflow skills, carried by the project's own plugin closure; only the extras land in `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, carried by the same plugin closure; only the extras land in `.claude/agents/` |
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 15 | deterministic guards (a weakened check config among them), a log-only session monitor, the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), shipped as the `claude-stack-hooks` plugin; only the two engines and the model-window table land in `.claude/hooks/` |
