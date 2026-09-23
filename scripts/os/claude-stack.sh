@@ -652,15 +652,20 @@ MCP_CONTEXT7_VER="$(_npm_latest @upstash/context7-mcp)" || true
 MCP_PLAYWRIGHT_VER="$(_npm_latest @playwright/mcp)" || true
 MCP_SERENA_VER="$(_pypi_latest serena-agent)" || true
 MCP_MEMORY_VER="$(_pypi_latest mcp-memory-service)" || true
+MCP_CHROME_DEVTOOLS_VER="$(_npm_latest chrome-devtools-mcp)" || true
+MCP_APPIUM_VER="$(_npm_latest appium-mcp)" || true
 # Version-pin suffix: "@1.2.3" when resolved, "" (unpinned fallback) when offline.
 CTX7_PIN="${MCP_CONTEXT7_VER:+@$MCP_CONTEXT7_VER}"
 PW_PIN="${MCP_PLAYWRIGHT_VER:+@$MCP_PLAYWRIGHT_VER}"
 SERENA_PIN="${MCP_SERENA_VER:+@$MCP_SERENA_VER}"
+CD_PIN="${MCP_CHROME_DEVTOOLS_VER:+@$MCP_CHROME_DEVTOOLS_VER}"
+AP_PIN="${MCP_APPIUM_VER:+@$MCP_APPIUM_VER}"
 # The memory pin is spelled '==<ver>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<ver>',
 # FACT-EMBED) - not '@<ver>' like the others, which have no extras suffix to sit next to.
 MEMORY_PIN="${MCP_MEMORY_VER:+==$MCP_MEMORY_VER}"
 # Report what pinned vs. fell back to unpinned - the whole point of this step is 'frozen until update'.
-for _pv in "context7:$MCP_CONTEXT7_VER" "playwright:$MCP_PLAYWRIGHT_VER" "serena:$MCP_SERENA_VER" "memory:$MCP_MEMORY_VER"; do
+for _pv in "context7:$MCP_CONTEXT7_VER" "playwright:$MCP_PLAYWRIGHT_VER" "serena:$MCP_SERENA_VER" "memory:$MCP_MEMORY_VER" \
+           "chrome-devtools:$MCP_CHROME_DEVTOOLS_VER" "appium-mcp:$MCP_APPIUM_VER"; do
   _pn="${_pv%%:*}"; _pver="${_pv#*:}"
   if [ -n "$_pver" ]; then log "  pinned $_pn@$_pver"
   else log "  !! could not resolve $_pn latest - installing unpinned (re-run when online to pin it)"; fi
@@ -866,8 +871,8 @@ MCPS=(
   "angular-cli|-- npx -y @angular/cli mcp" # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
   "serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent${SERENA_PIN} serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd" # LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off
   "playwright|-- npx -y @playwright/mcp${PW_PIN} --user-data-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright/output" # drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser
-  "chrome-devtools|-- npx -y chrome-devtools-mcp@latest" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
-  "appium-mcp|-- npx -y appium-mcp@latest" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
+  "chrome-devtools|-- npx -y chrome-devtools-mcp${CD_PIN}" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads
+  "appium-mcp|-- npx -y appium-mcp${AP_PIN}" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects
   "sentry|@HTTP@" # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; --sentry-slug seeds the slug); --sentry-auth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
   "$MEMORY_ENTRY"  # memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives
   "$CONTEXT7_ENTRY"                           # up-to-date library/framework/SDK docs (beats recalled API knowledge)
@@ -3076,9 +3081,9 @@ update_mcps() {
     log "mcp: carried by the plugins - registrations pruned, nothing re-registered"
     return 0
   fi
-  # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
-  # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
-  # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
+  # Every npm / PyPI entry is pinned at install and bumps here via remove + re-add; angular-cli stays
+  # unpinned by design (it must match the workspace ng), the hosted servers (context7 remote, sentry)
+  # have nothing to pin, and an offline lookup degrades to the unpinned form. An add that lands on a
   # name the remove did not clear exits 0 without writing - verify_mcps is what makes this stick.
   local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do

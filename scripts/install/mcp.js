@@ -245,6 +245,8 @@ function resolvePins({ npmLatest, pypiLatest, log = () => {} })
         playwright: ask(npmLatest, '@playwright/mcp'),
         serena: ask(pypiLatest, 'serena-agent'),
         memory: ask(pypiLatest, 'mcp-memory-service'),
+        'chrome-devtools': ask(npmLatest, 'chrome-devtools-mcp'),
+        'appium-mcp': ask(npmLatest, 'appium-mcp'),
     };
     for (const [name, version] of Object.entries(found))
     {
@@ -256,6 +258,8 @@ function resolvePins({ npmLatest, pypiLatest, log = () => {} })
         PW_PIN: found.playwright ? `@${found.playwright}` : '',
         SERENA_PIN: found.serena ? `@${found.serena}` : '',
         MEMORY_PIN: found.memory ? `==${found.memory}` : '',
+        CD_PIN: found['chrome-devtools'] ? `@${found['chrome-devtools']}` : '',
+        AP_PIN: found['appium-mcp'] ? `@${found['appium-mcp']}` : '',
         MEMORY_BACKEND: 'sqlite_vec',
         versions: found,
     };

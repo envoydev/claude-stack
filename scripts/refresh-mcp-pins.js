@@ -27,6 +27,8 @@ const PACKAGES = {
     // The memory pin is spelled '==<v>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<v>'),
     // not '@<v>' like the others, which have no extras suffix to sit next to.
     'memory':     { registry: 'pypi', package: 'mcp-memory-service',    spelling: '==<v>' },
+    'chrome-devtools': { registry: 'npm', package: 'chrome-devtools-mcp', spelling: '@<v>' },
+    'appium-mcp':      { registry: 'npm', package: 'appium-mcp',          spelling: '@<v>' },
 };
 
 function npmLatest(pkg)

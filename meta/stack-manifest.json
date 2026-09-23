@@ -851,13 +851,13 @@
     },
     {
       "name": "chrome-devtools",
-      "args": "-- npx -y chrome-devtools-mcp@latest",
-      "note": "OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version"
+      "args": "-- npx -y chrome-devtools-mcp@CD_PIN@",
+      "note": "OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads"
     },
     {
       "name": "appium-mcp",
-      "args": "-- npx -y appium-mcp@latest",
-      "note": "OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version"
+      "args": "-- npx -y appium-mcp@AP_PIN@",
+      "note": "OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects"
     },
     {
       "name": "sentry",

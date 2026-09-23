@@ -211,7 +211,7 @@ function main(argv, env, io)
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { CTX7_PIN: '', PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
+            ? { CTX7_PIN: '', PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', CD_PIN: '', AP_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
             : mcp.resolvePins({ npmLatest: npmLatest(rt), pypiLatest: pypiLatest(rt), log });
 
         const level = memory.resolveLevel({
@@ -252,7 +252,7 @@ function main(argv, env, io)
         const tokens = {
             SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: level.dbPath,
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, CTX7_PIN: pins.CTX7_PIN,
-            MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
+            MEMORY_PIN: pins.MEMORY_PIN, CD_PIN: pins.CD_PIN, AP_PIN: pins.AP_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
         };
         const remotes = {
             sentry: { url: SENTRY_URL, header: args.sentryAuth === 'oauth' ? '' : SENTRY_HEADER },

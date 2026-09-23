@@ -354,7 +354,7 @@
           "command": "npx",
           "args": [
             "-y",
-            "chrome-devtools-mcp@latest"
+            "chrome-devtools-mcp@1.9.0"
           ]
         }
       },
@@ -377,7 +377,7 @@
           "command": "npx",
           "args": [
             "-y",
-            "appium-mcp@latest"
+            "appium-mcp@1.94.3"
           ]
         }
       },

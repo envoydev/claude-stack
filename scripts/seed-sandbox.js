@@ -16,7 +16,9 @@ const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub i
 
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
 // sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, prepare = () => {}, inspect = () => null } = {})
+// `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), for a case that needs a registry
+// lookup to answer one fixed way.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, prepare = () => {}, inspect = () => null } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -29,6 +31,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, prepare =
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
     for (const tool of ['uvx', 'npx']) fs.writeFileSync(path.join(bin, tool), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    for (const [tool, body] of Object.entries(tools)) fs.writeFileSync(path.join(bin, tool), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
     fs.writeFileSync(path.join(work, 'sel.txt'), selection);
     const env = { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: log, CLAUDE_STUB_PLUGINS: path.join(work, 'plugins.json') };

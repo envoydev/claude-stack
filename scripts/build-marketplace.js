@@ -374,11 +374,11 @@ function mcpServerShapes(options = {})
         },
         'chrome-devtools': {
             description: 'chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.',
-            servers: { 'chrome-devtools': { command: 'npx', args: ['-y', 'chrome-devtools-mcp@latest'] } },
+            servers: { 'chrome-devtools': { command: 'npx', args: ['-y', `chrome-devtools-mcp${suffix('chrome-devtools')}`] } },
         },
         'appium-mcp': {
             description: 'The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.',
-            servers: { 'appium-mcp': { command: 'npx', args: ['-y', 'appium-mcp@latest'] } },
+            servers: { 'appium-mcp': { command: 'npx', args: ['-y', `appium-mcp${suffix('appium-mcp')}`] } },
         },
         sentry: {
             description: 'Sentry\'s hosted remote MCP as a plugin: issues, events and releases from the project\'s own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.',

@@ -684,15 +684,20 @@ $McpContext7Ver   = Get-NpmLatest  '@upstash/context7-mcp'
 $McpPlaywrightVer = Get-NpmLatest  '@playwright/mcp'
 $McpSerenaVer     = Get-PypiLatest 'serena-agent'
 $McpMemoryVer     = Get-PypiLatest 'mcp-memory-service'
+$McpChromeDevtoolsVer = Get-NpmLatest 'chrome-devtools-mcp'
+$McpAppiumVer         = Get-NpmLatest 'appium-mcp'
 # Version-pin suffix: '@1.2.3' when resolved, '' (unpinned fallback) when offline.
 $Ctx7Pin   = if ($McpContext7Ver)   { '@' + $McpContext7Ver }   else { '' }
 $PwPin     = if ($McpPlaywrightVer) { '@' + $McpPlaywrightVer } else { '' }
 $SerenaPin = if ($McpSerenaVer)     { '@' + $McpSerenaVer }     else { '' }
+$CdPin     = if ($McpChromeDevtoolsVer) { '@' + $McpChromeDevtoolsVer } else { '' }
+$ApPin     = if ($McpAppiumVer)     { '@' + $McpAppiumVer }     else { '' }
 # The memory pin is spelled '==<ver>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<ver>',
 # FACT-EMBED) - not '@<ver>' like the others, which have no extras suffix to sit next to.
 $MemoryPin = if ($McpMemoryVer)     { '==' + $McpMemoryVer }     else { '' }
 # Report what pinned vs. fell back to unpinned - the whole point of this step is 'frozen until update'.
-$resolvedVers = [ordered]@{ 'context7' = $McpContext7Ver; 'playwright' = $McpPlaywrightVer; 'serena' = $McpSerenaVer; 'memory' = $McpMemoryVer }
+$resolvedVers = [ordered]@{ 'context7' = $McpContext7Ver; 'playwright' = $McpPlaywrightVer; 'serena' = $McpSerenaVer; 'memory' = $McpMemoryVer
+                             'chrome-devtools' = $McpChromeDevtoolsVer; 'appium-mcp' = $McpAppiumVer }
 foreach ($k in $resolvedVers.Keys) {
   if ($resolvedVers[$k]) { Log "  pinned $k@$($resolvedVers[$k])" }
   else { Log "  !! could not resolve $k latest - installing unpinned (re-run when online to pin it)" }
@@ -917,15 +922,15 @@ $AngularCliEntry = 'angular-cli|-- ' + $Npx + ' -y @angular/cli mcp'
 $PlaywrightEntry = 'playwright|-- ' + $Npx + " -y @playwright/mcp$PwPin " + '--user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/output'
 $SerenaEntry     = 'serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent' + $SerenaPin + ' serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd'
 $SentryEntry     = 'sentry|@HTTP@'
-$ChromeDevtoolsEntry = 'chrome-devtools|-- ' + $Npx + ' -y chrome-devtools-mcp@latest'
-$AppiumMcpEntry      = 'appium-mcp|-- ' + $Npx + ' -y appium-mcp@latest'
+$ChromeDevtoolsEntry = 'chrome-devtools|-- ' + $Npx + ' -y chrome-devtools-mcp' + $CdPin
+$AppiumMcpEntry      = 'appium-mcp|-- ' + $Npx + ' -y appium-mcp' + $ApPin
 
 $Mcps = @(
   $AngularCliEntry                            # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
   $SerenaEntry                                # LSP symbol navigation; PyPI-pinned (not git), dashboard off
   $PlaywrightEntry                            # drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser
-  $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads; pin a version
-  $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects; pin a version
+  $ChromeDevtoolsEntry                        # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads
+  $AppiumMcpEntry                             # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects
   $SentryEntry  # OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json "env", expanded at launch; -SentrySlug seeds the slug); -SentryAuth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry
   $MemoryEntry  # memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; -MemoryLevel picks where its db lives
   $Context7Entry                              # up-to-date library/framework/SDK docs (beats recalled API knowledge)
@@ -3352,9 +3357,9 @@ function Update-Mcps {
     Log 'mcp: carried by the plugins - registrations pruned, nothing re-registered'
     return
   }
-  # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
-  # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
-  # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
+  # Every npm / PyPI entry is pinned at install and bumps here via remove + re-add; angular-cli stays
+  # unpinned by design (it must match the workspace ng), the hosted servers (context7 remote, sentry)
+  # have nothing to pin, and an offline lookup degrades to the unpinned form. An add that lands on a
   # name the remove did not clear exits 0 without writing - Test-McpRegistrations is what makes this stick.
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
