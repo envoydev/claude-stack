@@ -174,7 +174,9 @@ change (see the invariants below).
     `/claude-stack:configure` (add or drop), `/claude-stack:status` (read-only tables plus the install's
     always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/claude-stack:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
-    `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`).
+    `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
+    install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
+    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed).
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
     items of parked entries - and `parked_plugins`, so the walk's closure cannot switch either back
@@ -195,7 +197,7 @@ change (see the invariants below).
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
     (up to 3 times per table) whose decision table was run but never pasted - a `stack-select.js
-    --table` catalog or the `plugin-settings.js` report. It ships in the plugin because a fresh setup
+    --table` catalog, the `plugin-settings.js` report or validate's install audit. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`.
   - None of the six carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.

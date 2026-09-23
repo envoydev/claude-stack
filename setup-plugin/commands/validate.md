@@ -526,6 +526,22 @@ saying the block already matched), and step 7's MEMORY line (level + database, a
 the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 
+Then audit the config the install left, on every path that reaches this step (a clean bill
+included), before `$TMP` goes:
+
+```bash
+node "$TMP/repo/scripts/audit-install.js" .
+```
+
+It reads this project's own agent config - an unpinned package launch in `.mcp.json`, an
+unrestricted shell grant, a hook with no timeout or one splicing tool input into a shell string, a
+credential-shaped literal in `CLAUDE.md` or a settings file - and fixes nothing. Paste its output
+byte-for-byte in a fenced block (`install audit: nothing to report` is the whole paste on a clean
+project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
+update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
+by hand is reported with its line and never edited; a credential row is the rotate ask
+`baseline-security.md` owns, never a fix here.
+
 ## Clean up the temp dir - ALWAYS
 
 Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of
