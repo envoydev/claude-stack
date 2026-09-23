@@ -744,6 +744,12 @@
       "note": "the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too"
     },
     {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "@PreCompact",
+      "event": "",
+      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+    },
+    {
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
       "event": "",

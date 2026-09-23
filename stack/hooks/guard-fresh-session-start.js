@@ -93,7 +93,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 })();
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
-if (!IS_SKILL_CALL && EVENT !== 'UserPromptSubmit' && EVENT !== 'SessionStart') process.exit(0);
+if (!IS_SKILL_CALL && EVENT !== 'UserPromptSubmit' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-stop-contract.js. An update from an older install can run this hook before that file
@@ -108,6 +108,99 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
 }
 fresh.use(payload);
 const { FRESH_OFF, ctxThreshold, worthResuming } = fresh;
+
+// PreCompact: the last moment the whole transcript is still there. Write what a resume needs to the
+// flow dir - the live plan file, the open flow stamps with their ages, the files this session wrote
+// (from docs-session's per-actor attribution state) - with no model call; the SessionStart `compact`
+// injection below points at it. Never blocks a compaction: every failure only leaves a line out.
+const COMPACT_STATE = () => nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'flow', 'COMPACT-STATE');
+const FILES_SHOWN = 50;
+function livePlan() {
+  // The LAST plan file a tool call touched in the transcript tail, else the newest plan under the docs root.
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 2 * 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"tool_use"') || !lines[i].includes('plans/')) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      const blocks = (o && o.message && Array.isArray(o.message.content)) ? o.message.content : [];
+      for (let j = blocks.length - 1; j >= 0; j--) {
+        const input = blocks[j] && blocks[j].type === 'tool_use' ? blocks[j].input || {} : {};
+        const hit = String(input.file_path || input.command || '').match(/[^\s'"]*plans\/[^\s'"]+\.md/g);
+        if (hit) return hit[hit.length - 1];
+      }
+    }
+  } catch { /* no transcript - fall through to the docs root */ }
+  try {
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = nodePath.resolve(root, docsRootEnv(), 'superpowers', 'plans');
+    const newest = fs.readdirSync(dir).filter((f) => f.endsWith('.md'))
+      .map((f) => ({ f, t: fs.statSync(nodePath.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
+    if (newest) return `${nodePath.relative(root, nodePath.join(dir, newest.f)).split(nodePath.sep).join('/')} (newest under the docs root)`;
+  } catch { /* no plans folder */ }
+  return null;
+}
+function flowStamps() {
+  try {
+    const dir = nodePath.dirname(COMPACT_STATE());
+    return fs.readdirSync(dir)
+      .filter((f) => f !== 'COMPACT-STATE' && !/^monitor-.*\.json$/.test(f))
+      .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
+      .sort((a, b) => a.f.localeCompare(b.f));
+  } catch { return []; }
+}
+function sessionWrites() {
+  const os = require('os');
+  const prefix = `docs-session-${String(payload.session_id || 'none').replace(/[^\w-]/g, '')}--`;
+  const out = new Set();
+  try {
+    for (const f of fs.readdirSync(os.tmpdir())) {
+      if (!f.startsWith(prefix) || !f.endsWith('.json')) continue;
+      try { for (const w of JSON.parse(fs.readFileSync(nodePath.join(os.tmpdir(), f), 'utf8')).wrote || []) out.add(String(w)); } catch { /* one broken actor file */ }
+    }
+  } catch { /* no tmpdir */ }
+  return [...out];
+}
+if (EVENT === 'PreCompact') {
+  try {
+    const plan = livePlan();
+    const stamps = flowStamps();
+    const wrote = sessionWrites();
+    const lines = [
+      '# COMPACT-STATE - written by guard-fresh-session-start.js at PreCompact, no model call. Read it before re-orienting.',
+      `session: ${payload.session_id || ''}`,
+      `written: ${new Date().toISOString()}`,
+      `trigger: ${payload.trigger || ''}`,
+      `live plan: ${plan || 'none found'}`,
+      stamps.length ? 'flow stamps:' : 'flow stamps: none',
+      ...stamps.map((s) => `  ${s.f} - ${s.age} min old`),
+      `files written this session (${wrote.length})${wrote.length ? ':' : ''}`,
+      ...wrote.slice(0, FILES_SHOWN).map((w) => `  ${w}`),
+      ...(wrote.length > FILES_SHOWN ? [`  ... and ${wrote.length - FILES_SHOWN} more`] : []),
+    ];
+    fs.mkdirSync(nodePath.dirname(COMPACT_STATE()), { recursive: true });
+    fs.writeFileSync(COMPACT_STATE(), lines.join('\n') + '\n');
+  } catch { /* a snapshot that cannot be written never stands in the compaction's way */ }
+  process.exit(0);
+}
+// The pointer the compact start carries: only to a snapshot of THIS session, written within the hour.
+function compactPointer() {
+  try {
+    const file = COMPACT_STATE();
+    if (Date.now() - fs.statSync(file).mtimeMs > 60 * 60 * 1000) return '';
+    const mine = fs.readFileSync(file, 'utf8').split('\n').includes(`session: ${payload.session_id || ''}`);
+    if (!mine || !payload.session_id) return '';
+    const rel = nodePath.relative(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), file).split(nodePath.sep).join('/');
+    return `The PreCompact hook saved what this session had open at ${rel} - the live plan, the flow stamps with their ages, the files it wrote. Read it before anything else.`;
+  } catch { return ''; }
+}
 
 // The deliberate entry points: each one opens a multi-phase run with its own state file, so a
 // fresh session resuming from that file is always cheaper than continuing on carried context.
@@ -204,7 +297,12 @@ if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 // SessionStart carries no run name and nothing measurable - the transcript has just been REPLACED
 // by its summary - so the compaction event itself is the evidence, and the offer goes out on it.
 if (EVENT === 'SessionStart') {
-  if (FRESH_OFF || String(payload.source || '') !== 'compact') process.exit(0);
+  if (String(payload.source || '') !== 'compact') process.exit(0);
+  const pointer = compactPointer();
+  if (FRESH_OFF) {
+    if (pointer) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: pointer } }));
+    process.exit(0);
+  }
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
@@ -220,7 +318,7 @@ if (EVENT === 'SessionStart') {
         'two sessions switched to English right after compacting). And when a plan or state file is ' +
         'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
         'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
-        'opening the plan whose header already named the ranges).',
+        'opening the plan whose header already named the ranges).' + (pointer ? ` ${pointer}` : ''),
     },
   }));
   process.exit(0);

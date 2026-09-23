@@ -51,6 +51,9 @@ const ROUTES = [
   { hook: 'guard-stop-contract.js', event: 'SubagentStop', deny: true },
   { hook: 'guard-answer-length.js', event: 'Stop', deny: true },
   { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false, needsTranscript: true },
+  // Writes <docs-path>/flow/COMPACT-STATE before a compaction and returns nothing - no verdict and no
+  // injection for a replay to count, so it is declared in UNEXERCISED below.
+  { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
   { hook: 'guard-answer-length.js', event: 'UserPromptSubmit', deny: false, always: true },
 ];
@@ -93,6 +96,10 @@ const UNEXERCISED = {
   // a real fork transcript; the gate fires in guard-hooks.test.js.
   'guard-stop-contract.js::SubagentStop':
     'the field-report stop happened on another machine; 0 of 126 local subagent stops held; the gate fires in guard-hooks.test.js',
+  // Wired 2026-09-23 (improvement plan 2.2). The route writes a snapshot file and prints nothing, so a
+  // replay has no verdict and no injection to count; what it writes is pinned in compact-state.test.js.
+  'guard-fresh-session-start.js::PreCompact':
+    'writes COMPACT-STATE and prints nothing - no verdict to replay; the snapshot is pinned in compact-state.test.js',
 };
 
 const routeId = (r, tool) => `${r.hook}::${r.event}${tool ? ':' + tool : ''}`;

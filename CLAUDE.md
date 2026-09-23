@@ -112,7 +112,10 @@ change (see the invariants below).
     TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. Routes:
     PreToolUse `Skill` BLOCKS; `UserPromptSubmit` INJECTS for slash-invoked runs (never denies - that
     would erase the prompt); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
-    the language of the user's prompts, and re-read a live plan file's header first.
+    the language of the user's prompts, and re-read a live plan file's header first. `PreCompact` writes
+    `<docs-path>/flow/COMPACT-STATE` first (the live plan, the open flow stamps with their ages, the
+    files this session wrote, no model call), and the compact start points at it - even with every
+    fresh-session offer off.
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit`/`Bash`) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
