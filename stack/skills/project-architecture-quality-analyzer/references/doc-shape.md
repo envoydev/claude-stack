@@ -70,6 +70,9 @@ homework: the record would drift toward whatever the last automated run preferre
 would reopen an argument that was supposed to be settled. `notOwned` makes the rule unbreakable rather
 than merely stated: every write to this domain, from any actor and any spelling, is refused by the
 engine itself (`docs.js set` answers 'is maintained by another skill - this engine does not write it').
+The one exception is clerical and changes no record: `docs.js adr new`, run when a person asks for
+an ADR, takes the next number, writes an empty skeleton and regenerates the `DECISIONS.md` table from
+the records.
 
 **Falsifiable by code, not only protected from it.** `decisions/watch.json` still carries ordinary
 `watch` entries - `covers:` globs on each ADR's own section, naming the code that decision constrains,

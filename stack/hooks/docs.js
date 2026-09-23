@@ -22,6 +22,8 @@
 //   lint                            metadata and budget problems (exit 1 when any)
 //   seed-ids                        give every section a stable id (idempotent)
 //   watch <path...>                 which watch.json entries these changed paths hit
+//   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
+//                                   index table from the records (index alone: the table only)
 // Two modes, DECLARED at install time by the docs-versioning env key (VERSIONING_KEYS below): 'git' means the docs
 // are committed and git versions them per branch, so writes land in place, nothing is ever written under .branches/
 // and the promote / prune machinery stands down; 'local' means each feature branch's sections live under
@@ -1693,6 +1695,112 @@ function changedSince(snap) {
   return { files: [...out].filter((f) => !f.startsWith(docs)), dirs: [...created].filter((d) => !`${d}/`.startsWith(docs)) };
 }
 
+// The decision log: records at the decisions domain's root as NNNN-<slug>.md, and DECISIONS.md's index table. A
+// number picked by hand collides or skips, and a hand-kept index drifts from the records, so both are computed: the
+// number is one past the highest record (a gap is never refilled - a record is never deleted, so a gap is someone's
+// own numbering), and the table is regenerated from the record files, which are the source. This path CREATES a
+// record and rewrites the index; it never rewrites a record - `set` still refuses the whole domain (notOwned **.md).
+const ADR_DIR = () => path.join(DOCS_ROOT, 'decisions');
+const ADR_FILE = /^(\d+)-[^/\\]+\.md$/;
+const ADR_INDEX = 'DECISIONS.md';
+const INDEX_HEAD = /^\|\s*ADR\s*\|\s*Title\s*\|\s*Status\s*\|\s*$/i;
+const INDEX_RULE = /^\|(\s*:?-{3,}:?\s*\|){3}\s*$/;
+const cells = (row) => row.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim());
+const cellText = (s) => String(s).replace(/\|/g, '\\|');
+
+function adrRecords(dir = ADR_DIR()) {
+  let names = [];
+  try { names = fs.readdirSync(dir).filter((n) => ADR_FILE.test(n)); } catch { return []; }
+  return names.map((file) => {
+    const lines = norm(safeRead(path.join(dir, file))).split('\n');
+    const h1 = lines.find((l) => /^#\s+\S/.test(l)) || '';
+    const title = h1.replace(/^#\s+/, '').replace(/^ADR[-\s]?\d+\s*[:.-]\s*/i, '').trim() || file.replace(/^\d+-|\.md$/g, '').replace(/-/g, ' ');
+    // Nygard keeps the status under its own heading; MADR in front matter.
+    const fm = lines[0] === '---' ? lines.slice(1, lines.indexOf('---', 1)).find((l) => /^status:/i.test(l)) : '';
+    const at = lines.findIndex((l) => /^##\s+Status\s*$/i.test(l));
+    const under = at >= 0 ? lines.slice(at + 1).find((l) => l.trim()) || '' : '';
+    const status = (fm ? fm.replace(/^status:\s*/i, '') : /^#/.test(under) ? '' : under).trim().replace(/^[*_]+|[*_]+$/g, '');
+    const num = ADR_FILE.exec(file)[1];
+    return { n: Number(num), num, file, title, status: status || '-' };
+  }).sort((a, b) => a.n - b.n || a.file.localeCompare(b.file));
+}
+
+const indexTable = (recs) => ['| ADR | Title | Status |', '|---|---|---|', ...recs.map((r) => `| [${r.num}](${r.file}) | ${cellText(r.title)} | ${cellText(r.status)} |`)];
+
+// Rewrites only the table: every line outside it is kept byte for byte. A table the engine cannot map back to the
+// record files is left untouched and reported - a rewrite that silently dropped a row it did not write would lose
+// what a person put there.
+function adrIndex() {
+  const dir = ADR_DIR();
+  const file = path.join(dir, ADR_INDEX);
+  const recs = adrRecords(dir);
+  const table = indexTable(recs);
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, ['# Decisions', '', 'The decision log, one row per record. The table is rewritten from the record files by `docs.js adr new` and `docs.js adr index` - change a record, never the table.', '', ...table, ''].join('\n'));
+    return { file, rows: recs.length };
+  }
+  const raw = fs.readFileSync(file, 'utf8');
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const heads = lines.map((l, i) => (INDEX_HEAD.test(l) ? i : -1)).filter((i) => i >= 0);
+  if (heads.length > 1) return { file, error: `${heads.length} index tables (header rows at lines ${heads.map((i) => i + 1).join(', ')})` };
+  let out;
+  if (!heads.length) {
+    // No table yet: it goes above the first section, never inside one.
+    let at = lines.length;
+    let fenced = false;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^```/.test(lines[i])) fenced = !fenced;
+      if (!fenced && /^##\s/.test(lines[i])) { at = i; break; }
+    }
+    const before = lines.slice(0, at);
+    while (before.length && before[before.length - 1] === '') before.pop();
+    const after = lines.slice(at);
+    out = [...before, ...(before.length ? [''] : []), ...table, ...(after.length ? [''] : []), ...after];
+    if (!after.length) out.push('');
+  } else {
+    const h = heads[0];
+    if (!INDEX_RULE.test(lines[h + 1] || '')) return { file, error: `line ${h + 2}: the row under the index header is not a |---|---|---| rule` };
+    const known = new Set(recs.map((r) => r.file));
+    let end = h + 2;
+    for (; end < lines.length && /^\s*\|/.test(lines[end]); end++) {
+      const c = cells(lines[end]);
+      if (c.length !== 3) return { file, error: `line ${end + 1}: ${c.length} cells, the index has 3` };
+      const link = /^\[\d+\]\((?:\.\/)?([^)]+)\)$/.exec(c[0]);
+      if (!link) return { file, error: `line ${end + 1}: the first cell is not an [NNNN](file) link` };
+      if (!known.has(link[1])) return { file, error: `line ${end + 1}: names ${link[1]}, which is not a record in ${shown(dir)} - the rewrite would drop that row` };
+    }
+    out = [...lines.slice(0, h), ...table, ...lines.slice(end)];
+  }
+  fs.writeFileSync(file, out.join(eol));
+  return { file, rows: recs.length };
+}
+
+function adrNew(title) {
+  const t = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!t) return { error: "adr new needs a title: docs.js adr new '<title>'" };
+  const dir = ADR_DIR();
+  fs.mkdirSync(dir, { recursive: true });
+  // Without a watch.json the folder is no domain, and without the catch-all a record's sections would be linted and
+  // writable through `set` - the shape the decisions domain is documented to carry.
+  const watch = path.join(dir, 'watch.json');
+  const seeded = !fs.existsSync(watch);
+  if (seeded) fs.writeFileSync(watch, `${JSON.stringify({ notOwned: ['**.md'] }, null, 2)}\n`);
+  const recs = adrRecords(dir);
+  const num = String(recs.reduce((m, r) => Math.max(m, r.n), 0) + 1).padStart(Math.max(4, ...recs.map((r) => r.num.length)), '0');
+  const file = path.join(dir, `${num}-${slug(t).replace(/-+$/, '') || 'decision'}.md`);
+  const body = [
+    `# ADR-${num}: ${t}`, '',
+    '## Status', 'Proposed', '',
+    '## Context', '<the forces - technical, business, constraints - neutral and factual>', '',
+    '## Decision', 'We will <the decision, in full sentences>.', '',
+    '## Consequences', 'Positive: <...>', 'Negative: <...>', 'Neutral: <...>', '',
+  ].join('\n');
+  try { fs.writeFileSync(file, body, { flag: 'wx' }); } catch (e) { return { error: `${shown(file)} already exists - nothing written (${e.code || e.message})` }; }
+  return { file, num, seeded: seeded ? watch : null, index: adrIndex() };
+}
+
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, BRANCHES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
@@ -1701,7 +1809,7 @@ module.exports = {
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, seedIds, loadWatch, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
-  sectionHash, firstSentence, askRef, protectedRef, shownFrom,
+  sectionHash, firstSentence, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew,
 };
 if (require.main !== module) return;
 
@@ -1808,9 +1916,24 @@ const commands = {
     const hits = watchHits(files, dirs);
     console.log(hits.length ? hits.map((h) => `${h.kind}: ${h.files.join(', ')} -> ${h.sections.join(', ')}`).join('\n') : 'nothing hit');
   },
+  adr: () => {
+    const indexLine = (ix) => {
+      if (!ix.error) { console.log(`index rewritten: ${shown(ix.file)} (${ix.rows} record${ix.rows === 1 ? '' : 's'})`); return true; }
+      console.log(`index NOT rewritten - ${shown(ix.file)} ${ix.error}. Fix that table by hand, then run 'docs.js adr index'.`);
+      return false;
+    };
+    if (args[0] === 'index') process.exit(indexLine(adrIndex()) ? 0 : 1);
+    if (args[0] !== 'new') { console.log("usage: docs.js adr new '<title>' | adr index"); process.exit(1); }
+    const r = adrNew(args.slice(1).join(' '));
+    if (r.error) { console.log(r.error); process.exit(1); }
+    docsLog({ event: 'adr-new', file: shown(r.file) });
+    console.log(`created ${shown(r.file)} - ADR-${r.num}, status Proposed: write its Context, Decision and Consequences`);
+    if (r.seeded) console.log(`seeded ${shown(r.seeded)} (notOwned **.md - docs.js set never rewrites a record)`);
+    process.exit(indexLine(r.index) ? 0 : 1);
+  },
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...>');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...> | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }

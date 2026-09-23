@@ -18,7 +18,7 @@ each other.
 |---|---|---|
 | An interaction ordered in time - API call chain, auth handshake, retry/timeout, event choreography | Mermaid sequence diagram | `references/mermaid-sequence.md` |
 | A relational schema sketch - a handful of tables, keys, cardinality | Mermaid ER diagram | `references/mermaid-er.md` |
-| A load-bearing decision - structure, cross-cutting NFRs, external dependencies, interfaces | ADR - Nygard by default, MADR 4 when options were weighed | `references/adr.md` |
+| A load-bearing decision - structure, cross-cutting NFRs, external dependencies, interfaces | ADR - Nygard by default, MADR 4 when options were weighed; numbered by `node .claude/hooks/docs.js adr new '<title>'` | `references/adr.md` |
 | System-in-environment or deployable-parts structure, incl. for stakeholders | C4 context/container view | `references/c4.md` |
 | THIS project's architecture map | owned by `project-architecture-analyzer` (flowchart + module table per its doc-shapes contract) - supplement it, never re-draw it |
 
