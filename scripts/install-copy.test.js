@@ -84,7 +84,7 @@ test('install-copy: changed content IS rewritten', () =>
     assert.strictEqual(fs.readFileSync(path.join(dest, 'a.md'), 'utf8'), 'v2\n');
 });
 
-test('install-copy: an identical file that LOST its exec bit gets it back', () =>
+test('install-copy: an identical file that LOST its exec bit gets it back', { skip: process.platform === 'win32' && 'no mode bits on Windows' }, () =>
 {
     const { src, dest } = fixture({ 'guard.js': '#!/usr/bin/env node\n' });
     run(src, dest, ['guard.js'], { exec: true, label: 'hook' });

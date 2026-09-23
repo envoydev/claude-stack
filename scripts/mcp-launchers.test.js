@@ -56,23 +56,23 @@ function runHeaders(projectDir, env)
 test('memory-launch: the project settings env is the db, because a plugin entry cannot read it', () =>
 {
     const { dir } = project('proj-db', { settings: { CLAUDE_STACK_MEMORY_DB: '/tmp/chosen/memory.db' } });
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.normalize('/tmp/chosen/memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/chosen/memory.db');
 });
 
 test('memory-launch: settings.local.json is the per-machine override, read after settings.json', () =>
 {
     const { dir } = project('local-db', { local: { CLAUDE_STACK_MEMORY_DB: '/tmp/local/memory.db' } });
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.normalize('/tmp/local/memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
     // ... and settings.json WINS when both are present: it is what the install wrote.
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'),
         JSON.stringify({ env: { CLAUDE_STACK_MEMORY_DB: '/tmp/installed/memory.db' } }));
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.normalize('/tmp/installed/memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/installed/memory.db');
 });
 
 test('memory-launch: the ACCOUNT settings env answers for a global install', () =>
 {
     const { dir, acct } = project('acct-db', { account: { CLAUDE_STACK_MEMORY_DB: '/tmp/acct/memory.db' } });
-    assert.strictEqual(resolveDb(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct }), path.normalize('/tmp/acct/memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct }), '/tmp/acct/memory.db');
 });
 
 test('memory-launch: an explicit MCP_MEMORY_SQLITE_PATH wins over every file', () =>
@@ -85,7 +85,8 @@ test('memory-launch: an explicit MCP_MEMORY_SQLITE_PATH wins over every file', (
 test('memory-launch: no key anywhere falls back to the global default, never to nothing', () =>
 {
     const { dir } = project('no-db');
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.join(dir, '.memory-mcp', 'memory.db'));
+    // USERPROFILE too: on Windows os.homedir() reads it and never HOME, so the default would be the runner's own
+    assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.memory-mcp', 'memory.db'));
 });
 
 test('memory-launch: a RELATIVE value resolves against the project, the way the docs engine reads it', () =>
@@ -98,7 +99,7 @@ test('memory-launch: malformed or empty settings are not a failure - the default
 {
     const { dir } = project('bad-db');
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), '{ not json');
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.join(dir, '.memory-mcp', 'memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.memory-mcp', 'memory.db'));
 });
 
 test('memory-launch: a hand-edited entry with no --package says so instead of launching something else', () =>

@@ -54,7 +54,7 @@ test('a re-export into the same destination replaces it rather than merging', ()
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('a file mode is preserved - an installer script has to stay executable', () => {
+test('a file mode is preserved - an installer script has to stay executable', { skip: process.platform === 'win32' && 'no mode bits on Windows' }, () => {
     const { tmp, repo, dest } = fixture();
     const script = path.join(repo, 'run.sh');
     fs.writeFileSync(script, '#!/bin/sh\necho hi\n', { mode: 0o755 });

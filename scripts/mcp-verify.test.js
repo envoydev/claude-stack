@@ -73,8 +73,12 @@ function sandbox(mcpServers)
         'if "%~1"=="mcp" if "%~2"=="get" if exist "%CLAUDE_STUB_MCPGET%" type "%CLAUDE_STUB_MCPGET%"',
         'if "%~1"=="mcp" if "%~2"=="list" if exist "%CLAUDE_STUB_MCPLIST%" type "%CLAUDE_STUB_MCPLIST%"',
         'if "%~1"=="mcp" if "%~2"=="add" if exist "%CLAUDE_STUB_MCPGET_NEW%" copy /y "%CLAUDE_STUB_MCPGET_NEW%" "%CLAUDE_STUB_MCPGET%" >nul',
+        // the same working `mcp remove` as the sh stub: without it a ps1 prune that relies on the CLI alone passes everywhere but Windows
+        'if "%~1"=="mcp" if "%~2"=="remove" if "%CLAUDE_STUB_REMOVE_WORKS%"=="1" if exist .mcp.json node "%~dp0mcp-remove.js" "%~3"',
         'exit /b 0',
         ''].join('\r\n'));
+    fs.writeFileSync(path.join(bin, 'mcp-remove.js'),
+        'const fs=require("fs");const d=JSON.parse(fs.readFileSync(".mcp.json","utf8"));delete d.mcpServers[process.argv[2]];fs.writeFileSync(".mcp.json",JSON.stringify(d,null,2)+"\\n");\n');
     // Stub npx: the playwright browser download is the one npx call a run makes - logged, never run.
     const npxLog = path.join(work, 'npx-calls.log');
     fs.writeFileSync(path.join(bin, 'npx'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$NPX_STUB_LOG"', 'exit 0', ''].join('\n'), { mode: 0o755 });

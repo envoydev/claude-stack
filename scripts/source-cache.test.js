@@ -258,6 +258,11 @@ function plantThree(home) {
     return path.join(home, '.claude', 'plugins', 'cache', 'claude-stack', 'claude-stack', '0.10.0');
 }
 
+// Git Bash prints its own mount spelling (/tmp/tmp.X), which native node resolves against the current
+// drive - so on Windows the path is translated before node opens it.
+const nativePath = (p) => process.platform === 'win32'
+    ? execFileSync('bash', ['-c', 'cygpath -w "$1"', 'cygpath', p], { encoding: 'utf8' }).trim() : p;
+
 test("the protocol's bash snippet resolves the same entry as the sh twin", () => {
     const home = work();
     const script = path.join(home, 'resolve.sh');
@@ -272,7 +277,7 @@ test("the protocol's bash snippet resolves the same entry as the sh twin", () =>
         });
         const m = out.match(/RESOLVED TMP=(\S+) (\S+)/);
         assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
-        tmp = m[1];
+        tmp = nativePath(m[1]);
         assert.strictEqual(m[2], '0.10.0', 'it read a different version than the twins take');
         assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
         assert.ok(!fs.existsSync(path.join(tmp, 'claude-stack.tar.gz')), 'it downloaded the archive over a usable cache');
@@ -283,7 +288,7 @@ test("the protocol's bash snippet resolves the same entry as the sh twin", () =>
     }
     finally
     {
-        const mark = `/tmp/claude-stack-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
+        const mark = nativePath(`/tmp/claude-stack-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`);
         for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
         fs.rmSync(home, { recursive: true, force: true });
     }
@@ -302,7 +307,9 @@ test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNo
             env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
         });
         assert.match(out, /PS-VER=0\.10\.0/, `the ps twin read a different version:\n${out}`);
-        assert.strictEqual(out.match(/PS-SRC=(.+)/)[1].trim(), want, 'it took a different cache entry than the sh snippet');
+        // compared as real paths: on Windows os.tmpdir() may be the 8.3 short name of the folder the snippet spells long
+        assert.strictEqual(fs.realpathSync.native(out.match(/PS-SRC=(.+)/)[1].trim()), fs.realpathSync.native(want),
+            'it took a different cache entry than the sh snippet');
         const tmp = out.match(/PS-TMP=(.+)/)[1].trim();
         assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
         assert.ok(!fs.existsSync(path.join(tmp, 'claude-stack.zip')), 'it downloaded the archive over a usable cache');
