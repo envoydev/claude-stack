@@ -14,6 +14,21 @@
 //                          registration or installed memory plugin runs, the route the installer's
 //                          notes import takes - so every row gets the service's own embedding. A line
 //                          whose content hash is already live is skipped, so a re-run stores nothing.
+//   duplicates [--db <file>] [--root <dir>]
+//                          pairs of live rows with the same content once case and whitespace are
+//                          ignored ('exact') or the same first 120 such characters ('near'), with ids
+//                          and dates. Report only - nothing is deleted.
+//   reembed [--dry-run] [--db <file>] [--root <dir>]
+//                          the live rows stored without a real embedding (a vector far from unit length,
+//                          or none) are deleted and stored again THROUGH the service, their tags, type,
+//                          metadata and dates carried. A row tied to another memory (superseded, a
+//                          child, a graph edge) is listed and left alone. The whole rows are backed up
+//                          first under ~/.memory-mcp/backups (owner-only); the first row goes alone and a
+//                          vector that is still not unit length stops the run; a row that does not come
+//                          back is retried once, then reported with its --restore command.
+//   reembed --restore <backup> [--db <file>] [--root <dir>]
+//                          stores again every backed-up row that is missing, and gives back the dates
+//                          of every one that lost them - through the service. A re-run changes nothing.
 // Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.memory-mcp/memory.db; scoped
 // ~/.memory-mcp/memory_<space>.db (no space: memory_default.db); project <project>/.memory-mcp/memory.db.
 'use strict';
@@ -235,6 +250,7 @@ const retryable = (err) => { const b = baseErrCode(err); return b === SQLITE_CAN
 const MEMORY_QUERY = 'SELECT id, content, tags, memory_type, created_at FROM memories WHERE deleted_at IS NULL ORDER BY created_at DESC';
 
 // Opens read-only and reads every live row, retrying once via the immutable URI on the two codes above.
+// `query` is SQL, or a function given the open database for a read that needs more than one statement.
 // Returns null on any failure (node:sqlite unavailable, missing/locked/wrong-schema file) - never throws.
 function readMemoryRows(dbPath, query = MEMORY_QUERY) {
   const sqlite = nodeSqlite();
@@ -250,7 +266,7 @@ function readMemoryRows(dbPath, query = MEMORY_QUERY) {
       return null;
     }
     try {
-      return db.prepare(query).all();
+      return typeof query === 'function' ? query(db) : db.prepare(query).all();
     } catch (err) {
       if (i === 0 && retryable(err)) continue;
       return null;
@@ -372,6 +388,208 @@ function exportRows(dbPath, { project = '', all = false } = {}) {
     .filter((row) => all || matchesProject(splitTags(row.tags), project))
     .map((row) => ({ content: row.content, tags: splitTags(row.tags), memory_type: row.memory_type, created_at: row.created_at, content_hash: row.content_hash || contentHash(row.content) }));
 }
+
+// Two live rows are duplicates when their content matches after lower-casing and collapsing
+// whitespace ('exact'), or when only the first DUP_PREFIX such characters do ('near'). Each later row
+// pairs with the OLDEST row of its group, so three copies are two pairs. Report only - never a delete.
+const DUP_PREFIX = 120;
+const DUP_QUERY = 'SELECT id, content, created_at FROM memories WHERE deleted_at IS NULL ORDER BY created_at, id';
+const normalizeForDup = (s) => String(s).toLowerCase().replace(/\s+/g, ' ').trim();
+
+function findDuplicates(rows) {
+  const pairs = [];
+  const byContent = new Map();
+  const byPrefix = new Map();
+  for (const row of rows) {
+    const norm = normalizeForDup(row.content);
+    const same = byContent.get(norm);
+    if (same) { pairs.push({ kind: 'exact', a: same, b: row }); continue; }
+    byContent.set(norm, row);
+    if (norm.length < DUP_PREFIX) continue;
+    const prefix = norm.slice(0, DUP_PREFIX);
+    const near = byPrefix.get(prefix);
+    if (near) pairs.push({ kind: 'near', a: near, b: row });
+    else byPrefix.set(prefix, row);
+  }
+  return pairs;
+}
+
+// The vectors live in the plain SHADOW tables of the `memory_embeddings` vec0 table, which node:sqlite
+// reads without the sqlite_vec extension: memory_embeddings_rowids maps a memory id to a chunk and an
+// offset, and the chunk's blob holds float32 vectors of the declared dimension back to back. The
+// sentence model writes unit vectors; a pre-fix registration wrote hash embeddings whose L2 norm is
+// about 11 (measured on the shared database, 2026-09-23) - so the norm is the marker, not the date.
+const NORM_TOLERANCE = 0.01;
+const DEFAULT_EMBED_DIM = 384;
+const EMBED_QUERY = 'SELECT m.id, m.content_hash, m.created_at, r.chunk_id, r.chunk_offset FROM memories m LEFT JOIN memory_embeddings_rowids r ON r.rowid = m.id WHERE m.deleted_at IS NULL ORDER BY m.created_at, m.id';
+
+// A reader of the vectors on an open database, or null when the file has no shadow tables. norm(chunk,
+// offset) is the L2 norm of that stored vector, null when the chunk or the slot does not exist.
+function vectorReader(db) {
+  const tables = new Map(db.prepare("SELECT name, sql FROM sqlite_master WHERE name IN ('memory_embeddings', 'memory_embeddings_rowids', 'memory_embeddings_vector_chunks00')").all().map((t) => [t.name, t.sql]));
+  if (!tables.has('memory_embeddings_rowids') || !tables.has('memory_embeddings_vector_chunks00')) return null;
+  const declared = /FLOAT\[(\d+)\]/i.exec(String(tables.get('memory_embeddings') || ''));
+  const bytes = (declared ? Number(declared[1]) : DEFAULT_EMBED_DIM) * 4;
+  const chunkOf = db.prepare('SELECT vectors FROM memory_embeddings_vector_chunks00 WHERE rowid = ?');
+  const slotOf = db.prepare('SELECT chunk_id, chunk_offset FROM memory_embeddings_rowids WHERE rowid = ?');
+  const chunks = new Map();
+  const norm = (chunkId, offset) => {
+    if (chunkId == null) return null;
+    if (!chunks.has(chunkId)) chunks.set(chunkId, (chunkOf.get(chunkId) || {}).vectors || null);
+    const blob = chunks.get(chunkId);
+    const start = Number(offset) * bytes;
+    if (!blob || start < 0 || start + bytes > blob.byteLength) return null;
+    const view = new DataView(blob.buffer, blob.byteOffset + start, bytes);
+    let sum = 0;
+    for (let i = 0; i < bytes; i += 4) sum += view.getFloat32(i, true) ** 2;
+    return Math.sqrt(sum);
+  };
+  const normOfMemory = (id) => { const slot = slotOf.get(id); return slot ? norm(slot.chunk_id, slot.chunk_offset) : null; };
+  return { norm, normOfMemory };
+}
+
+// { live, rows: [{ id, content_hash, created_at, norm }] } with norm null for a row without a vector;
+// { noVectorTables: true } when the file has no shadow tables; null when it cannot be read.
+function embeddingState(dbPath) {
+  return readMemoryRows(dbPath, (db) => {
+    const vectors = vectorReader(db);
+    if (!vectors) return { noVectorTables: true };
+    const rows = db.prepare(EMBED_QUERY).all().map((row) => ({ id: row.id, content_hash: row.content_hash, created_at: row.created_at, norm: vectors.norm(row.chunk_id, row.chunk_offset) }));
+    return { live: rows.length, rows };
+  });
+}
+
+const needsReembed = (row) => row.norm === null || Math.abs(row.norm - 1) > NORM_TOLERANCE;
+
+// Everything a re-store must carry - the whole row - read before anything changes and backed up first.
+const REEMBED_QUERY = 'SELECT * FROM memories WHERE deleted_at IS NULL';
+const DATE_KEYS = ['created_at', 'created_at_iso', 'updated_at', 'updated_at_iso'];
+// The service adds this tag to both rows of a conflict it detects on a store (11.13.0, every store).
+const CONFLICT_TAG = 'conflict:unresolved';
+const parseMeta = (s) => { try { const m = JSON.parse(s || '{}'); return m && typeof m === 'object' && !Array.isArray(m) ? m : {}; } catch { return {}; } };
+const firstLine = (s) => String(s || '').trim().split('\n')[0];
+
+// A row the service ties to another is left alone: memory_delete also drops its memory_graph edges,
+// and a re-store resets superseded_by and parent_id - a superseded row would come back as current.
+function relationOf(row, linked) {
+  if (row.superseded_by != null && row.superseded_by !== '') return 'superseded by another memory';
+  if (row.parent_id != null && row.parent_id !== '') return 'has a parent memory';
+  if (linked.has(row.content_hash)) return 'linked in the memory graph';
+  return null;
+}
+
+// The content hashes with an edge in memory_graph (none when the table does not exist).
+function linkedHashes(db) {
+  const has = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'memory_graph'").get();
+  if (!has) return new Set();
+  const out = new Set();
+  for (const e of db.prepare('SELECT source_hash, target_hash FROM memory_graph').all()) { out.add(e.source_hash); out.add(e.target_hash); }
+  return out;
+}
+
+// One server session over `rows`, each in its `mode`: 'full' deletes, stores and restores the dates;
+// 'store' stores and restores the dates (the row is already gone); 'update' only restores the dates.
+// memory_store can take no date (11.13.0 stamps now), so the dates go back through memory_update with
+// preserve_timestamps false, whose supplied created_at wins. Returns id -> { stage, text } per failure.
+async function reembedPass({ entry, cwd, rows }) {
+  const failures = new Map();
+  const child = spawn(entry.command, Array.isArray(entry.args) ? entry.args : [], { cwd, env: { ...process.env, ...(entry.env || {}) }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  const rpc = rpcClient(child);
+  const deadline = Date.now() + OVERALL_TIMEOUT_MS;
+  const timeLeft = () => Math.max(1, deadline - Date.now());
+  const call = async (name, args) => {
+    const resp = await rpc.call('tools/call', { name, arguments: args }, Math.min(CALL_TIMEOUT_MS, timeLeft()));
+    return resp.error ? `Error: ${resp.error.message || JSON.stringify(resp.error)}` : resultText(resp.result);
+  };
+  let index = 0;
+  try {
+    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-stack-memory-reembed', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
+    rpc.notify('notifications/initialized');
+    for (; index < rows.length; index++) {
+      const { row, mode } = rows[index];
+      if (Date.now() > deadline) throw new Error('re-embed timed out after 5 minutes');
+      if (mode === 'full') {
+        const text = await call('memory_delete', { content_hash: row.content_hash });
+        if (!/Deleted 1 memor/.test(text)) { failures.set(row.id, { stage: 'delete', text: firstLine(text) }); continue; }
+      }
+      const meta = parseMeta(row.metadata);
+      const conversation = meta.conversation_id;
+      for (const key of ['conversation_id', 'tags', 'type']) delete meta[key];
+      if (mode !== 'update') {
+        const metadata = { ...meta, tags: splitTags(row.tags), ...(row.memory_type ? { type: row.memory_type } : {}) };
+        const text = await call('memory_store', { content: row.content, conversation_id: crypto.randomUUID(), metadata });
+        if (!/^Memory stored successfully/.test(text)) { failures.set(row.id, { stage: 'store', text: firstLine(text) }); continue; }
+      }
+      const updates = {};
+      for (const key of DATE_KEYS) if (row[key] != null) updates[key] = row[key];
+      if (conversation) updates.metadata = { conversation_id: conversation };
+      if (!Object.keys(updates).length) continue;
+      const text = await call('memory_update', { content_hash: contentHash(row.content), updates, preserve_timestamps: false });
+      if (!/^Successfully updated/.test(text)) failures.set(row.id, { stage: 'update', text: firstLine(text) });
+    }
+  } catch (err) {
+    // The row in flight and every row after it: the ones before it are judged by the file.
+    const text = firstLine(err && err.message ? err.message : String(err));
+    for (let i = index; i < rows.length; i++) if (!failures.has(rows[i].row.id)) failures.set(rows[i].row.id, { stage: 'server', text });
+  } finally {
+    await shutdownServer(child);
+  }
+  return failures;
+}
+
+// What the file says after the server exited, per row, as { status, conflict }. status is 'ok';
+// 'missing' (no live row under the service's hash, and the original gone too); 'untouched' (the
+// original row still live with its old vector - never reached, or its delete refused); 'date' (live,
+// re-embedded, but its dates did not come back); 'vector' (a NEW row whose vector is still not a unit
+// vector); or 'fields' (its tags or type changed). The conflict tag the service adds on a store is no
+// changed field - conflict says it arrived. Read-only, never through the immutable URI, which ignores
+// the WAL a killed server leaves behind. The service's ids are AUTOINCREMENT, so a new row never
+// carries the old id.
+function verifyReembedded(dbPath, rows) {
+  const sqlite = storeSqlite();
+  if (!sqlite) return null;
+  const db = openForVerify(sqlite.DatabaseSync, dbPath);
+  if (!db) return null;
+  try {
+    const vectors = vectorReader(db);
+    const liveOf = db.prepare('SELECT id, tags, memory_type, created_at, updated_at FROM memories WHERE content_hash = ? AND deleted_at IS NULL');
+    const originalLive = db.prepare('SELECT 1 FROM memories WHERE id = ? AND deleted_at IS NULL');
+    const tagList = (t) => splitTags(t).filter((x) => x !== CONFLICT_TAG);
+    const tagSet = (t) => [...new Set(tagList(t))].sort().join(',');
+    const close = (a, b) => a == null || (typeof b === 'number' && Math.abs(a - b) < 1e-3);
+    const out = new Map();
+    for (const row of rows) {
+      const live = liveOf.get(contentHash(row.content));
+      if (!live) { out.set(row.id, { status: row.id != null && originalLive.get(row.id) ? 'untouched' : 'missing', conflict: false }); continue; }
+      const conflict = splitTags(live.tags).includes(CONFLICT_TAG) && !splitTags(row.tags).includes(CONFLICT_TAG);
+      const norm = vectors ? vectors.normOfMemory(live.id) : null;
+      let status = 'ok';
+      if (norm === null || Math.abs(norm - 1) > NORM_TOLERANCE) status = live.id === row.id ? 'untouched' : 'vector';
+      else if (tagSet(live.tags) !== tagSet(row.tags) || (row.memory_type && live.memory_type !== row.memory_type)) status = 'fields';
+      else if (!close(row.created_at, live.created_at) || !close(row.updated_at, live.updated_at)) status = 'date';
+      out.set(row.id, { status, conflict });
+    }
+    return out;
+  } catch { return null; } finally { try { db.close(); } catch {} }
+}
+
+const VERIFY_REASON = {
+  missing: 'verify: no live row after the store',
+  untouched: 'verify: the server never reached it - it is still live, not re-embedded',
+  vector: 'verify: the stored vector is still not a unit vector',
+  fields: 'verify: the tags or the type came back changed',
+  date: 'verify: the original dates did not come back',
+};
+
+// The pass a verified status calls for: a row deleted but never stored, a row whose dates did not
+// come back, a row never reached (or whose delete was refused) - under either hash.
+const RETRY_MODE = { missing: 'store', date: 'update', untouched: 'full' };
+
+// The backups live under the account, never beside the database: a project-level database sits inside
+// a repo whose ignore rules were never written for them, and a backup holds every row's text.
+const backupDir = () => path.join(os.homedir(), '.memory-mcp', 'backups');
+const backupLine = (row) => JSON.stringify({ ...row, tags: splitTags(row.tags), metadata: parseMeta(row.metadata) });
+const fromBackup = (b) => ({ ...b, tags: Array.isArray(b.tags) ? b.tags.join(',') : String(b.tags || ''), metadata: JSON.stringify(b.metadata && typeof b.metadata === 'object' ? b.metadata : {}) });
 
 const STACK_MEMORY_PLUGIN = 'memory@claude-stack';
 
@@ -507,6 +725,8 @@ function rpcClient(child) {
     pending.clear();
   };
   child.on('error', (err) => failAll(new Error(`could not start the memory MCP server: ${err.message}`)));
+  // A server that dies between a reply and the next write raises EPIPE here, never an uncaught throw.
+  child.stdin.on('error', (err) => failAll(new Error(`the memory MCP server closed its input: ${err.message}`)));
   child.on('exit', (code, signal) => failAll(new Error(
     `memory MCP server exited unexpectedly (code=${code} signal=${signal})${stderrTail ? ` - stderr: ${stderrTail.slice(-500)}` : ''}`,
   )));
@@ -605,11 +825,13 @@ function parseJsonl(text) {
 }
 
 function cliArgs(args) {
-  const out = { positional: [], all: false, db: null, root: null };
+  const out = { positional: [], all: false, dryRun: false, db: null, root: null, restore: null };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--all') out.all = true;
+    else if (args[i] === '--dry-run') out.dryRun = true;
     else if (args[i] === '--db') out.db = args[++i];
     else if (args[i] === '--root') out.root = args[++i];
+    else if (args[i] === '--restore') out.restore = args[++i];
     else out.positional.push(args[i]);
   }
   return out;
@@ -656,6 +878,159 @@ async function cliImport(args) {
   }
 }
 
+const isoDay = (t) => (typeof t === 'number' && Number.isFinite(t) ? new Date(t * 1000).toISOString().slice(0, 10) : 'undated');
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function cliDbPath(verb, opts) {
+  const dbPath = opts.db ? path.resolve(opts.db) : registeredDbPath(cliRoot(opts));
+  if (!dbPath) process.stderr.write(`memory ${verb}: no memory database registered for this project - name one with --db <file>\n`);
+  return dbPath;
+}
+
+function cliDuplicates(args) {
+  const opts = cliArgs(args);
+  const dbPath = cliDbPath('duplicates', opts);
+  if (!dbPath) return 1;
+  const rows = readMemoryRows(dbPath, DUP_QUERY);
+  if (!rows) { process.stderr.write(`memory duplicates: could not read ${dbPath}\n`); return 1; }
+  const pairs = findDuplicates(rows);
+  for (const { kind, a, b } of pairs) console.log(`${kind.padEnd(5)}  #${a.id} ${isoDay(a.created_at)}  #${b.id} ${isoDay(b.created_at)}`);
+  const count = (kind) => pairs.filter((p) => p.kind === kind).length;
+  console.log(`memory duplicates: ${count('exact')} exact, ${count('near')} near, of ${plural(rows.length, 'live row')} in ${dbPath} - nothing deleted`);
+  return 0;
+}
+
+const NO_SERVER = 'no memory server found for this project - no registration, and no memory@claude-stack plugin installed for it';
+
+// The registered server, pointed at the database this run judges.
+function reembedEntry(projectRoot, dbPath) {
+  const found = serviceEntry(projectRoot);
+  return found ? { ...found, env: { ...(found.env || {}), MCP_MEMORY_SQLITE_PATH: dbPath } } : null;
+}
+
+async function cliReembed(args) {
+  const opts = cliArgs(args);
+  const dbPath = cliDbPath('reembed', opts);
+  if (!dbPath) return 1;
+  if (opts.restore) return cliRestore(opts, dbPath);
+  const state = embeddingState(dbPath);
+  if (!state) { process.stderr.write(`memory reembed: could not read ${dbPath}\n`); return 1; }
+  if (state.noVectorTables) { process.stderr.write(`memory reembed: ${dbPath} has no sqlite_vec vector tables - not a memory service database\n`); return 1; }
+  const selected = state.rows.filter(needsReembed);
+  const read = selected.length ? readMemoryRows(dbPath, (db) => ({ rows: db.prepare(REEMBED_QUERY).all(), linked: linkedHashes(db) })) : { rows: [], linked: new Set() };
+  if (!read) { process.stderr.write(`memory reembed: could not read ${dbPath}\n`); return 1; }
+  const byId = new Map(read.rows.map((r) => [r.id, r]));
+  const rows = [];
+  const alone = [];
+  for (const s of selected) {
+    const row = byId.get(s.id);
+    const relation = row ? relationOf(row, read.linked) : null;
+    console.log(`#${s.id} ${isoDay(s.created_at)} ${s.norm === null ? 'no vector' : `hash-embedded (norm ${s.norm.toFixed(1)})`}${relation ? ` - left alone: ${relation}` : ''}`);
+    if (relation) alone.push(row); else if (row) rows.push(row);
+  }
+  const aloneNote = alone.length ? `, ${alone.length} of them left alone - tied to another memory` : '';
+  if (opts.dryRun) {
+    console.log(`memory reembed --dry-run: ${selected.length} of ${plural(state.live, 'live row')} need a real embedding in ${dbPath}${aloneNote} - nothing changed`);
+    return 0;
+  }
+  if (!rows.length) { console.log(`memory reembed: nothing to re-embed in ${dbPath}${alone.length ? `; ${alone.length} left alone - tied to another memory` : ''}`); return 0; }
+  const projectRoot = cliRoot(opts);
+  const entry = reembedEntry(projectRoot, dbPath);
+  if (!entry) { process.stderr.write(`memory reembed: ${NO_SERVER}\n`); return 1; }
+
+  // The backup lands before the first delete: the whole row, one line each, readable by its owner only.
+  const backup = path.join(backupDir(), `${path.basename(dbPath)}.reembed-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
+  try {
+    fs.mkdirSync(path.dirname(backup), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(backup, rows.map((r) => `${backupLine(r)}\n`).join(''), { mode: 0o600 });
+  } catch (err) { process.stderr.write(`memory reembed: could not write the backup ${backup}: ${err.message} - nothing changed\n`); return 1; }
+  const cantConfirm = () => { process.stderr.write(`memory reembed: could not re-open ${dbPath} to confirm the result; backup ${backup}\n`); return 1; };
+  const summary = (ok, failed, notAttempted, conflicts) => console.log(`memory reembed: ${ok} re-embedded, ${failed} failed${notAttempted ? `, ${notAttempted} not attempted` : ''}${alone.length ? `, ${alone.length} left alone` : ''}, of ${selected.length} selected in ${dbPath}; backup ${backup} (it holds the rows' text)${conflicts ? `; ${conflicts} flagged ${CONFLICT_TAG} by the service` : ''}`);
+
+  // The first row alone: a server that is not running the sentence model writes a vector far from unit
+  // length, and every row after it would be traded for another bad one.
+  const [canary, ...rest] = rows;
+  const first = await reembedPass({ entry, cwd: projectRoot, rows: [{ row: canary, mode: 'full' }] });
+  const canaryState = verifyReembedded(dbPath, [canary]);
+  if (!canaryState) return cantConfirm();
+  if (canaryState.get(canary.id).status === 'vector') {
+    console.log(`#${canary.id} FAILED - ${VERIFY_REASON.vector}`);
+    for (const row of rest) console.log(`#${row.id} not attempted`);
+    summary(0, 1, rest.length, 0);
+    process.stderr.write('memory reembed: the memory server stored a vector that is not a unit vector - it is not running the sentence model; stopped after the first row\n');
+    return 1;
+  }
+  if (rest.length) for (const [id, failure] of await reembedPass({ entry, cwd: projectRoot, rows: rest.map((row) => ({ row, mode: 'full' })) })) first.set(id, failure);
+  const afterFirst = verifyReembedded(dbPath, rows);
+  if (!afterFirst) return cantConfirm();
+  const retry = rows.filter((row) => RETRY_MODE[afterFirst.get(row.id).status]).map((row) => ({ row, mode: RETRY_MODE[afterFirst.get(row.id).status] }));
+  const second = retry.length ? await reembedPass({ entry, cwd: projectRoot, rows: retry }) : new Map();
+  const final = retry.length ? verifyReembedded(dbPath, rows) : afterFirst;
+  if (!final) return cantConfirm();
+
+  const retried = new Set(retry.map((r) => r.row.id));
+  let ok = 0;
+  let conflicts = 0;
+  for (const row of rows) {
+    const { status, conflict } = final.get(row.id);
+    if (status === 'ok') {
+      ok++;
+      if (conflict) conflicts++;
+      console.log(`#${row.id} re-embedded${retried.has(row.id) ? ' (restored on the second pass)' : ''}${conflict ? ` - the service flagged it as conflicting with a similar memory (tag ${CONFLICT_TAG})` : ''}`);
+      continue;
+    }
+    // The latest attempt's own failure, else what the file says - never a first-pass error a retry replaced.
+    const failure = retried.has(row.id) ? second.get(row.id) : first.get(row.id);
+    console.log(`#${row.id} FAILED - ${failure ? `${failure.stage}: ${failure.text}` : VERIFY_REASON[status] || status}`);
+  }
+  const failed = rows.length - ok;
+  summary(ok, failed, 0, conflicts);
+  if (failed) process.stderr.write(`memory reembed: to bring back a failed row, restore it with: node "${__filename}" reembed --restore "${backup}" --db "${dbPath}" --root "${projectRoot}"\n`);
+  return failed ? 1 : 0;
+}
+
+// `reembed --restore <backup>`: every backed-up row that is missing is stored again, and every one whose
+// dates did not come back is given them - through the service, the same pass the run itself uses.
+async function cliRestore(opts, dbPath) {
+  const file = opts.restore;
+  let rows;
+  try {
+    rows = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim()).map((l, i) => {
+      let b = null;
+      try { b = JSON.parse(l); } catch {}
+      if (!b || typeof b.content !== 'string' || !b.content.trim()) throw new Error(`line ${i + 1} is not a re-embed backup row`);
+      return fromBackup(b);
+    });
+  } catch (err) { process.stderr.write(`memory reembed --restore: could not read ${file}: ${err.message} - nothing changed\n`); return 1; }
+  const before = verifyReembedded(dbPath, rows);
+  if (!before) { process.stderr.write(`memory reembed --restore: could not read ${dbPath}\n`); return 1; }
+  const todo = rows.filter((row) => before.get(row.id).status === 'missing' || before.get(row.id).status === 'date')
+    .map((row) => ({ row, mode: before.get(row.id).status === 'missing' ? 'store' : 'update' }));
+  let failures = new Map();
+  let after = before;
+  if (todo.length) {
+    const projectRoot = cliRoot(opts);
+    const entry = reembedEntry(projectRoot, dbPath);
+    if (!entry) { process.stderr.write(`memory reembed --restore: ${NO_SERVER}\n`); return 1; }
+    failures = await reembedPass({ entry, cwd: projectRoot, rows: todo });
+    after = verifyReembedded(dbPath, rows);
+    if (!after) { process.stderr.write(`memory reembed --restore: could not re-open ${dbPath} to confirm the result\n`); return 1; }
+  }
+  const touched = new Set(todo.map((t) => t.row.id));
+  let restored = 0;
+  let fine = 0;
+  for (const row of rows) {
+    const { status } = after.get(row.id);
+    if (status === 'ok' && touched.has(row.id)) { restored++; console.log(`#${row.id} restored`); }
+    else if (status === 'ok') fine++;
+    else if (status === 'untouched' && !touched.has(row.id)) { fine++; console.log(`#${row.id} still live with its old vector - nothing to restore`); }
+    else { const failure = failures.get(row.id); console.log(`#${row.id} FAILED - ${failure ? `${failure.stage}: ${failure.text}` : VERIFY_REASON[status] || status}`); }
+  }
+  const failed = rows.length - restored - fine;
+  console.log(`memory reembed --restore: ${restored} restored, ${fine} already fine, ${failed} failed, of ${rows.length} in ${file}`);
+  return failed ? 1 : 0;
+}
+
 module.exports = {
   pathForLevel, levelOfPath, registeredDbPath, projectName, relatedProjects, selectForSession, MEMORY_FRAME,
   contentHash, exportRows, serviceEntry, storeThroughService, parseJsonl, INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
@@ -673,6 +1048,11 @@ if (require.main === module) {
       process.exit(cliExport(args));
     } else if (cmd === 'import') {
       cliImport(args).then((code) => process.exit(code), (err) => { process.stderr.write(`memory import: ${err && err.message ? err.message : err}\n`); process.exit(1); });
+      return;
+    } else if (cmd === 'duplicates') {
+      process.exit(cliDuplicates(args));
+    } else if (cmd === 'reembed') {
+      cliReembed(args).then((code) => process.exit(code), (err) => { process.stderr.write(`memory reembed: ${err && err.message ? err.message : err}\n`); process.exit(1); });
       return;
     } else {
       console.log(`unknown command: ${cmd || '(none)'}`);

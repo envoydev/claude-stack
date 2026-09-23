@@ -392,8 +392,17 @@ mirrored there in the same sitting.
   too - and waits for that import to succeed first: a failed import leaves Claude's own memory ON
   and is reported as such, never retried into a false success, and the old `MEMORY.md` /
   `memory/*.md` files are never deleted either way. A note a PRE-fix registration imported was
-  hash-embedded rather than given a real 384-dim embedding, has no re-embed path in the service, and
-  so still loads by project tag but may miss a `memory_search` by meaning.
+  hash-embedded rather than given a real 384-dim embedding, so it loads by project tag but misses a
+  `memory_search` by meaning; the service has no re-embed tool, so `memory.js reembed` does it - the
+  marker is the stored vector's norm (about 11 for a hash embedding, 1 for the sentence model, read
+  from the vec0 shadow tables), and each row is deleted, stored and given back its dates through the
+  service (`memory_update` with `preserve_timestamps: false`), after an owner-only backup of the whole
+  rows under `~/.memory-mcp/backups/` (never beside a project db, inside a repo), which `reembed
+  --restore <backup>` replays. A row tied to another memory (superseded, a child, a `memory_graph`
+  edge) is left alone, since a delete drops its edges; the first row goes alone and stops the run when
+  its new vector is still not unit length; the `conflict:unresolved` tag the service adds on a store is
+  reported, never counted as a changed field. `memory.js duplicates` reports same-content pairs and
+  deletes nothing.
 - **serena self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
   enabled), so the installers SEED `.serena/project.yml` on install and update: project name, the
