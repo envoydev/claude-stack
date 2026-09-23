@@ -449,7 +449,9 @@ mirrored there in the same sitting.
     commit, version bump or `develop` -> `main` merge until the matrix is green and its commands plus
     results are in the report.
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
-  option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes.
+  option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes, and
+  those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
+  `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
   every agent and skill DESCRIPTION and fails over 160,000 chars (109,826 on 2026-09-19: pathless rules 35,452, agent descriptions 28,541, skill descriptions 45,833 - the shared-memory rule and its tool grants added ~2,900). A rule moved into the
   baseline set or a grown description is costed against it. `/claude-stack:status` reports an install's

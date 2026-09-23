@@ -391,7 +391,7 @@ function assertSeededTitle(sb, twin)
     const text = fs.readFileSync(seeded, 'utf8');
     assert.strictEqual(text.split(/\r?\n/)[0], '# repo', `${twin}: the H1 placeholder was not stamped with the repo folder name`);
     assert.ok(!text.includes('__PROJECT_NAME__'), `${twin}: a __PROJECT_NAME__ token survived the stamp`);
-    assert.ok(!text.startsWith('﻿'), `${twin}: the seed was written with a BOM`);
+    assert.ok(!text.startsWith('\uFEFF'), `${twin}: the seed was written with a BOM`);
 }
 
 test('sh: the CLAUDE.md seed stamps the H1 placeholder with the repo folder name', () => {

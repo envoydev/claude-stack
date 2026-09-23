@@ -151,7 +151,7 @@ test('verify-project: an absent file is written from scratch, BOM and all handle
     const out = mcp.verifyProject({ mcpFile: missing, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] });
     assert.deepStrictEqual(out.repaired, ['serena']);
     const bom = mcpFile();
-    fs.writeFileSync(bom, `﻿${JSON.stringify({ mcpServers: { serena: { type: 'stdio', command: 'uvx', args: ['serena'], env: {} } } })}`);
+    fs.writeFileSync(bom, `\uFEFF${JSON.stringify({ mcpServers: { serena: { type: 'stdio', command: 'uvx', args: ['serena'], env: {} } } })}`);
     assert.deepStrictEqual(mcp.verifyProject({ mcpFile: bom, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] }).repaired, []);
 });
 

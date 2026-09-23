@@ -638,6 +638,26 @@ function absentAgentsFor(closures, kind, name, agentNames)
 // actually uses comes from meta/evidence.json matched against ITS OWN manifests; what a stack
 // always needs is a meta/recommendations.json seed. What a seat loads at RUNTIME stays a body
 // matter, by description (checks 25 and 26), and reaches no install decision.
+// Characters a reader cannot see: zero-width and joiner marks, bidi overrides and isolates (the
+// Trojan Source class, CVE-2021-42574), word joiners, a byte-order mark past byte 0, and the Unicode
+// tag block (U+E0000-E007F), which carries invisible text a model reads and a reviewer does not.
+// Written as escapes here so this file passes its own sweep. A BOM at byte 0 of a .ps1 is kept:
+// Windows PowerShell 5.1 reads a BOM-less script as the ANSI code page.
+const HIDDEN_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]/g;
+function hiddenChars(text, file)
+{
+    const out = [];
+    String(text).split('\n').forEach((l, i) =>
+    {
+        for (const m of l.matchAll(HIDDEN_CHAR_RE))
+        {
+            if (i === 0 && m.index === 0 && m[0] === '\uFEFF' && /\.ps1$/i.test(file)) continue;
+            out.push({ line: i + 1, hex: m[0].codePointAt(0).toString(16).toUpperCase() });
+        }
+    });
+    return out;
+}
+
 function lintSuggestionEdges(label, text)
 {
     const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || '');
@@ -1997,6 +2017,8 @@ function main()
         try
         {
             const dashed = [];
+            // ... and the same walk flags characters nobody can see (hiddenChars above), over scripts/ too.
+            const hidden = [];
             // A RUN's own output is not shipped text: `setup-plugin/evals/results/` holds the eval
             // report and its aggregate JSON, written by Claude Code with its own punctuation and
             // re-dated on every run (gitignored for the same reason). Sweeping it made the house
@@ -2011,16 +2033,22 @@ function main()
                     const full = path.join(dir, e.name);
                     const r = `${rel}/${e.name}`;
                     if (e.isDirectory()) sweep(full, r);
-                    else if (/\.(md|js|sh|ps1|json)$/.test(e.name))
+                    else if (/\.(md|js|sh|ps1|json|ya?ml)$/.test(e.name))
                     {
                         const text = fs.readFileSync(full, 'utf8');
-                        const hit = text.split('\n').findIndex(l => /[\u2014\u2015]/.test(l));
-                        if (hit !== -1) dashed.push(`${r}:${hit + 1}`);
+                        // the em-dash is house voice for what SHIPS; scripts/ is swept for hidden characters only
+                        if (rel.split('/')[0] !== 'scripts')
+                        {
+                            const hit = text.split('\n').findIndex(l => /[\u2014\u2015]/.test(l));
+                            if (hit !== -1) dashed.push(`${r}:${hit + 1}`);
+                        }
+                        for (const h of hiddenChars(text, e.name)) hidden.push(`hidden character U+${h.hex} at ${r}:${h.line} - write it as an escape`);
                     }
                 }
             };
-            for (const d of ['stack', 'setup-plugin', 'meta']) sweep(path.join(ROOT, d), d);
+            for (const d of ['stack', 'setup-plugin', 'meta', 'scripts']) sweep(path.join(ROOT, d), d);
             for (const site of dashed) flag(`house voice: an em-dash in shipped text at ${site} - single dashes only`);
+            for (const line of hidden) flag(line);
         }
         catch (err)
         {
@@ -2884,6 +2912,7 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 }
 
 module.exports = {
+    hiddenChars,
     lintPluginPlacement,
     lintHooksEntry,
     lintMcpEntries,

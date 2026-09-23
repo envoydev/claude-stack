@@ -149,7 +149,7 @@ function verifyProject({ mcpFile, expects = [], log = () => {} })
         else { log(`  !! .mcp.json unreadable (${err.message}) - MCP registrations were not verified`); return { repaired: [], read: false }; }
     }
     let data;
-    try { data = raw.replace(/^﻿/, '').trim() ? JSON.parse(raw.replace(/^﻿/, '')) : {}; }
+    try { data = raw.replace(/^\uFEFF/, '').trim() ? JSON.parse(raw.replace(/^\uFEFF/, '')) : {}; }
     catch { log('  !! .mcp.json is not valid JSON - MCP registrations were not verified; fix it and re-run'); return { repaired: [], read: false }; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
     const servers = (data.mcpServers && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers))

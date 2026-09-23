@@ -404,7 +404,7 @@ if (process.argv[2] === '--redacted') {
   let out = '';
   try {
     if (fs.statSync(file).size > MAX_BYTES) out = `# ${fileArg}: larger than ${MAX_BYTES} bytes - not a credential file this guard judges; read it in ranges\n`;
-    else text = fs.readFileSync(file, 'utf8').replace(/^﻿/, '');
+    else text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
   } catch { out = `# ${fileArg}: not found\n`; }
   if (text != null) {
     let masked = 0;

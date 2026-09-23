@@ -711,3 +711,15 @@ test('check 52: the repo ships no plugin bin/, and one would be a finding wherev
     assert.match(lintNoPluginBin(tmp)[0], /lists .*bin.*under commands/, 'an entry reaching a bin/ path is a finding');
     fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('hiddenChars flags zero-width, bidi, mid-file BOM and tag characters with their line, and keeps a .ps1 BOM', () => {
+    const { hiddenChars } = require('./lint-skills.js');
+    const at = (text, file = 'x.md') => hiddenChars(text, file).map((h) => `${h.line}:${h.hex}`);
+    assert.deepStrictEqual(at('one\ntwo\u200Bthree\n'), ['2:200B'], 'zero-width space');
+    assert.deepStrictEqual(at('a\u202Eb\n'), ['1:202E'], 'right-to-left override');
+    assert.deepStrictEqual(at('a\nb\nmid\uFEFFfile\n'), ['3:FEFF'], 'a BOM mid-file');
+    assert.deepStrictEqual(at('tag \u{E0041} here\n'), ['1:E0041'], 'a tag-block character');
+    assert.deepStrictEqual(at('\uFEFFfirst line\n', 'script.ps1'), [], 'a BOM at byte 0 of a .ps1 is PowerShell encoding, kept');
+    assert.deepStrictEqual(at('\uFEFFfirst line\n', 'script.js'), ['1:FEFF'], 'a BOM at byte 0 anywhere else is flagged');
+    assert.deepStrictEqual(at('plain text with an escape \\u200B written out\n'), [], 'an escape spelled out is not the character');
+});
