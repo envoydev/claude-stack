@@ -1355,3 +1355,121 @@ test('a token past the label cut is still masked - the mask runs before the slic
   assert.ok(label.length <= 70);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------- navigation: located reads, symbol tools against grep-then-read, whole-file denials ----------
+// Three synthetic transcripts, each counted by hand below. A read counts when it names a SOURCE file
+// (a code extension, outside a build dir) on either route; it is LOCATED when a symbol tool (serena's
+// three symbol tools, the LSP tool) or a grep (the Grep tool, serena's pattern search, a shell grep/rg
+// opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
+// in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
+// else from the transcript's own hook bracket.
+const SERENA = (tool) => `mcp__plugin_serena_serena__${tool}`;
+const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
+function navTranscript(file, calls, results = {}) {
+  let body = '';
+  calls.forEach((c, n) => {
+    body += scAsst(`m-${c.id}`, scT(2 * n), usage(1, 0, 100, 5), [c]);
+    const r = results[c.id];
+    body += toolRes(scT(2 * n + 1), c.id, r ? r.text : 'ok', r && r.error);
+  });
+  fs.writeFileSync(file, body);
+}
+
+test('navigation A: serena-first reads are located, a read after an edit is not', () => {
+  // a1 find_symbol (symbol) | a2 Read Orders.cs: window [symbol] -> LOCATED by symbol
+  // a3 get_symbols_overview, a4 find_referencing_symbols (symbol x2)
+  // a5 Read Billing.cs: window [read, symbol, symbol] -> LOCATED by symbol
+  // a6 Read README.md: not a source file | a7 Edit (nothing)
+  // a8 Read Orders.cs: window [read, read, edit] -> NOT located
+  // hand count: 3 source reads, 2 located (2 symbol, 0 grep), 3 symbol calls, 0 grep calls, 0 denials
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('a1', SERENA('find_symbol'), { name_path: 'Orders' }),
+    navCall('a2', 'Read', { file_path: 'src/Orders.cs', offset: 10, limit: 30 }),
+    navCall('a3', SERENA('get_symbols_overview'), { relative_path: 'src/Billing.cs' }),
+    navCall('a4', SERENA('find_referencing_symbols'), { name_path: 'Bill' }),
+    navCall('a5', 'Read', { file_path: 'src/Billing.cs', offset: 1, limit: 20 }),
+    navCall('a6', 'Read', { file_path: 'README.md' }),
+    navCall('a7', 'Edit', { file_path: 'src/Orders.cs', old_string: 'a', new_string: 'b' }),
+    navCall('a8', 'Read', { file_path: 'src/Orders.cs' }),
+  ]);
+  const { main } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 3, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 3, grepCalls: 0 });
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /navigation\s+2 of 3 source-file read\(s\) had a locate step in the 3 calls before \(67%\); symbol tools 3 call\(s\) against 0 grep-then-read sequence\(s\); 0 whole-file denial\(s\) \(transcript bracket - pass --hook-blocks for the ledger\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('navigation B: grep-then-read on both routes, a pipe filter is no locate step, denials come from the ledger', () => {
+  // b1 Grep (grep) | b2 Read Foo.ts: window [grep] -> LOCATED by grep
+  // b3 shell grep (grep) | b4 sed -n of bar.ts: window [grep, read, grep] -> LOCATED by grep
+  // b5 `rg ... && cat baz.py`: a grep AND a read in one call -> LOCATED by grep
+  // b6 npm test, b7 Glob (a file locate, not a place in it), b8 `git log | grep` (a filter, not a locate)
+  // b9 Read Big.cs: window [b6, b7, b8] -> NOT located, and the guard denies it
+  // b10 ranged Read Big.cs: window [b7, b8, b9] -> NOT located
+  // hand count: 5 source reads, 3 located (0 symbol, 3 grep), 0 symbol calls, 3 grep calls;
+  // the ledger holds 1 whole-file row and 1 row of another guard -> 1 whole-file denial
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('b1', 'Grep', { pattern: 'class Foo' }),
+    navCall('b2', 'Read', { file_path: 'src/Foo.ts', offset: 5, limit: 20 }),
+    navCall('b3', 'Bash', { command: 'grep -rn "bar(" src' }),
+    navCall('b4', 'Bash', { command: "sed -n '10,40p' src/bar.ts" }),
+    navCall('b5', 'Bash', { command: 'rg -n baz src && cat src/baz.py' }),
+    navCall('b6', 'Bash', { command: 'npm test' }),
+    navCall('b7', 'Glob', { pattern: '**/*.cs' }),
+    navCall('b8', 'Bash', { command: 'git log --oneline | grep fix' }),
+    navCall('b9', 'Read', { file_path: 'src/Big.cs' }),
+    navCall('b10', 'Read', { file_path: 'src/Big.cs', offset: 1, limit: 40 }),
+  ], { b9: { text: 'Blocked: whole-file Read of src/Big.cs (900 lines) - locate the symbol first.', error: true } });
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'),
+    line({ ts: scT(16), hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'whole-file Read of src/Big.cs' }) +
+    line({ ts: scT(10), hook: 'guard-secret-value.js', event: 'PreToolUse', tool: 'Bash', reason: 'credential read' }));
+  const { main } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 5, located: 3, symbolLocated: 0, grepLocated: 3, symbolCalls: 0, grepCalls: 3 });
+  const txt = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(txt, /navigation\s+3 of 5 source-file read\(s\) had a locate step in the 3 calls before \(60%\); symbol tools 0 call\(s\) against 3 grep-then-read sequence\(s\); 1 whole-file denial\(s\) \(hook-block ledger\)/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| navigation \| 3 of 5 source-file read\(s\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('navigation C: main and seat windows are counted apart and summed, a symbol step beats a grep in one window', () => {
+  // main: c1 LSP (symbol) | c2 Read app.component.ts: window [symbol] -> LOCATED by symbol
+  //       c3 Read huge.ts: window [symbol, read] -> LOCATED by symbol; the guard denies it (bracket only)
+  // seat: s1 search_for_pattern (grep) | s2 find_symbol (symbol)
+  //       s3 Read Svc.cs: window [grep, symbol] -> LOCATED by symbol (the symbol wins)
+  //       s4 Read package.json: not a source file
+  //       s5 Read Other.cs: window [symbol, read, read] -> LOCATED by symbol
+  //       s6 `cat src/x.go`: window [read, read, read] -> NOT located
+  // hand count: main 2/2 located, seat 2/3 located; the sum is 5 reads, 4 located (4 symbol, 0 grep),
+  // 2 symbol calls, 1 grep call, and 1 whole-file denial from the transcript bracket (no ledger passed)
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('c1', 'LSP', { operation: 'goToDefinition', filePath: 'src/app.component.ts', line: 3, character: 5 }),
+    navCall('c2', 'Read', { file_path: 'src/app.component.ts', offset: 1, limit: 30 }),
+    navCall('c3', 'Read', { file_path: 'src/huge.ts' }),
+  ], { c3: { text: 'Blocked: whole-file Read of src/huge.ts [node "/x/hooks/guard-read-whole-file.js"]', error: true } });
+  const sub = path.join(dir, 'subagents');
+  fs.mkdirSync(sub);
+  navTranscript(path.join(sub, 'agent-s1.jsonl'), [
+    navCall('s1', SERENA('search_for_pattern'), { substring_pattern: 'Svc' }),
+    navCall('s2', SERENA('find_symbol'), { name_path: 'Svc' }),
+    navCall('s3', 'Read', { file_path: 'src/Svc.cs', offset: 1, limit: 30 }),
+    navCall('s4', 'Read', { file_path: 'package.json' }),
+    navCall('s5', 'Read', { file_path: 'src/Other.cs', offset: 1, limit: 30 }),
+    navCall('s6', 'Bash', { command: 'cat src/x.go' }),
+  ]);
+  fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'aspnet-implementer' }));
+  const { main, agents } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 2, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 1, grepCalls: 0 });
+  assert.deepStrictEqual(agents[0].stats.efficiency.navigation, { reads: 3, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 1, grepCalls: 1 });
+  const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
+  assert.match(txt, /navigation\s+4 of 5 source-file read\(s\) had a locate step in the 3 calls before \(80%\); symbol tools 2 call\(s\) against 0 grep-then-read sequence\(s\); 1 whole-file denial\(s\) \(transcript bracket - pass --hook-blocks for the ledger\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

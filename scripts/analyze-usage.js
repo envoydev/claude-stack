@@ -159,6 +159,33 @@ function rmVerifyTail(cmd) {
   return targets.some((t) => tail.includes(t));
 }
 
+// NAVIGATION, as baseline-navigation words it: locate with serena or the LSP, then read the range. A
+// read of a SOURCE file is LOCATED when a locate step sits in the NAV_WINDOW tool calls before it, or
+// in the same call (`rg -n x src && sed -n '10,40p' src/a.ts`). A symbol step in the window wins
+// over a grep, so 'grep-then-read' is a read that only a name-match located. Glob and find locate a
+// FILE, not a place in it, and a grep that FILTERS a pipe (`git log | grep x`) locates nothing - so
+// a shell grep counts only when it opens a command segment. Doc and config reads carry no symbol to
+// locate and stay out of the denominator; build-dir reads have their own row.
+const NAV_WINDOW = 3;
+const WHOLE_FILE_HOOK = 'guard-read-whole-file.js';
+const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$/i;
+const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview']);
+const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
+function locateClass(name, input) {
+  if (name === 'LSP') return 'symbol';
+  if (name === 'Grep') return 'grep';
+  if (String(name).startsWith('mcp__') && mcpServerOf(name) === 'serena') {
+    const tool = String(name).split('__').slice(2).join('__');
+    if (SERENA_SYMBOL_TOOLS.has(tool)) return 'symbol';
+    return tool === 'search_for_pattern' ? 'grep' : null;
+  }
+  if (isShellTool(name) && input && typeof input.command === 'string') {
+    const code = maskQuoted(maskHeredocs(input.command));
+    if (code.split(/&&|\|\||;|\n/).some((seg) => SHELL_GREP_RE.test(seg))) return 'grep';
+  }
+  return null;
+}
+
 function classifyCheck(cmdCode, cmdShell) {
   for (const kind of ['test', 'build', 'lint', 'ci']) {
     if (CHECK_RES[kind].test(cmdCode)) return { kind, scoped: kind === 'test' ? SCOPED_RE.test(cmdShell) : undefined };
@@ -1040,6 +1067,7 @@ async function analyzeTranscript(file, window) {
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
       longAnswered: 0,           // 1,500+ char answers a user turn followed
       finalAnswers: 0, longAnswers: 0,
+      navigation: { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 },
     },
   };
   const msgReg = new Map();       // message.id -> {model, skill, carried, u:{in,cc,cr,out}} folded max per field
@@ -1093,6 +1121,7 @@ async function analyzeTranscript(file, window) {
   let afterCompaction = false;     // the next API message is an EXPECTED rebuild, not a miss
   const readPaths = new Set();     // every file read so far, by the path the call named
   let toolSeq = 0;                 // tool_use ordinal in this transcript
+  const navRecent = [];            // locate class of the last NAV_WINDOW own tool calls
   let lastCheckSeq = -1;           // ordinal of the last test / build / lint / ci-status call
   let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
   const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
@@ -1427,6 +1456,21 @@ async function analyzeTranscript(file, window) {
             const cur = s.efficiency.compactionRereads[s.efficiency.compactionRereads.length - 1];
             if (cur && cur.before.has(readTarget) && !cur.seen.has(readTarget)) { cur.seen.add(readTarget); info.reread = true; }
             readPaths.add(readTarget);
+          }
+          // A copied fork prefix is the parent's navigation, counted in the parent's transcript.
+          if (!foreign) {
+            const nav = s.efficiency.navigation;
+            const cls = locateClass(c.name, i);
+            if (cls === 'symbol') nav.symbolCalls += 1;
+            else if (cls === 'grep') nav.grepCalls += 1;
+            if (readTarget && !info.buildDir && SOURCE_EXT_RE.test(readTarget)) {
+              nav.reads += 1;
+              const win = cls ? navRecent.concat(cls) : navRecent;
+              if (win.includes('symbol')) { nav.located += 1; nav.symbolLocated += 1; }
+              else if (win.includes('grep')) { nav.located += 1; nav.grepLocated += 1; }
+            }
+            navRecent.push(cls);
+            if (navRecent.length > NAV_WINDOW) navRecent.shift();
           }
           // a dispatched seat may have run the check in its own transcript - the turn is covered
           if (c.name === 'Agent' || c.name === 'Task') turnHadCheck = true;
@@ -2014,7 +2058,16 @@ function computeAggregates(main, agents) {
       if (dispatchOverhead.heavySeats.length < 8) dispatchOverhead.heavySeats.push({ type: a.meta.agentType || '(unknown)', msgs: st.total.msgs, floor: st.floorCtx, share: Math.round((100 * preload) / inTok) });
     }
   }
-  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead };
+  // Navigation is counted per transcript - a seat's locate window never reaches into the main
+  // session's calls - and summed here, because the seats do most of the code reading.
+  const navigation = { reads: 0, located: 0, symbolLocated: 0, grepLocated: 0, symbolCalls: 0, grepCalls: 0 };
+  let wholeFileBracket = 0;
+  for (const src of [main, ...agents.map((a) => a.stats)]) {
+    const n = (src.efficiency && src.efficiency.navigation) || {};
+    for (const k of Object.keys(navigation)) navigation[k] += n[k] || 0;
+    wholeFileBracket += (src.denialsByHook && src.denialsByHook[WHOLE_FILE_HOOK]) || 0;
+  }
+  return { agentTotal, grand, byType, skillRows, unattributed, docRows, inject, attach, mcpServers, tools, dispatchOverhead, navigation, wholeFileBracket };
 }
 
 // ---------- hook-block ledger (which GUARD fired, not just which tool was denied) ----------
@@ -2028,7 +2081,9 @@ function computeAggregates(main, agents) {
 // directory is narrowed to `<session-id>.jsonl` and, when that is absent, to nothing at all: an
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
 function readBlockLedger(target, sessionId) {
-  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [] };
+  // `given` separates 'no ledger passed' from 'a ledger with no row for this session' - the second
+  // is a measured zero, the first is no measurement at all.
+  const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [], given: !!target };
   if (!target) return out;
   let files = [];
   try {
@@ -2218,7 +2273,7 @@ function interruptLine(main) {
 // One row per practice, each a measured number with its denominator and what the number tests.
 // The report JUDGES the rows; the analyzer never scores a session - a rate is read against the
 // practice, the turn is opened before a row becomes a finding.
-function efficiencyRows(main, agg) {
+function efficiencyRows(main, agg, blockLedger) {
   const e = main.efficiency || {};
   const rows = [];
   const tsList = (arr, n = 6) => arr.slice(0, n).map((t) => (t ? String(t).slice(11, 19) : '?')).join(', ') + (arr.length > n ? ` … +${arr.length - n}` : '');
@@ -2256,6 +2311,15 @@ function efficiencyRows(main, agg) {
   rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
   rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
+  {
+    const n = agg.navigation || { reads: 0, located: 0, grepLocated: 0, symbolCalls: 0 };
+    // The ledger names the guard for every denial; the transcript's bracket misses the JSON
+    // permission route, so it is the fallback and says so.
+    const denials = blockLedger && blockLedger.given
+      ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
+      : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
+    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'baseline-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
+  }
   {
     const d = agg.dispatchOverhead || { seats: 0 };
     rows.push({ practice: 'dispatch overhead', measured: d.seats ? `${d.heavy} of ${d.seats} seat(s) spent over 60% of their input re-sending their own first-message context; ~${fmt(d.preloadTokens)} of ~${fmt(d.seatInputTokens)} seat input tok is that context${d.heavySeats.length ? ` - ${d.heavySeats.slice(0, 4).map((h) => `${h.type} (${h.msgs} msg, ${h.share}%)`).join(', ')}` : ''}` : 'no dispatch', tests: 'a dispatch pays its preload before any work - a brief that returns less than that preload is a trade lost; a one-message seat is 100% by construction' });
@@ -2435,7 +2499,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   }
 
   console.log('\nEFFICIENCY (the practice scorecard - measured numbers with their denominators; the rate is judged, never the presence)');
-  for (const r of efficiencyRows(main, agg)) {
+  for (const r of efficiencyRows(main, agg, blockLedger)) {
     console.log(`  ${pad(r.practice, 22)} ${r.measured}`);
     console.log(`  ${pad('', 22)} tests: ${r.tests}`);
   }
@@ -2718,7 +2782,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   out.push('## Efficiency scorecard (machine-written; judge the rate, never the presence)', '');
   out.push('Each row measures the session against one practice - the official Claude Code guidance and the stack\'s own audits agree on all of them. A number here is not yet a finding: the row says what to open before it becomes one.', '');
   out.push('| practice | measured | what it tests |', '|---|---|---|');
-  for (const r of efficiencyRows(main, agg)) out.push(`| ${r.practice} | ${r.measured.replace(/\|/g, '\\|')} | ${r.tests.replace(/\|/g, '\\|')} |`);
+  for (const r of efficiencyRows(main, agg, blockLedger)) out.push(`| ${r.practice} | ${r.measured.replace(/\|/g, '\\|')} | ${r.tests.replace(/\|/g, '\\|')} |`);
   out.push('');
 
   if (main.spikes.length) {
