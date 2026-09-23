@@ -2376,6 +2376,27 @@
         }
       ]
     },
+    "memories-purge-count": {
+      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of .serena/memories/<feature>__* with one shell line, and above zero the close is not done. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/references/domain-trio-protocol.md",
+        "marker": "The purge is counted, not claimed"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-architecture-quality-loop/references/domain-trio-protocol.md",
+          "marker": "The purge is counted, not claimed"
+        },
+        {
+          "file": "stack/skills/project-test-coverage-loop/references/domain-trio-protocol.md",
+          "marker": "The purge is counted, not claimed"
+        },
+        {
+          "file": "stack/skills/project-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "The purge is counted, not claimed"
+        }
+      ]
+    },
     "loop-stage-findings-gate-line": {
       "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the five audit stage prompts.",
       "owner": {
