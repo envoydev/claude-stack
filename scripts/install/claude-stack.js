@@ -22,6 +22,8 @@ const { createSource } = require('./source.js');
 const { loadManifest } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
+const { pythonRequest } = require('../../stack/mcp/uv-python.js');
+const { serenaHomeFor } = require('../../stack/mcp/serena-launch.js');
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
 const settings = require('./settings.js');
@@ -50,7 +52,7 @@ redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.
 
 const HOOKS_PLUGIN = 'claude-stack-hooks@claude-stack';
 const STACK_MARKET_NAME = HOOKS_PLUGIN.split('@')[1];
-const STACK_MARKETPLACE = 'envoydev/claude-stack';
+const { STACK_MARKETPLACE } = plugins;
 const { CORE_DEP_PLUGINS } = plugins;
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
 const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
@@ -110,16 +112,30 @@ function main(argv, env, io)
         clone: () => rt.cloneMain({ repoUrl }),
     });
 
+    const cli = hasClaude
+        ? rt.cliRunner('claude', { cwd: projectRoot, env, out: plain })
+        : () => false;
+    // The marketplaces this run already refreshed, so no later pass pays the round trip twice.
+    const refreshed = new Set();
+
     try
     {
+        // With no --source the snapshot is the newest core entry in the plugin cache - so the core is
+        // updated FIRST, or the run installs the release it is replacing. A handed --source was
+        // resolved by a command that already did this (setup-plugin/references/source-protocol.md).
+        // A plan is read-only: it changes no plugin, so it reads the cache as it stands.
+        if (!args.source && !args.printPlan && hasClaude && plugins.corePluginOn(plugins.pluginRoutes(env)))
+        {
+            plugins.refreshStackSource({
+                listing: plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot, { marketplace: STACK_MARKET_NAME }),
+                cli, refreshed, log,
+            });
+        }
         const resolved = source.resolve();
         if (!resolved) return 1;
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
 
         const manifest = loadManifest(resolved.dir);
-        const cli = hasClaude
-            ? rt.cliRunner('claude', { cwd: projectRoot, env, out: plain })
-            : () => false;
 
         // --- the six lists, narrowed to this project -------------------------------
         let lists = {
@@ -258,6 +274,12 @@ function main(argv, env, io)
         // --- the run ---------------------------------------------------------------
         const tokens = {
             SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: level.dbPath,
+            // The copy route's `uvx --python`: the same machine-level answer the plugin launchers use.
+            // Read from the SEED's own tree, never the snapshot's: a snapshot older than the seed has no
+            // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
+            UV_PYTHON: pythonRequest({ env, projectDir: projectRoot }),
+            // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows.
+            SERENA_HOME: serenaHomeFor(),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, CTX7_PIN: pins.CTX7_PIN,
             MEMORY_PIN: pins.MEMORY_PIN, CD_PIN: pins.CD_PIN, AP_PIN: pins.AP_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
         };
@@ -268,7 +290,7 @@ function main(argv, env, io)
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home,
-            pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope,
+            pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope, refreshed,
         };
 
         const pinSnapshot = args.keepPins
@@ -339,7 +361,7 @@ function bootstrapSource(ctx)
 {
     if (!ctx.hasClaude || !plugins.corePluginOn(ctx.routes)) return;
     ctx.cli(['plugin', 'marketplace', 'add', STACK_MARKETPLACE], { quiet: true });
-    ctx.cli(['plugin', 'marketplace', 'update', 'claude-stack'], { quiet: true });
+    plugins.refreshMarketplaces({ plugins: [plugins.CORE_SPEC], cli: ctx.cli, refreshed: ctx.refreshed });
 }
 
 // Remove each named copy the stack itself shipped. A file no list names is the project's own and is
@@ -400,7 +422,10 @@ function installSkillsAndAgents(ctx)
 function installPlugins(ctx)
 {
     if (!ctx.hasClaude) { ctx.note('the claude CLI is not on PATH - the plugin and MCP layers were skipped'); return; }
-    const listing = plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot);
+    // One row per name@marketplace: the set mixes official picks with stack entries, and the official
+    // catalog ships names the stack uses too.
+    const readListing = () => plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot, { byMarketplace: true });
+    const listing = readListing();
     const set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: HOOKS_PLUGIN,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED,
@@ -410,8 +435,8 @@ function installPlugins(ctx)
     {
         plugins.prunedRetired({ listing, retired: ctx.manifest.retired.plugins, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, cli: ctx.cli, log: ctx.log,
-            after: () => plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot),
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log,
+            after: readListing,
         });
         for (const row of ctx.dropEntries || [])
         {
@@ -425,7 +450,7 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
 

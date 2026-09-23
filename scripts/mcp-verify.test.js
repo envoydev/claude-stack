@@ -14,6 +14,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { pythonRequest } = require('../stack/mcp/uv-python.js');
 
 const ROOT = path.join(__dirname, '..');
 const SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
@@ -149,7 +150,10 @@ function assertSerenaShape(sb, twin)
     const s = servers(sb);
     assert.strictEqual(s.serena.type, 'stdio', `${twin}: serena type`);
     assert.strictEqual(s.serena.command, 'uvx', `${twin}: serena command`);
-    assert.deepStrictEqual(s.serena.env, { SERENA_HOME: '.serena/home' }, `${twin}: serena env`);
+    // Native separators on Windows: serena execs the TypeScript server through npm's .bin shim, and
+    // cmd.exe reads an unquoted relative '.serena/home\\...' only as far as its first '/'.
+    assert.deepStrictEqual(s.serena.env, { SERENA_HOME: process.platform === 'win32' ? '.serena\\home' : '.serena/home' }, `${twin}: serena env`);
+    assert.deepStrictEqual(s.serena.args.slice(0, 2), ['--python', pythonRequest()], `${twin}: serena is not on the pinned Python`);
     // The version pin is resolved from the network and is empty offline - assert the shape, not the pin.
     assert.ok(s.serena.args.includes('--project-from-cwd'), `${twin}: serena args lost --project-from-cwd`);
     assert.ok(s.serena.args.includes('--context') && s.serena.args.includes('claude-code'), `${twin}: serena args lost the context`);

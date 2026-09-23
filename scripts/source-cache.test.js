@@ -263,6 +263,84 @@ function plantThree(home) {
 const nativePath = (p) => process.platform === 'win32'
     ? execFileSync('bash', ['-c', 'cygpath -w "$1"', 'cygpath', p], { encoding: 'utf8' }).trim() : p;
 
+// A recording `claude` on PATH, so no snippet test reaches the real CLI or the real account. With
+// `lands`, its `plugin update claude-stack@claude-stack` writes that newer valid entry into the cache -
+// what the real CLI does - so a snippet that picks BEFORE it updates is caught taking the stale one.
+const POSIX_STUB = { skip: process.platform === 'win32' && 'the recording claude stub is a shell script' };
+function stubClaude(home, listing, lands) {
+    const bin = path.join(home, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    const cache = path.join(home, '.claude', 'plugins', 'cache', 'claude-stack', 'claude-stack');
+    fs.writeFileSync(path.join(home, 'listing.json'), listing);
+    fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh',
+        `printf '%s\\n' "$*" >> ${JSON.stringify(path.join(home, 'claude-calls.log'))}`,
+        `if [ "$1 $2" = "plugin list" ]; then cat ${JSON.stringify(path.join(home, 'listing.json'))}; fi`,
+        lands ? `if [ "$1 $2 $3" = "plugin update claude-stack@claude-stack" ]; then cp -R ${JSON.stringify(path.join(cache, '0.10.0'))} ${JSON.stringify(path.join(cache, lands))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(cache, lands, 'RELEASE-SOURCE'))}; fi` : '',
+        'exit 0', ''].join('\n'), { mode: 0o755 });
+    return bin + path.delimiter + process.env.PATH;
+}
+const claudeCalls = (home) => { try { return fs.readFileSync(path.join(home, 'claude-calls.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
+const CORE_ROW = (scope, version) => JSON.stringify([{ id: 'claude-stack@claude-stack', version, scope, enabled: true }]);
+// Every installed stack entry is updated, each at its own scope - the refreshed catalog is what Claude
+// Code launches, so an entry left on its old version can name a file that version lacks. Not another
+// project's row, and not the official marketplace's plugin of the same name.
+const STACK_ROWS = (home) => JSON.stringify([
+    { id: 'claude-stack@claude-stack', version: '0.10.0', scope: 'user', enabled: true },
+    { id: 'serena@claude-stack', version: '0.10.0', scope: 'project', enabled: true, projectPath: fs.realpathSync(home) },
+    { id: 'serena@claude-stack', version: '0.9.0', scope: 'project', enabled: true, projectPath: '/elsewhere/another-project' },
+    { id: 'serena@claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
+]);
+const WANT_UPDATES = ['plugin update claude-stack@claude-stack --scope user -y', 'plugin update serena@claude-stack --scope project -y'];
+const updatesIn = (home) => claudeCalls(home).filter((c) => /^plugin update /.test(c)).sort();
+
+test("the protocol's bash snippet updates the core FIRST, takes the entry that lands, and says what was running", POSIX_STUB, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    let tmp = '';
+    try
+    {
+        plantThree(home);
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const out = execFileSync('bash', [script], {
+            cwd: home, encoding: 'utf8',
+            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, STACK_ROWS(home), '0.12.0') },
+        });
+        const m = out.match(/RESOLVED TMP=(\S+) (\S+) .*running=(\S+)/);
+        assert.ok(m, `the snippet printed no RESOLVED line with running=:\n${out}`);
+        tmp = m[1];
+        assert.strictEqual(m[2], '0.12.0', 'it read the cache before the update landed the newer entry');
+        assert.strictEqual(m[3], '0.10.0', 'running= must name the version this session loaded, from BEFORE the update');
+        const calls = claudeCalls(home);
+        assert.ok(calls.includes('plugin marketplace update claude-stack'), calls.join(' | '));
+        assert.deepStrictEqual(updatesIn(home), WANT_UPDATES, calls.join(' | '));
+    }
+    finally
+    {
+        const mark = `/tmp/claude-stack-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
+        for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test("the protocol's PowerShell snippet updates the core FIRST and takes the entry that lands", { skip: skipNoPwsh || POSIX_STUB.skip }, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.ps1');
+    try
+    {
+        plantThree(home);
+        fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-WAS=$Was"\nWrite-Output "PS-TMP=$TMP"\n`);
+        const out = execFileSync('pwsh', ['-NoProfile', '-File', script], {
+            cwd: home, encoding: 'utf8',
+            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, STACK_ROWS(home), '0.12.0') },
+        });
+        assert.match(out, /PS-VER=0\.12\.0/, `it read the cache before the update landed:\n${out}`);
+        assert.match(out, /PS-WAS=0\.10\.0/, `$Was must name the version from BEFORE the update:\n${out}`);
+        assert.deepStrictEqual(updatesIn(home), WANT_UPDATES, claudeCalls(home).join(' | '));
+        fs.rmSync(out.match(/PS-TMP=(.+)/)[1].trim(), { recursive: true, force: true });
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
 test("the protocol's bash snippet resolves the same entry as the sh twin", () => {
     const home = work();
     const script = path.join(home, 'resolve.sh');
@@ -273,7 +351,7 @@ test("the protocol's bash snippet resolves the same entry as the sh twin", () =>
         fs.writeFileSync(script, protocolSnippet('bash', 0));
         const out = execFileSync('bash', [script], {
             cwd: home, encoding: 'utf8',
-            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
+            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]') },
         });
         const m = out.match(/RESOLVED TMP=(\S+) (\S+)/);
         assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
@@ -304,7 +382,7 @@ test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNo
         fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-SRC=$Src"\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-TMP=$TMP"\n`);
         const out = execFileSync('pwsh', ['-NoProfile', '-File', script], {
             cwd: home, encoding: 'utf8',
-            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
+            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]') },
         });
         assert.match(out, /PS-VER=0\.10\.0/, `the ps twin read a different version:\n${out}`);
         // compared as real paths: on Windows os.tmpdir() may be the 8.3 short name of the folder the snippet spells long

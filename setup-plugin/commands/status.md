@@ -121,8 +121,8 @@ plugin route the `target` column is the plugin, not a registration:
 
 | server | transport | target |
 |---|---|---|
-| serena | stdio | uvx ... --project-from-cwd |
-| memory | stdio | uvx --with numpy --from mcp-memory-service[sqlite]==<ver> memory server |
+| serena | stdio | uvx --python <pin> ... --project-from-cwd |
+| memory | stdio | uvx --python <pin> --with numpy --from mcp-memory-service[sqlite]==<ver> memory server |
 | sentry | http | https://mcp.sentry.dev/mcp/${SENTRY_SLUG} |
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 

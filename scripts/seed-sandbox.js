@@ -17,11 +17,12 @@ const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub i
 
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
 // sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment.
-// `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), replacing the default 'no', for a case
+// `source: null` runs with no --source, so the seed resolves its own snapshot (the plugin cache under the
+// sandbox account, which `prepare(repo, work)` can lay out). `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), replacing the default 'no', for a case
 // that needs a registry lookup to answer one fixed way. `action` may be a list - the runs share one sandbox, in order, and
 // `each(repo, i)` reads the tree after run `i` (its answers come back as `steps`); `out` is the last
-// run's output, `outs` every run's.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, prepare = () => {}, inspect = () => null, each = () => null } = {})
+// run's output, `outs` every run's. `args` are appended to every run's command line.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -45,12 +46,12 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     for (const [k, v] of Object.entries(extra)) { if (v === undefined) delete env[k]; else env[k] = v; }
     try
     {
-        prepare(repo);
+        prepare(repo, work);
         const outs = [];
         const steps = [];
         for (const act of [].concat(action))
         {
-            outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), '--source', ROOT],
+            outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(source ? ['--source', source] : []), ...args],
                 { cwd: repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
             steps.push(each(repo, steps.length));
         }

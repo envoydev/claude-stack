@@ -814,7 +814,7 @@ if ($MemoryLevel) {
 $MemoryEntry = 'memory|-e MCP_MEMORY_STORAGE_BACKEND=' + $MemoryBackend +
                ' -e MCP_MEMORY_SQLITE_PATH=${MEMORY_DB_PATH}' +
                ' -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000' +
-               ' -- uvx --with numpy --from mcp-memory-service[sqlite]' + $MemoryPin + ' memory server'
+               ' -- uvx --python @UV_PYTHON@ --with numpy --from mcp-memory-service[sqlite]' + $MemoryPin + ' memory server'
 
 # npx-launched MCPs (context7, angular-cli, playwright): on Windows the spawned stdio server can't
 # resolve the bare `npx` shim (it's npx.cmd), so it dies with JSON-RPC -32000 - wrap in `cmd /c`.
@@ -920,7 +920,7 @@ if ($Context7 -eq 'local') {
 $Context7Entry = 'context7|' + $Ctx7Spec
 $AngularCliEntry = 'angular-cli|-- ' + $Npx + ' -y @angular/cli mcp'
 $PlaywrightEntry = 'playwright|-- ' + $Npx + " -y @playwright/mcp$PwPin " + '--user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/output'
-$SerenaEntry     = 'serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent' + $SerenaPin + ' serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd'
+$SerenaEntry     = 'serena|-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent' + $SerenaPin + ' serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd'
 $SentryEntry     = 'sentry|@HTTP@'
 $ChromeDevtoolsEntry = 'chrome-devtools|-- ' + $Npx + ' -y chrome-devtools-mcp' + $CdPin
 $AppiumMcpEntry      = 'appium-mcp|-- ' + $Npx + ' -y appium-mcp' + $ApPin
@@ -1875,13 +1875,27 @@ function Install-Plugins {
   }
 }
 
+# @UV_PYTHON@: the snapshot's own answer (stack/mcp/uv-python.js), asked once - the one exception to
+# the frozen twin, so a copy-route serena/memory never lands on a Python with no wheels.
+function Get-UvPython {
+  if (-not $script:UvPython) {
+    try { $script:UvPython = (& node (Join-Path $script:StackSrc 'stack/mcp/uv-python.js') 2>$null | Out-String).Trim() } catch { $script:UvPython = '' }
+    if (-not $script:UvPython) { $script:UvPython = '3.13' }
+  }
+  return $script:UvPython
+}
+
 function Resolve-McpArgv([string]$Spec) {
   # Split the manifest args into argv words FIRST, then resolve the path tokens inside each word - so a
   # resolved path that contains a space (C:\Users\Jane Doe) stays ONE argument instead of splitting
   # into two. .Split(' ') yields an array (no glob expansion, unlike bash word-splitting).
   # MEMORY_DB_PATH: the memory MCP's resolved db path (level-dependent, may itself sit under a project
   # root with a space) - resolved after the split, never pre-substituted into the manifest string.
-  return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('${MEMORY_DB_PATH}', $MemoryDbPath) })
+  $py = Get-UvPython
+  # @SERENA_HOME@ in this OS's own separator: on Windows serena execs its TypeScript server through
+  # cmd.exe, which cuts a relative path at its first '/'.
+  $serenaHome = if ([System.IO.Path]::DirectorySeparatorChar -eq '\') { '.serena\home' } else { '.serena/home' }
+  return @($Spec.Split(' ') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Replace('@SERENA_CONTEXT@', $SerenaContext).Replace('@UV_PYTHON@', $py).Replace('@SERENA_HOME@', $serenaHome).Replace('${MEMORY_DB_PATH}', $MemoryDbPath) })
 }
 
 function Register-Mcp([string]$Name, [string]$Spec) {
@@ -3519,7 +3533,7 @@ function Start-SerenaPreWarm {
   if (-not $serenaOn) { return }
   # Any subcommand makes uvx resolve+cache serena-agent (the download happens before the command
   # runs, so the exit code is irrelevant); $SerenaPin keeps it the version the MCP registration uses.
-  try { & uvx --from ('serena-agent' + $SerenaPin) serena --help *> $null } catch {}
+  try { & uvx --python (Get-UvPython) --from ('serena-agent' + $SerenaPin) serena --help *> $null } catch {}
 }
 
 function Repair-SerenaTsLspWindows {
@@ -3687,7 +3701,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $genRules 'baseline-project-agent-ca
   Log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
 }
 if ($Mcps | Where-Object { $_ -like 'serena|*' }) {
-  Log '  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): $env:SERENA_HOME=".serena/home"; uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things'
+  Log ('  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): $env:SERENA_HOME=''.serena\home''; uvx --python ' + (Get-UvPython) + ' --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things')
 }
 Log '  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings'
 # A global install switches Claude's own memory off only where the memory rule and start hook landed -

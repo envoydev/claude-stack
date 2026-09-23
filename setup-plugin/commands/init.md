@@ -30,7 +30,7 @@ the ask, re-offer it ONCE. Measured: this command's siblings entered at 131,345 
 per message with no ask at all, and one of them authored its own prose decision that was never put
 to the user.
 
-**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool from that snapshot, hand it to the installer with `--source` in step 11, and remove `$TMP` per the 'Clean up' section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool call in this run: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool from that snapshot, hand it to the installer with `--source` in step 11, and remove `$TMP` per the 'Clean up' section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool call in this run: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
 
 **Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
 
@@ -310,7 +310,7 @@ Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install 
 `.serena/project.yml` (detected `language_servers`, plus `ignored_paths` for `.serena` / `.claude` / `.playwright` -
 without which serena's own 327MB language-server directory gets indexed as if it were source:
 measured 126 files attempted, 112 failed, all inside `.serena/home`). Tell the user to build the
-index ONCE - `SERENA_HOME=.serena/home uvx --from serena-agent serena project index` - and that it
+index ONCE - `SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - serena hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`) - and that it
 is worth re-running after a large refactor or a branch switch that moves many files. Then state
 which case THIS project is, in one line: on TypeScript / Angular / mixed web, serena IS the nav
 tool; on C#, nav depends on the Roslyn server starting (the seeded language_servers entry is what

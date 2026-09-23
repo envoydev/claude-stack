@@ -14,6 +14,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { slugify } = require('./memory-import.js');
+const { pythonRequest } = require('../stack/mcp/uv-python.js');
 
 const ROOT = path.join(__dirname, '..');
 const SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
@@ -830,8 +831,9 @@ for (const twin of TWINS)
         run(twin, sb, 'install', [], 'project', { env });
         const e = memEntry(sb);
         assert.strictEqual(e.env.MCP_MEMORY_SQLITE_PATH, path.join(spacedHome, '.memory-mcp', 'memory.db'), `${twin}: spaced path mismatch`);
-        assert.deepStrictEqual(e.args, ['--with', 'numpy', '--from', e.args[3], 'memory', 'server'], `${twin}: args shape broke around the spaced path`);
-        assert.ok(e.args[3].startsWith('mcp-memory-service[sqlite]'), `${twin}: the --from value itself was corrupted: ${e.args[3]}`);
+        // --python first: the interpreter the service's wheels exist for (stack/mcp/uv-python.js).
+        assert.deepStrictEqual(e.args, ['--python', pythonRequest(), '--with', 'numpy', '--from', e.args[5], 'memory', 'server'], `${twin}: args shape broke around the spaced path`);
+        assert.ok(e.args[5].startsWith('mcp-memory-service[sqlite]'), `${twin}: the --from value itself was corrupted: ${e.args[5]}`);
     });
 }
 
@@ -841,6 +843,18 @@ for (const twin of TWINS)
 // the project one as 'C:/Users/...', which node read back as 'C:\Users\...' - so every update logged a
 // level change from 'custom' and re-pointed the registration. Every db path now takes the one native
 // spelling, and an update reads its own registration back at its level.
+test('sh: under Git Bash (cygpath on PATH) serena is registered with the native SERENA_HOME', { skip: process.platform === 'win32' && 'Windows runs the twin tests above through the real Git Bash' }, () =>
+{
+    const sb = sandbox({ selection: 'skill markdown-style\nrule markdown-docs\nmcp serena\nmcp memory\n' });
+    fs.writeFileSync(path.join(sb.work, 'bin', 'cygpath'), ['#!/bin/sh', '[ "$1" = "-w" ] || exit 2', 'printf \'%s\\n\' "$2" | tr / \'\\\\\'', ''].join('\n'), { mode: 0o755 });
+    run('sh', sb, 'install');
+    const serena = JSON.parse(fs.readFileSync(path.join(sb.repo, '.mcp.json'), 'utf8')).mcpServers.serena;
+    assert.ok(serena, 'serena was not registered');
+    assert.deepStrictEqual(serena.env, { SERENA_HOME: '.serena\\home' }, 'a forward slash reaches cmd.exe and cuts the path at .serena');
+    // a second run reads it back as current - no repair line, no flip back to the forward slash
+    assert.ok(!/mcp repaired: serena/.test(run('sh', sb, 'update')), 'the native spelling was read as drift');
+});
+
 test('sh: under Git Bash (cygpath on PATH) every db path takes the native spelling, and an update reads its own registration back', { skip: process.platform === 'win32' && 'Windows runs the twin tests above through the real Git Bash' }, () =>
 {
     const sb = sandbox();

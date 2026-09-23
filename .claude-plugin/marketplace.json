@@ -292,7 +292,7 @@
     {
       "name": "serena",
       "source": "./",
-      "description": "serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref.",
+      "description": "serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
       "version": "1.1.0",
       "author": {
         "name": "envoydev",
@@ -301,14 +301,15 @@
       "strict": false,
       "mcpServers": {
         "serena": {
-          "command": "uvx",
+          "command": "node",
           "env": {
             "SERENA_HOME": ".serena/home"
           },
           "args": [
-            "--from",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
+            "--package",
             "serena-agent@1.7.0",
-            "serena",
+            "--",
             "start-mcp-server",
             "--context",
             "claude-code",

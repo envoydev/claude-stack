@@ -312,14 +312,16 @@ function mcpServerShapes(options = {})
         // --- the three locked servers -----------------------------------------------------------
         serena: {
             locked: true,
-            description: 'serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref.',
+            description: 'serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
             servers: {
                 serena: {
-                    command: 'uvx',
+                    // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
+                    // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another.
+                    command: 'node',
                     // SERENA_HOME stays RELATIVE: it resolves against the server's cwd, which is the
                     // project. An absolute path here would pool every project into one home.
                     env: { SERENA_HOME: '.serena/home' },
-                    args: ['--from', `serena-agent${suffix('serena')}`, 'serena', 'start-mcp-server',
+                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('serena')}`, '--', 'start-mcp-server',
                         // Always claude-code inside a Claude Code plugin; the ide-assistant value is
                         // cursor-stack's, and its own registration keeps it.
                         '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
