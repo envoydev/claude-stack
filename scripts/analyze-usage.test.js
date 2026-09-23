@@ -891,7 +891,7 @@ function writeInventoryTranscript(dir, root, name) {
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
     // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
-    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__serena__find_symbol', { name_path: 'Foo' })])),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_serena_serena__find_symbol', { name_path: 'Foo' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
     line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),

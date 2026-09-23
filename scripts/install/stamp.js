@@ -1,0 +1,141 @@
+'use strict';
+// THE INSTALL STAMP - the revision every artifact of this install was copied from.
+//
+// `/claude-stack:configure` diffs it against `main` to say what an update would bring, and
+// `--installed-only` reads two of its lines to tell a DROPPED item from one that did not exist yet.
+// That second job is why the stamp records more than a SHA.
+//
+// The rule that matters most: NO SHA MEANS NO STAMP. When no source resolved this run - the archive
+// download and the clone both failed, and every step fail-softly kept its existing copy - stamping
+// would claim an install that did not happen. A wrong stamp is worse than none, because the next
+// configure reads it as truth and reports the wrong diff, so a previous stamp is left untouched.
+//
+// `shipped-hooks` is the hook FILE names this RELEASE ships - the catalog, one entry per file and
+// not per matcher, never this run's subset. On disk a hook the user dropped through configure and a
+// hook that did not exist when this install was made look identical; only the second may be
+// adopted, and this line is the only thing that can tell them apart.
+//
+// `picked-skills` / `picked-agents` are the skills and seats this run installed. The next
+// `--installed-only` reads the plugin state back through THAT release's placement, so an item a
+// release moved into an entry this project has not enabled would drop out; these two lines carry it
+// across (derive-state's `stampCarried`, which honours a parked entry and a denied seat).
+//
+// `installed-always-rules` / `installed-always-mcps` record what the locked baseline actually
+// CARRIES as the run ends, never what shipped. A server counts either way - registered in the file,
+// or riding the plugin named for it - because on the plugin route there is no `.mcp.json` at all,
+// and a stamp that only read the file would record an install with none of the locked three.
+const fs = require('node:fs');
+const path = require('node:path');
+
+// A playwright engine server and the context7 local transport both belong to their FAMILY: the
+// always-list names `playwright` and `context7`, and an install carrying `playwright-firefox` or
+// `context7-local` is carrying them.
+const family = (name) => String(name).replace(/^playwright-.*/, 'playwright').replace(/^context7-local$/, 'context7');
+
+const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
+
+// One entry per hook FILE, in first-seen order, `.js` dropped - the spelling the stamp has always
+// used and the one `--installed-only` matches against.
+function shippedHooks(hooksCatalog)
+{
+    const seen = [];
+    for (const row of hooksCatalog || [])
+    {
+        const name = String(row.file ?? row).split('::')[0].replace(/\.js$/, '');
+        if (name && !seen.includes(name)) seen.push(name);
+    }
+    return seen;
+}
+
+function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
+{
+    const always = (readJson(recommendations).always) || {};
+    const servers = readJson(mcpFile).mcpServers || {};
+    const plugins = new Set(Object.keys(readJson(settingsFile).enabledPlugins || {})
+        .map((k) => family(k.split('@')[0])));
+    const list = (x) => (Array.isArray(x) ? x : []);
+    return {
+        rules: list(always.rules).filter((r) => rulesDir && fs.existsSync(path.join(rulesDir, `${r}.md`))),
+        mcps: list(always.mcps).filter((m) => Object.hasOwn(servers, m) || plugins.has(m)),
+    };
+}
+
+function renderStamp(fields)
+{
+    const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps, picked = {} } = fields;
+    return [
+        '# claude-stack install stamp - machine-local, written by the claude-stack installer.',
+        '# The revision every artifact of this install was copied from. To see what changed since:',
+        `#   open ${repoUrl}/compare/${sha}...main`,
+        '# /claude-stack:configure reports exactly this diff. Then re-run the installer\'s',
+        `# '${action}' action (or that skill) to take the changes.`,
+        `source: ${repoUrl}`,
+        `ref: ${ref}`,
+        `sha: ${sha}`,
+        `version: ${version}`,
+        `installed: ${installed}`,
+        `action: ${action}`,
+        `scope: ${scope}`,
+        `shipped-hooks: ${hooks.join(',')}`,
+        `installed-always-rules: ${alwaysRules.join(',')}`,
+        `installed-always-mcps: ${alwaysMcps.join(',')}`,
+        `picked-skills: ${(picked.skills || []).join(',')}`,
+        `picked-agents: ${(picked.agents || []).join(',')}`,
+        '',
+    ].join('\n');
+}
+
+function writeStamp(opts)
+{
+    const {
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, picked,
+        version = '', now = new Date(), log = () => {}, note = () => {},
+    } = opts;
+
+    if (!source || !source.sha)
+    {
+        log('  stamp: skipped - no source revision resolved this run');
+        return null;
+    }
+
+    // At user scope the stamp belongs in the account dir; otherwise beside whatever this run
+    // installed, which is the repo root when there is one.
+    const dir = scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude');
+    const dest = path.join(dir, 'claude-stack.stamp');
+
+    const always = installedAlways({
+        recommendations: path.join(source.dir, 'meta', 'recommendations.json'),
+        mcpFile,
+        settingsFile: path.join(projectRoot, '.claude', 'settings.json'),
+        rulesDir: path.join(projectRoot, '.claude', 'rules'),
+    });
+
+    try
+    {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(dest, renderStamp({
+            repoUrl: source.repoUrl, ref: source.ref, sha: source.sha, version,
+            installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+            action, scope,
+            hooks: shippedHooks(hooksCatalog),
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked,
+        }));
+    }
+    catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
+
+    log(`  stamp: ${dest} @ ${source.sha.slice(0, 12)}`);
+    return dest;
+}
+
+// The two picked lines of a stamp. A stamp that carries neither (an older stamp, the shell twin's, no
+// stamp) reads as null - it never recorded picks, which is not the same answer as recording none.
+function readPicked(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { text = ''; }
+    if (!/^picked-(skills|agents):/m.test(text)) return null;
+    const list = (key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    return { skills: list('picked-skills'), agents: list('picked-agents') };
+}
+
+module.exports = { writeStamp, renderStamp, shippedHooks, installedAlways, family, readPicked };

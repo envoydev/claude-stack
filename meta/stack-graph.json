@@ -1118,6 +1118,9 @@
       "superpowers",
       "typescript-lsp"
     ],
+    "dependencyPlugins": [
+      "superpowers"
+    ],
     "hooks": [
       "docs-session",
       "guard-answer-length",

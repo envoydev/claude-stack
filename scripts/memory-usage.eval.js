@@ -771,7 +771,7 @@ What grounds it: seeded for scripts/memory-usage.eval.js scenario 5 - billing-se
 on disk at this path, on purpose.
 `;
 
-const MEMORY_TOOLS = ['ToolSearch', 'mcp__memory__memory_store', 'mcp__memory__memory_search', 'mcp__memory__memory_list'];
+const MEMORY_TOOLS = ['ToolSearch', 'mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list'];
 
 const SCENARIOS = [
   {
@@ -782,7 +782,7 @@ const SCENARIOS = [
     prompt: 'From now on, always name test files with a .spec suffix in this project.',
     allowedTools: [...MEMORY_TOOLS, 'Bash'],
     evaluate({ lines, rows, projectName }) {
-      const storeCalls = sessionToolCalls(lines, 'mcp__memory__memory_store');
+      const storeCalls = sessionToolCalls(lines, 'mcp__plugin_memory_memory__memory_store');
       const row = rows.find((r) => splitTags(r.tags).some((t) => t === `project:${projectName}` || t === projectName)
         && (r.memory_type === 'user_correction' || r.memory_type === 'preference_signal'));
       return {
@@ -831,7 +831,7 @@ const SCENARIOS = [
       + "project's own memory rule.",
     allowedTools: ['Agent', 'Task', ...MEMORY_TOOLS, 'Bash', 'Read', 'Grep', 'Glob'],
     evaluate({ subTranscripts, rows }) {
-      const storeCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__memory__memory_store'));
+      const storeCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__plugin_memory_memory__memory_store'));
       const row = rows.find((r) => splitTags(r.tags).some((t) => t.startsWith('agent:')) && r.memory_type === 'learning');
       return {
         toolEvidence: storeCalls.length ? `subagent memory_store x${storeCalls.length}` : 'no subagent memory_store call',
@@ -854,7 +854,7 @@ const SCENARIOS = [
       + 'project memory first.',
     allowedTools: ['Agent', 'Task', ...MEMORY_TOOLS, 'Bash', 'Read', 'Grep', 'Glob'],
     evaluate({ subTranscripts }) {
-      const searchCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__memory__memory_search').concat(sessionToolCalls(t, 'mcp__memory__memory_list')));
+      const searchCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__plugin_memory_memory__memory_search').concat(sessionToolCalls(t, 'mcp__plugin_memory_memory__memory_list')));
       const found = subTranscripts.some((t) => assistantTexts(t).some((txt) => /6543/.test(txt)));
       return {
         toolEvidence: searchCalls.length ? `subagent memory_search/list x${searchCalls.length}` : 'no subagent search/list call',

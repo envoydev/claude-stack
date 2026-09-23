@@ -30,4 +30,4 @@ before reading a related project's repo - search by its name first.
 
 The `memory` MCP's tools are DEFERRED behind tool search in this harness - naming them is not having
 them. Load the three above with one call:
-`ToolSearch select:mcp__memory__memory_store,mcp__memory__memory_search,mcp__memory__memory_list`.
+`ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list`.

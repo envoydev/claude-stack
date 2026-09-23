@@ -7,17 +7,30 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
 
-test('marketplace.json is valid and points at the setup-plugin subdir', () => {
+test('marketplace.json is valid and every entry shares the repo root', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     assert.strictEqual(mp.name, 'claude-stack');
-    assert.ok(Array.isArray(mp.plugins) && mp.plugins.length === 1);
-    const p = mp.plugins[0];
-    assert.strictEqual(p.name, 'claude-stack');
-    assert.strictEqual(p.source, './setup-plugin');
-    assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
+    assert.ok(Array.isArray(mp.plugins) && mp.plugins.length >= 1);
+    // From Phase 3 every entry is GENERATED over the shared root, the core included - it used to
+    // ship from ./setup-plugin, whose own plugin.json was its manifest, but its skills and agents
+    // live under stack/, outside that folder.
+    const core = mp.plugins.find(x => x.name === 'claude-stack');
+    assert.ok(core, 'the core entry must survive every generator run');
+    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided walks ship from the core - init and its setup alias among them');
+    assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && core.commands.includes('./setup-plugin/commands/setup.md'));
+    for (const p of mp.plugins)
+    {
+        assert.strictEqual(p.source, './', `${p.name} shares the repo root as its source`);
+        assert.strictEqual(p.strict, false, `${p.name} carries no plugin.json of its own`);
+        assert.ok(typeof p.description === 'string' && p.description.trim() !== '');
+        for (const rel of [...(p.commands || []), ...(p.skills || []), ...(p.agents || [])])
+            assert.ok(fs.existsSync(path.join(ROOT, rel)), `${p.name} lists a path that does not exist: ${rel}`);
+    }
+    const hooks = mp.plugins.find(x => x.name === 'claude-stack-hooks');
+    assert.ok(hooks && hooks.hooks, 'the hooks entry declares its hooks INLINE, so nothing sits at the shared root');
 });
 
-test('plugin.json is valid, the five commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'claude-stack');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -25,13 +38,26 @@ test('plugin.json is valid, the five commands are listed, and the router skill e
     // Plugin COMMANDS display namespaced-only (/claude-stack:setup); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /claude-stack, no /claude-stack:claude-stack stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
-    for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
+    assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
+    for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /claude-stack:${name} command exists`);
     }
     assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md')), 'the /claude-stack router skill exists');
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'claude-stack.md')), 'no router COMMAND - a command named like the plugin displays as the /claude-stack:claude-stack stutter');
+});
+
+test('init is the walk and setup its thin alias - both manual-only, the alias naming init', () => {
+    // Phase 8 R3: a new name, not a new walk. The alias keeps /claude-stack:setup working for one
+    // release; a copy of the walk under two names would drift the first time either is edited.
+    const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+    const init = read('init');
+    const alias = read('setup');
+    for (const [name, body] of [['init', init], ['setup', alias]])
+        assert.match(body, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, `${name} stays manual-only`);
+    assert.match(alias, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/commands\/init\.md/, 'the alias reads the walk from the installed layout');
+    assert.ok(alias.split('\n').length < 20, `the alias is a pointer, not a second walk (${alias.split('\n').length} lines)`);
+    assert.match(init, /^## 11\. Install$/m, 'the walk itself lives in init');
 });
 
 test('no tracked plugin file leaks an email address', () => {
@@ -142,7 +168,7 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // so pasting it needed a read-back step the prescribed command never contained, and all six layer
 // questions were asked with no catalog on screen. The table must come back in the tool result.
 test('the layer table is never redirected to a file - the tool result is what gets pasted', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['init', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
@@ -162,7 +188,7 @@ test('the layer table is never redirected to a file - the tool result is what ge
 // by NAME and tied together by the apply subsection's own number: the ladders renumber whenever a
 // step is inserted, and what this pins is where the two halves sit, not what they are numbered.
 test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['init', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         const pluginsAt = body.search(/^## \d+\. Plugins$/m);
@@ -275,7 +301,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
-for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
+for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
 {
     test(`the ${name} command exists with valid manual-only frontmatter`, () => {
         const cmd = path.join(PLUGIN_DIR, 'commands', `${name}.md`);
@@ -287,8 +313,27 @@ for (const name of ['setup', 'update', 'configure', 'validate', 'status'])
     });
 }
 
+// Phase 7, T5: the installer is ONE node command on every OS, and the frozen twins are the
+// one-release fallback behind CLAUDE_STACK_SEED=shell. A body still typing the twin as its default
+// installs from a script nobody edits any more; one that drops the fallback line strands the user
+// who set the switch. The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
+test('every command that runs the installer runs the SEED, with the shell route named as the fallback', () => {
+    for (const name of ['init', 'update', 'configure', 'validate'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(body, /node "\$TMP\/repo\/scripts\/install\/claude-stack\.js" (install|update)/,
+            `${name} does not run the Node seed`);
+        assert.match(body, /CLAUDE_STACK_SEED=shell/, `${name} does not name the shell fallback`);
+        assert.ok(!/- Unix: `bash "\$TMP\/repo\/scripts\/os\/claude-stack\.sh"/.test(body),
+            `${name} still offers the twin as a first-class route`);
+    }
+    // status runs no installer at all, so it names neither.
+    const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
+    assert.ok(!/claude-stack\.(sh|ps1)|install\/claude-stack\.js/.test(status), 'status must stay read-only');
+});
+
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
-    for (const name of ['setup', 'configure', 'validate'])
+    for (const name of ['init', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
@@ -302,7 +347,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
 // The install-time twin of validate's judgment gate: a typed add that conflicts with the
 // project's stated conventions gets a quote-gated, non-blocking warning at the prereq step.
 test('setup and configure carry the brownfield convention-conflict warning gate', () => {
-    for (const name of ['setup', 'configure'])
+    for (const name of ['init', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /Convention-conflict warnings/, `${name} has the conflict-warning gate`);
@@ -317,7 +362,8 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /--missing/, 'validate drives the add side through stack-select --missing');
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
     assert.match(body, /project mode only/i, 'validate refuses outside a project');
-    assert.match(body, /claude-stack\.sh" install/, 'validate installs the accepted adds via the installer');
+    assert.match(body, /install\/claude-stack\.js" update --source "\$TMP\/repo" --scope project --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back');
+    assert.match(body, /CLAUDE_STACK_SEED=shell/, '... and still names the one-release shell fallback');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
     // mixed with signal tiers
     assert.match(body, /JUDGMENT-DROP/, 'the judgment step exists with its labeled verdict');
@@ -331,16 +377,100 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /`dormant:`/, 'dormant advisories come from the tool output');
 });
 
+// `${CLAUDE_PLUGIN_ROOT}` is expanded into a body at injection time, to the root of the entry's
+// SOURCE - and since Phase 3 every entry is sourced from the repo root, which is what the plugin cache
+// holds (measured on an isolated install: no references/ or commands/ at its root). A body citing
+// `${CLAUDE_PLUGIN_ROOT}/references/...` pointed at the old ./setup-plugin root, and a test pinning
+// that spelling kept it dead through the move. So every concrete path a shipped body cites through
+// the placeholder is resolved here against the layout the cache actually has.
+test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in the installed layout', () => {
+    const mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    for (const entry of mkt.plugins) assert.strictEqual(entry.source, './', `${entry.name} is not sourced from the repo root - resolve its paths against its own source`);
+    const bodies = [];
+    const walk = (dir) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) { if (e.name !== 'evals') walk(p); }
+            else if (e.name.endsWith('.md')) bodies.push(p);
+        }
+    };
+    walk(PLUGIN_DIR);
+    walk(path.join(ROOT, 'stack'));
+    let cited = 0;
+    for (const file of bodies)
+        for (const m of fs.readFileSync(file, 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+\.[a-z]+)/g))
+        {
+            cited++;
+            assert.ok(fs.existsSync(path.join(ROOT, m[1])), `${path.relative(ROOT, file)} cites \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which the installed plugin does not have`);
+        }
+    assert.ok(cited >= 10, `expected the walks' protocol citations, found ${cited}`);
+});
+
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
-    for (const name of ['setup', 'update', 'configure'])
+    for (const name of ['init', 'update', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
+        assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
     }
     const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md'), 'utf8');
     assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*claude-stack/, 'router skill named like the plugin -> displays bare /claude-stack');
-    for (const name of ['setup', 'update', 'configure'])
+    for (const name of ['init', 'update', 'configure'])
     {
         assert.match(router, new RegExp('/claude-stack:' + name), `/claude-stack routes to /claude-stack:${name}`);
     }
+});
+
+test('the walk and status REPORT the derivation - they never restate what the installer writes', () => {
+    // Phase 8 R1: four prose descriptions of one pipeline is how a route change reached three of them
+    // and not the fourth. init shows the derived off-state before installing; status takes the
+    // stack's share of the floor, seats included, from the same script.
+    const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+    assert.match(read('init'), /scripts\/derive-state\.js" --selection "\$TMP\/selection\.txt" --source "\$TMP\/repo"/);
+    assert.match(read('status'), /scripts\/derive-state\.js" --floor --plugins /);
+    assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'derive-state.js')), 'the script both cite ships in the snapshot');
+});
+
+// Phase 8 T3: update asks from the derivation's new-item verdicts and takes a yes as --add; its
+// pruning path never rebuilds the selection from a disk inventory on the Node seed, which on the
+// plugin routes holds only the extras and would switch every carried seat off.
+test('update: new items come from the preflight\'s new: lines and a yes becomes --add', () =>
+{
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    assert.match(body, /`new: <category> <name><TAB><verdict>/);
+    assert.match(body, /--installed-only \[--add "<category> <name>"\]\.\.\./);
+    assert.ok(!/FYI `added` items/.test(body), 'the FYI-only adoption is gone');
+    const step4 = body.slice(body.indexOf('## 4. Pruning path'), body.indexOf('## 5. Prune'));
+    assert.match(step4, /run the installer exactly as in step 3 - its `--add` already carries every `renamed`/);
+    assert.match(step4, /Never rebuild the\nselection from a disk inventory on the Node seed/);
+});
+
+// Phase 8 T4: configure and validate read the install through the installer's own read-back and
+// apply as --add / --drop over it - a hand inventory re-enabled every seat the user switched off,
+// and a --selection apply rebuilds the install from a disk that holds only the extras.
+test('configure and validate inventory through --print-plan --plan-out and apply through the delta', () =>
+{
+    for (const name of ['configure', 'validate'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(body, /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, `${name} inventories through the read-back`);
+        assert.match(body, /plan answered:\s+hooks=<yes\|no>\s+agents=<yes\|no>/, `${name} reads the answered line`);
+        assert.match(body, /derive-state\.js" --delta --installed "\$TMP\/installed\.json"|derive-state\.js"\n--delta --installed "\$TMP\/installed\.json"/, `${name} builds the --add / --drop delta`);
+        assert.match(body, /Never\s+`--selection`\s+on this seed/, `${name} never applies a whole selection on the Node seed`);
+        assert.match(body, /stays loaded/, `${name} reports a skill a kept entry still carries`);
+        assert.match(body, /not applied/, `${name} reports a drop something kept requires`);
+        assert.match(body, /--picked "\$TMP\/(raw|final)\.json"/, `${name} tells the delta what the walk picked`);
+        assert.match(body, /kept-off/, `${name} reports what stays switched off`);
+        assert.match(body, /keep-parked/, `${name} keeps a parked plugin parked`);
+        assert.match(body, /\| tee "\$TMP\/install\.log"/, `${name} captures the run it greps`);
+        assert.ok(!/plugin-scan\.js/.test(body), `${name} no longer hand-filters the listing`);
+    }
+});
+
+test('configure emits hook none when its Hooks area was walked, and update reads a global install\'s settings from the project', () =>
+{
+    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    assert.match(configure, /--emit "\$TMP\/selection\.txt" --check \[--hooks-answered\]/);
+    const update = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    assert.match(update, /Global mode: `--root <account dir> --settings \.claude\/settings\.json`/);
 });

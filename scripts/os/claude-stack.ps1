@@ -296,6 +296,12 @@ function Install-GitHubCli {  # opt-in via -GitHubCli; fail-soft like everything
 
 function Test-Prerequisites {
   # Warn (not fail) on missing prerequisites, matching the script's fail-soft philosophy.
+  # CLAUDE_STACK_SKIP_PREREQS=1 (set by CI, whose runners lack these tools on purpose) skips the
+  # warnings; the claude probe still runs because later steps read ClaudeMissing.
+  if ($env:CLAUDE_STACK_SKIP_PREREQS -eq '1') {
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true }
+    return
+  }
   Log 'prerequisites check'
   $ok = $true
   # uvx: required by serena and memory MCP servers.
@@ -628,8 +634,27 @@ $Skills = @(
 $ExtraMarketplaces = @(
   'jarrodwatts/claude-hud'
 )
+# The stack's OWN plugin deliveries, appended to $Plugins only on the plugin route. Its marketplace
+# is this repo, registered from CLAUDE_STACK_MARKETPLACE - a github slug by default, or a durable
+# local path when the temp-project matrix proves the route against the working tree. A path deleted
+# after the run would leave the plugin unresolvable next session, so the marketplace is never
+# registered from the run's throwaway source snapshot.
+$StackMarketplace = if ($env:CLAUDE_STACK_MARKETPLACE) { $env:CLAUDE_STACK_MARKETPLACE } else { 'envoydev/claude-stack' }
+$StackPlugins = @('claude-stack-hooks@claude-stack')
+# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
+# the two together, so a dependency added there is a red lint until it is added here). Installed
+# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
+# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
+# route the core entry carries them and an explicit install here would only repeat the work.
+$CoreDepPlugins = @('superpowers@claude-plugins-official')
+
 $Plugins = @(
-  'superpowers@claude-plugins-official'       # workflow skills: plan, TDD, debug, verify-before-done
+  # 'superpowers@claude-plugins-official'     # workflow skills: plan, TDD, debug, verify-before-done.
+  #   NOT a pick any more: it is a HARD `dependencies` entry on claude-stack@claude-stack, so the
+  #   core plugin installs and enables it (and Claude Code then REFUSES to disable it while the core
+  #   is enabled - code.claude.com/docs/en/plugin-dependencies). The row stays here, commented,
+  #   because three readers build their catalog from this block and 27 skills and agents cite it:
+  #   stack-graph.js catalog.plugins, the parity lint's resolvable namespaces, the walk's plugin layer.
   'claude-md-management@claude-plugins-official' # audit + revise CLAUDE.md files
   'csharp-lsp@claude-plugins-official'      # inline Roslyn diagnostics on edit (complements serena nav); needs csharp-ls (dotnet tool install -g csharp-ls)
   'typescript-lsp@claude-plugins-official'  # same for Angular/TS work
@@ -916,6 +941,41 @@ $Mcps = @(
 #     entry's gate `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` is POSIX and assumes the default
 #     (bash-like) hook shell; under the PowerShell hook-shell opt-in it fails as a non-blocking error
 #     and records nothing.
+# ONE switch for the whole route change. $true (the default from 1.0.0) means the thirteen hooks
+# arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
+# wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
+# run that enables the plugin - so the window where neither route fires is zero. The plugin's own
+# copies stand down while a project still wires a copied twin (stack/hooks/hook-prelude.js), which is
+# what keeps a half-updated project from firing every guard twice. $false keeps the 0.2.x copy route,
+# which is what the temp-project matrix uses to prove both.
+$HooksViaPlugin = ($env:CLAUDE_STACK_HOOKS_VIA_PLUGIN -ne 'false')
+
+# The same switch for the MCP servers (Phase 6). $true (the default from 1.0.0) means the eight
+# catalog servers arrive through the plugins NAMED for them - serena, context7, memory, playwright,
+# angular-cli, chrome-devtools, appium-mcp, sentry - so this script registers nothing and an existing
+# install's stack registrations are REMOVED in the same run that enables the plugins. The plugin
+# route is what makes the servers per-project without a per-project file: <repo>/.mcp.json stops
+# being a stack-owned artifact and holds only what the project itself added. $false keeps the 0.2.x
+# `claude mcp add` route, which is what the temp-project matrix uses to prove both.
+$McpsViaPlugin = ($env:CLAUDE_STACK_MCPS_VIA_PLUGIN -ne 'false')
+# The three servers that can never be dropped are hard `dependencies` of the CORE plugin entry, so
+# Claude Code installs them with it whatever this switch says. That makes them plugin-only whenever
+# the core is enabled at all - registering them as well would run each one twice and pay both sets
+# of tool schemas every session. They come back to .mcp.json only on the FULL copy route, where no
+# plugin route is on and the core is never enabled.
+$McpsLocked = @('serena', 'context7', 'memory')
+function Test-CorePluginOn { return ($HooksViaPlugin -or $script:SkillsViaPlugin -or $script:McpsViaPlugin) }
+function Test-LockedMcp { param([string]$Name) return ($McpsLocked -contains $Name) }
+# The servers this run registers under their BARE names - the ones a tool name must be spelled for.
+function Get-BareNamedMcps {
+  if ($script:McpsViaPlugin) { return @() }
+  return @(foreach ($entry in $Mcps) {
+    $n = ($entry -split '\|', 2)[0]
+    if ((Test-LockedMcp $n) -and (Test-CorePluginOn)) { continue }
+    $n
+  })
+}
+
 $Hooks = @(
   'guard-protected-force-push.js::Bash|PowerShell::'         # block force-push to main/master/develop
   'guard-catastrophic-rm.js::Bash|PowerShell::'              # block recursive rm of /, ~, $HOME, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once
@@ -948,6 +1008,12 @@ $Hooks = @(
 # names so a later -InstalledOnly run can tell a hook the user DROPPED (shipped then, absent now)
 # from one this release ADDED (not shipped then) - on disk the two look the same.
 $HooksCatalog = @($Hooks)
+
+# The MCP manifest as SHIPPED, for the same reason: the selection filter below narrows $Mcps to what
+# THIS project picked, and the plugin-route retirement has to name every server the stack ever
+# registered here - including the ones this run did not select, which an earlier install may well
+# have written into .mcp.json.
+$McpsCatalog = @($Mcps)
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
 # .claude/settings.json alongside the hooks on INSTALL (idempotent, union-merged - a consuming project's
@@ -1036,6 +1102,21 @@ $Agents = @(
   'winforms-verifier.md'             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
 )
 
+# Skills and agents arrive through the per-stack PLUGINS instead of being copied into .claude/. Which
+# plugins a project enables is COMPUTED from what it picked (scripts/selection-plugins.js, over the
+# same placement meta/plugin-entries.json is generated from), so a project carries its own closure
+# and nothing else. What no plugin carries - the EXTRAS, the items no stack's closure reaches - is
+# still copied, because there is no plugin that would hold it. Set to false to keep the 0.2.x copy
+# route, which is what the temp-project matrix uses to prove both.
+$SkillsViaPlugin = ($env:CLAUDE_STACK_SKILLS_VIA_PLUGIN -ne 'false')
+
+# The manifests as SHIPPED, taken before the selection filter narrows them (the $HooksCatalog
+# pattern). On the plugin route these are the names a run PRUNES from .claude/skills and
+# .claude/agents: a copy the stack itself shipped, now carried by a plugin. A file neither manifest
+# names is the project's own and is never touched.
+$SkillsCatalog = @($Skills)
+$AgentsCatalog = @($Agents)
+
 # (6) Path-scoped rules (claude-code): fetched into .claude/rules/ on BOTH actions - lazy-load on
 # matching file reads; conventions stay with the convention-gate hook, rules carry only glob-scoped routing.
 # NOTE: baseline-project-related-context.md, baseline-project-architecture.md and
@@ -1099,7 +1180,7 @@ if ($InstalledOnly) {
     $ioLines += "rule $($f.BaseName)"
   }
   foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $ioClaude 'hooks') -Filter '*.js' -File -Force -ErrorAction SilentlyContinue)) {
-    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory')) { continue }                    # legacy generated; docs.js/memory.js are engines, not hooks
+    if ($f.BaseName -in @('inject-code-style', 'docs', 'memory', 'hook-prelude')) { continue }    # legacy generated; docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
     $ioLines += "hook $($f.BaseName)"
   }
   $ioMcpJson = Join-Path (Get-Location).Path '.mcp.json'
@@ -1151,6 +1232,36 @@ if ($InstalledOnly) {
     Write-Host "error: -InstalledOnly found nothing installed under $ioClaude - run install (or the /claude-stack:setup command) first" -ForegroundColor Red
     Remove-Item -LiteralPath $script:InstalledOnlyTmp -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
+  }
+  # Skills and agents live in the stack's own PLUGINS on that route, so the disk scan above saw only
+  # the EXTRAS. The rest is recovered from the stack plugins this machine carries for THIS project,
+  # expanded to their items by the same placement the installer enables them from - the route-aware
+  # inventory shape hooks were given first (hooks-inventory-route). Without it an update read a
+  # plugin-native install as 'no skills, no agents' and dropped every per-stack plugin it had.
+  # It runs AFTER the nothing-installed guard on purpose: a machine-level plugin listing is no
+  # evidence that THIS project has an install, and the guard is the only thing that says so.
+  $ioSp = ''
+  foreach ($c in @((Join-Path $PSScriptRoot '..\selection-plugins.js'), $(if ($Source) { Join-Path $Source 'scripts/selection-plugins.js' } else { '' }))) {
+    if ($c -and (Test-Path -LiteralPath $c)) { $ioSp = $c; break }
+  }
+  if ($SkillsViaPlugin -and $ioSp -and (Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+    $ioStackPl = @()
+    try {
+      foreach ($line in @(& claude plugin list 2>$null)) {
+        foreach ($w in ($line -split '\s+')) {
+          if ($w -match '^(claude-stack[A-Za-z0-9_.-]*)@[A-Za-z0-9_.-]+$' -and $Matches[1] -ne 'claude-stack-hooks') { $ioStackPl += $Matches[1] }
+        }
+      }
+    } catch {}
+    $global:LASTEXITCODE = 0
+    $ioStackPl = @($ioStackPl | Sort-Object -Unique)
+    if ($ioStackPl.Count -gt 0) {
+      $ioItems = @()
+      try { $ioItems = @(& node $ioSp --items ($ioStackPl -join ',') 2>$null | Where-Object { $_ -ne '' }) } catch {}
+      $global:LASTEXITCODE = 0
+      foreach ($l in $ioItems) { if ($ioLines -notcontains $l) { $ioLines += $l } }
+      Log ("installed-only: skills and agents read from the plugins (" + ($ioStackPl -join ',') + ")")
+    }
   }
   # A hook the release ADDED reaches an existing install ONLY here. The derivation above lists what
   # is on DISK, so a newly shipped guard was invisible to every update - measured: the v0.2.20
@@ -1388,138 +1499,42 @@ $script:StackSrcTried = $false # memoises the OUTCOME, so a dead source costs on
 $script:StackSrcOwned = $false # true only when WE fetched it - Remove-StackSrc removes ours, never the caller's
 $script:StackSrcRoot = ''      # the temp dir an owned fetch lives in (Remove-StackSrc's removal target)
 
-# THE SOURCE CACHE - one download per RELEASE, not one per run. The twin of the sh installer's
-# cache, sharing its layout byte for byte: <config>/cache/stack-source/<repo>/<version> holds the
-# EXTRACTED snapshot, so a script install on this account reuses what a guided /claude-stack:setup
-# fetched, and the other way round. Versioned rather than time-boxed (a new release wins the moment
-# the probe names it) and never trusted without stack/skills + stack/agents (an interrupted promote
-# is re-downloaded, not installed). STACK_SOURCE_CACHE=0 restores the always-fresh temp download.
-$script:StackCacheEnabled = ($env:STACK_SOURCE_CACHE -ne '0')
+# THE SOURCE IS WHAT CLAUDE CODE ALREADY CACHED - the twin of the sh installer's resolver.
+# Every marketplace entry shares this repo's root as its `source`, so installing the core plugin
+# leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/claude-stack/<version>: stack/rules,
+# stack/CLAUDE.template.md, the two hook engines, meta/, scripts/ and RELEASE-SOURCE included. That
+# is the same snapshot this installer used to download, fetched once per release by the CLI itself,
+# so the stack keeps no second cache of its own. The archive and clone routes below remain for the
+# two paths with no plugin cache to read: the copy route (both VIA_PLUGIN switches off) and a
+# machine with no `claude` CLI.
 
-function Get-StackCacheRoot {
-  # Keyed by REPO as well as version: a fork or a test fixture must never read - or poison - the
-  # canonical snapshot.
-  $slug = ([regex]::Replace($StackRepoUrl, '[^A-Za-z0-9]', '-'))
-  if ($slug.Length -gt 80) { $slug = $slug.Substring(0, 80) }
-  return (Join-Path (Join-Path $ConfigDir 'cache/stack-source') $slug)
-}
-
-function Get-StackProbeVersion {
-  # The newest release's version, from the redirect of /releases/latest (GitHub sends
-  # /releases/tag/v<version>, and the release workflow tags v<plugin manifest version> - the same
-  # string RELEASE-SOURCE carries). HEAD only: no body, no archive. Returns '' whenever it cannot
-  # be answered - a fork without releases, a file:// source, an offline run - and the caller reads
-  # that as 'just download', so a dead probe costs correctness nothing.
-  if ($StackRepoUrl -notmatch '^https?://') { return '' }
-  try {
-    $resp = Invoke-WebRequest -Uri "$StackRepoUrl/releases/latest" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-    $final = [string]$resp.BaseResponse.RequestMessage.RequestUri
-  } catch { return '' }
-  if ($final -match '/releases/tag/v?(.+)$') { return $Matches[1] }
-  return ''
-}
-
-function Test-StackCacheEntry { param([string]$Dir)
+function Test-StackSrcDir { param([string]$Dir)
+  # The one validity test every source route shares: both trees present, so an interrupted write is
+  # rejected rather than half-installed.
   return ((Test-Path -LiteralPath (Join-Path $Dir 'stack/skills') -PathType Container) -and
           (Test-Path -LiteralPath (Join-Path $Dir 'stack/agents') -PathType Container))
 }
 
-function Remove-StaleStackCache { param([string]$Root, [string]$Keep)
-  # Keep the entry just promoted; drop ones a week old. NOT 'everything but the current': another
-  # run resolved its own entry seconds ago and reads from it for the length of its install.
-  Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue | Where-Object {
-    ($_.Name -ne $Keep -and $_.LastWriteTime -lt (Get-Date).AddDays(-7)) -or
-    ($_.Name -like '.dl.*' -and $_.LastWriteTime -lt (Get-Date).AddDays(-1))
-  } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
-}
-
-function Move-StackSrcToCache {
-  # Move a freshly extracted snapshot into the cache and return the entry, or ''. Staged inside the
-  # cache root so the rename is same-volume, and a race resolves in favour of whoever landed first:
-  # a valid entry is never replaced, only an absent or broken one.
-  param([string]$Repo, [string]$Root)
-  $file = Join-Path $Repo 'RELEASE-SOURCE'
-  if (-not (Test-Path -LiteralPath $file)) { return '' }
-  $v = ((Get-Content -LiteralPath $file | Where-Object { $_ -match '^version: ' } | Select-Object -First 1) -replace '^version: ', '').Trim()
-  if (-not $v) { return '' }
-  $entry = Join-Path $Root $v
-  if (-not (Test-StackCacheEntry -Dir $entry)) {
-    try {
-      New-Item -ItemType Directory -Path $Root -Force -ErrorAction Stop | Out-Null
-      $staging = Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-      Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-      Copy-Item -LiteralPath $Repo -Destination $staging -Recurse -Force -ErrorAction Stop
-      Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
-      Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
-    } catch { Remove-Item -LiteralPath (Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)) -Recurse -Force -ErrorAction SilentlyContinue }
+function Get-StackPluginCache {
+  # The newest valid version directory of the core plugin's cache entry, or ''. The directory names
+  # ARE the release versions the CLI writes, so they sort as versions.
+  $base = Join-Path $ConfigDir 'plugins/cache'
+  if (-not (Test-Path -LiteralPath $base -PathType Container)) { return '' }
+  $best = ''
+  $bestVer = $null
+  foreach ($mkt in (Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue)) {
+    $entry = Join-Path $mkt.FullName 'claude-stack'
+    if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
+    foreach ($dir in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
+      if (-not (Test-StackSrcDir -Dir $dir.FullName)) { continue }
+      $v = $null
+      [void][System.Version]::TryParse(($dir.Name -replace '[^0-9.].*$', ''), [ref]$v)
+      if (-not $best -or ($v -and $bestVer -and $v -gt $bestVer) -or ($v -and -not $bestVer)) {
+        $best = $dir.FullName; $bestVer = $v
+      }
+    }
   }
-  if (Test-StackCacheEntry -Dir $entry) { return $entry }
-  return ''
-}
-
-function Get-StackManifestVersion { param([string]$Dir)
-  $file = Join-Path $Dir 'setup-plugin/.claude-plugin/plugin.json'
-  if (-not (Test-Path -LiteralPath $file)) { return '' }
-  $m = [regex]::Match((Get-Content -LiteralPath $file -Raw), '"version"\s*:\s*"([^"]*)"')
-  if ($m.Success) { return $m.Groups[1].Value }
-  return ''
-}
-
-function Get-StackMarketplaceClone { param([string]$Want)
-  # Claude Code's own clone of the marketplace repo - <config>/plugins/marketplaces/<name> - is a
-  # FULL checkout of this repo, not just the plugin subdir it serves (measured: 7.1MB, with
-  # scripts/ meta/ stack/ all present), so on any machine with the plugin installed the release is
-  # usually already on disk and the archive is a second copy of what is already there.
-  # Returns the clone whose origin is OUR repo and whose plugin manifest carries $Want - the
-  # version match is what makes it safe, since the clone only moves when the user refreshes the
-  # marketplace and may otherwise sit a release behind. An empty $Want means 'any valid clone',
-  # which is the offline last resort below and nothing else.
-  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return '' }
-  $root = Join-Path $ConfigDir 'plugins/marketplaces'
-  if (-not (Test-Path -LiteralPath $root -PathType Container)) { return '' }
-  foreach ($dir in (Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue)) {
-    if (-not (Test-StackCacheEntry -Dir $dir.FullName)) { continue }
-    $origin = (& git -C $dir.FullName remote get-url origin 2>$null)
-    if (-not $origin) { continue }
-    if (($origin -replace '\.git$', '') -ne ($StackRepoUrl -replace '\.git$', '')) { continue }
-    if ($Want -and (Get-StackManifestVersion -Dir $dir.FullName) -ne $Want) { continue }
-    return $dir.FullName
-  }
-  return ''
-}
-
-function Move-StackCloneToCache { param([string]$Src, [string]$Root, [string]$Ver)
-  # Copy a matching clone into the cache under its version and synthesize the RELEASE-SOURCE the
-  # archive would have carried, so nothing downstream - the stamp, the guided walk's plugin-version
-  # check, the next run's cache hit - can tell the two routes apart. `.git` is dropped: 1.7MB of
-  # history no install reads, and a copy that kept it would out-vote RELEASE-SOURCE the next time
-  # the entry is handed to a run as -Source.
-  $sha = (& git -C $Src rev-parse HEAD 2>$null)
-  $ref = (& git -C $Src rev-parse --abbrev-ref HEAD 2>$null)
-  if (-not $sha) { return '' }
-  if (-not $ref) { $ref = 'main' }
-  $entry = Join-Path $Root $Ver
-  if (-not (Test-StackCacheEntry -Dir $entry)) {
-    $staging = Join-Path $Root (".dl." + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-    try {
-      New-Item -ItemType Directory -Path $Root -Force -ErrorAction Stop | Out-Null
-      Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
-      Copy-Item -LiteralPath $Src -Destination $staging -Recurse -Force -ErrorAction Stop
-      Remove-Item -LiteralPath (Join-Path $staging '.git') -Recurse -Force -ErrorAction SilentlyContinue
-      # LF + no BOM, byte-for-byte what the sh twin writes - this file goes into the SHARED cache
-      # and is parsed by both twins (`sed -n 's/^sha: //p'` on one side, `-match '^sha: '` on the
-      # other). Set-Content would give it [Environment]::NewLine (CRLF on Windows, so every value
-      # ends in a stray CR) and, on PS 5.1, -Encoding utf8 prefixes a BOM that breaks the first
-      # line's match outright.
-      [System.IO.File]::WriteAllText((Join-Path $staging 'RELEASE-SOURCE'),
-        "sha: $sha`nref: $ref`nversion: $Ver`nsource: marketplace-clone`n",
-        (New-Object System.Text.UTF8Encoding($false)))
-      Remove-Item -LiteralPath $entry -Recurse -Force -ErrorAction SilentlyContinue
-      Move-Item -LiteralPath $staging -Destination $entry -ErrorAction Stop
-    } catch { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
-  }
-  if (Test-StackCacheEntry -Dir $entry) { return $entry }
-  return ''
+  return $best
 }
 
 function Read-ReleaseSource {
@@ -1572,41 +1587,17 @@ function Get-StackSrc {
     return $true
   }
 
-  # Cached snapshot first: the probe costs one HEAD, and a hit costs no download at all.
-  $cacheRoot = ''
-  if ($script:StackCacheEnabled) {
-    $cacheRoot = Get-StackCacheRoot
-    $want = Get-StackProbeVersion
-    if ($want) {
-      $entry = Join-Path $cacheRoot $want
-      if (Test-StackCacheEntry -Dir $entry) {
-        $script:StackSrc = $entry
-        $script:StackSrcOwned = $false
-        Read-ReleaseSource -Dir $entry
-        $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
-        $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-        Log "source: cache $entry @ $refName $shortSha (release $want, no download)"
-        return $true
-      }
-      # Nothing cached, but the marketplace clone may already BE this release - copy it into the
-      # cache instead of paying the archive. Only ever on an exact version match: the probe named
-      # the newest release, so a clone carrying that version is the same revision the archive would
-      # be.
-      $mkt = Get-StackMarketplaceClone -Want $want
-      if ($mkt) {
-        $mktEntry = Move-StackCloneToCache -Src $mkt -Root $cacheRoot -Ver $want
-        if ($mktEntry) {
-          $script:StackSrc = $mktEntry
-          $script:StackSrcOwned = $false
-          Read-ReleaseSource -Dir $mktEntry
-          $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
-          $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-          Log "source: marketplace clone $mkt @ $refName $shortSha (release $want, no download)"
-          Remove-StaleStackCache -Root $cacheRoot -Keep $want
-          return $true
-        }
-      }
-    }
+  # What the CLI already cached: no probe, no download, and it is the exact snapshot the enabled
+  # plugins are running from, so the seed and the plugins can never be two different releases.
+  $cached = Get-StackPluginCache
+  if ($cached) {
+    $script:StackSrc = $cached
+    $script:StackSrcOwned = $false
+    Read-ReleaseSource -Dir $cached
+    $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
+    $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
+    Log "source: plugin cache $cached @ $refName $shortSha (no download)"
+    return $true
   }
 
   # Release archive: one asset is one revision, and no git is needed to take it.
@@ -1618,26 +1609,14 @@ function Get-StackSrc {
     Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp 'claude-stack.zip') -UseBasicParsing -ErrorAction Stop
     Expand-Archive -LiteralPath (Join-Path $tmp 'claude-stack.zip') -DestinationPath $repo -Force
   } catch { <# fall through to the clone below #> }
-  if ((Test-Path -LiteralPath (Join-Path $repo 'stack/skills') -PathType Container) -and
-      (Test-Path -LiteralPath (Join-Path $repo 'stack/agents') -PathType Container)) {
+  if (Test-StackSrcDir -Dir $repo) {
     $script:StackSrc = $repo
     $script:StackSrcRoot = $tmp
     $script:StackSrcOwned = $true
     Read-ReleaseSource -Dir $repo
-    # Promote and run FROM the cache entry, so this download is the last one this release needs.
-    $cached = ''
-    if ($cacheRoot) { $cached = Move-StackSrcToCache -Repo $repo -Root $cacheRoot }
-    if ($cached) {
-      Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-      $script:StackSrc = $cached
-      $script:StackSrcRoot = ''
-      $script:StackSrcOwned = $false
-      Remove-StaleStackCache -Root $cacheRoot -Keep (Split-Path -Leaf $cached)
-    }
     $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
     $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-    $suffix = if ($cached) { ' (cached for the next run)' } else { '' }
-    Log "source: $url @ $refName $shortSha$suffix"
+    Log "source: $url @ $refName $shortSha"
     return $true
   }
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -1651,24 +1630,9 @@ function Get-StackSrc {
   & git clone --depth 1 -b main $StackRepoUrl $tmp *> $null
   if ($LASTEXITCODE -ne 0) {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-    # Everything networked is gone - archive, probe and clone. The marketplace clone is the one
-    # source that needs no network at all, so take it UNVERIFIED rather than install nothing: it
-    # may be a release behind (the probe is what would have proven otherwise, and there is no probe
-    # offline), but the stamp records its exact commit, so the next online run reports the drift
-    # instead of hiding it.
-    $off = Get-StackMarketplaceClone -Want ''
-    if ($off) {
-      $script:StackSrc = $off
-      $script:StackSrcRoot = ''
-      $script:StackSrcOwned = $false
-      $script:StackSha = (& git -C $off rev-parse HEAD 2>$null)
-      $script:StackRef = (& git -C $off rev-parse --abbrev-ref HEAD 2>$null)
-      $shortSha = if ($script:StackSha) { $script:StackSha.Substring(0, [Math]::Min(12, $script:StackSha.Length)) } else { 'unknown' }
-      $refName = if ($script:StackRef) { $script:StackRef } else { '?' }
-      Log "source: marketplace clone $off @ $refName $shortSha (offline - release $(Get-StackManifestVersion -Dir $off), not checked against the release host)"
-      return $true
-    }
-    Add-Failure "release archive and clone of $StackRepoUrl both failed - stack source unavailable (nothing refreshed; existing copies kept)"
+    # Nothing networked answered, and the plugin cache above was empty too - which is the only
+    # offline source now, and the one an ordinary machine has.
+    Add-Failure "release archive and clone of $StackRepoUrl both failed, and no plugin cache is present - stack source unavailable (nothing refreshed; existing copies kept)"
     return $false
   }
   $script:StackSrc = $tmp
@@ -1715,15 +1679,100 @@ function Copy-FromStackSrc {
   }
 }
 
+# The plugins that carry THIS project's picked skills and agents, plus the EXTRAS no plugin carries.
+# Computed once per run from the post-selection manifests by scripts/selection-plugins.js, which
+# reads the same placement the marketplace entries are generated from - so the installer can never
+# enable a set that disagrees with what the marketplace actually ships.
+# Fail-soft, and the fallback is the whole 0.2.x route: without node, without a source snapshot, or
+# on any error, $SkillsViaPlugin drops to false and everything is copied as before. An install that
+# cannot compute its plugin set still ends with a working stack.
+$script:StackPluginsResolved = $false
+$script:StackSelPlugins = @()
+$script:PluginExtraSkills = @()
+$script:PluginExtraAgents = @()
+function Resolve-StackPlugins {
+  if ($script:StackPluginsResolved) { return }
+  $script:StackPluginsResolved = $true
+  # Either route needs the closure: the skills/agents live in the per-stack entries and, from
+  # Phase 6, so do the MCP servers - one plugin named for each catalog server.
+  if (-not ($script:SkillsViaPlugin -or $script:McpsViaPlugin)) { return }
+  $why = ''
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { $why = 'node not found' }
+  elseif (-not (Get-StackSrc)) { $why = 'no source snapshot' }
+  $js = if ($why) { $null } else { Join-Path $script:StackSrc 'scripts/selection-plugins.js' }
+  if (-not $why -and -not (Test-Path -LiteralPath $js)) { $why = 'selection-plugins.js is not in this source' }
+  if ($why) {
+    $script:SkillsViaPlugin = $false
+    $script:McpsViaPlugin = $false; Update-RetiredMcps
+    Log "  !! $why - skills, agents and MCP servers stay on the copy route"
+    return
+  }
+  $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("claude-stack-sel-" + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+  $selFile = Join-Path $tmp 'selection.txt'
+  $lines = @()
+  if ($script:SkillsViaPlugin) {
+    $lines = @(foreach ($entry in $Skills) { 'skill ' + $entry.Split('|', 2)[1] })
+    $lines += @(foreach ($entry in $Agents) { 'agent ' + ($entry.Split('::')[0] -replace '\.md$', '') })
+  }
+  # The selection's MCP picks are names, one per catalog row; selection-plugins.js folds the two
+  # expanded families (playwright-<engine>, context7-<remote|local>) back onto their one plugin.
+  if ($script:McpsViaPlugin) {
+    $lines += @(foreach ($entry in $Mcps) { 'mcp ' + ($entry -split '\|', 2)[0] })
+    # The local context7 transport is its OWN entry beside the hosted one - two servers in one
+    # plugin both load, so the local mode adds a plugin rather than swapping a server. The hosted
+    # one stays installed because the core depends on it; the summary prints the /mcp disable line.
+    if ($Context7 -eq 'local') { $lines += 'mcp context7-local' }
+  }
+  Set-Content -LiteralPath $selFile -Value $lines -Encoding utf8
+  $plugins = @()
+  try { $plugins = @(& node $js --selection $selFile 2>$null | Where-Object { $_ -ne '' }) } catch {}
+  if ($LASTEXITCODE -ne 0 -or $plugins.Count -eq 0) {
+    $global:LASTEXITCODE = 0
+    $script:SkillsViaPlugin = $false
+    $script:McpsViaPlugin = $false; Update-RetiredMcps
+    Log '  !! plugin set not computed - skills, agents and MCP servers stay on the copy route'
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    return
+  }
+  $script:StackSelPlugins = $plugins
+  $copy = @()
+  try { $copy = @(& node $js --selection $selFile --copy 2>$null | Where-Object { $_ -ne '' }) } catch {}
+  $global:LASTEXITCODE = 0
+  $script:PluginExtraSkills = @($copy | Where-Object { $_ -like 'skill *' } | ForEach-Object { $_.Substring(6) })
+  $script:PluginExtraAgents = @($copy | Where-Object { $_ -like 'agent *' } | ForEach-Object { $_.Substring(6) })
+  Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+  Log ("plugins carry {0} entr(ies); extras copied: {1} skill(s), {2} agent(s)" -f $script:StackSelPlugins.Count, $script:PluginExtraSkills.Count, $script:PluginExtraAgents.Count)
+}
+
 function Install-Skills {
   # Copy each selected skills/<name>/ out of the run's clone into the scope dest - all house skills
   # live in ONE repo, so a plain copy fully reproduces what the skills CLI used to stage; no
-  # npx/network-registry dependency.
+  # npx/network-registry dependency. On the plugin route only the EXTRAS travel this way.
+  Resolve-StackPlugins
   if (-not (Get-StackSrc)) { Add-Failure 'skills not installed'; return }   # fail-soft: skip, never abort
   $dest = Get-SkillsDest
   New-Item -ItemType Directory -Path $dest -Force | Out-Null
-  foreach ($entry in $Skills) {
-    $name = $entry.Split('|', 2)[1]
+  $copySkills = @()
+  if ($script:SkillsViaPlugin) {
+    # Prune BEFORE the plugins are enabled in the same run: a leftover copy SHADOWS the plugin's own
+    # (spike S6) with no error and no sign in the transcript. Only names the shipped manifest carries
+    # are pruned, so a skill folder this stack never installed - the project's own - is left alone.
+    foreach ($entry in $SkillsCatalog) {
+      $name = $entry.Split('|', 2)[1]
+      if ($script:PluginExtraSkills -contains $name) { continue }
+      $target = Join-Path $dest $name
+      if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Recurse -Force
+        Log "  skill pruned (now carried by a plugin): $name"
+      }
+    }
+    $copySkills = @($script:PluginExtraSkills)
+  }
+  else {
+    $copySkills = @(foreach ($entry in $Skills) { $entry.Split('|', 2)[1] })
+  }
+  foreach ($name in $copySkills) {
     $src = Join-Path $script:StackSrc (Join-Path 'stack/skills' $name)
     if (Test-Path -LiteralPath $src -PathType Container) {
       $target = Join-Path $dest $name
@@ -1747,17 +1796,86 @@ function Initialize-OfficialMarketplace {
   $global:LASTEXITCODE = 0
 }
 
+# The stack's OWN plugin names for this run, with its marketplace registered - shared by install,
+# update and the -SkillsOnly fast path, which on this route can no longer be a pure file copy: it
+# PRUNES the copies, so a run that skipped the enable would leave the project with neither.
+function Get-StackRunPlugins {
+  Resolve-StackPlugins   # may drop $SkillsViaPlugin to false, so it runs before the test below
+  if (-not ($HooksViaPlugin -or $script:SkillsViaPlugin -or $script:McpsViaPlugin)) { return @() }
+  try { & claude plugin marketplace add $StackMarketplace 2>$null } catch {}
+  try { & claude plugin marketplace update claude-stack 2>$null } catch {}
+  $global:LASTEXITCODE = 0
+  $out = @()
+  if ($HooksViaPlugin) { $out += $StackPlugins }
+  # ONE closure list for both routes: Resolve-StackPlugins fed it skill/agent lines only when
+  # $SkillsViaPlugin is on and mcp lines only when $McpsViaPlugin is, so whatever it holds is
+  # exactly what this combination of routes needs enabled.
+  if ($script:SkillsViaPlugin -or $script:McpsViaPlugin) { $out += $script:StackSelPlugins }
+  return $out
+}
+
+function Get-CoreDepsNeeded {
+  # The core's dependency plugins, but only when this run enables no stack plugin - see $CoreDepPlugins.
+  param($StackRun)
+  if (@($StackRun).Count -gt 0) { return @() }
+  return @($CoreDepPlugins)
+}
+
+$script:DepLockHintShown = $false
+function Show-DepLockHint {
+  # A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
+  # with higher precedence than this one - the one documented enable failure whose symptom ('plugin
+  # ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
+  # Printed once, and only for a dependency the listing actually shows as disabled, so a run that
+  # failed for an unrelated reason is not sent chasing it.
+  param([string]$Plugin)
+  if ($Plugin -notlike '*@claude-stack') { return }
+  if ($script:DepLockHintShown) { return }
+  $listing = Get-InstalledPluginMap
+  foreach ($dep in $CoreDepPlugins) {
+    $name = ($dep -split '@')[0]
+    if (-not $listing.ContainsKey($name)) { continue }
+    if ($listing[$name].enabled) { continue }
+    $script:DepLockHintShown = $true
+    $depScope = if ($listing[$name].scope) { $listing[$name].scope } else { $ClaudeScope }
+    Log "     $name is DISABLED and $Plugin depends on it - enable it first: claude plugin enable $dep --scope $depScope"
+  }
+}
+
+function Initialize-StackSource {
+  # Put the SOURCE on disk before anything asks for it, by letting the CLI fetch it: installing the
+  # core entry leaves the whole repo in the plugin cache, which is what Get-StackSrc reads. Only
+  # runs when the plugin route is on, the CLI exists and no cache is there yet - a no-op on every
+  # run after the first, with the archive download below it as the fail-soft.
+  # Read the normalised route flags, never the env again: one rule, one home.
+  if (-not ($HooksViaPlugin -or $SkillsViaPlugin)) { return }
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { return }
+  if ($Source) { return }
+  if (Get-StackPluginCache) { return }
+  Initialize-OfficialMarketplace
+  try { & claude plugin marketplace add $StackMarketplace 2>$null } catch {}
+  try { & claude plugin marketplace update claude-stack 2>$null } catch {}
+  $global:LASTEXITCODE = 0
+  Log 'source: fetching the core plugin so its cache can serve this run'
+  try { & claude plugin install 'claude-stack@claude-stack' --scope $ClaudeScope -y *> $null } catch {}
+  $global:LASTEXITCODE = 0
+}
+
 function Install-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Initialize-OfficialMarketplace
   foreach ($mp in $ExtraMarketplaces) { try { & claude plugin marketplace add $mp 2>$null } catch {} }
-  foreach ($p in $Plugins) {
+  # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the hooks
+  # plugin resolves in the same run that prunes the copied hooks it replaces.
+  $stackRun = @(Get-StackRunPlugins)
+  $allPlugins = @($Plugins) + $stackRun + (Get-CoreDepsNeeded $stackRun)
+  foreach ($p in $allPlugins) {
     # claude-hud is a statusline HUD - force USER scope regardless of $ClaudeScope. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
     Log "plugin [$pScope]: $p"
     try { & claude plugin install $p --scope $pScope -y } catch {}   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
-    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
+    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed"; Show-DepLockHint $p }
   }
 }
 
@@ -1792,6 +1910,10 @@ function Register-Mcp([string]$Name, [string]$Spec) {
 # ones). The CLI route runs first; at project scope the stack-owned .mcp.json entry is then removed
 # directly, because a `remove` that did not take exits 0 like one that did (see the verify pass).
 function Remove-DroppedPlaywright {
+  # PLUGIN ROUTE: the four engines are declared in the one `playwright` plugin and the user keeps
+  # one enabled with /mcp disable, so there is no per-engine registration to drop. The retirement
+  # above already removes any the copy route left behind.
+  if ($McpsViaPlugin) { return }
   if (-not $PwKept.Count) { return }
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { return }
   $keep = @($PwKept | ForEach-Object { "playwright-$_" })
@@ -1821,10 +1943,24 @@ function Remove-DroppedPlaywright {
 
 function Install-Mcps {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
+  # PLUGIN ROUTE: the servers come from the plugins named for them, so this script registers none.
+  # It still PRUNES, because an install over a 0.2.x project is exactly where the stack's old
+  # registrations have to come out - leaving them would run every server twice, once from
+  # .mcp.json and once from the plugin, and pay both sets of tool schemas on every session.
+  if ($McpsViaPlugin) {
+    Remove-RetiredMcps
+    Log 'mcp: carried by the plugins (serena, context7, memory, and the picks) - nothing registered here'
+    return
+  }
+  Remove-RetiredMcps   # the locked three, when the core plugin carries them (see $McpsLocked)
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
     $spec = $parts[1]
+    if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) {
+      Log "  mcp ${name}: carried by the core plugin's dependencies - not registered here"
+      continue
+    }
     # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
     # 'already configured' skips the ADD, never the verify pass below: a name registered by an older
     # release answers `mcp get` in its OLD shape, so an install over such a project must still repair it.
@@ -1926,6 +2062,9 @@ function Repair-McpsProject {
   foreach ($entry in $Mcps) {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
+    # A locked server the core plugin carries has no registration to verify, and writing the shape
+    # back would put the entry the prune just removed straight back into the file.
+    if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) { continue }
     $want = Get-McpExpected $name $parts[1]
     $have = if ($servers.Contains($name)) { $servers[$name] } else { $null }
     if ((ConvertTo-CanonicalJson $have) -eq (ConvertTo-CanonicalJson $want)) { continue }
@@ -1974,6 +2113,9 @@ function Repair-McpsUser {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
     $spec = $parts[1]
+    # A locked server the core plugin carries is not registered at all, so there is nothing to read
+    # back and a 'drifted' verdict here would re-add the entry the prune just removed.
+    if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) { continue }
     $want = Get-McpExpected $name $spec
     $expected = if ($want.type -eq 'http') { "http|$($want.url)" } else { ("stdio|$($want.command) " + (@($want.args) -join ' ')).TrimEnd() }
     # `claude mcp get` PRINTS a stored `${VAR:-default}` as `${VAR}` (CLI 2.1.272 - the stored entry keeps
@@ -1997,11 +2139,27 @@ function Repair-McpsUser {
 function Test-McpRegistrations {
   if ($script:ClaudeMissing) { return }
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }
+  # PLUGIN ROUTE: there is no stack registration left to read back. Running this pass anyway would
+  # be worse than useless - it rewrites .mcp.json entries to the manifest shape, which is precisely
+  # what the run just removed.
+  if ($McpsViaPlugin) { return }
   if ($ClaudeScope -eq 'project') { Repair-McpsProject } else { Repair-McpsUser }
 }
 
 function Get-Hooks {
   # Copy each hook file into the repo from the run's clone; per-hook fail-soft (keeps repo copy).
+  if ($HooksViaPlugin) {
+    # The thirteen WIRED hooks move to the plugin. The two ENGINES do not: docs.js and memory.js are
+    # CLIs the model runs by path (node .claude/hooks/docs.js), named in 22 skill, agent, rule and
+    # command bodies that are SHARED with cursor-stack, which has no plugin system. Copying them is
+    # what keeps that one route working on both stacks; model-windows.json rides along because the
+    # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
+    $root = Get-RepoRoot
+    if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
+    Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files @('docs.js', 'memory.js', 'model-windows.json')
+    Log '  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied'
+    return
+  }
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping hooks'; return }
   $files = @(foreach ($entry in $Hooks) { ($entry -split '::', 2)[0] })
@@ -2013,6 +2171,9 @@ function Get-Hooks {
   if ($files -contains 'docs-session.js') { $files += 'docs.js' }
   # the memory hook's engine: required by memory-session.js from its own directory - same split.
   if ($files -contains 'memory-session.js') { $files += 'memory.js' }
+  # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
+  # this route too - without it every hook takes the fail-open catch on every single invocation.
+  if ($files.Count -gt 0) { $files += 'hook-prelude.js' }
   Copy-FromStackSrc -SubDir 'stack/hooks' -Label 'hook' -DestDir (Join-Path $root '.claude/hooks') -Files $files
 }
 
@@ -2020,7 +2181,27 @@ function Get-Agents {
   # Copy each subagent .md into the repo from the run's clone; per-agent fail-soft (keeps repo copy).
   $root = Get-RepoRoot
   if (-not $root) { Log '  !! not in a git repo - skipping agents'; return }
-  Copy-FromStackSrc -SubDir 'stack/agents' -Label 'agent' -DestDir (Join-Path $root '.claude/agents') -Files $Agents
+  Resolve-StackPlugins
+  if (-not $script:SkillsViaPlugin) {
+    Copy-FromStackSrc -SubDir 'stack/agents' -Label 'agent' -DestDir (Join-Path $root '.claude/agents') -Files $Agents
+    return
+  }
+  # Same two moves as the skills: prune what a plugin now carries (a stale copy shadows it), copy
+  # only the extras. A seat file the shipped manifest never named is the project's own.
+  $agentsDir = Join-Path $root '.claude/agents'
+  foreach ($entry in $AgentsCatalog) {
+    $file = $entry.Split('::')[0]
+    if ($script:PluginExtraAgents -contains ($file -replace '\.md$', '')) { continue }
+    $target = Join-Path $agentsDir $file
+    if (Test-Path -LiteralPath $target) {
+      Remove-Item -LiteralPath $target -Force
+      Log "  agent pruned (now carried by a plugin): $file"
+    }
+  }
+  $extra = @(foreach ($name in $script:PluginExtraAgents) { "$name.md" })
+  if ($extra.Count -gt 0) {
+    Copy-FromStackSrc -SubDir 'stack/agents' -Label 'agent' -DestDir $agentsDir -Files $extra
+  }
 }
 
 function Get-Rules {
@@ -2357,18 +2538,25 @@ function Write-Stamp {
     $stampRepo = Get-RepoRoot
     $stampRulesDir = if ($stampRepo) { Join-Path (Join-Path $stampRepo '.claude') 'rules' } else { '' }
     $stampMcpFile = if ($ClaudeScope -eq 'user') { $AccountClaudeJson } else { Join-Path (Get-Location).Path '.mcp.json' }
+    $stampSettings = if ($stampRepo) { Join-Path (Join-Path $stampRepo '.claude') 'settings.json' } else { '' }
+    # A server is CARRIED either way: registered in that file, or riding the plugin named for it. On
+    # the plugin route there is no .mcp.json at all, and a stamp that only read the file would record
+    # an install with none of the locked three - which is the opposite of what it is for.
     # no double quotes in the program: Windows PowerShell 5.1 strips them from a native argument
     $stampScript = @'
-const fs=require('fs'),path=require('path');const [recs,mcpFile,rulesDir]=process.argv.slice(1);
-let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,'utf8')).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,'utf8')).mcpServers||{};}catch{}
+const fs=require('fs'),path=require('path');const [recs,mcpFile,settings,rulesDir]=process.argv.slice(1);
+let a={},s={},p={};try{a=JSON.parse(fs.readFileSync(recs,'utf8')).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,'utf8')).mcpServers||{};}catch{}
+try{p=JSON.parse(fs.readFileSync(settings,'utf8')).enabledPlugins||{};}catch{}
+const fam=(n)=>String(n).replace(/^playwright-.*/,'playwright').replace(/^context7-local$/,'context7');
+const plugins=new Set(Object.keys(p).map((k)=>fam(k.split('@')[0])));
 const list=(x)=>(Array.isArray(x)?x:[]);
 console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+'.md'))).join(','));
-console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(','));
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)||plugins.has(m)).join(','));
 '@
     # the rules dir goes LAST: Windows PowerShell 5.1 drops an empty native argument, so an empty one
-    # anywhere else would shift the rest
+    # anywhere else would shift the rest - and the settings path is empty exactly when it is
     try {
-      $stampAlways = @(& node -e $stampScript $stampRecs $stampMcpFile $stampRulesDir 2>$null)
+      $stampAlways = @(& node -e $stampScript $stampRecs $stampMcpFile $stampSettings $stampRulesDir 2>$null)
       if ($stampAlways.Count -ge 1) { $stampAlwaysRules = "$($stampAlways[0])".Trim() }
       if ($stampAlways.Count -ge 2) { $stampAlwaysMcps = "$($stampAlways[1])".Trim() }
     } catch { $stampAlwaysRules = ''; $stampAlwaysMcps = '' }
@@ -2478,8 +2666,28 @@ function Set-HookSettings {
   # retired AskUserQuestion entry): the plugin route applies meta/migrations.json, the script route must
   # match, or the legacy entry survives every update with a freshly backfilled timeout (measured).
   # Keyed on the SELECTED $Hooks, so a hook the user de-selected keeps its entries (configure's job).
+  # On the plugin route the stack wires nothing: every shipped hook name is already in $RetiredHooks
+  # (appended at load), and the RETIRED pass below is what DROPS an older install's wirings, while
+  # $wireHooks stays empty so none is re-added. The deny-list and mcp allow-list passes below still
+  # run - they are not hook wirings.
+  # The walk's hooks layer still asks; on the plugin route its answer becomes the HOOKS_OFF value
+  # below rather than a copy list - the hooks it did NOT pick. A selection carrying no hook lines
+  # leaves $Hooks as the whole catalog, so the complement is empty and every hook runs.
+  $wireHooks = if ($HooksViaPlugin) { @() } else { @($Hooks) }
+  # Only a selection that CARRIES hook lines counts as an answer: `update -InstalledOnly` reads the
+  # hooks off DISK, and on this route there are none, which would read as 'all thirteen dropped'.
+  $hooksOff = @(); $hooksAnswered = $false
+  if ($HooksViaPlugin -and $Selection -and (Test-Path -LiteralPath $Selection) -and
+      (Select-String -LiteralPath $Selection -Pattern '^hook ' -Quiet)) {
+    $hooksAnswered = $true
+    # A hook wired on two events has two catalog rows, so de-duplicate: the value is a list of hook
+    # NAMES, and a name repeated twice is the same hook read twice.
+    $selected = @(foreach ($entry in $Hooks) { ($entry -split '::', 2)[0] })
+    $catalogNames = @(foreach ($entry in $HooksCatalog) { ($entry -split '::', 2)[0] })
+    $hooksOff = @($catalogNames | Where-Object { $selected -notcontains $_ } | Select-Object -Unique)
+  }
   $oursFiles = @(foreach ($entry in $Hooks) { ($entry -split '::', 3)[0] })
-  $wired = @(foreach ($entry in $Hooks) { $p = $entry -split '::', 3; if ($p[1] -and -not $p[1].StartsWith('@')) { "$($p[1])::$($p[0])" } })
+  $wired = @(foreach ($entry in $wireHooks) { $p = $entry -split '::', 3; if ($p[1] -and -not $p[1].StartsWith('@')) { "$($p[1])::$($p[0])" } })
   $kept = @()
   foreach ($e in $pre) {
     $hs = @(foreach ($h in @($e.hooks)) {
@@ -2489,7 +2697,7 @@ function Set-HookSettings {
     if ($hs.Count -gt 0) { $e.hooks = $hs; $kept += $e } else { $changed = $true }
   }
   $pre = $kept
-  foreach ($entry in $Hooks) {
+  foreach ($entry in $wireHooks) {
     $parts = $entry -split '::', 3
     $file = $parts[0]
     $matcher = $parts[1]
@@ -2551,9 +2759,24 @@ function Set-HookSettings {
   # enabledMcpjsonServers: pre-approve exactly the project .mcp.json servers we register (never enableAllProjectMcpServers).
   if (-not $data.PSObject.Properties['enabledMcpjsonServers']) { $data | Add-Member -NotePropertyName enabledMcpjsonServers -NotePropertyValue @() }
   $enabled = @($data.enabledMcpjsonServers)
-  foreach ($mcpEntry in $Mcps) {
-    $mcpName = ($mcpEntry -split '\|', 2)[0]   # server name = the token before the first '|'
+  # Pre-approve exactly what this run registered in .mcp.json - which on the plugin route is
+  # nothing, and on the copy route is the droppable picks only (a server carried by a plugin is
+  # trusted through its plugin). Everything else comes OUT: a leftover entry names a .mcp.json
+  # server that no longer exists, which reads like a working knob.
+  $mcpNames = @(Get-BareNamedMcps)
+  $mcpOff = @(foreach ($mcpEntry in $Mcps) {
+    $n = ($mcpEntry -split '\|', 2)[0]                  # server name = the token before the first '|'
+    if ($mcpNames -notcontains $n) { $n }
+  }) + @($RetiredMcps)
+  foreach ($mcpName in $mcpNames) {
     if ($enabled -notcontains $mcpName) { $enabled += $mcpName; $changed = $true }
+  }
+  foreach ($mcpName in $mcpOff) {
+    if ($enabled -contains $mcpName) {
+      $enabled = @($enabled | Where-Object { $_ -ne $mcpName })
+      $changed = $true
+      Log "  settings.json: dropped enabledMcpjsonServers entry $mcpName (no longer registered here)"
+    }
   }
   $data.enabledMcpjsonServers = $enabled
   # Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
@@ -2668,6 +2891,22 @@ function Set-HookSettings {
     $changed = $true
     Log "  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded ($versioning)"
   }
+  # The memory db path and the sentry auth mode are what the PLUGIN route's launcher and headers
+  # helper read - a plugin MCP entry cannot expand a PROJECT env key (measured), but a launcher whose
+  # cwd is the project can read this file itself. Written, not seeded: both track a choice this run
+  # just made, so a level change or an auth switch has to land or the server keeps the old one.
+  if ($MemoryDbPath -and $data.env.CLAUDE_STACK_MEMORY_DB -ne $MemoryDbPath) {
+    if ($data.env.PSObject.Properties['CLAUDE_STACK_MEMORY_DB']) { $data.env.CLAUDE_STACK_MEMORY_DB = $MemoryDbPath }
+    else { $data.env | Add-Member -NotePropertyName CLAUDE_STACK_MEMORY_DB -NotePropertyValue $MemoryDbPath }
+    $changed = $true
+    Log "  settings.json env: CLAUDE_STACK_MEMORY_DB -> $MemoryDbPath"
+  }
+  if ($SentryAuth -and $data.env.CLAUDE_STACK_SENTRY_AUTH -ne $SentryAuth) {
+    if ($data.env.PSObject.Properties['CLAUDE_STACK_SENTRY_AUTH']) { $data.env.CLAUDE_STACK_SENTRY_AUTH = $SentryAuth }
+    else { $data.env | Add-Member -NotePropertyName CLAUDE_STACK_SENTRY_AUTH -NotePropertyValue $SentryAuth }
+    $changed = $true
+    Log "  settings.json env: CLAUDE_STACK_SENTRY_AUTH -> $SentryAuth"
+  }
   # instrumentation switch: the wired instrument hook runs only when this is '1' - seeded off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_INSTRUMENT']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_INSTRUMENT -NotePropertyValue '0'
@@ -2697,6 +2936,31 @@ function Set-HookSettings {
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)'
   }
+
+  # Absent-only, and this is where the walk's hooks LAYER lands once the set stopped being copied:
+  # the hooks the selection did NOT pick ($hooksOff above) become the value, so the answer the user
+  # gave at install time still decides which guards run. Empty means every hook runs.
+  $off = ($hooksOff -join ',')
+  if ($hooksAnswered) {
+    # A walk answered the hooks layer THIS run - that answer wins over the stored value, the one
+    # exception to absent-only seeding (the user is looking at the question as it is asked).
+    if (-not $data.env.PSObject.Properties['CLAUDE_STACK_HOOKS_OFF']) {
+      $data.env | Add-Member -NotePropertyName CLAUDE_STACK_HOOKS_OFF -NotePropertyValue $off
+      $changed = $true
+      Log ('  settings.json env: CLAUDE_STACK_HOOKS_OFF = {0}' -f $(if ($off) { $off } else { '(empty - every hook runs)' }))
+    }
+    elseif ([string]$data.env.CLAUDE_STACK_HOOKS_OFF -ne $off) {
+      $data.env.CLAUDE_STACK_HOOKS_OFF = $off
+      $changed = $true
+      Log ('  settings.json env: CLAUDE_STACK_HOOKS_OFF = {0}' -f $(if ($off) { $off } else { '(empty - every hook runs)' }))
+    }
+  }
+  elseif (-not $data.env.PSObject.Properties['CLAUDE_STACK_HOOKS_OFF']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_HOOKS_OFF -NotePropertyValue ''
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_HOOKS_OFF seeded (empty - every hook runs)'
+  }
+
   # rotate ask: the stop contract asks once per credential exposure; '0' turns the ask off.
   if (-not $data.env.PSObject.Properties['CLAUDE_STACK_ROTATE_ASK']) {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_ROTATE_ASK -NotePropertyValue '1'
@@ -2866,6 +3130,11 @@ function Import-MemoryNotes {
 $RetiredSkills = @('frontend', 'mobile', 'project-task-flow', 'project-task-cycle', 'project-capabilities', 'project-failure-signatures', 'typescript-testing', 'data-security', 'dotnet-error-handling', 'mobile-security')
 $RetiredRules = @('baseline-agents-skills.md', 'baseline-code-quality.md', 'baseline-communication.md', 'baseline-definition-of-done.md', 'baseline-evaluating-proposals.md', 'baseline-mcp-tools.md', 'baseline-planning.md', 'baseline-related-projects.md', 'house-baseline.md', 'web-conventions.md', 'aspnet-conventions.md')
 $RetiredHooks = @('require-convention-skill.js', 'inject-code-style.js')
+# The plugin route retires the whole COPY catalog: the same two passes that undo an upstream removal
+# (Remove-RetiredHooks drops the file, Set-HookSettings drops the settings.json wiring) are what
+# migrate a 0.2.x install off its copied hooks. Appended HERE, at load, because Update-Hooks prunes
+# BEFORE it wires - an append inside Set-HookSettings would reach the prune one run too late.
+if ($HooksViaPlugin) { foreach ($entry in $HooksCatalog) { $RetiredHooks += ($entry -split '::', 2)[0] } }
 $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'angular-verifier.md', 'mobile-solution-designer.md', 'mobile-implementer.md', 'mobile-verifier.md', 'dotnet-windows-service-solution-designer.md', 'dotnet-windows-service-implementer.md', 'dotnet-windows-service-verifier.md', 'code-analyzer.md', 'issue-diagnoser.md')
 # MCP servers this stack no longer ships AT ALL. Empty today, and it is the mechanism that matters:
 # skills, agents, rules and hooks each got a retired list; MCPs never did, so a server the stack
@@ -2874,6 +3143,29 @@ $RetiredAgents = @('angular-solution-designer.md', 'angular-implementer.md', 'an
 # the stack still SHIPS but this project no longer needs is a different question - that is
 # /claude-stack:validate's whole-stack-absent pass, not a retirement.
 $RetiredMcps = @()
+# The plugin route retires the whole REGISTRATION catalog, the same way $HooksViaPlugin retires the
+# copied hooks: the servers now arrive through the plugins named for them, so every stack name this
+# script ever wrote into .mcp.json must come back OUT in the run that enables those plugins, or the
+# project runs each server twice - once from the file and once from the plugin - and pays both sets
+# of tool schemas on every session. The playwright family is expanded by hand: the catalog carries
+# one `playwright` row but an install may have written any of the four per-engine names.
+# Rebuildable, not a one-shot fill: Resolve-StackPlugins can still drop the run back to the
+# registration route (no node, no snapshot), and a $RetiredMcps frozen here would then unregister
+# the very servers that route is about to write. Called once here and once from that fallback.
+$script:McpsRetiredAuthored = @($RetiredMcps)
+function Update-RetiredMcps {
+  $script:RetiredMcps = @($script:McpsRetiredAuthored)
+  if (-not $script:McpsViaPlugin) {
+    # Copy route, but the core plugin is still on (hooks or skills): its dependencies already carry
+    # the locked three, so any registration of them this script ever wrote has to come out.
+    if (Test-CorePluginOn) { $script:RetiredMcps = @($script:RetiredMcps) + @($McpsLocked) }
+    return
+  }
+  $script:RetiredMcps = @($script:RetiredMcps) +
+    @($McpsCatalog | ForEach-Object { ($_ -split '\|', 2)[0] }) +
+    @('playwright-chrome', 'playwright-msedge', 'playwright-firefox', 'playwright-webkit')
+}
+Update-RetiredMcps
 # Plugins this stack no longer ships AT ALL. Empty today, and as with $RetiredMcps it is the
 # MECHANISM that matters: skills, agents, rules, hooks and MCPs each have a retired list and plugins
 # had none, so a plugin the stack dropped stayed installed AND ENABLED on every existing machine
@@ -2953,7 +3245,11 @@ function Get-InstalledPluginMap {
   try { $raw = (& claude plugin list --json 2>$null) -join "`n" } catch { return $map }
   if (-not $raw.Trim()) { return $map }
   try { $doc = $raw | ConvertFrom-Json } catch { return $map }
-  $rows = if ($doc -is [System.Collections.IEnumerable] -and -not ($doc -is [string])) { $doc } elseif ($doc.PSObject.Properties.Name -contains 'installed') { $doc.installed } else { @() }
+  # ConvertFrom-Json UNWRAPS a one-element array into a single PSCustomObject, which is not
+  # IEnumerable - so the old shape test dropped the whole listing whenever exactly one plugin was
+  # installed, and every caller silently kept its defaults (wrong update scope, a parked plugin
+  # never enabled). @() wraps either shape; python's json.load on the sh side never had this.
+  $rows = if ($doc -and ($doc.PSObject.Properties.Name -contains 'installed')) { $doc.installed } else { @($doc) }
   $cwd = [System.IO.Path]::GetFullPath((Get-Location).Path)
   foreach ($e in @($rows)) {
     if (-not $e) { continue }
@@ -2992,9 +3288,15 @@ function Update-Plugins {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Initialize-OfficialMarketplace
   try { & claude plugin marketplace update 2>$null } catch {}   # refresh marketplaces first
+  # The stack's OWN plugins travel this same loop on update - installed when absent, enabled when
+  # parked, then updated. Without it an update pruned the copied hooks, skills and agents and
+  # enabled nothing in their place: `claude plugin update` is a no-op on a plugin that is not
+  # installed, so the run ended with neither route live.
+  $stackRun = @(Get-StackRunPlugins)
+  $allPlugins = @($Plugins) + $stackRun + (Get-CoreDepsNeeded $stackRun)
   $before = Get-InstalledPluginMap
   Remove-RetiredPlugins -Listing $before
-  foreach ($p in $Plugins) {
+  foreach ($p in $allPlugins) {
     $name = ($p -split '@')[0]
     # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a
     # silent no-op, so passing the INSTALL's scope left every user-scoped plugin on its old version
@@ -3021,7 +3323,7 @@ function Update-Plugins {
   # Read the versions back: `claude plugin update` reports success whether or not anything moved.
   $after = Get-InstalledPluginMap
   if ($before.Count -eq 0 -and $after.Count -eq 0) { return }
-  foreach ($p in $Plugins) {
+  foreach ($p in $allPlugins) {
     $name = ($p -split '@')[0]
     $v1 = if ($before.ContainsKey($name)) { $before[$name].version } else { '' }
     $v2 = if ($after.ContainsKey($name)) { $after[$name].version } else { '' }
@@ -3036,13 +3338,20 @@ function Remove-RetiredMcps {
   # UPDATE: unregister the known retired server names ($RetiredMcps above)
   foreach ($name in $RetiredMcps) {
     claude mcp remove $name -s $script:ClaudeScope 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { Write-Log "  mcp pruned (retired upstream): $name" }
+    if ($LASTEXITCODE -eq 0) { Log "  mcp pruned (retired upstream): $name" }
   }
 }
 
 function Update-Mcps {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { $script:ClaudeMissing = $true; return }   # fail-soft: skip, never abort
   Remove-RetiredMcps
+  # PLUGIN ROUTE: the prune above IS the update - `claude plugin update` refreshed the entries, and
+  # the pins they carry are release-time values from meta/mcp-pins.json, so there is nothing to
+  # re-resolve and nothing to re-register.
+  if ($McpsViaPlugin) {
+    Log 'mcp: carried by the plugins - registrations pruned, nothing re-registered'
+    return
+  }
   # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
   # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
   # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
@@ -3051,6 +3360,10 @@ function Update-Mcps {
     $parts = $entry.Split('|', 2)
     $name = $parts[0]
     $spec = $parts[1]
+    if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) {
+      Log "  mcp ${name}: carried by the core plugin's dependencies - not re-registered here"
+      continue
+    }
     Log "mcp refresh [$ClaudeScope]: $name"
     try { & claude mcp remove $name -s $ClaudeScope 2>$null } catch {}
     if (-not (Register-Mcp $name $spec)) { Add-Failure "mcp $name failed" }
@@ -3181,6 +3494,7 @@ function Start-SerenaPreWarm {
   # #311 TS-LSP workaround below, whose own header says to delete the whole block once that ships
   # upstream - which would have taken this with it, silently, for a reason unrelated to #311.
   if (-not $OnWindows) { return }
+  if ($env:CLAUDE_STACK_SKIP_PREREQS -eq '1') { return }   # CI: no real uv cache to warm
   if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { return }
   $serenaOn = $false
   try { & claude mcp get serena *> $null; $serenaOn = ($LASTEXITCODE -eq 0) } catch {}
@@ -3201,6 +3515,7 @@ function Repair-SerenaTsLspWindows {
   #      fetched from the repo like the hooks. Fail-soft throughout. No-op on the .sh twin (Unix runs
   #      the shim directly via its shebang). REMOVE this whole block once #311 ships upstream.
   if (-not $OnWindows) { return }
+  if ($env:CLAUDE_STACK_SKIP_PREREQS -eq '1') { return }   # CI: no real uv cache to patch
   if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { return }
   $serenaOn = $false
   try { & claude mcp get serena *> $null; $serenaOn = ($LASTEXITCODE -eq 0) } catch {}
@@ -3234,6 +3549,20 @@ else { Clear-WriteBlockersTree (Join-Path (Get-Location).Path '.claude') }
 # dependent step (testability - drives just the git-copy with no claude/gh/network dependency).
 if ($SkillsOnly) {
   if ($Action -eq 'install') { Install-Skills } else { Update-Skills }
+  # On the plugin route the skills layer IS the plugins: the step above pruned the copies, so
+  # enabling them here is what keeps the flag from leaving a project with neither. It stays
+  # fail-soft and CLI-free on the copy route, which is what the flag was built for.
+  if ($script:SkillsViaPlugin -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+    # The core entry DEPENDS on superpowers, so its marketplace has to be registered first or every
+    # stack plugin fails with 'Dependency ... not found' - measured on this path, which is the one
+    # place that installs plugins without going through Install-Plugins.
+    Initialize-OfficialMarketplace
+    foreach ($p in (Get-StackRunPlugins)) {
+      Log "plugin [$ClaudeScope]: $p"
+      try { & claude plugin install $p --scope $ClaudeScope -y } catch {}
+      if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
+    }
+  }
   Write-Stamp      # a skills-only run still installs FROM a revision - record it
   Remove-StackSrc
   exit 0
@@ -3242,13 +3571,57 @@ if ($SkillsOnly) {
 Test-Prerequisites
 Install-GitHubCli
 
+# COPY ROUTE ONLY. Everything the stack ships names an MCP tool by its PLUGIN spelling,
+# mcp__plugin_<plugin>_<server>__<tool> - because from 1.0.0 every stack server arrives through a
+# plugin named for it. With CLAUDE_STACK_MCPS_VIA_PLUGIN=false the servers are registered in
+# .mcp.json under their BARE names instead, and those tool names would resolve to nothing: an agent
+# `tools:` allowlist written the plugin way silently drops the tool, and a `ToolSearch select:` line
+# written that way silently finds none. So the copied files are re-spelled back, in place, right
+# after the copies land. The skills and agents a PLUGIN carries cannot be re-spelled - they are read
+# from the plugin cache, not from .claude/ - so the mixed combination is reported, never half-fixed.
+function Convert-McpToolNames {
+  # Only the servers THIS run registered under a bare name. The three locked ones ride the core
+  # plugin's dependencies whenever any plugin route is on, so on a hooks-only copy route their tool
+  # names must stay plugin-spelled while the droppable picks are re-spelled.
+  $bare = @(Get-BareNamedMcps)
+  if (-not $bare.Count) { return }
+  if ($script:SkillsViaPlugin) {
+    Log ("  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: " + ($bare -join ' ') + " - set CLAUDE_STACK_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route")
+    return
+  }
+  $bareSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$bare)
+  $root = Get-RepoRoot
+  if (-not $root) { $root = (Get-Location).Path }
+  $skills = Get-SkillsDest
+  # One plugin carries one server under the SAME name, so the two halves are the same word; the
+  # pattern matches them separately and keeps the SERVER half, which is the name a registration writes.
+  $pattern = 'mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__'
+  $n = 0
+  foreach ($target in @($skills, (Join-Path $root '.claude/agents'), (Join-Path $root '.claude/rules'), (Join-Path $root '.claude/hooks'))) {
+    if (-not (Test-Path -LiteralPath $target)) { continue }
+    foreach ($f in @(Get-ChildItem -LiteralPath $target -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @('.md', '.mdc', '.js', '.json', '.txt') })) {
+      try {
+        $body = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop
+      } catch { continue }
+      if ($null -eq $body) { continue }
+      $fixed = [regex]::Replace($body, $pattern, {
+        param($m)
+        if ($bareSet.Contains($m.Groups[1].Value)) { 'mcp__' + $m.Groups[1].Value + '__' } else { $m.Value }
+      })
+      if ($fixed -ne $body) { Set-Content -LiteralPath $f.FullName -Value $fixed -NoNewline -Encoding utf8; $n++ }
+    }
+  }
+  if ($n) { Log "  copy route: MCP tool names re-spelled to the registered server names in $n file(s)" }
+}
+
 # claude-only steps fail soft (Get-Command claude) if the CLI is not installed.
 Save-Pins   # -KeepPins only: no-op without the switch (install re-adds skills unconditionally too, so both actions refresh)
 # try/finally is the .ps1 stand-in for the .sh EXIT trap: the source clone is removed even if a step
 # throws. Write-Stamp runs after every copy step, so the stamp only ever names a revision that fully landed.
 try {
-  if ($Action -eq 'install') { Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Import-MemoryNotes; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
-  else { Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Import-MemoryNotes; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows }
+  if ($Action -eq 'install') { Initialize-StackSource; Install-Skills; Install-Plugins; Remove-DroppedPlaywright; Install-Mcps; Test-McpRegistrations; Set-AccountKeys; Get-Hooks; Set-HookSettings; Get-Agents; Get-Rules; Import-MemoryNotes; Move-DocsDomains; New-ClaudeMd; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows; Convert-McpToolNames }
+  else { Initialize-StackSource; Update-Skills; Update-Plugins; Remove-DroppedPlaywright; Update-Mcps; Test-McpRegistrations; Set-AccountKeys; Update-Hooks; Update-Agents; Update-Rules; Import-MemoryNotes; Move-DocsDomains; New-SerenaProject; Install-PlaywrightBrowser; Start-SerenaPreWarm; Repair-SerenaTsLspWindows; Convert-McpToolNames }
   Restore-Pins
   Write-Stamp
 }
@@ -3310,6 +3683,10 @@ if ($PlaywrightEnabled -and $PwKept.Count) {
   $pwOff = @($PwKept | Where-Object { $_ -ne $PlaywrightEnabled } | ForEach-Object { "/mcp disable playwright-$_" })
   if ($pwOff.Count) { Log "  - playwright: keep playwright-$PlaywrightEnabled on - run once in Claude Code: $($pwOff -join ', ') (switch any time with /mcp enable / disable)" }
 }
+# Both context7 entries are installed in local mode (the hosted one is a dependency of the core and
+# cannot be dropped), and both servers load until one is switched off. Its own `if`, not the
+# playwright one above: that block only runs when this run was told which engine stays on.
+if ($Context7 -eq 'local' -and $McpsViaPlugin) { Log '  - context7: the local transport is on - run once in Claude Code: /mcp disable context7 (or leave both and pay two sets of doc tools)' }
 if ($script:PrereqMissing) { Log '  - install the missing prerequisites flagged above, then re-run' }
 # The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says
 # what actually landed; the project-level settings.json never reaches .mcp.json expansion (measured).

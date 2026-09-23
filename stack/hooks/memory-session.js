@@ -11,9 +11,22 @@
 'use strict';
 const os = require('os');
 
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// together through the plugin and there is no file to leave out. The other is the migration window:
+// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
+// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
+// prelude, no project dir or a malformed settings file all leave this hook running.
+if (require.main === module) {
+  try {
+    const { standDown } = require('./hook-prelude.js');
+    if (standDown('memory-session')) process.exit(0);
+  } catch { /* an install without the prelude runs the hook unchanged */ }
+}
+
 const CAP_BYTES = 4096;
 const STDIN_TIMEOUT_MS = 2000;
-const TOOL_SEARCH_LINE = 'ToolSearch select:mcp__memory__memory_store,mcp__memory__memory_search,mcp__memory__memory_list';
+const TOOL_SEARCH_LINE = 'ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list';
 
 // A plain `fs.readFileSync(0)` blocks forever when stdin never closes (a TTY, or a harness that keeps
 // the pipe open) - this hook only ever needs `cwd` out of the payload, and that already has a

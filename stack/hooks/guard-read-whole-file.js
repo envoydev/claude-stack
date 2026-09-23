@@ -17,6 +17,19 @@ const fs = require('fs');
 const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const os = require('os');
 const pathMod = require('path');
+
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// together through the plugin and there is no file to leave out. The other is the migration window:
+// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
+// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
+// prelude, no project dir or a malformed settings file all leave this hook running.
+if (require.main === module) {
+  try {
+    const { standDown } = require('./hook-prelude.js');
+    if (standDown('guard-read-whole-file')) process.exit(0);
+  } catch { /* an install without the prelude runs the hook unchanged */ }
+}
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -136,7 +149,7 @@ const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
   : `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
-  `  ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol,mcp__serena__find_referencing_symbols\n` +
+  `  ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols\n` +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
   `for a large body fetch it without the body first, then Read the range you need).`);

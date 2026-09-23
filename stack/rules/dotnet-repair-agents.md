@@ -8,7 +8,7 @@ paths: ["**/*.cs", "**/*.csproj", "**/*.sln", "**/*.slnx", "**/*.xaml", "**/Dire
 A broken .NET build or red test suite - delegating beats looping in-session; the run's session-or-agents pick, or the user's word, decides - absent both, offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended):
 fix-the-build goes to **`dotnet-build-error-resolver`** (MC#### errors = WPF XAML markup
 compile are its scope too), make-the-tests-pass goes to **`dotnet-test-failure-resolver`**
-once the build is green. The subagent absorbs the repeated build/test output and returns
+once the build is green. A seat may register under a NAMESPACE (`<namespace>:<seat>`) rather than as a bare name. Where it does, only that spelling resolves - dispatch it exactly as the roster spells it. The subagent absorbs the repeated build/test output and returns
 only a diagnosis. A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a
 shared-contract change - outside its bounded scope by design; a running `project-solve-cross-task`
 flow handles it per its contract protocol - otherwise name `/project-solve-cross-task` as the

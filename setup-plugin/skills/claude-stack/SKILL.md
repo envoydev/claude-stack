@@ -1,6 +1,6 @@
 ---
 name: claude-stack
-description: "Route to the right claude-stack action when unsure which fits - inspects the install state and answers with the exact command to run: /claude-stack:setup (fresh install from scratch), /claude-stack:update (no-questions refresh + prune of upstream removals), /claude-stack:configure (adjust an existing install - add or drop), /claude-stack:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /claude-stack:status (read-only per-area tables of what is installed). Trigger by invoking /claude-stack."
+description: "Route to the right claude-stack action when unsure which fits - inspects the install state and answers with the exact command to run: /claude-stack:init (fresh install from scratch), /claude-stack:update (no-questions refresh + prune of upstream removals), /claude-stack:configure (adjust an existing install - add or drop), /claude-stack:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /claude-stack:status (read-only per-area tables of what is installed). Trigger by invoking /claude-stack."
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,7 @@ manual-only commands - the user stays at the wheel, so you answer with the comma
 the flow yourself:
 
 - Nothing installed here (no populated `.claude/skills` / `.claude/agents`, and no global install
-  to target) -> `/claude-stack:setup` (fresh install from scratch).
+  to target) -> `/claude-stack:init` (fresh install from scratch).
 - The stack is installed and the ask is a plain refresh (no items named) -> `/claude-stack:update`
   (refresh everything installed + prune what upstream removed).
 - The stack is installed and the user wants to adjust it (add or drop items, change the
@@ -27,9 +27,9 @@ the flow yourself:
   template alone; a generic answer here has shipped a wrong 'no update needed'.
 - The install just finished and the ask is 'what now?' (session reload, gitignore lines, serena
   setup, which captures in which order) -> not a command: walk them through
-  `${CLAUDE_PLUGIN_ROOT}/references/post-install.md`.
+  `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md`.
 
 Answer with the command plus one line naming the state you found (for example: 'no `.claude/skills`
-here - run `/claude-stack:setup`'). When more than one reading is plausible, put the candidates
+here - run `/claude-stack:init`'). When more than one reading is plausible, put the candidates
 through AskUserQuestion - one option per plausible command, the likeliest marked Recommended -
 instead of guessing or asking in prose.

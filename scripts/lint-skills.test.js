@@ -434,7 +434,7 @@ test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant
     const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
     assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
 
-    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__serena__find_symbol, mcp__playwright__*, mcp__github\n';
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_serena_serena__find_symbol, mcp__plugin_playwright-chrome_playwright-chrome__*, mcp__github\n';
     assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
     assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
 
@@ -547,29 +547,167 @@ test('check 35: a trailing load verb with a back-reference is a directive too', 
 // tools - the spec gives every seat search AND save, not just the implementers who already write.
 test('check 43: an agent tools: allowlist must grant the shared memory tools', () => {
     const { lintAgentMemoryTools, MEMORY_TOOLS } = require('./lint-skills.js');
-    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__memory__memory_store', 'mcp__memory__memory_search', 'mcp__memory__memory_list']);
+    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list']);
 
     // A fixture agent with serena tools but no memory tools - the new check reports it by file.
-    const noMemory = 'tools: mcp__serena__find_symbol, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const noMemory = 'tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
     const found = lintAgentMemoryTools('agents/fixture.md', noMemory);
     assert.strictEqual(found.length, 1, found.join('\n'));
     assert.match(found[0], /agents\/fixture\.md/);
-    assert.match(found[0], /mcp__memory__memory_store/);
-    assert.match(found[0], /mcp__memory__memory_search/);
-    assert.match(found[0], /mcp__memory__memory_list/);
+    assert.match(found[0], /mcp__plugin_memory_memory__memory_store/);
+    assert.match(found[0], /mcp__plugin_memory_memory__memory_search/);
+    assert.match(found[0], /mcp__plugin_memory_memory__memory_list/);
 
     // The granted allowlist is clean.
-    const granted = 'tools: mcp__serena__find_symbol, mcp__serena__write_memory, mcp__serena__read_memory, mcp__serena__list_memories, mcp__memory__memory_store, mcp__memory__memory_search, mcp__memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const granted = 'tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', granted), []);
 
     // Partial grant still fails, naming only what is missing.
-    const partial = 'tools: Read, Grep, Glob, Bash, mcp__memory__memory_store\n';
+    const partial = 'tools: Read, Grep, Glob, Bash, mcp__plugin_memory_memory__memory_store\n';
     const partialFound = lintAgentMemoryTools('agents/partial.md', partial);
     assert.strictEqual(partialFound.length, 1, partialFound.join('\n'));
-    assert.ok(!partialFound[0].includes('mcp__memory__memory_store,'), 'the already-granted tool is not listed as missing');
-    assert.match(partialFound[0], /mcp__memory__memory_search/);
-    assert.match(partialFound[0], /mcp__memory__memory_list/);
+    assert.ok(!partialFound[0].includes('mcp__plugin_memory_memory__memory_store,'), 'the already-granted tool is not listed as missing');
+    assert.match(partialFound[0], /mcp__plugin_memory_memory__memory_search/);
+    assert.match(partialFound[0], /mcp__plugin_memory_memory__memory_list/);
 
     // No tools: line at all = every tool inherited, memory included - nothing to report.
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
+});
+
+test('checks 44 + 45: the real repo passes placement, entries and the cost gate', () => {
+    const { lintPluginPlacement } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintPluginPlacement(), [],
+        'the committed meta/plugin-entries.json and docs/plugin-placement-cost.md must be current');
+});
+
+test('check 44: an unnamed owner set, a double home and a backwards dependency are all findings', () => {
+    const { lintPluginPlacement } = require('./lint-skills.js');
+    const { placement } = require('./plugin-placement.js');
+
+    const unnamed = placement({ groupNames: {} });
+    const out = lintPluginPlacement(unnamed);
+    assert.ok(out.some(f => /share items with no plugin NAME/.test(f)), 'an unnamed set is named in the finding');
+
+    const broken = placement();
+    broken.plugins['claude-stack-aspnet'].skills.push('dotnet');   // already in claude-stack-dotnet
+    broken.plugins['claude-stack-dotnet'].dependencies.push('claude-stack-aspnet');
+    const two = lintPluginPlacement(broken);
+    assert.ok(two.some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
+    assert.ok(two.some(f => /a leaf or a peer/.test(f)), 'a shared plugin depending on a leaf is caught');
+});
+
+test('check 46: the repo root reserves every name a shared-source entry auto-discovers', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { execFileSync } = require('node:child_process');
+    const { lintRepoRootReserved, RESERVED_ROOT_NAMES } = require('./lint-skills.js');
+
+    assert.deepStrictEqual(lintRepoRootReserved(), [], 'this repo root is clean');
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rootlint-'));
+    execFileSync('git', ['-C', tmp, 'init', '-q']);
+    assert.deepStrictEqual(lintRepoRootReserved(tmp), [], 'an empty root is clean');
+
+    fs.mkdirSync(path.join(tmp, 'agents'));
+    assert.ok(lintRepoRootReserved(tmp).some(f => /`agents`/.test(f)), 'a root agents/ is a finding');
+
+    fs.mkdirSync(path.join(tmp, 'hooks'));
+    assert.strictEqual(lintRepoRootReserved(tmp).filter(f => /`hooks`/.test(f)).length, 0,
+        'a hooks/ folder with no hooks.json is not auto-discovered');
+    fs.writeFileSync(path.join(tmp, 'hooks', 'hooks.json'), '{}');
+    assert.ok(lintRepoRootReserved(tmp).some(f => /`hooks`/.test(f)), 'hooks/hooks.json is');
+
+    fs.writeFileSync(path.join(tmp, '.mcp.json'), '{}');
+    assert.strictEqual(lintRepoRootReserved(tmp).filter(f => /TRACKED/.test(f)).length, 0,
+        'an untracked .mcp.json is this repo\'s own, and fine');
+    execFileSync('git', ['-C', tmp, 'add', '.mcp.json']);
+    execFileSync('git', ['-C', tmp, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x']);
+    assert.ok(lintRepoRootReserved(tmp).some(f => /TRACKED `\.mcp\.json`/.test(f)), 'a tracked one is a finding');
+
+    assert.ok(RESERVED_ROOT_NAMES.includes('commands') && RESERVED_ROOT_NAMES.includes('skills'));
+    fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('check 48: the hooks entry matches the installer table, and every wired hook carries the gate', () => {
+    const { lintHooksEntry } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintHooksEntry(), [],
+        'the committed claude-stack-hooks entry must match `build-marketplace.js --hooks-entry`');
+});
+
+test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
+    const build = require('./build-marketplace.js');
+    const wirings = build.parseHookWirings();
+    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-read-whole-file.js' && w.matcher === 'Read'
+        ? { ...w, matcher: 'Read|Glob' } : w)));
+    assert.notStrictEqual(JSON.stringify(drifted), JSON.stringify(build.hooksBlock(wirings)),
+        'a changed matcher must change the generated block, which is what check 48 compares');
+
+    const ghost = build.hooksBlock([{ file: 'guard-not-here.js', event: 'Stop' }]);
+    assert.match(ghost.Stop[0].hooks[0].command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/guard-not-here\.js"$/,
+        'a wiring naming a missing file still generates, so the lint is what catches it');
+});
+
+// Check 51. The copy route installs the core's dependencies itself, so both twins carry that list -
+// and it has to be the list the generated entries declare. A name added to the placement and not to
+// the twins is a copy-route install without superpowers; a name left in the twins after the entry
+// dropped it installs a plugin nothing needs.
+test('check 51: the twins\' CORE_DEP_PLUGINS is clean today, and drift in either direction is a finding', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintCoreDependencies, paths } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped twins already agree with the entries');
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coredep-'));
+    const sh = path.join(tmp, 'sh');
+    const ps1 = path.join(tmp, 'ps1');
+    const entries = path.join(tmp, 'entries.json');
+    const write = (shList, psList, declared) => {
+        fs.writeFileSync(sh, `CORE_DEP_PLUGINS=(${shList.map(n => `"${n}@m"`).join(' ')})\n`);
+        fs.writeFileSync(ps1, `$CoreDepPlugins = @(${psList.map(n => `'${n}@m'`).join(', ')})\n`);
+        fs.writeFileSync(entries, JSON.stringify({ entries: [{ name: 'claude-stack', dependencies: declared.map(n => ({ name: n, marketplace: 'm' })) }] }));
+    };
+
+    write(['superpowers'], ['superpowers'], ['superpowers']);
+    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, entries), [], 'a matching trio is clean');
+
+    write(['superpowers'], ['superpowers', 'other'], ['superpowers']);
+    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /differs across the twins/, 'the twins must agree with each other');
+
+    write(['superpowers'], ['superpowers'], ['superpowers', 'other']);
+    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /the generated entries declare/, 'a dependency the entries added is a finding');
+
+    fs.writeFileSync(sh, '# no block here\n');
+    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /no CORE_DEP_PLUGINS/, 'a missing block is a finding, not a silent pass');
+
+    // An in-marketplace (string) dependency is Claude Code's to resolve, never ours to install.
+    write(['superpowers'], ['superpowers'], ['superpowers']);
+    fs.writeFileSync(entries, JSON.stringify({ entries: [
+        { name: 'claude-stack', dependencies: [{ name: 'superpowers', marketplace: 'm' }] },
+        { name: 'claude-stack-wpf', dependencies: ['claude-stack-csharp'] }] }));
+    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, entries), [], 'a string dependency is not a catalog plugin');
+    fs.rmSync(tmp, { recursive: true, force: true });
+    assert.ok(paths, 'paths stays exported');
+});
+
+// Check 52. Spike S4 proved a plugin bin/ entry lands on PATH on macOS and recorded Windows as NOT
+// RUN. The plan's condition is that nothing shipped may depend on one until that check runs.
+test('check 52: the repo ships no plugin bin/, and one would be a finding wherever it sits', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintNoPluginBin } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintNoPluginBin(), [], 'nothing shipped depends on a bin/ entry today');
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nobin-'));
+    fs.mkdirSync(path.join(tmp, 'stack', 'bin'), { recursive: true });
+    assert.match(lintNoPluginBin(tmp)[0], /unproven on Windows/, 'a bin/ under stack is a finding');
+
+    fs.rmSync(path.join(tmp, 'stack', 'bin'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({ plugins: [{ name: 'x', commands: ['./stack/bin/tool.md'] }] }));
+    assert.match(lintNoPluginBin(tmp)[0], /lists .*bin.*under commands/, 'an entry reaching a bin/ path is a finding');
+    fs.rmSync(tmp, { recursive: true, force: true });
 });

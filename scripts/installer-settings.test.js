@@ -52,7 +52,10 @@ function sandbox()
     // The installer writes every key it finds in its launch environment, and this test runner may
     // itself run inside a session whose account env carries the real ones - scrub the three names
     // so a run gets only what a test hands it (and no real value ever lands in a sandbox file).
-    const env = { ...process.env, HOME: work, USERPROFILE: work, CLAUDE_CONFIG_DIR: acct, PATH: bin + path.delimiter + process.env.PATH };
+    // The hook route is the switch Phase 2 added: these cases prove the COPY machinery, which still
+    // ships behind CLAUDE_STACK_HOOKS_VIA_PLUGIN=false, so the sandbox pins it. The plugin route
+    // (the default) has its own cases below, which pass the variable back as 'true'.
+    const env = { ...process.env, HOME: work, USERPROFILE: work, CLAUDE_CONFIG_DIR: acct, PATH: bin + path.delimiter + process.env.PATH, CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' };
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     return { work, repo, acct, sel, env };
 }
@@ -145,7 +148,10 @@ function assertSecondRun(sb, out, twin)
 // 'it did not exist yet' - on disk those two are identical.
 const stampOf = (sb) => fs.readFileSync(path.join(sb.repo, '.claude', 'claude-stack.stamp'), 'utf8');
 const shippedHooks = (sb) => (/^shipped-hooks: (.*)$/m.exec(stampOf(sb)) || [, ''])[1].split(',').filter(Boolean);
-const hooksOnDisk = (sb) => fs.readdirSync(path.join(sb.repo, '.claude', 'hooks')).filter(f => f.endsWith('.js')).map(f => f.replace(/\.js$/, '')).sort();
+// The engines and the shared gate module live in the same folder and are not hooks - the installer's
+// own --installed-only scan skips the same three names.
+const NOT_HOOKS = new Set(['docs', 'memory', 'hook-prelude']);
+const hooksOnDisk = (sb) => fs.readdirSync(path.join(sb.repo, '.claude', 'hooks')).filter(f => f.endsWith('.js')).map(f => f.replace(/\.js$/, '')).filter(n => !NOT_HOOKS.has(n)).sort();
 
 // --installed-only is mutually exclusive with --selection, so this path needs its own runners.
 const updateIoSh = (sb) => execFileSync('bash', [SH, 'update', '--scope', 'project', '--source', ROOT, '--installed-only'], { cwd: sb.repo, encoding: 'utf8', env: sb.env });

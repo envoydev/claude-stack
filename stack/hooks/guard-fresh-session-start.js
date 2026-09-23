@@ -27,6 +27,19 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 const nodePath = require('path');
+
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// together through the plugin and there is no file to leave out. The other is the migration window:
+// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
+// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
+// prelude, no project dir or a malformed settings file all leave this hook running.
+if (require.main === module) {
+  try {
+    const { standDown } = require('./hook-prelude.js');
+    if (standDown('guard-fresh-session-start')) process.exit(0);
+  } catch { /* an install without the prelude runs the hook unchanged */ }
+}
 // The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
@@ -207,10 +220,10 @@ function ctxThreshold() {
 // session started `project-verify-code` at 364.6k and `security-review` at 383.1k, together 13.7M
 // cache-read - 27% of the whole session - for 20.5k of output, and the offer arrived nine minutes
 // after that spend. `project-agent-capabilities` is here because the stack's own next-steps card
-// tells the user to run it after every update. The four guided plugin commands are here because
+// tells the user to run it after every update. The guided plugin commands are here because
 // they are multi-phase walks too, and the UserPromptSubmit route is what finally reaches them.
-const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|claude-stack:(setup|update|configure|validate))$/;
-// a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the four guided commands are
+const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|claude-stack:(init|setup|update|configure|validate))$/;
+// a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
 const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^.*:/, ''));
 let skill = '';
@@ -234,16 +247,51 @@ if (IS_SKILL_CALL) {
 // and one that varies by build is no gate at all, so the assertion became this gate. Only the MODEL's own Skill call is denied: a slash turn
 // arrives as UserPromptSubmit and never reaches here, so the user's own route is untouched. No env
 // switch - the verdict is the skill's own frontmatter, not a judgment that can be wrong.
+// A skill has TWO homes: copied into `.claude/skills/` (the 0.2.x route, and still where an EXTRA
+// lands), or served from an enabled plugin's cache. Reading only the project copy made this gate
+// silently stop firing for every skill a plugin carries - the catch below swallowed the missing
+// file, and 13 skills carry the flag. So both homes are tried, project copy first.
+function skillHeads(root, skill) {
+  const bare = skill.replace(/^.*:/, '');
+  const out = [nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md')];
+  const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  const cache = nodePath.join(cfg, 'plugins', 'cache');
+  // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known
+  // when the call carries a scoped name, and is a short scan otherwise.
+  const want = skill.includes(':') ? skill.slice(0, skill.indexOf(':')) : null;
+  let markets = [];
+  try { markets = fs.readdirSync(cache); } catch { return out; }
+  for (const market of markets) {
+    let plugins = [];
+    try { plugins = fs.readdirSync(nodePath.join(cache, market)); } catch { continue; }
+    for (const plugin of plugins) {
+      if (want && plugin !== want) continue;
+      let versions = [];
+      try { versions = fs.readdirSync(nodePath.join(cache, market, plugin)); } catch { continue; }
+      for (const version of versions) {
+        out.push(nodePath.join(cache, market, plugin, version, 'stack', 'skills', bare, 'SKILL.md'));
+        out.push(nodePath.join(cache, market, plugin, version, 'skills', bare, 'SKILL.md'));
+      }
+    }
+  }
+  return out;
+}
+
 if (IS_SKILL_CALL && skill) {
   const bare = skill.replace(/^.*:/, '');
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     // the flag lives in the frontmatter - read the head, never the body
-    const fd = fs.openSync(nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'), 'r');
-    const buf = Buffer.alloc(4096);
-    const n = fs.readSync(fd, buf, 0, 4096, 0);
-    fs.closeSync(fd);
-    const head = (buf.toString('utf8', 0, n).split(/^---\s*$/m)[1] || '');
+    let head = '';
+    for (const file of skillHeads(root, skill)) {
+      let fd;
+      try { fd = fs.openSync(file, 'r'); } catch { continue; }
+      const buf = Buffer.alloc(4096);
+      const n = fs.readSync(fd, buf, 0, 4096, 0);
+      fs.closeSync(fd);
+      head = (buf.toString('utf8', 0, n).split(/^---\s*$/m)[1] || '');
+      break;
+    }
     if (/^disable-model-invocation:\s*true\s*$/m.test(head)) {
       process.stderr.write(
         `Blocked: ${skill} is marked disable-model-invocation - it is the USER's to type, never yours\n` +

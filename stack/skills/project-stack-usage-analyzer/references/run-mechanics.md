@@ -19,7 +19,7 @@ EOF
 bash "$TMP/run.sh"
 ```
 
-`<snapshot>` = `$TMP/repo` when the cache, the marketplace clone or the clone fallback supplied it, `$TMP` when the archive extracted in place.
+`<snapshot>` = `$TMP/repo` when the plugin cache or the clone fallback supplied it, `$TMP` when the archive extracted in place.
 
 Two shapes in there are not style, they are what the harness accepts:
 

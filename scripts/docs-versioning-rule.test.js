@@ -1,9 +1,10 @@
 'use strict';
-// ONE rule, FOUR homes. When CLAUDE_STACK_DOCS_VERSIONING is absent, the docs are versioned 'local' only when they are
+// ONE rule, FIVE homes. When CLAUDE_STACK_DOCS_VERSIONING is absent, the docs are versioned 'local' only when they are
 // kept OUT of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - and 'git'
 // otherwise, a fresh project whose docs root is not ignored included. The rule is written four times, in three
-// languages: the engine's fallback (stack/hooks/docs.js keptOutOfGit), the re-probe (scripts/stamp-docs-root.js), and
-// the two installer seeds (python inside claude-stack.sh, PowerShell inside claude-stack.ps1). Nothing but this table
+// languages: the engine's fallback (stack/hooks/docs.js keptOutOfGit), the re-probe (scripts/stamp-docs-root.js), the
+// two installer seeds (python inside claude-stack.sh, PowerShell inside claude-stack.ps1), and - since Phase 7 - the
+// Node seed's own (scripts/install/docs.js, composed with the settings writer that stores it). Nothing but this table
 // makes them one rule: every scenario is built from scratch for every home, run through it end to end, and the value
 // each home lands on is READ back - from the engine's own resolver, and from settings.json for the other three.
 const test = require('node:test');
@@ -18,6 +19,10 @@ const SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
 const PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
 const DOCS_JS = path.join(ROOT, 'stack', 'hooks', 'docs.js');
 const STAMP = path.join(ROOT, 'scripts', 'stamp-docs-root.js');
+const installDocs = require('./install/docs.js');
+const { applyEnv } = require('./install/settings.js');
+const ENV_CATALOG = require('../meta/environment.json');
+const MIGRATIONS = require('../meta/migrations.json');
 const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;
 
 const ARCH = { 'architecture/ARCHITECTURE.md': '# Map\n' };
@@ -106,6 +111,20 @@ function viaStamp(sc)
     return readValue(repo);
 }
 
+// The NODE SEED: its own probe, composed with the settings writer that stores the answer - which is
+// the only way the seed value ever reaches a project, and the place a declared value wins over it.
+function viaSeed(sc)
+{
+    const { repo, docsPath } = build(sc, 'seed');
+    const env = { CLAUDE_STACK_DOCS_PATH: docsPath, ...(sc.declared ? { CLAUDE_STACK_DOCS_VERSIONING: sc.declared } : {}) };
+    applyEnv(env, {
+        catalog: ENV_CATALOG.env, migrations: MIGRATIONS.env || {},
+        docsVersioning: { value: '', seed: installDocs.docsVersioningSeed({ projectRoot: repo, docsPath }) },
+        hooksOff: [], hooksAnswered: false, log: () => {},
+    });
+    return env.CLAUDE_STACK_DOCS_VERSIONING;
+}
+
 // The installers: a full, hermetic install (stub claude on PATH, account dirs inside the sandbox, one rule and one
 // hook selected), the settings.json holding the docs path and - when declared - the value, before it runs.
 function viaInstaller(sc, twin)
@@ -134,14 +153,14 @@ async function pool(jobs, width = 6)
     return out;
 }
 
-test('the docs-versioning rule: one table, four homes, one answer', async (t) => {
-    const homes = { engine: SCENARIOS.map(viaEngine), stamp: SCENARIOS.map(viaStamp) };
+test('the docs-versioning rule: one table, five homes, one answer', async (t) => {
+    const homes = { engine: SCENARIOS.map(viaEngine), stamp: SCENARIOS.map(viaStamp), seed: SCENARIOS.map(viaSeed) };
     const twins = hasPwsh ? ['sh', 'ps1'] : ['sh'];
     const jobs = twins.flatMap((twin) => SCENARIOS.map((sc) => () => viaInstaller(sc, twin)));
     const results = await pool(jobs);
     twins.forEach((twin, k) => { homes[twin] = results.slice(k * SCENARIOS.length, (k + 1) * SCENARIOS.length); });
     const table = SCENARIOS.map((sc, i) => `${sc.want.padEnd(6)} | ${Object.keys(homes).map((h) => `${h}=${homes[h][i]}`).join(' ')} | ${sc.name}`).join('\n');
-    for (const home of ['engine', 'stamp', 'sh', 'ps1'])
+    for (const home of ['engine', 'stamp', 'seed', 'sh', 'ps1'])
     {
         await t.test(home, { skip: homes[home] ? false : 'pwsh not installed - the ps1 home is NOT RUN' }, () => {
             SCENARIOS.forEach((sc, i) => assert.strictEqual(homes[home][i], sc.want, `${home}: ${sc.name}\n${table}`));

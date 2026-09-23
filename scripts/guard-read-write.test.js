@@ -29,7 +29,7 @@ const bash = (hook, command, opts) => run(hook, { tool_name: 'Bash', tool_input:
 const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 const sid = () => `rw-${Math.random().toString(36).slice(2)}`;
 // The announcement is once per rule per SESSION, so every case names the session it spends.
-const announce = (command, session_id, hook = READ) => ctxOf(run(hook, { tool_name: 'Bash', tool_input: { command }, session_id }));
+const announce = (command, session_id, hook = READ, opts) => ctxOf(run(hook, { tool_name: 'Bash', tool_input: { command }, session_id }, opts));
 const LONG_JS = 'const a = 1;\n'.repeat(400); // over the 200-line threshold
 
 test('guard-read-whole-file: the convention rule is announced for the WRITE TARGET, never for an executed script or a 2>/dev/null', () => {
@@ -66,8 +66,13 @@ test('guard-read-whole-file: only a rule this install actually has is announced'
   fs.copyFileSync(READ, hook);
   fs.writeFileSync(path.join(install, '.claude', 'rules', 'csharp-conventions.md'), '# csharp\n');
   const s = sid();
-  assert.match(announce("sed -i '' 's/a/b/' src/Api/Orders.cs", s, hook), /csharp-conventions\.md/, 'the rule this install has');
-  assert.equal(announce('cp x.js dist/app.js', s, hook), '', 'the one it does not is never named');
+  // The hook reads the install's rules dir from its own sibling AND from the anchors - the project
+  // dir and the CWD - so the fixture only answers the question when the run is anchored IN it. Left
+  // at this checkout's cwd the case reads THIS repo's `.claude/rules`, which on a stack-installed
+  // checkout holds every convention rule (measured 2026-09-22: red here, green in CI).
+  const at = { cwd: install, env: { ...process.env, CLAUDE_PROJECT_DIR: install } };
+  assert.match(announce("sed -i '' 's/a/b/' src/Api/Orders.cs", s, hook, at), /csharp-conventions\.md/, 'the rule this install has');
+  assert.equal(announce('cp x.js dist/app.js', s, hook, at), '', 'the one it does not is never named');
   // with no rules directory at all nothing can be told, and the announcement is made rather than dropped
   assert.match(announce('cp x.js dist/app.js', sid()), /javascript-conventions\.md/, "this repo's own stack/rules is the sibling dir here");
 });
@@ -109,7 +114,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(src, LONG_JS);
   const ok = run(READ, { tool_name: 'Read', tool_input: { file_path: src } });
   assert.equal(ok.status, 2);
-  assert.match(ok.stderr, /ToolSearch select:mcp__serena__get_symbols_overview/, 'the serena ladder is unchanged where it works');
+  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview/, 'the serena ladder is unchanged where it works');
 });
 
 test('guard-read-whole-file: an oversized binary or minified file is answered with PAGING, not a grep', () => {

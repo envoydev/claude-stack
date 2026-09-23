@@ -87,6 +87,16 @@ const maskSecrets = (s) => String(s == null ? '' : s)
 // shown its rate for a week.
 // Prose as guard-answer-length.js defines it (fences, tables, quotes, inline code stripped), so
 // the analyzer counts what the hook would see.
+// A PLUGIN server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so the segment between the
+// double underscores is `plugin_<plugin>_<server>`. Server names carry no underscore, so dropping
+// `plugin_<plugin>_` is one split; a bare `mcp__<server>__` row from a pre-1.0.0 transcript reads
+// the same way, which is what keeps an old session comparable with a new one.
+function mcpServerOf(toolName)
+{
+    const seg = String(toolName).split('__')[1] || '?';
+    return seg.startsWith('plugin_') ? (seg.slice(7).split('_').slice(1).join('_') || seg) : seg;
+}
+
 function proseOf(text) {
   return String(text || '')
     .replace(/```[\s\S]*?```/g, '')
@@ -388,20 +398,92 @@ function readInstallStamp(claudeDir) {
   return { version: val('version'), sha: val('sha'), installed: val('installed'), file: path.join(claudeDir, 'claude-stack.stamp') };
 }
 
+// The install's skills and agents have TWO homes: copied under `.claude/`, or served by the
+// enabled plugins. Reading only the directory reported a plugin-native install as '1 skill, 1
+// agent installed' and scored every unused-but-paid-for row against a set the session never had.
+// The cache is the same layout every Claude Code install uses; when it is not readable (a bundle
+// analysed on another machine) the directory stands alone and the `why` line says so.
+// The entry's OWN item lists, from the marketplace manifest shipped in the plugin root. Null when
+// the root carries no entry of that name (a plugin with a root of its own), so the caller scans.
+function pluginEntryItems(root, plugin) {
+  let entry;
+  try {
+    const mk = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    entry = (mk.plugins || []).find((x) => x && x.name === plugin);
+  } catch { return null; }
+  if (!entry) return null;
+  const abs = (rel) => path.join(root, String(rel).replace(/^\.\//, ''));
+  const skills = [];
+  for (const rel of entry.skills || []) {
+    const file = path.join(abs(rel), 'SKILL.md');
+    if (fs.existsSync(file)) skills.push({ name: path.basename(abs(rel)), file });
+  }
+  const agents = [];
+  for (const rel of entry.agents || []) {
+    const file = abs(rel);
+    const fm = parseFrontmatter(readHead(file));
+    agents.push({ name: fm.name || path.basename(file).replace(/\.md$/, ''), file, skills: Array.isArray(fm.skills) ? fm.skills : [] });
+  }
+  return { skills: skills.sort(byName), agents: agents.sort(byName) };
+}
+
+function loadPluginLayers(claudeDir) {
+  const out = { skills: [], agents: [], from: [] };
+  let enabled = [];
+  try
+  {
+    const s = JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'));
+    enabled = Object.keys(s.enabledPlugins || {}).filter((k) => (s.enabledPlugins || {})[k] !== false);
+  }
+  catch { return out; }
+  const cfg = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  for (const id of enabled) {
+    const [plugin, market] = String(id).split('@');
+    if (!plugin || !market) continue;
+    const base = path.join(cfg, 'plugins', 'cache', market, plugin);
+    for (const e of dirEntries(base)) {
+      if (!e.isDirectory()) continue;
+      const root = path.join(base, e.name);
+      // A plugin that SHARES a repo root with its siblings has the whole repo in its cache, so a
+      // directory scan credits it with every sibling's items - and a hooks-only entry with all of
+      // them. The marketplace manifest in that root lists what the entry actually ships, so it
+      // wins; the scan is the fallback for a plugin with a root of its own.
+      const listed = pluginEntryItems(root, plugin);
+      const sk = listed ? listed.skills : [...loadSkillsDir(path.join(root, 'stack', 'skills')), ...loadSkillsDir(path.join(root, 'skills'))];
+      const ag = listed ? listed.agents : [...loadAgentsDir(path.join(root, 'stack', 'agents')), ...loadAgentsDir(path.join(root, 'agents'))];
+      if (!sk.length && !ag.length) continue;
+      out.skills.push(...sk);
+      out.agents.push(...ag);
+      out.from.push(id);
+    }
+  }
+  const dedupe = (rows) => [...new Map(rows.map((r) => [r.name, r])).values()].sort(byName);
+  out.skills = dedupe(out.skills);
+  out.agents = dedupe(out.agents);
+  out.from = [...new Set(out.from)].sort();
+  return out;
+}
+
 function resolveInventory(explicitDir, cwd, sessionLastTs) {
   const tryDir = (d, kind, why) => {
     if (!d) return null;
-    const skills = loadSkillsDir(path.join(d, 'skills'));
-    const agents = loadAgentsDir(path.join(d, 'agents'));
+    const plug = loadPluginLayers(d);
+    const merge = (dirRows, plugRows) => [...new Map([...plugRows, ...dirRows].map((r) => [r.name, r])).values()].sort(byName);
+    const skills = merge(loadSkillsDir(path.join(d, 'skills')), plug.skills);
+    const agents = merge(loadAgentsDir(path.join(d, 'agents')), plug.agents);
     const rules = loadRulesDir(path.join(d, 'rules'));
     if (!skills.length && !agents.length && !rules.length) return null;
-    return { dir: d, kind, why, skills, agents, rules };
+    const note = plug.from.length ? ` (${plug.skills.length} skill(s) and ${plug.agents.length} agent(s) served by ${plug.from.join(', ')})` : '';
+    // The cwd branch below REWRITES `why` from the stamp, so the note travels as its own field and
+    // is appended at the end - an earlier draft put it in `why` and the stamp line silently ate it.
+    return { dir: d, kind, why, skills, agents, rules, plugins: plug.from, pluginNote: note };
   };
+  const withNote = (inv) => { if (inv && inv.pluginNote) inv.why += inv.pluginNote; return inv; };
   if (explicitDir) {
     // Named by the caller: they said which install this bundle belongs to, so it is not guessed at.
     const inv = tryDir(explicitDir, 'project', `project ${explicitDir}`);
     if (inv) inv.stamp = readInstallStamp(explicitDir);
-    return inv
+    return withNote(inv)
       || { dir: explicitDir, kind: 'project', why: `project ${explicitDir} (no skills/, agents/ or rules/ under it)`, skills: [], agents: [], rules: [] };
   }
   if (cwd) {
@@ -419,10 +501,10 @@ function resolveInventory(explicitDir, cwd, sessionLastTs) {
       } else {
         inv.why = `project ${d} (the transcript's own cwd; installed ${stamp.installed || '?'} v${stamp.version || '?'}, before this session ran)`;
       }
-      return inv;
+      return withNote(inv);
     }
   }
-  return tryDir(CATALOG_DIR, 'catalog', 'catalog (installed set unknown)')
+  return withNote(tryDir(CATALOG_DIR, 'catalog', 'catalog (installed set unknown)'))
     || { dir: null, kind: 'none', why: 'none reachable on this machine', skills: [], agents: [], rules: [] };
 }
 
@@ -610,6 +692,13 @@ function addSessionUse(acc, main, agents, inventoryDir) {
     seen.add(row);
   };
 
+  // The stack's own skills and agents ship as plugins, so a call or a dispatch arrives under the
+  // plugin-scoped name (`claude-stack:project-solve-cross-task`, `claude-stack-wpf:wpf-implementer`)
+  // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
+  // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
+  // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item.
+  const houseBare = (name) => String(name || '').replace(/^claude-stack(?:-[a-z0-9-]+)?:/, '');
+
   // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
   const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence
   const nsPreload = new Map();    // `<plugin>:<x>` named in a dispatched seat's `skills:` list
@@ -623,7 +712,7 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   };
   for (const src of srcs) {
     for (const [name, v] of Object.entries(src.skillInvocations || {})) {
-      mark(ensure(acc.skills, name), 'Skill call', v.calls, v.firstTs);
+      mark(ensure(acc.skills, houseBare(name)), 'Skill call', v.calls, v.firstTs);
       noteNs(namespaced, name, v.calls, v.firstTs);
     }
     for (const [name, n] of Object.entries(src.commandInvocations || {})) {
@@ -631,8 +720,8 @@ function addSessionUse(acc, main, agents, inventoryDir) {
       noteNs(namespaced, name, n, ts);
       // `/clear`, `/model`, `/effort` are the harness's own commands, not skills - a slash turn
       // only counts against the skills layer when a skill of that name is installed.
-      if (!acc.skills.has(name)) continue;
-      mark(acc.skills.get(name), 'slash command', n, ts);
+      if (!acc.skills.has(houseBare(name))) continue;
+      mark(acc.skills.get(houseBare(name)), 'slash command', n, ts);
     }
   }
 
@@ -645,19 +734,19 @@ function addSessionUse(acc, main, agents, inventoryDir) {
     if (d.ts && (!e.firstTs || d.ts < e.firstTs)) e.firstTs = d.ts;
     dispatched.set(d.subagentType, e);
   }
-  for (const [type, e] of dispatched) mark(ensure(acc.agents, type), 'dispatched', e.n, e.firstTs);
+  for (const [type, e] of dispatched) mark(ensure(acc.agents, houseBare(type)), 'dispatched', e.n, e.firstTs);
   // A seat transcript whose dispatch row sits outside the window (or in another file) is still
   // proof the seat ran - counted apart so the two numbers never merge into a wrong dispatch count.
   for (const a of agents) {
     const t = a.meta && a.meta.agentType;
     if (!t || dispatched.has(t)) continue;
-    mark(ensure(acc.agents, t), 'seat transcript', 1, a.stats.firstTs);
+    mark(ensure(acc.agents, houseBare(t)), 'seat transcript', 1, a.stats.firstTs);
   }
   for (const [type, e] of dispatched) {
-    const meta = inv.agents.find((x) => x.name === type);
+    const meta = inv.agents.find((x) => x.name === houseBare(type));
     if (!meta) continue;
     for (const sk of meta.skills) {
-      mark(ensure(acc.skills, sk), `preloaded via ${type}`, e.n, e.firstTs);
+      mark(ensure(acc.skills, houseBare(sk)), `preloaded via ${type}`, e.n, e.firstTs);
       // A PLUGIN skill named in a seat's preload list is that plugin's body entering the seat's
       // context - plugin use, on a different evidence line from a call the session made itself.
       noteNs(nsPreload, sk, e.n, e.firstTs);
@@ -1363,7 +1452,7 @@ async function analyzeTranscript(file, window) {
             askSinceInvoke = false;
           }
         } else if (c.name.startsWith('mcp__')) {
-          const server = c.name.split('__')[1] || '?';
+          const server = mcpServerOf(c.name);
           const mc = s.mcp[server] || (s.mcp[server] = { calls: 0, resultChars: 0, errors: 0, tools: {}, firstTs: o.timestamp || null });
           mc.calls += 1;
           const tool = c.name.split('__').slice(2).join('__') || '?';
@@ -1659,7 +1748,7 @@ async function analyzeTranscript(file, window) {
         }
         if (info.skill) s.skillInvocations[info.skill].injectedChars += chars;
         if (info.name.startsWith('mcp__')) {
-          const mc = s.mcp[info.name.split('__')[1] || '?'];
+          const mc = s.mcp[mcpServerOf(info.name)];
           // The same carve-out the tool tally makes above: a user declining an MCP-driven ask is an
           // answer, not a server failure, and counting it inflated the error rate of a working server.
           if (mc) { mc.resultChars += chars; if (c.is_error && !isDecline) mc.errors += 1; }

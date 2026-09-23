@@ -1,14 +1,14 @@
 ---
-description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
 # Configure the Claude stack - adjust an existing install
 
-You are adjusting a claude-stack install that already exists. Same discipline as `setup`: drive
+You are adjusting a claude-stack install that already exists. Same discipline as `init`: drive
 it interactively, walk the selection one layer at a time, always show the prerequisite report
 before running, never run past an unmet blocker. `stack-select.js` does the deterministic work;
-you orchestrate. Two differences from `setup`: the baseline selection is what is INSTALLED, not
+you orchestrate. Two differences from `init`: the baseline selection is what is INSTALLED, not
 the recommendations - every layer is a straight modify, no recommended phase - and the action is
 `update`, not `install`. (For a no-questions refresh that also prunes what upstream removed, the
 sibling `update` command is the shorter path - this command is for CHOOSING what changes.)
@@ -35,9 +35,9 @@ the ask, re-offer it ONCE. Measured: this command's siblings entered at 131,345 
 per message with no ask at all, and one of them authored its own prose decision that was never put
 to the user.
 
-**ONE release archive is the entire download - and the cache usually spares you even that** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
-it: resolve the snapshot once into `$TMP/repo` - a cached release copy when the version probe says it is current, a download when it is not (the reference owns the fallback), use every tool
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
+it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool
 from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
 call: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
@@ -80,27 +80,32 @@ comparable banner by banner; the content varies, the skeleton never does.
 - **Find the install.** Project mode: cwd is a project root with a populated `.claude/`
   (skills/agents/rules dirs, or `.mcp.json`). Global mode: no project here, but the account
   (`~/.claude`, or `~/.claude-<space>`) carries installed skills. Nothing installed in either
-  place -> stop and route to the sibling `/claude-stack:setup` command; there is nothing to
-  configure yet. OS: on `darwin`/`linux` use the sh installer; on Windows the ps1 (via `pwsh`).
-- **Inventory the installed set** from disk - never from memory or assumption: skills = the
-  directory names under `.claude/skills/` (or the account's `skills/`); agents =
-  `.claude/agents/*.md`; rules = `.claude/rules/*.md` (exclude the GENERATED
-  `baseline-project-*.md` awareness rules and `project-code-style.md` - they are written by capture skills, never installed);
-  hooks = `.claude/hooks/*.js` basenames WITHOUT the `.js` suffix - the graph catalog stores bare
-  names, and `stack-select.js` also strips a stray suffix (exclude the GENERATED legacy
-  `inject-code-style.js` - same reason);
-  mcps = the server names in `<repo>/.mcp.json`; plugins = the listing filtered to the entries that
-  apply to THIS project (project scope at this path, or user scope) - the listing is machine-global,
-  so an unfiltered read folds sibling repos' plugins into this project's selection (measured: two
-  near-miss removals/updates of a sibling's plugin). The filter is the shipped script every command
-  runs, never a shape to re-derive - measured, hand-deriving it cost six Bash calls and ~477k of
-  avoidable context in one run, and in another re-sent ~110k and misread 6 enabled project-scope
-  plugins as disabled. It prints `name<TAB>version<TAB>scope<TAB>enabled`, the same four fields the
-  installers' own scan reads, and is fail-soft without the CLI:
+  place -> stop and route to the sibling `/claude-stack:init` command; there is nothing to
+  configure yet.
+- **Inventory the installed set through the installer's own read-back** - never by hand, from disk
+  or from memory. It is the SAME read an `update` writes back, so a seat or hook the user switched
+  off stays out of it; a hand inventory unioned what the plugin entries carry, and the next apply
+  switched every one of those seats back on. One call from the snapshot, on every OS and seed - a
+  `--print-plan` run writes nothing:
 
   ```bash
-  claude plugin list --json 2>/dev/null | node "$TMP/repo/scripts/plugin-scan.js"
+  node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" [--space <name>] > "$TMP/plan.out" 2>&1
   ```
+
+  `$TMP/installed.json` is the walk's inventory (`--installed`): `{rules, agents, skills, hooks,
+  mcps, plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names (the
+  playwright engines folded onto `playwright`). Each plugin carries the SCOPE the listing printed,
+  because an uninstall is scope-addressed. A plugin the listing marks disabled sits in
+  `plugins_disabled` (`parked_plugins` is its catalog part): parked, never proposed for install or
+  removal. `left_out` lists what the user switched off - a denied seat, an item of a parked entry -
+  as selection lines; the walk leaves it off unless the user picks it. Three signals in
+  `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
+  there is nothing to configure - route to `/claude-stack:init`; `plan routes: skills=<plugin|copy>
+  hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
+  agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
+  `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
+  report which, since every carried seat would read as dropped. `hooks=no` means the hooks layer is
+  not walked this run: its table would be a guess.
  Show the inventory grouped by category, with counts. In project mode, also
   run the evidence scan quietly - `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog
   "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - so the walk's
@@ -154,7 +159,7 @@ installer run at step 12, which works from the whole selection - and gets one na
 
 ## The walk - steps 3-8, one layer at a time
 
-Same dependency-ordered walk as `setup` (rules pull agents + skills, agents pull skills,
+Same dependency-ordered walk as `init` (rules pull agents + skills, agents pull skills,
 everything pulls MCPs and plugins, hooks stand alone - dependencies only point FORWARD), applied to
 the installed set with no recommended phase. Hold TWO running files in the temp dir: `raw.json` -
 the remaining selection (installed + adds - drops, every category incl. `hooks` and `mcps`) - and
@@ -164,13 +169,13 @@ run spent `--help`, an `ls examples` and a source grep at 258k context to confir
 
 ```json
 { "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
-  "hooks": ["guard-stop-contract"], "mcps": ["serena"], "plugins": ["superpowers"] }
+  "hooks": ["guard-stop-contract"], "mcps": ["serena"], "plugins": ["security-guidance"] }
 ```
 
 Seed BOTH before the first recompute - `raw.json` from the step-1 inventory, `dropped.json` as
 `{}` - so no layer ever runs against a file that does not exist yet.
 
-Per layer, the SAME three-beat shape as setup:
+Per layer, the SAME three-beat shape as init:
 
 1. **Recompute quietly** - one call:
    `node stack-select.js --selection raw.json --dropped dropped.json`,
@@ -185,7 +190,7 @@ Per layer, the SAME three-beat shape as setup:
 2. **Show ONE numbered table of the layer's ENTIRE catalog** (installed and not-installed
    alike). The TOOL renders it, never you:
    `node stack-select.js --selection raw.json --table <layer> --installed installed.json --dropped dropped.json --found "$TMP/found.json"` - **never redirected to a file**: the table comes back in the tool result and you paste those exact lines. (Measured: the old redirect-then-paste-the-file form left the tool result empty and one real run showed no table for any of its six layers. A disk copy, if you want one, is `| tee "$TMP/table.txt"`.)
-   (write the step-1 inventory to `installed.json` once; omit `--found` in global mode - no scan
+   (`installed.json` is the step-1 `--plan-out` file, `$TMP/installed.json`; omit `--found` in global mode - no scan
    ran. A not-installed row whose reason column carries a matched signal is the project telling
    you it uses what the install lacks - an informed add candidate, never an auto-add) - then paste the tool output verbatim
    inside a fenced code block. **The layer turn has ONE fixed shape, in order: (1) the
@@ -250,8 +255,11 @@ drops before them.
 ## 6. Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. Dropping a wired hook removes its `.claude/settings.json` wiring too
-(step 12 shows that edit).
+cascade never reaches here. The set ships together in the `claude-stack-hooks` plugin, so dropping
+a row copies and unwires nothing: it is named in `CLAUDE_STACK_HOOKS_OFF` in the scope's
+`settings.json` env, and re-adding a row removes its name from that value. The environment area is
+where the same value can also be edited by hand. An install still on the copy route (`CLAUDE_STACK_HOOKS_VIA_PLUGIN=false`) keeps the
+old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit).
 
 ## 7. MCPs
 
@@ -264,7 +272,7 @@ the rest of the installed servers are direct picks - droppable, and preserved ac
 Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
-registration - a fresh add, default to `global`). Paste the level table setup uses - `global` /
+registration - a fresh add, default to `global`). Paste the level table init uses - `global` /
 `scoped` / `project`, who shares each and where its database lives - but at `--scope global` drop
 the `project` row entirely: the installer refuses `project` at global scope (there is no single
 project root an account-wide install can sensibly own), so only offer `global` and `scoped` there.
@@ -290,9 +298,11 @@ or to pick `--sentry-auth oauth` instead. Both values already present: say so in
 line and ask nothing. An existing registration needs no auth flag: `update` reads it back and keeps
 its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
-Whenever playwright is PRESENT after this round, name the browsers installed today - one server per
-browser, `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single `playwright`
-server counts as its `--browser` value, `chrome` when it has none, and is migrated by the run - and ask in
+Whenever playwright is PRESENT after this round, name the browsers installed today - one per browser,
+read the same ROUTE-decided way as the rest: a `playwright-<browser>@claude-stack` entry in the plugins
+listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
+`playwright` server counts as its `--browser` value, `chrome` when it has none, and is migrated by the
+run - and ask in
 the same turn TWO questions: which browsers to keep (multi-select: `chrome` = the machine's Google Chrome,
 `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are
 Playwright's own builds, downloaded by the installer) and which ONE stays enabled. Pass both at step 12 as
@@ -308,7 +318,7 @@ Presence, never the value - run this and paste its lines as-is:
 ## 8. Plugins
 
 Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure;
-`superpowers` arrives via the skills and agents that cite it); the rest of the
+`superpowers` shows as `dependency` - the core plugin hard-depends on it, so it cannot be dropped and needs no install row); the rest of the
 installed plugins are direct picks. Addable from `catalog.plugins`.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
@@ -390,8 +400,8 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]`
-(`--playwright-browsers` with the step-7 kept browsers whenever playwright is kept - a kept `msedge` warns
+Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]`
+(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--playwright-browsers` with the step-7 kept browsers whenever playwright is kept - a kept `msedge` warns
 when Edge is not installed; `--sentry-oauth` when sentry is kept under a headerless registration, so its token warning does not
 fire falsely; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
@@ -409,8 +419,13 @@ run - an existing install often carries deliberate pin edits).
 
 ## 12. Update + removals
 
-**First, is there anything to do?** This run already computed the closed selection and already has
-the installed inventory. When the two are byte-identical AND no removals were accepted AND no env,
+**First, is there anything to do?** Run the delta - `node "$TMP/repo/scripts/derive-state.js"
+--delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/raw.json"`
+prints one `add <line>` or `drop <line>` per change against step 1's read-back, or `none`, then
+the lines the run leaves OFF: `kept-off <line>` is a switched-off item the closure re-requires but
+the user never picked - report it as 'stays switched off; pick it in the walk to turn it on', never
+as added; `keep-parked plugin <name>` is a parked plugin the read-back would otherwise enable -
+pass it as a `--drop` whenever the installer runs, but it is no reason to run it. When it prints `none` AND no removals were accepted AND no env,
 permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
 install, nothing to remove` - and skip to step 13. Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
@@ -421,8 +436,8 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **`CLAUDE_STACK_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead, and it has no `--add` / `--drop`: it takes the whole selection. Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [same optional flags] 2>&1 | tee "$TMP/install.log"`. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`. The twin writes no seat deny - say so in the report.
 - `--docs-versioning` only when the user's own invocation names a value (`/claude-stack:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
@@ -434,22 +449,43 @@ written (the shared contract is in `source-protocol.md`'s 'Capture the installer
 - Scope/space mirror how the install was laid down (project install -> `project`; account
   install -> `global`, with the space that owns it) - ask only when it is genuinely ambiguous.
 
-`update --selection` refreshes EVERY item in the selection, in every category, whether or not its
-area was walked this run - the area picker decides which tables you page through, never which files
-the installer rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on disk,
-and a post-check that calls it 'untouched' is wrong (measured: four layers reported untouched while
-all 88 selected items had just been refreshed). It does NOT uninstall what was dropped.
+The run refreshes EVERY installed item, in every category, whether or not its area was walked this
+run - the area picker decides which tables you page through, never which files the installer
+rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on disk, and a post-check
+that calls it 'untouched' is wrong (measured: four layers reported untouched while all 88 selected
+items had just been refreshed). On the Node seed a `--drop` is applied BY the installer:
+
+- an agent a plugin carries is denied (`Agent(<entry>:<name>)` in `permissions.deny`); a hook on
+  the plugin route is named in `CLAUDE_STACK_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy
+  route, or an extra) has its file deleted, a copied hook its wiring too;
+- a stack entry nothing kept needs any more - its last pick dropped, or a dropped MCP's own entry -
+  is disabled: `plugin disabled [<scope>]: <entry>`;
+- a skill an entry the project still needs goes on carrying logs `skill <name> stays loaded`: no
+  setting unloads a plugin skill, so it is reported as carried, never as removed;
+- a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,
+  after the `required:` line naming what needs it, and a drop of an always-on rule or server logs
+  `not applied - locked` - report both as kept, with that reason;
+- a stack entry enabled at a DIFFERENT scope than this run's is never disabled: the log names it and
+  the command, for the user to run if nothing else needs it.
+
+It does NOT uninstall a plugin, and on the copy MCP route it does not unregister a server.
 **Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
 stamp action) - never paste its output, and take the counts from the line that states them:
 `grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
-it, which is how the wrong post-check above was written); (2) removals - each dropped item (incl. accepted
-orphans) with its command shown before running it: delete the skill directory / agent file /
-rule file; a hook loses BOTH its `.claude/hooks/` file and its `.claude/settings.json` wiring
-(show that edit too - step 6's promise); `claude mcp remove <name>` for an MCP (playwright = every `playwright-<browser>` server);
-`claude plugin uninstall <name> --scope <the scope step 1's listing printed for it>` for a plugin -
-and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
+it, which is how the wrong post-check above was written); (2) removals - what the drops did, from
+`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
+one line per item, never deleted a second time by hand; then each removal the installer does not
+make, with its command shown before running it: `claude mcp remove <name>` for an MCP on the copy
+route (playwright = every `playwright-<browser>` server);
+`claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
+except one the table showed as `dependency`, which is never proposed for removal at all: the core
+plugin hard-depends on it, and Claude Code refuses both the uninstall and the disable while the core
+is enabled, naming the dependent - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
-`--scope` fails with `not installed in project scope`; 'removals: none' when nothing was dropped;
+`--scope` fails with `not installed in project scope`. Under the shell seed the twin deletes
+nothing it did not select, so every dropped copy is deleted here as well: the skill directory, agent
+file or rule file, and a hook's `.claude/hooks/` file plus its `.claude/settings.json` wiring (show
+that edit too - step 6's promise). 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
@@ -461,7 +497,7 @@ this project' answer, merge `permissions.defaultMode: <value>` into the PROJECT'
 
 ### 12a. Plugin settings - apply the step-8 answer
 
-Same as the setup walk, run after the installer block and before the follow-through line: re-run
+Same as the init walk, run after the installer block and before the follow-through line: re-run
 `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv> --apply` (plus `--replace` for the
 overwrite answer) and paste the closing `applied:` line. A run that dropped the plugin asked
 nothing at step 8 and applies nothing here.
@@ -507,14 +543,14 @@ The line is CONDITIONAL: print it only when the card carries nothing OWED. A sti
 
 ## Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`, on EVERY exit path of
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of
 THIS command: after a successful update, after an abort, after a blocker, and after the step-1
 'nothing changed, stop here' case. Then confirm the project tree holds only installed artifacts.
 
 ## Do not
 
 - Do not fall back to a full re-install - this is the update path; a from-scratch install is the
-  sibling `setup` command. Never present a layer question without its
+  sibling `init` command. Never present a layer question without its
   `[step n/13 - <name>] ... · next: <name>` banner or without the full-catalog table.
 - Never drop a locked row on the user's behalf, never remove an orphan silently, and never
   re-offer an orphan the user chose to keep - the reason column is the answer, the dependent's

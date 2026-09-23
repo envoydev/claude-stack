@@ -87,11 +87,39 @@ function memoryEnvPath(entry, home) {
   return typeof p === 'string' && p ? path.normalize(expandHome(p, home)) : null;
 }
 
-// The `memory` entry in the project's own .mcp.json first; else the account's `.claude.json`
-// (top-level `mcpServers.memory` for a user-scope install, else `projects[<projectRoot>].mcpServers.memory`
-// for a project-scope install the CLI recorded under the account file). Never throws - every read is
-// its own try/catch, and a missing or unreadable file is simply "not registered here".
+// The settings.json `env` key the PLUGIN route writes first, then the registration route's own
+// files. From 1.0.0 the memory server arrives through a plugin and there is no `.mcp.json` entry to
+// read: the install writes its resolved db path to CLAUDE_STACK_MEMORY_DB in the project's
+// settings.json (the account file for a global install), which is exactly what the plugin's
+// launcher reads at start-up - so this resolver and the running server agree by construction.
+// The registration lookups below stay for the copy route and for every install made before 1.0.0.
+// Never throws - every read is its own try/catch, and a missing or unreadable file is simply
+// "not registered here".
+function settingsEnvDbPath(projectRoot, home, configDir) {
+  const files = [
+    path.join(projectRoot, '.claude', 'settings.json'),
+    path.join(projectRoot, '.claude', 'settings.local.json'),
+    path.join(configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json'),
+  ];
+  for (const file of files) {
+    try {
+      const data = readJson(file);
+      const value = data && data.env && data.env.CLAUDE_STACK_MEMORY_DB;
+      if (typeof value !== 'string' || !value) continue;
+      // Same resolution the plugin's own launcher uses (stack/mcp/memory-launch.js): a relative
+      // value is the project's, never the reader's cwd, or the two would disagree about the db.
+      const expanded = expandHome(value, home);
+      return path.normalize(path.isAbsolute(expanded) ? expanded : path.join(projectRoot, expanded));
+    } catch {}
+  }
+  return null;
+}
+
 function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
+  try {
+    const fromEnv = settingsEnvDbPath(projectRoot, home, configDir);
+    if (fromEnv) return fromEnv;
+  } catch {}
   try {
     const mcp = readJson(path.join(projectRoot, '.mcp.json'));
     const found = memoryEnvPath(mcp && mcp.mcpServers && mcp.mcpServers.memory, home);

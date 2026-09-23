@@ -41,19 +41,14 @@ Claude Code writes one JSONL per session under `~/.claude/projects/<encoded-proj
 With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation - the tool call is the step, the prose form of it gets skipped. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - **Exclude current session (recommended)**: drop the current id from the scope and note it for the next fresh-session run; **Hand off to a fresh session**: end the turn with the invocation to paste there - never resolve it silently and never audit the live session's own tail; the prose rule alone does not hold, this check is the gate. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. One bound keeps repeated sweeps sane, and the test is the REPORT, not the folder: a session is previously-audited when `<docs-path>/claude-stack-usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that one, list it as previously-audited, and re-audit only on an explicit ask. The folder alone is not the test: it becomes true at the SKELETON write, long before the report is authored, so a run resumed after an interruption would skip its own unfinished bundles as done.
 
 ### 2. GET the analyzer
-It ships in the stack's source repo, not in this project. One snapshot per RELEASE, the house way - the per-release source cache and the marketplace clone FIRST, the release archive only when neither holds this version, clone as the last fallback. Downloading before looking is what tripped the harness classifier in 4 audited bundles, and it pays ~1.8s for a 1.4MB archive already on disk:
+It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADING: where the stack is installed as plugins, the agent tool's own plugin cache already holds the whole repo (`stack/`, `scripts/`, `meta/` and all - it is the repo root the marketplace entries are sourced from), so the newest valid entry there is the snapshot. Downloading before looking is what tripped the harness classifier in 4 audited bundles, and it pays ~1.8s for a 1.4MB archive already on disk:
 
 ```bash
 TMP=$(mktemp -d)
-REPO_URL=https://github.com/envoydev/claude-stack
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-CACHE="$CFG/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
-MKT="$CFG/plugins/marketplaces/claude-stack"
-VER=$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$REPO_URL/releases/latest" 2>/dev/null | sed -n 's|.*/releases/tag/v\{0,1\}||p')
-SRC=""
-[ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && SRC="$CACHE/$VER"
-[ -z "$SRC" ] && [ -n "$VER" ] && [ -d "$MKT/stack/skills" ] &&
-  grep -q "\"version\": \"$VER\"" "$MKT/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null && SRC="$MKT"
+SRC=$(for d in "$CFG"/plugins/cache/*/claude-stack/*; do
+  [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
+done 2>/dev/null | sort -V | tail -1 | cut -f2)
 ```
 
 Then, when `$SRC` is set, `cp -R "$SRC" "$TMP/repo"` - nothing is downloaded. Only when it is empty:
@@ -65,7 +60,7 @@ tar -xzf "$TMP/stack.tar.gz" -C "$TMP"
 git clone --depth 1 -b main https://github.com/envoydev/claude-stack "$TMP/repo"
 ```
 
-This is `setup-plugin/references/source-protocol.md`'s own lookup order - the cache is keyed by VERSION, so a new release still wins the moment it is published. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
+This is `setup-plugin/references/source-protocol.md`'s own lookup order - the entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `CLAUDE_STACK_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
@@ -122,6 +117,6 @@ Then `rm -rf "$TMP"`.
 The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the committed-root consent rule above.
 
 ## Don't game it
-Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with `.claude/hooks/instrument-tool-usage.js` wired and `CLAUDE_STACK_INSTRUMENT=1` would add the `--hook-log` join next time; do not block on it.
+Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with the `instrument-tool-usage` hook active (it ships with the rest; `CLAUDE_STACK_INSTRUMENT=1`, and it must not be named in `CLAUDE_STACK_HOOKS_OFF`) would add the `--hook-log` join next time; do not block on it.
 
 The step-4 discipline is READ this run, never remembered: a bundle whose Environment rows carry no `Discipline: read` receipt was authored without the checks, and hand-written analysis is the failure mode those checks exist to replace - every wrong or mislabeled claim they guard against came from a report written without them. When a check and your recollection of the transcript disagree, re-open the transcript; the check wins.

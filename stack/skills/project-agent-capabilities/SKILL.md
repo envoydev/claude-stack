@@ -17,11 +17,20 @@ nothing to install, no per-skill fork): the precheck, the inventory with a print
 the live `claude mcp list`, the paste-ready MCP routing rows, the compare verdict and the
 post-write verify. From the project root:
 
+The script has TWO homes - copied under `.claude/skills/`, or carried by the plugin that ships this
+skill, where the cache can hold several versions and the NEWEST is the one this skill came from - so
+resolve it ONCE and reuse `$CAPS` for every call below. Run all of it from the project root:
+
 ```bash
-node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js
+CAPS=.claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js
+[ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-stack/*; do
+  f="$d/stack/skills/project-agent-capabilities/scripts/capabilities-inventory.js"
+  [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
+done 2>/dev/null | sort -V | tail -1 | cut -f2)
+node "$CAPS"
 ```
 
-On a plugin-covered install the same file sits under that plugin's `skills/project-agent-capabilities/`.
+An empty `$CAPS` means neither home has it: say so and stop, never hand-tally the inventory instead.
 
 **Its printed block is the whole inventory.** Re-grepping, re-Reading or hand-tallying anything it
 printed is a defect, not diligence - every count and every row of the report comes off one of its
@@ -49,7 +58,7 @@ the placeholder it exists to resolve.
 Write the composed body to a scratch file, then run the verdict:
 
 ```bash
-node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js --body <that file>
+node "$CAPS" --body <that file>
 ```
 
 - `COMPARE: identical` - do NOT write. Report `rule unchanged - <N> bytes, not rewritten`, and go
@@ -118,7 +127,8 @@ Captured: <the script's CAPTURED line>
 <the script's `/name - clause` rows, one per row>
 
 ## Subagent seats
-<the script's SEATS name line>
+<the script's SEATS name line - each seat under the name that RESOLVES: a seat from a plugin is
+addressable only as `<plugin>:<seat>`, and a bare name returns 'Agent type not found'>
 
 ## MCP routing
 <the script's `MCP ROUTING rows` block, pasted verbatim>
@@ -134,7 +144,7 @@ This skill was renamed from project-capabilities: when a legacy `.claude/rules/b
 ### 3. VERIFY - after the write, before the report
 
 ```bash
-node .claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js --verify .claude/rules/baseline-project-agent-capabilities.md
+node "$CAPS" --verify .claude/rules/baseline-project-agent-capabilities.md
 ```
 
 It parses the frontmatter with node - never PyYAML, which is missing on machines where a run died
@@ -165,4 +175,4 @@ Then the prose, short - four things, each its own line so none of them is skimme
 ## Don't game it
 The rule lists what the inventory proved, nothing else - no capability assumed from the house defaults, no row for a server or skill the project dropped, and an unreadable source reported as unreadable (the script prints it that way) rather than filled from memory.
 
-An empty `.claude/skills` is not by itself a broken install: when the layers come from a plugin the script prints `SOURCE: PLUGIN-COVERED` and the plugin's inventory is the real one - a named branch, not a reason to improvise an ask. Stop and say so only when it printed neither a local nor a plugin source.
+A thin `.claude/skills` is not by itself a broken install: when the layers come from plugins the script prints `SOURCE: PLUGIN-COVERED` and reports the UNION - what those plugins carry plus whatever is copied locally, which on that route is only the items no plugin holds. Stop and say so only when it printed neither a local nor a plugin source.

@@ -166,6 +166,21 @@ function sandbox(opts = {})
         ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: acct,
         PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: log, CLAUDE_STUB_PLUGINS: plugins,
+        // These cases read the hooks the installer COPIES, which still ship behind the Phase 2
+        // switch; the plugin route (the default) is proven in installer-settings.test.js.
+        CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false',
+        // Likewise the memory REGISTRATION: from Phase 6 the server rides the `memory@claude-stack`
+        // plugin and this installer writes no .mcp.json entry at all. The registration shape (the
+        // [sqlite] extra, the pins, the db path the level resolved) is still what these cases prove,
+        // so they pin the copy route; the plugin route is proven in mcp-verify.test.js and by the
+        // CLAUDE_STACK_MEMORY_DB key the settings-env pass writes for the plugin's launcher.
+        // The skills switch goes with it: the three LOCKED servers are hard dependencies of the core
+        // plugin entry, so while any plugin route is on the core carries them and the installer
+        // deliberately registers none of them (registering as well would run each one twice). The
+        // full copy route is the only place a memory REGISTRATION exists to assert on. The selection
+        // file keeps the copies down to one skill, so this costs nothing.
+        CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false',
+        CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false',
         NPX_STUB_LOG: npxLog,
         FAKE_MEMORY_DB: db, FAKE_MEMORY_CALLS_LOG: callsLog,
     };
@@ -288,7 +303,7 @@ function runStandaloneInstalledOnly(twin, sb)
 {
     const dir = path.join(sb.work, 'standalone', 'os');
     fs.mkdirSync(dir, { recursive: true });
-    const env = { ...sb.env, STACK_SKILLS_REPO: `file://${standaloneSource()}`, STACK_SOURCE_CACHE: '0' };
+    const env = { ...sb.env, STACK_SKILLS_REPO: `file://${standaloneSource()}` };
     if (twin === 'sh')
     {
         const copy = path.join(dir, 'claude-stack.sh');

@@ -310,6 +310,9 @@ note_failure() { FAIL_COUNT=$((FAIL_COUNT + 1)); log "  !! $*"; }
 
 prerequisites_check() {
   # Warn (not fail) on missing prerequisites, matching the script's fail-soft philosophy.
+  # CLAUDE_STACK_SKIP_PREREQS=1 (set by CI, whose runners lack these tools on purpose) skips the
+  # warnings; the claude probe still runs because later steps read CLAUDE_MISSING.
+  if [ "${CLAUDE_STACK_SKIP_PREREQS:-}" = 1 ]; then command -v claude >/dev/null 2>&1 || CLAUDE_MISSING=true; return 0; fi
   log "prerequisites check"
   local ok=true
   if command -v uvx >/dev/null 2>&1; then
@@ -592,13 +595,31 @@ EXTRA_MARKETPLACES=(
   "jarrodwatts/claude-hud"
 )
 PLUGINS=(
-  "superpowers@claude-plugins-official"       # workflow skills: plan, TDD, debug, verify-before-done
+  # "superpowers@claude-plugins-official"     # workflow skills: plan, TDD, debug, verify-before-done.
+  #   NOT a pick any more: it is a HARD `dependencies` entry on claude-stack@claude-stack, so the
+  #   core plugin installs and enables it (and Claude Code then REFUSES to disable it while the core
+  #   is enabled - code.claude.com/docs/en/plugin-dependencies). The row stays here, commented,
+  #   because three readers build their catalog from this block and 27 skills and agents cite it:
+  #   stack-graph.js catalog.plugins, the parity lint's resolvable namespaces, the walk's plugin layer.
   "claude-md-management@claude-plugins-official" # audit + revise CLAUDE.md files
   "csharp-lsp@claude-plugins-official"      # inline Roslyn diagnostics on edit (complements serena nav); needs csharp-ls (dotnet tool install -g csharp-ls)
   "typescript-lsp@claude-plugins-official"  # same for Angular/TS work
   "security-guidance@claude-plugins-official" # security hooks: pattern warnings + LLM diff review on Stop/commit
   "claude-hud@claude-hud"                       # statusline HUD (global/user scope)
 )
+# The stack's OWN plugin deliveries, appended to PLUGINS only on the plugin route. Its marketplace is
+# this repo, registered from CLAUDE_STACK_MARKETPLACE - a github slug by default, or a durable local
+# path when the temp-project matrix proves the route against the working tree. A path that is deleted
+# after the run would leave the plugin unresolvable in the next session, so the marketplace is never
+# registered from the run's throwaway source snapshot.
+STACK_MARKETPLACE="${CLAUDE_STACK_MARKETPLACE:-envoydev/claude-stack}"
+STACK_PLUGINS=("claude-stack-hooks@claude-stack")
+# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
+# the two together, so a dependency added there is a red lint until it is added here). Installed
+# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
+# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
+# route the core entry carries them and an explicit install here would only repeat the work.
+CORE_DEP_PLUGINS=("superpowers@claude-plugins-official")
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.
 #     @SERENA_CONTEXT@   -> resolved at install time to claude-code.
@@ -884,10 +905,54 @@ HOOKS=(
   "memory-session.js::@SessionStart::"            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   "instrument-tool-usage.js::.*::"                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded "0" in settings env - flip it for a measured run; see README)
 )
+# ONE switch for the whole route change. true (the default from 1.0.0) means the thirteen hooks
+# arrive through the claude-stack-hooks PLUGIN: nothing is copied into .claude/hooks/, nothing is
+# wired in .claude/settings.json, and an existing install's copies and wirings are pruned in the same
+# run that enables the plugin - so the window where neither route fires is zero. The plugin's own
+# copies stand down while a project still wires a copied twin (stack/hooks/hook-prelude.js), which is
+# what keeps a half-updated project from firing every guard twice. Set to false to keep the 0.2.x
+# copy route, which is what the temp-project matrix uses to prove both.
+HOOKS_VIA_PLUGIN="${CLAUDE_STACK_HOOKS_VIA_PLUGIN:-true}"
+
+# The same switch for the MCP servers (Phase 6). true (the default from 1.0.0) means the eight
+# catalog servers arrive through the plugins NAMED for them - serena, context7, memory, playwright,
+# angular-cli, chrome-devtools, appium-mcp, sentry - so this script registers nothing and an existing
+# install's stack registrations are REMOVED in the same run that enables the plugins. The plugin
+# route is what makes the servers per-project without a per-project file: <repo>/.mcp.json stops
+# being a stack-owned artifact and holds only what the project itself added. Set to false to keep
+# the 0.2.x `claude mcp add` route, which is what the temp-project matrix uses to prove both.
+MCPS_VIA_PLUGIN="${CLAUDE_STACK_MCPS_VIA_PLUGIN:-true}"
+# The three servers that can never be dropped are hard `dependencies` of the CORE plugin entry, so
+# Claude Code installs them with it whatever this switch says. That makes them plugin-only whenever
+# the core is enabled at all - registering them as well would run each one twice and pay both sets
+# of tool schemas every session. They come back to .mcp.json only on the FULL copy route, where no
+# plugin route is on and the core is never enabled.
+MCPS_LOCKED="serena context7 memory"
+_core_plugin_on() {
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ]
+}
+_is_locked_mcp() { case " $MCPS_LOCKED " in *" $1 "*) return 0 ;; esac; return 1; }
+# The servers this run registers under their BARE names - the ones a tool name must be spelled for.
+_bare_named_mcps() {
+  [ "$MCPS_VIA_PLUGIN" = "true" ] && return 0
+  local entry name
+  for entry in ${MCPS[@]+"${MCPS[@]}"}; do
+    name="${entry%%|*}"
+    _is_locked_mcp "$name" && _core_plugin_on && continue
+    printf '%s\n' "$name"
+  done
+}
+
 # The manifest as SHIPPED, taken before any selection filter narrows HOOKS. The stamp records these
 # names so a later --installed-only run can tell a hook the user DROPPED (shipped then, absent now)
 # from one this release ADDED (not shipped then) - on disk the two look the same.
 HOOKS_CATALOG=(${HOOKS[@]+"${HOOKS[@]}"})
+
+# The MCP manifest as SHIPPED, for the same reason: the selection filter below narrows MCPS to what
+# THIS project picked, and the plugin-route retirement has to name every server the stack ever
+# registered here - including the ones this run did not select, which an earlier install may well
+# have written into .mcp.json.
+MCPS_CATALOG=(${MCPS[@]+"${MCPS[@]}"})
 
 # settings.json permissions.deny (claude-code): hard-block Read of secret-bearing files. Wired into
 # .claude/settings.json alongside the hooks on INSTALL (idempotent, union-merged - a consuming project's
@@ -977,6 +1042,21 @@ AGENTS=(
   "winforms-verifier.md"             # verify phase (sonnet/xhigh): gates the WinForms build vs plan + quality
 )
 
+# Skills and agents arrive through the per-stack PLUGINS instead of being copied into .claude/. Which
+# plugins a project enables is COMPUTED from what it picked (scripts/selection-plugins.js, over the
+# same placement meta/plugin-entries.json is generated from), so a project carries its own closure
+# and nothing else. What no plugin carries - the EXTRAS, the items no stack's closure reaches - is
+# still copied, because there is no plugin that would hold it. Set to false to keep the 0.2.x copy
+# route, which is what the temp-project matrix uses to prove both.
+SKILLS_VIA_PLUGIN="${CLAUDE_STACK_SKILLS_VIA_PLUGIN:-true}"
+
+# The manifests as SHIPPED, taken before the selection filter narrows them (the HOOKS_CATALOG
+# pattern). On the plugin route these are the names a run PRUNES from .claude/skills and
+# .claude/agents: a copy the stack itself shipped, now carried by a plugin. A file neither manifest
+# names is the project's own and is never touched.
+SKILLS_CATALOG=(${SKILLS[@]+"${SKILLS[@]}"})
+AGENTS_CATALOG=(${AGENTS[@]+"${AGENTS[@]}"})
+
 # (6) Path-scoped rules (claude-code): copied into .claude/rules/ from the run's source clone (rules/)
 # on BOTH actions - lazy-load on matching file reads; conventions stay with the convention-gate hook,
 # rules carry only glob-scoped routing.
@@ -1036,7 +1116,7 @@ if [ "$INSTALLED_ONLY" = true ]; then
     done
     for f in "$_io_claude"/hooks/*.js; do
       [ -f "$f" ] || continue; _io_b="$(basename "${f%.js}")"
-      case "$_io_b" in inject-code-style|docs|memory) continue ;; esac   # docs.js/memory.js are engines, not hooks
+      case "$_io_b" in inject-code-style|docs|memory|hook-prelude) continue ;; esac   # docs.js/memory.js are engines and hook-prelude.js the shared gate module - none is a hook
       printf 'hook %s\n' "$_io_b"
     done
     if [ "$CLAUDE_SCOPE" = "project" ] && [ -f "$PWD/.mcp.json" ] && command -v node >/dev/null 2>&1; then
@@ -1071,6 +1151,30 @@ if [ "$INSTALLED_ONLY" = true ]; then
   # no-op update. Plugins are machine-level and mcps come from .mcp.json; neither is evidence that
   # THIS target has an install.
   grep -qE '^(skill|agent|rule|hook) ' "$SELECTION" || { echo "error: --installed-only found nothing installed under $_io_claude - run '$0 install' (or the /claude-stack:setup command) first" >&2; rm -rf "$_IO_TMP"; exit 1; }
+  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  # Skills and agents live in the stack's own PLUGINS on that route, so the disk scan above saw only
+  # the EXTRAS. The rest is recovered from the stack plugins this machine carries for THIS project,
+  # expanded to their items by the same placement the installer enables them from - the route-aware
+  # inventory shape hooks were given first (hooks-inventory-route). Without it an update read a
+  # plugin-native install as 'no skills, no agents' and dropped every per-stack plugin it had.
+  # It runs AFTER the nothing-installed guard on purpose: a machine-level plugin listing is no
+  # evidence that THIS project has an install, and the guard is the only thing that says so.
+  _io_sp=""
+  for _io_c in "$_io_script_dir/../selection-plugins.js" "${SOURCE_DIR:+$SOURCE_DIR/scripts/selection-plugins.js}"; do
+    if [ -n "$_io_c" ] && [ -f "$_io_c" ]; then _io_sp="$_io_c"; break; fi
+  done
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ] && [ -n "$_io_sp" ] && command -v node >/dev/null 2>&1 && command -v claude >/dev/null 2>&1; then
+    _io_stack_pl="$(claude plugin list 2>/dev/null \
+      | awk '{for(i=1;i<=NF;i++) if($i ~ /^claude-stack[A-Za-z0-9_.-]*@[A-Za-z0-9_.-]+$/){split($i,a,"@"); print a[1]}}' \
+      | grep -v '^claude-stack-hooks$' | sort -u | paste -sd, - || true)"
+    if [ -n "$_io_stack_pl" ]; then
+      node "$_io_sp" --items "$_io_stack_pl" 2>/dev/null | while IFS= read -r _io_l; do
+        [ -n "$_io_l" ] && ! grep -qxF "$_io_l" "$SELECTION" && printf '%s\n' "$_io_l" >> "$SELECTION"
+        true
+      done
+      log "installed-only: skills and agents read from the plugins ($_io_stack_pl)"
+    fi
+  fi
   # A hook the release ADDED reaches an existing install ONLY here. The derivation above lists what
   # is on DISK, so a newly shipped guard was invisible to every update - measured: the v0.2.20
   # commit gate reached zero of three consuming projects, every run surfacing it as an FYI the user
@@ -1094,7 +1198,6 @@ if [ "$INSTALLED_ONLY" = true ]; then
       log "installed-only: adopting hook $_io_n - shipped by this release and absent here"
     done
   fi
-  _io_script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
   # The always-on baseline (meta/recommendations.json `always.rules` / `always.mcps`) is adopted the
   # same way: a rule or server every install carries reached an existing one ONLY here - measured, a
   # pre-memory install updated to this release gained the start hook but never baseline-memory.md or
@@ -1269,140 +1372,34 @@ STACK_SRC_TRIED=false   # memoises the OUTCOME, so a dead source costs one fetch
 STACK_SRC_OWNED=false   # true only when WE fetched it - the EXIT trap removes ours, never the caller's
 STACK_SRC_ROOT=""       # the temp dir an owned fetch lives in (the EXIT trap's removal target)
 
-# THE SOURCE CACHE - one download per RELEASE, not one per run.
-# The snapshot above was fetched into a temp dir and deleted at the end of every run, so a second
-# project - or the same project twice - paid the archive again (measured: 1.4MB / ~1.8s per run,
-# against 0.3s for the version probe below and 0.1s to read the extracted 5.4MB snapshot off disk).
-# The cache keeps the EXTRACTED snapshot at <config>/cache/stack-source/<repo>/<version>, and a run
-# reuses it whenever the probe says that version is still the newest release. The guided plugin
-# walk writes the same layout, so a script install reuses what a `/claude-stack:setup` fetched and
-# the other way round. Two properties keep it honest:
-#   - VERSIONED, never time-boxed. A new release wins the moment it exists, because the probe names
-#     the version and a run only ever reuses the entry with that exact name. There is no TTL to
-#     tune and no window in which an install silently lands last week's stack.
-#   - NEVER TRUSTED BLIND. An entry counts only when it carries stack/skills + stack/agents - the
-#     same check a --source dir gets - so an interrupted promote is re-downloaded, not installed.
-# And when the cache is empty, the download may still be avoidable: Claude Code's marketplace clone
-# is a full checkout of this repo (see _stack_marketplace_clone), so a machine with the plugin
-# installed already holds the release. STACK_SOURCE_CACHE=0 restores the old always-fresh temp
-# download.
-STACK_CACHE_ENABLED=true
-[ "${STACK_SOURCE_CACHE:-1}" = "0" ] && STACK_CACHE_ENABLED=false
-
-_stack_cache_root() {
-  # Keyed by REPO as well as version: a fork or a test fixture must never read - or poison - the
-  # canonical snapshot, and the slug is the same tr/cut idiom the plugin walk's marker file uses.
-  printf '%s/cache/stack-source/%s' "$CONFIG_DIR" \
-    "$(printf '%s' "$STACK_REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
-}
-
-_stack_probe_version() {
-  # The newest release's version, read from the Location of /releases/latest (GitHub 302s to
-  # /releases/tag/v<version>, and the release workflow tags v<plugin manifest version>, which is
-  # exactly what RELEASE-SOURCE carries - so probe and archive agree by construction). HEAD only:
-  # no body, no archive. Prints NOTHING when it cannot be answered - a fork without releases, a
-  # file:// or local-path source, no curl, an offline run - and every caller reads empty as
-  # 'just download', which is why a dead probe costs correctness nothing.
-  # Every failure is swallowed HERE rather than left to the caller: the script runs under
-  # `set -euo pipefail`, where an unreachable host would otherwise take the whole run down with it
-  # (a failing curl in a pipeline is a failing assignment), and today it only survives because
-  # every stack_src caller happens to use `|| ...`, which suspends errexit for the body.
-  case "$STACK_REPO_URL" in http://*|https://*) ;; *) return 0 ;; esac
-  command -v curl >/dev/null 2>&1 || return 0
-  local loc
-  loc="$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$STACK_REPO_URL/releases/latest" 2>/dev/null || true)"
-  printf '%s' "$loc" | sed -n 's|.*/releases/tag/v\{0,1\}||p' | head -1
-}
-
-_stack_cache_valid() { [ -d "$1/stack/skills" ] && [ -d "$1/stack/agents" ]; }
-
-_stack_cache_prune() {
-  # Keep the entry just promoted; drop ones a week old. NOT 'everything but the current': another
-  # run resolved its own entry seconds ago and reads from it for the length of its install, and
-  # deleting that out from under it is the one way this cache could break a run that used to work.
-  find "$1" -mindepth 1 -maxdepth 1 -type d ! -name "$2" -mtime +7 -exec rm -rf {} + 2>/dev/null || true
-  find "$1" -mindepth 1 -maxdepth 1 -type d -name '.dl.*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
-  return 0
-}
-
-_stack_cache_promote() {
-  # Move a freshly extracted snapshot into the cache and echo the entry, or echo nothing. Staged
-  # INSIDE the cache root so the rename is same-filesystem, and a race is resolved in favour of
-  # whoever landed first - a valid entry is never replaced, only an absent or broken one.
-  local repo="$1" root="$2" v
-  v="$(sed -n 's/^version: //p' "$repo/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-  [ -n "$v" ] || return 0
-  mkdir -p "$root" 2>/dev/null || return 0
-  if ! _stack_cache_valid "$root/$v"; then
-    rm -rf "$root/.dl.$$"
-    if cp -R "$repo" "$root/.dl.$$" 2>/dev/null; then
-      rm -rf "$root/$v"
-      mv "$root/.dl.$$" "$root/$v" 2>/dev/null || rm -rf "$root/.dl.$$"
-    fi
-  fi
-  _stack_cache_valid "$root/$v" && printf '%s' "$root/$v"
-  return 0
-}
-
-_stack_manifest_version() {
-  # tr -d '\r' is not decoration: Git for Windows checks out with core.autocrlf=true by default, so
-  # the manifest in a marketplace clone has CRLF line ends and the captured version would carry a
-  # trailing CR - never equal to the probe's, which would disable the clone route on Windows only.
-  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    "$1/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null | head -1 | tr -d '\r' || true
-}
-
-_stack_marketplace_clone() {
-  # Claude Code's own clone of the marketplace repo - <config>/plugins/marketplaces/<name> - is a
-  # FULL checkout of this repo, not just the plugin subdir it serves (measured: 7.1MB, with
-  # scripts/ meta/ stack/ all present), so on any machine with the plugin installed the release is
-  # usually already on disk and the archive is a second copy of what is already there.
-  # Prints the path of the clone whose origin is OUR repo and whose plugin manifest carries $1 -
-  # the version match is what makes it safe, since the clone only moves when the user refreshes the
-  # marketplace and may otherwise sit a release behind. $1 empty means 'any valid clone', which is
-  # the offline last resort below and nothing else.
-  local want="$1" dir origin v
-  command -v git >/dev/null 2>&1 || return 0
-  [ -d "$CONFIG_DIR/plugins/marketplaces" ] || return 0
-  for dir in "$CONFIG_DIR"/plugins/marketplaces/*; do
-    [ -d "$dir" ] || continue
-    _stack_cache_valid "$dir" || continue
-    origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
-    [ "${origin%.git}" = "${STACK_REPO_URL%.git}" ] || continue
-    if [ -n "$want" ]; then
-      v="$(_stack_manifest_version "$dir")"
-      [ "$v" = "$want" ] || continue
-    fi
-    printf '%s' "$dir"
-    return 0
+# THE SOURCE IS WHAT CLAUDE CODE ALREADY CACHED.
+# Every marketplace entry shares this repo's root as its `source`, so installing the core plugin
+# leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/claude-stack/<version> - measured on
+# a real install: stack/rules, stack/CLAUDE.template.md, the two hook engines, meta/, scripts/ and
+# RELEASE-SOURCE are all there. That is the same snapshot the installer used to download, fetched
+# once per release by the CLI itself, so the stack keeps no second cache of its own. The archive and
+# clone routes below remain for the two paths that have no plugin cache to read: the copy route
+# (both VIA_PLUGIN switches off) and a machine with no `claude` CLI.
+_stack_plugin_cache() {
+  # Prints the newest valid version directory of the core plugin's cache entry, or nothing.
+  # 'Newest' is by sort -V over the directory names, which ARE the release versions the CLI writes.
+  local base="$CONFIG_DIR/plugins/cache" mkt dir v best=""
+  [ -d "$base" ] || return 0
+  for mkt in "$base"/*; do
+    [ -d "$mkt/claude-stack" ] || continue
+    for dir in "$mkt"/claude-stack/*; do
+      _stack_src_valid "$dir" || continue
+      v="$(basename "$dir")"
+      if [ -z "$best" ] || [ "$(printf '%s\n%s\n' "$(basename "$best")" "$v" | sort -V | tail -1)" = "$v" ]; then best="$dir"; fi
+    done
   done
+  [ -n "$best" ] && printf '%s' "$best"
   return 0
 }
 
-_stack_marketplace_promote() {
-  # Copy a matching clone into the cache under its version and synthesize the RELEASE-SOURCE the
-  # archive would have carried, so nothing downstream - the stamp, the guided walk's plugin-version
-  # check, the next run's cache hit - can tell the two routes apart. `.git` is dropped: 1.7MB of
-  # history no install reads, and a copy that kept it would out-vote RELEASE-SOURCE the next time
-  # the entry is handed to a run as --source.
-  local src="$1" root="$2" v="$3" sha ref
-  sha="$(git -C "$src" rev-parse HEAD 2>/dev/null || true)"
-  ref="$(git -C "$src" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  [ -n "$sha" ] || return 0
-  mkdir -p "$root" 2>/dev/null || return 0
-  if ! _stack_cache_valid "$root/$v"; then
-    rm -rf "$root/.dl.$$"
-    if cp -R "$src" "$root/.dl.$$" 2>/dev/null; then
-      rm -rf "$root/.dl.$$/.git"
-      printf 'sha: %s\nref: %s\nversion: %s\nsource: marketplace-clone\n' \
-        "$sha" "${ref:-main}" "$v" > "$root/.dl.$$/RELEASE-SOURCE" 2>/dev/null || true
-      rm -rf "$root/$v"
-      mv "$root/.dl.$$" "$root/$v" 2>/dev/null || rm -rf "$root/.dl.$$"
-    fi
-  fi
-  _stack_cache_valid "$root/$v" && printf '%s' "$root/$v"
-  return 0
-}
+# The one validity test every source route shares: a directory counts as the stack only when it
+# carries both trees, so an interrupted write is rejected rather than half-installed.
+_stack_src_valid() { [ -d "$1/stack/skills" ] && [ -d "$1/stack/agents" ]; }
 
 _cleanup_stack_src() {
   if $STACK_SRC_OWNED && [ -n "$STACK_SRC_ROOT" ]; then rm -rf "$STACK_SRC_ROOT"; fi
@@ -1448,33 +1445,15 @@ stack_src() {
     return 0
   fi
 
-  # Cached snapshot first: the probe costs one HEAD, and a hit costs no download at all.
-  local cache_root="" want="" mkt="" mkt_entry=""
-  if $STACK_CACHE_ENABLED; then
-    cache_root="$(_stack_cache_root)"
-    want="$(_stack_probe_version)"
-    if [ -n "$want" ] && _stack_cache_valid "$cache_root/$want"; then
-      STACK_SRC="$cache_root/$want"; STACK_SRC_OWNED=false
-      STACK_SHA="$(sed -n 's/^sha: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-      STACK_REF="$(sed -n 's/^ref: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-      log "source: cache $STACK_SRC @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (release $want, no download)"
-      return 0
-    fi
-    # Nothing cached, but the marketplace clone may already BE this release - copy it into the
-    # cache instead of paying the archive. Only ever on an exact version match: the probe named the
-    # newest release, so a clone carrying that version is the same revision the archive would be.
-    if [ -n "$want" ]; then
-      mkt="$(_stack_marketplace_clone "$want")"
-      if [ -n "$mkt" ]; then mkt_entry="$(_stack_marketplace_promote "$mkt" "$cache_root" "$want")"; fi
-      if [ -n "$mkt_entry" ]; then
-        STACK_SRC="$mkt_entry"; STACK_SRC_OWNED=false
-        STACK_SHA="$(sed -n 's/^sha: //p' "$mkt_entry/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-        STACK_REF="$(sed -n 's/^ref: //p' "$mkt_entry/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
-        log "source: marketplace clone $mkt @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (release $want, no download)"
-        _stack_cache_prune "$cache_root" "$want"
-        return 0
-      fi
-    fi
+  # What the CLI already cached: no probe, no download, and it is the exact snapshot the enabled
+  # plugins are running from, so the seed and the plugins can never be two different releases.
+  local cached; cached="$(_stack_plugin_cache)"
+  if [ -n "$cached" ]; then
+    STACK_SRC="$cached"; STACK_SRC_OWNED=false
+    STACK_SHA="$(sed -n 's/^sha: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
+    STACK_REF="$(sed -n 's/^ref: //p' "$STACK_SRC/RELEASE-SOURCE" 2>/dev/null | head -1 || true)"
+    log "source: plugin cache $STACK_SRC @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (no download)"
+    return 0
   fi
 
   # Release archive: one asset is one revision, and no git is needed to take it.
@@ -1484,19 +1463,11 @@ stack_src() {
      curl -fsSL "$url" -o "$tmp/claude-stack.tar.gz" 2>/dev/null &&
      mkdir -p "$tmp/repo" &&
      tar -xzf "$tmp/claude-stack.tar.gz" -C "$tmp/repo" 2>/dev/null &&
-     [ -d "$tmp/repo/stack/skills" ] && [ -d "$tmp/repo/stack/agents" ]; then
+     _stack_src_valid "$tmp/repo"; then
     STACK_SRC="$tmp/repo"; STACK_SRC_ROOT="$tmp"; STACK_SRC_OWNED=true
     STACK_SHA="$(sed -n 's/^sha: //p' "$tmp/repo/RELEASE-SOURCE" 2>/dev/null | head -1)"
     STACK_REF="$(sed -n 's/^ref: //p' "$tmp/repo/RELEASE-SOURCE" 2>/dev/null | head -1)"
-    # Promote and run FROM the cache entry, so this download is the last one this release needs.
-    local entry=""
-    [ -n "$cache_root" ] && entry="$(_stack_cache_promote "$tmp/repo" "$cache_root")"
-    if [ -n "$entry" ]; then
-      rm -rf "$tmp"
-      STACK_SRC="$entry"; STACK_SRC_ROOT=""; STACK_SRC_OWNED=false
-      _stack_cache_prune "$cache_root" "$(basename "$entry")"
-    fi
-    log "source: $url @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}")${entry:+ (cached for the next run)}"
+    log "source: $url @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}")"
     return 0
   fi
   rm -rf "$tmp"
@@ -1508,20 +1479,9 @@ stack_src() {
   tmp="$(mktemp -d)"
   if ! git clone --depth 1 -b main "$STACK_REPO_URL" "$tmp" >/dev/null 2>&1; then
     rm -rf "$tmp"
-    # Everything networked is gone - archive, probe and clone. The marketplace clone is the one
-    # source that needs no network at all, so take it UNVERIFIED rather than install nothing: it
-    # may be a release behind (the probe is what would have proven otherwise, and there is no
-    # probe offline), but the stamp records its exact commit, so the next online run reports the
-    # drift instead of hiding it.
-    local off; off="$(_stack_marketplace_clone "")"
-    if [ -n "$off" ]; then
-      STACK_SRC="$off"; STACK_SRC_OWNED=false; STACK_SRC_ROOT=""
-      STACK_SHA="$(git -C "$off" rev-parse HEAD 2>/dev/null || true)"
-      STACK_REF="$(git -C "$off" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-      log "source: marketplace clone $off @ ${STACK_REF:-?} $(printf '%.12s' "${STACK_SHA:-unknown}") (offline - release $(_stack_manifest_version "$off"), not checked against the release host)"
-      return 0
-    fi
-    note_failure "release archive and clone of $STACK_REPO_URL both failed - stack source unavailable (nothing refreshed; existing copies kept)"
+    # Nothing networked answered, and the plugin cache above was empty too - which is the only
+    # offline source now, and the one an ordinary machine has.
+    note_failure "release archive and clone of $STACK_REPO_URL both failed, and no plugin cache is present - stack source unavailable (nothing refreshed; existing copies kept)"
     return 1
   fi
   STACK_SRC="$tmp"; STACK_SRC_ROOT="$tmp"; STACK_SRC_OWNED=true
@@ -1534,16 +1494,103 @@ stack_src() {
 # ===========================================================================
 # INSTALL - skills re-add UNCONDITIONALLY (clean copy each run); MCPs and plugins SKIP if already present
 # ===========================================================================
+# The plugins that carry THIS project's picked skills and agents, plus the EXTRAS no plugin carries.
+# Computed once per run from the post-selection manifests by scripts/selection-plugins.js, which
+# reads the same placement the marketplace entries are generated from - so the installer can never
+# enable a set that disagrees with what the marketplace actually ships.
+# Fail-soft, and the fallback is the whole 0.2.x route: without node, without a source snapshot, or
+# on any error, SKILLS_VIA_PLUGIN drops to false and everything is copied as before. An install that
+# cannot compute its plugin set still ends with a working stack.
+_STACK_PLUGINS_RESOLVED=false
+STACK_SEL_PLUGINS=()
+STACK_RUN_PLUGINS=()
+PLUGIN_EXTRA_SKILLS=()
+PLUGIN_EXTRA_AGENTS=()
+resolve_stack_plugins() {
+  [ "$_STACK_PLUGINS_RESOLVED" = true ] && return 0
+  _STACK_PLUGINS_RESOLVED=true
+  # Either route needs the closure: the skills/agents live in the per-stack entries and, from
+  # Phase 6, so do the MCP servers - one plugin named for each catalog server.
+  [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ] || return 0
+  local why=""
+  command -v node >/dev/null 2>&1 || why="node not found"
+  [ -n "$why" ] || stack_src || why="no source snapshot"
+  [ -n "$why" ] || [ -f "$STACK_SRC/scripts/selection-plugins.js" ] || why="selection-plugins.js is not in this source"
+  if [ -n "$why" ]; then
+    SKILLS_VIA_PLUGIN=false
+    MCPS_VIA_PLUGIN=false; _refresh_retired_mcps
+    log "  !! $why - skills, agents and MCP servers stay on the copy route"
+    return 0
+  fi
+  local tmp entry name out
+  tmp="$(mktemp -d)" || { SKILLS_VIA_PLUGIN=false; return 0; }
+  {
+    if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then
+      for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do printf 'skill %s\n' "${entry#*|}"; done
+      for entry in ${AGENTS[@]+"${AGENTS[@]}"}; do name="${entry%%::*}"; printf 'agent %s\n' "${name%.md}"; done
+    fi
+    # The selection's MCP picks are names, one per catalog row; selection-plugins.js folds the two
+    # expanded families (playwright-<engine>, context7-<remote|local>) back onto their one plugin.
+    if [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+      for entry in ${MCPS[@]+"${MCPS[@]}"}; do printf 'mcp %s\n' "${entry%%|*}"; done
+      # The local context7 transport is its OWN entry beside the hosted one - two servers in one
+      # plugin both load, so the local mode adds a plugin rather than swapping a server. The hosted
+      # one stays installed because the core depends on it; the summary prints the /mcp disable line.
+      [ "$CONTEXT7_MODE" = "local" ] && printf 'mcp context7-local\n'
+    fi
+  } > "$tmp/selection.txt"
+  if ! out="$(node "$STACK_SRC/scripts/selection-plugins.js" --selection "$tmp/selection.txt" 2>"$tmp/err")"; then
+    SKILLS_VIA_PLUGIN=false
+    MCPS_VIA_PLUGIN=false; _refresh_retired_mcps
+    log "  !! plugin set not computed ($(head -1 "$tmp/err" 2>/dev/null)) - skills, agents and MCP servers stay on the copy route"
+    rm -rf "$tmp"; return 0
+  fi
+  while IFS= read -r name; do [ -n "$name" ] && STACK_SEL_PLUGINS+=("$name"); done <<EOF
+$out
+EOF
+  out="$(node "$STACK_SRC/scripts/selection-plugins.js" --selection "$tmp/selection.txt" --copy 2>/dev/null || true)"
+  while IFS= read -r name; do
+    case "$name" in
+      "skill "*) PLUGIN_EXTRA_SKILLS+=("${name#skill }") ;;
+      "agent "*) PLUGIN_EXTRA_AGENTS+=("${name#agent }") ;;
+    esac
+  done <<EOF
+$out
+EOF
+  rm -rf "$tmp"
+  log "plugins carry ${#STACK_SEL_PLUGINS[@]} entr(ies); extras copied: ${#PLUGIN_EXTRA_SKILLS[@]} skill(s), ${#PLUGIN_EXTRA_AGENTS[@]} agent(s)"
+}
+
+_is_extra() {  # $1 = name, rest = the extras list -> 0 when the name is one of them
+  local want="$1"; shift
+  local n; for n in "$@"; do [ "$n" = "$want" ] && return 0; done
+  return 1
+}
+
 install_skills() {
   # Copy each selected skills/<name>/ out of the run's clone into the scope dest - all house
   # skills live in ONE repo, so a plain copy fully reproduces what the skills CLI used to stage;
-  # no npx/network-registry dependency.
+  # no npx/network-registry dependency. On the plugin route only the EXTRAS travel this way.
+  resolve_stack_plugins
   stack_src || { note_failure "skills not installed"; return 0; }   # fail-soft: skip, never abort
   local name dest entry
+  local -a copy_skills=()
   case "$CLAUDE_SCOPE" in user) dest="$CONFIG_DIR/skills" ;; *) dest="$PWD/.claude/skills" ;; esac
   mkdir -p "$dest"
-  for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do
-    name="${entry#*|}"
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then
+    # Prune BEFORE the plugins are enabled in the same run: a leftover copy SHADOWS the plugin's own
+    # (spike S6) with no error and no sign in the transcript. Only names the shipped manifest carries
+    # are pruned, so a skill folder this stack never installed - the project's own - is left alone.
+    for entry in ${SKILLS_CATALOG[@]+"${SKILLS_CATALOG[@]}"}; do
+      name="${entry#*|}"
+      _is_extra "$name" ${PLUGIN_EXTRA_SKILLS[@]+"${PLUGIN_EXTRA_SKILLS[@]}"} && continue
+      [ -d "$dest/$name" ] && { rm -rf "$dest/$name"; log "  skill pruned (now carried by a plugin): $name"; }
+    done
+    copy_skills=(${PLUGIN_EXTRA_SKILLS[@]+"${PLUGIN_EXTRA_SKILLS[@]}"})
+  else
+    for entry in ${SKILLS[@]+"${SKILLS[@]}"}; do copy_skills+=("${entry#*|}"); done
+  fi
+  for name in ${copy_skills[@]+"${copy_skills[@]}"}; do
     if [ -d "$STACK_SRC/stack/skills/$name" ]; then
       rm -rf "$dest/$name"; cp -R "$STACK_SRC/stack/skills/$name" "$dest/$name"
       log "skill [$CLAUDE_SCOPE]: $name -> $dest/$name"
@@ -1562,16 +1609,90 @@ ensure_official_marketplace() {
   claude plugin marketplace update claude-plugins-official >/dev/null 2>&1 || true
 }
 
+# The stack's OWN plugin names for this run, with its marketplace registered - shared by install,
+# update and the --skills-only fast path, which on this route can no longer be a pure file copy:
+# it PRUNES the copies, so a run that skipped the enable would leave the project with neither.
+# Fills the GLOBAL STACK_RUN_PLUGINS - a nameref would be cleaner and macOS still ships bash 3.2.
+_stack_plugin_set() {
+  STACK_RUN_PLUGINS=()
+  resolve_stack_plugins      # may drop SKILLS_VIA_PLUGIN / MCPS_VIA_PLUGIN to false, so it runs before the test below
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ] || return 0
+  claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
+  claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then STACK_RUN_PLUGINS+=(${STACK_PLUGINS[@]+"${STACK_PLUGINS[@]}"}); fi
+  # ONE closure list for both routes: resolve_stack_plugins fed it skill/agent lines only when
+  # SKILLS_VIA_PLUGIN is on and mcp lines only when MCPS_VIA_PLUGIN is, so whatever it holds is
+  # exactly what this combination of routes needs enabled.
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ] || [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+    STACK_RUN_PLUGINS+=(${STACK_SEL_PLUGINS[@]+"${STACK_SEL_PLUGINS[@]}"})
+  fi
+}
+
+# The core's dependency plugins, but only when this run enables no stack plugin - see
+# CORE_DEP_PLUGINS. Fills a GLOBAL because macOS still ships bash 3.2, which has no namerefs.
+CORE_DEPS_NEEDED=()
+_core_deps_needed() {
+  CORE_DEPS_NEEDED=()
+  [ ${#STACK_RUN_PLUGINS[@]} -eq 0 ] || return 0
+  CORE_DEPS_NEEDED=(${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"})
+  return 0
+}
+
+# A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
+# with higher precedence than this one - the one documented enable failure whose symptom ('plugin
+# ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
+# Printed once, and only for a dependency the listing actually shows as disabled, so a run that
+# failed for an unrelated reason is not sent chasing it.
+_DEP_LOCK_HINT_SHOWN=false
+_dep_lock_hint() {
+  case "$1" in *@claude-stack) ;; *) return 0 ;; esac
+  [ "$_DEP_LOCK_HINT_SHOWN" = false ] || return 0
+  local listing dep name
+  listing="$(_plugin_scan)"
+  [ -n "$listing" ] || return 0
+  for dep in ${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"}; do
+    name="${dep%%@*}"
+    [ "$(_plugin_field "$listing" "$name" 4)" = "no" ] || continue
+    _DEP_LOCK_HINT_SHOWN=true
+    log "     $name is DISABLED and $1 depends on it - enable it first: claude plugin enable $dep --scope $(_plugin_field "$listing" "$name" 3)"
+  done
+  return 0
+}
+
+# Put the SOURCE on disk before anything asks for it, by letting the CLI fetch it: installing the
+# core entry leaves the whole repo in the plugin cache, which is what stack_src reads. Only runs
+# when the plugin route is on, the CLI exists and no cache is there yet - so it is a no-op on every
+# run after the first, and the archive download below it stays as the fail-soft.
+_bootstrap_stack_source() {
+  # Read the normalised route flags, never the env again: one rule, one home.
+  [ "$HOOKS_VIA_PLUGIN" = "true" ] || [ "$SKILLS_VIA_PLUGIN" = "true" ] || return 0
+  command -v claude >/dev/null 2>&1 || return 0
+  [ -n "$SOURCE_DIR" ] && return 0
+  [ -z "$(_stack_plugin_cache)" ] || return 0
+  ensure_official_marketplace
+  claude plugin marketplace add "$STACK_MARKETPLACE" >/dev/null 2>&1 || true
+  claude plugin marketplace update claude-stack >/dev/null 2>&1 || true
+  log "source: fetching the core plugin so its cache can serve this run"
+  claude plugin install "claude-stack@claude-stack" --scope "$CLAUDE_SCOPE" -y >/dev/null 2>&1 || true
+  return 0
+}
+
 install_plugins() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   ensure_official_marketplace
   for mp in ${EXTRA_MARKETPLACES[@]+"${EXTRA_MARKETPLACES[@]}"}; do claude plugin marketplace add "$mp" 2>/dev/null || true; done
-  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+  # The stack's own marketplace, and the plugins it serves. Registered BEFORE the loop so the
+  # hooks plugin resolves in the same run that prunes the copied hooks it replaces.
+  local -a _plugins=(${PLUGINS[@]+"${PLUGINS[@]}"})
+  _stack_plugin_set
+  _plugins+=(${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"})
+  _core_deps_needed; _plugins+=(${CORE_DEPS_NEEDED[@]+"${CORE_DEPS_NEEDED[@]}"})
+  for p in ${_plugins[@]+"${_plugins[@]}"}; do
     # claude-hud is a statusline HUD - force USER scope regardless of $CLAUDE_SCOPE. A project-scoped
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
     log "plugin [$pscope]: $p"
-    claude plugin install "$p" --scope "$pscope" -y || note_failure "plugin $p failed"   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
+    claude plugin install "$p" --scope "$pscope" -y || { note_failure "plugin $p failed"; _dep_lock_hint "$p"; }   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
   done
 }
 
@@ -1613,6 +1734,10 @@ _mcp_register() {  # $1 = name $2 = manifest args - the `claude mcp add` call fo
 # ones). The CLI route runs first; at project scope the stack-owned .mcp.json entry is then removed
 # directly, because a `remove` that did not take exits 0 like one that did (see the verify pass).
 prune_playwright_servers() {
+  # PLUGIN ROUTE: the four engines are declared in the one `playwright` plugin and the user keeps
+  # one enabled with /mcp disable, so there is no per-engine registration to drop. The retirement
+  # above already removes any the copy route left behind.
+  [ "$MCPS_VIA_PLUGIN" = "true" ] && return 0
   [ -n "$PLAYWRIGHT_BROWSERS" ] || return 0
   local name drop=""
   for name in playwright playwright-chrome playwright-msedge playwright-firefox playwright-webkit; do
@@ -1642,9 +1767,23 @@ for(const n of gone)console.log("  mcp removed: "+n+(n==="playwright"?" (now one
 
 install_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
+  # PLUGIN ROUTE: the servers come from the plugins named for them, so this script registers none.
+  # It still PRUNES, because an install over a 0.2.x project is exactly where the stack's old
+  # registrations have to come out - leaving them would run every server twice, once from
+  # .mcp.json and once from the plugin, and pay both sets of tool schemas on every session.
+  if [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+    prune_retired_mcps
+    log "mcp: carried by the plugins (serena, context7, memory, and the picks) - nothing registered here"
+    return 0
+  fi
+  prune_retired_mcps   # the locked three, when the core plugin carries them (see MCPS_LOCKED)
   local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    if _is_locked_mcp "$name" && _core_plugin_on; then
+      log "  mcp $name: carried by the core plugin's dependencies - not registered here"
+      continue
+    fi
     # 'already configured' skips the ADD, never the verify pass below: a name registered by an older
     # release answers `mcp get` in its OLD shape, so an install over such a project must still repair it.
     if claude mcp get "$name" >/dev/null 2>&1; then echo "  mcp $name already configured - skipping"; continue; fi
@@ -1747,6 +1886,9 @@ _verify_mcps_project() {
   : > "$tmpout"
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    # A locked server the core plugin carries has no registration to verify, and writing the shape
+    # back would put the entry the prune just removed straight back into the file.
+    _is_locked_mcp "$name" && _core_plugin_on && continue
     _mcp_expect_line "$name" "$args" >> "$tmpin"
   done
   # `claude mcp add --scope project` writes <cwd>/.mcp.json - the same file this reads back.
@@ -1780,6 +1922,9 @@ _verify_mcps_user() {
   local entry name args line kind want have
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    # A locked server the core plugin carries is not registered at all, so there is nothing to read
+    # back and a 'drifted' verdict here would re-add the entry the prune just removed.
+    _is_locked_mcp "$name" && _core_plugin_on && continue
     line="$(_mcp_expect_line "$name" "$args")"
     kind="$(printf '%s' "$line" | cut -f2)"
     if [ "$kind" = "http" ]; then
@@ -1810,6 +1955,10 @@ _verify_mcps_user() {
 verify_mcps() {
   [ "$CLAUDE_MISSING" = true ] && return 0
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }
+  # PLUGIN ROUTE: there is no stack registration left to read back. Running this pass anyway would
+  # be worse than useless - it rewrites .mcp.json entries to the manifest shape, which is precisely
+  # what the run just removed.
+  [ "$MCPS_VIA_PLUGIN" = "true" ] && return 0
   if [ "$CLAUDE_SCOPE" = "project" ]; then
     command -v python3 >/dev/null 2>&1 || { log "  !! python3 not found - MCP registrations were not verified"; return 0; }
     _verify_mcps_project
@@ -1844,9 +1993,23 @@ _install_from_src() {
 
 download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (keeps repo copy)
   local root entry file; local -a files=()
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+    # The thirteen WIRED hooks move to the plugin. The two ENGINES do not: docs.js and memory.js are
+    # CLIs the model runs by path (`node .claude/hooks/docs.js`), named in 22 skill, agent, rule and
+    # command bodies that are SHARED with cursor-stack, which has no plugin system. Copying them is
+    # what keeps that one route working on both stacks; model-windows.json rides along because the
+    # copied engines' neighbours read it. Nothing here is wired, so nothing fires twice.
+    root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
+    _install_from_src stack/hooks hook "$root/.claude/hooks" noexec docs.js memory.js model-windows.json
+    log "  hooks: the thirteen via the claude-stack-hooks plugin; the docs and memory engines copied"
+    return 0
+  fi
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping hooks"; return 0; }
   for entry in ${HOOKS[@]+"${HOOKS[@]}"}; do file="${entry%%::*}"; files+=("$file"); done   # empty-array-safe on bash 3.2 (macOS /bin/bash) under set -u
   _install_from_src stack/hooks hook "$root/.claude/hooks" exec ${files[@]+"${files[@]}"}
+  # The shared gate module every hook requires. Copied beside them so CLAUDE_STACK_HOOKS_OFF works on
+  # this route too - without it every hook takes the fail-open catch on every single invocation.
+  [ ${#files[@]} -eq 0 ] || _install_from_src stack/hooks hook "$root/.claude/hooks" noexec hook-prelude.js
   # the fresh-session hooks' model -> context window table: data, not a wired hook, so no exec bit -
   # copied only beside a hook that reads it
   case " ${files[*]-} " in
@@ -1866,9 +2029,25 @@ download_hooks() {  # copy each hook file into the repo; per-hook fail-soft (kee
 }
 
 download_agents() {  # copy each subagent .md into .claude/agents/; per-agent fail-soft (keeps repo copy)
-  local root
+  local root entry name
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || { log "  !! not in a git repo - skipping agents"; return 0; }
-  _install_from_src stack/agents agent "$root/.claude/agents" no ${AGENTS[@]+"${AGENTS[@]}"}
+  resolve_stack_plugins
+  if [ "$SKILLS_VIA_PLUGIN" != "true" ]; then
+    _install_from_src stack/agents agent "$root/.claude/agents" no ${AGENTS[@]+"${AGENTS[@]}"}
+    return 0
+  fi
+  # Same two moves as the skills: prune what a plugin now carries (a stale copy shadows it), copy
+  # only the extras. A seat file the shipped manifest never named is the project's own.
+  for entry in ${AGENTS_CATALOG[@]+"${AGENTS_CATALOG[@]}"}; do
+    name="${entry%%::*}"
+    _is_extra "${name%.md}" ${PLUGIN_EXTRA_AGENTS[@]+"${PLUGIN_EXTRA_AGENTS[@]}"} && continue
+    [ -f "$root/.claude/agents/$name" ] && { rm -f "$root/.claude/agents/$name"; log "  agent pruned (now carried by a plugin): $name"; }
+  done
+  local -a extra=()
+  for name in ${PLUGIN_EXTRA_AGENTS[@]+"${PLUGIN_EXTRA_AGENTS[@]}"}; do extra+=("$name.md"); done
+  if [ ${#extra[@]} -gt 0 ]; then
+    _install_from_src stack/agents agent "$root/.claude/agents" no "${extra[@]}"
+  fi
 }
 
 download_rules() {  # copy each rule .md into .claude/rules/; per-rule fail-soft (keeps repo copy)
@@ -2153,12 +2332,18 @@ write_stamp() {
   _stamp_rules_dir="$(git rev-parse --show-toplevel 2>/dev/null || true)"
   [ -z "$_stamp_rules_dir" ] || _stamp_rules_dir="$_stamp_rules_dir/.claude/rules"
   case "$CLAUDE_SCOPE" in user) _stamp_mcp_file="$ACCOUNT_CLAUDE_JSON" ;; *) _stamp_mcp_file="$PWD/.mcp.json" ;; esac
+  # A server is CARRIED either way: registered in that file, or riding the plugin named for it. On
+  # the plugin route there is no .mcp.json at all, and a stamp that only read the file would record
+  # an install with none of the locked three - which is the opposite of what it is for.
   if command -v node >/dev/null 2>&1 && [ -f "$STACK_SRC/meta/recommendations.json" ]; then
-    _stamp_always="$(node -e 'const fs=require("fs"),path=require("path");const [recs,mcpFile,rulesDir]=process.argv.slice(1);
-let a={},s={};try{a=JSON.parse(fs.readFileSync(recs,"utf8")).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,"utf8")).mcpServers||{};}catch{}
+    _stamp_always="$(node -e 'const fs=require("fs"),path=require("path");const [recs,mcpFile,settings,rulesDir]=process.argv.slice(1);
+let a={},s={},p={};try{a=JSON.parse(fs.readFileSync(recs,"utf8")).always||{};}catch{}try{s=JSON.parse(fs.readFileSync(mcpFile,"utf8")).mcpServers||{};}catch{}
+try{p=JSON.parse(fs.readFileSync(settings,"utf8")).enabledPlugins||{};}catch{}
+const fam=(n)=>String(n).replace(/^playwright-.*/,"playwright").replace(/^context7-local$/,"context7");
+const plugins=new Set(Object.keys(p).map((k)=>fam(k.split("@")[0])));
 const list=(x)=>(Array.isArray(x)?x:[]);
 console.log(list(a.rules).filter((r)=>rulesDir&&fs.existsSync(path.join(rulesDir,r+".md"))).join(","));
-console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)).join(","));' "$STACK_SRC/meta/recommendations.json" "$_stamp_mcp_file" "$_stamp_rules_dir" 2>/dev/null || true)"
+console.log(list(a.mcps).filter((m)=>Object.prototype.hasOwnProperty.call(s,m)||plugins.has(m)).join(","));' "$STACK_SRC/meta/recommendations.json" "$_stamp_mcp_file" "${_stamp_rules_dir:+${_stamp_rules_dir%/rules}/settings.json}" "$_stamp_rules_dir" 2>/dev/null || true)"
     _stamp_always_rules="$(printf '%s\n' "$_stamp_always" | sed -n 1p)"
     _stamp_always_mcps="$(printf '%s\n' "$_stamp_always" | sed -n 2p)"
   fi
@@ -2184,6 +2369,31 @@ STAMP
 
 wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks + secret-read deny-list + mcp allow-list are in settings.json (idempotent)
   local root settings; root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  # On the plugin route the stack wires nothing: every shipped hook name is already in RETIRED_HOOKS
+  # (appended at load), and the RETIRED pass below is what DROPS an older install's wirings. The
+  # deny-list and mcp allow-list passes still run - they are not hook wirings.
+  local -a wire_hooks=() hooks_off=() off_args=()
+  if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+    # The walk's hooks layer still asks; on the plugin route its answer becomes the HOOKS_OFF value
+    # rather than a copy list - the hooks it did NOT pick. Only a selection that CARRIES hook lines
+    # counts as an answer: `update --installed-only` reads the hooks off DISK, and on this route
+    # there are none, which would otherwise read as 'the user dropped all thirteen'.
+    if [ -n "${SELECTION:-}" ] && [ -f "$SELECTION" ] && grep -q '^hook ' "$SELECTION"; then
+      # A hook wired on two events has two catalog rows, so de-duplicate: the value is a list of
+      # hook NAMES, and a name repeated twice is the same hook read twice.
+      local _c _s _hit _seen=""
+      for _c in ${HOOKS_CATALOG[@]+"${HOOKS_CATALOG[@]}"}; do
+        _c="${_c%%::*}"
+        case " $_seen " in *" $_c "*) continue;; esac
+        _seen="$_seen $_c"; _hit=false
+        for _s in ${HOOKS[@]+"${HOOKS[@]}"}; do [ "${_s%%::*}" = "$_c" ] && { _hit=true; break; }; done
+        [ "$_hit" = true ] || hooks_off+=("$_c")
+      done
+      off_args=(--HOOKS-OFF ${hooks_off[@]+"${hooks_off[@]}"})
+    fi
+  else
+    wire_hooks=(${HOOKS[@]+"${HOOKS[@]}"})
+  fi
   settings="$root/.claude/settings.json"; mkdir -p "$(dirname "$settings")"
   command -v python3 >/dev/null || { log "  !! python3 not found - wire hooks into settings.json by hand"; return 0; }
   # NB: program via -c (not `python3 - <<heredoc`): a pipe + heredoc both target stdin and the pipe
@@ -2191,13 +2401,19 @@ wire_hooks_settings() {  # INSTALL + UPDATE: ensure the hook PreToolUse blocks +
   local prog; prog=$(cat <<'PY'
 import json, os, subprocess, sys
 path = sys.argv[1]
-deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, bucket = [], [], [], [], [], None
+deny_specs, mcp_names, retired_hooks, retired_deny, versioning_flag, hooks_off, bucket = [], [], [], [], [], [], None
+memory_db, sentry_auth, mcp_off = [], [], []
+hooks_answered = False
 for a in sys.argv[2:]:
     if a == "--VERSIONING": bucket = versioning_flag; continue
+    if a == "--MEMORY-DB": bucket = memory_db; continue
+    if a == "--SENTRY-AUTH": bucket = sentry_auth; continue
     if a == "--DENY": bucket = deny_specs; continue
     if a == "--MCP": bucket = mcp_names; continue
+    if a == "--MCP-OFF": bucket = mcp_off; continue
     if a == "--RETIRED": bucket = retired_hooks; continue
     if a == "--RETIRED-DENY": bucket = retired_deny; continue
+    if a == "--HOOKS-OFF": bucket = hooks_off; hooks_answered = True; continue
     if bucket is not None: bucket.append(a)
 specs = []
 HOOK_TIMEOUT = 10   # seconds - see the note below; the default would be 600
@@ -2327,6 +2543,14 @@ enabled = data.setdefault("enabledMcpjsonServers", [])
 for name in mcp_names:
     if name not in enabled:
         enabled.append(name); changed = True
+# ... and DROP the names this run unregistered. A server carried by a plugin is trusted through the
+# plugin, never through this list, so a leftover entry names a `.mcp.json` server that no longer
+# exists - dead config that reads like a working knob. A name the run still registers is never in
+# this list (the two buckets are disjoint by construction).
+for name in mcp_off:
+    if name in enabled:
+        enabled.remove(name); changed = True
+        print("  settings.json: dropped enabledMcpjsonServers entry %s (no longer registered here)" % name)
 # Environment keys this stack RENAMED: carry the user's VALUE to the new name and drop the old
 # key, BEFORE the absent-only seeds below - seeding first would write the default over a value the
 # user had set under the old name. One pair per rename; keep the list identical in both installer
@@ -2423,6 +2647,16 @@ elif "CLAUDE_STACK_DOCS_VERSIONING" not in env:
     _kept_out = not _committed and (bool(_dnames) or _dignored(_droot, "/".join(_dparts)))
     env["CLAUDE_STACK_DOCS_VERSIONING"] = "local" if _kept_out else "git"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (%s)" % env["CLAUDE_STACK_DOCS_VERSIONING"])
+# The memory db path and the sentry auth mode are what the PLUGIN route's launcher and headers
+# helper read - a plugin MCP entry cannot expand a PROJECT env key (measured), but a launcher whose
+# cwd is the project can read this file itself. Written, not seeded: both track a choice this run
+# just made, so a level change or an auth switch has to land or the server keeps the old one.
+if memory_db and memory_db[0] and env.get("CLAUDE_STACK_MEMORY_DB") != memory_db[0]:
+    env["CLAUDE_STACK_MEMORY_DB"] = memory_db[0]; changed = True
+    print("  settings.json env: CLAUDE_STACK_MEMORY_DB -> %s" % memory_db[0])
+if sentry_auth and sentry_auth[0] and env.get("CLAUDE_STACK_SENTRY_AUTH") != sentry_auth[0]:
+    env["CLAUDE_STACK_SENTRY_AUTH"] = sentry_auth[0]; changed = True
+    print("  settings.json env: CLAUDE_STACK_SENTRY_AUTH -> %s" % sentry_auth[0])
 # instrumentation switch: the wired instrument hook runs only when this is "1" - seeded off.
 if "CLAUDE_STACK_INSTRUMENT" not in env:
     env["CLAUDE_STACK_INSTRUMENT"] = "0"; changed = True
@@ -2442,6 +2676,19 @@ if "CLAUDE_STACK_DOCS_GATE" not in env:
 if "CLAUDE_STACK_DOCS_ASK" not in env:
     env["CLAUDE_STACK_DOCS_ASK"] = "1"; changed = True
     print("  settings.json env: CLAUDE_STACK_DOCS_ASK seeded (1)")
+# Absent-only, and this is where the walk's hooks LAYER lands once the set stopped being copied:
+# the hooks the selection did NOT pick arrive as --HOOKS-OFF and become the value, so the answer the
+# user gave at install time still decides which guards run. Empty means every hook runs.
+_off = ",".join(hooks_off)
+if hooks_answered:
+    # A walk answered the hooks layer THIS run - that answer wins over the stored value, the one
+    # exception to absent-only seeding (the user is looking at the question as it is asked).
+    if env.get("CLAUDE_STACK_HOOKS_OFF") != _off:
+        env["CLAUDE_STACK_HOOKS_OFF"] = _off; changed = True
+        print("  settings.json env: CLAUDE_STACK_HOOKS_OFF = %s" % (_off if _off else "(empty - every hook runs)"))
+elif "CLAUDE_STACK_HOOKS_OFF" not in env:
+    env["CLAUDE_STACK_HOOKS_OFF"] = ""; changed = True
+    print("  settings.json env: CLAUDE_STACK_HOOKS_OFF seeded (empty - every hook runs)")
 # rotate ask: the stop contract asks once per credential exposure; "0" turns the ask off.
 if "CLAUDE_STACK_ROTATE_ASK" not in env:
     env["CLAUDE_STACK_ROTATE_ASK"] = "1"; changed = True
@@ -2482,9 +2729,21 @@ else:
     print("  settings.json: hooks + secret deny-list + mcp allow-list + env defaults already present - unchanged")
 PY
 )
-  local -a mcp_names; mcp_names=()
-  for _m in ${MCPS[@]+"${MCPS[@]}"}; do mcp_names+=("${_m%%|*}"); done   # server name = the token before the first '|'
-  printf '%s\n' ${HOOKS[@]+"${HOOKS[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" --VERSIONING "$DOCS_VERSIONING" || log "  !! settings.json wiring failed"
+  # Pre-approve exactly what this run registered in .mcp.json - which on the plugin route is
+  # nothing, and on the copy route is the droppable picks only (a server carried by a plugin is
+  # trusted through its plugin). Everything else comes OUT: a leftover entry names a `.mcp.json`
+  # server that no longer exists, which reads like a working knob.
+  local -a mcp_names mcp_off; mcp_names=(); mcp_off=()
+  local _m _n
+  while IFS= read -r _m; do [ -n "$_m" ] && mcp_names+=("$_m"); done <<EOF
+$(_bare_named_mcps)
+EOF
+  for _m in ${MCPS[@]+"${MCPS[@]}"}; do
+    _n="${_m%%|*}"                                       # server name = the token before the first '|'
+    case " ${mcp_names[*]-} " in *" $_n "*) ;; *) mcp_off+=("$_n") ;; esac
+  done
+  mcp_off+=(${RETIRED_MCPS[@]+"${RETIRED_MCPS[@]}"})
+  printf '%s\n' ${wire_hooks[@]+"${wire_hooks[@]}"} | python3 -c "$prog" "$settings" --DENY "${SECRET_DENY[@]}" --MCP ${mcp_names[@]+"${mcp_names[@]}"} --MCP-OFF ${mcp_off[@]+"${mcp_off[@]}"} --RETIRED ${RETIRED_HOOKS[@]+"${RETIRED_HOOKS[@]}"} --RETIRED-DENY "${RETIRED_DENY[@]}" ${off_args[@]+"${off_args[@]}"} --VERSIONING "$DOCS_VERSIONING" --MEMORY-DB "$MEMORY_DB_PATH" --SENTRY-AUTH "${SENTRY_AUTH:-token}" || log "  !! settings.json wiring failed"
 }
 
 # ---------------------------------------------------------------------------
@@ -2597,6 +2856,14 @@ import_memory_notes() {
 RETIRED_SKILLS=(frontend mobile project-task-flow project-task-cycle project-capabilities project-failure-signatures typescript-testing data-security dotnet-error-handling mobile-security)
 RETIRED_RULES=(baseline-agents-skills.md baseline-code-quality.md baseline-communication.md baseline-definition-of-done.md baseline-evaluating-proposals.md baseline-mcp-tools.md baseline-planning.md baseline-related-projects.md house-baseline.md web-conventions.md aspnet-conventions.md)
 RETIRED_HOOKS=(require-convention-skill.js inject-code-style.js)
+# The plugin route retires the whole COPY catalog: the same two passes that undo an upstream removal
+# (prune_retired_hooks drops the file, wire_hooks_settings drops the settings.json wiring) are what
+# migrate a 0.2.x install off its copied hooks. Appended HERE, at load, because update_hooks prunes
+# BEFORE it wires - an append inside wire_hooks_settings would reach the prune one run too late.
+if [ "$HOOKS_VIA_PLUGIN" = "true" ]; then
+  for _e in ${HOOKS_CATALOG[@]+"${HOOKS_CATALOG[@]}"}; do RETIRED_HOOKS+=("${_e%%::*}"); done
+  unset _e
+fi
 RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-verifier.md mobile-solution-designer.md mobile-implementer.md mobile-verifier.md dotnet-windows-service-solution-designer.md dotnet-windows-service-implementer.md dotnet-windows-service-verifier.md code-analyzer.md issue-diagnoser.md)
 # MCP servers this stack no longer ships AT ALL. Empty today, and it is the mechanism that matters:
 # skills, agents, rules and hooks each got a retired list; MCPs never did, so a server the stack
@@ -2605,6 +2872,30 @@ RETIRED_AGENTS=(angular-solution-designer.md angular-implementer.md angular-veri
 # the stack still SHIPS but this project no longer needs is a different question - that is
 # /claude-stack:validate's whole-stack-absent pass, not a retirement.
 RETIRED_MCPS=()
+# The plugin route retires the whole REGISTRATION catalog, the same way HOOKS_VIA_PLUGIN retires the
+# copied hooks: the servers now arrive through the plugins named for them, so every stack name this
+# script ever wrote into .mcp.json must come back OUT in the run that enables those plugins, or the
+# project runs each server twice - once from the file and once from the plugin - and pays both sets
+# of tool schemas on every session. Appended HERE, at load, because update_mcps prunes before it
+# would otherwise register. The playwright family is expanded by hand: the catalog carries one
+# `playwright` row but an install may have written any of the four per-engine names.
+# Rebuildable, not a one-shot append: resolve_stack_plugins can still drop the run back to the
+# registration route (no node, no snapshot), and a RETIRED_MCPS frozen at load would then unregister
+# the very servers that route is about to write. It is called once here and once from that fallback.
+_MCPS_RETIRED_AUTHORED=(${RETIRED_MCPS[@]+"${RETIRED_MCPS[@]}"})
+_refresh_retired_mcps() {
+  RETIRED_MCPS=(${_MCPS_RETIRED_AUTHORED[@]+"${_MCPS_RETIRED_AUTHORED[@]}"})
+  local e
+  if [ "$MCPS_VIA_PLUGIN" != "true" ]; then
+    # Copy route, but the core plugin is still on (hooks or skills): its dependencies already carry
+    # the locked three, so any registration of them this script ever wrote has to come out.
+    _core_plugin_on && for e in $MCPS_LOCKED; do RETIRED_MCPS+=("$e"); done
+    return 0
+  fi
+  for e in ${MCPS_CATALOG[@]+"${MCPS_CATALOG[@]}"}; do RETIRED_MCPS+=("${e%%|*}"); done
+  RETIRED_MCPS+=(playwright-chrome playwright-msedge playwright-firefox playwright-webkit)
+}
+_refresh_retired_mcps
 # Plugins this stack no longer ships AT ALL. Empty today, and as with RETIRED_MCPS it is the
 # MECHANISM that matters: skills, agents, rules, hooks and MCPs each have a retired list and plugins
 # had none, so a plugin the stack dropped stayed installed AND ENABLED on every existing machine
@@ -2718,9 +3009,17 @@ update_plugins() {
   ensure_official_marketplace
   claude plugin marketplace update 2>/dev/null || true            # refresh marketplaces first
   local before after p name pscope v1 v2
+  local -a _all=(${PLUGINS[@]+"${PLUGINS[@]}"})
+  # The stack's OWN plugins travel this same loop on update - installed when absent, enabled when
+  # parked, then updated. Without it an update pruned the copied hooks, skills and agents and
+  # enabled nothing in their place: `claude plugin update` is a no-op on a plugin that is not
+  # installed, so the run ended with neither route live.
+  _stack_plugin_set
+  _all+=(${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"})
+  _core_deps_needed; _all+=(${CORE_DEPS_NEEDED[@]+"${CORE_DEPS_NEEDED[@]}"})
   before="$(_plugin_scan)"
   prune_retired_plugins "$before"
-  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+  for p in ${_all[@]+"${_all[@]}"}; do
     name="${p%%@*}"
     # The plugin's OWN scope, read from the listing: `claude plugin update --scope <other>` is a
     # silent no-op, so passing the INSTALL's scope left every user-scoped plugin on its old version
@@ -2749,7 +3048,7 @@ update_plugins() {
   # Read the versions back: `claude plugin update` reports success whether or not anything moved.
   after="$(_plugin_scan)"
   [ -n "$before$after" ] || return 0
-  for p in ${PLUGINS[@]+"${PLUGINS[@]}"}; do
+  for p in ${_all[@]+"${_all[@]}"}; do
     name="${p%%@*}"
     v1="$(_plugin_field "$before" "$name" 2)"; v2="$(_plugin_field "$after" "$name" 2)"
     if [ -z "$v2" ]; then log "  plugin $name: NOT installed - the install above did not take (is the marketplace reachable?)"
@@ -2770,6 +3069,13 @@ prune_retired_mcps() {  # UPDATE: unregister the known retired server names (RET
 update_mcps() {
   command -v claude >/dev/null 2>&1 || { CLAUDE_MISSING=true; return 0; }   # fail-soft: skip, never abort the run
   prune_retired_mcps
+  # PLUGIN ROUTE: the prune above IS the update - `claude plugin update` refreshed the entries, and
+  # the pins they carry are release-time values from meta/mcp-pins.json, so there is nothing to
+  # re-resolve and nothing to re-register.
+  if [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+    log "mcp: carried by the plugins - registrations pruned, nothing re-registered"
+    return 0
+  fi
   # Only the @latest entries (chrome-devtools, appium-mcp) float at launch; the pinned ones (playwright,
   # serena, memory, context7 when local) bump here via remove + re-add. angular-cli stays unpinned by
   # design; the hosted servers (context7 remote, sentry) have nothing to pin. An add that lands on a
@@ -2777,6 +3083,10 @@ update_mcps() {
   local entry name args
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
+    if _is_locked_mcp "$name" && _core_plugin_on; then
+      log "  mcp $name: carried by the core plugin's dependencies - not re-registered here"
+      continue
+    fi
     log "mcp refresh [$CLAUDE_SCOPE]: $name"
     claude mcp remove "$name" -s "$CLAUDE_SCOPE" >/dev/null 2>&1 || true
     _mcp_register "$name" "$args" || note_failure "mcp $name failed"
@@ -2891,6 +3201,20 @@ prune_agents_cache() {
 # dependent step (testability - drives just the git-copy with no claude/gh/network dependency).
 if [ "$SKILLS_ONLY" = true ]; then
   if [ "$ACTION" = "install" ]; then install_skills; else update_skills; fi
+  # On the plugin route the skills layer IS the plugins: the step above pruned the copies, so
+  # enabling them here is what keeps the flag from leaving a project with neither. It stays
+  # fail-soft and CLI-free on the copy route, which is what the flag was built for.
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ] && command -v claude >/dev/null 2>&1; then
+    # The core entry DEPENDS on superpowers, so its marketplace has to be registered first or every
+    # stack plugin fails with 'Dependency ... not found' - measured on this path, which is the one
+    # place that installs plugins without going through install_plugins.
+    ensure_official_marketplace
+    _stack_plugin_set
+    for _so_p in ${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"}; do
+      log "plugin [$CLAUDE_SCOPE]: $_so_p"
+      claude plugin install "$_so_p" --scope "$CLAUDE_SCOPE" -y || note_failure "plugin $_so_p failed"
+    done
+  fi
   write_stamp   # a skills-only run still installs FROM a revision - record it
   exit 0
 fi
@@ -2898,12 +3222,67 @@ fi
 prerequisites_check
 install_github_cli
 
+# COPY ROUTE ONLY. Everything the stack ships names an MCP tool by its PLUGIN spelling,
+# `mcp__plugin_<plugin>_<server>__<tool>` - because from 1.0.0 every stack server arrives through a
+# plugin named for it. With CLAUDE_STACK_MCPS_VIA_PLUGIN=false the servers are registered in
+# .mcp.json under their BARE names instead, and those tool names would resolve to nothing: an agent
+# `tools:` allowlist written the plugin way silently drops the tool, and a `ToolSearch select:` line
+# written that way silently finds none. So the copied files are re-spelled back, in place, right
+# after the copies land. One sed per file, only on files that carry the string.
+# The skills and agents a PLUGIN carries cannot be re-spelled - they are read from the plugin cache,
+# not from .claude/ - so the mixed combination is reported rather than half-fixed.
+downconvert_mcp_tool_names() {
+  local bare
+  bare="$(_bare_named_mcps | tr '\n' ' ')"
+  [ -n "${bare// /}" ] || return 0            # every server this run set up rides a plugin
+  if [ "$SKILLS_VIA_PLUGIN" = "true" ]; then
+    log "  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: ${bare% } - set CLAUDE_STACK_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route"
+    return 0
+  fi
+  local root skills
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || root="$PWD"
+  case "$CLAUDE_SCOPE" in user) skills="$CONFIG_DIR/skills" ;; *) skills="$PWD/.claude/skills" ;; esac
+  BARE_MCPS="$bare" python3 - "$skills" "$root/.claude/agents" "$root/.claude/rules" "$root/.claude/hooks" <<'DOWNCONV' || log "  !! copy route: the MCP tool-name re-spelling failed - the copied files keep the plugin spelling"
+import os, re, sys
+# Only the servers THIS run registered under a bare name. The three locked ones ride the core
+# plugin's dependencies whenever any plugin route is on, so on a hooks-only copy route their tool
+# names must stay plugin-spelled while the droppable picks are re-spelled - re-spelling everything
+# was the bug this list exists to prevent.
+bare = set(os.environ.get("BARE_MCPS", "").split())
+if not bare:
+    raise SystemExit(0)
+# One plugin carries one server under the SAME name, so the two halves are the same word; matching
+# them separately, rather than with a backreference that BSD sed does not honour, keeps this
+# portable - and the SERVER half is the name a registration actually writes.
+pat = re.compile(r"mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__")
+sub = lambda m: ("mcp__%s__" % m.group(1)) if m.group(1) in bare else m.group(0)
+n = 0
+for target in sys.argv[1:]:
+    for dirpath, _dirs, files in os.walk(target):
+        for name in files:
+            if not name.endswith((".md", ".mdc", ".js", ".json", ".txt")):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                body = open(path, encoding="utf-8").read()
+            except Exception:
+                continue
+            fixed = pat.sub(sub, body)
+            if fixed != body:
+                open(path, "w", encoding="utf-8").write(fixed)
+                n += 1
+if n:
+    print("  copy route: MCP tool names re-spelled to the registered server names in %d file(s)" % n)
+DOWNCONV
+  return 0
+}
+
 # claude-only steps fail soft (command -v claude) if the CLI is not installed.
 snapshot_pins   # --keep-pins only: no-op without the flag (install re-adds skills unconditionally too, so both actions refresh)
 if [ "$ACTION" = "install" ]; then
-  install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser
+  _bootstrap_stack_source; install_skills; install_plugins; prune_playwright_servers; install_mcps; verify_mcps; seed_account_keys; download_hooks; wire_hooks_settings; download_agents; download_rules; import_memory_notes; migrate_docs_domains; seed_claude_md; seed_serena_project; ensure_playwright_browser; downconvert_mcp_tool_names
 else
-  update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser
+  _bootstrap_stack_source; update_skills; update_plugins; prune_playwright_servers; update_mcps; verify_mcps; seed_account_keys; update_hooks; update_agents; update_rules; import_memory_notes; migrate_docs_domains; seed_serena_project; ensure_playwright_browser; downconvert_mcp_tool_names
 fi
 restore_pins
 write_stamp   # after every copy step, so the stamp only ever names a revision that fully landed
@@ -2958,6 +3337,12 @@ fi
 if [ -n "$PLAYWRIGHT_ENABLED" ] && [ -n "$PLAYWRIGHT_BROWSERS" ]; then
   _pw_off=""; for _pw_e in $PLAYWRIGHT_BROWSERS; do [ "$_pw_e" = "$PLAYWRIGHT_ENABLED" ] || _pw_off="$_pw_off, /mcp disable playwright-$_pw_e"; done
   [ -n "$_pw_off" ] && log "  - playwright: keep playwright-$PLAYWRIGHT_ENABLED on - run once in Claude Code: ${_pw_off#, } (switch any time with /mcp enable / disable)"
+fi
+# Both context7 entries are installed in local mode (the hosted one is a dependency of the core and
+# cannot be dropped), and both servers load until one is switched off. Its own `if`, not the
+# playwright one above: that block only runs when this run was told which engine stays on.
+if [ "$CONTEXT7_MODE" = "local" ] && [ "$MCPS_VIA_PLUGIN" = "true" ]; then
+  log "  - context7: the local transport is on - run once in Claude Code: /mcp disable context7 (or leave both and pay two sets of doc tools)"
 fi
 [ "$PREREQ_MISSING" = true ] && log "  - install the missing prerequisites flagged above, then re-run"
 # The key report reads the ACCOUNT file back - a length or absent, never a value - so the close says

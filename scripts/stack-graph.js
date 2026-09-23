@@ -78,7 +78,26 @@ function catalogs()
     const pluginBlock = lint.parseFlatBlock(CLAUDE_SH, '"', 'PLUGINS=(', '@');
     const mcps = new Set([...mcpBlock.active, ...mcpBlock.commented]);
     const plugins = new Set([...pluginBlock.active, ...pluginBlock.commented]);
-    return { skills, agents, mcps, plugins, hooks: hookCatalog() };
+    return { skills, agents, mcps, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog() };
+}
+
+// The plugins the core marketplace entry hard-depends on. They are in the catalog like any other -
+// the citers are real edges - but they are NOT droppable and NOT ours to install: enabling the core
+// enables them, and Claude Code refuses to disable one while the core is enabled
+// (code.claude.com/docs/en/plugin-dependencies). The walk's table says so instead of calling them
+// 'required by skill x', which reads like something the user still has to pick.
+function dependencyPlugins()
+{
+    const file = path.join(ROOT, 'meta', 'plugin-entries.json');
+    if (!fs.existsSync(file)) return [];
+    let entries;
+    try { entries = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch { return []; }
+    const out = new Set();
+    for (const e of (entries && (entries.entries || entries.plugins)) || [])
+        for (const d of e.dependencies || [])
+            if (d && typeof d === 'object' && d.name) out.add(d.name);   // a string dep is in-marketplace, never a catalog plugin
+    return [...out].sort();
 }
 
 // The hook catalog: the HOOKS=( ... ) block in the sh installer - entries are
@@ -151,7 +170,7 @@ function buildStackGraph()
         skills: {},
         agents: {},
         rules: {},
-        catalog: { mcps: [...cat.mcps].sort(), plugins: [...cat.plugins].sort(), hooks: cat.hooks },
+        catalog: { mcps: [...cat.mcps].sort(), plugins: [...cat.plugins].sort(), dependencyPlugins: cat.dependencyPlugins, hooks: cat.hooks },
     };
 
     for (const name of [...cat.skills].sort())
@@ -179,7 +198,13 @@ function buildStackGraph()
             try { meta = yaml.load(fmText); } catch { meta = null; }
             if (meta && Array.isArray(meta.skills))
             {
-                declared = meta.skills.filter(s => cat.skills.has(s));
+                // From Phase 3 a house preload carries its plugin prefix (`claude-stack-csharp:csharp`),
+                // computed from the placement, which is itself computed from THIS graph. So the prefix
+                // is stripped back off here: the graph's nodes are bare skill names and stay that way,
+                // or the two would define each other. A foreign cite (`superpowers:...`) is a plugin
+                // token, never a skill node, and pluginFromToken below is what reads it.
+                const bare = meta.skills.map(s => (/^claude-stack(-[a-z0-9-]+)?:/.test(String(s)) ? String(s).split(':').slice(1).join(':') : s));
+                declared = bare.filter(s => cat.skills.has(s));
                 source = 'frontmatter';
                 for (const s of meta.skills)
                 {

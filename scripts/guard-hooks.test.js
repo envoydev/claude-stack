@@ -34,6 +34,13 @@ process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
 // The fallback's own test sets it explicitly.
 delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
+// Same route, second key: an install of this stack writes CLAUDE_STACK_DOCS_PATH into the
+// project's settings.json env, which Claude Code exports into every tool call - so a suite run
+// inside a stack-INSTALLED checkout resolves the receipt cases below from the SESSION's docs root
+// instead of from the case, and the old-spelling fallback case can never take its fallback
+// (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
+delete process.env.CLAUDE_STACK_DOCS_PATH;
+delete process.env.CLAUDE_DOCS_PATH;
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.claude/docs/hook-blocks/` (measured 2026-09-07: 12,480
@@ -671,6 +678,26 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   assert.equal(disp('wpf-implementer', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_STACK_DOCS_PATH');
 });
 
+// Spike S1 run 4: a plugin agent is addressable ONLY as `<plugin>:<agent>` - the bare name returns
+// 'Agent type not found'. So from the release that ships the seats as plugins, every house dispatch
+// arrives prefixed, and a gate keyed on the bare name would stop gating anything at all.
+test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign one is not', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
+  assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
+  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
+  assert.equal(disp('claude-stack:project-implementer'), 2, 'scoped to the core plugin');
+  // Gating this one would block a tool the user chose with a message about a flow it has no part
+  // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
+  assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
+  assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
+  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
+});
+
 test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
   const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
@@ -777,14 +804,14 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: 'true' }), 0);
-  assert.equal(inst({ tool_name: 'mcp__serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__plugin_serena_serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
   assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__serena__find_symbol', 'serena'],
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_serena_serena__find_symbol', 'serena'],
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
@@ -1501,7 +1528,7 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   // serena calls. The remedy belongs in the denial the model is already reading.
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG } }, {});
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /ToolSearch select:mcp__serena__get_symbols_overview,mcp__serena__find_symbol/);
+  assert.match(r.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol/);
 });
 
 test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail its own receipt', () => {
@@ -1561,6 +1588,32 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/project-quality-loop</command-name>', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
+});
+
+// The same gate, on the route where the skill is NOT copied into the project. Reading only
+// `.claude/skills/` made it stop firing the moment the skills moved into the plugins: the missing
+// file landed in the catch and every one of the 13 flagged skills became model-callable again.
+test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not only the project copy', () =>
+{
+    const root = fs.mkdtempSync(path.join(TMP, 'dmiplug-'));
+    const cfg = path.join(root, 'cfg');
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    const place = (plugin, name, front, sub) =>
+    {
+        const dir = path.join(cfg, 'plugins', 'cache', 'claude-stack', plugin, '1.0.0', ...sub, name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
+    };
+    place('claude-stack', 'project-quality-loop', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
+    const skillCall = (skill) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
+
+    assert.equal(skillCall('project-quality-loop').status, 2, 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('claude-stack:project-quality-loop').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
+    assert.equal(skillCall('claude-stack:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 });
 
 test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, at any context size', () => {

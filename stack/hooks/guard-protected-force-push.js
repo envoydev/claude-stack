@@ -30,6 +30,19 @@ const fs = require('fs');
 const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const { execFileSync } = require('child_process');
 
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// together through the plugin and there is no file to leave out. The other is the migration window:
+// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
+// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
+// prelude, no project dir or a malformed settings file all leave this hook running.
+if (require.main === module) {
+  try {
+    const { standDown } = require('./hook-prelude.js');
+    if (standDown('guard-protected-force-push')) process.exit(0);
+  } catch { /* an install without the prelude runs the hook unchanged */ }
+}
+
 // A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES this command is
 // inert text, and matching it blocked a document write for its own prose (reproduced). Blank the
 // payload spans, keeping the character count so any index into the command still holds.

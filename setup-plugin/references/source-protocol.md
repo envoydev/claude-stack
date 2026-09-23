@@ -1,35 +1,39 @@
-# The one-download protocol - shared by the setup, update, configure, and validate commands
+# The one-download protocol - shared by the init, update, configure, and validate commands
 
-The four downloading commands (`/claude-stack:setup` - fresh install, `/claude-stack:update` -
+The four downloading commands (`/claude-stack:init` - fresh install, `/claude-stack:update` -
 refresh + prune, `/claude-stack:configure` - adjust the selection, `/claude-stack:validate` -
 reconcile to the project; `status` never downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
-apply it, this file says WHAT holds. It lives at the plugin root's `references/` and the commands
-cite it as `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md` - commands and references ship
-together in the plugin.
+apply it, this file says WHAT holds. It lives at `setup-plugin/references/` under the plugin root -
+every entry ships from the repo root, so that is where the cache holds it - and the commands cite it
+as `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`.
 
-## One release archive is the entire download - and only once per RELEASE
+## The plugin cache IS the snapshot - the common run downloads nothing
 
-The snapshot is CACHED under the account dir at `<config>/cache/stack-source/<repo>/<version>`, so
-the archive is fetched once per release rather than once per run: the second project you install
-into, and the `configure` you run an hour later, take the cached copy. What makes that safe is that
-the entry is keyed by the release VERSION and the run always asks the release host which version is
-newest first - a `HEAD` of `/releases/latest`, whose redirect names the tag (measured: 0.3s for the
-probe against ~1.8s for the 1.4MB archive, and 0.1s to copy the extracted 5.4MB snapshot off disk).
-There is no TTL to age out and no window where a run silently installs last week's stack: a new
-release wins the moment it is published, because the version the probe names is the only entry the
-run will reuse.
+Claude Code installs the core plugin by taking this repo into its own cache at
+`<config>/plugins/cache/<marketplace>/claude-stack/<version>/`, and because every marketplace entry
+shares the REPO ROOT as its `source`, that entry is the WHOLE repo - not just the `setup-plugin/`
+subdir it serves as the plugin. Measured on a real install: `stack/rules`,
+`stack/CLAUDE.template.md`, the two hook engines, `stack/hooks/model-windows.json`,
+`meta/recommendations.json`, `scripts/selection-plugins.js` and `RELEASE-SOURCE` are all there. So a
+project with the stack enabled already holds the snapshot on disk, fetched once per release by the
+CLI itself. Take it: no probe, no archive, no marketplace clone - and it is by construction the exact
+revision the enabled plugins are running from, so the seed and the plugins can never be two different
+releases.
+
+Pick the NEWEST valid version directory across marketplaces - the directory names ARE the release
+versions the CLI writes, so they sort as versions - and count a directory only when it carries both
+`stack/skills` and `stack/agents`, so a half-written entry is rejected rather than half-installed.
+The stack keeps no second cache of its own: `<config>/cache/stack-source/...` and its
+`STACK_SOURCE_CACHE` switch are RETIRED, and no run writes them any more.
+
+The archive route below stays for the two cases with no plugin cache to read: a machine with no
+`claude` CLI, and the copy route (both `CLAUDE_STACK_*_VIA_PLUGIN` switches off).
 
 The run still works in its own `$TMP/repo`, copied from the cache - not read in place. A copy costs
 0.1s and buys two things: an `update` landing a new release mid-run cannot pull files out from under
-this one, and cleanup stays exactly what it was (`rm -rf "$TMP"` - the cache is not inside it).
-
-On a first run for a release, the snapshot may still cost nothing: Claude Code's own clone of the
-marketplace repo, at `<config>/plugins/marketplaces/claude-stack`, is a FULL checkout of this repo -
-`scripts/`, `meta/`, `stack/` and all, not just the `setup-plugin/` subdir it serves as the plugin
-(measured: 7.1MB on disk). It is used ONLY when its plugin manifest carries the exact version the
-probe just named: the clone moves when the user refreshes the marketplace, not when a release is
-published, so a version match is the one thing that proves it is the release the archive would be.
+this one, and cleanup stays exactly what it was (`rm -rf "$TMP"` - the cache is not inside it, and
+must never be added to it: it is the CLI's own plugin install).
 
 **Copy-only, and it tests its own marker file - never `$TMP` itself.** This is the whole
 resolve-or-reuse form, first call or the tenth: Windows PRE-SETS a `TMP` environment variable, so a
@@ -41,32 +45,22 @@ platform, pre-set env var or not:
 ```bash
 MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
-  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP"          # a valid marker from an earlier call this run
+  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${CLAUDE_STACK_SEED:-node}"   # a valid marker from an earlier call
 else
 REPO_URL=https://github.com/envoydev/claude-stack
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-CACHE="$CFG/cache/stack-source/$(printf '%s' "$REPO_URL" | tr -c 'A-Za-z0-9' '-' | cut -c1-80)"
-MKT="$CFG/plugins/marketplaces/claude-stack"
-VER=$(curl -fsS -o /dev/null -I -m 10 -w '%{redirect_url}' "$REPO_URL/releases/latest" 2>/dev/null | sed -n 's|.*/releases/tag/v\{0,1\}||p')
-SRC=""
 TMP=$(mktemp -d)
-if [ -n "$VER" ] && [ -d "$CACHE/$VER/stack/skills" ] && [ -d "$CACHE/$VER/stack/agents" ]; then SRC="$CACHE/$VER"; fi
-if [ -z "$SRC" ] && [ -n "$VER" ] && [ -d "$MKT/stack/skills" ] &&
-   grep -q "\"version\": \"$VER\"" "$MKT/setup-plugin/.claude-plugin/plugin.json" 2>/dev/null; then SRC="$MKT"; fi
+SRC=$(for d in "$CFG"/plugins/cache/*/claude-stack/*; do            # newest valid entry, any marketplace
+  [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
+done 2>/dev/null | sort -V | tail -1 | cut -f2)
 if [ -n "$SRC" ]; then
-  cp -R "$SRC" "$TMP/repo"; rm -rf "$TMP/repo/.git"     # cache or clone: nothing is downloaded
-  [ -f "$TMP/repo/RELEASE-SOURCE" ] || printf 'sha: %s\nref: main\nversion: %s\nsource: marketplace-clone\n' \
-    "$(git -C "$MKT" rev-parse HEAD)" "$VER" > "$TMP/repo/RELEASE-SOURCE"   # a clone has no RELEASE-SOURCE
+  cp -R "$SRC" "$TMP/repo"; rm -rf "$TMP/repo/.git"     # the CLI already fetched it: nothing is downloaded
 else
   curl -fsSL "$REPO_URL/releases/latest/download/claude-stack.tar.gz" -o "$TMP/claude-stack.tar.gz"
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
-  VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" | head -1)   # the archive's own version, authoritative
 fi
-if [ -n "$VER" ] && [ ! -d "$CACHE/$VER/stack/skills" ]; then            # promote for the next run
-  mkdir -p "$CACHE" && rm -rf "$CACHE/.dl.$$" \
-    && cp -R "$TMP/repo" "$CACHE/.dl.$$" && mv "$CACHE/.dl.$$" "$CACHE/$VER" 2>/dev/null || rm -rf "$CACHE/.dl.$$"
-fi
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP"
+VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${CLAUDE_STACK_SEED:-node}"
 fi
 ```
 
@@ -90,45 +84,40 @@ projects, one of them re-downloading the whole 1.4MB archive after `$TMP` came o
 $TMP = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $TMP -Force | Out-Null
 $RepoUrl = 'https://github.com/envoydev/claude-stack'
-$Slug = [regex]::Replace($RepoUrl, '[^A-Za-z0-9]', '-')
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
-$Cache = Join-Path (Join-Path $ConfigDir 'cache/stack-source') $Slug
-$Mkt = Join-Path $ConfigDir 'plugins/marketplaces/claude-stack'
-$Ver = ''
-try {
-  $r = Invoke-WebRequest -Uri "$RepoUrl/releases/latest" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-  if ([string]$r.BaseResponse.RequestMessage.RequestUri -match '/releases/tag/v?(.+)$') { $Ver = $Matches[1] }
-} catch { }
 $Src = ''
-if ($Ver -and (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) { $Src = Join-Path $Cache $Ver }
-elseif ($Ver -and (Test-Path -LiteralPath (Join-Path $Mkt 'stack/skills')) -and
-        ((Get-Content -LiteralPath (Join-Path $Mkt 'setup-plugin/.claude-plugin/plugin.json') -Raw) -match ('"version"\s*:\s*"' + [regex]::Escape($Ver) + '"'))) { $Src = $Mkt }
+$BestVer = $null
+$Base = Join-Path $ConfigDir 'plugins/cache'
+if (Test-Path -LiteralPath $Base -PathType Container) {
+  foreach ($mkt in (Get-ChildItem -LiteralPath $Base -Directory -ErrorAction SilentlyContinue)) {
+    $entry = Join-Path $mkt.FullName 'claude-stack'
+    if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
+    foreach ($d in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
+      if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/skills'))) { continue }
+      if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/agents'))) { continue }
+      $v = $null
+      [void][System.Version]::TryParse(($d.Name -replace '[^0-9.].*$', ''), [ref]$v)
+      if (-not $Src -or ($v -and $BestVer -and $v -gt $BestVer) -or ($v -and -not $BestVer)) {
+        $Src = $d.FullName; $BestVer = $v
+      }
+    }
+  }
+}
 if ($Src) {
   Copy-Item -LiteralPath $Src -Destination "$TMP/repo" -Recurse                      # nothing is downloaded
   Remove-Item -LiteralPath "$TMP/repo/.git" -Recurse -Force -ErrorAction SilentlyContinue
-  if (-not (Test-Path -LiteralPath "$TMP/repo/RELEASE-SOURCE")) {                    # a clone has none
-    # WriteAllText, never Set-Content: this file lands in the shared cache and both twins parse it
-    # line by line - Set-Content would write CRLF (a stray CR on every value) and, on PS 5.1, a BOM.
-    [System.IO.File]::WriteAllText("$TMP/repo/RELEASE-SOURCE",
-      "sha: $(& git -C $Mkt rev-parse HEAD)`nref: main`nversion: $Ver`nsource: marketplace-clone`n",
-      (New-Object System.Text.UTF8Encoding($false)))
-  }
 } else {
   Invoke-WebRequest -Uri "$RepoUrl/releases/latest/download/claude-stack.zip" -OutFile "$TMP/claude-stack.zip"
   Expand-Archive -LiteralPath "$TMP/claude-stack.zip" -DestinationPath "$TMP/repo"
-  $Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
 }
-if ($Ver -and -not (Test-Path -LiteralPath (Join-Path $Cache "$Ver/stack/skills"))) {
-  New-Item -ItemType Directory -Path $Cache -Force | Out-Null
-  Copy-Item -LiteralPath "$TMP/repo" -Destination (Join-Path $Cache $Ver) -Recurse -Force -ErrorAction SilentlyContinue
-}
+$Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" -ErrorAction SilentlyContinue | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
 ```
 
-Both installer twins read and write this same cache - and take the same marketplace clone - from
-`stack_src` / `Get-StackSrc`, so a script install reuses what a guided walk fetched and the other
-way round. `STACK_SOURCE_CACHE=0` in the environment turns the whole thing off - always-fresh temp
-download, the behaviour before the cache. A cache that cannot be written (a read-only or full
-`$HOME`) is never fatal: the run keeps the copy it just downloaded and carries on.
+Both installer twins resolve this same plugin cache from `stack_src` / `Get-StackSrc`, in the same
+order and with the same validity test, so a script install and a guided walk always land the same
+revision. Neither WRITES a cache any more, so there is nothing to switch off and nothing that can
+fail to be written. Hand the resolved copy to the installer with `--source "$TMP/repo"` all the same
+(see below) - that is what keeps the run at one copy and pins the revision the earlier steps read.
 
 **`$TMP` lives in a MARKER FILE KEYED BY THE PROJECT, and every run artifact is addressed through
 it.** Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next -
@@ -190,10 +179,8 @@ pwsh -NoProfile -File "$TMP/step.ps1"
   is recreating the release): `git clone --depth 1 -b main https://github.com/envoydev/claude-stack
   "$TMP/repo"` - the same one-snapshot contract, just fetched with git. Keep the `-b main` pin:
   the fallback must deliver the release branch, never whatever the default branch happens to be.
-  If both fail, the marketplace clone above is the last resort - it is the only source that needs
-  no network at all, so on an offline machine take it even though no probe could confirm its
-  version, and SAY that in your narration (name the version its manifest carries). If that is
-  missing too, say so and stop; never assemble a source from raw URLs.
+  If both fail there is no source left: the plugin cache is the only one needing no network at
+  all, and it was already tried first. Say so and stop; never assemble a source from raw URLs.
 - Never write the archive, the extracted repo, or your working files into the project tree.
 
 ## Check the plugin itself is current
@@ -219,12 +206,15 @@ meta-asks and ended telling the user to restart, with zero reconciliation done).
 gap is worth the ask: say so, recommend `claude plugin marketplace update claude-stack` then
 `claude plugin update claude-stack`, and offer to continue anyway. The plugin cache is keyed by version
 (`~/.claude/plugins/cache/claude-stack/claude-stack/<version>/`), so after an update the old
-version dirs are inert leftovers - safe to delete, keeping only the dir the update installed. When
-that listing shows MORE THAN ONE version dir, the run's CLOSE-OUT states one line as FACT - the
-count, the keeper, and the exact `rm -rf` command that clears the rest - never phrased as an offer
-or a question: a decision in prose is what the stop-contract guard exists to hold, and this run
-deletes nothing itself; the command is the user's to run when they choose (measured: a run's own
-`find` listed 14 stale dirs, 0.2.34 through 0.2.62, and never mentioned one of them).
+version dirs are stale leftovers. **Do not offer to delete them, and never delete one yourself.**
+Claude Code marks the previous version orphaned on an update or uninstall and sweeps it in a
+background pass roughly 14 days later; the grace period is deliberate, so that a concurrent session
+which already loaded that version keeps running instead of erroring
+(https://code.claude.com/docs/en/plugins-reference, verified 2026-09-22). A manual `rm -rf` is
+exactly the breakage the grace period exists to prevent. They cost nothing else: the resolve above
+takes the NEWEST valid entry, so a stale dir is never the source. When the listing shows MORE THAN
+ONE version dir, say so in ONE close-out line - the count and the keeper - and say that Claude Code
+clears the rest itself.
 And if an update ever does NOT change the running content (a same-version re-release - the trap
 every release now avoids by bumping), the hard reset is `claude plugin uninstall claude-stack`
 then `claude plugin install claude-stack@claude-stack`, which rebuilds the cache from the
@@ -271,8 +261,11 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
 ## Use the tools from the snapshot
 
 Everything comes out of `$TMP/repo`:
-- the installer - `scripts/os/claude-stack.sh` on `darwin`/`linux`, `scripts/os/claude-stack.ps1` on
-  Windows (via `pwsh`)
+- the installer - `scripts/install/claude-stack.js`, run with `node` and the same command on every
+  OS. The OS twins (`scripts/os/claude-stack.sh`, `scripts/os/claude-stack.ps1` via `pwsh`) are the
+  one-release fallback, taken ONLY when the resolve line above reported `seed=shell`. `node` is
+  already a hard prerequisite of the stack - every hook and every selection step runs it - so the
+  default route needs nothing the project does not already have
 - `scripts/stack-select.js` and `meta/stack-graph.json` (selection closure + prerequisite check)
 - the `meta/` catalogs - `recommendations.json`, `evidence.json`, `judgment.json` (seeds, the
   evidence-scan signals, the judgment gates)
@@ -297,6 +290,15 @@ roughly 882k tokens between them. So:
 
 ## Hand the same snapshot to the installer
 
+**ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/claude-stack.js" <install|update>
+[flags]`, with the Unix flag spellings everywhere (`--scope`, `--selection`) because there is one
+program now and not two. The OS twins ship for one more release and are taken ONLY when the resolve
+line reported `seed=shell`, which is `CLAUDE_STACK_SEED=shell` in the environment this session
+started in: then it is `bash "$TMP/repo/scripts/os/claude-stack.sh"` on `darwin`/`linux` and `pwsh
+-File "$TMP/repo/scripts/os/claude-stack.ps1"` on Windows, with the PowerShell spellings (`-Source`,
+`-Scope`, `-Selection`). Never cross the two: a `-Scope` handed to the Node seed is an unknown flag,
+and it refuses before the run writes anything.
+
 Pass `--source "$TMP/repo"` (`-Source` on Windows) when running the installer's action. That is
 what keeps a guided run at ONE download instead of two, and it guarantees the run lands the same
 revision the command's earlier steps inspected. The installer copies out of `$TMP/repo`, writes the
@@ -320,19 +322,20 @@ beside it, and stop there.
 
 `rm -rf "$TMP" "$MARK"` (PowerShell: `Remove-Item -Recurse -Force $TMP, $Mark`) - the MARKER goes
 with the temp dir it names, or the next run in this project reads a path that no longer exists.
-This is also why the cache lives OUTSIDE `$TMP`, under the account dir: the line above is
-unchanged by the cache and must stay that way - never add the cache to it, or the next run pays the
-download again. Entries age out on their own (a promote drops siblings older than a week), so there
-is nothing here to tidy. The
+This is also why the source lives OUTSIDE `$TMP`, under the account dir: the line above is
+unchanged by it and must stay that way - never add the plugin cache to it, because that directory IS
+the CLI's plugin install, not a copy of it. The CLI owns those entries' lifetime; this run tidies
+nothing there. The
 archive, the extracted repo, and the working files you wrote next to them (`raw.json`,
 `selection.txt`) live there and nothing else will remove them - the installer only cleans up a source IT fetched, never the one
 you passed via `--source`. Do this on EVERY exit path, not just the happy one - each command's
 final step lists its own exit cases.
 
-**After cleanup, a stack-owned file is still one `cat` away - in the CACHE, not in a new download.**
-The promoted entry sits at `<config>/cache/stack-source/<repo-slug>/<version>`, holding the same
-tree `$TMP/repo` did. When a later turn needs one file from it (a catalog, a template, a hook's
-header), read it there. Measured: a run deleted its snapshot, then seven minutes later pulled the
-whole 1.4MB archive again to read one 75-line file, after looking in the plugin cache - which ships
-`setup-plugin/` only and has no `stack/` at all. Then confirm the project tree holds only installed
+**After cleanup, a stack-owned file is still one `cat` away - in the PLUGIN CACHE, not in a new
+download.** The entry sits at `<config>/plugins/cache/<marketplace>/claude-stack/<version>`, holding
+the very tree `$TMP/repo` was copied from. When a later turn needs one file from it (a catalog, a
+template, a hook's header), read it there. Measured: a run deleted its snapshot, then seven minutes
+later pulled the whole 1.4MB archive again to read one 75-line file - it HAD looked in the plugin
+cache, on the old belief that the entry ships `setup-plugin/` only. It does not: the entry is the
+whole repo, `stack/` included. Then confirm the project tree holds only installed
 artifacts - no archive, no extracted repo, no `raw.json`/`selection.txt`, no installer copy.

@@ -1,6 +1,19 @@
 #!/usr/bin/env node
 'use strict';
 
+// STACK HOOK GATES - both live in hook-prelude.js, never inlined thirteen times. One is
+// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// together through the plugin and there is no file to leave out. The other is the migration window:
+// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
+// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
+// prelude, no project dir or a malformed settings file all leave this hook running.
+if (require.main === module) {
+  try {
+    const { standDown } = require('./hook-prelude.js');
+    if (standDown('instrument-tool-usage')) process.exit(0);
+  } catch { /* an install without the prelude runs the hook unchanged */ }
+}
+
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // instrument-tool-usage.js - env-gated PreToolUse instrumentation (wired by default, OFF by default).
 //
@@ -47,7 +60,14 @@ const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAU
     // a search pattern, or a Bash step's description.
     let detail = null;
     if (tool === 'Skill') detail = input.skill || input.name || null;
-    else if (tool.startsWith('mcp__')) detail = tool.split('__')[1] || null;
+    // A PLUGIN server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so the segment between
+    // the double underscores is `plugin_<plugin>_<server>`, not the server. Server names carry no
+    // underscore, so dropping `plugin_<plugin>_` is one split - and a bare `mcp__<server>__` row
+    // from a pre-1.0.0 registration still reads the same.
+    else if (tool.startsWith('mcp__')) {
+      const seg = tool.split('__')[1] || null;
+      detail = seg && seg.startsWith('plugin_') ? (seg.slice(7).split('_').slice(1).join('_') || seg) : seg;
+    }
     // A dispatch row with no detail cannot say WHICH seat ran - 65 of 65 Agent rows in an audited
     // corpus carried `detail: null`, so the ledger could name the cost of dispatching and never the
     // seat. The seat type is the one field that makes those rows readable, and it is not sensitive.

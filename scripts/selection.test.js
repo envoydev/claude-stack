@@ -40,7 +40,7 @@ test('sh: selection filters each category to the listed names', () => {
         'skill csharp', 'skill dotnet',
         'agent aspnet-implementer',
         'mcp serena',
-        'plugin superpowers',
+        'plugin security-guidance',
         'rule csharp-conventions',
     ]);
     const skills = planLine(out, 'skills');
@@ -49,7 +49,7 @@ test('sh: selection filters each category to the listed names', () => {
     assert.ok(!skills.includes('angular-conventions'), 'unlisted skill dropped');
     assert.deepStrictEqual(planLine(out, 'agents'), ['aspnet-implementer']);
     assert.deepStrictEqual(planLine(out, 'mcps'), ['serena']);
-    assert.deepStrictEqual(planLine(out, 'plugins'), ['superpowers']);
+    assert.deepStrictEqual(planLine(out, 'plugins'), ['security-guidance']);   // a PICK: superpowers is the core entry's dependency from Phase 4, never a plan line
     assert.deepStrictEqual(planLine(out, 'rules'), ['csharp-conventions']);
 });
 
@@ -90,7 +90,7 @@ test('sh: filterable arrays are always expanded nounset-safe (empty category mus
 const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;
 test('ps1: selection filters each category (pwsh required)', { skip: hasPwsh ? false : 'pwsh not installed - ps1 behavioral test skipped' }, () => {
     const { dir, file } = writeSelection([
-        'skill csharp', 'agent aspnet-implementer', 'mcp serena', 'plugin superpowers', 'rule csharp-conventions',
+        'skill csharp', 'agent aspnet-implementer', 'mcp serena', 'plugin security-guidance', 'rule csharp-conventions',
     ]);
     try
     {
@@ -297,7 +297,11 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // 'tokens' is an absolute per-message token count with 0 meaning off - the fresh-session
     // triggers, which replaced a percentage that the clamps made inert at its own default.
     // 'window' is a context-window SIZE in tokens: no off value, since a window of 0 is not a window.
-    const TYPES = new Set(['percent', 'enum', 'relative-path', 'int-or-auto', 'tokens', 'window']);
+    // 'csv' is a comma-separated name list whose EMPTY default means 'nothing switched off' -
+    // CLAUDE_STACK_HOOKS_OFF, which replaced the walk's hooks layer once the set stopped being copied.
+    // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
+    // CLAUDE_STACK_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
+    const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
@@ -305,6 +309,10 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         assert.strictEqual(typeof row.default, 'string', `${row.key} has a string default`);
         assert.ok(row.what && row.what.length > 20, `${row.key} explains itself in plain words`);
         assert.ok(TYPES.has(row.validate.type), `${row.key} has a validate shape the walks can check`);
+        // A WRITTEN row mirrors a choice the run just made into the file a plugin launcher reads, so
+        // it is never asked on the environment screen - the question that owns it is elsewhere
+        // (--memory-level, --sentry-auth), and asking twice would let the two answers disagree.
+        if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
         if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')
         {

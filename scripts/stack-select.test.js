@@ -88,6 +88,34 @@ test('hooks are leaf picks: kept as-is, emitted, and checked against the catalog
     assert.deepStrictEqual(unknown, [{ category: 'hook', name: 'no-such-hook' }], 'an unknown hook is flagged');
 });
 
+test('a hooks layer ANSWERED with no pick emits the explicit none line; an unanswered one emits nothing', () => {
+    const { emitSelectionFile } = require('./stack-select.js');
+    const c = computeClosure(graph, { hooks: [] });
+    // Without a hook line the installer reads 'every hook' - the pre-hooks-layer default - so a
+    // walk whose user picked None must say so, or every hook runs.
+    assert.ok(/^hook none$/m.test(emitSelectionFile(c, { hooksAnswered: true })), 'None at the hooks layer is written down');
+    // validate and configure emit from a disk inventory, which on the plugin route carries no hook
+    // files at all - that must stay 'not answered', never 'switch all thirteen off'.
+    assert.ok(!/^hook /m.test(emitSelectionFile(c)), 'no flag, no hook line');
+    const picked = computeClosure(graph, { hooks: ['guard-catastrophic-rm'] });
+    assert.ok(!/^hook none$/m.test(emitSelectionFile(picked, { hooksAnswered: true })), 'a real pick never carries the none line');
+});
+
+test('--hooks-answered reaches the emitted file through the CLI', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-answered-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'raw.json'), JSON.stringify({ hooks: [] }));
+        const emit = (extra) => { const out = path.join(dir, 'sel.txt'); execFileSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', path.join(dir, 'raw.json'), '--emit', out, ...extra], { encoding: 'utf8' }); return fs.readFileSync(out, 'utf8'); };
+        assert.ok(/^hook none$/m.test(emit(['--hooks-answered'])));
+        assert.ok(!/^hook /m.test(emit([])));
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('raw.mcps are direct picks the closure keeps and emits', () => {
     const c = computeClosure(graph, { mcps: ['sentry'] });
     assert.ok(c.mcps.includes('sentry'), 'a directly chosen mcp survives the closure');
@@ -857,4 +885,66 @@ test('CLI: an unknown --stacks name is named on stderr and the table still rende
         assert.match(good.stdout, /\| angular-conventions\s+\| stack:web-angular/, 'the real key seeds its rows');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Phase 4: superpowers is a HARD dependency of the core plugin, so the walk must not present it as
+// something to pick or drop. Claude Code refuses to disable it while the core is enabled
+// (code.claude.com/docs/en/plugin-dependencies), and the install never calls it by name.
+test('a plugin the core entry depends on gets its own row status, in both table modes', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deprow-'));
+    const sel = path.join(dir, 'raw.json');
+    const inv = path.join(dir, 'inv.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['baseline-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
+    fs.writeFileSync(inv, JSON.stringify({ plugins: ['superpowers'], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
+    const script = path.join(__dirname, 'stack-select.js');
+    const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+
+    const selected = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins'], { encoding: 'utf8' });
+    const row = selected.split('\n').find(l => l.includes('superpowers'));
+    assert.ok(/\bdependency\b/.test(row), `the row must say dependency, got: ${row}`);
+    assert.ok(/cannot be dropped/.test(row), `the row must say it cannot be dropped, got: ${row}`);
+    assert.ok(!/required by/.test(row), 'it must not read like a pick the closure happens to force');
+
+    const installedOut = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' });
+    const irow = installedOut.split('\n').find(l => l.includes('superpowers'));
+    assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
+    assert.ok(/carried by claude-stack@claude-stack/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('superpowers is no longer a SEED, and the baseline closure still reaches it', () => {
+    const recs = require('../meta/recommendations.json');
+    assert.ok(!(recs.always.plugins || []).includes('superpowers'),
+        'the installer does not seed it any more - the core plugin\'s dependency installs it');
+    const closure = computeClosure(graph, recs.always);
+    assert.ok((closure.plugins || []).includes('superpowers'),
+        'it must still be reachable, or validate would stop reporting it absent on a broken install');
+});
+
+test('the recommended hook set is the whole catalog - a walk that takes it switches nothing off', () => {
+    const recs = require('../meta/recommendations.json');
+    const missing = (graph.catalog.hooks || []).filter(h => !(recs.always.hooks || []).includes(h));
+    assert.deepEqual(missing, [],
+        'a catalog hook the recommendation leaves out lands in CLAUDE_STACK_HOOKS_OFF on every default setup');
+});
+
+// Phase 8 T4: the installer's read-back lists what the user switched off as `left_out` - a seat
+// denied, an item of a parked entry. That is on disk, never MISSING: validate proposing it every run
+// would re-enable what the user turned off.
+test('findStackMissing: a left_out item is switched off here, never missing', () => {
+    const installed = { rules: ['csharp-conventions'], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: ['serena'], plugins: [], hooks: [],
+        left_out: ['agent aspnet-verifier', 'skill dotnet-web-backend'] };
+    const names = new Set(findStackMissing(graph, recommendations, installed, ['aspnet']).map(m => `${m.category} ${m.name}`));
+    assert.ok(!names.has('agent aspnet-verifier'), 'a denied seat is not proposed back');
+    assert.ok(!names.has('skill dotnet-web-backend'), 'a parked entry item is not proposed back');
+    assert.ok(names.has('plugin csharp-lsp'), 'everything else still is');
+});
+
+test('findStackMissing: a parked MCP entry is that server switched off here, never missing', () => {
+    const installed = { rules: [], agents: [], skills: [], mcps: ['serena'], plugins: [], hooks: [], plugins_disabled: ['playwright-chrome'] };
+    const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
+    assert.ok(!names.has('mcp playwright'), 'the parked engine entry folds onto its catalog row');
 });

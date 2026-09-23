@@ -6,7 +6,7 @@ reports the delta. Every run is a real, billed model call on your own account.
 ## Why this suite exists at all
 
 The standing excuse for not evaluating this plugin was that nothing in it is model-invocable: all
-five commands and the router skill carry `disable-model-invocation`. That excuse is wrong. A case's
+six commands and the router skill carry `disable-model-invocation`. That excuse is wrong. A case's
 `prompt.md` is a USER turn, which is exactly how a manual-only command is invoked, so a read-only
 walk makes a valid case - and its without-arm cannot resolve the command at all, which is the
 cleanest delta a suite can produce.
@@ -19,7 +19,7 @@ install to change.
 
 | case | prompt | what it proves |
 |---|---|---|
-| `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:setup` instead of rendering its fixed table shapes from the command body |
+| `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:init` instead of rendering its fixed table shapes from the command body |
 | `router-hands-back-one-command` | `/claude-stack` | the router reads the state, names ONE command, and does not start the walk itself |
 
 ## Last recorded run

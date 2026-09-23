@@ -362,6 +362,12 @@ function emitTable(graph, layer, opts)
         return null;
     };
 
+    // A plugin the core marketplace entry hard-depends on is in the catalog (its citers are real
+    // edges) but it is neither droppable nor ours to install: enabling the core enables it, and
+    // Claude Code refuses to disable it while the core is enabled. Calling that row 'required by
+    // skill x' reads like a pick the user still has to make, so it gets its own status.
+    const dependencyPlugins = new Set(layer === 'plugins' ? (graph.catalog.dependencyPlugins || []) : []);
+
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
     const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
     const orphanWhy = {};
@@ -379,8 +385,11 @@ function emitTable(graph, layer, opts)
             // when nothing stronger claims it - a not-installed row showing 'MassTransit in
             // src/Api.csproj' tells the user the project uses what the install lacks.
             const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
-            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}` : reasons[name] || evidence || '-';
+            why = orphanSet.has(name) ? `was: ${orphanWhy[name]}`
+                : dependencyPlugins.has(name) ? 'carried by claude-stack@claude-stack - cannot be dropped'
+                : reasons[name] || evidence || '-';
         }
+        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = 'carried by claude-stack@claude-stack - cannot be dropped'; }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
         else
         {
@@ -438,7 +447,12 @@ function findJudgment(judgment, installed)
     return lines;
 }
 
-function emitSelectionFile(closure)
+// A selection with no `hook` line means 'every hook' to the installers - the default a file written
+// before the hooks layer existed must keep. So a walk that ASKED the hooks layer and got None says so
+// with the one line `hook none`: it counts as an answer and names no shipped hook, so every hook is
+// switched off. Only the caller that asked passes `hooksAnswered`; validate and configure emit from a
+// disk inventory, which on the plugin route holds no hook file at all.
+function emitSelectionFile(closure, { hooksAnswered = false } = {})
 {
     const lines = [];
     for (const s of closure.skills || []) lines.push(`skill ${s}`);
@@ -447,6 +461,7 @@ function emitSelectionFile(closure)
     for (const p of closure.plugins || []) lines.push(`plugin ${p}`);
     for (const r of closure.rules || []) lines.push(`rule ${r}`);
     for (const h of closure.hooks || []) lines.push(`hook ${h}`);
+    if (hooksAnswered && !(closure.hooks || []).length) lines.push('hook none');
     return lines.join('\n') + '\n';
 }
 
@@ -495,6 +510,16 @@ function findStackRedundant(graph, recs, installed, detected)
 // validate keeps a DISABLED plugin out of `plugins` and in `plugins_disabled` (validate.md step 1).
 const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv.plugins_disabled : [])
     .map(e => (e && typeof e === 'object' ? e.name : e)).filter(Boolean).map(String);
+// The same third state for skills and agents: the installer's read-back lists what the user switched
+// off (a denied seat, an item of a parked entry) as `left_out` lines - on disk, never MISSING.
+const leftOutOf = (inv, layer) => ((inv && Array.isArray(inv.left_out)) ? inv.left_out : [])
+    .map(String).filter(l => l.startsWith(`${layer.replace(/s$/, '')} `)).map(l => l.slice(l.indexOf(' ') + 1));
+// A parked MCP entry (`playwright-chrome`, `context7-local`) is that server switched off here.
+const offHere = (inv, layer) => [
+    ...(layer === 'plugins' ? parkedPlugins(inv) : []),
+    ...(layer === 'mcps' ? manifestMcps(parkedPlugins(inv)) : []),
+    ...leftOutOf(inv, layer),
+];
 function findStackMissing(graph, recs, installed, detected)
 {
     const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
@@ -506,7 +531,7 @@ function findStackMissing(graph, recs, installed, detected)
     for (const l of LAYERS)
     {
         // A plugin validate recorded as DISABLED is on disk: its row is an enable, never an install.
-        const have = new Set([...((installed && installed[l]) || []), ...(l === 'plugins' ? parkedPlugins(installed) : [])]);
+        const have = new Set([...((installed && installed[l]) || []), ...offHere(installed, l)]);
         const ideal = new Set();
         for (const c of Object.values(sources)) for (const n of c[l] || []) ideal.add(n);
         for (const name of [...ideal].sort())
@@ -533,7 +558,7 @@ function findEvidenceGaps(catalog, found, installed)
     {
         const foundL = (found && found[l]) || {};
         const have = new Set((installed && installed[l]) || []);
-        const parked = new Set(l === 'plugins' ? parkedPlugins(installed) : []);
+        const parked = new Set(offHere(installed, l));
         for (const name of Object.keys((catalog && catalog[l]) || {}))
         {
             const signal = foundL[name];
@@ -549,7 +574,11 @@ function findEvidenceGaps(catalog, found, installed)
 // matched none of those objects - every installed plugin read as missing (measured).
 // The installer expands the ONE manifest entry `playwright` into a server per browser engine
 // (playwright-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
-const manifestMcpName = n => String(n).replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
+// From 1.0.0 those names are also PLUGIN names, one per engine, so the same fold serves the plugin
+// route - and `context7-local`, the second context7 transport, folds onto its catalog entry too.
+const manifestMcpName = n => String(n)
+    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
+    .replace(/^context7-local$/, 'context7');
 const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
 
 function normalizeInventory(inv)
@@ -673,7 +702,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -687,7 +716,7 @@ function main(argv)
     const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
 
     const emit = arg('--emit');
-    if (emit) fs.writeFileSync(emit, emitSelectionFile(closure));
+    if (emit) fs.writeFileSync(emit, emitSelectionFile(closure, { hooksAnswered: argv.includes('--hooks-answered') }));
 
     // --table is a pure presentation mode: stdout carries ONLY the table, so the
     // guided walks can paste it verbatim; the required:/orphan: diagnostics are

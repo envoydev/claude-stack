@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing claude-stack install - no selection questions: bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only derives the selection from disk and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing claude-stack install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is init."
 disable-model-invocation: true
 ---
 
@@ -11,8 +11,8 @@ runtime to its newest published version and re-registers it, and runs `claude pl
 each installed stack plugin after refreshing the marketplaces, so an update leaves no MCP or
 plugin behind on an old version - plus removing the artifacts the STACK removed upstream, which a plain
 refresh leaves orphaned forever. The deterministic work lives in scripts, not in this chat:
-the installer's `--installed-only` derives the selection from disk and closes its dependencies
-itself, and `stamp-compare.js` computes the upstream delta - you orchestrate and report.
+the installer's `--installed-only` reads the install back (disk, plugin entries, the off-state it
+wrote) and closes its dependencies itself, and `stamp-compare.js` computes the upstream delta - you orchestrate and report.
 Measured before this split, a model-driven walk grew the session ~40k tokens; keep the fast
 path near 10k by never reading files or output the steps below do not name. **Budget the CALLS,
 not the characters.** The fast path is 5-6 Bash calls and nothing else. Content tokens are the
@@ -76,9 +76,9 @@ Every answer names the next action, and this step is not done until one is taken
 If the user redirects mid-answer and this ask is displaced, re-offer it ONCE when the redirect
 is handled, then proceed on their answer.
 
-**ONE release archive is the entire download - and the cache usually spares you even that** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`; read it first and hold the whole run to
-it: resolve the snapshot once into `$TMP/repo` - a cached release copy when the version probe says it is current, a download when it is not, use every tool from that snapshot, hand it back
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
+it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use every tool from that snapshot, hand it back
 with `--source` in the install step, and remove `$TMP` on EVERY exit path (fast, slow, blocker,
 or a user 'no'). The protocol's 'Narrate, don't trace' section governs every tool call: quiet
 machinery, no pasted output, one narration line between steps.
@@ -87,7 +87,7 @@ machinery, no pasted output, one narration line between steps.
 Project mode: cwd has a populated `.claude/` (skills/agents/rules/hooks present). Global mode:
 the account dir holds the skills (the installer lays agents/rules/hooks only into a git repo's
 `.claude/`, whatever the scope - a global refresh is skills-only). Nothing installed in either place -> stop and route to the
-sibling `/claude-stack:setup` command. The user names items to add or drop -> that is the
+sibling `/claude-stack:init` command. The user names items to add or drop -> that is the
 sibling `/claude-stack:configure` command, not this one. OS: `darwin`/`linux` -> the sh
 installer; Windows -> the ps1 (via `pwsh`).
 
@@ -98,7 +98,7 @@ Everything this step needs comes back from one script in the snapshot:
 node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root .
 ```
 
-(Global mode: `--root <account dir>`. A fork install passes `--repo <owner/name>`; a
+(Global mode: `--root <account dir> --settings .claude/settings.json` - a global install keeps its stamp in the account dir but writes `settings.json` into the project, as every seed does. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE
 pre-install read - never hand-write a second probe for anything it already prints, and never
 open `meta/migrations.json` yourself: the catalog is a maintainer file with a 2,000-character
@@ -123,6 +123,16 @@ It prints, in order:
   `(migration: <why>)`. Do not open the catalog for any of it: an entry that did not fire prints
   nothing, and reading 'just that one entry by id' still pulls the whole file in (measured: 2,182
   of a 5,180-char read is the maintainer `_comment`, 42%, paid on every update of every project).
+- `new: <category> <name><TAB><verdict><TAB><entry|->` per item the release ADDED or RENAMED, or
+  `new: none` - classified against THIS install by the derivation, never by you, with optional
+  trailing fields `take|leave` (an offer's recommendation), `enables=<entries>` (what a yes would
+  switch on), `from=<old name>` (a rename), `old-on-disk` (the rename's old copy is still
+  installed) and `was-off` (the OLD name was switched off - the off-state is matched by name, so
+  the new one would come on). Verdicts: `arrives` (this refresh brings
+  it, on), `renamed` (a copied item whose old copy is on disk - the update carries it), `offer`
+  (only a yes brings it), `off` (the user's own off-state names it - a denied seat, a hook in
+  `CLAUDE_STACK_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
+  not be read).
 - `env-keys: <names>` - the scope's settings.json `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
   and neither do you. **Never dump that file** - a plain `cat` of it put a live 71-character
@@ -147,9 +157,10 @@ catalog entry at all - the same pass seeds them absent-only - but report those t
 
 **Build the prune list** from the compare's `removed` lines (a `stack/...` path gone entirely
 maps to its installed artifact; a path still present in the snapshot is a move WITHIN the item,
-not a removal), the `renamed` lines of installed items (both halves, automatically: old name
-pruned, new name joins the refresh - a rename is the same item continuing, never an adoption
-choice), and the detected migrations. Three outputs decide the path:
+not a removal), every `new:` row carrying `old-on-disk` (its old copy is pruned whatever the
+verdict - an arriving rename leaves the old copy behind too; a `renamed` row's new name is carried
+by `--add`, a rename being the same item continuing, never an adoption choice), and the detected
+migrations. Three outputs decide the path:
 
 - **Prune list EMPTY** -> step 3, the fast path. This includes `no-stamp` (exit 2 - no baseline,
   pruning impossible, refreshing unaffected), `compare-unreachable` (exit 3 - same), and a
@@ -157,16 +168,29 @@ choice), and the detected migrations. Three outputs decide the path:
   possibly-partial diff; route the reconcile to `configure` in the report). Say which applied.
 - **Prune list NON-EMPTY** -> step 4, the pruning path.
 
+**New items - ONE ask, and only when a `new:` line says `offer`.** Put every offer through one
+AskUserQuestion before the installer runs, each named with its entry or 'copied', the entries its
+`enables=` field names, and the reason in a few words: **Take the recommended** (the offers marked
+`take` - a rule whose closure every enabled entry already carries, so a yes switches no entry on),
+**Take all**, **Take none** (configure adds any later). Mark **Take the recommended** Recommended
+when at least one offer says `take`, otherwise **Take none**; a free-text answer names the ones to
+take. Each taken offer becomes one `--add "<category> <name>"` on the installer call of whichever
+path runs, and so does every `renamed` row, unasked; every `was-off` row becomes one
+`--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
+asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh.
+Under `CLAUDE_STACK_SEED=shell` there is no `--add` to take an answer, so there is no ask either:
+the offers go in the report, routed to `configure`.
+
 ## 3. Fast path - refresh in place (the common case)
-Run the installer; it derives the selection from disk itself, closes new dependencies through
+Run the installer; it reads the install back itself, closes new dependencies through
 `stack-select.js`, and logs any `installed-only: required:` additions:
 
 **One fixed capture form, always** - `2>&1 | tee "$TMP/install.log"` on the call itself, so the
 post-install read below has a file that was actually written (the shared contract is in
 `source-protocol.md`'s 'Capture the installer's own output'):
 
-- Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --installed-only [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
-- Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **`CLAUDE_STACK_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead. Unix: the same flags, with `bash "$TMP/repo/scripts/os/claude-stack.sh"` in place of the `node` call. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
@@ -232,7 +256,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting)|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -283,9 +307,12 @@ and that is their decision to make, not one to leave unsaid. Then:
 - Reconcile the project's CLAUDE.md (step 6, project mode only - the step states when and why it
   runs).
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
-  `required:` additions it named, and FYI `added` items from the compare (mapped to item names;
-  never install them - route adoption to `configure`).
-- EXCEPTION to FYI-only - and the installer now does most of it for you. Hooks are an
+  `required:` additions it named, and the step-2 `new:` lines: one line naming what `arrives`,
+  one naming what stays `off` (the user's own switch - say where it lives), the offers taken and
+  left, and any `unknown` (the listing could not be read - `configure` can take them). Under
+  `CLAUDE_STACK_SEED=shell` there is no `--add`: name the taken offers and route them to
+  `configure`.
+- Hooks on the COPY route - and the installer does most of it for you. Hooks are an
   all-or-nothing layer on the `--installed-only` path: an install that HAS hooks receives every
   hook the release ships, and the run logs `installed-only: adopting hook <name>` for each one.
   A hook the user DROPPED is not resurrected - the stamp records the catalog each run shipped, so
@@ -305,11 +332,13 @@ and that is their decision to make, not one to leave unsaid. Then:
 - Clean up `$TMP` and stop. Steps 4-5 never run on this path.
 
 ## 4. Pruning path - confirm once, then refresh + prune
-Inventory the CURRENT selection from disk exactly as the sibling `configure` command's step 1
-(`${CLAUDE_PLUGIN_ROOT}/commands/configure.md` - read it only on THIS path; command bodies do
+The installer reads the install back itself (`--installed-only`), so the ask below needs only the
+compare. Under `CLAUDE_STACK_SEED=shell` - and only there - inventory the CURRENT selection from
+disk exactly as the sibling `configure` command's step 1
+(`${CLAUDE_PLUGIN_ROOT}/setup-plugin/commands/configure.md` - read it only on THIS path; command bodies do
 not co-load): skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED
 `baseline-project-*.md` and `project-code-style.md`), hooks (bare basenames, excluding the
-GENERATED legacy `inject-code-style.js`), mcps from `<repo>/.mcp.json`, plugins fail-soft and
+GENERATED legacy `inject-code-style.js`), mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json`, plugins fail-soft and
 filtered to entries enabled for THIS project (the listing is machine-global; an unfiltered read
 re-submits a sibling repo's plugin to this project's refresh - measured) - never from memory.
 
@@ -323,15 +352,22 @@ claude-stack 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
 prune: .claude/rules/web-conventions.md (renamed upstream; typescript-conventions.md carried over)
 ```
 
-On 'proceed': selection = installed, minus the confirmed prune list, plus the new names of
-renames; write `raw.json`, run `stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt"
---check`. A `required:` line (a dependency the new release introduced) is auto-kept and
+On 'proceed': run the installer exactly as in step 3 - its `--add` already carries every `renamed`
+row's new name (the old copy is on disk, the new one is not yet, so the read-back alone would lose
+it) and every offer the step-2 ask took. A removed name needs no flag - this release
+does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
+selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
+extras, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
+read-back exists for exactly that). Under `CLAUDE_STACK_SEED=shell` the frozen twin takes no
+`--add` and writes no seat deny, so it keeps the old route: selection = installed, minus the
+confirmed prune list, plus the new names of renames; write `raw.json`, run `stack-select.js
+--selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check`. A `required:` line (a dependency the new release introduced) is auto-kept and
 reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote,
 and an MCP server added by hand, print exactly that way, and the installer leaves every one of
 them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never
 touched). It is excluded from the emitted selection and nothing more - list it in the report as
 `kept - not a stack item`. Only the compare list and the migrations prune. Blockers stop the run with their fixes -
-never update past one; warnings are listed and passed. Then run the installer as in step 3 but
+never update past one; warnings are listed and passed. Then run the twin as in step 3 but
 with `--selection "$TMP/selection.txt"` / `-Selection "$TMP/selection.txt"` in place of the installed-only
 flag.
 
@@ -371,8 +407,8 @@ not the change; an audited close named the two refreshed rules and omitted the t
 the entire upstream delta, because it read the log tail instead of the compare. Then the pruned
 items by name, the REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the
 plugin version moves - these are the drift the run corrected, and a user who has been carrying a
-stale registration needs to see it named), the ENVIRONMENT line, the FYI additions routed to
-`configure`, and the restart line.
+stale registration needs to see it named), the ENVIRONMENT line, the NEW-ITEMS line (what arrived,
+what was taken, what stays off or was left, each by name), and the restart line.
 
 - **ENVIRONMENT** - the installer prints one line per env change (`settings.json env: <old> renamed
   to <new>`, `<key> removed (retired ...)`, `<key> seeded (<value>)`, `<key> <old> -> '<new>'` for a passed
@@ -453,7 +489,7 @@ as a stall and the guard demands the very ask this paragraph removes.
 The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message).
 
 ## 8. Clean up the temp dir - ALWAYS
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/references/source-protocol.md`, on EVERY exit path:
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path:
 after the fast path, after refresh + prune, after refresh-only, after a blocker, and after a
 user 'no'. Then confirm the project tree holds only installed artifacts by LOOKING, never with
 `git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status
@@ -467,8 +503,9 @@ the close-out, not silently ignored.
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
   skills/agents/rules/hooks and the generated `baseline-project-*.md` / `project-code-style.md`
   rules appear in neither; if a candidate is in neither list, it stays.
-- Never install additions and never remove an MCP or plugin the diff did not retire - adopting
-  or dropping by choice is the sibling `configure` command.
+- Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
+  diff did not retire - dropping by choice, and adopting anything the release did not add, is
+  the sibling `configure` command.
 - Never skip the step-4 confirm before deletions, never run past a blocker, and never leave
   `$TMP` behind. Do not commit anything on the user's behalf.
 - Never re-derive in chat what a script already computed: no re-listing installed items on the

@@ -17,7 +17,7 @@ Project mode when the working tree has a populated `.claude/` (skills or agents 
 otherwise global mode against the account's config dir (skills, plugins and user-scope MCPs live
 there; agents/rules/hooks are project-level by construction - the installer lays them only into a git
 repo's `.claude/` - so those areas read `none installed` at global scope). Nothing installed in either place ->
-say so and route to `/claude-stack:setup`. Open with one line naming mode and root:
+say so and route to `/claude-stack:init`. Open with one line naming mode and root:
 `status: project install at <root>/.claude` (or `global install at <path>`).
 
 ## 2. One question - what to show
@@ -82,8 +82,17 @@ text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matc
 
 Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
 can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
-machine): for each enabled plugin, total its skill and command DESCRIPTION frontmatter plus the
-static text any `SessionStart` or `SubagentStart` hook injects, and render `plugin floor: <N>
+machine). The stack's OWN entries are counted by one script, never by hand: `node
+"$TMP/repo/scripts/derive-state.js" --floor --plugins <the enabled @claude-stack entries,
+comma-separated> --settings <account settings.json> --settings .claude/settings.json --settings
+.claude/settings.local.json` (deny rules merge across scopes, so pass every one that exists; the
+account file alone in global mode) prints the skill descriptions they carry (a
+`disable-model-invocation` skill costs nothing, which is why this number sits below the repo lint's
+always-on budget, which counts every description) plus the SEATS' descriptions minus every seat
+`permissions.deny` switches off - take its `chars`. The entries it lists under `skipped` (the
+hooks entry, the MCP entries) are OTHER plugins for the next sentence. For each OTHER enabled plugin, total its
+skill, command and agent DESCRIPTION frontmatter (skipping a `disable-model-invocation` one) plus
+the static text any `SessionStart` or `SubagentStart` hook injects, and render `plugin floor: <N>
 chars (~<N/4000>k tokens) across <n> enabled plugins - <m> of it per SUBAGENT as well`. A plugin
 whose injection is computed rather than a literal is counted as unknown and named, never guessed
 at. Report and judge nothing, same as the line above. It matters because a SessionStart injection
@@ -94,16 +103,21 @@ paid 8,337 injected chars a session for two plugins on top of their descriptions
 the capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack`
 otherwise, `user-authored` when clearly neither.
 
-**Hooks** - `.claude/hooks/*.js` joined against `settings.json`:
+**Skills and agents** - skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a copied extra reads `stack`. A carried seat named in `permissions.deny` (any scope) as `Agent(<entry>:<name>)` is switched OFF - it stays in the table with `denied` in its `origin` column, since the plugin still ships it and configure can bring it back.
+
+**Hooks** - hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the two engines (`docs`, `memory`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
+matcher comes from the release catalog; a row named in `CLAUDE_STACK_HOOKS_OFF` reads `off (env)`.
+On the copy route the set is joined against `settings.json` as before:
 
 | hook | wired | matcher |
 |---|---|---|
 | guard-catastrophic-rm.js | yes | Bash |
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
-**MCPs** - server entries from the repo's `.mcp.json` (project mode; global: the account's user-scope
+**MCPs** - mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (project mode; global: the account's user-scope
 registrations - the installer's `--scope global` registers them with `--scope user`, so read
-`claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`):
+`claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`). On the
+plugin route the `target` column is the plugin, not a registration:
 
 | server | transport | target |
 |---|---|---|
@@ -181,8 +195,8 @@ working free tier - no arrow, the registration sends an empty header). This tabl
 environment area.
 
 Presence, never the value - run this and paste its lines as-is:
-`node .claude/hooks/guard-secret-value.js --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). Output is `KEY=set (N chars)` or `KEY=absent`. Hooks install into a project's `.claude/hooks/` only, so when that file is absent - a global install, or the guard deselected - do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
+`G="$PWD/.claude/hooks/guard-secret-value.js"; [ -f "$G" ] || G=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" -path '*/hooks/guard-secret-value.js' 2>/dev/null | head -1); node "$G" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). The guard lives in TWO homes and the line takes whichever exists, newest first: a project `.claude/hooks/` copy (the pre-1.0 route) or the installed `claude-stack-hooks` plugin. Output is `KEY=set (N chars)` or `KEY=absent`. When neither home has it - a global install, the guard deselected, the plugin not installed - `$G` is empty, so do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly
 as the docs-root rule states) plus serena's local memory:

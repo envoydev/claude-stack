@@ -1,16 +1,16 @@
 'use strict';
-// The SOURCE CACHE: one download per RELEASE, not one per run.
+// THE SOURCE: what Claude Code already cached, then the release archive, then a clone.
 //
-// Every run used to fetch the 1.4MB release archive into a fresh temp dir and delete it at the
-// end, so installing into a second project - or the same project twice - paid the download again
-// (measured: 1.4MB / ~1.8s per run, against 0.3s for the version probe and 0.1s to copy the
-// extracted 5.4MB snapshot off disk). The cache keeps the extracted snapshot under the account
-// dir, keyed by the release version, and a run reuses it whenever the probe says that version is
-// still the newest.
+// The stack used to keep its own extracted-snapshot cache under the account dir, plus a version
+// probe and an adoption path for Claude Code's marketplace clone. Phase 5 of the plugin migration
+// deleted all three: every marketplace entry shares this repo's root as its `source`, so installing
+// the core plugin leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/claude-stack/
+// <version> - RELEASE-SOURCE included - and that is the same snapshot the installer was
+// downloading. The archive and clone routes remain for the two paths with no plugin cache to read:
+// the copy route (both VIA_PLUGIN switches off) and a machine with no `claude` CLI.
 //
-// These tests drive the REAL installers against a local HTTP fixture that speaks the two
-// endpoints the cache depends on - the /releases/latest redirect that names the tag, and the
-// archive asset - and counts asset hits, which is what proves a run downloaded nothing.
+// These tests drive the REAL installers against a local HTTP fixture that speaks the release
+// endpoints and COUNTS asset hits, which is what proves a run downloaded nothing.
 const test = require('node:test');
 const assert = require('node:assert');
 const { execFileSync, spawnSync, spawn } = require('node:child_process');
@@ -96,11 +96,16 @@ function work() {
 }
 
 // One install run of the sh twin, HOME isolated so the cache lands in this run's own account dir.
+// The COPY route on purpose: this file proves which SOURCE a run resolved (archive, cache, clone,
+// offline), and it reads that through a skill landing in .claude/skills. On the default plugin
+// route a stack skill is carried by a plugin instead of copied, so the same assertion would say
+// nothing about the source. The delivery route has its own proofs (mcp-verify.test.js, the matrix).
 function runSh(home, host, env = {}) {
     return execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', path.join(home, 'sel.txt'), '--skills-only'], {
         cwd: home,
         encoding: 'utf8',
-        env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, CLAUDE_CONFIG_DIR: '', ...env },
+        env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, CLAUDE_CONFIG_DIR: '',
+            CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', ...env },
     });
 }
 
@@ -116,281 +121,240 @@ function installedSkill(home) {
     return fs.existsSync(path.join(home, '.claude', 'skills', 'csharp', 'SKILL.md'));
 }
 
-// Claude Code's own clone of the marketplace repo: a FULL checkout of this repo under
-// <config>/plugins/marketplaces/<name>, which is where the plugin subdir it serves is copied FROM.
-// Planted here the way Claude Code leaves it - a real git repo, an origin, a plugin manifest whose
-// version is the release it was last refreshed at - because all three are what the installer reads.
-function plantMarketplaceClone(home, { origin, version = VERSION, name = 'claude-stack', crlf = false } = {}) {
-    const dir = path.join(home, '.claude', 'plugins', 'marketplaces', name);
+// A plugin cache entry the way `claude plugin install` leaves it: the whole repo under
+// <config>/plugins/cache/<marketplace>/claude-stack/<version>. Built from the same archive the
+// release host serves, so a run that reads it installs exactly what a download would have.
+function plantPluginCache(home, { version = VERSION, marketplace = 'claude-stack', truncated = false } = {}) {
+    const dir = path.join(home, '.claude', 'plugins', 'cache', marketplace, 'claude-stack', version);
     fs.mkdirSync(dir, { recursive: true });
     execFileSync('tar', ['-xzf', ARCHIVE, '-C', dir]);
-    fs.rmSync(path.join(dir, 'RELEASE-SOURCE'), { force: true });   // a clone has none - the archive's file
-    const manifest = path.join(dir, 'setup-plugin', '.claude-plugin', 'plugin.json');
-    let text = fs.readFileSync(manifest, 'utf8').replace(/"version":\s*"[^"]*"/, `"version": "${version}"`);
-    if (crlf) text = text.replace(/\n/g, '\r\n');                  // what Git for Windows checks out by default
-    fs.writeFileSync(manifest, text);
-    const git = (...args) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { stdio: 'ignore' });
-    git('init', '-b', 'main');
-    git('add', '-A');
-    git('commit', '-m', 'clone');
-    git('remote', 'add', 'origin', origin);
-    return { dir, head: execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() };
+    // The CLI names the directory after the release it installed, so the entry's own RELEASE-SOURCE
+    // says the same thing. The archive this fixture untars always names VERSION, so restate it -
+    // otherwise a multi-version case would resolve one version by directory and report another.
+    fs.writeFileSync(path.join(dir, 'RELEASE-SOURCE'), `sha: ${FAKE_SHA}\nref: main\nversion: ${version}\nbuilt: 2026-09-09T00:00:00Z\n`);
+    // a half-written entry: the validity test is stack/skills + stack/agents, so drop one
+    if (truncated) fs.rmSync(path.join(dir, 'stack', 'agents'), { recursive: true, force: true });
+    return dir;
 }
 
-// THE POINT OF THE FEATURE: the second run downloads nothing. Same account, so the second run is
-// the 'now install it into another project' case the cache exists for.
-test('a second run reuses the cached snapshot and fetches no archive', () => {
+test('the plugin cache is the source, and nothing is downloaded', () => {
     const host = startHost();
     const home = work();
     try
     {
-        const first = runSh(home, host);
-        assert.match(first, /releases\/latest\/download/, 'the first run downloads the archive');
-        assert.strictEqual(host.assets, 1, 'exactly one asset fetch so far');
-        assert.ok(installedSkill(home), 'the first run installed from the download');
-        assert.deepStrictEqual(cacheEntries(home).map(p => path.basename(p)), [VERSION], 'the download is promoted into the cache');
-
-        fs.rmSync(path.join(home, '.claude', 'skills'), { recursive: true, force: true });
-        const second = runSh(home, host);
-        assert.match(second, /source: cache/, 'the second run reports the cache, not a download');
-        assert.strictEqual(host.assets, 1, 'the second run fetched no archive');
-        assert.ok(host.probes >= 2, 'it still probed for a newer release');
-        assert.ok(installedSkill(home), 'the second run installed from the cache');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// A cache the run deletes is not a cache. The installer already refuses to delete a --source it
-// was handed; a cache entry it resolved for itself is the same promise.
-test('the cache entry survives the run that used it', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        runSh(home, host);
-        const [entry] = cacheEntries(home);
-        assert.ok(entry, 'the first run left a cache entry');
-        runSh(home, host);
-        assert.ok(fs.existsSync(path.join(entry, 'stack', 'skills')), 'the entry is still a usable snapshot after a run consumed it');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// A half-written entry (an interrupted promote, a pruned tree) must never be installed FROM - the
-// validity check is the same stack/skills + stack/agents pair every other source path uses.
-test('a partial cache entry is ignored and re-downloaded', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        runSh(home, host);
-        const [entry] = cacheEntries(home);
-        fs.rmSync(path.join(entry, 'stack', 'agents'), { recursive: true, force: true });
-        fs.rmSync(path.join(home, '.claude', 'skills'), { recursive: true, force: true });
-
+        plantPluginCache(home);
         const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/, 'the damaged entry is not trusted');
-        assert.strictEqual(host.assets, 2, 'it downloaded again');
-        assert.ok(installedSkill(home), 'and still installed');
-        assert.ok(fs.existsSync(path.join(entry, 'stack', 'agents')), 'the entry was rebuilt');
+        assert.match(out, /source: plugin cache/, 'the run did not read the cache Claude Code left');
+        assert.strictEqual(host.assets, 0, 'an archive was fetched although the cache was there');
+        assert.strictEqual(host.probes, 0, 'the version probe is gone - the cache needs no release lookup');
+        assert.ok(installedSkill(home), 'and it installed from it');
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-// A new release must win immediately - the probe names the version, so a cached older one is
-// simply not the entry the run asks for.
-test('a newer release is downloaded even with an older version cached', () => {
+test('the newest version directory wins when the cache holds several', () => {
     const host = startHost();
     const home = work();
     try
     {
-        runSh(home, host);
+        plantPluginCache(home, { version: '0.9.0' });
+        plantPluginCache(home, { version: '0.10.0' });   // newer by VERSION order, older by string order
+        const out = runSh(home, host);
+        assert.match(out, /source: plugin cache .*0\.10\.0/, `the older entry was taken:\n${out}`);
+        assert.strictEqual(host.assets, 0);
+    }
+    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+test('a half-written cache entry is rejected and the archive is taken instead', () => {
+    const host = startHost();
+    const home = work();
+    try
+    {
+        plantPluginCache(home, { truncated: true });
+        const out = runSh(home, host);
+        assert.doesNotMatch(out, /source: plugin cache/, 'a broken entry was installed from');
+        assert.match(out, /releases\/latest\/download/, 'the archive is the fallback');
         assert.strictEqual(host.assets, 1);
-        const older = path.join(cacheEntries(home)[0], '..', '0.0.1');
-        fs.cpSync(cacheEntries(home)[0], older, { recursive: true });
-        fs.rmSync(cacheEntries(home).find(p => p.endsWith(VERSION)), { recursive: true, force: true });
-        fs.rmSync(path.join(home, '.claude', 'skills'), { recursive: true, force: true });
-
-        const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/, 'the older entry is not what the probe named');
-        assert.strictEqual(host.assets, 2, 'it fetched the release the probe named');
         assert.ok(installedSkill(home));
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-// The escape hatch: an environment that wants the old always-fresh guarantee keeps it, and the
-// cache is not merely bypassed for reading - nothing is written either.
-test('STACK_SOURCE_CACHE=0 downloads every run and writes no cache', () => {
+test('no cache at all still installs, from the archive', () => {
     const host = startHost();
     const home = work();
     try
     {
-        runSh(home, host, { STACK_SOURCE_CACHE: '0' });
-        runSh(home, host, { STACK_SOURCE_CACHE: '0' });
-        assert.strictEqual(host.assets, 2, 'both runs downloaded');
-        assert.deepStrictEqual(cacheEntries(home), [], 'and nothing was cached');
+        const out = runSh(home, host);
+        assert.match(out, /releases\/latest\/download/);
+        assert.strictEqual(host.assets, 1, 'exactly one download');
         assert.ok(installedSkill(home));
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-// A host that cannot answer the probe (a fork with no releases, a file:// fixture, an offline
-// run) must install exactly as it did before the cache existed - fail-soft, never a hard stop.
-test('an unanswerable version probe still installs from the download', () => {
-    const host = startHost({ tag: null });
+// The stack keeps no cache of its own any more: a run must leave nothing behind under the old
+// location, or a later release would read a snapshot nothing maintains.
+test('no run writes the retired stack-source cache', () => {
+    const host = startHost();
     const home = work();
     try
     {
-        const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/, 'falls through to the archive');
-        assert.strictEqual(host.assets, 1);
-        assert.ok(installedSkill(home), 'the install is unaffected by a dead probe');
+        runSh(home, host);
+        assert.deepStrictEqual(cacheEntries(home), [], 'the retired cache layout was written again');
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-// THE ZERO-DOWNLOAD CASE: the plugin route already put the whole repo on disk, so a machine with
-// the plugin installed needs no archive at all - as long as the clone IS the release the probe
-// named.
-test('a marketplace clone at the newest release is used instead of the archive', () => {
-    const host = startHost();
+test('an unanswerable version probe is no longer a factor - the archive still installs', () => {
+    const host = startHost({ tag: 'none' });
     const home = work();
     try
     {
-        const clone = plantMarketplaceClone(home, { origin: host.url });
         const out = runSh(home, host);
-        assert.match(out, /source: marketplace clone/, 'the run names the clone as its source');
-        assert.strictEqual(host.assets, 0, 'nothing was downloaded');
-        assert.strictEqual(host.probes, 1, 'it still asked which release is newest');
-        assert.ok(installedSkill(home), 'and it installed');
-
-        // Promoted into the same cache the archive route fills, carrying the revision a stamp needs.
-        const [entry] = cacheEntries(home);
-        assert.strictEqual(path.basename(entry), VERSION);
-        const rel = fs.readFileSync(path.join(entry, 'RELEASE-SOURCE'), 'utf8');
-        assert.match(rel, new RegExp(`^sha: ${clone.head}$`, 'm'), 'the entry records the clone commit');
-        assert.match(rel, /^source: marketplace-clone$/m, 'and names the route it came from');
-        assert.ok(!fs.existsSync(path.join(entry, '.git')), 'the history is not copied into the cache');
+        assert.match(out, /releases\/latest\/download/);
+        assert.ok(installedSkill(home), 'a fork with no tag still installs');
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-// Git for Windows checks out with core.autocrlf=true by default, so the manifest the version match
-// is read from has CRLF line ends there. A trailing CR would never equal the probe's version -
-// silently turning the whole route off on exactly one platform.
-test('a CRLF plugin manifest still matches the probed version', () => {
+test('the ps1 twin reads the same plugin cache', { skip: skipNoPwsh }, () => {
     const host = startHost();
     const home = work();
     try
     {
-        plantMarketplaceClone(home, { origin: host.url, crlf: true });
-        const out = runSh(home, host);
-        assert.match(out, /source: marketplace clone/, 'the CR does not break the version compare');
-        assert.strictEqual(host.assets, 0, 'so nothing was downloaded');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// The clone only moves when the user refreshes the marketplace, so it can sit a release behind.
-// The version match is the whole safety argument: no match, no shortcut.
-test('a marketplace clone behind the newest release is not used', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantMarketplaceClone(home, { origin: host.url, version: '0.0.1' });
-        const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/, 'a stale clone is not a shortcut');
-        assert.strictEqual(host.assets, 1, 'it downloaded the release the probe named');
-        assert.ok(installedSkill(home));
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// One account can hold several marketplaces, and a fork's clone is not this stack. The origin is
-// what tells them apart - without that check, a run pointed at a fork would install the canonical
-// stack, and every test on this machine would silently read the developer's own clone.
-test('a clone of a different repo is ignored', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantMarketplaceClone(home, { origin: 'https://github.com/someone/other-stack', name: 'other-stack' });
-        const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/, 'another repo\'s clone is not our source');
-        assert.strictEqual(host.assets, 1);
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// Offline is the case the clone route is really worth having: the archive, the probe and the git
-// clone all need the network, the marketplace clone needs none. Unverified is stated in the log,
-// and the stamp still records the exact commit installed.
-test('an offline run installs from the marketplace clone instead of failing', () => {
-    const host = startHost();
-    const home = work();
-    plantMarketplaceClone(home, { origin: host.url });
-    host.close();                                   // the release host is gone: nothing networked answers
-    try
-    {
-        const out = runSh(home, host);
-        assert.match(out, /source: marketplace clone/, 'the clone carried the run');
-        assert.match(out, /offline/, 'and the log says it was not checked against the release host');
-        assert.ok(installedSkill(home), 'an offline machine still installs');
-    }
-    finally { fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// Both twins share one cache layout, so a script install on Windows reuses what a run on the same
-// account already fetched. Same two assertions that matter: one asset fetch, the second run says cache.
-test('the ps1 twin caches and reuses the same way', { skip: skipNoPwsh }, () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        const run = () => execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project',
-            '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
-            cwd: home,
-            encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' },
-        });
-        run();
-        assert.strictEqual(host.assets, 1, 'the first run downloaded once');
-        assert.deepStrictEqual(cacheEntries(home).map(p => path.basename(p)), [VERSION], 'promoted into the shared cache layout');
-        const second = run();
-        assert.match(second, /source: cache/, 'the second run reports the cache');
-        assert.strictEqual(host.assets, 1, 'and fetched no archive');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// The clone route is twinned too - a Windows machine with the plugin installed downloads nothing.
-test('the ps1 twin takes the marketplace clone the same way', { skip: skipNoPwsh }, () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantMarketplaceClone(home, { origin: host.url });
+        plantPluginCache(home);
         const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project',
             '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
             cwd: home,
             encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' },
+            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '',
+                CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' },
         });
-        assert.match(out, /source: marketplace clone/, 'the ps1 run names the clone');
-        assert.strictEqual(host.assets, 0, 'nothing was downloaded');
-        assert.deepStrictEqual(cacheEntries(home).map(p => path.basename(p)), [VERSION], 'promoted into the shared layout');
-
-        // The cache is SHARED, so the file ps1 synthesized is parsed by the sh twin line by line:
-        // it must be LF and BOM-less, the way every other file both twins write is. Set-Content
-        // would have given it CRLF on Windows and a BOM on PS 5.1.
-        const raw = fs.readFileSync(path.join(cacheEntries(home)[0], 'RELEASE-SOURCE'));
-        assert.ok(!raw.includes(0x0d), 'no CR - a stray one rides on every value the sh twin reads');
-        assert.ok(!(raw[0] === 0xef && raw[1] === 0xbb), 'no BOM - it would break the first line match');
-        const second = runSh(home, host);
-        assert.match(second, /source: cache/, 'and the sh twin reuses what ps1 cached');
-        assert.match(second, /@ main [0-9a-f]{12}/, 'reading the revision back out of it');
+        assert.match(out, /source: plugin cache/, 'ps1: the cache was not read');
+        assert.strictEqual(host.assets, 0, 'ps1: an archive was fetched anyway');
     }
     finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// The guided walks do not run the installer's resolver - each command body pastes its own snippet
+// from setup-plugin/references/source-protocol.md, one per platform. Three copies of one rule is
+// exactly where they drift, and a drifted walk silently pays a download the installer would not.
+// So run the protocol's OWN snippets against a planted cache and assert they land where the twins
+// land: the newest valid entry, the half-written one rejected, nothing fetched.
+function protocolSnippet(lang, index) {
+    const md = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+    const blocks = [...md.matchAll(/```(bash|powershell)\n([\s\S]*?)```/g)].filter(m => m[1] === lang);
+    assert.ok(blocks[index], `source-protocol.md has no ${lang} block #${index}`);
+    return blocks[index][2];
+}
+
+// The same three entries both snippets and both twins have to agree on.
+function plantThree(home) {
+    plantPluginCache(home, { version: '0.9.0' });
+    plantPluginCache(home, { version: '0.10.0' });                   // newest VALID - the expected answer
+    plantPluginCache(home, { version: '0.11.0', truncated: true });  // newer, but half-written
+    return path.join(home, '.claude', 'plugins', 'cache', 'claude-stack', 'claude-stack', '0.10.0');
+}
+
+// Git Bash prints its own mount spelling (/tmp/tmp.X), which native node resolves against the current
+// drive - so on Windows the path is translated before node opens it.
+const nativePath = (p) => process.platform === 'win32'
+    ? execFileSync('bash', ['-c', 'cygpath -w "$1"', 'cygpath', p], { encoding: 'utf8' }).trim() : p;
+
+test("the protocol's bash snippet resolves the same entry as the sh twin", () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    let tmp = '';
+    try
+    {
+        const want = plantThree(home);
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const out = execFileSync('bash', [script], {
+            cwd: home, encoding: 'utf8',
+            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
+        });
+        const m = out.match(/RESOLVED TMP=(\S+) (\S+)/);
+        assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
+        tmp = nativePath(m[1]);
+        assert.strictEqual(m[2], '0.10.0', 'it read a different version than the twins take');
+        assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
+        assert.ok(!fs.existsSync(path.join(tmp, 'claude-stack.tar.gz')), 'it downloaded the archive over a usable cache');
+        assert.strictEqual(
+            fs.readFileSync(path.join(tmp, 'repo', 'RELEASE-SOURCE'), 'utf8'),
+            fs.readFileSync(path.join(want, 'RELEASE-SOURCE'), 'utf8'),
+            'the copy did not come from the newest valid entry');
+    }
+    finally
+    {
+        const mark = nativePath(`/tmp/claude-stack-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`);
+        for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNoPwsh }, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.ps1');
+    try
+    {
+        const want = plantThree(home);
+        // The block ends at $Ver; the two Write-Output lines are the test's probe, not the contract.
+        fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-SRC=$Src"\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-TMP=$TMP"\n`);
+        const out = execFileSync('pwsh', ['-NoProfile', '-File', script], {
+            cwd: home, encoding: 'utf8',
+            env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
+        });
+        assert.match(out, /PS-VER=0\.10\.0/, `the ps twin read a different version:\n${out}`);
+        // compared as real paths: on Windows os.tmpdir() may be the 8.3 short name of the folder the snippet spells long
+        assert.strictEqual(fs.realpathSync.native(out.match(/PS-SRC=(.+)/)[1].trim()), fs.realpathSync.native(want),
+            'it took a different cache entry than the sh snippet');
+        const tmp = out.match(/PS-TMP=(.+)/)[1].trim();
+        assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
+        assert.ok(!fs.existsSync(path.join(tmp, 'claude-stack.zip')), 'it downloaded the archive over a usable cache');
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// Two more bodies find a file of their own in the plugin cache: the capabilities inventory script
+// and the cross-task protocol the integration reviewer gates against. `find | head -1` took whichever
+// cached version the filesystem listed first, and the reviewer looked only where the COPY route puts
+// skills, so on the plugin route it always ran its reduced fallback. Both now take the newest entry
+// the way the protocol does - sort -V, not listing order and not lexical order - so each body's own
+// snippet runs here against two planted caches: one where listing order is wrong (0.2.84 before
+// 1.0.0), one where lexical order is wrong (0.9.0 after 0.10.0).
+function bodySnippet(file, re) {
+    const m = fs.readFileSync(path.join(ROOT, file), 'utf8').match(re);
+    assert.ok(m, `${file}: its plugin-cache lookup snippet is missing`);
+    return m[1];
+}
+
+test('the capabilities script and the reviewer protocol resolve to the NEWEST cached entry', () => {
+    for (const versions of [['0.2.84', '1.0.0'], ['0.9.0', '0.10.0']])
+    {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cache lookup '));
+        try
+        {
+            for (const v of versions)
+            {
+                const skills = path.join(home, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', v, 'stack', 'skills');
+                fs.mkdirSync(path.join(skills, 'project-agent-capabilities', 'scripts'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'project-agent-capabilities', 'scripts', 'capabilities-inventory.js'), '');
+                fs.mkdirSync(path.join(skills, 'project-solve-cross-task', 'references'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'project-solve-cross-task', 'references', 'contract-protocol.md'), '');
+            }
+            const newest = versions[versions.length - 1].replace(/\./g, '\\.');
+            const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
+            // The capabilities block with its last line - the run - swapped for a print.
+            const caps = bodySnippet('stack/skills/project-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/);
+            assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
+                new RegExp(`/${newest}/stack/skills/project-agent-capabilities/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
+            const rev = bodySnippet('stack/agents/integration-reviewer.md', /`(for d in [^`]*?cut -f2)`/);
+            assert.match(execFileSync('bash', ['-c', rev], { cwd: home, env, encoding: 'utf8' }).trim(),
+                new RegExp(`/${newest}$`), `reviewer: not the newest of ${versions}`);
+        }
+        finally { fs.rmSync(home, { recursive: true, force: true }); }
+    }
 });

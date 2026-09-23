@@ -66,6 +66,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
 const yaml = require('js-yaml');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -93,6 +94,8 @@ const NON_SKILL_TOKENS = new Set([
     'user-run',
     // the commit-gate hook, referenced by name from baseline-git.md and project-verify-code - a hook, not a skill.
     'guard-ungated-commit',
+    // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
+    'instrument-tool-usage',
     // npm flags, npmrc keys, and package names in the npm skill - tool identifiers, not skills.
     'ignore-scripts',
     'min-release-age',
@@ -799,7 +802,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 // A cite is matched backticked OR bare: every measured miss in the descriptions is bare
 // (`Companions: dotnet-testing (the test-suite host)`), and a description is where a name costs the
 // most - it is read by a model choosing between installed skills. A path or a longer identifier is
-// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__serena__find_symbol`).
+// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_serena_serena__find_symbol`).
 // A BARE match is taken only for a HYPHENATED name, though: single-word rosters entries (`mobile`,
 // `dotnet`, `npm`, `frontend`) are ordinary English, and the trial flagged 14 sentences that merely
 // used the word - 'the mobile stack', 'npm audit'. Those still count backticked, which is how the
@@ -1075,7 +1078,7 @@ function lintAgentTools(label, text)
 // read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
 // the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
 // included, so it has nothing to fix.
-const MEMORY_TOOLS = ['mcp__memory__memory_store', 'mcp__memory__memory_search', 'mcp__memory__memory_list'];
+const MEMORY_TOOLS = ['mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list'];
 
 function lintAgentMemoryTools(label, text)
 {
@@ -2136,7 +2139,7 @@ function main()
         try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
         catch { /* its own lint reports an unreadable migrations.json */ }
         const commandSrc = {};
-        for (const cmd of ['setup.md', 'configure.md', 'validate.md'])
+        for (const cmd of ['init.md', 'configure.md', 'validate.md'])
         {
             commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
         }
@@ -2313,6 +2316,28 @@ function main()
         flag(`the always-on surface measurement could not run: ${err.message}`);
     }
 
+    // 44 + 45. Plugin placement is computed; the generated entries and the cost table are current.
+    // 46. The repo root carries no name a shared-source marketplace entry auto-discovers (spike S9c).
+    // 47. The marketplace manifest passes `claude plugin validate --strict`.
+    for (const finding of lintPluginPlacement()) flag(finding);
+    for (const finding of lintRepoRootReserved()) flag(finding);
+    // 48. The hooks plugin entry matches the installer's own wiring table.
+    for (const finding of lintHooksEntry()) flag(finding);
+    // 49. The LIVE marketplace matches the generated entries - from Phase 3 the core is generated
+    // too, so a hand edit to any entry is drift, not a change.
+    for (const finding of lintMarketplaceEntries()) flag(finding);
+    // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
+    for (const finding of lintAgentPreloads()) flag(finding);
+    // 51. Both twins' CORE_DEP_PLUGINS mirror the core entry's cross-marketplace dependencies.
+    for (const finding of lintCoreDependencies()) flag(finding);
+    // 52. Nothing the marketplace ships depends on a plugin `bin/` entry (spike S4: Windows NOT RUN).
+    for (const finding of lintNoPluginBin()) flag(finding);
+    // 53. The MCP plugin entries match the generator, the installer catalog and the tree.
+    for (const finding of lintMcpEntries()) flag(finding);
+    // 54. No shipped file names an MCP tool by its BARE server spelling - it would never resolve.
+    for (const finding of lintMcpToolNames()) flag(finding);
+    for (const finding of lintMarketplaceSchema()) flag(finding);
+
     if (findings.length > 0)
     {
         for (const finding of findings)
@@ -2329,6 +2354,469 @@ function main()
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
         + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync; `
         + `always-on surface ~${Math.round(alwaysOnChars / 4000)}k tokens).`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 44 + 45. Placement is COMPUTED from meta/recommendations.json + meta/stack-graph.json, so the
+// generated entries and the committed cost table are both derivable - and a drift between what the
+// rule computes and what is committed is exactly the failure this pair exists to catch. The cost
+// gate is the migration's own yardstick: a split that makes a project's always-on surface bigger
+// than per-item selection already does is not worth shipping, whatever else it buys.
+function lintPluginPlacement(placeIn)
+{
+    const out = [];
+    let placeMod;
+    let buildMod;
+    try
+    {
+        placeMod = require('./plugin-placement.js');
+        buildMod = require('./build-marketplace.js');
+    }
+    catch (err)
+    {
+        return [`the plugin placement modules could not be loaded: ${err.message}`];
+    }
+
+    let place = placeIn;
+    if (!place)
+    {
+        try { place = placeMod.placement(); }
+        catch (err) { return [`plugin placement could not run: ${err.message}`]; }
+    }
+
+    for (const key of place.unnamed)
+        out.push(`the stacks ${key} share items with no plugin NAME - add one to GROUP_NAMES in scripts/plugin-placement.js rather than shipping a generated slug.`);
+
+    const seen = new Map();
+    const note = (key, where) =>
+    {
+        if (seen.has(key)) out.push(`${key} has two homes: ${seen.get(key)} and ${where} - placement puts every item in exactly one.`);
+        else seen.set(key, where);
+    };
+    for (const [name, plug] of Object.entries(place.plugins))
+    {
+        for (const s of plug.skills) note('skill:' + s, name);
+        for (const a of plug.agents) note('agent:' + a, name);
+    }
+    for (const s of place.extras.skills) note('skill:' + s, 'extras');
+    for (const a of place.extras.agents) note('agent:' + a, 'extras');
+    const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta/stack-graph.json'), 'utf8'));
+    for (const s of Object.keys(graph.skills)) if (!seen.has('skill:' + s)) out.push(`skill ${s} is in no plugin and no extras - placement must be total.`);
+    for (const a of Object.keys(graph.agents)) if (!seen.has('agent:' + a)) out.push(`agent ${a} is in no plugin and no extras - placement must be total.`);
+
+    for (const [name, plug] of Object.entries(place.plugins))
+        for (const dep of plug.dependencies)
+        {
+            if (!place.plugins[dep]) { out.push(`${name} depends on ${dep}, which is not a plugin.`); continue; }
+            if (!(place.rank[dep] < place.rank[name])) out.push(`${name} depends on ${dep}, a leaf or a peer - a dependency points at something MORE shared, never less.`);
+        }
+
+    try
+    {
+        const wanted = buildMod.serialize(buildMod.buildEntries({ placement: place }));
+        const have = fs.existsSync(buildMod.ENTRIES_FILE) ? fs.readFileSync(buildMod.ENTRIES_FILE, 'utf8') : null;
+        if (have !== wanted) out.push('meta/plugin-entries.json is STALE - run `npm run marketplace`; it is generated, never hand-edited.');
+    }
+    catch (err) { out.push(`the plugin entries could not be generated: ${err.message}`); }
+
+    try
+    {
+        const table = buildMod.costTable({ placement: place });
+        for (const row of table.rows)
+            if (row.delta > buildMod.GATE_PCT)
+                out.push(`${row.combo} costs +${row.delta}% over per-item selection, past the +${buildMod.GATE_PCT}% gate - adjust the placement rule, not the gate.`);
+        const costFile = path.join(ROOT, 'docs/plugin-placement-cost.md');
+        const wantedDoc = buildMod.costDocument(table, place);
+        const haveDoc = fs.existsSync(costFile) ? fs.readFileSync(costFile, 'utf8') : null;
+        if (haveDoc !== wantedDoc) out.push('docs/plugin-placement-cost.md is STALE - run `node scripts/build-marketplace.js --cost --out docs/plugin-placement-cost.md`.');
+    }
+    catch (err) { out.push(`the cost table could not be computed: ${err.message}`); }
+
+    return out;
+}
+
+// 46. Every marketplace entry that shares this repo as its `source` also gets whatever sits at the
+// ROOT under a component name, whatever that entry lists - measured in spike S9, assert (c): a root
+// `agents/` loaded once PER ENTRY, a root `.mcp.json` and `hooks/hooks.json` loaded once and were
+// attributed to a different entry each. An explicit path list does NOT suppress it. So these names
+// are reserved at the repo root. `.mcp.json` is the one exception: this repo is itself a consuming
+// project, so a machine-local one is expected - but it must stay UNTRACKED, or every install from a
+// local-path marketplace registers this repo's own servers into the consuming project.
+const RESERVED_ROOT_NAMES = ['skills', 'commands', 'agents', 'hooks', 'monitors', 'settings.json', '.lsp.json'];
+function lintRepoRootReserved(root)
+{
+    const base = root || ROOT;
+    const out = [];
+    for (const name of RESERVED_ROOT_NAMES)
+    {
+        const full = path.join(base, name);
+        if (!fs.existsSync(full)) continue;
+        if (name === 'hooks' && !fs.existsSync(path.join(full, 'hooks.json'))) continue;
+        out.push(`the repo root carries \`${name}\`, which every marketplace entry sharing \`source: "./"\` auto-discovers whatever the entry lists (spike S9c) - move it under stack/ or setup-plugin/.`);
+    }
+    const mcp = path.join(base, '.mcp.json');
+    if (fs.existsSync(mcp) && isTracked(base, '.mcp.json'))
+        out.push('the repo root carries a TRACKED `.mcp.json` - every marketplace entry sharing the root would register its servers into the consuming project (spike S9c). This repo\'s own .mcp.json stays machine-local and gitignored.');
+    return out;
+}
+
+function isTracked(base, rel)
+{
+    try
+    {
+        execFileSync('git', ['-C', base, 'ls-files', '--error-unmatch', rel], { stdio: 'ignore' });
+        return true;
+    }
+    catch { return false; }
+}
+
+// 51. A plugin the core entry hard-depends on is installed by Claude Code, not by the installer
+// loop - EXCEPT on the copy route, where no stack plugin is enabled and nothing would pull it. Both
+// twins carry that fallback list, so it has to be the same list the generated core entry declares:
+// a dependency added to the placement and not here would simply be absent for every copy-route
+// install, and a name left here after the entry dropped it would install a plugin nothing needs.
+function lintCoreDependencies(shFile, ps1File, entriesFile)
+{
+    const out = [];
+    const sh = fs.readFileSync(shFile || CLAUDE_SH, 'utf8');
+    const ps1 = fs.readFileSync(ps1File || CLAUDE_PS1, 'utf8');
+    const listOf = (text, re) =>
+    {
+        const m = text.match(re);
+        if (!m) return null;
+        return [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map(x => x[1].split('@')[0]).sort();
+    };
+    const shNames = listOf(sh, /^CORE_DEP_PLUGINS=\(([^)]*)\)/m);
+    const psNames = listOf(ps1, /^\$CoreDepPlugins = @\(([^)]*)\)/m);
+    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
+    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
+    if (!shNames || !psNames) return out;
+    if (shNames.join(',') !== psNames.join(','))
+        out.push(`CORE_DEP_PLUGINS differs across the twins: sh has [${shNames.join(', ')}], ps1 has [${psNames.join(', ')}].`);
+
+    let entries;
+    try { entries = JSON.parse(fs.readFileSync(entriesFile || path.join(ROOT, 'meta', 'plugin-entries.json'), 'utf8')); }
+    catch (err) { out.push(`meta/plugin-entries.json could not be read for the core-dependency check: ${err.message}`); return out; }
+    const declared = new Set();
+    for (const e of (entries && (entries.entries || entries.plugins)) || [])
+        for (const d of e.dependencies || [])
+        {
+            // A string dep is in-marketplace and never installed by us. An OBJECT dep naming this
+            // stack's OWN marketplace is in-marketplace too - from Phase 6 the core depends on the
+            // serena, context7 and memory plugins that way. CORE_DEP_PLUGINS exists for the copy
+            // route, where the CLI installs no dependencies for us, and on that route those three
+            // servers are registered directly rather than enabled as plugins - so listing them
+            // there would install a plugin the run has just decided not to use.
+            if (!d || typeof d !== 'object' || !d.name) continue;
+            if (d.marketplace === 'claude-stack') continue;
+            declared.add(d.name);
+        }
+    const want = [...declared].sort();
+    if (want.join(',') !== shNames.join(','))
+        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] but the generated entries declare [${want.join(', ')}] as cross-marketplace dependencies - update both twins.`);
+    return out;
+}
+
+// 52. Spike S4 proved a plugin `bin/` entry lands on PATH on macOS and recorded Windows as NOT RUN:
+// Windows has no shebang handling, and whether Claude Code shims a `bin/` entry there is unknown.
+// The plan's own condition is that until that check runs, no shipped code path may depend on one.
+// This enforces it, at the repo root (every shared-source entry auto-discovers it, spike S9c) and
+// in the two trees the entries ship from. Running the Windows check is what lifts this.
+function lintNoPluginBin(root)
+{
+    const base = root || ROOT;
+    const out = [];
+    for (const rel of ['bin', path.join('stack', 'bin'), path.join('setup-plugin', 'bin')])
+    {
+        if (!fs.existsSync(path.join(base, rel))) continue;
+        out.push(`\`${rel}\` exists - a plugin \`bin/\` entry is unproven on Windows (spike S4 NOT RUN), so nothing shipped may depend on one. Run the Windows check before adding it.`);
+    }
+    try
+    {
+        const mk = JSON.parse(fs.readFileSync(path.join(base, '.claude-plugin', 'marketplace.json'), 'utf8'));
+        for (const e of mk.plugins || [])
+            for (const key of ['commands', 'skills', 'agents', 'hooks', 'mcpServers'])
+                for (const v of [].concat(e[key] || []))
+                    if (typeof v === 'string' && /(^|\/)bin(\/|$)/.test(v))
+                        out.push(`marketplace entry '${e.name}' lists \`${v}\` under ${key}, which reaches a bin/ path - unproven on Windows (spike S4).`);
+    }
+    catch { /* the schema check owns an unreadable manifest */ }
+    return out;
+}
+
+// 53. The MCP plugin entries are GENERATED from meta/mcp-pins.json plus the shapes in
+// build-marketplace.js, and the installer's MCPS catalog still owns the NAMES. Three ways this can
+// rot, one check: the live marketplace drifting from the generator, a catalog server with no plugin
+// to carry it (it would silently stop being installable), and a plugin naming a launcher or helper
+// script that is not in the tree (the server would fail at start-up with no clue why).
+function lintMcpEntries()
+{
+    const out = [];
+    let build;
+    try { build = require('./build-marketplace.js'); }
+    catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
+
+    let wanted;
+    try { wanted = build.mcpPlugins(); }
+    catch (err) { return [`the MCP entries could not be generated: ${err.message}`]; }
+
+    let mkt;
+    try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
+    catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+
+    for (const entry of wanted)
+    {
+        const live = (mkt.plugins || []).find(p => p && p.name === entry.name);
+        if (!live)
+        {
+            out.push(`.claude-plugin/marketplace.json has no \`${entry.name}\` MCP entry - run \`node scripts/build-marketplace.js --mcp-entries\`.`);
+            continue;
+        }
+        if (JSON.stringify(live) !== JSON.stringify(entry))
+            out.push(`the \`${entry.name}\` MCP entry is STALE against the generator - run \`node scripts/build-marketplace.js --mcp-entries\`.`);
+    }
+
+    // ONE PLUGIN, ONE SERVER, SAME NAME. A plugin server's tools are addressed
+    // `mcp__plugin_<plugin>_<server>__<tool>`, so this invariant is what makes every shipped tool
+    // name `mcp__plugin_<n>_<n>__<tool>` for a single `<n>`. It is also what keeps a project from
+    // loading schemas it did not pick: all of a plugin's servers load together, so a second server
+    // in an entry is a second set of tool schemas in every session of every project that enabled it.
+    for (const entry of wanted)
+    {
+        const servers = Object.keys(entry.mcpServers || {});
+        if (servers.length !== 1 || servers[0] !== entry.name)
+            out.push(`the \`${entry.name}\` MCP entry declares [${servers.join(', ')}] - one plugin carries exactly ONE server, named like the plugin, or the tool names stop being mcp__plugin_<n>_<n>__<tool> and every session pays the extra schemas.`);
+    }
+
+    // Every catalog server has a plugin, and every plugin serves a catalog server. The catalog is
+    // the installer's MCPS block, which stays the one home for the NAMES even after the
+    // registrations move - 28 call sites read a name out of it.
+    const catalog = parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|');
+    const carried = new Set();
+    for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
+    // playwright expands into one plugin per engine and context7 into remote + local; both map back
+    // to their catalog name, the way every installed-name reader already maps `playwright-*`.
+    const family = name => name.replace(/^playwright-.*/, 'playwright').replace(/^context7-.*/, 'context7');
+    const families = new Set([...carried].map(family));
+    for (const name of catalog.active)
+        if (!families.has(name))
+            out.push(`MCP '${name}' is in the installer catalog but no plugin entry carries it - add a shape in build-marketplace.js.`);
+    for (const name of families)
+        if (!catalog.active.has(name) && !catalog.commented.has(name))
+            out.push(`the marketplace carries MCP '${name}', which is in neither the active nor the commented installer catalog.`);
+
+    // S14: an unset `${VAR}` with no default stays LITERAL in a plugin entry - it does not become
+    // empty. So a placeholder without a `:-` default only ships where the literal is the lesser
+    // evil, and each such case is named here rather than left to read as an oversight.
+    // SENTRY_SLUG is the one: `${SENTRY_SLUG:-}` would leave a trailing slash, which 404s every
+    // call, while the literal at least connects and names the missing variable in the CLI warning.
+    const LITERAL_OK = new Set(['SENTRY_SLUG', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR']);
+    for (const entry of wanted)
+        for (const [server, spec] of Object.entries(entry.mcpServers))
+        {
+            const text = JSON.stringify(spec);
+            for (const m of text.matchAll(/\$\{([A-Z_][A-Z0-9_]*)(:-[^}]*)?\}/g))
+            {
+                if (m[2] || LITERAL_OK.has(m[1])) continue;
+                out.push(`MCP server '${server}' expands \${${m[1]}} with no \`:-\` default - an unset variable stays LITERAL in a plugin entry (spike S14), so give it a default or add it to LITERAL_OK with the reason.`);
+            }
+        }
+
+    // A launcher or headers helper the entry names must exist, or the server dies at start-up with
+    // a message no user can act on.
+    for (const entry of wanted)
+        for (const [server, spec] of Object.entries(entry.mcpServers))
+        {
+            const words = [...(spec.args || []), spec.command || '', spec.headersHelper || ''];
+            for (const word of words)
+            {
+                const m = String(word).match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\s]+)/);
+                if (!m) continue;
+                if (!fs.existsSync(path.join(ROOT, m[1])))
+                    out.push(`MCP server '${server}' points at ${m[1]}, which is not in the tree.`);
+            }
+        }
+    return out;
+}
+
+// 54. Every MCP server the stack ships arrives through a PLUGIN, so its tools are addressed
+// `mcp__plugin_<plugin>_<server>__<tool>`. The bare `mcp__<server>__<tool>` spelling belonged to
+// the registration route and resolves to nothing now: a `tools:` allowlist written that way
+// silently drops the tool, and a `ToolSearch select:` line written that way silently finds none.
+// The names are read from the generated entries, never typed here - so this file cannot itself
+// contain the spelling it bans, and a new server is covered the day its entry lands.
+function lintMcpToolNames()
+{
+    const out = [];
+    let names;
+    try { names = require('./build-marketplace.js').mcpPlugins().map(e => e.name); }
+    catch (err) { return [`the MCP entries could not be generated, so the tool-name sweep did not run: ${err.message}`]; }
+    const bare = new RegExp(`mcp__(${names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})__`, 'g');
+    const roots = ['stack', 'setup-plugin', 'meta', 'scripts'];
+    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
+    const walk = (dir, hit) =>
+    {
+        let names2;
+        try { names2 = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return hit; }
+        for (const d of names2)
+        {
+            const full = path.join(dir, d.name);
+            if (skip.test(path.relative(ROOT, full))) continue;
+            if (d.isDirectory()) { walk(full, hit); continue; }
+            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
+            let body;
+            try { body = fs.readFileSync(full, 'utf8'); } catch { continue; }
+            const found = body.match(bare);
+            if (found) hit.push([path.relative(ROOT, full), found.length, found[0]]);
+        }
+        return hit;
+    };
+    const hits = [];
+    for (const r of roots) walk(path.join(ROOT, r), hits);
+    for (const [file, count, sample] of hits)
+        out.push(`${file} names an MCP tool by its bare server spelling (${count}x, e.g. \`${sample}\`) - a plugin server's tools are \`mcp__plugin_<plugin>_<server>__<tool>\`, so the bare form resolves to nothing.`);
+    return out;
+}
+
+// 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
+// the plugin route and the settings.json route cannot drift while both exist. A matcher edited in
+// one place and not the other is exactly the bug this catches: the copied hook would still gate a
+// tool the plugin hook no longer sees, or the reverse.
+function lintHooksEntry()
+{
+    const out = [];
+    let build;
+    try { build = require('./build-marketplace.js'); }
+    catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
+
+    let wanted;
+    try { wanted = build.hooksPlugin(); }
+    catch (err) { return [`the hooks entry could not be generated: ${err.message}`]; }
+
+    let mkt;
+    try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
+    catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+
+    const live = (mkt.plugins || []).find(p => p && p.name === wanted.name);
+    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`node scripts/build-marketplace.js --hooks-entry\`.`];
+    if (JSON.stringify(live) !== JSON.stringify(wanted))
+        out.push(`the \`${wanted.name}\` entry is STALE against the installer's HOOKS table - run \`node scripts/build-marketplace.js --hooks-entry\`.`);
+
+    // Every wired hook file exists, and every hook file that exists is either wired or an engine.
+    const ENGINES = new Set(['docs.js', 'memory.js', 'hook-prelude.js']);
+    const wired = new Set();
+    for (const blocks of Object.values(wanted.hooks))
+        for (const block of blocks)
+            for (const entry of block.hooks)
+            {
+                // The launcher shape is part of the contract: a bare script path needs the exec
+                // bit, which git carries into the plugin cache as committed, and never runs on Windows.
+                const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
+                if (!m)
+                {
+                    out.push(`the hooks entry runs \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
+                    continue;
+                }
+                const file = m[1];
+                wired.add(file);
+                if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
+                    out.push(`the hooks entry wires ${file}, which is not in stack/hooks/.`);
+            }
+    for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
+    {
+        if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;
+        out.push(`stack/hooks/${file} is wired by nothing - add it to the installer's HOOKS table or name it an engine.`);
+    }
+
+    // The two gates belong to every wired hook, and to no engine.
+    for (const file of wired)
+    {
+        const text = fs.readFileSync(path.join(ROOT, 'stack/hooks', file), 'utf8');
+        if (!text.includes('STACK HOOK GATES'))
+            out.push(`stack/hooks/${file} carries no stand-down gate - a plugin copy would fire beside a still-wired project copy.`);
+        else if (!text.includes(`standDown('${file.replace(/\.js$/, '')}')`))
+            out.push(`stack/hooks/${file} names another hook in standDown() - the gate must name itself.`);
+    }
+    return out;
+}
+
+// 50. A preload names a plugin skill, and a BARE name silently preloads a stale `.claude/skills/`
+// copy when one is present (spike S6) - the exact shape every migrating project has for a session.
+// The prefix is computed from the placement, so this only checks that the files agree with it.
+function lintAgentPreloads()
+{
+    let rows;
+    try { rows = require('./scope-agent-preloads.js').scopedFor(); }
+    catch (err) { return [`the agent preloads could not be checked: ${err.message}`]; }
+    const findings = [];
+    for (const r of rows)
+    {
+        if (r.problem) { findings.push(`agent preload: ${r.file} - ${r.problem}`); continue; }
+        if (r.block !== r.wanted)
+            findings.push(`agent preload: ${r.file} is not scoped to the placement - run \`npm run scope-preloads\``);
+    }
+    return findings;
+}
+
+// 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what each
+// one ships, so a hand-edited path list, description or dependency silently stops matching the cost
+// table that gates them. The hooks entry has its own check (48) and is left to it.
+function lintMarketplaceEntries()
+{
+    const findings = [];
+    let live;
+    let wanted;
+    let build;
+    try
+    {
+        build = require('./build-marketplace.js');
+        live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
+        wanted = build.buildEntries();
+    }
+    catch (err)
+    {
+        return [`the marketplace entries could not be checked: ${err.message}`];
+    }
+    const byName = new Map((live.plugins || []).map(p => [p.name, p]));
+    for (const entry of wanted)
+    {
+        const have = byName.get(entry.name);
+        if (!have) { findings.push(`marketplace.json is missing the generated entry ${entry.name} - run \`npm run marketplace\``); continue; }
+        if (JSON.stringify(have) !== JSON.stringify(entry))
+            findings.push(`marketplace.json entry ${entry.name} does not match the generated one - run \`npm run marketplace\`; it is generated, never hand-edited`);
+    }
+    const generated = new Set(wanted.map(e => e.name));
+    // Two entry families are generated by OTHER tables and have their own checks: the hooks entry
+    // (48, from the installer's HOOKS array) and the eight MCP plugins (53, from meta/mcp-pins.json
+    // plus the shapes in build-marketplace.js). Placement never produces either, so neither is drift.
+    const elsewhere = new Set(['claude-stack-hooks']);
+    try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
+    for (const p of live.plugins || [])
+        if (p && !elsewhere.has(p.name) && !generated.has(p.name))
+            findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
+    return findings;
+}
+
+// 47. The manifest the marketplace serves has to pass the CLI's own schema check. The CLI is not
+// present everywhere (a CI image, a fresh clone), and a missing tool is reported as NOT RUN rather
+// than laundered into a pass - the rule the stack applies to every other probe.
+function lintMarketplaceSchema()
+{
+    const out = [];
+    try { execFileSync('claude', ['--version'], { stdio: 'ignore' }); }
+    catch
+    {
+        console.log('lint-skills: the claude CLI is absent - `claude plugin validate --strict` NOT RUN.');
+        return out;
+    }
+    try { execFileSync('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (err)
+    {
+        const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');
+        out.push(`\`claude plugin validate --strict\` failed on .claude-plugin/marketplace.json: ${said}`);
+    }
+    return out;
 }
 
 // The environment catalog (meta/environment.json) is the ONE list the three guided commands read
@@ -2396,6 +2884,17 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
 }
 
 module.exports = {
+    lintPluginPlacement,
+    lintHooksEntry,
+    lintMcpEntries,
+    lintMcpToolNames,
+    lintCoreDependencies,
+    lintNoPluginBin,
+    lintMarketplaceEntries,
+    lintAgentPreloads,
+    lintRepoRootReserved,
+    lintMarketplaceSchema,
+    RESERVED_ROOT_NAMES,
     paths: { ROOT, SKILLS_DIR, CLAUDE_SH, CLAUDE_PS1, AGENTS_DIR, CLAUDE_RULES_DIR },
     parseManifest,
     parseStringArray,

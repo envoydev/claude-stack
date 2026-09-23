@@ -255,3 +255,117 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     assert.doesNotMatch(out, /quiet-one|did not fire/, 'an entry that did not fire costs nothing at all');
     assert.doesNotMatch(out, /xxxx/, 'and the maintainer comment never reaches the caller');
 });
+
+// T3: what a release ADDED, classified against THIS install - `new:` lines the update command asks
+// from, instead of an FYI the user exits past. The listing is read from a file here; the command
+// lets the script capture `claude plugin list --json` itself.
+const NEW_FIXTURE = { files: [
+    { status: 'added', filename: 'stack/skills/markdown-style/SKILL.md' },
+    { status: 'added', filename: 'stack/skills/dotnet-web-backend/SKILL.md' },
+    // a new FILE inside an existing skill is no new item
+    { status: 'added', filename: 'stack/skills/csharp/references/new-topic.md' },
+    { status: 'added', filename: 'stack/agents/code-style-analyzer.md' },
+    { status: 'renamed', filename: 'stack/rules/sql-conventions.md' },
+    // a name this release does not ship is no item at all
+    { status: 'added', filename: 'stack/hooks/hook-prelude.js' },
+    { status: 'added', filename: 'stack/hooks/docs-session.js' },
+] };
+
+test('new items: arrive on an enabled entry, are offered elsewhere, stay off where the user switched them off', () => {
+    const { snap, install, fixtureFile } = scaffold({
+        fixture: NEW_FIXTURE,
+        settings: { permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] }, env: { CLAUDE_STACK_HOOKS_OFF: '' } },
+    });
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([
+        { id: 'claude-stack@claude-stack', enabled: true }, { id: 'claude-stack-hooks@claude-stack', enabled: true },
+        { id: 'claude-stack-aspnet@claude-stack', enabled: false },
+    ]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    const rows = out.split('\n').filter((l) => l.startsWith('new: '));
+    assert.deepStrictEqual(rows.filter((r) => !r.startsWith('new: rule ')), [
+        'new: skill markdown-style\tarrives\tclaude-stack',
+        'new: skill dotnet-web-backend\toff\tclaude-stack-aspnet',
+        'new: agent code-style-analyzer\toff\tclaude-stack',
+        'new: hook docs-session\tarrives\tclaude-stack-hooks',
+    ]);
+    // a renamed line with no old copy on disk is a plain offer, carrying its old name; its closure
+    // enables entries, so the recommendation is leave and the entries are named
+    assert.match(rows.find((r) => r.startsWith('new: rule sql-conventions')), /^new: rule sql-conventions\toffer\t-\tleave\tenables=claude-stack-[a-z-]+(,claude-stack-[a-z-]+)*$/);
+});
+
+test('new items: none added prints `new: none`; an unreadable listing leaves skills and seats unknown, never offered', () => {
+    const quiet = scaffold({ fixture: { files: [{ status: 'modified', filename: 'stack/skills/csharp/SKILL.md' }] } });
+    const r1 = run(['--snapshot', quiet.snap, '--root', quiet.install, '--fixture', quiet.fixtureFile]);
+    assert.match(r1.out, /^new: none$/m);
+
+    const blind = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/skills/dotnet-web-backend/SKILL.md' }] } });
+    const bad = path.join(blind.install, 'listing.json');
+    fs.writeFileSync(bad, '{ not json');
+    const r2 = run(['--snapshot', blind.snap, '--root', blind.install, '--fixture', blind.fixtureFile, '--listing', bad]);
+    assert.match(r2.out, /^new: skill dotnet-web-backend\tunknown\tclaude-stack-aspnet$/m);
+});
+
+test('new items: a compare naming no shipped item never calls `claude plugin list`', () => {
+    const { snap, install, fixtureFile } = scaffold();   // adds stack/hooks/guard-new-thing.js, which no release ships
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-bin-'));
+    const calls = path.join(bin, 'calls.log');
+    fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\necho "$*" >> "${calls}"\nexit 1\n`, { mode: 0o755 });
+    try
+    {
+        const out = execFileSync('node', [SCRIPT, '--snapshot', snap, '--root', install, '--fixture', fixtureFile], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
+        assert.match(out, /^new: none$/m);
+        assert.ok(!fs.existsSync(calls), 'the CLI was called for nothing');
+    }
+    catch (e) { if (e.stdout === undefined) throw e; assert.fail(e.stdout); }
+    finally { fs.rmSync(bin, { recursive: true, force: true }); }
+});
+
+test('new items: a real rename line carries its old name, and an old copy on disk makes it renamed - carried, not offered', () => {
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files: [
+        { status: 'renamed', filename: 'stack/rules/sql-conventions.md', previous_filename: 'stack/rules/old-sql.md' },
+    ] } });
+    fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-sql.md'), '# old\n');
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }]));
+    const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.match(out, /^renamed\tstack\/rules\/sql-conventions\.md\t<- stack\/rules\/old-sql\.md$/m, 'the compare line shape this parser reads');
+    assert.match(out, /^new: rule sql-conventions\trenamed\t-\tfrom=old-sql\told-on-disk$/m);
+});
+
+test('new items: global mode reads the account dir itself - its settings.json, not <account>/.claude/', () => {
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/agents/code-style-analyzer.md' }] } });
+    const acct = path.join(install, '.claude-work');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] } }));
+    fs.copyFileSync(path.join(install, '.claude', 'claude-stack.stamp'), path.join(acct, 'claude-stack.stamp'));
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }]));
+    const { out } = run(['--snapshot', snap, '--root', acct, '--fixture', fixtureFile, '--listing', listing]);
+    assert.match(out, /^new: agent code-style-analyzer\toff\tclaude-stack$/m, out);
+});
+
+test('new items: an arriving rename still names its old copy for the prune; None holds only while the hooks entry is enabled', () => {
+    const { snap, install, fixtureFile } = scaffold({
+        stamp: 'sha: aaa111\nversion: 0.2.60\nshipped-hooks: guard-read-whole-file\n',
+        settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'guard-read-whole-file' } },
+        fixture: { files: [
+            { status: 'renamed', filename: 'stack/rules/baseline-memory.md', previous_filename: 'stack/rules/old-memory.md' },
+            { status: 'added', filename: 'stack/hooks/docs-session.js' },
+        ] },
+    });
+    fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
+    fs.writeFileSync(path.join(snap, 'meta', 'recommendations.json'), JSON.stringify({ always: { rules: ['baseline-memory'] } }));
+    fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-memory.md'), '# old\n');
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }, { id: 'claude-stack-hooks@claude-stack', enabled: true }]));
+    const on = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
+    assert.match(on, /^new: rule baseline-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
+    assert.match(on, /^new: hook docs-session\toff\tclaude-stack-hooks$/m, 'None held');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }, { id: 'claude-stack-hooks@claude-stack', enabled: false }]));
+    const parked = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
+    assert.match(parked, /^new: hook docs-session\tarrives\tclaude-stack-hooks$/m, 'the installer enables the hooks entry and writes no hook none there - the hook arrives');
+});
