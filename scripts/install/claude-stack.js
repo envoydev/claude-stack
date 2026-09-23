@@ -179,7 +179,14 @@ function main(argv, env, io)
             // update's closure undoes is no drop at all.
             const withDrops = selection.dropLines(withAdds, drops, log);
             const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log: say });
-            const closed = close(withDrops, [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l)), log);
+            const from = [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l));
+            let closed = close(withDrops, from, log);
+            // A layer the closure brought in (a skill requiring context7 in an install that carried
+            // no server) is carried now, so the locked set joins it in THIS run - adopted only by the
+            // next update, one update was not the fixed point.
+            const adopted = selection.adoptAlways({ lines: closed, always, log });
+            if (adopted.length > closed.length)
+                closed = close(adopted, [...from, ...adopted.filter((l) => !closed.includes(l))], log);
             args.dropApplied = drops.filter((l) => !closed.includes(l));
             for (const l of drops.filter((d) => closed.includes(d)))
                 log(`installed-only: --drop ${l} not applied - something kept requires it (named in the required line above)`);
