@@ -1012,6 +1012,8 @@ $Hooks = @(
   'memory-session.js::@SessionStart::'            # push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired
   'monitor-session.js::@PostToolUse::'           # a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when CLAUDE_STACK_MONITOR=inject
   'monitor-session.js::@UserPromptSubmit::'      # a new turn: the monitor's per-turn counts reset
+  'check-turn-build.js::@PostToolUse:Write|Edit|MultiEdit::'   # seeded OFF (CLAUDE_STACK_TURN_CHECK=0): records each written path for the turn's one build check
+  'check-turn-build.js::@Stop::'              # the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception (this twin writes 10 - a longer check is killed, fail-open)
   'instrument-tool-usage.js::.*::'                # wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded '0' in settings env - flip it for a measured run; see README)
 )
 # The manifest as SHIPPED, taken before any selection filter narrows $Hooks. The stamp records these
@@ -2991,6 +2993,13 @@ function Set-HookSettings {
     $data.env | Add-Member -NotePropertyName CLAUDE_STACK_MONITOR -NotePropertyValue 'log'
     $changed = $true
     Log '  settings.json env: CLAUDE_STACK_MONITOR seeded (log)'
+  }
+  # turn build check: seeded OFF - it turns on per project only after a measured week of 'green' claims
+  # with no check behind them.
+  if (-not $data.env.PSObject.Properties['CLAUDE_STACK_TURN_CHECK']) {
+    $data.env | Add-Member -NotePropertyName CLAUDE_STACK_TURN_CHECK -NotePropertyValue '0'
+    $changed = $true
+    Log '  settings.json env: CLAUDE_STACK_TURN_CHECK seeded (0)'
   }
   # fresh-session gate, ALL THREE of its knobs - seeded so they are visible and tunable in one place.
   # They replace CLAUDE_STACK_FRESH_SESSION_PCT, a percentage that was inert at its default on both

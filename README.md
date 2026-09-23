@@ -32,7 +32,7 @@ The stack is built for this house's verticals:
 | **Skills** | 80 | house conventions + workflow skills, carried by the project's own plugin closure; only the extras land in `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents, carried by the same plugin closure; only the extras land in `.claude/agents/` |
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 15 | deterministic guards (a weakened check config among them), a log-only session monitor, the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), shipped as the `claude-stack-hooks` plugin; only the two engines and the model-window table land in `.claude/hooks/` |
+| **Hooks** | 16 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), shipped as the `claude-stack-hooks` plugin; only the two engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 8 | one plugin each, named for the server (12 entries: playwright expands per browser, context7 per transport); the project's closure enables its own |
 | **Plugins** | 5 + the stack's own | five third-party picks via the `claude` CLI, plus `superpowers` as a hard dependency of the core entry, `claude-stack-hooks`, and the entries this project's skills and agents live in |
 
@@ -46,7 +46,7 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the two engines and the model-window table only - the fifteen wired hooks come from the `claude-stack-hooks` plugin; skills and agents: the extras only - the rest come from the per-stack plugins), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `claude-stack.stamp`; `<repo>/.mcp.json` only on the `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the two engines and the model-window table only - the sixteen wired hooks come from the `claude-stack-hooks` plugin; skills and agents: the extras only - the rest come from the per-stack plugins), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `claude-stack.stamp`; `<repo>/.mcp.json` only on the `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
 | **Starts** | one `claude plugin install` call per plugin (the five third-party picks, the stack's own `claude-stack-hooks`, and the entries carrying this project's skills and agents - `superpowers` needs no call of its own, the core entry depends on it), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to eight), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, one skill, two references and one hook (`guard-layer-table.js`, the table-before-question gate), with no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
@@ -60,7 +60,7 @@ the run did not install.
 An organisation enforcing `strictKnownMarketplaces` needs three `extraKnownMarketplaces` rows -
 `claude-stack` and `claude-hud` - since only `claude-plugins-official` is known by
 default, plus the seven `enabledPlugins` keys (the six above and `claude-stack` itself). And
-`allowManagedHooksOnly` silently disables all fifteen house hooks: the plugin still installs and
+`allowManagedHooksOnly` silently disables all sixteen house hooks: the plugin still installs and
 enables, but no guard ever fires, so the stack's deterministic gates are gone with nothing reporting
 it. `CLAUDE_STACK_HOOKS_OFF` is the supported way to switch individual hooks off. Decide that one before rolling the stack out under a managed
 policy.

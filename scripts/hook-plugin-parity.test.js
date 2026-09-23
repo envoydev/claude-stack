@@ -13,7 +13,7 @@ const WIRED = [
     'guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'guard-secret-value',
     'guard-unapproved-dispatch', 'guard-ungated-commit', 'guard-stop-contract', 'guard-fresh-session-start',
     'guard-cross-project-write', 'guard-config-protection', 'guard-answer-length', 'docs-session', 'memory-session',
-    'monitor-session', 'instrument-tool-usage',
+    'monitor-session', 'check-turn-build', 'instrument-tool-usage',
 ];
 
 // A payload every hook parses without acting: a benign Bash read in the project root.

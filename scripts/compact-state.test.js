@@ -58,6 +58,7 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     p.stamp('APPROVAL', 30);
     p.stamp('COMMIT-GATE', 2);
     p.stamp('monitor-sess.json', 1);   // the monitor's state is no stamp
+    p.stamp('turn-edits-sess', 1);     // nor is the turn check's edit list
     p.wrote('main.session', ['scripts/a.js', 'stack/hooks/b.js']);
     p.wrote('agent-x', ['stack/hooks/b.js', 'docs/c.md']);
     const tp = p.transcript([
@@ -75,6 +76,7 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     assert.match(text, /^ {2}APPROVAL - 30 min old$/m);
     assert.match(text, /^ {2}COMMIT-GATE - 2 min old$/m);
     assert.doesNotMatch(text, /monitor-sess/);
+    assert.doesNotMatch(text, /turn-edits-/);
     assert.match(text, /^files written this session \(3\):$/m);
     for (const f of ['scripts/a.js', 'stack/hooks/b.js', 'docs/c.md']) assert.match(text, new RegExp(`^ {2}${f.replace(/\./g, '\\.')}$`, 'm'));
 });

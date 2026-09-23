@@ -66,7 +66,7 @@ test('sh: hook lines filter hooks; a selection without them keeps the install-al
     assert.deepStrictEqual(planLine(filtered, 'hooks'), ['guard-catastrophic-rm'], 'only the selected hook survives');
     const legacy = runShPlan(['skill csharp']);
     assert.deepStrictEqual(planLine(legacy, 'hooks'),
-        ['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'guard-secret-value', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'guard-stop-contract', 'guard-fresh-session-start', 'guard-config-protection', 'guard-cross-project-write', 'guard-answer-length', 'docs-session', 'memory-session', 'monitor-session', 'instrument-tool-usage'],
+        ['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'guard-secret-value', 'guard-unapproved-dispatch', 'guard-ungated-commit', 'guard-stop-contract', 'guard-fresh-session-start', 'guard-config-protection', 'guard-cross-project-write', 'guard-answer-length', 'docs-session', 'memory-session', 'monitor-session', 'check-turn-build', 'instrument-tool-usage'],
         'a pre-hooks-layer selection still installs every hook');
 });
 

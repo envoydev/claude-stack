@@ -26,6 +26,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, costOf, costToday, CORE } = require('./plugin-placement.js');
+const { timeoutFor } = require('./install/settings.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -222,7 +223,7 @@ function hooksBlock(wirings)
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
         }
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: 10 });
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file) });
     }
     return block;
 }
@@ -232,7 +233,7 @@ function hooksPlugin(options = {})
     return {
         name: 'claude-stack-hooks',
         source: './',
-        description: 'The fifteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs and memory session engines.',
+        description: 'The sixteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs and memory session engines.',
         version: options.version || marketplaceVersion(options),
         author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
         strict: false,

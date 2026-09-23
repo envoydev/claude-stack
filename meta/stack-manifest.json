@@ -828,6 +828,18 @@
       "note": "a new turn: the monitor's per-turn counts reset"
     },
     {
+      "file": "check-turn-build.js",
+      "matcher": "@PostToolUse:Write|Edit|MultiEdit",
+      "event": "",
+      "note": "seeded OFF (CLAUDE_STACK_TURN_CHECK=0): records each written path for the turn's one build check"
+    },
+    {
+      "file": "check-turn-build.js",
+      "matcher": "@Stop",
+      "event": "",
+      "note": "the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception (this twin writes 10 - a longer check is killed, fail-open)"
+    },
+    {
       "file": "instrument-tool-usage.js",
       "matcher": ".*",
       "event": "",

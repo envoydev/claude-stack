@@ -151,7 +151,8 @@ function flowStamps() {
   try {
     const dir = nodePath.dirname(COMPACT_STATE());
     return fs.readdirSync(dir)
-      .filter((f) => f !== 'COMPACT-STATE' && !/^monitor-.*\.json$/.test(f))
+      // the monitor's state and the turn check's edit list are working state, not stamps
+      .filter((f) => f !== 'COMPACT-STATE' && !/^monitor-.*\.json$/.test(f) && !/^turn-edits-/.test(f))
       .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
       .sort((a, b) => a.f.localeCompare(b.f));
   } catch { return []; }

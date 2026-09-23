@@ -1126,6 +1126,7 @@
       "superpowers"
     ],
     "hooks": [
+      "check-turn-build",
       "docs-session",
       "guard-answer-length",
       "guard-catastrophic-rm",

@@ -38,13 +38,14 @@ change (see the invariants below).
   all three read their six lists from. `docs/claude-stack.html` is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - fifteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
+- `stack/hooks/` - sixteen hooks, shipped as the `claude-stack-hooks` plugin entry: the installers
   register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
   two engines (`docs.js`, `memory.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
   22 bodies shared with cursor-stack run `node .claude/hooks/docs.js`. The entry is GENERATED from the
   installer's own `HOOKS_CATALOG` (`build-marketplace.js --hooks-entry`, lint check 48), so one table
   owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
-  600s default) and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
+  600s default) - `check-turn-build.js` carries 60, the one declared exception, from the same
+  `HOOK_TIMEOUTS` table the seed writes (`install/settings.js`; the frozen twins write 10) - and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
   bit, which git carries into the cache as committed, and never runs on Windows).
   `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
   the walk's hooks layer now writes the rows it did NOT pick into `CLAUDE_STACK_HOOKS_OFF` instead of
@@ -138,6 +139,12 @@ change (see the invariants below).
     written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per
     session). Each note is one `mode: monitor` row in the hook-blocks ledger; `CLAUDE_STACK_MONITOR` is seeded
     `log` (rows only, the observation week), `inject` hands the note back as `additionalContext`, `0` is off.
+  - `check-turn-build.js` (`PostToolUse` on `Write|Edit|MultiEdit` + `Stop`) - seeded OFF
+    (`CLAUDE_STACK_TURN_CHECK=0`; `1` turns it on per project after a measured week). The PostToolUse half
+    lists the turn's written paths in `<docs-path>/flow/turn-edits-<session>`; at `Stop` it runs ONE scoped
+    check per nearest root - the project's own `tsc --noEmit -p` for TypeScript, `dotnet build --no-restore
+    -v q` for C# - and hands the first 20 error lines back as a block, once per turn (the continuation Stop
+    passes). A missing compiler or a timeout is a pass.
   - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash in
     prose at any length. After the third consecutive short correction following a long answer it injects
@@ -275,7 +282,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
-| Hooks | `claude-stack-hooks@claude-stack` plugin (all fifteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
+| Hooks | `claude-stack-hooks@claude-stack` plugin (all sixteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
 | Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release, the twin - takes what the enabled entries carry as its picks); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |

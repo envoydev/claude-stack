@@ -92,6 +92,19 @@
       }
     },
     {
+      "key": "CLAUDE_STACK_TURN_CHECK",
+      "default": "0",
+      "ask": false,
+      "what": "check-turn-build.js: at Stop, ONE scoped build check per root for the source files the turn wrote - `tsc --noEmit -p` (the project's own tsc) for TypeScript, `dotnet build --no-restore -v q` for C# - the first 20 error lines handed back as a block, once per turn. `0` (the seed) is off; `1` turns it on, per project, after a measured week.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
       "key": "CLAUDE_STACK_FRESH_SESSION_1M",
       "default": "400000",
       "ask": true,
