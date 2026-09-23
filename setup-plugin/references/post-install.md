@@ -102,13 +102,16 @@ Run it once from the project root (the first run also downloads the language ser
 C# Roslyn, which needs .NET 10+; serena installs the runtime itself if it is missing):
 
 ```bash
-SERENA_HOME=.serena/home uvx --from serena-agent serena project index
+SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent serena project index
 ```
+
+`--python 3.13` is the interpreter every compiled dependency has a wheel for - uvx would otherwise
+take the newest, and 3.14 has no pyyaml wheel. (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - serena hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`).
 
 Or paste this prompt and let the session do it:
 
 ```text
-Index this project for serena (SERENA_HOME=.serena/home, `serena project index`), then verify with
+Index this project for serena (SERENA_HOME=.serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), then verify with
 find_symbol and find_referencing_symbols on a symbol you pick from the code. If the run reports
 failed files, look at .serena/project.yml - its language_servers and ignored_paths - and tell me
 what you changed.
@@ -154,7 +157,7 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for serena (SERENA_HOME=.serena/home, `serena project index`), and check
+language server, re-index for serena (SERENA_HOME=.serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), and check
 whether the Serena memories still describe this branch accurately.
 ```
 

@@ -25,7 +25,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { runUvx } = require('./uv-python.js');
 
 function envFrom(file)
 {
@@ -75,19 +75,13 @@ function main(argv)
     // not a start-up failure the user has to decode from a python traceback.
     try { fs.mkdirSync(path.dirname(db), { recursive: true }); } catch { /* read-only home: let the service say so */ }
     process.stderr.write(`memory-launch: ${spec}, db ${db}\n`);
-    const child = spawn('uvx', ['--with', 'numpy', '--from', spec, 'memory', 'server'], {
-        stdio: 'inherit',
-        cwd: projectDir,
-        // numpy is injected because the sqlite_vec backend needs it but does not declare it, so
-        // uvx's isolated env omits it and the server dies with "No module named 'numpy'".
+    // runUvx puts the pinned Python in front (uv-python.js). numpy is injected because the sqlite_vec
+    // backend needs it but does not declare it, so uvx's isolated env omits it and the server dies
+    // with "No module named 'numpy'".
+    runUvx(['--with', 'numpy', '--from', spec, 'memory', 'server'], {
+        cwd: projectDir, projectDir, label: 'memory-launch',
         env: { ...process.env, MCP_MEMORY_SQLITE_PATH: db },
     });
-    child.on('error', err =>
-    {
-        process.stderr.write(`memory-launch: could not start uvx - ${err.message}\n`);
-        process.exit(1);
-    });
-    child.on('exit', (code, signal) => process.exit(signal ? 1 : (code ?? 0)));
     return null;   // the process lives as long as the child does
 }
 

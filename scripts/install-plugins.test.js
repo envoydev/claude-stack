@@ -6,6 +6,10 @@
 // keep proving the shell route, which still ships for one release (R1).
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
 
 const P = require('./install/plugins.js');
 
@@ -64,6 +68,10 @@ test('plugin-list: a marketplace filter runs BEFORE the per-name pick - a same-n
     ] });
     assert.deepStrictEqual(P.parsePluginList(json, '/repo', { marketplace: 'claude-stack' }).map((r) => r.version), ['1']);
     assert.deepStrictEqual(P.parsePluginList(json, '/repo').map((r) => r.marketplace), ['claude-plugins-official']);
+    // byMarketplace: one row per name@marketplace, so a pass over specs from BOTH reads each its own
+    const both = P.parsePluginList(json, '/repo', { byMarketplace: true });
+    assert.deepStrictEqual(both.map((r) => `${r.name}@${r.marketplace} ${r.version}`), ['serena@claude-plugins-official 9', 'serena@claude-stack 1']);
+    assert.strictEqual(P.fieldOf(both, 'serena@claude-stack', 'version'), '1');
 });
 
 test('plugin-list: a missing `enabled` is enabled, and garbage is an EMPTY listing, never a crash', () =>
@@ -202,6 +210,103 @@ test('update: a stuck upgrade - the core on, its companions absent - installs ea
     assert.deepStrictEqual(run.matching(/^plugin install /).map((c) => c.split(' ')[2]), [...LOCKED_SPECS, ...CORE_DEPS]);
 });
 
+// --- latest ---------------------------------------------------------------
+// `plugin install name@mp` refreshes its own marketplace, but an ALREADY-installed plugin is never
+// moved by `install`, and `plugin update` reads the local catalog as it stands - so a run that does
+// not refresh first calls a stale catalog 'latest' (code.claude.com/docs/en/discover-plugins,
+// 'Install plugins'; third-party marketplaces have auto-update OFF by default).
+
+test('install: every marketplace the run installs from is refreshed once, before its first install', () =>
+{
+    const run = cli();
+    P.installPlugins({ plugins: ['a@m', 'b@m', 'claude-stack@claude-stack', 'superpowers@claude-plugins-official'], scope: 'project', cli: run });
+    const firstInstall = run.calls.findIndex((c) => /^plugin install /.test(c));
+    for (const mp of ['m', 'claude-stack', 'claude-plugins-official'])
+    {
+        const at = run.calls.indexOf(`plugin marketplace update ${mp}`);
+        assert.ok(at >= 0 && at < firstInstall, `${mp} not refreshed before the installs: ${run.calls.join(' | ')}`);
+        assert.strictEqual(run.matching(new RegExp(`^plugin marketplace update ${mp}$`)).length, 1, `${mp} refreshed more than once`);
+    }
+});
+
+test('install: a plugin ALREADY installed is updated at its own scope; a fresh one is not', () =>
+{
+    const run = cli();
+    const before = [{ name: 'old', version: '1.0.0', scope: 'user', enabled: true }];
+    P.installPlugins({ plugins: ['old@m', 'new@m'], scope: 'project', before, cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin update /), ['plugin update old@m --scope user -y']);
+    const inst = run.calls.indexOf('plugin install old@m --scope project -y');
+    assert.ok(inst >= 0 && inst < run.calls.indexOf('plugin update old@m --scope user -y'), run.calls.join(' | '));
+});
+
+test('install: an official plugin of the same NAME is not the stack\'s - it neither triggers nor scopes the update', () =>
+{
+    // The official marketplace ships `serena`, `sentry` and `playwright`; a name-only read took
+    // their row for ours, and an update at THEIR scope is a silent no-op on ours.
+    const official = { name: 'serena', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true };
+    const fresh = cli();
+    P.installPlugins({ plugins: ['serena@claude-stack'], scope: 'project', before: [official], cli: fresh });
+    assert.deepStrictEqual(fresh.matching(/^plugin update /), [], 'the stack serena was not installed before - nothing to update');
+    const both = cli();
+    const ours = { name: 'serena', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true };
+    P.installPlugins({ plugins: ['serena@claude-stack'], scope: 'user', before: [official, ours], cli: both });
+    assert.deepStrictEqual(both.matching(/^plugin update /), ['plugin update serena@claude-stack --scope project -y']);
+});
+
+test('install: a marketplace this run already refreshed is not refreshed again', () =>
+{
+    const run = cli();
+    P.installPlugins({ plugins: ['claude-stack@claude-stack', 'a@m'], scope: 'project', cli: run, refreshed: new Set(['claude-stack']) });
+    assert.deepStrictEqual(run.matching(/^plugin marketplace update (claude-stack|m)$/), ['plugin marketplace update m']);
+});
+
+test('update: every marketplace the specs name is refreshed before the first update', () =>
+{
+    const run = cli();
+    const before = [{ name: 'live', version: '1.0.0', scope: 'project', enabled: true }];
+    P.updatePlugins({ plugins: ['live@m', 'claude-stack@claude-stack'], scope: 'project', before, after: before, cli: run });
+    const firstUpdate = run.calls.findIndex((c) => /^plugin (install|update) /.test(c));
+    for (const mp of ['m', 'claude-stack'])
+    {
+        const at = run.calls.indexOf(`plugin marketplace update ${mp}`);
+        assert.ok(at >= 0 && at < firstUpdate, `${mp}: ${run.calls.join(' | ')}`);
+    }
+});
+
+test('source: EVERY installed stack entry is updated at its own scope before the snapshot is read', () =>
+{
+    // Not the core alone: the entry Claude Code launches is read from the refreshed catalog, so an
+    // entry left on the older version can name a file that version's cache does not carry (the serena
+    // launcher over a 1.1.0 cache) - and a run that stops at a question never reaches its apply step.
+    const run = cli();
+    const refreshed = new Set();
+    P.refreshStackSource({
+        listing: [
+            { name: 'claude-stack', marketplace: 'claude-stack', version: '1.0.0', scope: 'user', enabled: true },
+            { name: 'serena', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true },
+            { name: 'serena', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
+            { name: 'claude-stack-hooks', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: false },
+        ],
+        cli: run, refreshed,
+    });
+    assert.deepStrictEqual(run.calls, [
+        'plugin marketplace add envoydev/claude-stack',
+        'plugin marketplace update claude-stack',
+        'plugin update claude-stack@claude-stack --scope user -y',
+        'plugin update serena@claude-stack --scope project -y',
+        'plugin update claude-stack-hooks@claude-stack --scope project -y',
+    ]);
+    assert.ok(refreshed.has('claude-stack'), 'the later passes must not refresh it again');
+});
+
+test('source: with no core installed there is nothing to update - the refresh alone runs', () =>
+{
+    const run = cli();
+    P.refreshStackSource({ listing: [], cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin update /), []);
+    assert.ok(run.calls.includes('plugin marketplace update claude-stack'), run.calls.join(' | '));
+});
+
 // --- retired --------------------------------------------------------------
 
 test('retired: a retired plugin is uninstalled at ITS OWN scope, and an absent one is nothing to do', () =>
@@ -227,7 +332,7 @@ test('update: an ABSENT plugin is installed and a PARKED one enabled, both befor
         { name: 'live', version: '1.0.0', scope: 'project', enabled: true },
     ];
     P.updatePlugins({ plugins: ['absent@m', 'parked@m', 'live@m'], scope: 'project', before, after: before, cli: run });
-    assert.deepStrictEqual(run.calls, [
+    assert.deepStrictEqual(run.matching(/^plugin (install|enable|update) /), [
         'plugin install absent@m --scope project -y',
         'plugin update absent@m --scope project -y',
         'plugin enable parked@m --scope project',
@@ -292,6 +397,61 @@ test('seed install: claude-hud\'s marketplace is registered before claude-hud is
     const inst = calls.findIndex((c) => /^plugin install claude-hud@claude-hud /.test(c));
     assert.ok(inst >= 0, `claude-hud was never installed:\n${calls.join('\n')}`);
     assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
+});
+
+test('seed install: with no --source, the core is updated FIRST and the run installs from the newer cache', POSIX_ONLY, () =>
+{
+    // The stub's `plugin update claude-stack@claude-stack` lands 9.9.9 beside the stale 0.0.1, exactly
+    // what the real CLI does to the cache; a seed that resolved its snapshot first would use 0.0.1.
+    // A cache entry is a real directory (the resolver skips a symlinked one); its children link to
+    // this tree, so the run installs from the working copy without copying it.
+    const entry = (work, ver) => path.join(work, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', ver);
+    const listing = JSON.stringify([{ id: 'claude-stack@claude-stack', version: '0.0.1', scope: 'user', enabled: true }]);
+    const { calls, out } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        source: null,
+        plugins: listing,
+        // A regression must fail here, never fall back to cloning the real repository.
+        env: { CLAUDE_STACK_REPO_URL: 'file:///nonexistent/claude-stack' },
+        prepare: (repo, work) =>
+        {
+            fs.mkdirSync(entry(work, '0.0.1'), { recursive: true });
+            for (const name of ['stack', 'meta', 'scripts', 'setup-plugin', '.claude-plugin'])
+                fs.symlinkSync(path.join(ROOT, name), path.join(entry(work, '0.0.1'), name));
+        },
+        tools: {
+            claude: [
+                'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+                'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi',
+                // Once only: a second `ln -s` onto an existing link would plant the link INSIDE this tree.
+                'if [ "$1 $2 $3" = "plugin update claude-stack@claude-stack" ] && [ ! -d "$CLAUDE_CONFIG_DIR/plugins/cache/claude-stack/claude-stack/9.9.9" ]; then',
+                '  new="$CLAUDE_CONFIG_DIR/plugins/cache/claude-stack/claude-stack/9.9.9"; mkdir -p "$new"',
+                `  for n in stack meta scripts setup-plugin .claude-plugin; do ln -s ${JSON.stringify(ROOT)}/$n "$new/$n"; done`,
+                'fi',
+                'exit 0',
+            ].join('\n'),
+        },
+    });
+    const update = calls.indexOf('plugin update claude-stack@claude-stack --scope user -y');
+    assert.ok(update >= 0, `the core was never updated:\n${calls.join('\n')}`);
+    assert.match(out, /source: plugin cache \S*9\.9\.9/, 'the run read the stale cache entry, not the one the update landed');
+});
+
+test('seed plan: --print-plan with no --source changes no plugin - it reads the cache as it stands', POSIX_ONLY, () =>
+{
+    const entry = (work) => path.join(work, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', '0.0.1');
+    const { calls } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        source: null,
+        args: ['--print-plan'],
+        plugins: JSON.stringify([{ id: 'claude-stack@claude-stack', version: '0.0.1', scope: 'user', enabled: true }]),
+        env: { CLAUDE_STACK_REPO_URL: 'file:///nonexistent/claude-stack' },
+        prepare: (repo, work) =>
+        {
+            fs.mkdirSync(entry(work), { recursive: true });
+            for (const name of ['stack', 'meta', 'scripts', 'setup-plugin', '.claude-plugin'])
+                fs.symlinkSync(path.join(ROOT, name), path.join(entry(work), name));
+        },
+    });
+    assert.deepStrictEqual(calls.filter((c) => /^plugin (update|install|enable|marketplace (add|update)) /.test(c)), [], calls.join('\n'));
 });
 
 test('seed install: a run that installs no claude-hud registers no marketplace for it', POSIX_ONLY, () =>

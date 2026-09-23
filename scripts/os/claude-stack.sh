@@ -624,6 +624,9 @@ CORE_DEP_PLUGINS=("superpowers@claude-plugins-official")
 # (3) MCP servers as "name|args"; scope follows SCOPE.
 #     @SERENA_CONTEXT@   -> resolved at install time to claude-code.
 #     @MEMORY_DB_PATH@   -> resolved at install time to the memory db the --memory-level resolution picked.
+#     @UV_PYTHON@        -> resolved at install time to stack/mcp/uv-python.js's answer (3.13; the x64 3.13
+#                           on Windows on ARM; CLAUDE_STACK_UV_PYTHON overrides).
+#     @SERENA_HOME@      -> resolved at install time to .serena/home, or '.serena\home' under Git Bash.
 #     \${CLAUDE_PROJECT_DIR:-.} stays LITERAL so Claude Code interpolates it at server launch.
 #
 # PERFORMANCE - network resolution is the cost of a slow new-session start, so it happens HERE
@@ -774,7 +777,7 @@ fi
 # it (and the python-level connect timeout with it) - always added since 5000 < 15000. Both survive
 # unquoted: read -ra below (and the verify step's own word-splitter) split on whitespace only, never
 # glob-expand an array element, so '[sqlite]' and the two '=' in 'busy_timeout=15000' need no quoting.
-MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --with numpy --from mcp-memory-service[sqlite]${MEMORY_PIN} memory server"
+MEMORY_ENTRY="memory|-e MCP_MEMORY_STORAGE_BACKEND=$MEMORY_BACKEND -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --python @UV_PYTHON@ --with numpy --from mcp-memory-service[sqlite]${MEMORY_PIN} memory server"
 
 # context7 runs REMOTE (the hosted server) by DEFAULT - no local process, and the key stays out of
 # the registration: put CONTEXT7_API_KEY in the ACCOUNT settings.json "env" (<account>/settings.json -
@@ -869,7 +872,7 @@ CONTEXT7_ENTRY="context7|$CONTEXT7_SPEC"
 
 MCPS=(
   "angular-cli|-- npx -y @angular/cli mcp" # angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng).
-  "serena|-e SERENA_HOME=.serena/home -- uvx --from serena-agent${SERENA_PIN} serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd" # LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off
+  "serena|-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent${SERENA_PIN} serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd" # LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off
   "playwright|-- npx -y @playwright/mcp${PW_PIN} --user-data-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir \${CLAUDE_PROJECT_DIR:-.}/.playwright/output" # drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser
   "chrome-devtools|-- npx -y chrome-devtools-mcp${CD_PIN}" # OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads
   "appium-mcp|-- npx -y appium-mcp${AP_PIN}" # OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects
@@ -1702,9 +1705,19 @@ _mcp_argv() {  # $1 = manifest args -> spec_words: the argv for `claude mcp add`
   # literally, never expanded - which is also why MEMORY_DB_PATH travels as a placeholder token here
   # rather than pre-substituted into the manifest string before this split.
   local i
+  # @UV_PYTHON@: the snapshot's own answer (stack/mcp/uv-python.js), asked once - the one exception
+  # to the frozen twin, so a copy-route serena/memory never lands on a Python with no wheels.
+  # (STACK_UV_PY, never uv's own UV_PYTHON: an inherited one would skip the table silently.)
+  [ -n "${STACK_UV_PY:-}" ] || STACK_UV_PY="$(node "$STACK_SRC/stack/mcp/uv-python.js" 2>/dev/null || true)"
+  [ -n "${STACK_UV_PY:-}" ] || STACK_UV_PY="3.13"
+  # @SERENA_HOME@: backslashes under Git Bash (the cygpath test _native_path uses), because serena
+  # execs its TypeScript server through cmd.exe there, which cuts a relative path at its first '/'.
+  if command -v cygpath >/dev/null 2>&1; then STACK_SERENA_HOME='.serena\home'; else STACK_SERENA_HOME='.serena/home'; fi
   read -ra spec_words <<<"$1"
   for i in "${!spec_words[@]}"; do
     spec_words[i]="${spec_words[i]//@SERENA_CONTEXT@/$SERENA_CTX}"
+    spec_words[i]="${spec_words[i]//@UV_PYTHON@/$STACK_UV_PY}"
+    spec_words[i]="${spec_words[i]//@SERENA_HOME@/$STACK_SERENA_HOME}"
     spec_words[i]="${spec_words[i]//@MEMORY_DB_PATH@/$MEMORY_DB_PATH}"
   done
 }
@@ -3338,7 +3351,9 @@ grep -q 'Fill-in block - delete once done' "$(git rev-parse --show-toplevel 2>/d
 [ -f "$_gen_rules/baseline-project-architecture.md" ] && [ -f "$_gen_rules/project-code-style.md" ] || log "  - once oriented, run the other two captures the CLAUDE.md rules table names: /project-architecture-analyzer (architecture/ARCHITECTURE.md + awareness rule) and /project-code-style-analyzer (code-style/CODE-STYLE.md under the docs root + the generated path-scoped style rule)"
 [ -f "$_gen_rules/baseline-project-agent-capabilities.md" ] || log "  - run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md (re-run after update or a manifest trim)"
 if printf '%s\n' ${MCPS[@]+"${MCPS[@]}"} | grep -q '^serena|'; then
-  log "  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): SERENA_HOME=.serena/home uvx --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things"
+  # Git Bash: quoted, so the shell keeps the backslash; serena hands the home to cmd.exe, which cuts a '/'.
+  if command -v cygpath >/dev/null 2>&1; then STACK_HINT_HOME="'.serena\\home'"; else STACK_HINT_HOME=".serena/home"; fi
+  log "  - index the codebase for serena ONCE (a few seconds to a few minutes; the first run also downloads the language server): SERENA_HOME=${STACK_HINT_HOME} uvx --python ${STACK_UV_PY:-3.13} --from serena-agent serena project index - re-run it after a large refactor, a branch switch that moves many files, or whenever symbol lookups start missing things"
 fi
 log "  - restart Claude Code (or reopen the project) to load the new MCPs, hooks, and settings"
 # A global install switches Claude's own memory off only where the memory rule and start hook landed -

@@ -27,6 +27,8 @@ const path = require('node:path');
 const USER_SCOPE_PLUGINS = ['claude-hud'];
 
 const OFFICIAL_MARKETPLACE = 'anthropics/claude-plugins-official';
+const STACK_MARKETPLACE = 'envoydev/claude-stack';
+const CORE_SPEC = 'claude-stack@claude-stack';
 
 // The plugin every install carries beside the core from ANOTHER marketplace. It is not a dependency
 // of the core: `claude plugin update` over an older core installs none a release adds, and a plugin
@@ -49,8 +51,10 @@ const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes
 // the account-level one. Anything unparseable is an empty listing, never a crash: the callers all
 // treat 'the listing cannot say' as a real answer. `marketplace` keeps only that marketplace's rows,
 // BEFORE the per-name pick: the official marketplace ships plugins named like stack entries
-// (`serena`, `sentry`, `playwright`), and a name-only read took theirs for ours.
-function parsePluginList(json, projectRoot, { marketplace } = {})
+// (`serena`, `sentry`, `playwright`), and a name-only read took theirs for ours. `byMarketplace`
+// keeps one row per name@marketplace instead, for a pass whose specs come from several, read through
+// `fieldOf` with the full spec.
+function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false } = {})
 {
     let data;
     try { data = typeof json === 'string' ? JSON.parse(json) : json; }
@@ -67,9 +71,10 @@ function parsePluginList(json, projectRoot, { marketplace } = {})
         const pp = row.projectPath;
         if (pp && path.resolve(String(pp)) !== here) continue;
         const rank = pp ? 0 : 1;                      // this project first, then the account rows
-        const prev = best.get(name);
+        const key = byMarketplace ? `${name}@${market}` : name;
+        const prev = best.get(key);
         if (prev && prev.rank <= rank) continue;
-        best.set(name, {
+        best.set(key, {
             rank, name, marketplace: market,
             version: String(row.version ?? '?'),
             scope: String(row.scope ?? ''),
@@ -79,9 +84,13 @@ function parsePluginList(json, projectRoot, { marketplace } = {})
     return [...best.values()].map(({ rank, ...row }) => row);
 }
 
+// `name` alone, or a full `name@marketplace` spec - which never matches another marketplace's row of
+// the same name (the official `serena`, `sentry`, `playwright`). A row that names no marketplace
+// matches either way.
 const fieldOf = (listing, name, key) =>
 {
-    const row = (listing || []).find((r) => r.name === name);
+    const [bare, market] = String(name).split('@');
+    const row = (listing || []).find((r) => r.name === bare && (!market || !r.marketplace || r.marketplace === market));
     return row ? row[key] : undefined;
 };
 
@@ -91,10 +100,9 @@ const bareName = (spec) => String(spec).split('@')[0];
 // unless the LISTING already says where it lives, which wins on update.
 function scopeFor(spec, installScope, listing)
 {
-    const name = bareName(spec);
-    const known = fieldOf(listing, name, 'scope');
+    const known = fieldOf(listing, spec, 'scope');
     if (known) return known;
-    return USER_SCOPE_PLUGINS.includes(name) ? 'user' : installScope;
+    return USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : installScope;
 }
 
 // The stack's own closure for this run. Returns the entries to enable, the extras still copied, and
@@ -161,13 +169,53 @@ function pluginSet({ routes, thirdParty = [], hooksPlugin, stackEntries = [], co
     return [...thirdParty, ...stack, ...coreDeps];
 }
 
-// INSTALL: register the marketplaces, then install each plugin at its scope. A failure is noted and
-// the run continues - fail-soft, like every other layer.
-function installPlugins({ plugins, scope, marketplaces = [], cli, log = () => {}, note = () => {} })
+// Every run installs the LATEST. `plugin install name@mp` refreshes its own marketplace, but it never
+// moves a plugin that is already installed, and `plugin update` reads the local catalog as it stands
+// (code.claude.com/docs/en/discover-plugins, 'Install plugins'; a third-party marketplace, this one
+// included, has auto-update OFF by default) - so each marketplace the run's specs name is refreshed
+// here, once per run: `refreshed` carries the names an earlier pass already did.
+function refreshMarketplaces({ plugins, cli, refreshed = new Set() })
+{
+    for (const spec of plugins)
+    {
+        const mp = String(spec).split('@')[1];
+        if (!mp || refreshed.has(mp)) continue;
+        cli(['plugin', 'marketplace', 'update', mp], { quiet: true });
+        refreshed.add(mp);
+    }
+}
+
+// Before the run reads its snapshot: the snapshot IS the newest core entry in the plugin cache, and
+// only `plugin update` puts a newer one there - a refreshed catalog alone leaves the cache where it
+// was, so the run would install the release it is replacing. EVERY installed stack entry, not the
+// core alone: Claude Code launches an entry as the marketplace clone declares it (measured,
+// docs/uv-python-pin-evidence.md), so after this refresh an entry left on its older version can name
+// a file that version does not carry - and a run that stops at a question never reaches the apply
+// step that would update it. Each at its OWN scope, because `plugin update --scope <other>` is a
+// silent no-op.
+function refreshStackSource({ listing = [], cli, refreshed = new Set(), log = () => {} })
+{
+    cli(['plugin', 'marketplace', 'add', STACK_MARKETPLACE], { quiet: true });
+    refreshMarketplaces({ plugins: [CORE_SPEC], cli, refreshed });
+    const market = CORE_SPEC.split('@')[1];
+    for (const row of listing)
+    {
+        if (row.marketplace !== market || !row.version || !row.scope) continue;
+        log(`plugin update [${row.scope}]: ${row.name}@${market} (before the snapshot is read)`);
+        cli(['plugin', 'update', `${row.name}@${market}`, '--scope', row.scope, '-y'], { quiet: true });
+    }
+}
+
+// INSTALL: register the marketplaces, refresh them, then install each plugin at its scope - and
+// update one the listing already carries, which `install` leaves where it was. A failure is noted
+// and the run continues - fail-soft, like every other layer.
+function installPlugins({ plugins, scope, marketplaces = [], before = [], refreshed = new Set(), cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
-    cli(['plugin', 'marketplace', 'update', 'claude-plugins-official'], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
+    // The official catalog first on every run, whatever the set: Claude Code registers it only on
+    // its first INTERACTIVE launch, so an install before that failed every official plugin.
+    refreshMarketplaces({ plugins: ['@claude-plugins-official', ...plugins], cli, refreshed });
 
     for (const spec of plugins)
     {
@@ -175,7 +223,9 @@ function installPlugins({ plugins, scope, marketplaces = [], cli, log = () => {}
         log(`plugin [${pscope}]: ${spec}`);
         // -y: the marketplace-command consent prompt cannot be answered when stdin is not a TTY,
         // which is every guided run.
-        if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'])) note(`plugin ${spec} failed`);
+        if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'])) { note(`plugin ${spec} failed`); continue; }
+        if (fieldOf(before, spec, 'version'))
+            cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before), '-y'], { quiet: true });
     }
 }
 
@@ -206,19 +256,19 @@ function extraMarketplaces(rows, set)
 
 // UPDATE: adopt, enable, update, then READ THE VERSIONS BACK. An absent plugin is INSTALLED here, so
 // its marketplace is registered first, exactly as the install pass does.
-function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, cli, log = () => {} })
+function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, refreshed = new Set(), cli, log = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
+    refreshMarketplaces({ plugins, cli, refreshed });
     for (const spec of plugins)
     {
-        const name = bareName(spec);
         const pscope = scopeFor(spec, scope, before);
-        if (!fieldOf(before, name, 'version'))
+        if (!fieldOf(before, spec, 'version'))
         {
             log(`plugin install [${pscope}]: ${spec}`);
             cli(['plugin', 'install', spec, '--scope', pscope, '-y']);
         }
-        else if (fieldOf(before, name, 'enabled') === false)
+        else if (fieldOf(before, spec, 'enabled') === false)
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
             cli(['plugin', 'enable', spec, '--scope', pscope]);
@@ -232,11 +282,11 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
     for (const spec of plugins)
     {
         const name = bareName(spec);
-        const was = fieldOf(before, name, 'version');
-        const is = fieldOf(now, name, 'version');
+        const was = fieldOf(before, spec, 'version');
+        const is = fieldOf(now, spec, 'version');
         let line;
         if (!is) line = `  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)`;
-        else if (fieldOf(now, name, 'enabled') === false) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
+        else if (fieldOf(now, spec, 'enabled') === false) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
         else if (was && was !== is) line = `  plugin ${name}: ${was} -> ${is}`;
         else line = `  plugin ${name}: ${is} (already newest)`;
         log(line);
@@ -246,8 +296,8 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
 }
 
 module.exports = {
-    OFFICIAL_MARKETPLACE, USER_SCOPE_PLUGINS, CORE_DEP_PLUGINS,
+    OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, CORE_DEP_PLUGINS,
     pluginRoutes, corePluginOn, parsePluginList, fieldOf, scopeFor,
     resolveStackPlugins, selectionLines, pluginSet,
-    installPlugins, prunedRetired, updatePlugins, extraMarketplaces,
+    refreshMarketplaces, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces,
 };

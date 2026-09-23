@@ -882,7 +882,7 @@
     },
     {
       "name": "serena",
-      "args": "-e SERENA_HOME=.serena/home -- uvx --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
+      "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
       "note": "LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off"
     },
     {
@@ -907,7 +907,7 @@
     },
     {
       "name": "memory",
-      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
+      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --python @UV_PYTHON@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
       "note": "memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
     },
     {

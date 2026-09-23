@@ -21,6 +21,17 @@ CLI itself. Take it: no probe, no archive, no marketplace clone - and it is by c
 revision the enabled plugins are running from, so the seed and the plugins can never be two different
 releases.
 
+**Latest first.** The cache holds only what the CLI last installed, and a refreshed catalog does not
+move it: only `claude plugin update` lands a newer version dir (a `plugin install` of a plugin already
+installed does nothing, and this marketplace has auto-update OFF by default -
+code.claude.com/docs/en/discover-plugins). So both snippets below refresh the `claude-stack`
+catalog and update EVERY installed stack entry at its OWN scope before they pick - not the core
+alone: Claude Code launches an entry as the marketplace clone declares it, so an entry left on its
+old version can name a file that version lacks (docs/uv-python-pin-evidence.md), and a run that
+stops at a question never reaches the apply step that would update it. They remember the core's
+version from before (`running=` / `$Was`) - the one this session loaded, whatever the cache now
+holds. No `claude` CLI, or no stack row: nothing to update, and the pick runs as it always did.
+
 Pick the NEWEST valid version directory across marketplaces - the directory names ARE the release
 versions the CLI writes, so they sort as versions - and count a directory only when it carries both
 `stack/skills` and `stack/agents`, so a half-written entry is rejected rather than half-installed.
@@ -50,6 +61,14 @@ else
 REPO_URL=https://github.com/envoydev/claude-stack
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d)
+WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
+if command -v claude >/dev/null 2>&1; then
+  claude plugin marketplace update claude-stack >/dev/null 2>&1
+  # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>"
+  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@claude-stack$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
+  WAS=$(printf '%s\n' "$ROWS" | awk '$2=="claude-stack@claude-stack"{print $3; exit}')
+  printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
+fi
 SRC=$(for d in "$CFG"/plugins/cache/*/claude-stack/*; do            # newest valid entry, any marketplace
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
@@ -60,7 +79,7 @@ else
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${CLAUDE_STACK_SEED:-node}"
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${CLAUDE_STACK_SEED:-node} running=${WAS:-?}"
 fi
 ```
 
@@ -85,6 +104,20 @@ $TMP = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToS
 New-Item -ItemType Directory -Path $TMP -Force | Out-Null
 $RepoUrl = 'https://github.com/envoydev/claude-stack'
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
+$Was = ''     # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
+if (Get-Command claude -ErrorAction SilentlyContinue) {
+  claude plugin marketplace update claude-stack *> $null
+  $list = try { claude plugin list --json 2>$null | Out-String | ConvertFrom-Json } catch { $null }
+  # PSObject, never `$list.installed`: over a bare array that is one $null per row - truthy, and no rows
+  if ($list -and ($list.PSObject.Properties.Name -contains 'installed')) { $list = $list.installed }
+  # every stack entry installed for THIS project or the account, this project's rows first
+  $Here = (Get-Item -LiteralPath (Get-Location).Path).FullName
+  $rows = @($list | Where-Object { "$($_.id)" -like '*@claude-stack' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })
+  $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
+  $core = $rows | Where-Object { $_.id -eq 'claude-stack@claude-stack' } | Select-Object -First 1
+  if ($core) { $Was = $core.version }
+  foreach ($r in $rows) { claude plugin update $r.id --scope $r.scope -y *> $null }
+}
 $Src = ''
 $BestVer = $null
 $Base = Join-Path $ConfigDir 'plugins/cache'
@@ -186,25 +219,23 @@ pwsh -NoProfile -File "$TMP/step.ps1"
 ## Check the plugin itself is current
 
 The tooling always comes fresh from the snapshot, but YOUR numbered steps ship with the
-installed plugin - so compare versions right after the download: the snapshot's is the
-`version:` line in `$TMP/repo/RELEASE-SOURCE`; the running plugin's comes from the CLI, in the
-same call:
-
-```bash
-claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s).find(x=>x.id==="claude-stack@claude-stack");console.log(p?`plugin: ${p.version} ${p.enabled?"enabled":"DISABLED"}`:"plugin: not installed")})'
-```
+plugin this SESSION loaded - so compare versions right after the resolve: the snapshot's is the
+`version:` line in `$TMP/repo/RELEASE-SOURCE`; the running plugin's is `running=` on the RESOLVED
+line (`$Was` in the PowerShell block), read BEFORE the resolve's own update. A fresh `claude plugin
+list` after it would report the version just installed, which this session has not loaded - an
+update lands on disk, and a session keeps the version it started with until a restart.
 
 **Do NOT read `${CLAUDE_PLUGIN_ROOT}` from the shell to find it.** That variable is expanded into a
 command's markdown at injection time, but it is NOT in the Bash tool's environment - a command that
 reads it inside the shell gets an empty string, and the check silently skips itself every time
 (measured: the same `no CLAUDE_PLUGIN_ROOT` line in five sessions across four projects, so the
-currency check had never once run). No CLI, or no `claude-stack` row -> drop the check and emit NO line about it. 'Skip silently' as prose
+currency check had never once run). `running=?` (no CLI, or no `claude-stack` row) -> drop the check and emit NO line about it. 'Skip silently' as prose
 produced a narration line about skipping, which is the same cost as the check (measured). When they differ, size the gap before deciding: ONE release behind is a report line and the run
 CONTINUES - the tooling is the snapshot's and is current either way, so the only risk is that these
 numbered steps lag it by one release (measured: a run that asked instead spent 5 turns on two
 meta-asks and ended telling the user to restart, with zero reconciliation done). A MULTI-release
-gap is worth the ask: say so, recommend `claude plugin marketplace update claude-stack` then
-`claude plugin update claude-stack`, and offer to continue anyway. The plugin cache is keyed by version
+gap is worth the ask: say so, recommend a restart (the resolve already installed the newest, so the
+next session loads its steps), and offer to continue anyway. The plugin cache is keyed by version
 (`~/.claude/plugins/cache/claude-stack/claude-stack/<version>/`), so after an update the old
 version dirs are stale leftovers. **Do not offer to delete them, and never delete one yourself.**
 Claude Code marks the previous version orphaned on an update or uninstall and sweeps it in a

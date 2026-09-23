@@ -288,7 +288,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
+| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
 | Hooks | `claude-stack-hooks@claude-stack` plugin (all sixteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
@@ -400,6 +400,24 @@ mirrored there in the same sitting.
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
 - **serena state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
   `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories).
+- **serena and memory run on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
+  the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `CLAUDE_STACK_UV_PYTHON` overrides,
+  read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
+  server never gets a project settings env key, so the launchers read the files).
+  uvx takes the newest interpreter it finds, and serena-agent's pyyaml 6.0.2 ships no 3.14 wheel, so
+  an unpinned start compiles it and dies without a C compiler - Claude Code shows only
+  CONNECTION_CLOSED. Windows ARM64 has no wheel for five compiled deps on ANY Python, while the x64
+  build runs there under emulation. Both plugin entries start through a node launcher
+  (`serena-launch.js`, `memory-launch.js`) because the right value is the MACHINE's; the copy route
+  resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry: Claude Code launches the
+  one in the marketplace clone, which the next refresh overwrites (`docs/uv-python-pin-evidence.md`).
+  The serena launcher also spells `SERENA_HOME` in the platform's separator and keeps it RELATIVE
+  (a plugin server's cwd is the project), and the copy route registers the same `.serena\home` on
+  Windows (`@SERENA_HOME@`): serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so
+  on Windows the path reaches cmd.exe UNQUOTED, which cuts `.serena/home\...` at its first `/`
+  ('.serena' is not recognized as a command) - and an absolute path at the first space in the
+  project's own path. Both launchers pass a stop signal on to uvx (`runUvx`), or the server outlives
+  them.
 - **Three memory stores, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
   level (global/scoped/project) read by every Claude account and Cursor at that level; serena's
@@ -509,7 +527,7 @@ mirrored there in the same sitting.
   of `main`. A change ships only once merged to `main`; until then the per-file fail-soft keeps
   existing copies. Never reintroduce a raw fetch of a repo-owned file (per-file, stale, mixes
   revisions).
-- **The plugin cache IS the snapshot, so the common run downloads NOTHING** (`_stack_plugin_cache` /
+- **The plugin cache IS the snapshot, so the common run downloads nothing but a newer release** (`_stack_plugin_cache` /
   `Get-StackPluginCache`): `<config>/plugins/cache/<marketplace>/claude-stack/<version>/` is the whole
   repo, because every marketplace entry is sourced from the repo ROOT - measured on a real install
   (`stack/rules`, `stack/CLAUDE.template.md`, both hook engines, `meta/`, `scripts/`,
@@ -522,7 +540,12 @@ mirrored there in the same sitting.
   (`scripts/install/source.js`, `stack_src`, `Get-StackSrc`, the protocol's two snippets);
   `scripts/source-cache.test.js` and `scripts/install-source.test.js` cover it. The install
   BOOTSTRAPS on a first run: no cache and a plugin route means the core plugin is installed first so
-  its cache can serve the same run.
+  its cache can serve the same run. And every run takes the LATEST: the seed (with no `--source`) and
+  both protocol snippets refresh the `claude-stack` catalog and `plugin update` EVERY installed stack
+  entry at its own scope BEFORE the cache is read - a refreshed catalog alone never moves the cache,
+  so without it 'newest entry' is the release being replaced, and an entry left behind would be
+  launched as the refreshed catalog declares it, naming files its older version lacks. `--print-plan`
+  changes no plugin. The frozen twins do not (they go in 7b).
 - **One download per RUN.** The plugin commands resolve the snapshot themselves and pass it with
   `--source` / `-Source`; a borrowed source is never deleted by the script
   (`STACK_SRC_OWNED` / `$script:StackSrcOwned`) - the skills remove their `$TMP` on every exit path.
