@@ -12,7 +12,7 @@
     {
       "name": "claude-stack-hooks",
       "source": "./",
-      "description": "The sixteen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs and memory session engines.",
+      "description": "The seventeen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs, memory and session-history hooks.",
       "version": "1.1.1",
       "author": {
         "name": "envoydev",
@@ -169,6 +169,11 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
                 "timeout": 60
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "timeout": 10
               }
             ]
           }
@@ -236,6 +241,11 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
                 "timeout": 10
               }
             ]

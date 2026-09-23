@@ -28,8 +28,8 @@ const { hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
-// docs.js / memory.js / fresh-session.js are ENGINES and hook-prelude.js the shared gate module - none is a hook.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|hook-prelude|fresh-session)$/;
+// docs.js / memory.js / history.js / fresh-session.js are ENGINES and hook-prelude.js the shared gate module - none is a hook.
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session)$/;
 const PW_ENGINE = /^playwright-(chrome|msedge|firefox|webkit)$/;
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();

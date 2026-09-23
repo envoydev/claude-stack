@@ -45,7 +45,8 @@
    "docs-session",
    "memory-session",
    "monitor-session",
-   "check-turn-build"
+   "check-turn-build",
+   "history-session"
   ],
   "skills": [
    "project-agent-capabilities",
