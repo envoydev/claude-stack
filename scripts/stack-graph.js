@@ -81,23 +81,14 @@ function catalogs()
     return { skills, agents, mcps, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog() };
 }
 
-// The plugins the core marketplace entry hard-depends on. They are in the catalog like any other -
-// the citers are real edges - but they are NOT droppable and NOT ours to install: enabling the core
-// enables them, and Claude Code refuses to disable one while the core is enabled
-// (code.claude.com/docs/en/plugin-dependencies). The walk's table says so instead of calling them
-// 'required by skill x', which reads like something the user still has to pick.
+// The plugins every install carries beside the core from another marketplace. They are in the
+// catalog like any other - the citers are real edges - but they are NOT droppable and NOT a pick: the
+// installer puts them back on every run. The walk's table says so instead of calling them 'required
+// by skill x', which reads like something the user still has to pick.
 function dependencyPlugins()
 {
-    const file = path.join(ROOT, 'meta', 'plugin-entries.json');
-    if (!fs.existsSync(file)) return [];
-    let entries;
-    try { entries = JSON.parse(fs.readFileSync(file, 'utf8')); }
-    catch { return []; }
-    const out = new Set();
-    for (const e of (entries && (entries.entries || entries.plugins)) || [])
-        for (const d of e.dependencies || [])
-            if (d && typeof d === 'object' && d.name) out.add(d.name);   // a string dep is in-marketplace, never a catalog plugin
-    return [...out].sort();
+    const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
+    return CORE_DEP_PLUGINS.map((spec) => spec.split('@')[0]).sort();
 }
 
 // The hook catalog: the HOOKS=( ... ) block in the sh installer - entries are

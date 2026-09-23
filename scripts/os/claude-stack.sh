@@ -615,11 +615,10 @@ PLUGINS=(
 # registered from the run's throwaway source snapshot.
 STACK_MARKETPLACE="${CLAUDE_STACK_MARKETPLACE:-envoydev/claude-stack}"
 STACK_PLUGINS=("claude-stack-hooks@claude-stack")
-# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
-# the two together, so a dependency added there is a red lint until it is added here). Installed
-# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
-# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
-# route the core entry carries them and an explicit install here would only repeat the work.
+# The core's cross-marketplace companion, mirrored from the seed's CORE_DEP_PLUGINS (the lint pins
+# the three together). Installed EXPLICITLY on every run: the core declares no dependencies, because
+# `claude plugin update` over an older core installs none a release adds and a plugin missing one is
+# disabled at load, its commands with it.
 CORE_DEP_PLUGINS=("superpowers@claude-plugins-official")
 
 # (3) MCP servers as "name|args"; scope follows SCOPE.
@@ -934,9 +933,9 @@ HOOKS_VIA_PLUGIN="${CLAUDE_STACK_HOOKS_VIA_PLUGIN:-true}"
 # being a stack-owned artifact and holds only what the project itself added. Set to false to keep
 # the 0.2.x `claude mcp add` route, which is what the temp-project matrix uses to prove both.
 MCPS_VIA_PLUGIN="${CLAUDE_STACK_MCPS_VIA_PLUGIN:-true}"
-# The three servers that can never be dropped are hard `dependencies` of the CORE plugin entry, so
-# Claude Code installs them with it whatever this switch says. That makes them plugin-only whenever
-# the core is enabled at all - registering them as well would run each one twice and pay both sets
+# The three servers that can never be dropped are plugins this run installs beside the CORE entry
+# whatever this switch says (not its dependencies - a missing one would disable the core at load).
+# That makes them plugin-only whenever the core is enabled at all - registering them as well would run each one twice and pay both sets
 # of tool schemas every session. They come back to .mcp.json only on the FULL copy route, where no
 # plugin route is on and the core is never enabled.
 MCPS_LOCKED="serena context7 memory"
@@ -1640,34 +1639,21 @@ _stack_plugin_set() {
   fi
 }
 
-# The core's dependency plugins, but only when this run enables no stack plugin - see
-# CORE_DEP_PLUGINS. Fills a GLOBAL because macOS still ships bash 3.2, which has no namerefs.
+# The core's companions: CORE_DEP_PLUGINS on every run, and - while the core is on - each locked
+# server the selection did not already name (the MCP route off). The core declares no dependencies,
+# so nothing else installs them. Fills a GLOBAL because macOS still ships bash 3.2, which has no namerefs.
 CORE_DEPS_NEEDED=()
 _core_deps_needed() {
   CORE_DEPS_NEEDED=()
-  [ ${#STACK_RUN_PLUGINS[@]} -eq 0 ] || return 0
-  CORE_DEPS_NEEDED=(${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"})
-  return 0
-}
-
-# A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
-# with higher precedence than this one - the one documented enable failure whose symptom ('plugin
-# ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
-# Printed once, and only for a dependency the listing actually shows as disabled, so a run that
-# failed for an unrelated reason is not sent chasing it.
-_DEP_LOCK_HINT_SHOWN=false
-_dep_lock_hint() {
-  case "$1" in *@claude-stack) ;; *) return 0 ;; esac
-  [ "$_DEP_LOCK_HINT_SHOWN" = false ] || return 0
-  local listing dep name
-  listing="$(_plugin_scan)"
-  [ -n "$listing" ] || return 0
-  for dep in ${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"}; do
-    name="${dep%%@*}"
-    [ "$(_plugin_field "$listing" "$name" 4)" = "no" ] || continue
-    _DEP_LOCK_HINT_SHOWN=true
-    log "     $name is DISABLED and $1 depends on it - enable it first: claude plugin enable $dep --scope $(_plugin_field "$listing" "$name" 3)"
-  done
+  local name p have
+  if _core_plugin_on; then
+    for name in $MCPS_LOCKED; do
+      have=false
+      for p in ${STACK_RUN_PLUGINS[@]+"${STACK_RUN_PLUGINS[@]}"}; do [ "${p%%@*}" = "$name" ] && have=true; done
+      [ "$have" = true ] || CORE_DEPS_NEEDED+=("$name@claude-stack")
+    done
+  fi
+  CORE_DEPS_NEEDED+=(${CORE_DEP_PLUGINS[@]+"${CORE_DEP_PLUGINS[@]}"})
   return 0
 }
 
@@ -1704,7 +1690,7 @@ install_plugins() {
     # install + the global statusline enable mismatch, so every OTHER project warns "plugin not cached".
     pscope="$CLAUDE_SCOPE"; case "$p" in claude-hud@*) pscope="user" ;; esac
     log "plugin [$pscope]: $p"
-    claude plugin install "$p" --scope "$pscope" -y || { note_failure "plugin $p failed"; _dep_lock_hint "$p"; }   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
+    claude plugin install "$p" --scope "$pscope" -y || note_failure "plugin $p failed"   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
   done
 }
 
@@ -1793,7 +1779,7 @@ install_mcps() {
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
     if _is_locked_mcp "$name" && _core_plugin_on; then
-      log "  mcp $name: carried by the core plugin's dependencies - not registered here"
+      log "  mcp $name: installed as a plugin beside the core - not registered here"
       continue
     fi
     # 'already configured' skips the ADD, never the verify pass below: a name registered by an older
@@ -3112,7 +3098,7 @@ update_mcps() {
   for entry in ${MCPS[@]+"${MCPS[@]}"}; do
     name="${entry%%|*}"; args="${entry#*|}"
     if _is_locked_mcp "$name" && _core_plugin_on; then
-      log "  mcp $name: carried by the core plugin's dependencies - not re-registered here"
+      log "  mcp $name: installed as a plugin beside the core - not re-registered here"
       continue
     fi
     log "mcp refresh [$CLAUDE_SCOPE]: $name"
@@ -3272,8 +3258,8 @@ downconvert_mcp_tool_names() {
   case "$CLAUDE_SCOPE" in user) skills="$CONFIG_DIR/skills" ;; *) skills="$PWD/.claude/skills" ;; esac
   BARE_MCPS="$bare" python3 - "$skills" "$root/.claude/agents" "$root/.claude/rules" "$root/.claude/hooks" <<'DOWNCONV' || log "  !! copy route: the MCP tool-name re-spelling failed - the copied files keep the plugin spelling"
 import os, re, sys
-# Only the servers THIS run registered under a bare name. The three locked ones ride the core
-# plugin's dependencies whenever any plugin route is on, so on a hooks-only copy route their tool
+# Only the servers THIS run registered under a bare name. The three locked ones are plugins beside
+# the core whenever any plugin route is on, so on a hooks-only copy route their tool
 # names must stay plugin-spelled while the droppable picks are re-spelled - re-spelling everything
 # was the bug this list exists to prevent.
 bare = set(os.environ.get("BARE_MCPS", "").split())

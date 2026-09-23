@@ -648,45 +648,36 @@ test('check 48: a drifted matcher, a missing file and a missing gate are all fin
         'a wiring naming a missing file still generates, so the lint is what catches it');
 });
 
-// Check 51. The copy route installs the core's dependencies itself, so both twins carry that list -
-// and it has to be the list the generated entries declare. A name added to the placement and not to
-// the twins is a copy-route install without superpowers; a name left in the twins after the entry
-// dropped it installs a plugin nothing needs.
+// Check 51. Every route installs the core's cross-marketplace companion itself, so the seed and both
+// twins carry that list, and the three must agree. A name added to the seed and not to the twins is a
+// shell-route install without superpowers; a name left in a twin installs a plugin nothing needs.
 test('check 51: the twins\' CORE_DEP_PLUGINS is clean today, and drift in either direction is a finding', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const path = require('node:path');
     const { lintCoreDependencies, paths } = require('./lint-skills.js');
-    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped twins already agree with the entries');
+    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped twins already agree with the seed');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coredep-'));
     const sh = path.join(tmp, 'sh');
     const ps1 = path.join(tmp, 'ps1');
-    const entries = path.join(tmp, 'entries.json');
-    const write = (shList, psList, declared) => {
+    const write = (shList, psList) => {
         fs.writeFileSync(sh, `CORE_DEP_PLUGINS=(${shList.map(n => `"${n}@m"`).join(' ')})\n`);
         fs.writeFileSync(ps1, `$CoreDepPlugins = @(${psList.map(n => `'${n}@m'`).join(', ')})\n`);
-        fs.writeFileSync(entries, JSON.stringify({ entries: [{ name: 'claude-stack', dependencies: declared.map(n => ({ name: n, marketplace: 'm' })) }] }));
     };
+    const seed = ['superpowers@m'];
 
-    write(['superpowers'], ['superpowers'], ['superpowers']);
-    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, entries), [], 'a matching trio is clean');
+    write(['superpowers'], ['superpowers']);
+    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, seed), [], 'a matching trio is clean');
 
-    write(['superpowers'], ['superpowers', 'other'], ['superpowers']);
-    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /differs across the twins/, 'the twins must agree with each other');
+    write(['superpowers'], ['superpowers', 'other']);
+    assert.match(lintCoreDependencies(sh, ps1, seed)[0], /differs across the twins/, 'the twins must agree with each other');
 
-    write(['superpowers'], ['superpowers'], ['superpowers', 'other']);
-    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /the generated entries declare/, 'a dependency the entries added is a finding');
+    write(['superpowers'], ['superpowers']);
+    assert.match(lintCoreDependencies(sh, ps1, ['superpowers@m', 'other@m'])[0], /in the seed - update both twins/, 'a companion the seed added is a finding');
 
     fs.writeFileSync(sh, '# no block here\n');
-    assert.match(lintCoreDependencies(sh, ps1, entries)[0], /no CORE_DEP_PLUGINS/, 'a missing block is a finding, not a silent pass');
-
-    // An in-marketplace (string) dependency is Claude Code's to resolve, never ours to install.
-    write(['superpowers'], ['superpowers'], ['superpowers']);
-    fs.writeFileSync(entries, JSON.stringify({ entries: [
-        { name: 'claude-stack', dependencies: [{ name: 'superpowers', marketplace: 'm' }] },
-        { name: 'claude-stack-wpf', dependencies: ['claude-stack-csharp'] }] }));
-    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, entries), [], 'a string dependency is not a catalog plugin');
+    assert.match(lintCoreDependencies(sh, ps1, seed)[0], /no CORE_DEP_PLUGINS/, 'a missing block is a finding, not a silent pass');
     fs.rmSync(tmp, { recursive: true, force: true });
     assert.ok(paths, 'paths stays exported');
 });

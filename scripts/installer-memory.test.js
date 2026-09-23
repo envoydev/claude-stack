@@ -174,9 +174,8 @@ function sandbox(opts = {})
         // [sqlite] extra, the pins, the db path the level resolved) is still what these cases prove,
         // so they pin the copy route; the plugin route is proven in mcp-verify.test.js and by the
         // CLAUDE_STACK_MEMORY_DB key the settings-env pass writes for the plugin's launcher.
-        // The skills switch goes with it: the three LOCKED servers are hard dependencies of the core
-        // plugin entry, so while any plugin route is on the core carries them and the installer
-        // deliberately registers none of them (registering as well would run each one twice). The
+        // The skills switch goes with it: the three LOCKED servers are plugins installed beside the
+        // core while any plugin route is on, and the installer deliberately registers none of them (registering as well would run each one twice). The
         // full copy route is the only place a memory REGISTRATION exists to assert on. The selection
         // file keeps the copies down to one skill, so this costs nothing.
         CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false',

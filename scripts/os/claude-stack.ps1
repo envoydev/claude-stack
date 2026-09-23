@@ -642,11 +642,10 @@ $ExtraMarketplaces = @(
 # registered from the run's throwaway source snapshot.
 $StackMarketplace = if ($env:CLAUDE_STACK_MARKETPLACE) { $env:CLAUDE_STACK_MARKETPLACE } else { 'envoydev/claude-stack' }
 $StackPlugins = @('claude-stack-hooks@claude-stack')
-# The core entry's own `dependencies`, mirrored from the generated marketplace entry (the lint pins
-# the two together, so a dependency added there is a red lint until it is added here). Installed
-# EXPLICITLY only when the run enables no stack plugin at all - the both-switches-off copy route,
-# where nothing would otherwise pull them and 27 citers would find the plugin absent. On the plugin
-# route the core entry carries them and an explicit install here would only repeat the work.
+# The core's cross-marketplace companion, mirrored from the seed's CORE_DEP_PLUGINS (the lint pins
+# the three together). Installed EXPLICITLY on every run: the core declares no dependencies, because
+# `claude plugin update` over an older core installs none a release adds and a plugin missing one is
+# disabled at load, its commands with it.
 $CoreDepPlugins = @('superpowers@claude-plugins-official')
 
 $Plugins = @(
@@ -964,9 +963,9 @@ $HooksViaPlugin = ($env:CLAUDE_STACK_HOOKS_VIA_PLUGIN -ne 'false')
 # being a stack-owned artifact and holds only what the project itself added. $false keeps the 0.2.x
 # `claude mcp add` route, which is what the temp-project matrix uses to prove both.
 $McpsViaPlugin = ($env:CLAUDE_STACK_MCPS_VIA_PLUGIN -ne 'false')
-# The three servers that can never be dropped are hard `dependencies` of the CORE plugin entry, so
-# Claude Code installs them with it whatever this switch says. That makes them plugin-only whenever
-# the core is enabled at all - registering them as well would run each one twice and pay both sets
+# The three servers that can never be dropped are plugins this run installs beside the CORE entry
+# whatever this switch says (not its dependencies - a missing one would disable the core at load).
+# That makes them plugin-only whenever the core is enabled at all - registering them as well would run each one twice and pay both sets
 # of tool schemas every session. They come back to .mcp.json only on the FULL copy route, where no
 # plugin route is on and the core is never enabled.
 $McpsLocked = @('serena', 'context7', 'memory')
@@ -1827,31 +1826,16 @@ function Get-StackRunPlugins {
 }
 
 function Get-CoreDepsNeeded {
-  # The core's dependency plugins, but only when this run enables no stack plugin - see $CoreDepPlugins.
+  # The core's companions: $CoreDepPlugins on every run, and - while the core is on - each locked
+  # server the selection did not already name (the MCP route off). The core declares no
+  # dependencies, so nothing else installs them.
   param($StackRun)
-  if (@($StackRun).Count -gt 0) { return @() }
-  return @($CoreDepPlugins)
-}
-
-$script:DepLockHintShown = $false
-function Show-DepLockHint {
-  # A stack entry cannot ENABLE while one of the core's hard dependencies is set to false at a scope
-  # with higher precedence than this one - the one documented enable failure whose symptom ('plugin
-  # ... failed') names nothing the user can act on (code.claude.com/docs/en/plugin-dependencies).
-  # Printed once, and only for a dependency the listing actually shows as disabled, so a run that
-  # failed for an unrelated reason is not sent chasing it.
-  param([string]$Plugin)
-  if ($Plugin -notlike '*@claude-stack') { return }
-  if ($script:DepLockHintShown) { return }
-  $listing = Get-InstalledPluginMap
-  foreach ($dep in $CoreDepPlugins) {
-    $name = ($dep -split '@')[0]
-    if (-not $listing.ContainsKey($name)) { continue }
-    if ($listing[$name].enabled) { continue }
-    $script:DepLockHintShown = $true
-    $depScope = if ($listing[$name].scope) { $listing[$name].scope } else { $ClaudeScope }
-    Log "     $name is DISABLED and $Plugin depends on it - enable it first: claude plugin enable $dep --scope $depScope"
+  $out = @()
+  if (Test-CorePluginOn) {
+    $have = @(@($StackRun) | ForEach-Object { ($_ -split '@')[0] })
+    foreach ($name in $McpsLocked) { if ($have -notcontains $name) { $out += "$name@claude-stack" } }
   }
+  return @($out + $CoreDepPlugins)
 }
 
 function Initialize-StackSource {
@@ -1887,7 +1871,7 @@ function Install-Plugins {
     $pScope = if ($p -like 'claude-hud@*') { 'user' } else { $ClaudeScope }
     Log "plugin [$pScope]: $p"
     try { & claude plugin install $p --scope $pScope -y } catch {}   # -y: the marketplace-command consent prompt cannot be answered when stdin/stdout is not a TTY (the guided commands run this non-interactively)
-    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed"; Show-DepLockHint $p }
+    if ($LASTEXITCODE -ne 0) { Add-Failure "plugin $p failed" }
   }
 }
 
@@ -1970,7 +1954,7 @@ function Install-Mcps {
     $name = $parts[0]
     $spec = $parts[1]
     if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) {
-      Log "  mcp ${name}: carried by the core plugin's dependencies - not registered here"
+      Log "  mcp ${name}: installed as a plugin beside the core - not registered here"
       continue
     }
     # PS 5.1 + ErrorActionPreference='Stop': a native command's redirected stderr throws, so probe in try/catch.
@@ -3395,7 +3379,7 @@ function Update-Mcps {
     $name = $parts[0]
     $spec = $parts[1]
     if ((Test-LockedMcp $name) -and (Test-CorePluginOn)) {
-      Log "  mcp ${name}: carried by the core plugin's dependencies - not re-registered here"
+      Log "  mcp ${name}: installed as a plugin beside the core - not re-registered here"
       continue
     }
     Log "mcp refresh [$ClaudeScope]: $name"
@@ -3614,8 +3598,8 @@ Install-GitHubCli
 # after the copies land. The skills and agents a PLUGIN carries cannot be re-spelled - they are read
 # from the plugin cache, not from .claude/ - so the mixed combination is reported, never half-fixed.
 function Convert-McpToolNames {
-  # Only the servers THIS run registered under a bare name. The three locked ones ride the core
-  # plugin's dependencies whenever any plugin route is on, so on a hooks-only copy route their tool
+  # Only the servers THIS run registered under a bare name. The three locked ones are plugins beside
+  # the core whenever any plugin route is on, so on a hooks-only copy route their tool
   # names must stay plugin-spelled while the droppable picks are re-spelled.
   $bare = @(Get-BareNamedMcps)
   if (-not $bare.Count) { return }

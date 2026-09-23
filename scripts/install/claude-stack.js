@@ -51,7 +51,7 @@ redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.
 const HOOKS_PLUGIN = 'claude-stack-hooks@claude-stack';
 const STACK_MARKET_NAME = HOOKS_PLUGIN.split('@')[1];
 const STACK_MARKETPLACE = 'envoydev/claude-stack';
-const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
+const { CORE_DEP_PLUGINS } = plugins;
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
 const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
@@ -403,7 +403,7 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot);
     const set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: HOOKS_PLUGIN,
-        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS,
+        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
     if (ctx.args.action === 'update')
@@ -425,8 +425,7 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, listing, coreDeps: CORE_DEP_PLUGINS,
-        cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
 

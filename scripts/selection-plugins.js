@@ -82,9 +82,8 @@ function pluginsFor(picked, options = {})
         }
     }
     // The MCP plugins are not part of the skill/agent placement - each is its own entry generated
-    // from the installer's catalog - so they join the set directly. The three locked servers arrive
-    // anyway as `dependencies` of the core, but naming them keeps the log and the stamp honest
-    // about what the project carries, exactly as the per-stack entries are named.
+    // from the installer's catalog - so they join the set directly, the three locked servers
+    // included: the core declares no dependencies, so the set is what installs them.
     for (const plugin of [...(picked.mcps || [])].sort()) wanted.add(plugin);
     return { plugins: [...wanted].sort(), copy };
 }

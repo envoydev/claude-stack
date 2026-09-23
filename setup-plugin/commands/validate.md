@@ -471,9 +471,9 @@ profile), output to `$TMP/select.out` - then:
   log names the command for the user. Two removals the installer never makes, each with its command shown first:
   `claude mcp remove <name>` for an MCP on the copy route (playwright = every
   `playwright-<browser>` server), and
-  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin the
-  core entry hard-depends on - never propose removing one: Claude Code refuses both the uninstall
-  and the disable while the core is enabled, naming the dependent. The removal ask that proposed it
+  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin every
+  install carries beside the core - never propose removing one: the installer puts it back on every
+  run, so the removal would only be undone. The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents. Under the shell seed
   the twin deletes nothing, so every accepted removal is also deleted here: the skill directory /

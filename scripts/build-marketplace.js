@@ -104,7 +104,6 @@ function coreEntry(options = {})
             }],
         },
     };
-    if (Array.isArray(setup.dependencies) && setup.dependencies.length) entry.dependencies = setup.dependencies;
     return entry;
 }
 
@@ -418,8 +417,9 @@ function mcpPlugins(options = {})
             strict: false,
             mcpServers: spec.servers,
         };
-        // The locked three are `dependencies` OF the core, so they must not depend back on it.
-        // The droppable five are ordinary picks and name the core the way the hooks entry does.
+        // The locked three depend on nothing: the installer puts them beside the core on every run,
+        // and an entry with no dependency can never be disabled at load for a missing one. The
+        // droppable five are ordinary picks and name the core the way the hooks entry does.
         if (!spec.locked) entry.dependencies = [CORE];
         return entry;
     });

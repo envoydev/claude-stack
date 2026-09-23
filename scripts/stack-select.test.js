@@ -887,9 +887,8 @@ test('CLI: an unknown --stacks name is named on stderr and the table still rende
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// Phase 4: superpowers is a HARD dependency of the core plugin, so the walk must not present it as
-// something to pick or drop. Claude Code refuses to disable it while the core is enabled
-// (code.claude.com/docs/en/plugin-dependencies), and the install never calls it by name.
+// superpowers is installed beside the core on every run, so the walk must not present it as
+// something to pick or drop.
 test('a plugin the core entry depends on gets its own row status, in both table modes', () => {
     const fs = require('node:fs');
     const os = require('node:os');

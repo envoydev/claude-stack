@@ -84,7 +84,7 @@ test('R7: on the FULL copy route the core is never enabled, so all three come ba
         ['serena', 'context7', 'memory', 'playwright', 'sentry']);
 });
 
-test('R7: a locked server carried by the core has no shape to verify', () =>
+test('R7: a locked server installed as a plugin has no shape to verify', () =>
 {
     // Writing the shape back would put the entry the prune just removed straight back in the file.
     const routes = ROUTES({ mcps: false });
@@ -213,7 +213,7 @@ test('playwright: the engines this run does not keep are dropped, and the plugin
 
 test('down-convert: only the servers this run registered BARE are re-spelled', () =>
 {
-    // The locked three ride the core plugin on a hooks-only copy route, so their tool names must
+    // The locked three are plugins beside the core on a hooks-only copy route, so their tool names must
     // keep the plugin spelling while the droppable picks are re-spelled.
     const root = path.join(TMP, `dc-${seq++}`);
     fs.mkdirSync(path.join(root, 'sub'), { recursive: true });

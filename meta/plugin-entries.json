@@ -77,16 +77,7 @@
             ]
           }
         ]
-      },
-      "dependencies": [
-        {
-          "name": "superpowers",
-          "marketplace": "claude-plugins-official"
-        },
-        "serena",
-        "context7",
-        "memory"
-      ]
+      }
     },
     {
       "name": "claude-stack-angular",

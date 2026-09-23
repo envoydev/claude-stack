@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { buildEntries, applyToMarketplace, costTable } = require('./build-marketplace.js');
+const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
+const { LOCKED } = require('./install/mcp.js');
 
 const SCRIPT = path.join(__dirname, 'build-marketplace.js');
 const run = (args, opts = {}) => execFileSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', ...opts });
@@ -30,7 +32,7 @@ test('every entry shares ONE source and lists its own paths', () => {
 // shared root nothing under setup-plugin/ is auto-discovered, so every path it used to get for free
 // is listed - and the two that are easy to lose on the way across are the layer-table hook and the
 // superpowers dependency.
-test('the core entry carries the commands, the router skill, the inline hook and the dependency', () => {
+test('the core entry carries the commands, the router skill, the inline hook, and no dependency', () => {
     const core = byName['claude-stack'];
     assert.ok(core, 'the core entry is generated from Phase 3 on');
     assert.strictEqual(core.source, './');
@@ -42,7 +44,11 @@ test('the core entry carries the commands, the router skill, the inline hook and
     const wired = JSON.stringify(core.hooks);
     assert.ok(wired.includes('setup-plugin/hooks/guard-layer-table.js'), 'the layer-table guard is declared inline');
     assert.ok(wired.includes('${CLAUDE_PLUGIN_ROOT}'), 'and resolved through the plugin root');
-    assert.deepStrictEqual(core.dependencies, setup.dependencies, 'the dependency plugin.json declared is carried, not dropped');
+    // Measured on 2.1.280: `claude plugin update` over an older core installs none of the dependencies
+    // a release adds, and a plugin with one missing is disabled at load - its six commands with it, so
+    // `/claude-stack:update` cannot repair the install. The core must load with nothing beside it.
+    assert.strictEqual(core.dependencies, undefined, 'the core declares no dependencies - its companions are the installer\'s to install');
+    assert.strictEqual(setup.dependencies, undefined, 'and plugin.json keeps none for a generator to carry back in');
 });
 
 test('an entry lists skill FOLDERS and agent FILES, the two forms spike S9 proved', () => {
@@ -140,13 +146,13 @@ const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-p
 const shippedBy = Object.fromEntries(SHIPPED.plugins.map(e => [e.name, e]));
 
 test('every shipped entry reaches the core through its dependencies, with no cycle', () => {
-    // The core's OWN dependencies are the exception, and by design: the three locked MCP servers are
-    // reached FROM the core, so enabling the core enables them - and depending back on it would be a
-    // cycle. Everything else must reach the core, or enabling it would not enable the baseline.
-    const coreDeps = new Set((shippedBy['claude-stack'].dependencies || []).filter(d => typeof d === 'string'));
+    // The three locked MCP servers are the exception, and by design: the installer installs them
+    // beside the core on every run, and a plugin that depends on nothing can never be disabled at
+    // load by a missing one. Everything else must reach the core, or enabling it would not enable
+    // the baseline.
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'claude-stack' || coreDeps.has(e.name)) continue;
+        if (e.name === 'claude-stack' || LOCKED.includes(e.name)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -181,21 +187,19 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
         'allowCrossMarketplaceDependenciesOn must name exactly the marketplaces the entries reach into - a missing name fails the install with a cross-marketplace error, an extra one widens trust for nothing');
 });
 
-test('the core depends on superpowers, which is what took it out of the installer pick list', () => {
-    const deps = (shippedBy['claude-stack'].dependencies || []).filter(d => typeof d !== 'string');
-    assert.deepStrictEqual(deps.map(d => `${d.name}@${d.marketplace}`), ['superpowers@claude-plugins-official']);
+test('superpowers is the one plugin the installer adds from another marketplace, on every run', () => {
+    assert.strictEqual(shippedBy['claude-stack'].dependencies, undefined);
+    assert.deepStrictEqual(CORE_DEP_PLUGINS, ['superpowers@claude-plugins-official']);
 });
 
-// The three servers a project can never drop are dependencies OF the core, in the plain string form
-// a same-marketplace dependency takes - so Claude Code installs them with it and refuses to disable
-// them while it is enabled. That is what 'locked' means now the registrations are gone: not a line
-// in a catalog, but an edge the CLI enforces.
-test('the core pulls in the three locked MCP plugins, which is what keeps them undroppable', () => {
-    const deps = (shippedBy['claude-stack'].dependencies || []).filter(d => typeof d === 'string');
-    assert.deepStrictEqual(deps, ['serena', 'context7', 'memory']);
-    for (const name of deps)
+// The three servers a project can never drop ship as standalone entries the installer installs beside
+// the core - locked by the installer putting them back on every run, not by a dependency edge that
+// disables the core when one is missing.
+test('the three locked MCP plugins ship standalone, one server each, depending on nothing', () => {
+    for (const name of LOCKED)
     {
-        assert.ok(shippedBy[name], `the core depends on ${name}, which this marketplace does not ship`);
+        assert.ok(shippedBy[name], `${name} is locked, but this marketplace does not ship it`);
+        assert.strictEqual(shippedBy[name].dependencies, undefined, `${name} depends on nothing, so it never loads disabled`);
         assert.deepStrictEqual(Object.keys(shippedBy[name].mcpServers || {}), [name],
             `${name} must carry exactly one server of its own name, or its tools stop being mcp__plugin_${name}_${name}__<tool>`);
     }

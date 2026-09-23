@@ -288,7 +288,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers` as a HARD `dependencies` entry on the core - Claude Code installs and enables it, and refuses to disable it while the core is enabled, so it is no longer a pick and the installer only installs it explicitly on the both-switches-off copy route - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
+| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
 | Hooks | `claude-stack-hooks@claude-stack` plugin (all sixteen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
 | Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
@@ -316,12 +316,13 @@ mirrored there in the same sitting.
   on which the installer re-spells the copied skills, agents, rules and hooks back to the bare names,
   because those are what a registration writes. That re-spelling needs the FILES, so the switch
   belongs with `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported, never half-fixed.
-  The LOCKED THREE are plugin-only whenever any plugin route is on: they are hard `dependencies` of
-  the core entry, so the CLI installs them with it, and registering them as well would run each
-  server twice and pay both sets of tool schemas every session. They come back to `.mcp.json` only
-  on the FULL copy route, where the core is never enabled. Every registration and verify pass skips
-  a locked name while the core carries it, and the re-spelling covers only the servers a run
-  actually registered bare.
+  The LOCKED THREE are plugin-only whenever any plugin route is on: the installer installs them
+  beside the core (the selection names them on the MCP route, `pluginSet` adds them on the mixed
+  one - never as the core's `dependencies`, see the Plugins surface above), and registering them as well would
+  run each server twice and pay both sets of tool schemas every session. They come back to
+  `.mcp.json` only on the FULL copy route, where the core is never enabled. Every registration and
+  verify pass skips a locked name while the core is on, and the re-spelling covers only the servers
+  a run actually registered bare.
 - **MCP servers are per-project, never global.** `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
@@ -358,7 +359,7 @@ mirrored there in the same sitting.
     block is the source that answers, which is where the installers write the token. `CLAUDE_CONFIG_DIR`
     survives the scrub, so a `--space` install still finds its own account file.
   - plus `serena`, `context7` and `memory`. context7 ships TWO plugins - `context7` (the hosted
-    remote, a hard dependency of the core, so it can never be dropped) and `context7-local` (the npx
+    remote, locked, so it can never be dropped) and `context7-local` (the npx
     transport, added by `--context7 local`). Two entries rather than two servers in one, for the same
     load-together reason; in local mode both are installed and the run prints the `/mcp disable
     context7` line. The 24 agents that grant context7 grant BOTH spellings, because a `tools:` list

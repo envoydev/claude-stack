@@ -5276,15 +5276,15 @@
       ]
     },
     "dependency-plugin-not-removable": {
-      "_note": "A plugin the core marketplace entry hard-depends on is never proposed for removal: Claude Code refuses both `plugin uninstall` and `plugin disable` while the dependent is enabled, and names the dependent (code.claude.com/docs/en/plugin-dependencies, read 2026-09-22). Restated in both walks that remove plugins, beside the scope rule they already share.",
+      "_note": "A plugin every install carries beside the core (superpowers) is never proposed for removal: the installer puts it back on every run, so the removal would only be undone. It is not a dependency of the core - a missing one disables the core at load, commands and all (measured 2026-09-23 on a 0.2.87 -> 1.0.0 upgrade). Restated in both walks that remove plugins, beside the scope rule they already share.",
       "owner": {
         "file": "setup-plugin/commands/validate.md",
-        "marker": "never propose removing one: Claude Code refuses both the uninstall"
+        "marker": "never propose removing one: the installer puts it back on every"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/configure.md",
-          "marker": "hard-depends on it, and Claude Code refuses both the uninstall and the disable while the core"
+          "marker": "every install carries it beside the core, and the next run installs it again"
         }
       ]
     },

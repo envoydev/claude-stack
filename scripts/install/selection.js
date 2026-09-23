@@ -333,8 +333,8 @@ function dropLines(lines, drop = [], log = () => {})
 // apart - parked, neither installed nor absent.
 const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name === 'context7-local' ? 'context7' : name);
 //
-// `pluginCatalog` is every plugin the catalog names, the core's hard dependencies included: an
-// enabled one is installed whatever the selection says (superpowers rides the core entry), or an
+// `pluginCatalog` is every plugin the catalog names, the core's companions included: an
+// enabled one is installed whatever the selection says (every run installs superpowers), or an
 // unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
 // seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
 function planInventory({ lists, listing = [], answered, pluginCatalog = [], leftOut = [] })

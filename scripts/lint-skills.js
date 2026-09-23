@@ -2556,12 +2556,12 @@ function isTracked(base, rel)
     catch { return false; }
 }
 
-// 51. A plugin the core entry hard-depends on is installed by Claude Code, not by the installer
-// loop - EXCEPT on the copy route, where no stack plugin is enabled and nothing would pull it. Both
-// twins carry that fallback list, so it has to be the same list the generated core entry declares:
-// a dependency added to the placement and not here would simply be absent for every copy-route
-// install, and a name left here after the entry dropped it would install a plugin nothing needs.
-function lintCoreDependencies(shFile, ps1File, entriesFile)
+// 51. The core declares no dependencies (a missing one disables it at load), so the installer puts
+// its cross-marketplace companion beside it on every run - the seed from CORE_DEP_PLUGINS in
+// install/plugins.js, each twin from its own copy. The three lists have to agree: a name added to the
+// seed and not the twins is a shell-route install without superpowers, and a name left in a twin
+// installs a plugin nothing needs.
+function lintCoreDependencies(shFile, ps1File, seedList)
 {
     const out = [];
     const sh = fs.readFileSync(shFile || CLAUDE_SH, 'utf8');
@@ -2574,32 +2574,14 @@ function lintCoreDependencies(shFile, ps1File, entriesFile)
     };
     const shNames = listOf(sh, /^CORE_DEP_PLUGINS=\(([^)]*)\)/m);
     const psNames = listOf(ps1, /^\$CoreDepPlugins = @\(([^)]*)\)/m);
-    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
-    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the copy route would silently lose the core plugin\'s dependencies.');
+    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the shell route would silently lose the core plugin\'s companions.');
+    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the shell route would silently lose the core plugin\'s companions.');
     if (!shNames || !psNames) return out;
     if (shNames.join(',') !== psNames.join(','))
         out.push(`CORE_DEP_PLUGINS differs across the twins: sh has [${shNames.join(', ')}], ps1 has [${psNames.join(', ')}].`);
-
-    let entries;
-    try { entries = JSON.parse(fs.readFileSync(entriesFile || path.join(ROOT, 'meta', 'plugin-entries.json'), 'utf8')); }
-    catch (err) { out.push(`meta/plugin-entries.json could not be read for the core-dependency check: ${err.message}`); return out; }
-    const declared = new Set();
-    for (const e of (entries && (entries.entries || entries.plugins)) || [])
-        for (const d of e.dependencies || [])
-        {
-            // A string dep is in-marketplace and never installed by us. An OBJECT dep naming this
-            // stack's OWN marketplace is in-marketplace too - from Phase 6 the core depends on the
-            // serena, context7 and memory plugins that way. CORE_DEP_PLUGINS exists for the copy
-            // route, where the CLI installs no dependencies for us, and on that route those three
-            // servers are registered directly rather than enabled as plugins - so listing them
-            // there would install a plugin the run has just decided not to use.
-            if (!d || typeof d !== 'object' || !d.name) continue;
-            if (d.marketplace === 'claude-stack') continue;
-            declared.add(d.name);
-        }
-    const want = [...declared].sort();
+    const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map(n => n.split('@')[0]).sort();
     if (want.join(',') !== shNames.join(','))
-        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] but the generated entries declare [${want.join(', ')}] as cross-marketplace dependencies - update both twins.`);
+        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] in the twins but [${want.join(', ')}] in the seed - update both twins.`);
     return out;
 }
 

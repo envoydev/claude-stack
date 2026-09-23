@@ -34,7 +34,7 @@ The stack is built for this house's verticals:
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 16 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, and an env-gated usage instrument (off by default), shipped as the `claude-stack-hooks` plugin; only the two engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 8 | one plugin each, named for the server (12 entries: playwright expands per browser, context7 per transport); the project's closure enables its own |
-| **Plugins** | 5 + the stack's own | five third-party picks via the `claude` CLI, plus `superpowers` as a hard dependency of the core entry, `claude-stack-hooks`, and the entries this project's skills and agents live in |
+| **Plugins** | 5 + the stack's own | five third-party picks via the `claude` CLI, plus `superpowers`, which every install carries beside the core, `claude-stack-hooks`, and the entries this project's skills and agents live in |
 
 The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
 inventory at [`docs/claude-stack.html`](docs/claude-stack.html), not in this README.
