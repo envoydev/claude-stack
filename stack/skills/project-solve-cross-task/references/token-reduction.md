@@ -22,7 +22,7 @@ Core behavior expected from an implementer ('build lean'):
 3. Prefer a framework / native / stdlib feature before a new dependency.
 4. Implement the smallest change that satisfies the contract and acceptance criteria.
 5. Do not future-proof speculatively.
-6. Record each deliberate simplification and its ceiling/upgrade path in the closing report ('global lock, per-account locks if throughput matters') - never as a code comment; markers stay out of the code, the report carries the intent.
+6. Record each deliberate simplification in the closing report as a `where | limit | revisit when` row ('OrderLock.Acquire | global lock | throughput matters - per-account locks') - never as a code comment; the close files the rows in the architecture docs' Known ceilings section.
 7. Never cut security, accessibility, validation, data-loss prevention, or migration safety to get smaller.
 ```
 

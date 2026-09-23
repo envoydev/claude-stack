@@ -68,6 +68,7 @@ validation_performed:
   - dotnet test ...
 regression_proof: [none]        # a spec proven red against the pre-fix code / a captured repro - recorded so the verifier CONFIRMS the artifact, not re-derives the repro
 risks_or_concerns: [...]
+ceilings: [none]                # where | limit | revisit when - one row per deliberate simplification; the close files them
 contract_deviations: [none]
 next_recommended_action: [run aspnet-verifier]
 ```

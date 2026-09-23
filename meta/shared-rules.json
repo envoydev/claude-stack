@@ -687,6 +687,64 @@
         }
       ]
     },
+    "implementer-ceilings-row": {
+      "_note": "Each implementer reports a deliberate simplification in one fixed shape, so the close can file it under the architecture docs' Known ceilings section instead of losing it with the session.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        }
+      ]
+    },
+    "known-ceilings-filing": {
+      "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone.",
+      "owner": {
+        "file": "stack/skills/project-solve-cross-task/SKILL.md",
+        "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/project-implementer/SKILL.md",
+          "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
+        }
+      ]
+    },
     "implementer-model-routing": {
       "_note": "The per-task implementer_model routing designers emit (haiku mechanical / sonnet floor on risk).",
       "owner": {

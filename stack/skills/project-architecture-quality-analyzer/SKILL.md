@@ -41,6 +41,8 @@ Treat a smell or a pattern as a hypothesis, never a finding, until it clears `re
 
 **The over-build lens, repo-wide.** Hunt what the code carries past its need: an interface with a single implementation, a speculative layer no second caller crosses, dead flexibility (options nobody sets, a generic one type fills), a hand-rolled piece the stdlib or framework ships, a dependency one call site uses. Each candidate takes the findings gate like any other - its 'what breaks' is the next developer's time, or a dependency's upgrade and advisory cost - plus the verifier's five tags (delete / stdlib / native / yagni / shrink) and its measured cut: the lines and dependencies it removes, counted, never estimated. Survivors land in Must fix; the Summary ranks them biggest cut first and closes with `net: -N lines, -M dependencies possible`.
 
+**Known ceilings.** The map's Known ceilings section (`ARCHITECTURE.md#known-ceilings`), when present, lists the shortcuts builds took on purpose, one `where | limit | revisit when` row each. A row whose 'revisit when' has come true in the code (a second instance now runs, the list now pages) is a Must-fix candidate through the gate like any other; a row with no 'revisit when' is flagged in the REPORT for a person to supply one - a ceiling nobody can revisit is a permanent shortcut by default.
+
 Strength-check every Must-fix remediation against the Strengths list before it lands: a fix that would erode a listed strength names the tension in its entry and is shaped to preserve it, or the tradeoff is declared and the weakness tiered structural.
 
 ### 4. RE-GATHER on the gaps

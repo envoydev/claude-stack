@@ -76,6 +76,8 @@ At close-out (any mode), add **doc-drift awareness** - one line at most, the use
 
 The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end: an earlier ask still unanswered, unpushed commits (check the upstream), an undecided push, any gate still owed (a verifier not run, a review skipped - named in the user-facing text, never only in a private receipt), and any bug flagged this run but not fixed. A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any memory purge, so the purge cannot destroy its only record. Doc-drift covers contradictions too: a decision this run made that contradicts an existing architecture or assessment entry routes the same one line (update mode), and the drift line lands in the user-facing close, never only an internal note.
 
+**Known ceilings.** File every `where | limit | revisit when` row a seat reported this run before the close: `node .claude/hooks/docs.js show architecture/ARCHITECTURE.md#known-ceilings` for the rows already there and `docs.js hash` of the same ref (both report it absent the first time), then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>` (no `--expect` the first time). The covers line makes `docs.js where` show the ceiling to the next session on that code, and `docs.js stale` flag it once the code moves. No `architecture/` under the docs root: the rows stay in the close report, and the close says so.
+
 The close report itself has a fixed shape - one block, no re-pasted plans or ledgers:
 
 ```text
@@ -85,6 +87,7 @@ final gate: <integration-reviewer verdict, or n/a for single-domain>
 pending: <each undecided or unlanded item, or none>
 leftovers: <what this run started and still has up, or none>
 doc-drift: <the one line, or none>
+ceilings: <rows filed under architecture/ARCHITECTURE.md#known-ceilings, or none>
 memories purged: <names|none>
 ```
 
