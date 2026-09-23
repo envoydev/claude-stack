@@ -770,6 +770,26 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'PreCompact' }), 0, 'an unrelated event');
 });
 
+test('guard-stop-contract: the quality loop\'s mode ask and stage-close ask in prose are sent to ONE AskUserQuestion; the same words through the tool pass', () => {
+  // project-quality-loop's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
+  // worded as a statement they end on no '?', so the question shape alone never caught them.
+  const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp });
+  const prose = (id, text) => stop(transcript(id, [assistantRow('a', text)]));
+  assert.equal(prose('ql-m1', 'DISCOVERY is next. Run the pipeline inline in this session, or dispatch the audit and fix seats - pick one and I start.'), 2, 'the mode ask as a statement');
+  assert.equal(prose('ql-m2', 'Which mode: inline or delegated.'), 2, "'which mode' with no question mark");
+  assert.equal(prose('ql-s1', 'Stage 01 reached SATISFIED on pass 3 and RUN-STATE.md is written. Continue in a fresh session from the loops folder (recommended), or continue here.'), 2, 'the stage-close ask as a statement');
+  assert.equal(prose('ql-s2', 'Close this stage and resume fresh, or keep going here.'), 2, "'close this stage' with no question mark");
+  // The same words handed to the tool: the turn ends on the AskUserQuestion call, which is the contract.
+  const viaTool = transcript('ql-t', [{ type: 'assistant', message: { id: 'q', content: [
+    { type: 'text', text: 'Stage 01 reached SATISFIED on pass 3 and RUN-STATE.md is written.' },
+    { type: 'tool_use', id: 'u', name: 'AskUserQuestion', input: { questions: [{ question: 'Continue in a fresh session from the loops folder, or continue here?', header: 'Stage close', multiSelect: false, options: [{ label: 'Fresh session (Recommended)', description: 'resume from the loops folder' }, { label: 'Continue here', description: 'keep this context' }] }] } },
+  ] } }]);
+  assert.equal(stop(viaTool), 0, 'the ask made through the tool');
+  // A record of an answer already given is no ask.
+  assert.equal(prose('ql-r1', 'Mode: DELEGATED - the user chose to dispatch the audit and fix seats. Stage 01 started.'), 0, 'the mode, recorded');
+  assert.equal(prose('ql-r2', 'Stage 01: SATISFIED on pass 3, continue: fresh - "fresh session". The resume block is below.'), 0, 'the stage outcome, recorded');
+});
+
 test('guard-stop-contract: last_assistant_message wins over a lagging transcript', () => {
   // The harness documents the transcript as written asynchronously: here it still holds the
   // PREVIOUS turn's clean close while the payload field carries this turn's decision stop.

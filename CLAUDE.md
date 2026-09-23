@@ -91,7 +91,8 @@ change (see the invariants below).
     credential-shaped literal blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
     through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion`
-    branch that never denies) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step
+    branch that never denies) - blocks a turn ending on a decision-shaped question in prose (the quality
+    loop's mode and stage-close asks worded as statements included), or a 'done, next step
     pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own - a fork read its parent's pending fork as its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`CLAUDE_STACK_ROTATE_ASK=0` off).

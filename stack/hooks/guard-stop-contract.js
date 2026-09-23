@@ -182,12 +182,28 @@ const RETRO_YOUR_CALL_RE = /\b(record(ed)?|noted?|logged|captured|set|chosen|dec
 // The quoted token is the other measured half: the model writes its own hand-back word in quotes,
 // so the literal `say go` saw none of the five asks it made in one session.
 const PROSE_ASK_CLAUSE_RE = /(?:^|[\n.;:,!?)\]-]\s*|\b(?:then|and|or|so|when|otherwise)\s+)(?:(?:just |please )?tell me\b(?!\s+(?:if|when|whenever|whether|why|what|how)\b)|(?:just |then )?say\s+['"‘’“”]?(?:go|yes|ok|okay|allowed|proceed|approved?)['"‘’“”]?\b)/i;
+// project-quality-loop's two structural pauses - the run-start mode ask and the stage-close
+// fresh-session ask - live in its SKILL.md as sentences, so the loop can word them as a statement
+// that ends on no '?' ('Continue in a fresh session from the loops folder (recommended), or
+// continue here.') and the question shape never sees them (improvement plan 2.5). Each needs the
+// alternative offered, or a clause start, so a RECORD of the answer ('Mode: DELEGATED - the user
+// chose to dispatch...', 'continue: fresh') and narration ('I'll close this stage once...') pass.
+const LOOP_ASK_RES = [
+  /(?:^|[\n.;:!?]\s*)which mode\b/i,
+  /\brun (?:the pipeline |it |this )?(?:inline|here|in (?:this|the current) session)\b[^.\n?]{0,80}\bor\b[^.\n?]{0,40}\bdispatch\b/i,
+  /\b(?:inline|in this session)\s+or\s+(?:delegated|dispatch(?:ed)?)\b/i,
+  /(?:^|[\n.;:!?]\s*)(?:shall i |should i |do we |ok to )?close this stage\b[^.\n?]{0,80}\bor\b/i,
+  /\b(?:continue|resume|start) (?:in )?a fresh session\b[^.\n?]{0,100}\bor\b[^.\n?]{0,40}\b(?:continue|stay|keep going|carry on)(?: \w+){0,2} here\b/i,
+  /\b(?:continue|stay|keep going|carry on) here\b[^.\n?]{0,60}\bor\b[^.\n?]{0,40}\b(?:a )?fresh session\b/i,
+];
 function proseAskMatch(text) {
   const m = (text.match(PROSE_ASK_RE) || [])[0] || '';
   if (m && /^your call$/i.test(m.trim()) && RETRO_YOUR_CALL_RE.test(text)) return null;
   if (m) return m;
   const c = (text.match(PROSE_ASK_CLAUSE_RE) || [])[0] || '';
-  return c ? c.trim() : null;
+  if (c) return c.trim();
+  for (const re of LOOP_ASK_RES) { const l = (text.match(re) || [])[0]; if (l) return l.trim(); }
+  return null;
 }
 function proseAsk(text) {
   return proseAskMatch(text) !== null;
