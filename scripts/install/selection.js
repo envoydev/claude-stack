@@ -188,12 +188,16 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
 {
     let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
-    if (!hasInstall(lines)) return none;
+    const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
+    // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
+    // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
+    // entry is every project's, and would read a project the stack never touched as installed.
+    const ownEntries = ours.some((r) => r.enabled && (r.scope === 'project' || r.scope === 'local'));
+    if (!hasInstall(lines) && !ownEntries) return none;
 
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
     const closeFrom = [...lines];
-    const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     const names = ours.filter((r) => r.enabled).map((r) => r.name);
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
