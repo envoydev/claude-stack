@@ -81,6 +81,33 @@ test('every library case grades with arm: both, so the case has a delta', () =>
     }
 });
 
+// A path-scoped project rule never attaches inside `claude plugin eval` (the same scaffolded rule
+// attaches under plain `claude -p` - measured 2026-09-24), so a language skill's case can only give its
+// DESCRIPTION a real file to trigger on: the scaffold writes it, the prompt edits it.
+test('a case that edits a file carries an executable scaffold that writes every file its prompt names', () =>
+{
+    const dir = path.join(REPO, 'meta', 'evals', 'library');
+    const scaffolded = [];
+    for (const c of fs.readdirSync(dir))
+    {
+        const y = fs.readFileSync(path.join(dir, c, 'case.yaml'), 'utf8');
+        const m = /^\s+scaffold_script:\s*(\S+)\s*$/m.exec(y);
+        if (!m) continue;
+        scaffolded.push(c);
+        const script = path.join(dir, c, m[1]);
+        assert.ok(fs.existsSync(script), `${c}: ${m[1]} exists`);
+        const named = [...y.matchAll(/\b(src\/[\w./-]+\.[a-z]+)\b/g)].map((n) => n[1]);
+        assert.ok(named.length, `${c}: the prompt names the file it edits`);
+        // Windows carries no exec bit and runs no bash scaffold; the eval CLI runs these on macOS / Linux.
+        if (process.platform === 'win32') continue;
+        assert.ok(fs.statSync(script).mode & 0o100, `${c}: ${m[1]} is executable`);
+        const ws = tmp('scaffold-');
+        execFileSync(script, { cwd: ws, stdio: 'pipe' });
+        for (const f of named) assert.ok(fs.existsSync(path.join(ws, f)), `${c}: the scaffold writes ${f}`);
+    }
+    for (const c of ['skill-typescript', 'skill-javascript']) assert.ok(scaffolded.includes(c), `${c} edits a scaffolded file`);
+});
+
 test('the bundle passes claude plugin validate --strict when the CLI is here', { skip: !hasClaude() && 'claude CLI not on PATH' }, () =>
 {
     const out = path.join(tmp('bundle-'), 'b');

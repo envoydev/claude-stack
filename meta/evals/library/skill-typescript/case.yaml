@@ -1,13 +1,15 @@
 schema_version: "1.1"
 name: skill-typescript
-description: A TypeScript typing request loads the typescript library skill (the typescript stack).
+description: Adding a typed helper to a TypeScript file loads the typescript library skill (the typescript stack). The case edits a scaffolded file because a path-scoped rule never attaches inside plugin eval, so only the skill's own description can trigger the load.
 tags: [library, skill, typescript]
 execution:
   prompt: |
-    Type a TypeScript function that groups an array of records by a key the caller names, with the key
-    constrained to the record's string fields. Reply with the code in one code block.
-  max_turns: 6
-  allowed_tools: [Read, Glob, Grep, Skill]
+    Add a generic groupBy function to src/records.ts that groups an array of records by a key the caller
+    names, with the key constrained to the record's string fields. Edit the file in place.
+  max_turns: 8
+  allowed_tools: [Read, Edit, Write, Glob, Grep, Skill]
+context:
+  scaffold_script: scaffold.sh
 runs: 3
 graders:
   - type: tool_used
