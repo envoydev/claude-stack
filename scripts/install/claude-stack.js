@@ -37,6 +37,7 @@ const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const runtime = require('./runtime.js');
+const { envMigrations } = require('./env-migrations.js');
 
 const USAGE = `claude-stack - install or update the Claude Code stack into a project.
 
@@ -555,7 +556,7 @@ function installHooksAndRules(ctx)
     copy.stampDocsRoot(ctx.projectRoot, { log: ctx.log, note: ctx.note });
 
     const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
-    const migrations = readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')).env || {};
+    const migrations = envMigrations(readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')));
     const wired = ctx.routes.hooks ? [] : ctx.lists.hooks;
     // ONE derivation decides what this project does NOT take (Phase 8): the hooks named off and the
     // seats denied. It runs whenever the run holds a selection: one a walk answered, or the one
