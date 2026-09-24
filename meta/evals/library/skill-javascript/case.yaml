@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-javascript
+description: A plain JavaScript helper request loads the javascript library skill (the javascript stack).
+tags: [library, skill, javascript]
+execution:
+  prompt: |
+    Write a plain JavaScript debounce helper with a cancel method and a leading-edge option. Reply with
+    the code in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-javascript
+    tool: Skill
+    input_match: javascript
+    min: 1
+    arm: both

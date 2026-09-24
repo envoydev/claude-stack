@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, stampPath } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -49,6 +49,7 @@ function write(p, opts = {})
         mcpFile: p.mcpFile,
         hooksCatalog: opts.hooksCatalog || [],
         picked: opts.picked,
+        library: opts.library,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -194,4 +195,37 @@ test('install-stamp: a stamp without the picked lines (an older install, the she
     assert.deepStrictEqual(readPicked(file), { skills: [], agents: [] }, 'recorded empty is an answer');
     const { text } = write(project());
     assert.match(text, /^picked-skills: $/m, 'no picks given is an empty line, never a crash');
+});
+
+// Library route: the hash of every library copy this run wrote, so validate and status can tell a
+// hand edit from a stale copy, and the next update can say it overwrote one.
+test('install-stamp: the stamp records library hashes and reads them back', () =>
+{
+    const p = project();
+    const { dest, text } = write(p, { library: { skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' } } });
+    assert.match(text, /^library-skills: demo=aa,other=cc$/m);
+    assert.match(text, /^library-agents: seat=bb$/m);
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' } });
+});
+
+test('install-stamp: a stamp without library lines, or no stamp, reads as null; recorded empty is an answer', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'old.stamp');
+    fs.writeFileSync(file, 'sha: abc\nversion: 1.2.0\npicked-skills: csharp\n');
+    assert.strictEqual(readLibrary(file), null);
+    assert.strictEqual(readLibrary(path.join(p.base, 'absent.stamp')), null);
+    fs.writeFileSync(file, 'sha: abc\nversion: 1.3.0\nlibrary-skills: \nlibrary-agents: garbage,x=\n');
+    assert.deepStrictEqual(readLibrary(file), { version: '1.3.0', skills: {}, agents: { x: '' } }, 'a malformed pair is skipped, never a crash');
+    const { text } = write(project());
+    assert.match(text, /^library-skills: $/m, 'no library given is an empty line');
+});
+
+test('install-stamp: stampPath is where writeStamp writes, per scope', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    assert.strictEqual(stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }), path.join(p.base, '.claude', 'claude-stack.stamp'));
+    assert.strictEqual(stampPath({ scope: 'global', configDir: acct, projectRoot: p.base }), path.join(acct, 'claude-stack.stamp'));
+    assert.strictEqual(write(p).dest, stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }));
 });

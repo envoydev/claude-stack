@@ -1,0 +1,19 @@
+schema_version: "1.1"
+name: skill-angular-conventions
+description: Writing an Angular component loads the angular-conventions library skill.
+tags: [library, skill]
+execution:
+  prompt: |
+    Write an Angular standalone component UserCardComponent that shows a user's name and email passed in
+    from its parent, plus a button that emits a select event carrying the user's id. Reply with the full
+    TypeScript file in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-angular-conventions
+    tool: Skill
+    input_match: angular-conventions
+    min: 1
+    arm: both

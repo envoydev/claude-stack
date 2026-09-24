@@ -468,3 +468,35 @@ test('seed update: an absent claude-hud gets its marketplace before the install'
     assert.ok(inst >= 0, `claude-hud was never installed:\n${calls.join('\n')}`);
     assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
 });
+
+// A retired per-stack entry is the migration's only record of the user's off-state and of other
+// projects' picks: a PARKED one keeps its items out for as long as it stays installed, and one at
+// ANOTHER scope is every other project's too. Both stay; the run says how to remove them by hand.
+test('prunedRetired keeps a parked carrier and one at another scope, and says so', () =>
+{
+    const calls = [];
+    const logs = [];
+    const listing = [
+        { name: 'claude-stack-angular', version: '1.2.0', scope: 'project', enabled: false },
+        { name: 'claude-stack-aspnet', version: '1.2.0', scope: 'user', enabled: true },
+        { name: 'claude-stack-web-angular', version: '1.2.0', scope: 'project', enabled: true },
+        { name: 'ponytail', version: '1.0.0', scope: 'user', enabled: false },
+    ];
+    const carriers = ['claude-stack-angular', 'claude-stack-aspnet', 'claude-stack-web-angular'];
+    const gone = P.prunedRetired({ listing, retired: [...carriers, 'ponytail'], carriers, scope: 'project', cli: (a) => { calls.push(a.join(' ')); return true; }, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(gone.sort(), ['claude-stack-web-angular', 'ponytail'], 'an ordinary retired name still goes at its own scope');
+    assert.ok(!calls.some((c) => /claude-stack-angular |claude-stack-aspnet /.test(c)), calls.join(' | '));
+    assert.ok(logs.some((m) => /claude-stack-angular is parked here - kept/.test(m) && /claude plugin uninstall claude-stack-angular --scope project/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /claude-stack-aspnet is installed at user scope/.test(m) && /claude plugin uninstall claude-stack-aspnet --scope user/.test(m)), logs.join(' | '));
+});
+
+test('prunedRetired retries a refused uninstall in a second pass', () =>
+{
+    const calls = [];
+    const listing = [{ name: 'claude-stack-web-angular', version: '1.2.0', scope: 'project' }, { name: 'claude-stack-angular', version: '1.2.0', scope: 'project' }];
+    let leafGone = false;
+    const cli = (args) => { calls.push(args[2]); if (args[2] === 'claude-stack-web-angular') { leafGone = true; return true; } return leafGone; };
+    const gone = P.prunedRetired({ listing, retired: ['claude-stack-angular', 'claude-stack-web-angular'], scope: 'project', cli });
+    assert.deepStrictEqual(gone.sort(), ['claude-stack-angular', 'claude-stack-web-angular']);
+    assert.deepStrictEqual(calls, ['claude-stack-angular', 'claude-stack-web-angular', 'claude-stack-angular'], 'the refusal is retried once, after the leaf');
+});

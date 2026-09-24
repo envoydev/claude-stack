@@ -1,0 +1,16 @@
+schema_version: "1.1"
+name: negative-no-skill
+description: An unrelated question loads no skill at all.
+tags: [library, negative]
+execution:
+  prompt: What is the capital of Portugal? Answer in one word.
+  max_turns: 3
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: no-skill-fires
+    tool: Skill
+    min: 0
+    max: 0
+    arm: both

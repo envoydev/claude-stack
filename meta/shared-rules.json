@@ -5302,7 +5302,7 @@
       ]
     },
     "inventory-read-back": {
-      "_note": "configure and validate inventory an install through the installer's own read-back (`update --installed-only --print-plan --plan-out`), the same read an update writes back, and apply their walk as --add / --drop over it. A hand inventory unioned what the plugin entries carry without the denied seats, so every apply switched them back on; a --selection apply rebuilt the install from a disk that holds only the extras. status still inventories by hand, on its own.",
+      "_note": "configure and validate inventory an install through the installer's own read-back (`update --installed-only --print-plan --plan-out`), the same read an update writes back, and apply their walk as --add / --drop over it. A hand inventory unioned what the plugin entries carry without the denied seats, so every apply switched them back on; a --selection apply rebuilt the install from a disk that holds only the library copies. status still inventories by hand, on its own.",
       "owner": {
         "file": "setup-plugin/commands/configure.md",
         "marker": "--installed-only --print-plan --plan-out \"$TMP/installed.json\""

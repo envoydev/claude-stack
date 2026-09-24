@@ -190,7 +190,7 @@ post-install read below has a file that was actually written (the shared contrac
 `source-protocol.md`'s 'Capture the installer's own output'):
 
 - **Any OS:** `node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
-- **`CLAUDE_STACK_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead. Unix: the same flags, with `bash "$TMP/repo/scripts/os/claude-stack.sh"` in place of the `node` call. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **`CLAUDE_STACK_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead. Unix: the same flags, with `bash "$TMP/repo/scripts/os/claude-stack.sh"` in place of the `node` call. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"` The twin does NOT migrate the per-stack entries retired in 1.3.0: it cannot copy their picks, so it leaves them installed and working until a Node-seed update copies the picks and removes them - say so when one is enabled.
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
@@ -256,7 +256,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -357,7 +357,7 @@ row's new name (the old copy is on disk, the new one is not yet, so the read-bac
 it) and every offer the step-2 ask took. A removed name needs no flag - this release
 does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
-extras, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
+library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
 read-back exists for exactly that). Under `CLAUDE_STACK_SEED=shell` the frozen twin takes no
 `--add` and writes no seat deny, so it keeps the old route: selection = installed, minus the
 confirmed prune list, plus the new names of renames; write `raw.json`, run `stack-select.js

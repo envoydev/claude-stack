@@ -23,7 +23,7 @@
 //     the shipped list once read as a drop of everything, and the memory rule never arrived.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readInstalled, stampCarried, splitPick, homeOf, stackSeat } = require('../derive-state.js');
+const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
 const { hookDisabled } = require('../../stack/hooks/hook-prelude.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
@@ -208,8 +208,24 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // a hook this one added stays off too rather than arriving on alone.
     const noneBefore = routes.hooks && names.includes('claude-stack-hooks') && stampHooks.length > 0
         && stampHooks.every((h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(env.CLAUDE_STACK_HOOKS_OFF || '') }));
+    // A retired entry carries its whole stack, picked or not, and the library copies what the
+    // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
+    // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
+    // stamp without picks takes everything (the adoption path below).
+    const picks = ours.length && stampPicked
+        ? new Set(['skill', 'agent'].flatMap((k) => (stampPicked[`${k}s`] || []).map((e) => `${k} ${splitPick(e).name}`)))
+        : null;
+    const { placement, readRetiredEntries } = require('../plugin-placement.js');
+    const place = picks ? placement() : null;
+    const retired = picks ? readRetiredEntries() : [];
+    const unpickedRetired = (line) =>
+    {
+        const m = picks && /^(skill|agent) (\S+)$/.exec(line);
+        if (!m || picks.has(line) || homeOf(place, `${m[1]}s`, m[2])) return false;
+        return names.includes(retiredHomeOf(`${m[1]}s`, m[2], retired));
+    };
     for (const line of noneBefore ? installed.filter((l) => !l.startsWith('hook ')).concat('hook none') : installed)
-        if (!lines.includes(line)) lines.push(line);
+        if (!lines.includes(line) && !unpickedRetired(line)) lines.push(line);
     if (noneBefore && installed.some((l) => l.startsWith('hook ') && l !== 'hook none'))
         log('installed-only: every hook was switched off - the hooks this release added stay off too');
     // Only with a listing to say which entries are enabled and parked - without one the stamp would
@@ -245,7 +261,9 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
     lines = adoptAlways({ lines, always, log });
     for (const line of lines) if (/^(rule|mcp|plugin|hook) /.test(line) && !closeFrom.includes(line)) closeFrom.push(line);
-    return { lines, closeFrom, parked, deny, installed: true, answered, engines, context7Local };
+    // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
+    // run cannot tell a pick the user dropped from one it merely cannot see.
+    return { lines, closeFrom, parked, deny, installed: true, answered, engines, context7Local, blind: !ours.length };
 }
 
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
@@ -274,13 +292,16 @@ function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () 
     // stays denied - left out and said so, never switched back on behind them. A left-out item's own
     // requirements go with it: its node is blanked and the closure recomputed until nothing new is
     // left out.
-    const { placement } = require('../plugin-placement.js');
+    const { placement, readRetiredEntries } = require('../plugin-placement.js');
     const place = placement();
+    const retired = readRetiredEntries();
     const off = new Set(parked);
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const offReason = (category, name) =>
     {
-        const home = category === 'skill' || category === 'agent' ? homeOf(place, `${category}s`, name) : null;
+        // A library item's home is the retired entry that carried it, while that entry is installed.
+        const kind = `${category}s`;
+        const home = category === 'skill' || category === 'agent' ? homeOf(place, kind, name) || retiredHomeOf(kind, name, retired) : null;
         if (home && off.has(home)) return `its entry ${home} is parked here`;
         if (category === 'agent' && denied.has(name)) return 'switched off in permissions.deny';
         return null;
@@ -360,12 +381,13 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
 // every seat `permissions.deny` names under a stack entry. The closure never crosses either.
 function leftOut({ parked = [], deny = [] })
 {
-    const { placement } = require('../plugin-placement.js');
+    const { placement, readRetiredEntries } = require('../plugin-placement.js');
     const place = placement();
+    const retired = new Map(readRetiredEntries().map((e) => [e.name, e]));
     const out = [];
     for (const name of parked)
     {
-        const entry = place.plugins[name];
+        const entry = place.plugins[name] || retired.get(name);
         if (!entry) continue;
         for (const s of entry.skills) out.push(`skill ${s}`);
         for (const a of entry.agents) out.push(`agent ${a}`);

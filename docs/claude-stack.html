@@ -753,7 +753,7 @@
     <div id="content"></div>
 
     <div class="inv-sources">
-      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/claude-stack</code>, carried by the per-stack plugins the install enables (<code>claude-stack.sh install --skills-only</code>, or the <code>claude-stack</code> plugin); only the extras no plugin closure reaches are copied &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
+      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/claude-stack</code>, the always-on ones carried by the core <code>claude-stack</code> plugin, every other pick copied into the project as a library copy (<code>claude-stack.sh install --skills-only</code>, or the <code>claude-stack</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
     </div>
   </section>
 
@@ -789,7 +789,7 @@ const builtin = {
 
 const house = {
   title: "Skills (House)",
-  meta: "Convention skills, authored in this repo and published to envoydev/claude-stack. Carried by the per-stack plugins the install enables; only the extras no plugin closure reaches are copied. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
+  meta: "Convention skills, authored in this repo and published to envoydev/claude-stack. The always-on ones ride the core plugin; every other pick is copied into the project as a library copy, hashed in the install stamp. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
   invokeColumn: true,
   source: "https://github.com/envoydev/claude-stack",
   install: "node scripts/install/claude-stack.js install --skills-only",

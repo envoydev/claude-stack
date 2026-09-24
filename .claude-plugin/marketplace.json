@@ -679,37 +679,25 @@
               }
             ]
           }
+        ],
+        "SessionStart": [
+          {
+            "matcher": "startup",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js\"",
+                "timeout": 10
+              }
+            ]
+          }
         ]
       }
     },
     {
-      "name": "claude-stack-angular",
-      "source": "./",
-      "description": "claude-stack 4 skills and 2 agents used by the ionic-angular and web-angular stacks.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "skills": [
-        "./stack/skills/angular-conventions",
-        "./stack/skills/angular-security",
-        "./stack/skills/angular-styling",
-        "./stack/skills/angular-testing"
-      ],
-      "agents": [
-        "./stack/agents/angular-test-resolver.md",
-        "./stack/agents/ng-build-error-resolver.md"
-      ],
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
       "name": "claude-stack-aspnet",
       "source": "./",
-      "description": "claude-stack 2 skills and 3 agents used by the aspnet stack.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -732,26 +720,9 @@
       ]
     },
     {
-      "name": "claude-stack-aspnet-data",
-      "source": "./",
-      "description": "claude-stack 1 skill used by the aspnet and data stacks.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "skills": [
-        "./stack/skills/dotnet-data-access"
-      ],
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
       "name": "claude-stack-browser-extension",
       "source": "./",
-      "description": "claude-stack 1 skill and 3 agents used by the browser-extension stack.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -775,7 +746,7 @@
     {
       "name": "claude-stack-console",
       "source": "./",
-      "description": "claude-stack 3 agents used by the console stack.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -794,9 +765,9 @@
       ]
     },
     {
-      "name": "claude-stack-csharp",
+      "name": "claude-stack-ionic-angular",
       "source": "./",
-      "description": "claude-stack 3 skills used by the aspnet, console, data, windows-service, winforms and wpf stacks.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -804,18 +775,86 @@
       },
       "strict": false,
       "skills": [
-        "./stack/skills/csharp",
-        "./stack/skills/dotnet-migrate",
-        "./stack/skills/dotnet-testing"
+        "./stack/skills/capacitor-release",
+        "./stack/skills/ionic",
+        "./stack/skills/ionic-security"
+      ],
+      "agents": [
+        "./stack/agents/ionic-angular-implementer.md",
+        "./stack/agents/ionic-angular-solution-designer.md",
+        "./stack/agents/ionic-angular-verifier.md"
       ],
       "dependencies": [
-        "claude-stack"
+        "claude-stack-angular",
+        "claude-stack-javascript-shared",
+        "claude-stack-typescript-shared"
+      ]
+    },
+    {
+      "name": "claude-stack-typescript",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "dependencies": [
+        "claude-stack-javascript-shared",
+        "claude-stack-tsjs",
+        "claude-stack-typescript-shared"
+      ]
+    },
+    {
+      "name": "claude-stack-web-angular",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "agents": [
+        "./stack/agents/web-angular-implementer.md",
+        "./stack/agents/web-angular-solution-designer.md",
+        "./stack/agents/web-angular-verifier.md"
+      ],
+      "dependencies": [
+        "claude-stack-angular",
+        "claude-stack-javascript-shared",
+        "claude-stack-typescript-shared"
+      ]
+    },
+    {
+      "name": "claude-stack-windows-service",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": [
+        "./stack/skills/dotnet-windows-service"
+      ],
+      "agents": [
+        "./stack/agents/windows-service-implementer.md",
+        "./stack/agents/windows-service-solution-designer.md",
+        "./stack/agents/windows-service-verifier.md"
+      ],
+      "dependencies": [
+        "claude-stack-csharp",
+        "claude-stack-dotnet",
+        "claude-stack-dotnet-hosting"
       ]
     },
     {
       "name": "claude-stack-data",
       "source": "./",
-      "description": "claude-stack 2 skills and 3 agents used by the data stack.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -837,9 +876,130 @@
       ]
     },
     {
+      "name": "claude-stack-javascript",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "dependencies": [
+        "claude-stack-javascript-shared",
+        "claude-stack-tsjs"
+      ]
+    },
+    {
+      "name": "claude-stack-winforms",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": [
+        "./stack/skills/dotnet-winforms"
+      ],
+      "agents": [
+        "./stack/agents/winforms-implementer.md",
+        "./stack/agents/winforms-solution-designer.md",
+        "./stack/agents/winforms-verifier.md"
+      ],
+      "dependencies": [
+        "claude-stack-csharp",
+        "claude-stack-dotnet"
+      ]
+    },
+    {
+      "name": "claude-stack-wpf",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": [
+        "./stack/skills/dotnet-wpf"
+      ],
+      "agents": [
+        "./stack/agents/wpf-implementer.md",
+        "./stack/agents/wpf-solution-designer.md",
+        "./stack/agents/wpf-verifier.md"
+      ],
+      "dependencies": [
+        "claude-stack-csharp",
+        "claude-stack-dotnet"
+      ]
+    },
+    {
+      "name": "claude-stack-angular",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": [
+        "./stack/skills/angular-conventions",
+        "./stack/skills/angular-security",
+        "./stack/skills/angular-styling",
+        "./stack/skills/angular-testing"
+      ],
+      "agents": [
+        "./stack/agents/angular-test-resolver.md",
+        "./stack/agents/ng-build-error-resolver.md"
+      ],
+      "dependencies": [
+        "claude-stack"
+      ]
+    },
+    {
+      "name": "claude-stack-aspnet-data",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": [
+        "./stack/skills/dotnet-data-access"
+      ],
+      "dependencies": [
+        "claude-stack"
+      ]
+    },
+    {
+      "name": "claude-stack-csharp",
+      "source": "./",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "version": "1.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": [
+        "./stack/skills/csharp",
+        "./stack/skills/dotnet-migrate",
+        "./stack/skills/dotnet-testing"
+      ],
+      "dependencies": [
+        "claude-stack"
+      ]
+    },
+    {
       "name": "claude-stack-devops",
       "source": "./",
-      "description": "claude-stack 1 skill and 3 agents used by the devops stack.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -861,7 +1021,7 @@
     {
       "name": "claude-stack-dotnet",
       "source": "./",
-      "description": "claude-stack 9 skills and 2 agents used by the aspnet, console, windows-service, winforms and wpf stacks.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -890,7 +1050,7 @@
     {
       "name": "claude-stack-dotnet-hosting",
       "source": "./",
-      "description": "claude-stack 1 skill used by the console and windows-service stacks.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -905,50 +1065,9 @@
       ]
     },
     {
-      "name": "claude-stack-ionic-angular",
-      "source": "./",
-      "description": "claude-stack 3 skills and 3 agents used by the ionic-angular stack.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "skills": [
-        "./stack/skills/capacitor-release",
-        "./stack/skills/ionic",
-        "./stack/skills/ionic-security"
-      ],
-      "agents": [
-        "./stack/agents/ionic-angular-implementer.md",
-        "./stack/agents/ionic-angular-solution-designer.md",
-        "./stack/agents/ionic-angular-verifier.md"
-      ],
-      "dependencies": [
-        "claude-stack-angular",
-        "claude-stack-javascript-shared",
-        "claude-stack-typescript-shared"
-      ]
-    },
-    {
-      "name": "claude-stack-javascript",
-      "source": "./",
-      "description": "Enables the javascript stack: the shared claude-stack plugins it depends on, nothing of its own.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "dependencies": [
-        "claude-stack-javascript-shared",
-        "claude-stack-tsjs"
-      ]
-    },
-    {
       "name": "claude-stack-javascript-shared",
       "source": "./",
-      "description": "claude-stack 1 skill used by the browser-extension, ionic-angular, javascript, typescript and web-angular stacks.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -965,7 +1084,7 @@
     {
       "name": "claude-stack-tsjs",
       "source": "./",
-      "description": "claude-stack 1 skill used by the browser-extension, javascript and typescript stacks.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -980,25 +1099,9 @@
       ]
     },
     {
-      "name": "claude-stack-typescript",
-      "source": "./",
-      "description": "Enables the typescript stack: the shared claude-stack plugins it depends on, nothing of its own.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "dependencies": [
-        "claude-stack-javascript-shared",
-        "claude-stack-tsjs",
-        "claude-stack-typescript-shared"
-      ]
-    },
-    {
       "name": "claude-stack-typescript-shared",
       "source": "./",
-      "description": "claude-stack 1 skill used by the browser-extension, ionic-angular, typescript and web-angular stacks.",
+      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.2.0",
       "author": {
         "name": "envoydev",
@@ -1010,97 +1113,6 @@
       ],
       "dependencies": [
         "claude-stack"
-      ]
-    },
-    {
-      "name": "claude-stack-web-angular",
-      "source": "./",
-      "description": "claude-stack 3 agents used by the web-angular stack.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "agents": [
-        "./stack/agents/web-angular-implementer.md",
-        "./stack/agents/web-angular-solution-designer.md",
-        "./stack/agents/web-angular-verifier.md"
-      ],
-      "dependencies": [
-        "claude-stack-angular",
-        "claude-stack-javascript-shared",
-        "claude-stack-typescript-shared"
-      ]
-    },
-    {
-      "name": "claude-stack-windows-service",
-      "source": "./",
-      "description": "claude-stack 1 skill and 3 agents used by the windows-service stack.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "skills": [
-        "./stack/skills/dotnet-windows-service"
-      ],
-      "agents": [
-        "./stack/agents/windows-service-implementer.md",
-        "./stack/agents/windows-service-solution-designer.md",
-        "./stack/agents/windows-service-verifier.md"
-      ],
-      "dependencies": [
-        "claude-stack-csharp",
-        "claude-stack-dotnet",
-        "claude-stack-dotnet-hosting"
-      ]
-    },
-    {
-      "name": "claude-stack-winforms",
-      "source": "./",
-      "description": "claude-stack 1 skill and 3 agents used by the winforms stack.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "skills": [
-        "./stack/skills/dotnet-winforms"
-      ],
-      "agents": [
-        "./stack/agents/winforms-implementer.md",
-        "./stack/agents/winforms-solution-designer.md",
-        "./stack/agents/winforms-verifier.md"
-      ],
-      "dependencies": [
-        "claude-stack-csharp",
-        "claude-stack-dotnet"
-      ]
-    },
-    {
-      "name": "claude-stack-wpf",
-      "source": "./",
-      "description": "claude-stack 1 skill and 3 agents used by the wpf stack.",
-      "version": "1.2.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "skills": [
-        "./stack/skills/dotnet-wpf"
-      ],
-      "agents": [
-        "./stack/agents/wpf-implementer.md",
-        "./stack/agents/wpf-solution-designer.md",
-        "./stack/agents/wpf-verifier.md"
-      ],
-      "dependencies": [
-        "claude-stack-csharp",
-        "claude-stack-dotnet"
       ]
     }
   ]

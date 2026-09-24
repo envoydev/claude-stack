@@ -6,10 +6,10 @@ model: sonnet
 effort: xhigh
 color: purple
 skills:
-  - claude-stack-browser-extension:browser-extension
-  - claude-stack-typescript-shared:typescript
-  - claude-stack-javascript-shared:javascript
-  - claude-stack-tsjs:ts-js-testing
+  - browser-extension
+  - typescript
+  - javascript
+  - ts-js-testing
 
 ---
 

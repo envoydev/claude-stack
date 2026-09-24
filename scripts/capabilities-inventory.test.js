@@ -197,7 +197,7 @@ test('inventory: a plugin-covered install prints the plugin\'s layers, not an em
     assert.doesNotMatch(out, /retired-skill/, 'a disabled plugin and a stale cached version carry nothing');
 });
 
-// The delivery this release ships: the plugins carry the stack, `.claude/` keeps only the EXTRAS.
+// The delivery this release ships: the core plugin carries the always closure, `.claude/` keeps the LIBRARY picks.
 // Two things went wrong before this case existed. The plugin branch fired only when the local dir
 // was EMPTY, so a project holding 25 extras read 25 skills and never looked at the plugins. And the
 // scan credited a plugin with everything in its cache, which for a SHARED repo root is every

@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-dotnet-hosted-services
+description: A generic-host worker request loads the dotnet-hosted-services library skill (the console stack).
+tags: [library, skill, console]
+execution:
+  prompt: |
+    Turn a .NET 9 console app into a generic-host worker that polls a queue every 30 seconds and stops
+    cleanly on Ctrl+C. Reply with Program.cs and the worker class in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-dotnet-hosted-services
+    tool: Skill
+    input_match: dotnet-hosted-services
+    min: 1
+    arm: both

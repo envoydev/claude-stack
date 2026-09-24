@@ -28,7 +28,8 @@ install to change.
 The three `size-first-*` cases grade the `## Size first` section of `project-solve-task`. They are the
 only cases that write (`Edit` is granted, the floor case excepted), each into its own scaffolded
 workspace - `scaffold.sh` beside `case.yaml`, run only under `--scaffold`. The small row's verifier seat
-ships in a per-stack plugin, never in the core, so no case grades it.
+is a library item, copied per project and never in the core, so no case here grades it (the library
+cases live in `meta/evals/library/`, run through the eval bundle).
 
 ## Last recorded run
 

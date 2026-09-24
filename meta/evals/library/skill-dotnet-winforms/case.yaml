@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-dotnet-winforms
+description: A frozen WinForms form loads the dotnet-winforms library skill (the winforms stack).
+tags: [library, skill, winforms]
+execution:
+  prompt: |
+    A WinForms form freezes while it loads 50,000 rows into a DataGridView on a button click. Show the
+    fixed button handler in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-dotnet-winforms
+    tool: Skill
+    input_match: dotnet-winforms
+    min: 1
+    arm: both

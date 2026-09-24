@@ -96,3 +96,65 @@ test('seed update: a retired plugin still installed is uninstalled at its own sc
     const { calls } = seedRun('update', SELECTION, { plugins: listing });
     assert.ok(calls.includes('plugin uninstall ponytail --scope user -y'), calls.filter((c) => /uninstall|ponytail/.test(c)).join('\n') || 'no uninstall call');
 });
+
+// The per-stack entries retired in 1.3.0 are read from meta/retired-entries.json by the seed alone -
+// the frozen twins cannot copy their picks, so their lists never name them.
+test('seed update: an enabled retired per-stack entry is uninstalled; a parked one and one at another scope stay', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify([
+        { id: 'claude-stack-web-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: false },
+        { id: 'claude-stack-aspnet@claude-stack', version: '1.2.0', scope: 'user', enabled: true },
+    ]);
+    const { calls } = seedRun('update', SELECTION, { plugins: listing });
+    const uninstalls = calls.filter((c) => /plugin uninstall/.test(c));
+    assert.ok(uninstalls.includes('plugin uninstall claude-stack-web-angular --scope project -y'), uninstalls.join('\n') || 'no uninstall call');
+    assert.ok(!uninstalls.some((c) => /claude-stack-angular |claude-stack-aspnet /.test(c)), uninstalls.join('\n'));
+});
+
+// One update whose plugin listing could not be read (the CLI failed, or is missing) cannot tell what
+// the retired entries still carry - so it must not forget the picks the last stamp recorded, or the
+// next update, listing healthy, reads the user's picks as never made and removes their only carrier.
+test('seed update: a blind listing read keeps the stamp picks, so the next update still copies them', POSIX_ONLY, () =>
+{
+    const healthy = JSON.stringify([
+        { id: 'claude-stack@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'),
+            'version: 1.2.0\nsha: 0000000\npicked-skills: angular-conventions@claude-stack-angular,angular-testing@claude-stack-angular\npicked-agents: \n');
+    };
+    const { steps } = seedRun(['update', 'update'], SELECTION, {
+        plugins: 'not json', args: ['--installed-only'], prepare,
+        each: (repo, i) =>
+        {
+            if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), healthy);
+            const stamp = fs.readFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'utf8');
+            return { picks: (/^picked-skills: (.*)$/m.exec(stamp) || [])[1] || '', copied: fs.existsSync(path.join(repo, '.claude', 'skills', 'angular-conventions', 'SKILL.md')) };
+        },
+    });
+    assert.match(steps[0].picks, /angular-conventions/, 'the blind run forgot the pick');
+    assert.ok(steps[1].copied, `the healthy run did not copy the pick (stamp picks: ${steps[1].picks})`);
+});
+
+// A retired entry's seat deny keeps the spelling Claude Code matches for as long as that entry is
+// installed; only an entry this run uninstalled loses it (the core spelling carries the off-state).
+test('seed update: a denied seat of a retired entry that stays installed keeps its own deny spelling', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify([
+        { id: 'claude-stack-web-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-aspnet@claude-stack', version: '1.2.0', scope: 'user', enabled: true },
+    ]);
+    const prepare = (repo) => write(repo, '.claude/settings.json', `${JSON.stringify({ permissions: { deny: [
+        'Agent(claude-stack-aspnet:aspnet-verifier)', 'Agent(claude-stack-web-angular:web-angular-verifier)'] } }, null, 2)}\n`);
+    const { result } = seedRun('update', SELECTION, { plugins: listing, prepare,
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).permissions.deny });
+    assert.ok(result.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), `kept at user scope, so its spelling stays: ${result.join(',')}`);
+    assert.ok(result.includes('Agent(claude-stack:aspnet-verifier)'), result.join(','));
+    assert.ok(!result.includes('Agent(claude-stack-web-angular:web-angular-verifier)'), `uninstalled here, so only the core spelling: ${result.join(',')}`);
+    assert.ok(result.includes('Agent(claude-stack:web-angular-verifier)'), result.join(','));
+});

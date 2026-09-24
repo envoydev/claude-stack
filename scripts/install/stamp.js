@@ -62,7 +62,8 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps, picked = {} } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps, picked = {}, library = {} } = fields;
+    const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# claude-stack install stamp - machine-local, written by the claude-stack installer.',
         '# The revision every artifact of this install was copied from. To see what changed since:',
@@ -81,14 +82,24 @@ function renderStamp(fields)
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
         `picked-agents: ${(picked.agents || []).join(',')}`,
+        `library-skills: ${hashes(library.skills)}`,
+        `library-agents: ${hashes(library.agents)}`,
         '',
     ].join('\n');
+}
+
+// At user scope the stamp belongs in the account dir; otherwise beside whatever this run installed,
+// which is the repo root when there is one.
+function stampPath({ scope, configDir, projectRoot })
+{
+    const dir = scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude');
+    return path.join(dir, 'claude-stack.stamp');
 }
 
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, picked,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, picked, library,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
 
@@ -98,10 +109,8 @@ function writeStamp(opts)
         return null;
     }
 
-    // At user scope the stamp belongs in the account dir; otherwise beside whatever this run
-    // installed, which is the repo root when there is one.
-    const dir = scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude');
-    const dest = path.join(dir, 'claude-stack.stamp');
+    const dest = stampPath({ scope, configDir, projectRoot });
+    const dir = path.dirname(dest);
 
     const always = installedAlways({
         recommendations: path.join(source.dir, 'meta', 'recommendations.json'),
@@ -118,7 +127,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope,
             hooks: shippedHooks(hooksCatalog),
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, library,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -138,4 +147,16 @@ function readPicked(file)
     return { skills: list('picked-skills'), agents: list('picked-agents') };
 }
 
-module.exports = { writeStamp, renderStamp, shippedHooks, installedAlways, family, readPicked };
+// The library hashes of a stamp - what each copy held when this install wrote it. Null when the
+// stamp has no library lines (an older release, the shell twin, no stamp): nothing to compare.
+function readLibrary(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    if (!/^library-(skills|agents):/m.test(text)) return null;
+    const map = (key) => Object.fromEntries(((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '')
+        .split(',').map((s) => s.trim()).filter((s) => s.includes('=')).map((s) => [s.slice(0, s.indexOf('=')), s.slice(s.indexOf('=') + 1)]));
+    return { version: ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim(), skills: map('library-skills'), agents: map('library-agents') };
+}
+
+module.exports = { writeStamp, stampPath, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary };

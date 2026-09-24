@@ -23,10 +23,13 @@ change (see the invariants below).
 ## Layout - one home per concern
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
-  file types. Carried by the per-stack PLUGINS: an install enables the plugins its own picks live
-  in (`scripts/selection-plugins.js` over the same placement the entries are generated from), and
-  only the EXTRAS - the items no stack's closure reaches - are still copied into `.claude/skills`.
-  `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged.
+  file types. The always closure rides the CORE plugin; every other skill and agent is LIBRARY -
+  listed by no marketplace entry, copied into `.claude/skills` / `.claude/agents` per pick
+  (`scripts/install/library.js`, each copy's hash in the stamp), because a plugin skill is locked on
+  and only a project copy can be switched off per project (measured, the 2026-09-24 library test).
+  `scripts/library-check.js` reports drift and staleness for validate and status; the core's
+  SessionStart line (`setup-plugin/hooks/library-stamp.js`) says when the copies are older than the
+  stack. `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged.
 - `scripts/install/` - THE INSTALLER, and the default route: `claude-stack.js` is the entry, one
   module per layer beside it (`source`, `manifest`, `selection`, `copy`, `settings`, `plugins`,
   `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`, `stamp`, `runtime`). One `node` command on
@@ -230,18 +233,20 @@ change (see the invariants below).
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed).
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
-    items of parked entries - and `parked_plugins`, so the walk's closure cannot switch either back
-    on), and they apply as `derive-state.js --delta` lines turned into `--add` / `--drop` over the same
+    items of a parked retired entry - and `parked_plugins`, so the walk's closure cannot switch either
+    back on), and they apply as `derive-state.js --delta` lines turned into `--add` / `--drop` over the same
     read-back; only the frozen shell twin still takes `--selection`. On that route a drop runs BEFORE
     the closure: one something kept requires, or a locked always-on rule or server, is logged 'not
-    applied'; a dropped seat is denied, a dropped hook named off, a dropped copy deleted (a copy-route
-    hook unwired too), and a stack entry nothing kept needs is disabled at the run's own scope and
-    route - never the core, the hooks entry or the three locked servers.
+    applied'; a dropped core seat is denied, a dropped hook named off, a dropped library copy deleted
+    (a copy-route hook unwired too), and an MCP entry nothing kept needs is disabled at the run's own
+    scope and route - never the core, the hooks entry or the three locked servers.
   - The script route prunes only names in the installers' RETIRED_SKILLS / RETIRED_AGENTS /
     RETIRED_RULES / RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend BOTH twins' lists when
     any of the six is renamed or removed (a stamp compare only names what left after the stamped commit),
     then `node scripts/build-manifest.js --write`: the seed reads them from `meta/stack-manifest.json`
-    `retired`. On the plugin routes the seed also prunes every shipped skill, agent and hook COPY a
+    `retired`. The one exception: an entry that CARRIED picks (the per-stack entries retired in 1.3.0)
+    is named only in `meta/retired-entries.json` and pruned by the Node seed alone, because only it
+    copies the picks first - a twin that uninstalled one would drop them. On the plugin routes the seed also prunes every shipped skill, agent and hook COPY a
     plugin now carries (a project agent outranks the plugin's own). A retired pathless rule, hook wiring, MCP registration or plugin keeps costing every session until
     pruned. A shipped-but-unneeded server or plugin is validate's whole-stack-absent pass, not a retirement.
   - The `/claude-stack` router is a SKILL and the workers are COMMANDS on purpose (commands list
@@ -257,13 +262,20 @@ change (see the invariants below).
     goes red when a copy's marker breaks.
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
     `npm run graph` (lint fails when stale).
-  - `plugin-entries.json` - the GENERATED marketplace `plugins[]`, computed by
-    `scripts/build-marketplace.js` from the placement rule in `scripts/plugin-placement.js`: an item
-    goes to the plugin named for the SET of stacks whose closure reaches it, so a project enables
-    exactly its own closure (`docs/plugin-placement-cost.md` is the committed gate evidence, +0% on
-    every combination). Regenerate with `npm run marketplace`; lint checks 44 and 45 fail when either
-    file is stale or a combination goes past +10%. A new shared set needs a NAME in `GROUP_NAMES`,
-    never a generated slug.
+  - `plugin-entries.json` - the GENERATED core entry, computed by `scripts/build-marketplace.js` from
+    the placement rule in `scripts/plugin-placement.js`: the core is the always closure, every other
+    item is library. Regenerate with `npm run marketplace`; lint checks 44 and 45 fail when the file
+    is stale, a second plugin appears, or an item has no home or two.
+  - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN: listed in the
+    marketplace for one release under a RETIRED description (lint 49 counts them as generated) so an
+    installed one keeps working until the Node seed's update copies its picks and uninstalls it
+    (leaves first). A PARKED one is kept - it is the user's off-state for its items - and so is one at
+    another scope, which other projects use; both are logged with the uninstall command. The listing
+    goes in the release after 1.3.0; the FILE stays as long as the names are retired, since it is the
+    only record of what each entry carried - without it an install that skipped 1.3.x loses its picks.
+  - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`;
+    `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
+    `claude-stack` so the eval CLI can load a library item. The run is billed.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
     one row plus the two installer seeds (lint-checked).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
@@ -294,13 +306,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 | Surface | Delivery |
 |---|---|
-| Skills | the project's own plugin closure (`claude-stack@claude-stack` + its per-stack entries), computed by `selection-plugins.js`; only the EXTRAS are copied to `.claude/skills` |
+| Skills | the core plugin (`claude-stack@claude-stack`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 12 generated `<server>@claude-stack` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and this project's skill/agent closure; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries, so a per-stack entry the user parked is not in that set and stays parked (the core and the hooks entry always are) |
+| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, mirrored in both twins, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/claude-stack:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `claude-stack-hooks@claude-stack` and the core; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries (the core and the hooks entry always are); a per-stack entry an older release installed is read back while enabled, then uninstalled by update (`meta/retired-entries.json`) |
 | Hooks | `claude-stack-hooks@claude-stack` plugin (all seventeen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via CLAUDE_STACK_INSTRUMENT=0 |
-| Agents | the same plugin closure carries the 43 pinned subagents (per-tool `tools:` allowlist); a seat an enabled entry carries but the selection did not pick is denied as `Agent(<entry>:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); `.claude/agents/` keeps only the extras |
+| Agents | core seats in the core plugin, unpicked ones denied as `Agent(claude-stack:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/claude-stack.js <install|update>` from the snapshot, one command on every OS; `CLAUDE_STACK_SEED=shell` runs the frozen `scripts/os` twin instead, for one release |
-| Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release, the twin - takes what the enabled entries carry as its picks); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |
+| Install stamp | `claude-stack.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release, the twin - takes what the enabled entries carry as its picks) and `library-skills` / `library-agents` (`name=<sha256>` of each library copy as written); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project, like the twin; every plugin / MCP call it makes is user-scoped |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + `security-guidance` hooks + the `security-auditor` agent |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |

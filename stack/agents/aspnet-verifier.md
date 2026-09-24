@@ -6,11 +6,11 @@ model: sonnet
 effort: xhigh
 color: purple
 skills:
-  - claude-stack-csharp:csharp
-  - claude-stack-dotnet:dotnet-code-quality
-  - claude-stack-csharp:dotnet-testing
-  - claude-stack-aspnet:dotnet-web-backend
-  - claude-stack-aspnet-data:dotnet-data-access
+  - csharp
+  - dotnet-code-quality
+  - dotnet-testing
+  - dotnet-web-backend
+  - dotnet-data-access
 
 ---
 

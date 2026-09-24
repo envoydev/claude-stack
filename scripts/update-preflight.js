@@ -22,7 +22,7 @@
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
 //   migration: <id>\t<detect kind>          (one line per DETECTED entry; none -> no lines)
 //   migrations: none detected               (only when none fired)
-//   new: <category> <name>\t<verdict>\t<entry|->[\t<take|leave>][\tenables=<csv>][\tfrom=<old>][\twas-off]
+//   new: <category> <name>\t<verdict>\t<entry|->[\t<take|leave>][\tenables=<csv>][\tcopies=<csv>][\tfrom=<old>][\twas-off]
 //                                           (one line per item the release ADDED or RENAMED,
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
@@ -172,6 +172,17 @@ function addedItems(compareLines, claudeDir)
     return out;
 }
 
+// The library items this project already holds as copies - a new rule whose closure pulls only
+// these costs nothing to take.
+function libraryCopies(claudeDir)
+{
+    const list = (dir, keep) => { try { return fs.readdirSync(dir).filter(keep); } catch { return []; } };
+    return {
+        skills: list(path.join(claudeDir, 'skills'), (d) => fs.existsSync(path.join(claudeDir, 'skills', d, 'SKILL.md'))),
+        agents: list(path.join(claudeDir, 'agents'), (f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, '')),
+    };
+}
+
 // The stack's rows of `claude plugin list --json`, or null when it cannot be read - a verdict on a
 // listing nobody read would offer items the project already carries. `--listing <file>` stands in
 // for the CLI (tests, or a listing the caller already captured).
@@ -223,12 +234,14 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
         routes: pluginRoutes(process.env),
         always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
         hasHooks,
+        copied: libraryCopies(claudeDir),
     });
     if (!rows.length) return ['new: none'];
     return rows.map((r) => [
         `new: ${r.category} ${r.name}`, r.verdict, r.entry || '-',
         ...(r.recommend ? [r.recommend] : []),
         ...(r.enables && r.enables.length ? [`enables=${r.enables.join(',')}`] : []),
+        ...(r.copies && r.copies.length ? [`copies=${r.copies.map((c) => c.split(' ')[1]).join(',')}`] : []),
         ...(r.from ? [`from=${r.from}`] : []),
         ...(r.oldOnDisk ? ['old-on-disk'] : []),
         ...(r.wasOff ? ['was-off'] : []),

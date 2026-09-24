@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-browser-extension
+description: A Manifest V3 extension request loads the browser-extension library skill (the browser-extension stack).
+tags: [library, skill, browser-extension]
+execution:
+  prompt: |
+    Write a Manifest V3 Chrome extension that adds a context-menu item to copy the page title. Reply
+    with manifest.json and the service worker in one code block each.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-browser-extension
+    tool: Skill
+    input_match: browser-extension
+    min: 1
+    arm: both

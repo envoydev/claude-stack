@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, applyToMarketplace, costTable } = require('./build-marketplace.js');
+const { buildEntries, applyToMarketplace, retiredMarketplaceEntries } = require('./build-marketplace.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
 
@@ -51,26 +51,14 @@ test('the core entry carries the commands, the router skill, the inline hook, an
     assert.strictEqual(setup.dependencies, undefined, 'and plugin.json keeps none for a generator to carry back in');
 });
 
-test('an entry lists skill FOLDERS and agent FILES, the two forms spike S9 proved', () => {
-    const dotnet = byName['claude-stack-dotnet'];
-    assert.ok(dotnet.skills.includes('./stack/skills/dotnet'));
-    assert.ok(dotnet.agents.includes('./stack/agents/dotnet-build-error-resolver.md'));
-    for (const p of [...dotnet.skills, ...dotnet.agents])
+test('the core is the only generated entry, listing skill FOLDERS and agent FILES that exist', () => {
+    assert.deepStrictEqual(entries.map(e => e.name), ['claude-stack'], 'every other skill and agent is library, listed by no entry');
+    const core = byName['claude-stack'];
+    assert.ok(core.skills.includes('./stack/skills/project-solve-cross-task'));
+    assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md'));
+    assert.ok(!core.skills.includes('./stack/skills/angular-conventions'), 'a library skill is not in the core');
+    for (const p of [...core.skills, ...core.agents])
         assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} must exist in the tree`);
-});
-
-test('dependencies are written, and the core is one of the generated entries', () => {
-    assert.ok(byName['claude-stack'], 'Phase 3 generates the core entry like any other');
-    assert.ok(byName['claude-stack-aspnet'].dependencies.includes('claude-stack-dotnet'));
-    assert.deepStrictEqual(byName['claude-stack-dotnet'].dependencies, ['claude-stack'],
-        'a shared plugin depends on the core only');
-});
-
-test('a leaf that holds nothing of its own still ships, as dependencies only', () => {
-    const ts = byName['claude-stack-typescript'];
-    assert.ok(ts, 'the typescript leaf must exist');
-    assert.ok(!ts.skills && !ts.agents, 'nothing of its own');
-    assert.ok(ts.dependencies.length > 1);
 });
 
 test('--check exits non-zero when the generated file is stale, zero when it is current', () => {
@@ -124,17 +112,6 @@ test('malformed input fails loudly rather than emitting a short list', () => {
     assert.match(out, /stack-graph|JSON/i, 'the failure names what could not be read');
     assert.ok(!fs.existsSync(path.join(tmp, 'e.json')), 'nothing is written on a failed read');
     fs.rmSync(tmp, { recursive: true, force: true });
-});
-
-test('the cost table carries today, planned and delta for every stack', () => {
-    const table = costTable();
-    assert.ok(table.rows.length >= 13, 'every stack plus the multi-stack combinations');
-    for (const row of table.rows)
-    {
-        assert.ok(row.today > 0 && row.planned > 0);
-        assert.ok(row.delta <= 10, `${row.combo} is ${row.delta}% over today - the placement rule adjusts, not the gate`);
-    }
-    assert.ok(table.markdown.includes('| aspnet |'), 'rendered as a markdown table');
 });
 
 // Phase 4. The dependency edges were generated in Phase 1; from here they are load-bearing, because
@@ -203,4 +180,32 @@ test('the three locked MCP plugins ship standalone, one server each, depending o
         assert.deepStrictEqual(Object.keys(shippedBy[name].mcpServers || {}), [name],
             `${name} must carry exactly one server of its own name, or its tools stop being mcp__plugin_${name}_${name}__<tool>`);
     }
+});
+
+test('the retired entries stay listed for one release, marked retired', () =>
+{
+    const mkt = applyToMarketplace({ plugins: [] }, buildEntries().concat(retiredMarketplaceEntries()));
+    const angular = mkt.plugins.find((p) => p.name === 'claude-stack-angular');
+    assert.ok(angular, 'still listed');
+    assert.match(angular.description, /^RETIRED/);
+    assert.ok(angular.skills.includes('./stack/skills/angular-conventions'));
+    assert.strictEqual(mkt.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 20);
+});
+
+test('a retired name missing from the frozen file is dropped from the marketplace', () =>
+{
+    const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-gone', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['claude-stack-gone'] });
+    assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-gone'), undefined);
+    assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
+});
+
+test('the core entry wires the library-stamp line at session start, startup only, with a timeout', () =>
+{
+    const core = buildEntries().find((e) => e.name === 'claude-stack');
+    const start = core.hooks.SessionStart;
+    assert.ok(Array.isArray(start) && start.length === 1, JSON.stringify(core.hooks));
+    assert.strictEqual(start[0].matcher, 'startup');
+    assert.match(start[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/);
+    assert.strictEqual(start[0].hooks[0].timeout, 10);
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'setup-plugin', 'hooks', 'library-stamp.js')));
 });

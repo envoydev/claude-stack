@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-typescript
+description: A TypeScript typing request loads the typescript library skill (the typescript stack).
+tags: [library, skill, typescript]
+execution:
+  prompt: |
+    Type a TypeScript function that groups an array of records by a key the caller names, with the key
+    constrained to the record's string fields. Reply with the code in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-typescript
+    tool: Skill
+    input_match: typescript
+    min: 1
+    arm: both

@@ -84,13 +84,13 @@ test('derive-state: the plugin set is selection-plugins, not a second opinion', 
     assert.deepStrictEqual(got.plugins, want);
 });
 
-test('derive-state: the extras are the items no plugin carries, and they are the copy list', () =>
+test('derive-state: the library items are the ones no plugin carries, and they are the copy list', () =>
 {
     const file = realSelection();
     const got = derive(file);
     const want = pluginsFor(readSelection(file)).copy;
-    assert.deepStrictEqual(got.skills.extras, want.skills);
-    assert.deepStrictEqual(got.agents.extras, want.agents);
+    assert.deepStrictEqual(got.skills.library, want.skills);
+    assert.deepStrictEqual(got.agents.library, want.agents);
 });
 
 test('derive-state: an agent is denied only when an ENABLED plugin carries it', () =>
@@ -134,13 +134,16 @@ test('derive-state: every KEPT seat carries the spec that clears a deny an earli
     // Built from the placement directly, never from the derivation's own output - an expectation
     // read back out of the thing under test passes whatever the spelling is.
     const homes = agentHomes(placement());
-    assert.deepStrictEqual(got.agents.allow, carriedKept.map((a) => denySpec(a, homes.get(a))));
+    // A library seat is copied, and its spec is the core spelling a retired entry's deny was
+    // re-spelled to - so picking it again clears that deny.
+    const library = [...picked.agents].filter((a) => !homes.has(a)).sort();
+    assert.deepStrictEqual(got.agents.allow, carriedKept.map((a) => denySpec(a, homes.get(a))).concat(library.map((a) => denySpec(a, 'claude-stack'))));
     // deny and allow are disjoint - one seat cannot be both, or the writer's last-wins rule decides
     // something the derivation should have.
     for (const spec of got.agents.allow) assert.ok(!got.agents.deny.includes(spec), `${spec} is in both lists`);
     assert.strictEqual(got.agents.allow.length + got.agents.off.length,
-        itemsOf(got.plugins.map((p) => p.split('@')[0])).agents.length,
-        'every seat an enabled plugin carries is either kept or denied');
+        itemsOf(got.plugins.map((p) => p.split('@')[0])).agents.length + got.agents.library.length,
+        'every seat an enabled plugin carries is either kept or denied, and every library seat is kept');
 });
 
 test('derive-state: the hooks off-list is the whole shipped catalog minus what was picked', () =>
@@ -336,6 +339,10 @@ test('floor: the model-invocable skills plus the seats not denied, from the stac
     assert.deepStrictEqual(one.agents.denied, ['security-auditor']);
     assert.strictEqual(all.agents.chars - one.agents.chars, descriptionChars('agent', 'security-auditor'));
     assert.strictEqual(one.chars, one.skills.chars + one.agents.chars);
+    // A retired entry still enabled here loads its items every session until the update removes it,
+    // and its seat is hidden by the deny spelled under that entry.
+    const retiredDeny = floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack-aspnet:aspnet-implementer)'] });
+    assert.deepStrictEqual(retiredDeny.agents.denied, ['aspnet-implementer']);
 });
 
 test('floor: only the seat\'s CURRENT home spelling denies it - Claude Code matches that name exactly', () =>
@@ -447,21 +454,22 @@ test('floor CLI: every --settings file given counts - deny rules merge across sc
 // refresh, anything else is an OFFER the user takes or leaves, and the user's own off-state wins.
 const { stampCarried, classifyNew } = require('./derive-state.js');
 
-test('stampCarried: an item MOVED out of an entry still enabled here comes back through its new home', () =>
+test('stampCarried: an item MOVED out of an entry still enabled here into the core comes back through the core', () =>
 {
-    const stamp = { skills: ['dotnet-web-backend@claude-stack-old'], agents: ['aspnet-implementer@claude-stack-old'] };
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['skill dotnet-web-backend', 'agent aspnet-implementer']);
+    const stamp = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] };
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['skill project-solve-cross-task', 'agent security-auditor']);
 });
 
-test('stampCarried: no move, an uninstalled or parked old home, a parked new home, a denied seat, an extra - nothing', () =>
+test('stampCarried: no move, an uninstalled or parked old home, a parked core, a denied seat, a library item - nothing', () =>
 {
-    const moved = { skills: ['dotnet-web-backend@claude-stack-old'], agents: ['aspnet-implementer@claude-stack-old'] };
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-aspnet'] }, enabled: ['claude-stack-aspnet'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
+    const moved = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] };
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['project-solve-cross-task@claude-stack'] }, enabled: ['claude-stack'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], routes: ALL_ROUTES }), [], 'the user uninstalled the old home');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['claude-stack-aspnet'], routes: ALL_ROUTES }), [], 'the new home is parked');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:aspnet-implementer)'], routes: ALL_ROUTES }), ['skill dotnet-web-backend'], 'a seat denied under any spelling');
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'dotnet-web-backend'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'an extra, and a plain name with no stamped home');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['claude-stack'], routes: ALL_ROUTES }), [], 'the new home is parked');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), ['skill project-solve-cross-task'], 'a seat denied under any spelling');
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'project-solve-cross-task'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home');
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-old'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library item homed in an entry that is no retired one');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []);
 });
 
@@ -472,7 +480,7 @@ test('readInstalled: every hook switched off reads back as `hook none`, not as u
     assert.deepStrictEqual(lines, ['hook none']);
 });
 
-test('classifyNew: an item on an enabled entry arrives, one elsewhere is offered, the user\'s off-state wins', () =>
+test('classifyNew: a core item arrives, a library item is offered, the user\'s off-state wins', () =>
 {
     const added = [
         { category: 'skill', name: 'markdown-style' }, { category: 'skill', name: 'dotnet-web-backend' },
@@ -487,16 +495,25 @@ test('classifyNew: an item on an enabled entry arrives, one elsewhere is offered
     });
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
     assert.strictEqual(by['skill markdown-style'].verdict, 'arrives');
-    assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry, by['skill dotnet-web-backend'].recommend], ['offer', 'claude-stack-aspnet', 'leave']);
+    assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry, by['skill dotnet-web-backend'].recommend], ['offer', null, 'leave'], 'library - copied only on a yes');
     assert.strictEqual(by['agent evidence-gatherer'].verdict, 'arrives');
     assert.strictEqual(by['agent code-style-analyzer'].verdict, 'off');
     assert.strictEqual(by['rule baseline-memory'].verdict, 'arrives', 'the locked baseline is adopted');
-    assert.deepStrictEqual([by['rule sql-conventions'].verdict, by['rule sql-conventions'].recommend], ['offer', 'leave'], 'its closure enables entries - no free take');
-    assert.ok(by['rule sql-conventions'].enables.length > 0, 'and it names them');
+    assert.deepStrictEqual([by['rule sql-conventions'].verdict, by['rule sql-conventions'].recommend], ['offer', 'leave'], 'its closure copies library items - no free take');
+    assert.ok(by['rule sql-conventions'].copies.length > 0, 'and it names them');
+    assert.deepStrictEqual(by['rule sql-conventions'].enables, [], 'the core is enabled, so a yes switches no entry on');
     assert.strictEqual(by['hook docs-session'].verdict, 'arrives');
     assert.strictEqual(by['hook guard-answer-length'].verdict, 'off');
-    assert.deepStrictEqual([by['skill angular-material'].verdict, by['skill angular-material'].entry], ['offer', null], 'an extra is copied only on a yes');
-    assert.deepStrictEqual([by['rule markdown-docs'].verdict, by['rule markdown-docs'].recommend, by['rule markdown-docs'].enables], ['offer', 'take', []], 'a rule whose closure the enabled entries already carry is the free take');
+    assert.deepStrictEqual([by['skill angular-material'].verdict, by['skill angular-material'].entry], ['offer', null], 'a library item is copied only on a yes');
+    assert.deepStrictEqual([by['rule markdown-docs'].verdict, by['rule markdown-docs'].recommend, by['rule markdown-docs'].enables, by['rule markdown-docs'].copies], ['offer', 'take', [], []], 'a rule whose closure the core already carries is the free take');
+});
+
+test('classifyNew: a library item the project already copied costs nothing, so the rule that pulls it is the free take', () =>
+{
+    const bare = classifyNew({ added: [{ category: 'rule', name: 'sql-conventions' }], plugins: ['claude-stack'], routes: ALL_ROUTES, sourceDir: ROOT })[0];
+    const copied = { skills: bare.copies.filter((c) => c.startsWith('skill ')).map((c) => c.slice(6)), agents: bare.copies.filter((c) => c.startsWith('agent ')).map((c) => c.slice(6)) };
+    const row = classifyNew({ added: [{ category: 'rule', name: 'sql-conventions' }], plugins: ['claude-stack'], routes: ALL_ROUTES, copied, sourceDir: ROOT })[0];
+    assert.deepStrictEqual([row.copies, row.recommend], [[], 'take']);
 });
 
 test('classifyNew: on the copy routes a skill or seat is copied only on a yes, and a hook arrives only into an install that has hooks', () =>
@@ -617,4 +634,51 @@ test('delta CLI: kept-off and keep-parked lines follow the verdict, which stays 
         assert.strictEqual(r.stdout, 'none\nkept-off agent b\nkeep-parked plugin claude-hud\n');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Task 3 (library route): a per-stack entry 1.2.0 shipped is retired in 1.3.0 and listed for one
+// release. While it is still enabled, what it carries is what the project runs today - read back as
+// installed, and a stamp pick homed there is carried into the library as a copy.
+test('an enabled retired entry reads back its items, a denied seat excluded', () =>
+{
+    const lines = readInstalled({
+        plugins: ['claude-stack', 'claude-stack-angular'],
+        deny: ['Agent(claude-stack-angular:ng-build-error-resolver)'],
+        routes: { skills: true },
+    });
+    assert.ok(lines.includes('skill angular-conventions'));
+    assert.ok(lines.includes('agent angular-test-resolver'));
+    assert.ok(!lines.includes('agent ng-build-error-resolver'));
+    assert.strictEqual(lines.length, new Set(lines).size, 'no line twice');
+});
+
+test('a stamp pick homed in an enabled retired entry is carried into the library', () =>
+{
+    const lines = stampCarried({
+        stamp: { skills: ['angular-conventions@claude-stack-angular'], agents: ['angular-test-resolver@claude-stack-angular'] },
+        enabled: ['claude-stack', 'claude-stack-angular'], parked: [], deny: [], routes: { skills: true },
+    });
+    assert.deepStrictEqual(lines.sort(), ['agent angular-test-resolver', 'skill angular-conventions']);
+    const denied = stampCarried({
+        stamp: { skills: [], agents: ['angular-test-resolver@claude-stack-angular'] },
+        enabled: ['claude-stack', 'claude-stack-angular'], deny: ['Agent(claude-stack-angular:angular-test-resolver)'], routes: { skills: true },
+    });
+    assert.deepStrictEqual(denied, [], 'a denied seat stays out');
+});
+
+test('a parked retired entry carries nothing across', () =>
+{
+    const lines = stampCarried({
+        stamp: { skills: ['angular-conventions@claude-stack-angular'], agents: [] },
+        enabled: ['claude-stack'], parked: ['claude-stack-angular'], deny: [], routes: { skills: true },
+    });
+    assert.deepStrictEqual(lines, []);
+});
+
+test('a picked library seat clears its deny, so a seat switched off in 1.2.0 comes back when picked again', () =>
+{
+    const state = fromText(['agent angular-test-resolver', 'agent evidence-gatherer']);
+    assert.ok(state.agents.library.includes('angular-test-resolver'));
+    assert.ok(state.agents.allow.includes('Agent(claude-stack:angular-test-resolver)'), state.agents.allow.join(','));
+    assert.ok(!state.agents.deny.includes('Agent(claude-stack:angular-test-resolver)'));
 });

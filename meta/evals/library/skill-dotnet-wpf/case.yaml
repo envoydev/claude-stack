@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-dotnet-wpf
+description: A WPF view model request loads the dotnet-wpf library skill (the wpf stack).
+tags: [library, skill, wpf]
+execution:
+  prompt: |
+    Write a WPF view model for a login window with Username, Password and a LoginCommand that is
+    disabled until both are filled. Reply with the C# file in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-dotnet-wpf
+    tool: Skill
+    input_match: dotnet-wpf
+    min: 1
+    arm: both

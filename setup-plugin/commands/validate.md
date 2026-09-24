@@ -93,7 +93,7 @@ printed). **A plugin the listing marks `disabled` is a THIRD state, not an absen
 disk nor removing what the user parked (measured: two stack plugins sat disabled through an update
 and a validate run four minutes apart, and both runs reported nothing to do); `parked_plugins` is
 its catalog part. `left_out` lists what the user switched off - a denied seat, an item of a parked
-entry - as selection lines, which `--missing` counts as present: never proposed back. Three
+retired entry - as selection lines, which `--missing` counts as present: never proposed back. Three
 signals in `$TMP/plan.out`, never printed to the user: `error: --installed-only found nothing
 installed` means there is no install - route to `/claude-stack:init`; `plan routes:
 skills=<plugin|copy> hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered:
@@ -101,6 +101,18 @@ hooks=<yes|no> agents=<yes|no>` says which off-states the read found evidence of
 `skills=plugin` means the plugin listing could not be read or the core entry is parked: stop and
 report which, since every carried seat would read as missing; `hooks=no` means the hooks layer is
 not reconciled this run.
+
+Then check the LIBRARY copies now, before anything writes - the apply in step 11 is an installer run,
+and it overwrites a copy edited in the project:
+
+```bash
+node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo"
+```
+
+On a global install add `--scope global --config-dir <the account dir>`. Paste a `drift` row to the
+user in this step's report, with what it means: the step-11 apply and every update overwrite that
+copy, so the edit belongs upstream or in a skill of the project's own. Step 12 runs the same check
+again over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
@@ -461,11 +473,11 @@ profile), output to `$TMP/select.out` - then:
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
   (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
-- **Removes**: on the Node seed the `--drop` lines ARE the removal, applied by that run: a seat a
-  plugin carries is denied, a hook on the plugin route is named in `CLAUDE_STACK_HOOKS_OFF`, a copied
-  skill, agent, rule or hook loses its file (a copied hook its wiring too), and a stack entry
-  nothing kept needs any more is disabled. Report them from `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out: `skill <name> stays loaded` is a skill an
-  entry the project still needs goes on carrying - report it as carried, never as removed; `--drop
+- **Removes**: on the Node seed the `--drop` lines ARE the removal, applied by that run: a core
+  seat is denied, a hook on the plugin route is named in `CLAUDE_STACK_HOOKS_OFF`, a copied or
+  library skill, agent, rule or hook loses its file (a copied hook its wiring too), and an MCP entry
+  nothing kept needs any more is disabled. Report them from `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out: `skill <name> stays loaded` is a core
+  skill, which the core plugin goes on carrying - report it as carried, never as removed; `--drop
   <line> not applied` is an item something kept requires, or an always-on rule or server (`locked`) -
   report it as kept, with the reason; a stack entry enabled at another scope is never disabled, the
   log names the command for the user. Two removals the installer never makes, each with its command shown first:
@@ -541,6 +553,20 @@ project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (rec
 update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
 by hand is reported with its line and never edited; a credential row is the rotate ask
 `baseline-security.md` owns, never a fix here.
+
+Then check the LIBRARY copies - every skill and seat outside the core plugin is a project copy, and
+the stamp holds the hash of what the last install wrote:
+
+```bash
+node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo"
+```
+
+On a global install add `--scope global --config-dir <the account dir>` - its skills live there.
+Paste the output byte-for-byte in the same fenced block. A `drift` row is a copy edited in the
+project: the next update overwrites it and says so, so the edit belongs upstream or in a skill of
+the project's own, never in the copy. `behind` rows and the `stale stamp` line are what
+`/claude-stack:update` takes. `library: no library stamp` is the whole paste on an install older
+than the library route.
 
 ## Clean up the temp dir - ALWAYS
 

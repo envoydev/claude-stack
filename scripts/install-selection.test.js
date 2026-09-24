@@ -302,17 +302,34 @@ test('read-back: a malformed deny or env block reads as absent, never aborts the
     assert.ok(r.lines.includes('agent security-auditor'));
 });
 
-test('read-back: a skill the last install carried survives a release that moved it to an entry not enabled here', () =>
+test('read-back: a skill the last install carried survives the release that retired its entry, as a pick', () =>
 {
-    const stampPicked = { skills: ['dotnet-web-backend@claude-stack-old'], agents: [] };
-    const moved = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-old@claude-stack')], stampPicked });
-    assert.ok(moved.lines.includes('skill dotnet-web-backend'));
+    const stampPicked = { skills: ['dotnet-web-backend@claude-stack-aspnet'], agents: [] };
+    const moved = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-aspnet@claude-stack')], stampPicked });
+    assert.ok(moved.lines.includes('skill dotnet-web-backend') && moved.closeFrom.includes('skill dotnet-web-backend'));
     const gone = readBackCase({ listing: [row('claude-stack@claude-stack')], stampPicked });
-    assert.ok(!gone.lines.includes('skill dotnet-web-backend'), 'its old home is uninstalled here - the user removed it, nothing moved');
-    const parked = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-old@claude-stack'), row('claude-stack-aspnet@claude-stack', { enabled: false })], stampPicked });
+    assert.ok(!gone.lines.includes('skill dotnet-web-backend'), 'its old home is uninstalled here - the user removed it');
+    const parked = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-aspnet@claude-stack', { enabled: false })], stampPicked });
     assert.ok(!parked.lines.includes('skill dotnet-web-backend'), 'the user parked its entry');
     const blind = readBackCase({ listing: [], stampPicked });
     assert.ok(!blind.lines.includes('skill dotnet-web-backend'), 'no listing, no evidence of what is parked - the stamp is not read');
+});
+
+test('read-back: an enabled retired entry turns its stamp PICKS into picks, never what it merely carried', () =>
+{
+    const listing = [row('claude-stack@claude-stack'), row('claude-stack-angular@claude-stack')];
+    const stampPicked = { skills: ['angular-conventions@claude-stack-angular', 'angular-testing@claude-stack-angular'], agents: [] };
+    const r = readBackCase({ listing, stampPicked });
+    assert.ok(r.closeFrom.includes('skill angular-conventions') && r.closeFrom.includes('skill angular-testing'), r.closeFrom.join(','));
+    assert.ok(!r.closeFrom.includes('skill angular-styling'), 'carried by the entry, never picked');
+    // The selection itself is what the library copies: an unpicked item the entry carried stays out of
+    // it, not only out of the closure's input (the temp-project matrix copied it).
+    assert.ok(r.lines.includes('skill angular-conventions') && !r.lines.includes('skill angular-styling'), r.lines.filter((l) => /angular/.test(l)).join(','));
+    const legacy = readBackCase({ listing, stampPicked: null });
+    for (const s of ['angular-conventions', 'angular-security', 'angular-styling', 'angular-testing'])
+        assert.ok(legacy.closeFrom.includes(`skill ${s}`) && legacy.lines.includes(`skill ${s}`), `a stamp without picks adopts ${s}`);
+    const parked = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-angular@claude-stack', { enabled: false })], stampPicked });
+    assert.ok(!parked.closeFrom.some((l) => /^skill angular-/.test(l)), 'a parked retired entry carries nothing');
 });
 
 test('read-back: a stamp with no picked lines (an older install) takes what the enabled entries carry as picked', () =>

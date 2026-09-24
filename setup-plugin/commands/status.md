@@ -103,7 +103,24 @@ paid 8,337 injected chars a session for two plugins on top of their descriptions
 the capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack`
 otherwise, `user-authored` when clearly neither.
 
-**Skills and agents** - skills and agents = the ROUTE decides too: with a `claude-stack-<stack>` entry in the plugins listing (any stack entry, never the hooks one) the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is still on disk, which on that route is the EXTRAS only; without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a copied extra reads `stack`. A carried seat named in `permissions.deny` (any scope) as `Agent(<entry>:<name>)` is switched OFF - it stays in the table with `denied` in its `origin` column, since the plugin still ships it and configure can bring it back.
+**Skills and agents** - skills and agents = the ROUTE decides too: with the core `claude-stack` entry (or a `claude-stack-<stack>` entry an older release installed and update has not removed yet) in the plugins listing, the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is on disk, which on that route is the LIBRARY copies (every item outside the core, copied per pick); without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a library copy reads `library`. A carried seat named in `permissions.deny` (any scope) as `Agent(<entry>:<name>)` is switched OFF - it stays in the table with `denied` in its `origin` column, since the plugin still ships it and configure can bring it back.
+
+The library copies get one more table, from the stamp's hashes:
+
+```bash
+node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo" --json
+```
+
+(`--scope global --config-dir <the account dir>` on a global install). Render its `rows` as
+
+| name | kind | state | mode |
+|---|---|---|---|
+
+`state` is `ok`, `drift` (edited in the project), `missing` or `behind` (the running stack ships a
+newer one); `mode` is the skill's `skillOverrides` value, `on` when unset. When `stale` is true, put
+one line under the table: 'the project copies are from `<version>`, the stack is `<sourceVersion>` -
+/claude-stack:update takes them'. `library: no library stamp` prints instead of JSON on an install
+older than the library route - say so in one line and skip the table.
 
 **Hooks** - hooks = the ROUTE decides: with `claude-stack-hooks@claude-stack` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `CLAUDE_STACK_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`, `fresh-session`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `CLAUDE_STACK_HOOKS_OFF` reads `off (env)`.
