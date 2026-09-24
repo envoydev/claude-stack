@@ -6,10 +6,10 @@ model: opus
 effort: xhigh
 color: cyan
 skills:
-  - claude-stack-dotnet:csharp-design-patterns
-  - claude-stack-dotnet-hosting:dotnet-hosted-services
-  - claude-stack-windows-service:dotnet-windows-service
-  - claude-stack-csharp:dotnet-testing
+  - csharp-design-patterns
+  - dotnet-hosted-services
+  - dotnet-windows-service
+  - dotnet-testing
   - claude-stack:project-solution-design
 
 ---

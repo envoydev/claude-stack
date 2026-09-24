@@ -105,7 +105,7 @@ function scopeFor(spec, installScope, listing)
     return USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : installScope;
 }
 
-// The stack's own closure for this run. Returns the entries to enable, the extras still copied, and
+// The stack's own closure for this run. Returns the entries to enable, the library items copied, and
 // the routes as they stand AFTER any fallback - the caller reads those, never the env again.
 function resolveStackPlugins({ routes, selection, runSelection, log = () => {} })
 {
@@ -128,7 +128,7 @@ function resolveStackPlugins({ routes, selection, runSelection, log = () => {} }
         if (line.startsWith('skill ')) extraSkills.push(line.slice(6));
         else if (line.startsWith('agent ')) extraAgents.push(line.slice(6));
     }
-    log(`plugins carry ${entries.length} entr(ies); extras copied: ${extraSkills.length} skill(s), ${extraAgents.length} agent(s)`);
+    log(`plugins carry ${entries.length} entr(ies); library copied: ${extraSkills.length} skill(s), ${extraAgents.length} agent(s)`);
     return { entries, extraSkills, extraAgents, routes };
 }
 
@@ -231,18 +231,41 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], refres
 
 // UPDATE: uninstall the retired names this machine actually carries, at the scope the listing
 // reports. A name that is not installed here is not an error, it is nothing to do.
-function prunedRetired({ listing, retired = [], scope, cli, log = () => {} })
+//
+// A CARRIER - a per-stack entry retired in 1.3.0 - is also the migration's record: parked, it is
+// the user's off-state for its items, which have no other home once it is gone; at another scope it
+// is every other project's install too. Either way it stays, and the run says how to remove it.
+function prunedRetired({ listing, retired = [], carriers = [], scope, cli, log = () => {} })
 {
     const gone = [];
-    for (const name of retired)
+    const kept = (name) =>
     {
-        if (!fieldOf(listing, name, 'version')) continue;
-        const pscope = fieldOf(listing, name, 'scope') || scope;
-        if (cli(['plugin', 'uninstall', name, '--scope', pscope, '-y'], { quiet: true }))
+        if (!carriers.includes(name)) return false;
+        const at = fieldOf(listing, name, 'scope') || scope;
+        if (fieldOf(listing, name, 'enabled') === false)
+            log(`  ${name} is parked here - kept, so its skills and seats stay off; remove it by hand once they may come back: claude plugin uninstall ${name} --scope ${at}`);
+        else if (at !== scope)
+            log(`  ${name} is installed at ${at} scope, not this run's - kept for the projects that use it; the update run at that scope copies its picks and removes it: claude plugin uninstall ${name} --scope ${at}`);
+        else return false;
+        return true;
+    };
+    let left = retired.filter((name) => fieldOf(listing, name, 'version') && !kept(name));
+    // A per-stack leaf declares its shared entries as dependencies and the CLI refuses to remove a
+    // dependency first, so a refusal is retried once everything else in the pass has gone.
+    for (let pass = 0; pass < 2 && left.length; pass++)
+    {
+        const next = [];
+        for (const name of left)
         {
-            log(`  plugin pruned (retired upstream) [${pscope}]: ${name}`);
-            gone.push(name);
+            const pscope = fieldOf(listing, name, 'scope') || scope;
+            if (cli(['plugin', 'uninstall', name, '--scope', pscope, '-y'], { quiet: true }))
+            {
+                log(`  plugin pruned (retired upstream) [${pscope}]: ${name}`);
+                gone.push(name);
+            }
+            else next.push(name);
         }
+        left = next;
     }
     return gone;
 }

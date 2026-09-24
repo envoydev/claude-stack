@@ -574,26 +574,27 @@ test('check 43: an agent tools: allowlist must grant the shared memory tools', (
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
 });
 
-test('checks 44 + 45: the real repo passes placement, entries and the cost gate', () => {
+test('checks 44 + 45: the real repo passes placement and its entries are current', () => {
     const { lintPluginPlacement } = require('./lint-skills.js');
     assert.deepStrictEqual(lintPluginPlacement(), [],
-        'the committed meta/plugin-entries.json and docs/plugin-placement-cost.md must be current');
+        'the committed meta/plugin-entries.json must be current');
 });
 
-test('check 44: an unnamed owner set, a double home and a backwards dependency are all findings', () => {
+test('check 44: a second plugin, a double home and a lost item are all findings', () => {
     const { lintPluginPlacement } = require('./lint-skills.js');
     const { placement } = require('./plugin-placement.js');
 
-    const unnamed = placement({ groupNames: {} });
-    const out = lintPluginPlacement(unnamed);
-    assert.ok(out.some(f => /share items with no plugin NAME/.test(f)), 'an unnamed set is named in the finding');
+    const second = placement();
+    second.plugins['claude-stack-aspnet'] = { skills: [], agents: [], dependencies: [] };
+    assert.ok(lintPluginPlacement(second).some(f => /ships plugins other than claude-stack/.test(f)), 'a per-stack plugin is caught');
 
-    const broken = placement();
-    broken.plugins['claude-stack-aspnet'].skills.push('dotnet');   // already in claude-stack-dotnet
-    broken.plugins['claude-stack-dotnet'].dependencies.push('claude-stack-aspnet');
-    const two = lintPluginPlacement(broken);
-    assert.ok(two.some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
-    assert.ok(two.some(f => /a leaf or a peer/.test(f)), 'a shared plugin depending on a leaf is caught');
+    const doubled = placement();
+    doubled.plugins['claude-stack'].skills.push('dotnet');   // already library
+    assert.ok(lintPluginPlacement(doubled).some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
+
+    const lost = placement();
+    lost.library.agents = lost.library.agents.filter(a => a !== 'angular-test-resolver');
+    assert.ok(lintPluginPlacement(lost).some(f => /agent angular-test-resolver is in no plugin/.test(f)), 'a lost item is caught');
 });
 
 test('check 46: the repo root reserves every name a shared-source entry auto-discovers', () => {

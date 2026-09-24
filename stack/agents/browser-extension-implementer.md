@@ -6,9 +6,9 @@ model: sonnet
 effort: medium
 color: green
 skills:
-  - claude-stack-browser-extension:browser-extension
-  - claude-stack-typescript-shared:typescript
-  - claude-stack-javascript-shared:javascript
+  - browser-extension
+  - typescript
+  - javascript
 
 ---
 

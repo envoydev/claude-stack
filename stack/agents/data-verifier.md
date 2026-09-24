@@ -6,9 +6,9 @@ model: sonnet
 effort: xhigh
 color: purple
 skills:
-  - claude-stack-data:database-conventions
-  - claude-stack-csharp:dotnet-migrate
-  - claude-stack-csharp:dotnet-testing
+  - database-conventions
+  - dotnet-migrate
+  - dotnet-testing
 
 ---
 

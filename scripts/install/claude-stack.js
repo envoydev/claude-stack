@@ -30,12 +30,14 @@ const settings = require('./settings.js');
 const serena = require('./serena.js');
 const memory = require('./memory.js');
 const docs = require('./docs.js');
-const { deriveState, writable, homeOf } = require('../derive-state.js');
-const { placement } = require('../plugin-placement.js');
+const { deriveState, writable, homeOf, splitPick } = require('../derive-state.js');
+const { placement, readRetiredEntries, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
+const library = require('./library.js');
 const runtime = require('./runtime.js');
+const { envMigrations } = require('./env-migrations.js');
 
 const USAGE = `claude-stack - install or update the Claude Code stack into a project.
 
@@ -96,7 +98,7 @@ function main(argv, env, io)
     const cliScope = args.scope === 'global' ? 'user' : 'project';
     const claudeDir = path.join(projectRoot, '.claude');
     const skillsDir = args.scope === 'global' ? path.join(configDir, 'skills') : path.join(projectRoot, '.claude', 'skills');
-    const stampFile = path.join(args.scope === 'global' ? configDir : claudeDir, 'claude-stack.stamp');
+    const stampFile = stampLayer.stampPath({ scope: args.scope, configDir, projectRoot });
     const mcpFile = path.join(projectRoot, '.mcp.json');
     const hasClaude = rt.which('claude');
 
@@ -150,6 +152,7 @@ function main(argv, env, io)
         // require) - the stamp records that, never everything the enabled entries carry, or the next
         // closure would run over items no one picked.
         let stampPicks = null;
+        let carriedPicks = null;
         let listedEngines = [];
         // The whole listing, read once: the read-back, --plan-out and a --drop's disable all use it.
         let listing = null;
@@ -167,6 +170,7 @@ function main(argv, env, io)
             const raw = hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }) : '';
             listing = plugins.parsePluginList(raw, projectRoot);
             const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: STACK_MARKET_NAME });
+            const lastPicked = stampLayer.readPicked(stampFile);
             const back = selection.readBack({
                 claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
@@ -174,7 +178,7 @@ function main(argv, env, io)
                 settings: readJson(path.join(claudeDir, 'settings.json')),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
-                stampPicked: stampLayer.readPicked(stampFile),
+                stampPicked: lastPicked,
                 always, marketplace: STACK_MARKET_NAME, log,
             });
             if (!back.installed)
@@ -210,6 +214,13 @@ function main(argv, env, io)
             if (args.dropApplied.length)
                 dropEntries = droppedByDrop({ kept: close(withAdds, [...back.closeFrom, ...args.add], () => {}), closed, stackListing, sourceDir: resolved.dir, drop: args.dropApplied, routes, log });
             stampPicks = new Set(closed.filter((l) => back.closeFrom.includes(l) || args.add.includes(l) || !withDrops.includes(l)));
+            // A blind read keeps every pick the last stamp recorded and this run cannot see, verbatim
+            // with its home, so the next update with a readable listing still carries it across.
+            if (back.blind && lastPicked)
+            {
+                const unseen = (line) => (e) => !stampPicks.has(`${line} ${splitPick(e).name}`) && !args.dropApplied.includes(`${line} ${splitPick(e).name}`);
+                carriedPicks = { skills: lastPicked.skills.filter(unseen('skill')), agents: lastPicked.agents.filter(unseen('agent')) };
+            }
             picked = selection.parseSelection(closed.join('\n'));
             answered = back.answered;
             listedEngines = back.engines;
@@ -290,7 +301,7 @@ function main(argv, env, io)
         };
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
-            projectRoot, claudeDir, skillsDir, configDir, mcpFile, home,
+            projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope, refreshed,
         };
 
@@ -315,7 +326,8 @@ function main(argv, env, io)
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
             hooksCatalog: manifest.catalogs.hooks, version: releaseVersion(resolved.dir), log, note,
-            picked: stampPickLists(lists, stampPicks),
+            picked: stampPickLists(lists, stampPicks, carriedPicks),
+            library: ctx.library || { skills: {}, agents: {} },
         });
 
         summarise(ctx, failures);
@@ -388,10 +400,9 @@ function installSkillsAndAgents(ctx)
     ctx.routes = closure.routes;
     ctx.stackEntries = closure.entries;
 
-    // On the plugin route only the EXTRAS travel by copy, and a leftover copy SHADOWS the plugin's
+    // On the plugin route only the LIBRARY travels by copy, and a leftover copy SHADOWS the plugin's
     // own with no error and no sign in the transcript - so the prune runs BEFORE the enable.
     const skillNames = ctx.lists.skills.map((e) => e.split('|').pop());
-    const keepSkills = ctx.routes.skills ? closure.extraSkills : skillNames;
     // The same holds for a seat: a project agent outranks the plugin's own, so a leftover copy keeps
     // the old seat running. What a release retired goes on either route.
     const agentsDir = path.join(ctx.claudeDir, 'agents');
@@ -399,12 +410,26 @@ function installSkillsAndAgents(ctx)
     pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream');
     if (ctx.routes.skills)
     {
-        pruneCopies(ctx, ctx.skillsDir, ctx.manifest.skills.map((e) => e.split('|').pop()).filter((n) => !closure.extraSkills.includes(n)), 'skill', 'now carried by a plugin');
-        pruneCopies(ctx, agentsDir, ctx.manifest.agents.filter((f) => !closure.extraAgents.includes(f.replace(/\.md$/, ''))), 'agent', 'now carried by a plugin');
+        // A core item's copy would shadow the plugin's own; a library item this run did not pick is
+        // switched off, and its absence is how.
+        const core = placement().plugins[CORE];
+        const unpicked = (names, picked) => names.filter((n) => !picked.includes(n));
+        const skills = unpicked(ctx.manifest.skills.map((e) => e.split('|').pop()), closure.extraSkills);
+        const agents = unpicked(ctx.manifest.agents.map((f) => f.replace(/\.md$/, '')), closure.extraAgents);
+        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin');
+        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked');
+        pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin');
+        pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked');
+        ctx.library = library.copyLibrary({
+            sourceDir: ctx.source.dir, skillsDir: ctx.skillsDir, agentsDir,
+            skills: closure.extraSkills, agents: closure.extraAgents,
+            stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
+        });
+        return;
     }
 
     fs.mkdirSync(ctx.skillsDir, { recursive: true });
-    for (const name of keepSkills)
+    for (const name of skillNames)
     {
         const src = path.join(ctx.source.dir, 'stack', 'skills', name);
         if (!fs.existsSync(src)) { ctx.note(`skill '${name}' not found in the stack source`); continue; }
@@ -413,10 +438,9 @@ function installSkillsAndAgents(ctx)
         ctx.log(`skill [${ctx.args.scope}]: ${name}`);
     }
 
-    const agents = ctx.routes.skills ? closure.extraAgents.map((n) => `${n}.md`) : ctx.lists.agents;
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
-        destDir: agentsDir, files: agents, log: ctx.log, note: ctx.note,
+        destDir: agentsDir, files: ctx.lists.agents, log: ctx.log, note: ctx.note,
     });
 }
 
@@ -432,9 +456,17 @@ function installPlugins(ctx)
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
+    // The per-stack entries retired in 1.3.0 come from the seed's own file, never the twins' lists:
+    // only this route copies their picks before they go. The ones still installed after this run are
+    // what the settings writer keeps a seat's old deny spelling for; an unreadable listing says
+    // nothing, so it keeps them all.
+    const carriers = readRetiredEntries(ctx.source.dir).map((e) => e.name);
+    const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)) : null);
+    ctx.liveCarriers = installed();
     if (ctx.args.action === 'update')
     {
-        plugins.prunedRetired({ listing, retired: ctx.manifest.retired.plugins, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
+        const gone = plugins.prunedRetired({ listing, retired: [...new Set([...ctx.manifest.retired.plugins, ...carriers])], carriers, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
+        ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
             plugins: set, scope: ctx.cliScope, marketplaces, before: listing, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log,
             after: readListing,
@@ -524,7 +556,7 @@ function installHooksAndRules(ctx)
     copy.stampDocsRoot(ctx.projectRoot, { log: ctx.log, note: ctx.note });
 
     const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
-    const migrations = readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')).env || {};
+    const migrations = envMigrations(readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')));
     const wired = ctx.routes.hooks ? [] : ctx.lists.hooks;
     // ONE derivation decides what this project does NOT take (Phase 8): the hooks named off and the
     // seats denied. It runs whenever the run holds a selection: one a walk answered, or the one
@@ -537,6 +569,7 @@ function installHooksAndRules(ctx)
         file: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
+        retiredEntries: readRetiredEntries(ctx.source.dir).map((e) => e.name), liveEntries: ctx.liveCarriers || null,
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks
@@ -614,14 +647,15 @@ function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8'))
 
 // The stamp's picked lines, `name@home` - the home is what tells a later read-back that an item
 // MOVED rather than left with an entry the user removed. An extra has no home and stays plain.
-function stampPickLists(lists, picks)
+function stampPickLists(lists, picks, carried = null)
 {
     const place = placement();
     const out = {};
     for (const [key, kind, line] of [['skills', 'skills', 'skill'], ['agents', 'agents', 'agent']])
         out[key] = lists[key].map(selection.CATEGORY[key].name)
             .filter((name) => !picks || picks.has(`${line} ${name}`))
-            .map((name) => { const home = homeOf(place, kind, name); return home ? `${name}@${home}` : name; });
+            .map((name) => { const home = homeOf(place, kind, name); return home ? `${name}@${home}` : name; })
+            .concat(carried ? carried[key] : []);
     return out;
 }
 

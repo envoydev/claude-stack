@@ -28,9 +28,10 @@ function scaffold({ migrations = [], settings = null, stamp = 'sha: aaa111\nvers
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-'));
     const snap = path.join(root, 'repo');
-    fs.mkdirSync(path.join(snap, 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'scripts', 'install'), { recursive: true });
     fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
     fs.copyFileSync(path.join(__dirname, 'stamp-compare.js'), path.join(snap, 'scripts', 'stamp-compare.js'));
+    fs.copyFileSync(path.join(__dirname, 'install', 'source.js'), path.join(snap, 'scripts', 'install', 'source.js'));
     fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.70\n');
     fs.writeFileSync(path.join(snap, 'meta', 'migrations.json'), JSON.stringify({ _comment: 'x'.repeat(2000), migrations }));
 
@@ -271,7 +272,7 @@ const NEW_FIXTURE = { files: [
     { status: 'added', filename: 'stack/hooks/docs-session.js' },
 ] };
 
-test('new items: arrive on an enabled entry, are offered elsewhere, stay off where the user switched them off', () => {
+test('new items: a core item arrives, a library item is offered, the user\'s off-state wins', () => {
     const { snap, install, fixtureFile } = scaffold({
         fixture: NEW_FIXTURE,
         settings: { permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] }, env: { CLAUDE_STACK_HOOKS_OFF: '' } },
@@ -286,25 +287,44 @@ test('new items: arrive on an enabled entry, are offered elsewhere, stay off whe
     const rows = out.split('\n').filter((l) => l.startsWith('new: '));
     assert.deepStrictEqual(rows.filter((r) => !r.startsWith('new: rule ')), [
         'new: skill markdown-style\tarrives\tclaude-stack',
-        'new: skill dotnet-web-backend\toff\tclaude-stack-aspnet',
+        'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\tclaude-stack',
         'new: hook docs-session\tarrives\tclaude-stack-hooks',
     ]);
-    // a renamed line with no old copy on disk is a plain offer, carrying its old name; its closure
-    // enables entries, so the recommendation is leave and the entries are named
-    assert.match(rows.find((r) => r.startsWith('new: rule sql-conventions')), /^new: rule sql-conventions\toffer\t-\tleave\tenables=claude-stack-[a-z-]+(,claude-stack-[a-z-]+)*$/);
+    // a renamed line with no old copy on disk is a plain offer; its closure copies a library skill
+    // the project lacks, so the recommendation is leave and the copy is named
+    assert.match(rows.find((r) => r.startsWith('new: rule sql-conventions')), /^new: rule sql-conventions\toffer\t-\tleave\tcopies=[a-z-]+(,[a-z-]+)*$/);
 });
 
-test('new items: none added prints `new: none`; an unreadable listing leaves skills and seats unknown, never offered', () => {
+test('new items: a library skill the project already copied makes the rule that pulls it the free take', () => {
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/rules/sql-conventions.md' }] } });
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }]));
+    const before = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
+    const copies = /^new: rule sql-conventions\toffer\t-\tleave\tcopies=(\S+)$/m.exec(before);
+    assert.ok(copies, before);
+    for (const name of copies[1].split(','))
+    {
+        fs.mkdirSync(path.join(install, '.claude', 'skills', name), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'skills', name, 'SKILL.md'), '---\nname: x\n---\n');
+    }
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^new: rule sql-conventions\toffer\t-\ttake$/m);
+});
+
+test('new items: none added prints `new: none`; an unreadable listing leaves a core item unknown, never offered, and a library item offered', () => {
     const quiet = scaffold({ fixture: { files: [{ status: 'modified', filename: 'stack/skills/csharp/SKILL.md' }] } });
     const r1 = run(['--snapshot', quiet.snap, '--root', quiet.install, '--fixture', quiet.fixtureFile]);
     assert.match(r1.out, /^new: none$/m);
 
-    const blind = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/skills/dotnet-web-backend/SKILL.md' }] } });
+    const blind = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/skills/markdown-style/SKILL.md' }, { status: 'added', filename: 'stack/skills/dotnet-web-backend/SKILL.md' }] } });
     const bad = path.join(blind.install, 'listing.json');
     fs.writeFileSync(bad, '{ not json');
     const r2 = run(['--snapshot', blind.snap, '--root', blind.install, '--fixture', blind.fixtureFile, '--listing', bad]);
-    assert.match(r2.out, /^new: skill dotnet-web-backend\tunknown\tclaude-stack-aspnet$/m);
+    assert.match(r2.out, /^new: skill markdown-style\tunknown\tclaude-stack$/m);
+    // a library item is a copy, so no plugin listing decides it
+    assert.match(r2.out, /^new: skill dotnet-web-backend\toffer\t-\tleave$/m);
 });
 
 test('new items: a compare naming no shipped item never calls `claude plugin list`', () => {

@@ -6,8 +6,8 @@ model: opus
 effort: xhigh
 color: cyan
 skills:
-  - claude-stack-browser-extension:browser-extension
-  - claude-stack-tsjs:ts-js-testing
+  - browser-extension
+  - ts-js-testing
   - claude-stack:project-solution-design
 
 ---

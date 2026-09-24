@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// Rewrites every agent's `skills:` frontmatter to the PLUGIN-SCOPED spelling, computed from the
-// same placement the marketplace entries come from.
+// Rewrites every agent's `skills:` frontmatter to the spelling its placement needs: a CORE skill
+// scoped to the core plugin (`claude-stack:<name>`), a LIBRARY skill bare - it is the project copy
+// the installer wrote beside the agent.
 //
 //   node scripts/scope-agent-preloads.js --write    rewrite stack/agents/*.md in place
 //   node scripts/scope-agent-preloads.js --check    exit 1 when any line disagrees (the lint path)
@@ -10,14 +11,15 @@
 // stale `.claude/skills/` copy when one is present, silently, with no error and no sign in the
 // transcript - and every project being migrated has exactly that shape for at least one session.
 // Spike S11 then measured that a scoped name resolves even when the skill lives in a DIFFERENT
-// plugin, which is 83 of the 112 preload rows here. So the scoped form is required and the prefix
-// is whatever the placement says, which is a computation, not a fact to retype 112 times.
+// plugin. So a core skill is always cited scoped. A library skill has no plugin to scope to: since
+// 1.3.0 its copy in `.claude/skills` IS the intended one, so the bare name is the right cite, and
+// the graph closes an agent's preloads into its selection, so the copy is there whenever the agent is.
 //
 // A cite that already carries a colon is FOREIGN (`superpowers:systematic-debugging`) and is left
 // exactly as it is - this script owns house skills only.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, CORE } = require('./plugin-placement.js');
+const { placement, CORE, LIBRARY } = require('./plugin-placement.js');
 
 const REPO = path.resolve(__dirname, '..');
 const AGENTS_DIR = path.join(REPO, 'stack/agents');
@@ -52,27 +54,11 @@ function homes(place)
     return { skillHome, agentHome };
 }
 
-// Every plugin an agent's own plugin pulls in, itself included. A scoped cite outside this set
-// would name a plugin the project may not have enabled, which is the frontmatter form of the
-// house rule against naming a skill that can be absent.
-function reachable(place, plugin)
-{
-    const seen = new Set();
-    const walk = (name) =>
-    {
-        if (!place.plugins[name] || seen.has(name)) return;
-        seen.add(name);
-        for (const dep of place.plugins[name].dependencies) walk(dep);
-    };
-    walk(plugin);
-    walk(CORE);
-    return seen;
-}
-
 function scopedFor(options = {})
 {
     const place = options.placement || placement(options);
     const { skillHome, agentHome } = homes(place);
+    const library = new Set(place.library.skills);
     const out = [];
     for (const file of fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).sort())
     {
@@ -81,18 +67,18 @@ function scopedFor(options = {})
         const parsed = parse(text, file);
         if (!parsed) continue;
         const agent = file.replace(/\.md$/, '');
-        const own = agentHome.get(agent);
-        if (!own) { out.push({ file, agent, problem: `is in no plugin - the placement does not reach it` }); continue; }
-        const within = reachable(place, own);
+        const own = agentHome.get(agent) || LIBRARY;
         const problems = [];
         const wanted = parsed.names.map((name) =>
         {
-            if (name.includes(':')) return name;                    // foreign, not ours to scope
-            const bare = name;
+            if (name.includes(':') && !name.startsWith('claude-stack')) return name;   // foreign, not ours to scope
+            const bare = name.includes(':') ? name.slice(name.indexOf(':') + 1) : name;
             const home = skillHome.get(bare);
-            if (!home) { problems.push(`${bare} is in no plugin`); return name; }
-            if (!within.has(home)) problems.push(`${bare} lives in ${home}, which ${own} does not pull in`);
-            return `${home}:${bare}`;
+            if (home) return `${home}:${bare}`;
+            if (!library.has(bare)) { problems.push(`${bare} is neither a core nor a library skill`); return name; }
+            // A core seat is in every project; a library skill is only where it was picked.
+            if (own === CORE) problems.push(`${bare} is library, and ${agent} is a core seat that every project carries`);
+            return bare;
         });
         const block = `skills:\n${wanted.map(n => `  - ${n}\n`).join('')}`;
         out.push({ file, agent, plugin: own, text, at: parsed.at, block: parsed.block, wanted: block, problem: problems.join('; ') || null });
@@ -136,4 +122,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { scopedFor, parse, reachable };
+module.exports = { scopedFor, parse };

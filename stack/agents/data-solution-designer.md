@@ -6,8 +6,8 @@ model: opus
 effort: xhigh
 color: cyan
 skills:
-  - claude-stack-data:database-conventions
-  - claude-stack-csharp:dotnet-migrate
+  - database-conventions
+  - dotnet-migrate
   - claude-stack:project-solution-design
 
 ---

@@ -1,0 +1,19 @@
+schema_version: "1.1"
+name: agent-angular-test-resolver
+description: A red Angular spec suite on a building app is handed to the angular-test-resolver library agent.
+tags: [library, agent]
+execution:
+  prompt: |
+    Our Angular 19 app builds cleanly, but the spec suite is red since a refactor: ng test reports three
+    failing specs in src/app/user/user.service.spec.ts, all about HttpClient calls that no longer match.
+    Get the suite green.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill, Agent]
+runs: 3
+graders:
+  - type: tool_used
+    name: dispatches-angular-test-resolver
+    tool: Agent
+    input_match: angular-test-resolver
+    min: 1
+    arm: both

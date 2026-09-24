@@ -6,7 +6,7 @@ model: opus
 effort: xhigh
 color: cyan
 skills:
-  - claude-stack-devops:devops
+  - devops
   - claude-stack:project-solution-design
 
 ---

@@ -6,11 +6,11 @@ model: sonnet
 effort: xhigh
 color: purple
 skills:
-  - claude-stack-ionic-angular:ionic
-  - claude-stack-angular:angular-conventions
-  - claude-stack-typescript-shared:typescript
-  - claude-stack-javascript-shared:javascript
-  - claude-stack-angular:angular-testing
+  - ionic
+  - angular-conventions
+  - typescript
+  - javascript
+  - angular-testing
 
 ---
 

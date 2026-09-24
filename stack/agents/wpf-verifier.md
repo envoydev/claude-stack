@@ -6,10 +6,10 @@ model: sonnet
 effort: xhigh
 color: purple
 skills:
-  - claude-stack-csharp:csharp
-  - claude-stack-wpf:dotnet-wpf
-  - claude-stack-dotnet:dotnet-code-quality
-  - claude-stack-csharp:dotnet-testing
+  - csharp
+  - dotnet-wpf
+  - dotnet-code-quality
+  - dotnet-testing
 
 ---
 

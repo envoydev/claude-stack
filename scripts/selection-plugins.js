@@ -6,17 +6,12 @@
 //   node scripts/selection-plugins.js --selection <file> --copy   the items no plugin carries
 //   node scripts/selection-plugins.js --items <plugin>[,<plugin>]  the skills and agents those carry
 //
-// Every skill and agent the stack ships lives in exactly one plugin, except the EXTRAS - the items
-// no stack's closure reaches, which are addable by hand and stay on the copy route because there is
-// no stack whose plugin would carry them. So an install is: enable the plugins the selection's
-// placed items live in, copy the extras it picked, copy nothing else.
-//
-// The set is closure-complete. A per-stack entry depends on the shared groups under it, and the CLI
-// installs a dependency with its dependent, but naming them explicitly keeps the installer's log
-// and the stamp honest about what the project actually carries.
+// The core plugin carries the always closure; every other skill and agent is LIBRARY, listed by no
+// entry (plugin-placement.js says why). So an install is: enable the core, copy the library items
+// the selection picked, copy nothing else. `copy` is that library list.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, CORE } = require('./plugin-placement.js');
+const { placement, CORE, readRetiredEntries } = require('./plugin-placement.js');
 
 const REPO = path.resolve(__dirname, '..');
 
@@ -89,14 +84,17 @@ function pluginsFor(picked, options = {})
 }
 
 // The inverse direction, for a reader that has the ENABLED PLUGINS and needs the set they carry -
-// the `--installed-only` derivation, which on this route finds only the extras on disk.
+// the `--installed-only` derivation, which on this route finds the library copies on disk.
 function itemsOf(names, options = {})
 {
     const place = options.placement || placement(options);
+    // A retired per-stack entry still installed here carries what 1.2.0 put in it, frozen.
+    const retired = new Map((options.retired || readRetiredEntries()).map((e) => [e.name, e]));
     const out = { skills: [], agents: [] };
     for (const name of names)
     {
-        const plug = place.plugins[String(name).split('@')[0]];
+        const bare = String(name).split('@')[0];
+        const plug = place.plugins[bare] || retired.get(bare);
         if (!plug) continue;
         out.skills.push(...plug.skills);
         out.agents.push(...plug.agents);

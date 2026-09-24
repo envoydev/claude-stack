@@ -6,9 +6,9 @@ model: sonnet
 effort: medium
 color: green
 skills:
-  - claude-stack-winforms:dotnet-winforms
-  - claude-stack-csharp:csharp
-  - claude-stack-csharp:dotnet-testing
+  - dotnet-winforms
+  - csharp
+  - dotnet-testing
 
 ---
 

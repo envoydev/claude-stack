@@ -25,16 +25,18 @@
 //     carries: a seat in a plugin this project never enabled is not loaded at all, so denying it is
 //     noise now and a trap later - the day that plugin is enabled, the stale entry silently drops a
 //     seat the user just asked for.
-//   - SKILLS have none. Spike S2: `skillOverrides` moved 0 tokens on a plugin skill under either
-//     the bare or the scoped key. So a skill the closure carries and the selection did not pick is
-//     REPORTED as undroppable, and there is deliberately no `off` key to mistake for a lever.
+//   - A CORE SKILL has none. Spike S2: `skillOverrides` moved 0 tokens on a plugin skill under
+//     either the bare or the scoped key, and the 2026-09-24 library test found why - a plugin skill
+//     is locked on. So a core skill the selection did not pick is REPORTED as undroppable, and there
+//     is deliberately no `off` key to mistake for a lever. Every OTHER skill is a LIBRARY copy, and
+//     a copy is droppable: deleted by a drop, or switched per project through `skillOverrides`.
 //   - HOOKS are switched off by NAME, against the whole shipped catalog, because the hooks plugin
 //     carries all thirteen whatever the project picked (`CLAUDE_STACK_HOOKS_OFF`, Phase 2).
 const fs = require('node:fs');
 const path = require('node:path');
 
 const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./selection-plugins.js');
-const { placement, descriptionChars, CORE } = require('./plugin-placement.js');
+const { placement, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 const { pluginRoutes } = require('./install/plugins.js');
@@ -89,10 +91,11 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     const homes = agentHomes(place);
 
     const off = carried.agents.filter((a) => !picked.agents.has(a));
-    // The seats an enabled plugin carries AND the selection kept. Their specs exist for one job:
-    // clearing a deny a PREVIOUS run wrote, so a seat added back through configure actually comes
-    // back. A seat this run copied (an extra) never had a scoped spec to clear.
-    const kept = carried.agents.filter((a) => picked.agents.has(a));
+    // The seats an enabled plugin carries AND the selection kept, plus the library seats it copies.
+    // Their specs exist for one job: clearing a deny a PREVIOUS run wrote, so a seat added back
+    // through configure actually comes back - a library seat's under the core spelling a retired
+    // entry's deny also carries (install/settings.js); clearing a seat clears every spelling of it.
+    const kept = carried.agents.filter((a) => picked.agents.has(a)).concat(copy.agents);
     const shipped = [...new Set(loadManifest(sourceDir).catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
     // No hook line at all means every hook, exactly as the installer's copy filter reads it - a
     // selection that never reached the hooks layer answers nothing about hooks.
@@ -105,7 +108,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
         skills: {
             picked: [...picked.skills].sort(),
             carried: carried.skills,
-            extras: copy.skills,
+            library: copy.skills,
             // No `off` key, deliberately: R1 of the phase plan. Nothing can drop these.
             undroppable: carried.skills.filter((s) => !picked.skills.has(s)),
         },
@@ -114,7 +117,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
             off,
             deny: off.map((a) => denySpec(a, homes.get(a) || CORE)),
             allow: kept.map((a) => denySpec(a, homes.get(a) || CORE)),
-            extras: copy.agents,
+            library: copy.agents,
         },
         rules: { copy: [...flat.rules].sort() },
         hooks: { on: hooksOn, off: hooksOff, answered: hooksAnswered },
@@ -130,7 +133,7 @@ const catalogServer = (name) => String(name)
     .replace(/^context7-local$/, 'context7');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
-// project carries NOW on each plugin route. On those routes `.claude/` holds only the extras, so the
+// project carries NOW on each plugin route. On those routes `.claude/` holds only the library copies, so the
 // disk read alone found no seat and no hook - and the derivation above then switched every one of
 // them off. Each surface is read from the state ITS route writes: the enabled entries' contents
 // minus the seats `permissions.deny` names, the hook catalog minus CLAUDE_STACK_HOOKS_OFF, the MCP
@@ -151,6 +154,14 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
         for (const s of carried.skills) lines.push(`skill ${s}`);
         for (const a of carried.agents) if (!denied.has(a)) lines.push(`agent ${a}`);
+        // An entry retired in 1.3.0 that is still enabled here: its items are what the project runs
+        // today, so they read back as installed until update copies the picks and removes it.
+        const retired = new Map(readRetiredEntries(sourceDir).map((e) => [e.name, e]));
+        for (const name of names.filter((n) => retired.has(n)))
+        {
+            for (const s of retired.get(name).skills) if (!lines.includes(`skill ${s}`)) lines.push(`skill ${s}`);
+            for (const a of retired.get(name).agents) if (!denied.has(a) && !lines.includes(`agent ${a}`)) lines.push(`agent ${a}`);
+        }
     }
     const manifest = loadManifest(sourceDir);
     if (routes.hooks && names.includes(HOOKS_ENTRY))
@@ -172,11 +183,15 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
     return lines;
 }
 
-// The item's home entry under THIS release's placement, or null for an extra (copied, never carried).
+// The item's home entry under THIS release's placement, or null for a library item (copied, never carried).
 const homeOf = (place, kind, name) => Object.keys(place.plugins).find((p) => place.plugins[p][kind].includes(name)) || null;
 
+// The retired entry that carried a library item in 1.2.0, or null - the one other place a project's
+// off-state for it can live while that entry is still installed (parked, or its seat denied).
+const retiredHomeOf = (kind, name, retired = readRetiredEntries()) => (retired.find((e) => e[kind].includes(name)) || {}).name || null;
+
 // A stamp's picked entry is `name@home` - the entry that carried it when it was stamped (plain
-// `name` for an extra, which the disk holds and no entry carries).
+// `name` for a library copy, which the disk holds and no entry carries).
 const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
 
 // What the LAST install carried that the current placement alone would lose: an item a release
@@ -191,12 +206,19 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
     const on = new Set(enabled);
     const off = new Set(parked);
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+    const retiredNames = new Set(readRetiredEntries().map((e) => e.name));
     const lines = [];
     for (const [kind, line] of [['skills', 'skill'], ['agents', 'agent']])
         for (const entry of stamp[kind] || [])
         {
             const { name, home: was } = splitPick(entry);
             const home = homeOf(place, kind, name);
+            // Homed in a retired entry that is still enabled, library now: carried as a pick.
+            if (was && retiredNames.has(was) && on.has(was) && !home)
+            {
+                if (!(kind === 'agents' && denied.has(name))) lines.push(`${line} ${name}`);
+                continue;
+            }
             if (!was || !home || home === was || !on.has(was) || off.has(home)) continue;
             if (kind === 'agents' && denied.has(name)) continue;
             lines.push(`${line} ${name}`);
@@ -204,17 +226,23 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
     return lines;
 }
 
-// The entries taking ONE item would enable that are not enabled now - the item's closure (a rule
-// pulls the skills and seats it attaches) mapped onto its homes. An offer is cheap only when this
-// is empty.
-function entriesEnabledBy({ category, name, place, graph, enabled })
+// What taking ONE item would add beyond itself - the item's closure (a rule pulls the skills and
+// seats it attaches) split into the entries it would enable that are not enabled now, and the
+// library items it would copy that the project has not copied yet. An offer is cheap only when
+// both are empty.
+function costOfTaking({ category, name, place, graph, enabled, copied })
 {
-    if (!graph) return [];
+    if (!graph) return { enables: [], copies: [] };
     const { computeClosure } = require('./stack-select.js');
     const closure = computeClosure(graph, { [`${category}s`]: [name] });
     const items = [...closure.skills.map((s) => ['skills', s]), ...closure.agents.map((a) => ['agents', a])];
     const homes = new Set(items.map(([kind, n]) => homeOf(place, kind, n)).filter(Boolean));
-    return [...homes].filter((h) => !enabled || !enabled.has(h)).sort();
+    const have = { skills: new Set((copied && copied.skills) || []), agents: new Set((copied && copied.agents) || []) };
+    const copies = items
+        .filter(([kind, n]) => !homeOf(place, kind, n) && !have[kind].has(n) && !(`${category}s` === kind && n === name))
+        .map(([kind, n]) => `${kind === 'skills' ? 'skill' : 'agent'} ${n}`)
+        .sort();
+    return { enables: [...homes].filter((h) => !enabled || !enabled.has(h)).sort(), copies };
 }
 
 // THE NEW-ITEM VERDICT, one row per item a release added:
@@ -222,13 +250,14 @@ function entriesEnabledBy({ category, name, place, graph, enabled })
 //              enables the hooks entry whatever the listing says, so only HOOKS_OFF can say no);
 //   renamed  - a copied item under a new name whose OLD copy is on disk: the update carries it;
 //   offer    - only the user's yes brings it; `recommend` is `take` only for a rule whose closure
-//              enables no entry, and `enables` names what a yes would switch on;
+//              enables no entry and copies no library item the project lacks (`copied`, the
+//              project's own copies), and `enables` / `copies` name what a yes would add;
 //   off      - the user's own off-state names it: a denied seat, a hook in HOOKS_OFF, every hook
 //              switched off before (`noneBefore` - the walk's None), a parked entry;
 //   unknown  - the plugin listing could not be read (`plugins` null); never offered on a guess.
 // A renamed item carries `from`, and `wasOff` when the OLD name was switched off - the installer
 // matches the off-state by name, so the new name comes on and the report must say so.
-function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, sourceDir = REPO } = {})
+function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, copied = null, sourceDir = REPO } = {})
 {
     const place = placement();
     const manifest = loadManifest(sourceDir);
@@ -279,8 +308,8 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         }
         if (row.verdict === 'offer')
         {
-            row.enables = entriesEnabledBy({ category, name, place, graph, enabled });
-            row.recommend = category === 'rule' && !row.enables.length ? 'take' : 'leave';
+            Object.assign(row, costOfTaking({ category, name, place, graph, enabled, copied }));
+            row.recommend = category === 'rule' && !row.enables.length && !row.copies.length ? 'take' : 'leave';
         }
         rows.push(row);
     }
@@ -321,11 +350,15 @@ function floor({ plugins = [], deny = [] } = {})
 {
     const place = placement();
     const named = [...new Set(plugins.map((p) => String(p).split('@')[0]).filter(Boolean))];
-    const entries = named.filter((n) => place.plugins[n]).sort();
-    const carried = itemsOf(entries, { placement: place });
-    // The EXACT spelling Claude Code matches - the seat under its home entry. A deny left under an
-    // entry the seat has since moved out of hides nothing until the next install rewrites it.
+    // A retired entry still enabled here loads what it carried every session until update removes it.
+    const retired = readRetiredEntries().filter((e) => named.includes(e.name));
+    const entries = named.filter((n) => place.plugins[n] || retired.some((e) => e.name === n)).sort();
+    const carried = itemsOf(entries, { placement: place, retired });
+    // The EXACT spelling Claude Code matches - the seat under its home entry (a retired entry's own
+    // name while it is installed). A deny left under an entry the seat has since moved out of hides
+    // nothing until the next install rewrites it.
     const homes = agentHomes(place);
+    for (const e of retired) for (const a of e.agents) if (!homes.has(a)) homes.set(a, e.name);
     const specs = new Set(Array.isArray(deny) ? deny.map(String) : []);
     const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))));
     const skills = carried.skills.filter((s) => !manualOnly(s));
@@ -409,7 +442,7 @@ if (require.main === module)
 // means every hook off.
 //
 // What the user switched off stays off unless the walk PICKED it (`picked`, the walk's own running
-// file in the inventory's shape): a seat denied, an item of a parked entry (`left_out`) or a parked
+// file in the inventory's shape): a seat denied, an item of a parked retired entry (`left_out`) or a parked
 // catalog plugin (`parked_plugins`) that the closure merely re-requires is `keptOff`, never an add.
 // And the read-back enables a parked catalog plugin like any other it finds, so every one the walk
 // did not pick is `keepParked` - passed as a --drop whenever the installer runs, but no reason on
@@ -441,4 +474,4 @@ function delta({ installed = {}, selectionText, picked = null })
 }
 
 module.exports = {
-    delta, stampCarried, classifyNew, homeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };
+    delta, stampCarried, classifyNew, homeOf, retiredHomeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };

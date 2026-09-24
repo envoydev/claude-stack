@@ -232,7 +232,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, sentryAu
 function writeSettings(opts)
 {
     const {
-        file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
+        file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, sentryAuth, hooksOff, hooksAnswered = false,
@@ -258,6 +258,24 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  settings.json: dropped retired deny entry ${rule}`); }
+    // A seat denied through a per-stack entry retired in 1.3.0 is the user's off-state - a picked
+    // rule's closure would copy the seat back without it - so it gains the core spelling, which every
+    // later run reads as off; picking the seat again clears both (derive-state's allow list). The old
+    // spelling goes only once that entry is uninstalled: Claude Code matches the exact home name, so
+    // while the entry still loads (another scope, a refused uninstall, a listing this run could not
+    // read) it is the spelling that keeps the seat off. `liveEntries` absent = cannot say = kept.
+    const live = liveEntries || retiredEntries;
+    for (const entry of [...deny])
+    {
+        const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
+        if (!m || !retiredEntries.includes(m[1])) continue;
+        const core = `Agent(claude-stack:${m[2]})`;
+        if (!deny.includes(core)) { deny.push(core); changed = true; log(`  settings.json: ${entry} also denied as ${core} (its entry retired)`); }
+        if (live.includes(m[1])) continue;
+        deny.splice(deny.indexOf(entry), 1);
+        changed = true;
+        log(`  settings.json: ${entry} dropped - its entry is uninstalled, ${core} keeps the seat off`);
+    }
 
     // The agent off-list (Phase 8). Same array, two directions, and the ALLOW side runs last on
     // purpose: a seat named by both lists is a seat this run installed, and resolving toward the

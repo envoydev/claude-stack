@@ -474,3 +474,20 @@ test('configure emits hook none when its Hooks area was walked, and update reads
     const update = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
     assert.match(update, /Global mode: `--root <account dir> --settings \.claude\/settings\.json`/);
 });
+
+// A hand-edited library copy is overwritten by the next installer run - never silently: validate
+// reports the drift BEFORE its own apply writes anything, and every report filter over the run log
+// carries the overwrite line (the log itself is deleted with $TMP).
+test('a hand-edited library copy is reported before an apply overwrites it, and the overwrite is shown', () =>
+{
+    const read = (n) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', n), 'utf8');
+    const validate = read('validate.md');
+    const step1 = validate.slice(validate.indexOf('## 1. Find the install'), validate.indexOf('## 2. Detect'));
+    assert.match(step1, /library-check\.js" --project \. --source "\$TMP\/repo"/, 'validate checks the copies at inventory time');
+    for (const [name, body] of [['update.md', read('update.md')], ['validate.md', validate], ['configure.md', read('configure.md')]])
+    {
+        const filters = body.split('\n').filter((l) => /grep -a?E '[^']*' "\$TMP\/install\.log"/.test(l));
+        assert.ok(filters.length > 0, `${name} has a report filter`);
+        assert.ok(filters.some((l) => /overwriting a hand-edited copy/.test(l)), `${name}: no report filter shows the overwrite`);
+    }
+});

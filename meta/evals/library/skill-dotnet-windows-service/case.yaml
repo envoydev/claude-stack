@@ -1,0 +1,18 @@
+schema_version: "1.1"
+name: skill-dotnet-windows-service
+description: A Windows Service install request loads the dotnet-windows-service library skill (the windows-service stack).
+tags: [library, skill, windows-service]
+execution:
+  prompt: |
+    Make a .NET 9 worker installable as a Windows Service with a proper service name and event-log
+    logging. Reply with the Program.cs changes in one code block.
+  max_turns: 6
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-dotnet-windows-service
+    tool: Skill
+    input_match: dotnet-windows-service
+    min: 1
+    arm: both

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { scopedFor, parse, reachable } = require('./scope-agent-preloads.js');
+const { scopedFor, parse } = require('./scope-agent-preloads.js');
 const { placement, CORE } = require('./plugin-placement.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -22,26 +22,29 @@ test('the shipped files are already scoped - the generator has nothing to do', (
 
 // Spike S11: a scoped cite resolves even when the skill lives in a DIFFERENT plugin, which is the
 // majority case here. Spike S6: the BARE form preloads a stale project copy when one is present.
-test('a house cite carries its plugin prefix, and it is the plugin that actually holds the skill', () => {
-    const home = new Map();
-    for (const [plugin, items] of Object.entries(place.plugins)) for (const s of items.skills) home.set(s, plugin);
+test('a core cite is scoped to the core, a library cite is bare - the project copy', () => {
+    const core = new Set(place.plugins[CORE].skills);
+    const library = new Set(place.library.skills);
     let scoped = 0;
-    let cross = 0;
+    let bare = 0;
     for (const r of rows)
     {
         for (const line of r.wanted.split('\n').map(l => l.replace(/^\s*-\s*/, '').trim()).filter(Boolean))
         {
-            if (line === 'skills:') continue;
-            if (!line.startsWith('claude-stack')) continue;
-            scoped++;
-            const [plugin, ...rest] = line.split(':');
-            const skill = rest.join(':');
-            assert.strictEqual(home.get(skill), plugin, `${r.file}: ${skill} is placed in ${home.get(skill)}, cited as ${plugin}`);
-            if (plugin !== r.plugin) cross++;
+            if (line === 'skills:' || (line.includes(':') && !line.startsWith(`${CORE}:`))) continue;   // foreign
+            if (line.startsWith(`${CORE}:`))
+            {
+                scoped++;
+                assert.ok(core.has(line.slice(CORE.length + 1)), `${r.file}: ${line} is not a core skill`);
+            }
+            else
+            {
+                bare++;
+                assert.ok(library.has(line), `${r.file}: bare ${line} must be a library skill`);
+            }
         }
     }
-    assert.ok(scoped > 100, `expected the whole preload surface to be scoped, counted ${scoped}`);
-    assert.ok(cross > 0, 'the cross-plugin case S11 proved must actually occur, or this proves nothing');
+    assert.ok(scoped > 0 && bare > 0, `both forms must occur (scoped ${scoped}, bare ${bare}), or this proves nothing`);
 });
 
 test('a FOREIGN cite is left exactly as it is - this generator owns house skills only', () => {
@@ -50,11 +53,10 @@ test('a FOREIGN cite is left exactly as it is - this generator owns house skills
     assert.ok(diag.wanted.includes('- superpowers:systematic-debugging'), 'the superpowers cite is untouched');
 });
 
-test('reachable() is the closure, so a cite can never name a plugin the project may not enable', () => {
-    const wpf = reachable(place, 'claude-stack-wpf');
-    assert.ok(wpf.has('claude-stack-wpf') && wpf.has(CORE), 'itself and the core');
-    assert.ok(wpf.has('claude-stack-csharp'), 'and what it depends on');
-    assert.ok(!wpf.has('claude-stack-angular'), 'never an unrelated stack');
+test('a core agent cites no library skill - the core would not carry what it preloads', () => {
+    const coreAgents = new Set(place.plugins[CORE].agents);
+    for (const r of rows.filter(x => coreAgents.has(x.agent)))
+        assert.doesNotMatch(r.wanted, /^\s*-\s*[a-z0-9-]+\s*$/m, `${r.file} is a core seat citing a bare (library) skill`);
 });
 
 test('a flow-style skills: line is reported, never silently guessed at', () => {

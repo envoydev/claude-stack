@@ -277,6 +277,31 @@ test('settings-writer: a dropped seat is denied, and the project keeps its own d
     assert.ok(data.permissions.deny.includes('Read(./.env)'), 'the secret blocks still land beside them');
 });
 
+test('settings-writer: a retired entry seat deny is re-spelled to the core, so the seat stays off; the rest is untouched', () =>
+{
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-angular:angular-test-resolver)', 'Agent(claude-stack:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)'] } });
+    const { data, logs } = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(claude-stack:security-auditor)'] });
+    assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(claude-stack:angular-test-resolver)', 'Agent(claude-stack:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)']);
+    assert.ok(logs.some((m) => /angular-test-resolver/.test(m) && /retired/.test(m)), logs.join('\n'));
+    const again = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(claude-stack:security-auditor)'] });
+    assert.strictEqual(again.result.written, false, 'a second run changes nothing');
+});
+
+// Claude Code matches a seat's deny by its exact home spelling, so while the retired entry is still
+// installed (kept at another scope, a refused uninstall, a blind listing, an install run) the seat
+// loads under the OLD name - dropping that spelling would switch the user's seat back on.
+test('settings-writer: a retired entry still installed keeps the user\'s deny spelling beside the core one', () =>
+{
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)'] } });
+    const live = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: ['claude-stack-aspnet'], agentDeny: ['Agent(claude-stack:security-auditor)'] });
+    assert.ok(live.data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), live.data.permissions.deny.join(','));
+    assert.ok(live.data.permissions.deny.includes('Agent(claude-stack:aspnet-verifier)'), live.data.permissions.deny.join(','));
+    const unknown = write(settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)'] } }), { retiredEntries: ['claude-stack-aspnet'] });
+    assert.ok(unknown.data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), 'a caller that cannot say keeps it');
+    const gone = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: [], agentDeny: ['Agent(claude-stack:security-auditor)'] });
+    assert.deepStrictEqual(gone.data.permissions.deny.filter((d) => /aspnet-verifier/.test(d)), ['Agent(claude-stack:aspnet-verifier)'], 'once the entry is gone only the core spelling stays');
+});
+
 test('settings-writer: a seat the selection now KEEPS has its deny cleared', () =>
 {
     // The failure this prevents: a user adds a seat back through configure, the install enables its

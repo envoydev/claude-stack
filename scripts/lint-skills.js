@@ -2397,7 +2397,7 @@ function main()
         flag(`the always-on surface measurement could not run: ${err.message}`);
     }
 
-    // 44 + 45. Plugin placement is computed; the generated entries and the cost table are current.
+    // 44 + 45. Plugin placement is computed: the core is the only plugin, and the generated entries are current.
     // 46. The repo root carries no name a shared-source marketplace entry auto-discovers (spike S9c).
     // 47. The marketplace manifest passes `claude plugin validate --strict`.
     for (const finding of lintPluginPlacement()) flag(finding);
@@ -2444,10 +2444,10 @@ function main()
 
 // ---------------------------------------------------------------------------------------------
 // 44 + 45. Placement is COMPUTED from meta/recommendations.json + meta/stack-graph.json, so the
-// generated entries and the committed cost table are both derivable - and a drift between what the
-// rule computes and what is committed is exactly the failure this pair exists to catch. The cost
-// gate is the migration's own yardstick: a split that makes a project's always-on surface bigger
-// than per-item selection already does is not worth shipping, whatever else it buys.
+// generated entries are derivable - and a drift between what the rule computes and what is committed
+// is exactly the failure this pair exists to catch. Since 1.3.0 the rule has ONE plugin, the core; every
+// other item is library, copied per pick, so a project pays exactly its per-item closure by
+// construction and the old cost gate has nothing left to measure.
 function lintPluginPlacement(placeIn)
 {
     const out = [];
@@ -2470,8 +2470,8 @@ function lintPluginPlacement(placeIn)
         catch (err) { return [`plugin placement could not run: ${err.message}`]; }
     }
 
-    for (const key of place.unnamed)
-        out.push(`the stacks ${key} share items with no plugin NAME - add one to GROUP_NAMES in scripts/plugin-placement.js rather than shipping a generated slug.`);
+    if (Object.keys(place.plugins).length !== 1 || !place.plugins[placeMod.CORE])
+        out.push(`the placement ships plugins other than ${placeMod.CORE} - every non-core item is library, copied per pick.`);
 
     const seen = new Map();
     const note = (key, where) =>
@@ -2484,18 +2484,11 @@ function lintPluginPlacement(placeIn)
         for (const s of plug.skills) note('skill:' + s, name);
         for (const a of plug.agents) note('agent:' + a, name);
     }
-    for (const s of place.extras.skills) note('skill:' + s, 'extras');
-    for (const a of place.extras.agents) note('agent:' + a, 'extras');
+    for (const s of place.library.skills) note('skill:' + s, placeMod.LIBRARY);
+    for (const a of place.library.agents) note('agent:' + a, placeMod.LIBRARY);
     const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta/stack-graph.json'), 'utf8'));
-    for (const s of Object.keys(graph.skills)) if (!seen.has('skill:' + s)) out.push(`skill ${s} is in no plugin and no extras - placement must be total.`);
-    for (const a of Object.keys(graph.agents)) if (!seen.has('agent:' + a)) out.push(`agent ${a} is in no plugin and no extras - placement must be total.`);
-
-    for (const [name, plug] of Object.entries(place.plugins))
-        for (const dep of plug.dependencies)
-        {
-            if (!place.plugins[dep]) { out.push(`${name} depends on ${dep}, which is not a plugin.`); continue; }
-            if (!(place.rank[dep] < place.rank[name])) out.push(`${name} depends on ${dep}, a leaf or a peer - a dependency points at something MORE shared, never less.`);
-        }
+    for (const s of Object.keys(graph.skills)) if (!seen.has('skill:' + s)) out.push(`skill ${s} is in no plugin and not in the library - placement must be total.`);
+    for (const a of Object.keys(graph.agents)) if (!seen.has('agent:' + a)) out.push(`agent ${a} is in no plugin and not in the library - placement must be total.`);
 
     try
     {
@@ -2504,19 +2497,6 @@ function lintPluginPlacement(placeIn)
         if (have !== wanted) out.push('meta/plugin-entries.json is STALE - run `npm run marketplace`; it is generated, never hand-edited.');
     }
     catch (err) { out.push(`the plugin entries could not be generated: ${err.message}`); }
-
-    try
-    {
-        const table = buildMod.costTable({ placement: place });
-        for (const row of table.rows)
-            if (row.delta > buildMod.GATE_PCT)
-                out.push(`${row.combo} costs +${row.delta}% over per-item selection, past the +${buildMod.GATE_PCT}% gate - adjust the placement rule, not the gate.`);
-        const costFile = path.join(ROOT, 'docs/plugin-placement-cost.md');
-        const wantedDoc = buildMod.costDocument(table, place);
-        const haveDoc = fs.existsSync(costFile) ? fs.readFileSync(costFile, 'utf8') : null;
-        if (haveDoc !== wantedDoc) out.push('docs/plugin-placement-cost.md is STALE - run `node scripts/build-marketplace.js --cost --out docs/plugin-placement-cost.md`.');
-    }
-    catch (err) { out.push(`the cost table could not be computed: ${err.message}`); }
 
     return out;
 }
@@ -2861,9 +2841,9 @@ function lintAgentPreloads()
     return findings;
 }
 
-// 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what each
-// one ships, so a hand-edited path list, description or dependency silently stops matching the cost
-// table that gates them. The hooks entry has its own check (48) and is left to it.
+// 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
+// ships and meta/retired-entries.json what each retiring entry still lists, so a hand-edited path
+// list, description or dependency is drift. The hooks entry has its own check (48) and is left to it.
 function lintMarketplaceEntries()
 {
     const findings = [];
@@ -2874,7 +2854,7 @@ function lintMarketplaceEntries()
     {
         build = require('./build-marketplace.js');
         live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
-        wanted = build.buildEntries();
+        wanted = build.buildEntries().concat(build.retiredMarketplaceEntries());
     }
     catch (err)
     {

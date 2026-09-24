@@ -6,10 +6,10 @@ model: sonnet
 effort: medium
 color: green
 skills:
-  - claude-stack-data:database-conventions
-  - claude-stack-csharp:csharp
-  - claude-stack-aspnet-data:dotnet-data-access
-  - claude-stack-csharp:dotnet-testing
+  - database-conventions
+  - csharp
+  - dotnet-data-access
+  - dotnet-testing
 
 ---
 

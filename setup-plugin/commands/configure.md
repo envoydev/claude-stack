@@ -97,7 +97,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   playwright engines folded onto `playwright`). Each plugin carries the SCOPE the listing printed,
   because an uninstall is scope-addressed. A plugin the listing marks disabled sits in
   `plugins_disabled` (`parked_plugins` is its catalog part): parked, never proposed for install or
-  removal. `left_out` lists what the user switched off - a denied seat, an item of a parked entry -
+  removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
   there is nothing to configure - route to `/claude-stack:init`; `plan routes: skills=<plugin|copy>
@@ -458,13 +458,13 @@ rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on di
 that calls it 'untouched' is wrong (measured: four layers reported untouched while all 88 selected
 items had just been refreshed). On the Node seed a `--drop` is applied BY the installer:
 
-- an agent a plugin carries is denied (`Agent(<entry>:<name>)` in `permissions.deny`); a hook on
-  the plugin route is named in `CLAUDE_STACK_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy
-  route, or an extra) has its file deleted, a copied hook its wiring too;
-- a stack entry nothing kept needs any more - its last pick dropped, or a dropped MCP's own entry -
-  is disabled: `plugin disabled [<scope>]: <entry>`;
-- a skill an entry the project still needs goes on carrying logs `skill <name> stays loaded`: no
-  setting unloads a plugin skill, so it is reported as carried, never as removed;
+- a core seat is denied (`Agent(claude-stack:<name>)` in `permissions.deny`); a hook on the plugin
+  route is named in `CLAUDE_STACK_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy route, or a
+  library copy) has its file deleted, a copied hook its wiring too;
+- an MCP entry nothing kept needs any more - a dropped server's own entry - is disabled:
+  `plugin disabled [<scope>]: <entry>`;
+- a core skill logs `skill <name> stays loaded`: the core carries it and no setting unloads a plugin
+  skill, so it is reported as carried, never as removed;
 - a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,
   after the `required:` line naming what needs it, and a drop of an always-on rule or server logs
   `not applied - locked` - report both as kept, with that reason;
@@ -476,7 +476,7 @@ It does NOT uninstall a plugin, and on the copy MCP route it does not unregister
 stamp action) - never paste its output, and take the counts from the line that states them:
 `grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
 it, which is how the wrong post-check above was written); (2) removals - what the drops did, from
-`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
+`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
 make, with its command shown before running it: `claude mcp remove <name>` for an MCP on the copy
 route (playwright = every `playwright-<browser>` server);

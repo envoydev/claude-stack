@@ -6,9 +6,9 @@ model: sonnet
 effort: medium
 color: green
 skills:
-  - claude-stack-csharp:csharp
-  - claude-stack-dotnet-hosting:dotnet-hosted-services
-  - claude-stack-csharp:dotnet-testing
+  - csharp
+  - dotnet-hosted-services
+  - dotnet-testing
 
 ---
 

@@ -6,7 +6,7 @@ model: sonnet
 effort: xhigh
 color: purple
 skills:
-  - claude-stack-devops:devops
+  - devops
 
 ---
 

@@ -1,0 +1,20 @@
+schema_version: "1.1"
+name: skill-javascript
+description: Writing a helper into a plain JavaScript file loads the javascript library skill (the javascript stack). The case edits a scaffolded file because a path-scoped rule never attaches inside plugin eval, so only the skill's own description can trigger the load.
+tags: [library, skill, javascript]
+execution:
+  prompt: |
+    Write a debounce helper with a cancel method and a leading-edge option into src/debounce.js, plain
+    JavaScript, exported from that module. Edit the file in place.
+  max_turns: 8
+  allowed_tools: [Read, Edit, Write, Glob, Grep, Skill]
+context:
+  scaffold_script: scaffold.sh
+runs: 3
+graders:
+  - type: tool_used
+    name: loads-javascript
+    tool: Skill
+    input_match: javascript
+    min: 1
+    arm: both

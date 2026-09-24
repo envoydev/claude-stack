@@ -6,8 +6,8 @@ model: opus
 effort: xhigh
 color: cyan
 skills:
-  - claude-stack-angular:angular-conventions
-  - claude-stack-angular:angular-testing
+  - angular-conventions
+  - angular-testing
   - claude-stack:project-solution-design
 
 ---

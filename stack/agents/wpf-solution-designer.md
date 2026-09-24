@@ -6,9 +6,9 @@ model: opus
 effort: xhigh
 color: cyan
 skills:
-  - claude-stack-dotnet:csharp-design-patterns
-  - claude-stack-wpf:dotnet-wpf
-  - claude-stack-csharp:dotnet-testing
+  - csharp-design-patterns
+  - dotnet-wpf
+  - dotnet-testing
   - claude-stack:project-solution-design
 
 ---
